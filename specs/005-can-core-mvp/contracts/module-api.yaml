@@ -261,6 +261,44 @@ paths:
         "409": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /v1/dumps/{module}/{name}:
+    put:
+      operationId: putDump
+      summary: "Upload one backup dump (E08b, specs/037-backup-dumps)"
+      description: "Called by a module's backup hook. `module` is the caller's own module id. Accepted only while a dump run is in progress, stored atomically, mode 0600; at most 4 GiB."
+      parameters:
+        - { name: module, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9-]{0,31}$" } }
+        - { name: name, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Stored }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "413": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    get:
+      operationId: getDump
+      summary: "Download one of the caller's own dumps (restore hook)"
+      parameters:
+        - { name: module, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9-]{0,31}$" } }
+        - { name: name, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" } }
+      responses:
+        "200":
+          description: The dump
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 webhooks:
   event:
     post:

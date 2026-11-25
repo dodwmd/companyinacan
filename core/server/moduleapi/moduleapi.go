@@ -45,6 +45,8 @@ type Server struct {
 	PATs *pat.Service
 	// Identity performs access revocation for offboarded people (E13d); nil answers 503.
 	Identity *identity.Service
+	// Dumps stores the backup hooks' dumps (E08b); nil answers 503 on /v1/dumps.
+	Dumps Dumps
 }
 
 type route struct {
@@ -65,6 +67,8 @@ func (s *Server) routes() []route {
 		{"POST /v1/approvals/{id}/cancel", s.authed(s.cancelApproval)},
 		{"POST /v1/notifications", s.authed(s.sendNotification)},
 		{"POST /v1/identity/revoke", s.authed(s.revokeIdentity)},
+		{"PUT /v1/dumps/{module}/{name}", s.authed(s.putDump)},
+		{"GET /v1/dumps/{module}/{name}", s.authed(s.getDump)},
 	}
 }
 
