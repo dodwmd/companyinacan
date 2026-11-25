@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Forms gateway settings",
+  "description": "Operator settings of the forms module; rendered into forms.yaml by the chart. Secrets are never settings (they come from the module's Secret).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "trust_proxy": { "type": "boolean", "default": true, "description": "Use the right-most X-Forwarded-For entry (set by Traefik) as the client address." },
+    "max_body_bytes": { "type": "integer", "minimum": 1024, "maximum": 10485760, "default": 65536 },
+    "rate_limit_per_minute": { "type": "integer", "minimum": 1, "default": 10 },
+    "retention_days": { "type": "integer", "minimum": 1, "default": 730 },
+    "cors_allowed_origins": { "type": "array", "items": { "type": "string", "pattern": "^https?://[^/]+$" }, "default": [] },
+    "captcha_provider": { "enum": ["none", "turnstile", "hcaptcha"], "default": "none" },
+    "webhook_url": { "type": "string", "pattern": "^$|^https?://" }
+  }
+}

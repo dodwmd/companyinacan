@@ -1,0 +1,31 @@
+# Default values for the forms module chart. The chart templates are delivered with the
+# module deployment epic (E03); this file fixes the contract the service expects.
+image:
+  repository: ghcr.io/dodwmd/can-forms
+  # Pinned by digest at release time; see deploy/forms/README.md.
+  digest: ""
+service:
+  public: { name: forms, port: 8080 }   # routed by Traefik at /_forms (prefix stripped)
+  api: { name: forms-api, port: 8081 }  # ClusterIP only; the `leads` capability
+persistence:
+  size: 100Mi
+  mountPath: /data
+resources:
+  requests: { memory: 15Mi, cpu: 5m }
+  limits: { memory: 32Mi }
+env:
+  # Names only; values come from the module Secret created by can-core.
+  secretKeys:
+    - CAN_FORMS_TOKEN_KEY
+    - CAN_FORMS_API_TOKEN
+    - CAN_FORMS_API_READ_TOKEN
+    - CAN_FORMS_WEBHOOK_SECRET
+    - CAN_FORMS_CAPTCHA_SECRET
+    - CAN_FORMS_EMAIL_TOKEN
+probes:
+  readiness: { path: /healthz, port: 8080 }
+  liveness: { exec: [/can-forms, healthcheck, -addr, "127.0.0.1:8080"] }
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false

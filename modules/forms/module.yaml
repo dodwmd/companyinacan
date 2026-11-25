@@ -1,0 +1,39 @@
+# Forms gateway: in-house Go service (cmd/can-forms, library core/forms).
+# It accepts public form posts at the same-origin path /_forms, spam-filters them,
+# stores them in SQLite and exposes them through the `leads` capability.
+schema: 1
+id: forms
+name: Forms gateway
+description: Lead capture for the static site. Same-origin /_forms route, honeypot, timing check and optional Turnstile/hCaptcha, SQLite storage, the leads capability, email and webhook notifications, and the lead.created.v1 event.
+category: sales
+version: 0.1.0
+provider:
+  type: inhouse
+  name: can-forms
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+requires:
+  database: sqlite
+  capabilities: [email.send]
+  sso: none
+resources:
+  # Idle RAM target 15 MB (SPEC.md section 6.1); the Go runtime plus the pure-Go SQLite
+  # driver idle well below that. The limit leaves room for bursts and SQLite page cache.
+  ram_mb: 15
+  ram_limit_mb: 32
+  disk_mb: 100
+provides:
+  - { capability: leads, schema: leads.v1, service: forms-api, port: 8081 }
+publishes:
+  - { event: lead.created.v1, schema: ./events/lead.created.v1.json }
+permissions: [leads.read, leads.write]
+roles:
+  sales: [leads.read, leads.write]
+  viewer: [leads.read]
+data_classes:
+  # Names, email addresses and free-text messages typed into public forms. Personal data,
+  # but not in a sensitive class (no health, financial, identity-document or HR data).
+  - { class: lead-submission, retention: 2y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz
