@@ -1,0 +1,11 @@
+# DEV ONLY can-finance config for docker-compose.yml. Payment and e-sign providers are fakes.
+listen: ":8080"
+db_path: /data/finance.db
+trust_proxy: true
+base_currency: USD
+payment_provider: fake
+esign_provider: fake
+public_base_url: http://finance.localhost:8080
+seller:
+  name: Acme Co
+  address: 1 Anvil Road, Fakeville

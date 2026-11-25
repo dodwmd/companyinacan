@@ -1,0 +1,16 @@
+# DEV ONLY can-forms config for docker-compose.yml: the contact form of the example site.
+listen: ":8080"
+api_listen: ":8081"
+db_path: /data/forms.db
+path_prefix: /_forms
+trust_proxy: true            # only reachable through the Caddy edge in this stack
+rate_limit: { per_minute: 60, max_tracked_ips: 1000 }
+forms:
+  - id: contact
+    name: Contact
+    redirect: /thanks/
+    min_fill_seconds: 1
+    fields:
+      - { name: name, type: text, required: true, max_length: 100 }
+      - { name: email, type: email, required: true }
+      - { name: message, type: text, required: true, max_length: 5000, multiline: true }

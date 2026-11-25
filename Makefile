@@ -9,7 +9,7 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check
+.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check compose-up compose-down compose-logs compose-test
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -59,3 +59,18 @@ status: ## show the server state; exit 0 only when ready
 
 release-check: ## fail if deploy Dockerfiles or module charts still have placeholder image digests
 	sh scripts/check-image-pins.sh
+
+# Whole stack in containers, no Kubernetes (docker compose v2 or podman-compose). See docs/local-compose.md.
+COMPOSE ?= docker compose -p companyinacan
+
+compose-up: ## DEV ONLY: build and start the whole stack with docker compose (no Kubernetes)
+	$(COMPOSE) up -d --build
+
+compose-down: ## stop the compose stack, keep its data (ARGS=-v also deletes the volumes)
+	$(COMPOSE) down $(ARGS)
+
+compose-logs: ## follow the compose stack logs
+	$(COMPOSE) logs -f --tail=100
+
+compose-test: ## run the smoke test against the running compose stack
+	dev/compose/smoke.sh

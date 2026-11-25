@@ -1,0 +1,45 @@
+# DEV ONLY edge proxy (Caddy). Plain HTTP on :8080, no TLS, host-based routing on *.localhost.
+{
+	auto_https off
+	admin off
+}
+
+# Main site; /_forms/* goes to the forms gateway with the prefix stripped (same origin, so the
+# gateway's Origin check passes).
+http://localhost:8080, http://127.0.0.1:8080 {
+	handle /_edge/healthz {
+		respond "ok" 200
+	}
+	handle_path /_forms/* {
+		reverse_proxy forms:8080
+	}
+	handle {
+		reverse_proxy site:8080
+	}
+}
+
+http://admin.localhost:8080 {
+	reverse_proxy core:8080
+}
+
+http://work.localhost:8080 {
+	reverse_proxy work:8080
+}
+
+http://people.localhost:8080 {
+	reverse_proxy people:8081
+}
+
+# Careers pages live under /careers; the bearer-token API is /v1.
+http://jobs.localhost:8080 {
+	reverse_proxy jobs:8080
+}
+
+http://finance.localhost:8080 {
+	reverse_proxy finance:8080
+}
+
+# The leads capability API of the forms gateway (bearer token), used by the smoke test.
+http://forms.localhost:8080 {
+	reverse_proxy forms:8081
+}
