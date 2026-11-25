@@ -10,12 +10,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Event types published by the jobs module. Payload schemas are schemas/events/<type>.json.

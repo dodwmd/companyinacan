@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Secrets are read from the environment, never from the config file.

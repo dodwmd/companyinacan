@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 
 	"github.com/dodwmd/companyinacan/core/forms"
 )

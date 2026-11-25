@@ -48,7 +48,7 @@ func TestUnknownRevokedAndForeignTokensAreRefused(t *testing.T) {
 	h, core := canHarness(t)
 	core.AddToken(pat, fakecore.Token{Subject: "user:alice", Permissions: []string{PermAdmin}})
 	core.AddToken(pat+"X", fakecore.Token{Subject: "user:mallory", Permissions: []string{PermAdmin}, Module: "people"}) // bound to another module
-	core.AddToken(pat+"Y", fakecore.Token{Subject: "user:bob", Permissions: []string{"people.read"}})                    // no permission this module defines
+	core.AddToken(pat+"Y", fakecore.Token{Subject: "user:bob", Permissions: []string{"people.read"}})                   // no permission this module defines
 	core.AddToken(pat+"Z", fakecore.Token{Subject: "service-account", Permissions: []string{PermAdmin}})                // not a user subject
 	for name, tok := range map[string]string{"unknown": pat + "unknown", "foreign": pat + "X", "no known permission": pat + "Y", "bad subject": pat + "Z"} {
 		if r := h.do("GET", "/v1/projects", tok, nil); r.Code != 401 {
@@ -59,7 +59,6 @@ func TestUnknownRevokedAndForeignTokensAreRefused(t *testing.T) {
 		t.Fatal(r.Code)
 	}
 	core.Revoke(pat)
-	h.app.handler = h.app.handler // the module caches an answer for a short TTL; a fresh app proves the revoked answer
 	h2, core2 := canHarness(t)
 	core2.AddToken(pat, fakecore.Token{Subject: "user:alice", Permissions: []string{PermAdmin}, Revoked: true})
 	if r := h2.do("GET", "/v1/projects", pat, nil); r.Code != 401 {

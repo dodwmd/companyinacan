@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Version is set at build time with -ldflags "-X .../core/work.Version=...".

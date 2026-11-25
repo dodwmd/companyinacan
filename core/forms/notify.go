@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Email is a message handed to the email.send capability.

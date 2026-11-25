@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Version is set at build time with -ldflags "-X .../core/people.Version=...".

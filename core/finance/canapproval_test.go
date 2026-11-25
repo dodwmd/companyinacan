@@ -158,12 +158,8 @@ func TestOnlyAPersonCanRequestAndOnlyForADraft(t *testing.T) {
 func TestRequestFailsClosedWhenCanCoreIsDown(t *testing.T) {
 	e, core := approvalEnv(t)
 	inv := draft(t, e)
-	core.SetDown(true)
-	e.mu.Lock()
-	e.mu.Unlock()
-	// PAT introspection is cached for a short time only if it was used; use the bootstrap path
-	// for the draft and a fresh personal token (a cache miss) for the request.
-	core.SetDown(false)
+	// A personal token whose identity is cached keeps authenticating for a moment while can-core is
+	// down; the approval request itself must still fail visibly.
 	core.AddToken(writerPAT+"2", fakecore.Token{Subject: "user:carol", Permissions: []string{PermWrite}})
 	if code := e.do(writerPAT+"2", "GET", "/v1/invoices", nil, nil); code != 200 { // warms the identity cache
 		t.Fatalf("%d", code)

@@ -3,7 +3,6 @@ package work
 import (
 	"context"
 	"errors"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 var errEOF = io.EOF

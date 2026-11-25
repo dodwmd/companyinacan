@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/modclient"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
 )
