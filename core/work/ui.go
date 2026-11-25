@@ -232,7 +232,9 @@ func (u *webUI) principalFor(r *http.Request, token string) (*Principal, error) 
 }
 
 // sameSite refuses cross-site posts: Sec-Fetch-Site must be same-origin (or none), and an Origin
-// header, when present, must name this host.
+// header, when present, must name this host. "Origin: null" is what a browser sends for a form
+// posted from a page with Referrer-Policy: no-referrer (all of these pages), so it is accepted when,
+// and only when, the browser-controlled Sec-Fetch-Site says the post is same-origin.
 func sameSite(r *http.Request) bool {
 	if s := r.Header.Get("Sec-Fetch-Site"); s != "" && s != "same-origin" && s != "none" {
 		return false
@@ -242,7 +244,7 @@ func sameSite(r *http.Request) bool {
 		if err != nil || !strings.EqualFold(ou.Host, r.Host) {
 			return false
 		}
-	} else if o == "null" {
+	} else if o == "null" && r.Header.Get("Sec-Fetch-Site") != "same-origin" {
 		return false
 	}
 	return true

@@ -175,6 +175,30 @@ func TestTicketPostNeedsTheDoubleSubmitTokenAndSameSite(t *testing.T) {
 	}
 }
 
+// With Referrer-Policy: no-referrer (every page here sends it) a real browser posts a form with
+// "Origin: null"; the browser-controlled Sec-Fetch-Site then says whether it is our own page.
+func TestOriginNullIsAcceptedOnlyForASameOriginPost(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	for name, c := range map[string]struct {
+		hdr  []string
+		want int
+	}{
+		"browser, same origin":    {[]string{"Origin", "null", "Sec-Fetch-Site", "same-origin"}, 303},
+		"null alone":              {[]string{"Origin", "null"}, 403},
+		"null, no site":           {[]string{"Origin", "null", "Sec-Fetch-Site", "none"}, 403},
+		"null, cross-site":        {[]string{"Origin", "null", "Sec-Fetch-Site", "cross-site"}, 403},
+		"null, same-site sibling": {[]string{"Origin", "null", "Sec-Fetch-Site", "same-site"}, 403},
+	} {
+		b := newUIBrowser(t, e.harness)
+		tk := e.ticket()
+		page := b.do("GET", "/ui/login/ticket?t="+tk, nil)
+		r := b.do("POST", "/ui/login/ticket", url.Values{"csrf": {uiCSRFRe.FindStringSubmatch(page.Body)[1]}, "ticket": {tk}}, c.hdr...)
+		if r.Code != c.want {
+			t.Errorf("%s: %d, want %d", name, r.Code, c.want)
+		}
+	}
+}
+
 func TestTicketLoginIssuesANewSessionIdWhateverTheBrowserSent(t *testing.T) {
 	e := newSSOEnv(t, nil)
 	first := newUIBrowser(t, e.harness)
@@ -298,7 +322,7 @@ func TestPastedTokenLoginCanBeTurnedOff(t *testing.T) {
 	if page.Code != 200 || strings.Contains(page.Body, `name="token"`) {
 		t.Fatalf("the paste form is still offered: %d", page.Code)
 	}
-	tok := e.harness.newToken("personal", "dev@example.com", []string{PermWrite})
+	tok := e.newToken("personal", "dev@example.com", []string{PermWrite})
 	csrf := uiCSRFRe.FindStringSubmatch(page.Body)
 	if csrf == nil {
 		csrf = []string{"", "x"}
