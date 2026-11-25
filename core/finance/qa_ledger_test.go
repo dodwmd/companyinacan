@@ -514,3 +514,17 @@ func TestQAWebhookIntoAClosedPeriodIsRecordedUnmatched(t *testing.T) {
 		t.Errorf("unmatched records %d, payments %d", n, pays)
 	}
 }
+
+// QA 18: a draft's line cannot be moved into a posted entry.
+func TestQALineCannotMoveIntoAPostedEntry(t *testing.T) {
+	e := newEnv(t)
+	ledgerOn(t, e)
+	drafter, approver := e.token("dana", acct, nil, nil, false), e.token("alex", ledApp, nil, nil, false)
+	var posted, draft JournalEntry
+	e.must(201, drafter, "POST", "/v1/ledger/journals", manual("2026-05-01", "USD", "5000", "1000", 100), &posted)
+	e.must(200, approver, "POST", "/v1/ledger/journals/"+id(posted.ID)+"/post", nil, nil)
+	e.must(201, drafter, "POST", "/v1/ledger/journals", manual("2026-05-02", "USD", "5000", "1000", 7), &draft)
+	if _, err := e.app.store.db.Exec(`UPDATE journal_lines SET entry_id = ?, position = position + 10 WHERE entry_id = ?`, posted.ID, draft.ID); err == nil {
+		t.Error("lines were moved into a posted entry")
+	}
+}

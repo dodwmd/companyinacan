@@ -139,6 +139,7 @@ BEGIN
 END;
 CREATE TRIGGER journal_lines_no_update BEFORE UPDATE ON journal_lines
     WHEN (SELECT status FROM journal_entries WHERE id = OLD.entry_id) <> 'draft'
+        OR (SELECT status FROM journal_entries WHERE id = NEW.entry_id) <> 'draft'
 BEGIN
     SELECT RAISE(ABORT, 'lines of a posted journal entry are immutable');
 END;
