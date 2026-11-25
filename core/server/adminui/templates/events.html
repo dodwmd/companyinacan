@@ -1,0 +1,17 @@
+{{define "content"}}
+<h1>{{t "ev.title"}}</h1>
+<p>{{t "dash.delivery_counts" .Data.Health.Pending .Data.Health.Delivered .Data.Health.Dead}}</p>
+{{if .Data.Rows}}<div class="table-wrap" role="region" aria-labelledby="cap-ev" tabindex="0">
+<table>
+<caption id="cap-ev" class="sr">{{t "ev.title"}}</caption>
+<thead><tr><th scope="col">{{t "ev.id"}}</th><th scope="col">{{t "ev.type"}}</th><th scope="col">{{t "ev.module"}}</th><th scope="col">{{t "ev.status"}}</th><th scope="col">{{t "ev.attempts"}}</th><th scope="col">{{t "ev.next"}}</th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr>
+<th scope="row"><a href="/events/{{.ID}}">{{.ID}}</a></th><td>{{.Type}}</td><td>{{.Module}}</td>
+<td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td><td>{{.Attempts}}</td><td><time datetime="{{iso .Next}}">{{ts .Next}}</time></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "ev.empty"}}</p>{{end}}
+{{end}}

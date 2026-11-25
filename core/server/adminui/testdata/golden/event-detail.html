@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Delivery 1 - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events" aria-current="page">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<p><a href="/events">All deliveries</a></p>
+<h1>Delivery 1</h1>
+<p><span class="badge err">Dead</span></p>
+<dl>
+<dt>Event id</dt><dd><code>evt-1</code></dd>
+<dt>Event type</dt><dd>lead.created.v1</dd>
+<dt>Source</dt><dd>forms</dd>
+<dt>Module</dt><dd>forms</dd>
+<dt>Event time</dt><dd><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></dd>
+<dt>Attempts</dt><dd>1</dd>
+<dt>Next attempt</dt><dd><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></dd>
+</dl>
+<p class="hint">The event payload is not shown here; it can contain personal data.</p>
+<form method="post" action="/events/1/requeue">
+<input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="next" value="/events/1">
+<button type="submit">Requeue</button>
+</form>
+
+<section aria-labelledby="h-attempts">
+<h2 id="h-attempts">Attempt log</h2>
+<div class="table-wrap" role="region" aria-labelledby="cap-att" tabindex="0">
+<table>
+<caption id="cap-att" class="sr">Attempt log</caption>
+<thead><tr><th scope="col">Attempt</th><th scope="col">Time (UTC)</th><th scope="col">HTTP status</th><th scope="col">Duration</th><th scope="col">Error</th></tr></thead>
+<tbody>
+<tr><th scope="row">1</th><td><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></td><td>502</td><td>12 ms</td><td>bad gateway</td></tr>
+</tbody>
+</table>
+</div>
+
+</section>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

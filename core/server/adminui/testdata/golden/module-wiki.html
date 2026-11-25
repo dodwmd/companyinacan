@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Wiki - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules" aria-current="page">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<p><a href="/modules">All modules</a></p>
+<h1>Wiki</h1>
+<p><span class="badge err">Failed</span> <span class="badge warn">Source-available</span></p>
+<p class="alert err" role="alert"><strong>Last error:</strong> helm install failed: timeout</p>
+
+<p class="alert warn">This module&#39;s upstream licence is source-available, not OSI-approved open source. It is opt-in; check the licence terms before using it in your business.</p>
+
+<section aria-labelledby="h-summary">
+<h2 id="h-summary">Summary</h2>
+<dl>
+<dt>Id</dt><dd><code>wiki</code></dd>
+<dt>Version</dt><dd>0.4.1</dd>
+<dt>Category</dt><dd></dd>
+<dt>Namespace</dt><dd><code>mod-wiki</code></dd>
+<dt>Provider</dt><dd>Upstream Wiki</dd>
+<dt>Licence</dt><dd>BUSL-1.1 <span class="muted">(source-available)</span></dd>
+<dt>Upstream</dt><dd>https://example.com/wiki </dd>
+<dt>Declared RAM</dt><dd>256 MB</dd>
+<dt>Declared disk</dt><dd>0 MB</dd>
+<dt>Database</dt><dd>postgres</dd>
+</dl>
+</section>
+
+<section aria-labelledby="h-contracts">
+<h2 id="h-contracts">Contracts</h2>
+<h3>Provides</h3>
+<p class="muted">None</p>
+<h3>Requires</h3>
+<p class="muted">None</p>
+<h3>Consumes</h3>
+<p class="muted">None</p>
+<h3>Publishes events</h3>
+<p class="muted">None</p>
+<h3>Subscribes to events</h3>
+<p class="muted">None</p>
+</section>
+
+<section aria-labelledby="h-access">
+<h2 id="h-access">Access and data</h2>
+<h3>Permissions</h3>
+<p class="muted">None</p>
+<h3>Data classes</h3>
+<p class="muted">None</p>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

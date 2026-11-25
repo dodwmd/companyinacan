@@ -1,0 +1,46 @@
+{{define "content"}}
+<p><a href="/modules">{{t "mod.back"}}</a></p>
+<h1>{{.Data.Name}}</h1>
+<p><span class="badge {{.Data.StateClass}}">{{.Data.StateLabel}}</span>{{if .Data.SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</p>
+{{if .Data.LastError}}<p class="alert err" role="alert"><strong>{{t "mod.last_error"}}:</strong> {{.Data.LastError}}</p>{{end}}
+{{if .Data.Description}}<p>{{.Data.Description}}</p>{{end}}
+{{if .Data.SourceAvailable}}<p class="alert warn">{{t "mod.source_available_note"}}</p>{{end}}
+
+<section aria-labelledby="h-summary">
+<h2 id="h-summary">{{t "mod.summary"}}</h2>
+<dl>
+<dt>{{t "mod.id"}}</dt><dd><code>{{.Data.ID}}</code></dd>
+<dt>{{t "mod.version"}}</dt><dd>{{.Data.Version}}</dd>
+<dt>{{t "mod.category"}}</dt><dd>{{.Data.Category}}</dd>
+<dt>{{t "mod.namespace"}}</dt><dd><code>{{.Data.Namespace}}</code></dd>
+<dt>{{t "mod.provider"}}</dt><dd>{{.Data.ProviderName}}{{if .Data.ProviderType}} ({{.Data.ProviderType}}){{end}}</dd>
+<dt>{{t "mod.licence"}}</dt><dd>{{.Data.Licence}} <span class="muted">({{.Data.LicenceClass}})</span></dd>
+{{if .Data.Upstream}}<dt>{{t "mod.upstream"}}</dt><dd>{{.Data.Upstream}} {{.Data.UpstreamVersion}}</dd>{{end}}
+<dt>{{t "mod.ram"}}</dt><dd>{{t "mod.mb" .Data.RAMMB}}{{if .Data.RAMLimitMB}} <span class="muted">({{t "mod.limit"}} {{t "mod.mb" .Data.RAMLimitMB}})</span>{{end}}</dd>
+<dt>{{t "mod.disk"}}</dt><dd>{{t "mod.mb" .Data.DiskMB}}</dd>
+<dt>{{t "mod.database"}}</dt><dd>{{if .Data.Database}}{{.Data.Database}}{{else}}{{t "mod.none"}}{{end}}</dd>
+</dl>
+</section>
+
+<section aria-labelledby="h-contracts">
+<h2 id="h-contracts">{{t "mod.contracts"}}</h2>
+<h3>{{t "mod.provides"}}</h3>
+{{if .Data.Provides}}<ul>{{range .Data.Provides}}<li><code>{{.Capability}}</code>{{if .Schema}} <span class="muted">{{.Schema}}</span>{{end}}</li>{{end}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+<h3>{{t "mod.requires"}}</h3>
+{{if .Data.Requires}}<ul>{{range .Data.Requires}}<li><code>{{.}}</code></li>{{end}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+<h3>{{t "mod.consumes"}}</h3>
+{{if .Data.Consumes}}<ul>{{range .Data.Consumes}}<li><code>{{.}}</code></li>{{end}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+<h3>{{t "mod.publishes"}}</h3>
+{{if .Data.Publishes}}<ul>{{range .Data.Publishes}}<li><code>{{.}}</code></li>{{end}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+<h3>{{t "mod.subscribes"}}</h3>
+{{if .Data.Subscribes}}<ul>{{range .Data.Subscribes}}<li><code>{{.}}</code></li>{{end}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-access">
+<h2 id="h-access">{{t "mod.access"}}</h2>
+<h3>{{t "mod.permissions"}}</h3>
+{{if .Data.Permissions}}<ul>{{range .Data.Permissions}}<li><code>{{.}}</code></li>{{end}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+<h3>{{t "mod.data_classes"}}</h3>
+{{if .Data.DataClasses}}<ul>{{range .Data.DataClasses}}<li><code>{{.}}</code></li>{{end}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+</section>
+{{end}}

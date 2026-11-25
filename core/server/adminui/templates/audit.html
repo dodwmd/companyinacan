@@ -1,0 +1,45 @@
+{{define "content"}}
+<h1>{{t "audit.title"}}</h1>
+
+{{if .Data.Verify}}{{with .Data.Verify}}{{if .Passed}}<p class="alert ok" role="status"><strong>{{t "audit.verified"}}</strong> {{t "audit.verified_detail" .Entries .Head}}</p>
+{{else}}<div class="alert err" role="alert"><p><strong>{{t "audit.tampered"}}</strong></p>
+<p>{{t "audit.violation" .Kind .Seq}} {{.Message}}</p></div>
+{{end}}{{end}}{{end}}
+
+<section aria-labelledby="h-filter">
+<h2 id="h-filter">{{t "audit.filter"}}</h2>
+<form method="get" action="/audit" class="filters">
+<p><label for="f-actor">{{t "audit.actor"}}</label>
+<input id="f-actor" name="actor" type="text" value="{{.Data.Filter.Actor}}" maxlength="64"></p>
+<p><label for="f-action">{{t "audit.action_prefix"}}</label>
+<input id="f-action" name="action" type="text" value="{{.Data.Filter.Action}}" maxlength="64"></p>
+<p><label for="f-target">{{t "audit.target"}}</label>
+<input id="f-target" name="target" type="text" value="{{.Data.Filter.Target}}" maxlength="128"></p>
+<p><button type="submit">{{t "audit.apply"}}</button> <a href="/audit">{{t "audit.clear"}}</a></p>
+</form>
+</section>
+
+<section aria-labelledby="h-chain">
+<h2 id="h-chain">{{t "audit.chain"}}</h2>
+<p>{{t "audit.chain_help"}}</p>
+<div class="actions">
+<form method="post" action="/audit/verify"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">{{t "audit.verify"}}</button></form>
+<form method="post" action="/audit/export"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">{{t "audit.export"}}</button></form>
+</div>
+</section>
+
+<section aria-labelledby="h-entries">
+<h2 id="h-entries">{{t "audit.entries"}}</h2>
+{{if .Data.Records}}<div class="table-wrap" role="region" aria-labelledby="cap-entries" tabindex="0">
+<table>
+<caption id="cap-entries" class="sr">{{t "audit.entries"}}</caption>
+<thead><tr><th scope="col">{{t "audit.seq"}}</th><th scope="col">{{t "audit.time"}}</th><th scope="col">{{t "audit.actor"}}</th><th scope="col">{{t "audit.action"}}</th><th scope="col">{{t "audit.target"}}</th><th scope="col">{{t "audit.detail"}}</th></tr></thead>
+<tbody>
+{{range .Data.Records}}<tr><th scope="row">{{.Seq}}</th><td><time datetime="{{iso .Time}}">{{ts .Time}}</time></td><td>{{.Actor}}</td><td>{{.Action}}</td><td>{{.Target}}</td><td class="mono">{{.Detail}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .Data.OlderURL}}<p><a href="{{.Data.OlderURL}}" rel="next">{{t "audit.older"}}</a></p>{{end}}
+{{else}}<p class="empty">{{t "audit.empty"}}</p>{{end}}
+</section>
+{{end}}

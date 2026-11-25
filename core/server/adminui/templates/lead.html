@@ -1,0 +1,33 @@
+{{define "content"}}
+<p><a href="/leads">{{t "lead.back"}}</a></p>
+<h1>{{t "lead.detail" .Data.Lead.ID}}</h1>
+<dl>
+<dt>{{t "lead.name"}}</dt><dd>{{.Data.Lead.Name}}</dd>
+<dt>{{t "lead.email"}}</dt><dd>{{.Data.Lead.Email}}</dd>
+<dt>{{t "lead.form"}}</dt><dd>{{.Data.Lead.FormID}}</dd>
+<dt>{{t "lead.status"}}</dt><dd><span class="badge neutral">{{.Data.StatusLabel}}</span></dd>
+<dt>{{t "lead.received"}}</dt><dd><time datetime="{{iso .Data.Lead.CreatedAt}}">{{ts .Data.Lead.CreatedAt}}</time></dd>
+<dt>{{t "lead.updated"}}</dt><dd><time datetime="{{iso .Data.Lead.UpdatedAt}}">{{ts .Data.Lead.UpdatedAt}}</time></dd>
+{{if .Data.Lead.Note}}<dt>{{t "lead.note"}}</dt><dd>{{.Data.Lead.Note}}</dd>{{end}}
+</dl>
+
+<section aria-labelledby="h-fields">
+<h2 id="h-fields">{{t "lead.fields"}}</h2>
+{{if .Data.Fields}}<dl>
+{{range .Data.Fields}}<dt>{{.Key}}</dt><dd class="pre">{{.Value}}</dd>
+{{end}}</dl>
+{{else}}<p class="empty">{{t "lead.no_fields"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-change">
+<h2 id="h-change">{{t "lead.change"}}</h2>
+<form method="post" action="/leads/{{.Data.Lead.ID}}/status" class="filters">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="new-status">{{t "lead.new_status"}}</label>
+<select id="new-status" name="status">
+{{range .Data.Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+{{end}}</select></p>
+<p><button type="submit">{{t "lead.save"}}</button></p>
+</form>
+</section>
+{{end}}

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Leads - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads" aria-current="page">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Leads</h1>
+
+<form method="get" action="/leads" class="filters">
+<p><label for="f-status">Status</label>
+<select id="f-status" name="status">
+<option value="" selected>All statuses</option>
+<option value="new">New</option>
+<option value="contacted">Contacted</option>
+<option value="qualified">Qualified</option>
+<option value="closed">Closed</option>
+<option value="spam">Spam</option>
+</select></p>
+<p><button type="submit">Apply filter</button></p>
+</form>
+<div class="table-wrap" role="region" aria-labelledby="cap-leads" tabindex="0">
+<table>
+<caption id="cap-leads" class="sr">Leads</caption>
+<thead><tr><th scope="col">Received (UTC)</th><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Form</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row"><a href="/leads/7"><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></a></th>
+<td>Ann</td><td>ann@example.com</td><td>contact</td><td><span class="badge neutral">New</span></td>
+</tr>
+<tr>
+<th scope="row"><a href="/leads/8"><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></a></th>
+<td>Bob</td><td>bob@example.com</td><td>contact</td><td><span class="badge neutral">Closed</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><a href="/leads?cursor=42" rel="next">Next page</a></p>
+
+
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

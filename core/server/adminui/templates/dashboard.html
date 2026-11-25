@@ -1,0 +1,64 @@
+{{define "content"}}
+<h1>{{t "dash.title"}}</h1>
+<p class="company">{{if .Data.Company.Name}}<strong>{{.Data.Company.Name}}</strong>{{else}}{{t "dash.company_unset"}}{{end}}{{if .Data.Company.Domain}} <span class="muted">{{.Data.Company.Domain}}</span>{{end}}</p>
+
+<section aria-labelledby="h-modules">
+<h2 id="h-modules">{{t "dash.modules"}}</h2>
+{{if .Data.Modules}}<ul class="cards">
+{{range .Data.Modules}}<li class="card">
+<h3><a href="/modules/{{.ID}}">{{.Name}}</a></h3>
+<p><span class="badge {{.StateClass}}">{{.StateLabel}}</span> <span class="muted">{{t "mod.version"}} {{.Version}}</span></p>
+{{if .LastError}}<p class="errtext"><span class="muted">{{t "mod.last_error"}}:</span> {{.LastError}}</p>{{end}}
+</li>
+{{end}}</ul>
+{{else}}<p class="empty">{{t "mod.empty"}} <code>make enable &lt;module&gt;</code></p>{{end}}
+</section>
+
+<section aria-labelledby="h-caps">
+<h2 id="h-caps">{{t "dash.capabilities"}}</h2>
+{{if .Data.Capabilities}}<div class="table-wrap" role="region" aria-labelledby="cap-caps" tabindex="0">
+<table>
+<caption id="cap-caps" class="sr">{{t "dash.capabilities"}}</caption>
+<thead><tr><th scope="col">{{t "cap.capability"}}</th><th scope="col">{{t "cap.providers"}}</th></tr></thead>
+<tbody>
+{{range .Data.Capabilities}}<tr><th scope="row">{{.Capability}}</th><td>{{range $i, $p := .Providers}}{{if $i}}, {{end}}{{$p.ModuleID}}{{end}}{{if .Providers}}{{else}}-{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "cap.empty"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-deliv">
+<h2 id="h-deliv">{{t "dash.deliveries"}}</h2>
+<p>{{t "dash.delivery_counts" .Data.Health.Pending .Data.Health.Delivered .Data.Health.Dead}}</p>
+{{if .Data.Health.DeadRows}}<div class="table-wrap" role="region" aria-labelledby="cap-dead" tabindex="0">
+<table>
+<caption id="cap-dead" class="sr">{{t "dash.dead_deliveries"}}</caption>
+<thead><tr><th scope="col">{{t "ev.id"}}</th><th scope="col">{{t "ev.type"}}</th><th scope="col">{{t "ev.module"}}</th><th scope="col">{{t "ev.attempts"}}</th><th scope="col">{{t "ev.action"}}</th></tr></thead>
+<tbody>
+{{range .Data.Health.DeadRows}}<tr>
+<th scope="row"><a href="/events/{{.ID}}">{{.ID}}</a></th><td>{{.Type}}</td><td>{{.Module}}</td><td>{{.Attempts}}</td>
+<td><form method="post" action="/events/{{.ID}}/requeue"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="/"><button type="submit">{{t "ev.requeue"}}</button></form></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "dash.no_dead"}}</p>{{end}}
+<p><a href="/events">{{t "dash.all_events"}}</a></p>
+</section>
+
+<section aria-labelledby="h-audit">
+<h2 id="h-audit">{{t "dash.audit"}}</h2>
+{{if .Data.Audit}}<div class="table-wrap" role="region" aria-labelledby="cap-audit" tabindex="0">
+<table>
+<caption id="cap-audit" class="sr">{{t "dash.audit"}}</caption>
+<thead><tr><th scope="col">{{t "audit.time"}}</th><th scope="col">{{t "audit.actor"}}</th><th scope="col">{{t "audit.action"}}</th><th scope="col">{{t "audit.target"}}</th></tr></thead>
+<tbody>
+{{range .Data.Audit}}<tr><th scope="row"><time datetime="{{iso .Time}}">{{ts .Time}}</time></th><td>{{.Actor}}</td><td>{{.Action}}</td><td>{{.Target}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "audit.empty"}}</p>{{end}}
+<p><a href="/audit">{{t "dash.all_audit"}}</a></p>
+</section>
+{{end}}

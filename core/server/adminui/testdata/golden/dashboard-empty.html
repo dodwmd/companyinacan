@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Dashboard - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Dashboard</h1>
+<p class="company"><strong>Acme Pty Ltd</strong> <span class="muted">acme.example</span></p>
+
+<section aria-labelledby="h-modules">
+<h2 id="h-modules">Modules</h2>
+<p class="empty">No modules are installed yet. Enable one from the command line: <code>make enable &lt;module&gt;</code></p>
+</section>
+
+<section aria-labelledby="h-caps">
+<h2 id="h-caps">Capabilities</h2>
+<p class="empty">No capabilities are registered yet.</p>
+</section>
+
+<section aria-labelledby="h-deliv">
+<h2 id="h-deliv">Webhook deliveries</h2>
+<p>Of the most recent deliveries: 0 pending, 0 delivered, 0 dead-lettered.</p>
+<p class="empty">No dead-lettered deliveries.</p>
+<p><a href="/events">All deliveries</a></p>
+</section>
+
+<section aria-labelledby="h-audit">
+<h2 id="h-audit">Recent audit entries</h2>
+<div class="table-wrap" role="region" aria-labelledby="cap-audit" tabindex="0">
+<table>
+<caption id="cap-audit" class="sr">Recent audit entries</caption>
+<thead><tr><th scope="col">Time (UTC)</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th></tr></thead>
+<tbody>
+<tr><th scope="row"><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></th><td>root</td><td>admin.login</td><td>admin</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><a href="/audit">Open the audit log</a></p>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

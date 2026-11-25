@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Sign in - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+
+</header>
+<main id="main" tabindex="-1">
+
+<section class="narrow">
+<h1>Sign in</h1>
+
+<form method="post" action="/login" class="stack">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="username">Username</label>
+<input id="username" name="username" type="text" value="" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></p>
+<p><label for="password">Password</label>
+<input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+<p><label for="totp">Authentication code</label>
+<input id="totp" name="totp" type="text" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" required aria-describedby="totp-hint">
+<span id="totp-hint" class="hint">The 6-digit code from your authenticator app.</span></p>
+<p><button type="submit">Sign in</button></p>
+</form>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{{define "content"}}
+<p><a href="/events">{{t "ev.back"}}</a></p>
+<h1>{{t "ev.delivery" .Data.ID}}</h1>
+<p><span class="badge {{.Data.StatusClass}}">{{.Data.StatusLabel}}</span></p>
+<dl>
+<dt>{{t "ev.event_id"}}</dt><dd><code>{{.Data.EventID}}</code></dd>
+<dt>{{t "ev.type"}}</dt><dd>{{.Data.Type}}</dd>
+<dt>{{t "ev.source"}}</dt><dd>{{.Data.Source}}</dd>
+<dt>{{t "ev.module"}}</dt><dd>{{.Data.Module}}</dd>
+<dt>{{t "ev.time"}}</dt><dd><time datetime="{{iso .Data.Time}}">{{ts .Data.Time}}</time></dd>
+<dt>{{t "ev.attempts"}}</dt><dd>{{.Data.AttemptCount}}</dd>
+<dt>{{t "ev.next"}}</dt><dd><time datetime="{{iso .Data.Next}}">{{ts .Data.Next}}</time></dd>
+</dl>
+<p class="hint">{{t "ev.payload_hidden"}}</p>
+{{if .Data.Dead}}<form method="post" action="/events/{{.Data.ID}}/requeue">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="/events/{{.Data.ID}}">
+<button type="submit">{{t "ev.requeue"}}</button>
+</form>{{end}}
+
+<section aria-labelledby="h-attempts">
+<h2 id="h-attempts">{{t "ev.attempt_log"}}</h2>
+{{if .Data.Log}}<div class="table-wrap" role="region" aria-labelledby="cap-att" tabindex="0">
+<table>
+<caption id="cap-att" class="sr">{{t "ev.attempt_log"}}</caption>
+<thead><tr><th scope="col">{{t "ev.attempt"}}</th><th scope="col">{{t "audit.time"}}</th><th scope="col">{{t "ev.http"}}</th><th scope="col">{{t "ev.duration"}}</th><th scope="col">{{t "ev.error"}}</th></tr></thead>
+<tbody>
+{{range .Data.Log}}<tr><th scope="row">{{.Number}}</th><td><time datetime="{{iso .At}}">{{ts .At}}</time></td><td>{{.StatusCode}}</td><td>{{.DurationMS}} ms</td><td>{{.Error}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "ev.no_attempts"}}</p>{{end}}
+</section>
+{{end}}

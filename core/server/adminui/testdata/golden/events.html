@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Event deliveries - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events" aria-current="page">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Event deliveries</h1>
+<p>Of the most recent deliveries: 0 pending, 0 delivered, 1 dead-lettered.</p>
+<div class="table-wrap" role="region" aria-labelledby="cap-ev" tabindex="0">
+<table>
+<caption id="cap-ev" class="sr">Event deliveries</caption>
+<thead><tr><th scope="col">Delivery</th><th scope="col">Event type</th><th scope="col">Module</th><th scope="col">Status</th><th scope="col">Attempts</th><th scope="col">Next attempt</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row"><a href="/events/1">1</a></th><td>lead.created.v1</td><td>forms</td>
+<td><span class="badge err">Dead</span></td><td>1</td><td><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>
