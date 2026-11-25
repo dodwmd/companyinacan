@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // QA 1: a number that is short once normalised panicked inside a transaction, which was never rolled back, so
@@ -292,5 +293,22 @@ func TestQASkippedRowsAreListedAndForceable(t *testing.T) {
 	}
 	if code := e.do(admin, "POST", withID, "d,a,r,n,i\n2026-06-21,5.00,r,Alice,Z2\n2026-06-21,5.00,r,Bob,Z2\n", nil); code != 422 {
 		t.Errorf("one id, two counterparties in a file = %d", code)
+	}
+}
+
+// QA 10: remittance lines are capped while they accumulate.
+func TestQACamtManyRemittanceLinesAreLinearAndCapped(t *testing.T) {
+	doc := "<Document><Stmt><Ntry><Amt Ccy=\"USD\">1.00</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>2026-06-01</Dt></BookgDt><NtryDtls><TxDtls><RmtInf>" +
+		strings.Repeat("<Ustrd>\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9</Ustrd>", 60000) + "</RmtInf></TxDtls></NtryDtls></Ntry></Stmt></Document>"
+	start := time.Now()
+	ps, err := ParseCAMT053(strings.NewReader(doc), "USD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(ps.Txns[0].Reference); n > maxReferenceBytes || !utf8.ValidString(ps.Txns[0].Reference) {
+		t.Errorf("reference %d bytes", n)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("took %s", d)
 	}
 }

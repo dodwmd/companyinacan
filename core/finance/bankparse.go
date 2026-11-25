@@ -27,6 +27,7 @@ const (
 	maxXMLDepth       = 32
 	maxSGMLDepth      = 16
 	maxAccountIDBytes = 64
+	maxReferenceBytes = 200
 )
 
 // statementIDs holds one file to one account and one currency. A file with several statement blocks is
@@ -212,7 +213,7 @@ func finishStatement(ps *ParsedStatement, accountCurrency string) error {
 			return parseErr("transaction %d: the currency differs from the bank account's", n)
 		}
 		var err error
-		if t.Reference, err = cleanText(t.Reference, 200); err != nil {
+		if t.Reference, err = cleanText(t.Reference, maxReferenceBytes); err != nil {
 			return err
 		}
 		if t.Counterparty, err = cleanText(t.Counterparty, 200); err != nil {
@@ -243,6 +244,25 @@ func finishStatement(ps *ParsedStatement, accountCurrency string) error {
 		return parseErr("the statement currency differs from the bank account's")
 	}
 	return nil
+}
+
+// appendCapped joins v to s with a space and never grows past max bytes (cut on a rune boundary), so a
+// document with a great many remittance lines costs linear time, not a copy of everything per line.
+func appendCapped(s, v string, max int) string {
+	if v == "" || len(s) >= max {
+		return s
+	}
+	if s != "" {
+		s += " "
+	}
+	room := max - len(s)
+	if len(v) > room {
+		for room > 0 && !utf8.RuneStart(v[room]) {
+			room--
+		}
+		v = v[:room]
+	}
+	return s + v
 }
 
 // derivedKeyPrefix marks a key made from the row's content, as opposed to the bank's own id.
@@ -699,13 +719,10 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 				cur.Description = v
 			case inPath("TxDtls", "Refs", "EndToEndId"):
 				if cur.Reference == "" && v != "NOTPROVIDED" {
-					cur.Reference = v
+					cur.Reference = appendCapped("", v, maxReferenceBytes)
 				}
 			case inPath("RmtInf", "Ustrd"):
-				if cur.Reference != "" && v != "" {
-					cur.Reference += " "
-				}
-				cur.Reference += v
+				cur.Reference = appendCapped(cur.Reference, v, maxReferenceBytes)
 			case inPath("RltdPties", "Dbtr", "Nm"), inPath("RltdPties", "Cdtr", "Nm"):
 				if cur.Counterparty == "" {
 					cur.Counterparty = v
