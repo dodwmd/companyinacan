@@ -217,16 +217,17 @@ func lineRows(r *http.Request, cur string) ([]LineInput, error) {
 	return out, nil
 }
 
-// ifMatchForm reads the record version a form was rendered from. It is optional only where the
-// service allows no precondition; edits always carry it so a stale form is refused.
+// errBadForm is a form that lacks a field every genuine form carries (the record version): a 400, not
+// a validation message, because a person cannot fix it by retyping.
+var errBadForm = errors.New("the form is incomplete")
+
+// ifMatchForm reads the record version a form was rendered from. Every state change requires it, so a
+// forged or replayed post without the version is refused instead of acting on whatever is current.
 func ifMatchForm(r *http.Request) (*int64, error) {
 	v := strings.TrimSpace(r.PostForm.Get("version"))
-	if v == "" {
-		return nil, nil
-	}
 	n, err := strconv.ParseInt(v, 10, 64)
-	if err != nil || n < 1 {
-		return nil, invalid("version", "the form is out of date; reload the page and try again")
+	if v == "" || err != nil || n < 1 {
+		return nil, errBadForm
 	}
 	return &n, nil
 }

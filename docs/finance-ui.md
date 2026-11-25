@@ -60,7 +60,7 @@ it (follow-up).
 | Expenses | Create with receipt **metadata** (name, type, size, SHA-256; no file upload), submit, approve or reject, reimburse | read+own / write / approve |
 | Purchase orders | Create, approve, receive, cancel | read / write / approve |
 | Reports | Receivables aging (per currency, as of a date) and a per-customer statement | read |
-| Settings | Read-only: number series, tax rates, company settings, period lock | read |
+| Settings | Read-only: number series (shown to unscoped tokens only), tax rates, company settings, period lock | read |
 
 `+own` means an own-only (employee) token may use the page and sees only its own timesheets and expenses; it cannot reach
 anything else (every other route answers 403).
@@ -92,8 +92,7 @@ Numbers are gap-free per series; voiding keeps the number used.
 
 **Create** a signed, expiring link from an issued invoice (a draft has no link). The link is shown **once**, in the response
 to the create form; it is not stored, not put in a redirect or a query string, and not shown again. The invoice page only
-offers **Revoke all links**, which invalidates every link of the invoice. The access log redacts `/public/invoices/{token}`
-paths and the UI log never records query strings or bodies. Set `public_base_url` or the page shows only the path.
+offers **Revoke all links**, which invalidates every link of the invoice. The access log redacts any path containing `/public/invoices/` and the UI log never records query strings or bodies. Set `public_base_url` or the page shows only the path.
 
 ## Exports
 
@@ -103,7 +102,7 @@ and every download is written to the audit log. A malformed date is a 422 page, 
 
 ## Erasure and legal retention
 
-An administrator opens **Erase personal data** on a party, reads what will happen, and types `ERASE`. The result page is the
+An administrator opens **Erase personal data** on a party, reads what will happen, types `ERASE` and enters the sign-in token again (step-up). The result page is the
 service's own report: the fields that were erased, the number of drafts deleted, and the **retained** list: issued invoices
 and credit notes, payments, sent or signed contracts and approved purchase orders are legal records, kept for
 `retention_years` after their own date with the name, address and tax id they were issued with; unpaid invoices are never
@@ -117,8 +116,7 @@ erasure failed, the page says so and the report is still shown.
   scope is the same 404 page as one that does not exist.
 - **CSRF** token on every POST (constant-time compare) plus a `Sec-Fetch-Site` check; sign-in uses a double-submit cookie.
 - **Idempotent create forms.** Every create form carries a random key made when the page was rendered; a double submit
-  creates one record (invoices, credit notes, payments, expenses, purchase orders). Edit forms carry the record version; a
-  stale form is a 412.
+  creates one record (invoices, credit notes, payments, expenses, purchase orders). Every state-change form carries the record version: a post without it is a 400, a stale one a 409 (as in the other UIs).
 - **XSS.** `html/template` everywhere, no raw HTML, no inline script or style, CSP `default-src 'none'; script-src 'none'`,
   no `data:` URLs. Hostile names, notes and contract variables are tested in text, attribute and query contexts. Contract and
   note text is shown as plain text, `white-space: pre-wrap`; there is no markdown.
@@ -134,7 +132,7 @@ erasure failed, the page says so and the report is still shown.
 
 Templates are parsed on first use. Measured on the static linux/amd64 build (method in `specs/031-finance-ui/research.md`
 R2): 17.2 MiB RSS idle with the UI on (the same as off), 27.9 MiB after 200 invoice creates, 400 list and aging reads,
-700 page renders and 100 form posts; the budget (`ram_mb: 20`, `ram_limit_mb: 48`) is unchanged.
+700 page renders and 100 form posts; loaded RSS (27.9 to 29.9 MiB across runs) exceeded the old 20 MiB target, so the budget is now `ram_mb: 28`, `ram_limit_mb: 64` (module.yaml, chart values and `test/contract/finance_test.go` agree).
 
 ## Not done
 

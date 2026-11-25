@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1>{{if .Data.Edit}}{{t "invoice.edit"}}{{else}}{{t "invoice.new"}}{{end}}</h1>
+{{if not .Data.Edit}}{{template "partysearch" (dict "Path" "/invoices/new" "Q" .Data.PQ "More" .Data.More "Hidden" (dict))}}{{end}}
 <form method="post" action="{{if .Data.Edit}}/invoices/{{.Data.ID}}{{else}}/invoices{{end}}" class="card wide">
 {{template "csrf" .}}
 {{if .Data.Edit}}<input type="hidden" name="version" value="{{.Data.Version}}">{{else}}<input type="hidden" name="idem" value="{{.Data.Idem}}">{{end}}

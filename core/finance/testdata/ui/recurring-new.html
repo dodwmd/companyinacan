@@ -41,6 +41,15 @@
 
 
 <h1>New schedule</h1>
+
+<form method="get" action="/recurring/new" class="inline filter">
+
+<label for="pq">Find a party by name</label>
+<input id="pq" name="pq" value="" maxlength="100">
+<button type="submit">Filter</button>
+</form>
+
+
 <form method="post" action="/recurring" class="card wide">
 <input type="hidden" name="csrf" value="CSRF">
 <p><label for="r-name">Name</label>

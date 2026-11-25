@@ -33,7 +33,12 @@ type client struct {
 	e       *env
 	cookies map[string]string
 	csrf    string
+	// versions remembers the record version each form on the pages seen so far was rendered with,
+	// as a browser would post it back.
+	versions map[string]string
 }
+
+var versionFormRe = regexp.MustCompile(`<form[^>]*action="([^"]+)"[^>]*>\s*<input type="hidden" name="csrf"[^>]*>\s*<input type="hidden" name="version" value="(\d+)">`)
 
 var csrfRe = regexp.MustCompile(`name="csrf" value="([^"]+)"`)
 
@@ -70,6 +75,14 @@ func (c *client) do(method, path string, form url.Values, hdr ...string) *httpte
 	if m := csrfRe.FindStringSubmatch(w.Body.String()); m != nil && w.Code == 200 && !strings.Contains(path, "/login") {
 		c.csrf = m[1]
 	}
+	if w.Code == 200 {
+		if c.versions == nil {
+			c.versions = map[string]string{}
+		}
+		for _, m := range versionFormRe.FindAllStringSubmatch(w.Body.String(), -1) {
+			c.versions[m[1]] = m[2]
+		}
+	}
 	return w
 }
 
@@ -82,6 +95,14 @@ func (c *client) post(path string, form url.Values) *httptest.ResponseRecorder {
 	}
 	if form.Get("csrf") == "" {
 		form.Set("csrf", c.csrf)
+	}
+	if !form.Has("version") {
+		if i := strings.LastIndex(path, "/"); c.versions[path] == "" && i > 0 {
+			c.get(path[:i]) // like a person: open the record, then press the button on it
+		}
+		if v, ok := c.versions[path]; ok {
+			form.Set("version", v)
+		}
 	}
 	return c.do("POST", path, form, "Sec-Fetch-Site", "same-origin")
 }
@@ -336,7 +357,7 @@ func TestUIErrorStatuses(t *testing.T) {
 		want int
 	}{
 		{ErrNotFound, 404}, {ErrForbidden, 403}, {ErrSeparation, 403}, {ErrConflict, 409}, {ErrLocked, 409},
-		{ErrVersionMismatch, 412}, {ErrIdempotencyMismatch, 422}, {invalid("x", "bad"), 422},
+		{ErrVersionMismatch, 409}, {errBadForm, 400}, {ErrIdempotencyMismatch, 422}, {invalid("x", "bad"), 422},
 		{errDeadline(), 503}, {ErrApprovalsUnavailable, 503}, {io.ErrUnexpectedEOF, 500},
 	}
 	for _, c := range cases {

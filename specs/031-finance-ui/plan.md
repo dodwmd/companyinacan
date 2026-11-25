@@ -23,7 +23,7 @@ Contract: [contracts/ui-routes.md](contracts/ui-routes.md). Tasks: [tasks.md](ta
 
 | Principle | Check |
 |---|---|
-| I Small and honest | No JavaScript, framework or dependency; templates and CSS embedded; templates parse on first use so idle RAM equals the API-only build (17.2 MiB idle, 27.9 MiB after load, budget 20/48 unchanged, `research.md` R2). Off by default. |
+| I Small and honest | No JavaScript, framework or dependency; templates and CSS embedded; templates parse on first use so idle RAM equals the API-only build (17.2 MiB idle, 27.9 MiB after load, budget raised to 28/64, `research.md` R2). Off by default. |
 | II Open and replaceable | Apache-2.0; plain `html/template`; the UI is a client of the documented Store and replaceable by another client. |
 | III Test first | Tests were written before the handlers and seen to fail (`undefined: ParseMinor`, then each page); golden HTML for 49 pages, a11y checklist, contrast, catalogue, route-contract, scope and source-guard tests. |
 | IV Secure by default | Deny by default through scopes and the Store; CSRF, CSP, `no-store`, `__Host-` cookies, failed-login throttle, hashed session ids, revocation re-check, SoD enforced in the Store, tokens never logged. |

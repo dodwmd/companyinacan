@@ -226,6 +226,13 @@ func (u *UI) init() {
 		"deref64": func(p *int64) int64 { return *p },
 		"st":      func(kind, v string) string { return u.msgOr(kind+"."+v, v) },
 		"inc":     func(i int) int { return i + 1 },
+		"dict": func(kv ...any) map[string]any {
+			m := map[string]any{}
+			for i := 0; i+1 < len(kv); i += 2 {
+				m[kv[i].(string)] = kv[i+1]
+			}
+			return m
+		},
 	}
 	u.funcs = funcs
 	u.tpl = map[string]*template.Template{}
@@ -382,15 +389,15 @@ func uiStatus(err error) int {
 	var inv *InvalidError
 	var mb *http.MaxBytesError
 	switch {
+	case errors.Is(err, errBadForm):
+		return http.StatusBadRequest
 	case errors.As(err, &inv), errors.Is(err, ErrIdempotencyMismatch):
 		return http.StatusUnprocessableEntity
 	case errors.Is(err, ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, ErrVersionMismatch):
-		return http.StatusPreconditionFailed
 	case errors.Is(err, ErrSeparation), errors.Is(err, ErrForbidden):
 		return http.StatusForbidden
-	case errors.Is(err, ErrConflict), errors.Is(err, ErrLocked):
+	case errors.Is(err, ErrConflict), errors.Is(err, ErrLocked), errors.Is(err, ErrVersionMismatch):
 		return http.StatusConflict
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, ErrApprovalsUnavailable), strings.Contains(err.Error(), "database is locked"):
 		return http.StatusServiceUnavailable
@@ -404,6 +411,8 @@ func (u *UI) fail(c *uiCtx, err error) {
 	st := uiStatus(err)
 	var inv *InvalidError
 	switch {
+	case errors.Is(err, errBadForm):
+		u.renderError(c.w, c.r, c, st, "err.bad_form_title", "err.bad_form")
 	case errors.As(err, &inv):
 		u.renderProblems(c, st, "err.invalid_title", inv.Problems)
 	case st == http.StatusNotFound:

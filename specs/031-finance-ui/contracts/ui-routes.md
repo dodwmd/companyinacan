@@ -21,13 +21,13 @@ Store makes the decision again when the form is posted.
 **Unsafe requests** are `application/x-www-form-urlencoded` posts carrying the hidden field `csrf` (the
 session's token; on the login form, the double-submit token from the login cookie) and, when the browser
 sends `Sec-Fetch-Site`, only `same-origin` or `none` is accepted. Failures are `403`. Create forms carry
-a random `idem` key made when the form was rendered, so a double submit creates one record. Edit forms
-carry the record `version` (a stale form is `412`). Unauthenticated requests to a session route get
+a random `idem` key made when the form was rendered, so a double submit creates one record. Every state-change form
+carries the record `version`; a post without one is `400`, a stale one `409`. Unauthenticated requests to a session route get
 `303 /login`. Unknown paths get the 404 page. Every response carries `Cache-Control: no-store` (static
 files excepted) and no `ETag` or `Last-Modified`.
 
-**Statuses of failures:** 422 invalid input (the page lists every problem), 404 not found or out of
-scope, 403 missing scope or separation of duties, 409 conflict or locked period, 412 stale form, 503
+**Statuses of failures:** 400 a form without its version, 422 invalid input (the page lists every problem), 404 not found or out of
+scope, 403 missing scope or separation of duties, 409 conflict, locked period or stale form, 503
 (`Retry-After`) a database deadline or the approvals engine did not answer.
 
 | Route | Session | Scope | Store methods | Purpose |
@@ -45,7 +45,7 @@ scope, 403 missing scope or separation of duties, 409 conflict or locked period,
 | `GET /parties/{id}/edit` | yes | write | `GetParty` | Edit form (not for an erased party) |
 | `POST /parties/{id}` | yes | write | `UpdateParty` | Update with `version` |
 | `GET /parties/{id}/erase` | yes | admin | `GetParty` | Explanation of erasure and of legal retention; confirmation form |
-| `POST /parties/{id}/erase` | yes | admin | `ErasePartyData` | Field `confirm` = `ERASE`; shows the service's report: erased fields, deleted drafts, what is retained and until when |
+| `POST /parties/{id}/erase` | yes | admin | `ErasePartyData` | Fields `confirm` = `ERASE` and `token` (the sign-in token again, compared with the session's); shows the service's report: erased fields, deleted drafts, what is retained and until when |
 | `GET /invoices` | yes | read | `ListInvoices` | Filters `status`, `kind`, `party`, `project`, `from`, `to`, `overdue=1`; 50 per page, cursor paged |
 | `GET /invoices/new` | yes | write | `ListParties`, `ListTaxRates` | Create form with repeated line rows |
 | `POST /invoices` | yes | write | `CreateInvoice` | Create a draft, idempotent on `idem` |
@@ -102,4 +102,4 @@ scope, 403 missing scope or separation of duties, 409 conflict or locked period,
 | `GET /approvals` | yes | approve | `ListInvoices`, `ListTimesheets`, `ListExpenses`, `ListPurchaseOrders` | The approver queue: what the caller could decide (own work left out) |
 | `GET /reports/aging` | yes | read | `Aging`, `PartyNames` | Receivables aging, per currency, at most 200 customers per currency |
 | `GET /reports/statement` | yes | read | `ListParties`, `GetParty`, `ListInvoices`, `ListPayments` | One customer's documents and payments (newest 100) |
-| `GET /settings` | yes | read | `ListSeries`, `ListTaxRates`, `PeriodLock` | Read-only: series, tax rates, company settings |
+| `GET /settings` | yes | read | `ListSeries`, `ListTaxRates`, `PeriodLock` | Read-only: series (unscoped tokens only: the counters are company-wide), tax rates, company settings |

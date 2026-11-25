@@ -117,7 +117,7 @@ func TestFinanceManifest(t *testing.T) {
 		}
 	}
 	res := asMap(m["resources"])
-	if res["ram_mb"] != 20 || res["ram_limit_mb"] != 48 {
+	if res["ram_mb"] != 28 || res["ram_limit_mb"] != 64 {
 		t.Errorf("resources %v: keep in step with the measured footprint (specs/014-finance-basics/research.md R8)", res)
 	}
 }

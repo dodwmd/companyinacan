@@ -254,7 +254,9 @@ func withMiddleware(log *slog.Logger, next http.Handler) http.Handler {
 // logPath keeps bearer-like path segments out of the access log: the signed invoice link is a
 // credential, and anyone who can read the log would otherwise hold a working link.
 func logPath(p string) string {
-	if strings.HasPrefix(p, "/public/invoices/") {
+	// Anywhere in the path: "//public/invoices/<token>" and "/x/public/invoices/<token>" are not
+	// served as links but must not put the segment in the log either.
+	if strings.Contains(p, "/public/invoices/") {
 		return "/public/invoices/{token}"
 	}
 	return p

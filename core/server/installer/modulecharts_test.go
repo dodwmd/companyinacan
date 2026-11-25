@@ -36,7 +36,7 @@ func inhouseModules() []inhouse {
 		{"jobs", "jobs", 30, 64, "8080", func(b []byte) error {
 			return writeLoad(b, func(p string) error { _, err := jobs.LoadConfig(p, true); return err })
 		}},
-		{"finance", "finance", 20, 48, "8080", func(b []byte) error {
+		{"finance", "finance", 28, 64, "8080", func(b []byte) error {
 			return writeLoad(b, func(p string) error { _, err := finance.LoadConfig(p, true); return err })
 		}},
 	}

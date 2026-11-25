@@ -12,6 +12,7 @@
 {{else}}<p class="muted">{{t "contract.no_templates"}}</p>{{end}}
 </section>
 {{else}}
+{{template "partysearch" (dict "Path" "/contracts/new" "Q" .Data.PQ "More" .Data.More "Hidden" (dict "template" .Data.Tmpl.ID))}}
 <form method="post" action="/contracts" class="card wide">
 {{template "csrf" .}}
 <input type="hidden" name="template_id" value="{{.Data.Tmpl.ID}}">

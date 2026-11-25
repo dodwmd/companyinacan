@@ -86,7 +86,8 @@ var uiMessagesEN = map[string]string{
 	"err.too_large":         "The request was too large.",
 	"err.internal_title":    "Something went wrong",
 	"err.internal":          "An internal error occurred. Quote the request id to your administrator.",
-	"err.bad_form":          "The form could not be read.",
+	"err.bad_form":          "The form is incomplete or out of date. Reload the page and try again.",
+	"err.bad_form_title":    "The form could not be read",
 
 	"f.id": "Document", "f.name": "Name", "f.kind": "Kind", "f.type": "Type", "f.email": "Email", "f.phone": "Phone", "f.contact": "Contact person",
 	"f.address": "Address", "f.tax_id": "Tax id", "f.currency": "Currency", "f.notes": "Notes", "f.status": "Status", "f.party": "Customer or vendor",
@@ -154,6 +155,7 @@ var uiMessagesEN = map[string]string{
 	"erase.irreversible": "This cannot be undone. The result below says exactly what was erased and what is kept.",
 	"erase.confirm":      "Type ERASE to confirm",
 	"erase.confirm_hint": "Capital letters, nothing else.",
+	"erase.token":        "Your sign-in token again", "erase.token_hint": "Erasing cannot be undone, so the token you signed in with is asked for once more.",
 	"erase.submit":       "Erase personal data",
 	"erase.done_title":   "Erasure done",
 	"erase.warning":      "The data was erased, but the database log could not be truncated afterwards. Ask your administrator to run the cleanup.",
@@ -233,6 +235,7 @@ var uiMessagesEN = map[string]string{
 	"po.new": "New purchase order", "po.title": "Purchase order", "po.vendor": "Vendor", "po.draft_n": "Draft PO #%d", "pos.caption": "Purchase orders", "pos.none": "No purchase order yet.",
 	"po.receive": "Mark as received", "po.cancel": "Cancel the order",
 
+	"picker.search": "Find a party by name", "picker.more": "Only the first 100 matching parties are listed. Search by name to narrow the list.",
 	"report.aging": "Receivables aging", "report.statement": "Customer statement",
 	"aging.as_of": "As of", "aging.hint": "Unpaid balances of issued invoices by days past due, per currency. Credit notes are netted. Currencies are never added together.",
 	"aging.caption": "Receivables in %s", "aging.current": "Not yet due", "aging.d30": "1 to 30 days", "aging.d60": "31 to 60 days", "aging.d90": "61 to 90 days",
@@ -242,7 +245,8 @@ var uiMessagesEN = map[string]string{
 
 	"settings.readonly": "This page is read-only. Settings are changed in the module configuration; tax rates through the API.",
 	"settings.series":   "Number series", "settings.series_caption": "Numbering series", "settings.series_code": "Series", "settings.series_last": "Last number issued",
-	"settings.series_none": "No number has been issued yet.", "settings.series_hint": "Numbers are taken only when a document is approved, so they have no gaps.",
+	"settings.series_scoped": "Numbering counters are company-wide and are not shown to a token limited to some customers or projects.",
+	"settings.series_none":   "No number has been issued yet.", "settings.series_hint": "Numbers are taken only when a document is approved, so they have no gaps.",
 	"settings.tax": "Tax rates", "settings.tax_caption": "Tax rates", "settings.tax_code": "Code", "settings.tax_rate": "Rate", "settings.tax_none": "No tax rate is defined.",
 	"settings.general": "General", "settings.base": "Company currency", "settings.seller": "Seller on invoices", "settings.payment": "Payment instructions",
 	"settings.retention": "Record retention", "settings.years": "%d years", "settings.audit": "Audit log retention", "settings.days": "%d days",

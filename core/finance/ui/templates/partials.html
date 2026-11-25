@@ -21,3 +21,12 @@
 <p class="hint">{{t "lines.hint"}}</p>
 {{end}}
 {{define "sod_hint"}}<p class="hint" id="{{.}}">{{t "sod.hint"}}</p>{{end}}
+{{define "partysearch"}}
+<form method="get" action="{{.Path}}" class="inline filter">
+{{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
+<label for="pq">{{t "picker.search"}}</label>
+<input id="pq" name="pq" value="{{.Q}}" maxlength="100">
+<button type="submit">{{t "common.filter"}}</button>
+</form>
+{{if .More}}<p class="notice">{{t "picker.more"}}</p>{{end}}
+{{end}}

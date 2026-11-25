@@ -2,6 +2,7 @@ package finance
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -111,4 +112,82 @@ func TestUIBoundedLists(t *testing.T) {
 	// an invalid filter is a 422
 	status(t, w.readonly.get("/invoices?from=2026-13-45"), 422)
 	status(t, w.readonly.get("/invoices?status=bogus"), 422)
+}
+
+func TestUISettingsHidesCompanyWideCountersFromScopedTokens(t *testing.T) {
+	w := newWorld(t)
+	inv := w.draft(t, "Counted", "10.00")
+	status(t, w.approver.post("/invoices/"+inv+"/approve", nil), 303)
+	mustHave(t, w.readonly.get("/settings"), "Last number issued", "INV")
+	scoped := w.u.login(t, w.u.token("user:scoped", []string{"finance.read"}, []int64{mustAtoi(t, w.party)}, nil, false))
+	page := scoped.get("/settings")
+	status(t, page, 200)
+	mustNot(t, page, "Last number issued", "<th scope=\"row\">INV</th>")
+	proj := w.u.login(t, w.u.token("user:proj", []string{"finance.read"}, nil, []string{"ACME"}, false))
+	mustNot(t, proj.get("/settings"), "Last number issued")
+	mustHave(t, proj.get("/settings"), "Tax rates") // the rest of the page stays
+}
+
+func TestLogPathRedactsTheLinkSegmentAnywhere(t *testing.T) {
+	for _, p := range []string{"/public/invoices/SECRET", "//public/invoices/SECRET", "/public/public/invoices/SECRET", "/x/public/invoices/SECRET/y"} {
+		if got := logPath(p); strings.Contains(got, "SECRET") {
+			t.Errorf("logPath(%q) = %q", p, got)
+		}
+	}
+	if logPath("/v1/invoices/3") != "/v1/invoices/3" {
+		t.Error("ordinary paths are logged as they are")
+	}
+	var buf bytes.Buffer
+	u := newUIEnv(t, func(_ *Config, o *Options) { o.Logger = slog.New(slog.NewTextHandler(&buf, nil)) })
+	httptestGet(u.h, "//public/invoices/SECRETTWO")
+	httptestGet(u.h, "/public/public/invoices/SECRETTHREE")
+	if strings.Contains(buf.String(), "SECRETTWO") || strings.Contains(buf.String(), "SECRETTHREE") {
+		t.Fatalf("a link token reached the log: %s", buf.String())
+	}
+}
+
+func TestUIStateChangesNeedTheFormVersion(t *testing.T) {
+	w := newWorld(t)
+	inv := w.draft(t, "Versioned", "10.00")
+	for _, p := range []string{"/invoices/" + inv + "/approve", "/invoices/" + inv + "/send", "/invoices/" + inv + "/delete", "/invoices/" + inv + "/void", "/invoices/" + inv} {
+		if r := w.writer.post(p, url.Values{"version": {""}, "reason": {"x"}, "currency": {"USD"}, "desc": {"x"}, "qty": {"1"}, "price": {"1"}}); r.Code != 400 {
+			t.Errorf("POST %s without a version = %d, want 400", p, r.Code)
+		}
+	}
+	// a stale version is a 409, as in the other UIs
+	status(t, w.approver.post("/invoices/"+inv+"/approve", url.Values{"version": {"99"}}), 409)
+	if mustInvoice(t, w, inv).Status != StDraft {
+		t.Fatal("a refused post changed the invoice")
+	}
+}
+
+func TestUIErasureAsksForTheTokenAgain(t *testing.T) {
+	w := newWorld(t)
+	status(t, w.admin.post("/parties/"+w.party+"/erase", url.Values{"confirm": {"ERASE"}}), 422)
+	mustHave(t, w.readonly.get("/parties/"+w.party), "Acme Pty") // nothing was erased
+}
+
+func TestUIPartyPickerSearchesAndSaysWhenCut(t *testing.T) {
+	w := newWorld(t)
+	for i := 0; i < 105; i++ {
+		w.u.must(201, adminTok, "POST", "/v1/parties", obj{"name": fmt.Sprintf("Bulk %03d", i), "kind": "customer"}, nil)
+	}
+	page := w.writer.get("/invoices/new")
+	mustHave(t, page, "Only the first 100 matching parties", `name="pq"`)
+	narrow := w.writer.get("/invoices/new?pq=Bulk+104")
+	mustHave(t, narrow, "Bulk 104")
+	mustNot(t, narrow, "Only the first 100", "Bulk 001")
+	status(t, w.writer.get("/contracts/new?pq="+strings.Repeat("a", 101)), 422)
+}
+
+func TestUILinkLifetimeIsBoundedBeforeItIsUsed(t *testing.T) {
+	w := newWorld(t)
+	inv := w.draft(t, "Link", "10.00")
+	status(t, w.approver.post("/invoices/"+inv+"/approve", nil), 303)
+	for _, v := range []string{"9223372036854775807", "2161", "-1", "abc"} {
+		if r := w.writer.post("/invoices/"+inv+"/link", url.Values{"ttl_hours": {v}}); r.Code != 422 {
+			t.Errorf("ttl_hours %q = %d, want 422", v, r.Code)
+		}
+	}
+	status(t, w.writer.post("/invoices/"+inv+"/link", url.Values{"ttl_hours": {"2160"}}), 200)
 }

@@ -149,6 +149,8 @@ type invoiceForm struct {
 	Idem      string
 	PartyID   int64
 	Parties   []Party
+	More      bool
+	PQ        string
 	Currency  string
 	FXRate    string
 	Series    string
@@ -182,7 +184,7 @@ func rowsFromLines(ls []Line, cur string) []lineRow {
 }
 
 func (u *UI) invoiceNew(c *uiCtx) error {
-	parties, _, err := u.Store.ListParties(c.ctx(), c.p, PartyFilter{}, 0, 100)
+	parties, more, pq, err := c.pickParties("")
 	if err != nil {
 		return err
 	}
@@ -197,7 +199,7 @@ func (u *UI) invoiceNew(c *uiCtx) error {
 			cur = p.Currency
 		}
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "invoice_form.html", "invoice.new", invoiceForm{Idem: newToken()[:32], PartyID: pid, Parties: parties, Currency: cur, Series: "INV",
+	u.render(c.w, c.r, c, http.StatusOK, "invoice_form.html", "invoice.new", invoiceForm{Idem: newToken()[:32], PartyID: pid, Parties: parties, More: more, PQ: pq, Currency: cur, Series: "INV",
 		Rows: blankRows(5), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency, Today: c.today()})
 	return nil
 }
@@ -469,8 +471,8 @@ func (u *UI) linkCreate(c *uiCtx) error {
 	}
 	ttl := 0
 	if v := c.form("ttl_hours"); v != "" {
-		if ttl, err = strconv.Atoi(v); err != nil || ttl < 0 {
-			return invalid("ttl_hours", "a whole number of hours")
+		if ttl, err = strconv.Atoi(v); err != nil || ttl < 0 || ttl > int(maxLinkTTL.Hours()) {
+			return invalid("ttl_hours", "a whole number of hours, at most %d", int(maxLinkTTL.Hours()))
 		}
 	}
 	tok, exp, err := u.Store.IssueLink(c.ctx(), c.p, u.LinkSecret, id, time.Duration(ttl)*time.Hour)

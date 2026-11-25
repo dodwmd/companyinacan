@@ -31,12 +31,12 @@ requires:
   database: sqlite
   sso: none
 resources:
-  # Idle RAM target 20 MB. Measured on the static linux/amd64 build: 16.1 MiB RSS idle and 24.8 MiB
+  # RAM target 28 MB (loaded, with the web UI; was 20 idle-only before E15b), limit 64. Measured on the static linux/amd64 build: 16.1 MiB RSS idle and 24.8 MiB
   # after 200 invoice creates and 400 list/aging reads (specs/014-finance-basics/research.md R8). With the
   # web UI enabled (templates parse on first use): 17.2 MiB idle (17624 kB), 27.9 MiB (28576 kB) after the same load plus 700
-  # page renders and 100 form posts (specs/031-finance-ui/research.md R2). Budget unchanged.
-  ram_mb: 20
-  ram_limit_mb: 48
+  # page renders and 100 form posts (specs/031-finance-ui/research.md R2). Loaded RSS 27.9 to 29.9 MiB exceeded 20 x 1.2, so the budget was raised to 28/64, the same as the work UI.
+  ram_mb: 28
+  ram_limit_mb: 64
   disk_mb: 500
 provides:
   - { capability: invoices, schema: invoices.v1, service: finance, port: 8080 }

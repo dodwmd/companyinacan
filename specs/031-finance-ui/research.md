@@ -18,8 +18,7 @@ API; then sign in through the UI and render `/`, `/invoices`, `/parties`, `/appr
 
 Parsing 31 page templates (each with the layout) at start cost about 3.8 MB of heap on a module budgeted at 20 MiB, so
 templates are parsed on first use; idle is then the same as with the UI off, and a fully used UI adds about 2 MiB to the
-loaded figure. `ram_mb: 20` (idle target) and `ram_limit_mb: 48` are unchanged; `module.yaml`, the chart values and
-`test/contract/finance_test.go` agree. The earlier figure of `specs/014-finance-basics` R8 (16.1 MiB idle) was measured
+loaded figure. Loaded RSS ranged 27.9 to 29.9 MiB over runs, above 20 x 1.2, so the budget is raised to `ram_mb: 28` and `ram_limit_mb: 64` (as the work UI); `module.yaml`, the chart values and `test/contract/finance_test.go` agree. The earlier figure of `specs/014-finance-basics` R8 (16.1 MiB idle) was measured
 with an older toolchain and fewer dependencies; today the API-only build idles at 17.2 MiB on the same machine. Not
 measured on a cluster.
 

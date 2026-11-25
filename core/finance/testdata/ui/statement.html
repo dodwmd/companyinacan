@@ -41,6 +41,15 @@
 
 <h1>Customer statement</h1>
 <p class="actions"><a href="/reports/aging">Receivables aging</a> <a href="/reports/statement">Customer statement</a></p>
+
+<form method="get" action="/reports/statement" class="inline filter">
+
+<label for="pq">Find a party by name</label>
+<input id="pq" name="pq" value="" maxlength="100">
+<button type="submit">Filter</button>
+</form>
+
+
 <form method="get" action="/reports/statement" class="inline filter">
 <label for="st-party">Customer or vendor</label>
 

@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1>{{t "recurring.new"}}</h1>
+{{template "partysearch" (dict "Path" "/recurring/new" "Q" .Data.PQ "More" .Data.More "Hidden" (dict))}}
 <form method="post" action="/recurring" class="card wide">
 {{template "csrf" .}}
 <p><label for="r-name">{{t "f.name"}}</label>

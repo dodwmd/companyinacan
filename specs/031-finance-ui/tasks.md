@@ -40,7 +40,7 @@ browser or cluster and is **not** done.
 ## Phase 5: Wiring and docs
 
 - [x] T017 Dev compose enables the UI (`dev/compose/config/finance.yaml`); `dev/compose/smoke.sh` checks (login page, redirect, stylesheet, wrong token 401, API and public link path unchanged)
-- [x] T018 Footprint measured idle and after load, templates parsed on first use, budget unchanged (`research.md` R2); `module.yaml` and chart comments
+- [x] T018 Footprint measured idle and after load, templates parsed on first use, budget raised to 28/64 (`research.md` R2); `module.yaml` and chart comments
 - [x] T019 `docs/finance-ui.md`, `docs/finance.md` and `docs/local-compose.md` links, `docs/epics/README.md`
 
 ## Not done
@@ -52,4 +52,4 @@ browser or cluster and is **not** done.
 - [ ] T024 Pages for: recording a manual signature, new contract versions and the template editor, recurring-schedule edit, tax-rate, token, audit-log, period-lock and dead-event administration (the API has them)
 - [ ] T025 Server-side line count beyond the rows offered (the form offers 3 to 5 blank rows; more lines: save and edit again)
 - [ ] T026 Sessions survive a restart (optional; today a restart signs everyone out)
-- [ ] T027 Party picker for more than 100 parties (the select lists the first 100 in scope; use the party page's "new invoice" link beyond that)
+- [x] T027 Party picker: search box and a notice when the list is cut at 100

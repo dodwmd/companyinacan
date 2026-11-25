@@ -39,6 +39,8 @@ func (u *UI) recurring(c *uiCtx) error {
 
 type recurringForm struct {
 	Parties []Party
+	More    bool
+	PQ      string
 	Rows    []lineRow
 	Tax     []TaxRate
 	Base    string
@@ -46,7 +48,7 @@ type recurringForm struct {
 }
 
 func (u *UI) recurringNew(c *uiCtx) error {
-	parties, _, err := u.Store.ListParties(c.ctx(), c.p, PartyFilter{Kind: "customer"}, 0, 100)
+	parties, more, pq, err := c.pickParties("customer")
 	if err != nil {
 		return err
 	}
@@ -54,7 +56,7 @@ func (u *UI) recurringNew(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "recurring_form.html", "recurring.new", recurringForm{Parties: parties, Rows: blankRows(4), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency, Today: c.today()})
+	u.render(c.w, c.r, c, http.StatusOK, "recurring_form.html", "recurring.new", recurringForm{Parties: parties, More: more, PQ: pq, Rows: blankRows(4), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency, Today: c.today()})
 	return nil
 }
 
@@ -135,6 +137,8 @@ func (u *UI) contracts(c *uiCtx) error {
 }
 
 type contractForm struct {
+	More      bool
+	PQ        string
 	Templates []ContractTemplate
 	Tmpl      *ContractTemplate
 	Parties   []Party
@@ -146,11 +150,11 @@ func (u *UI) contractNew(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	parties, _, err := u.Store.ListParties(c.ctx(), c.p, PartyFilter{}, 0, 100)
+	parties, more, pq, err := c.pickParties("")
 	if err != nil {
 		return err
 	}
-	d := contractForm{Templates: tmpls, Parties: parties}
+	d := contractForm{Templates: tmpls, Parties: parties, More: more, PQ: pq}
 	d.PartyID, _ = strconv.ParseInt(c.q("party"), 10, 64)
 	if tid, _ := strconv.ParseInt(c.q("template"), 10, 64); tid > 0 {
 		for i := range tmpls {
@@ -752,6 +756,8 @@ func (u *UI) purchaseOrders(c *uiCtx) error {
 }
 
 type poForm struct {
+	More    bool
+	PQ      string
 	Idem    string
 	Vendors []Party
 	Rows    []lineRow
@@ -760,7 +766,7 @@ type poForm struct {
 }
 
 func (u *UI) poNew(c *uiCtx) error {
-	vendors, _, err := u.Store.ListParties(c.ctx(), c.p, PartyFilter{Kind: "vendor"}, 0, 100)
+	vendors, more, pq, err := c.pickParties("vendor")
 	if err != nil {
 		return err
 	}
@@ -768,7 +774,7 @@ func (u *UI) poNew(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "po_form.html", "po.new", poForm{Idem: newToken()[:32], Vendors: vendors, Rows: blankRows(4), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency})
+	u.render(c.w, c.r, c, http.StatusOK, "po_form.html", "po.new", poForm{Idem: newToken()[:32], Vendors: vendors, More: more, PQ: pq, Rows: blankRows(4), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency})
 	return nil
 }
 

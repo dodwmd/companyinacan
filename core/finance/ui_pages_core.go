@@ -65,6 +65,18 @@ func (c *uiCtx) selfMade(who ...string) bool {
 	return false
 }
 
+// pickParties lists up to 100 parties in scope for a select box, filtered by the search box (query
+// pq). More says the list was cut, so the page can ask for a narrower search instead of silently
+// hiding parties.
+func (c *uiCtx) pickParties(kind string) (parties []Party, more bool, q string, err error) {
+	q = c.q("pq")
+	if len([]rune(q)) > 100 {
+		return nil, false, "", invalid("pq", "at most 100 characters")
+	}
+	parties, next, err := c.u.Store.ListParties(c.ctx(), c.p, PartyFilter{Kind: kind, Search: q}, 0, 100)
+	return parties, next > 0, q, err
+}
+
 // ---- approvals queue -------------------------------------------------------------------------
 
 type approvalQueue struct {
@@ -312,6 +324,11 @@ func (u *UI) partyErase(c *uiCtx) error {
 	if c.form("confirm") != "ERASE" {
 		return invalid("confirm", "type ERASE to confirm")
 	}
+	// Step-up: erasing is irreversible, so a session left open on an unlocked screen is not enough;
+	// the sign-in token is asked for again and compared with the one the session was made from.
+	if !constEq(strings.TrimSpace(c.r.PostForm.Get("token")), c.ss.token) {
+		return invalid("token", "re-enter your sign-in token to confirm the erasure")
+	}
 	rep, err := u.Store.ErasePartyData(c.ctx(), c.p, id, u.Cfg.RetentionYears)
 	warn := false
 	if err != nil {
@@ -396,6 +413,8 @@ type statementData struct {
 	More    bool
 	Owing   []CurrencyAmount
 	Parties []Party
+	PMore   bool
+	PQ      string
 }
 
 const statementMax = 100
@@ -403,11 +422,11 @@ const statementMax = 100
 func (u *UI) statement(c *uiCtx) error {
 	pid, _ := strconv.ParseInt(c.q("party"), 10, 64)
 	d := statementData{}
-	parties, _, err := u.Store.ListParties(c.ctx(), c.p, PartyFilter{}, 0, 100)
+	parties, more, pq, err := c.pickParties("")
 	if err != nil {
 		return err
 	}
-	d.Parties = parties
+	d.Parties, d.PMore, d.PQ = parties, more, pq
 	if pid > 0 {
 		p, err := u.Store.GetParty(c.ctx(), c.p, pid)
 		if err != nil {
@@ -444,6 +463,7 @@ func (u *UI) statement(c *uiCtx) error {
 // ---- settings --------------------------------------------------------------------------------
 
 type settingsData struct {
+	ShowSeries  bool
 	Series      []SeriesInfo
 	TaxRates    []TaxRate
 	Base        string
@@ -456,9 +476,15 @@ type settingsData struct {
 }
 
 func (u *UI) settings(c *uiCtx) error {
-	series, err := u.Store.ListSeries(c.ctx())
-	if err != nil {
-		return err
+	// The numbering counters are global: how many invoices the whole company has issued. A token limited
+	// to some parties or projects must not learn that, so only an unscoped token sees them.
+	var series []SeriesInfo
+	showSeries := c.p.Unscoped()
+	if showSeries {
+		var err error
+		if series, err = u.Store.ListSeries(c.ctx()); err != nil {
+			return err
+		}
 	}
 	rates, err := u.Store.ListTaxRates(c.ctx())
 	if err != nil {
@@ -468,7 +494,7 @@ func (u *UI) settings(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "settings.html", "nav.settings", settingsData{Series: series, TaxRates: rates, Base: u.Cfg.BaseCurrency, Seller: u.Seller,
+	u.render(c.w, c.r, c, http.StatusOK, "settings.html", "nav.settings", settingsData{Series: series, ShowSeries: showSeries, TaxRates: rates, Base: u.Cfg.BaseCurrency, Seller: u.Seller,
 		PayInstr: u.Cfg.PaymentInstructions, RetentionYr: u.Cfg.RetentionYears, AuditDays: u.Cfg.AuditRetentionDays, LockedUntil: lock, Public: u.Cfg.PublicBaseURL})
 	return nil
 }

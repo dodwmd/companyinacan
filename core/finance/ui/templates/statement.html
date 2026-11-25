@@ -1,6 +1,7 @@
 {{define "content"}}
 <h1>{{t "report.statement"}}</h1>
 <p class="actions"><a href="/reports/aging">{{t "report.aging"}}</a> <a href="/reports/statement">{{t "report.statement"}}</a></p>
+{{template "partysearch" (dict "Path" "/reports/statement" "Q" .Data.PQ "More" .Data.PMore "Hidden" (dict))}}
 <form method="get" action="/reports/statement" class="inline filter">
 <label for="st-party">{{t "f.party"}}</label>
 {{$sel := .Data.P.ID}}

@@ -74,6 +74,7 @@ type uiWorld struct {
 	u                                 *uiEnv
 	writer, approver, admin, readonly *client
 	party                             string
+	adminTok                          string
 }
 
 func newWorld(t *testing.T) *uiWorld {
@@ -81,7 +82,8 @@ func newWorld(t *testing.T) *uiWorld {
 	w := &uiWorld{u: u}
 	w.writer = u.login(t, u.token("user:wendy", []string{"finance.write", "finance.approve"}, nil, nil, false))
 	w.approver = u.login(t, u.token("user:boss", []string{"finance.approve"}, nil, nil, false))
-	w.admin = u.login(t, u.token("user:root", []string{"finance.admin"}, nil, nil, false))
+	w.adminTok = u.token("user:root", []string{"finance.admin"}, nil, nil, false)
+	w.admin = u.login(t, w.adminTok)
 	w.readonly = u.login(t, u.token("user:ro", []string{"finance.read"}, nil, nil, false))
 	r := w.writer.post("/parties", url.Values{"kind": {"customer"}, "name": {"Acme Pty"}, "email": {"ap@acme.example"}, "address": {"1 Fake Rd"}, "currency": {"USD"}})
 	status(t, r, 303)
@@ -109,7 +111,11 @@ func TestUIInvoiceLifecycleWithSeparationOfDuties(t *testing.T) {
 	mustNot(t, page, `action="/invoices/`+inv+`/approve"`)
 
 	// even if the form is forged, the service refuses: separation of duties is enforced there
-	status(t, w.writer.post("/invoices/"+inv+"/approve", nil), 403)
+	// the page offers the creator no form, so a forged post brings its own version
+	status(t, w.writer.post("/invoices/"+inv+"/approve", url.Values{"version": {"1"}}), 403)
+	// a state change without a version is a 400, whatever the record is
+	status(t, w.approver.post("/invoices/"+inv+"/approve", url.Values{"version": {""}}), 400)
+	status(t, w.approver.post("/invoices/"+inv+"/approve", url.Values{"version": {"abc"}}), 400)
 	// a writer without finance.approve is refused at the route
 	status(t, w.readonly.post("/invoices/"+inv+"/approve", nil), 403)
 
@@ -126,7 +132,7 @@ func TestUIInvoiceLifecycleWithSeparationOfDuties(t *testing.T) {
 	if r := w.writer.get("/invoices/" + inv + "/edit"); r.Code != 409 {
 		t.Fatalf("edit form of an approved invoice = %d, want 409", r.Code)
 	}
-	if r := w.writer.post("/invoices/"+inv, url.Values{"currency": {"USD"}, "desc": {"Changed"}, "qty": {"1"}, "price": {"1"}, "disc": {""}, "tax": {""}, "sku": {""}}); r.Code != 409 {
+	if r := w.writer.post("/invoices/"+inv, url.Values{"version": {"1"}, "currency": {"USD"}, "desc": {"Changed"}, "qty": {"1"}, "price": {"1"}, "disc": {""}, "tax": {""}, "sku": {""}}); r.Code != 409 {
 		t.Fatalf("forged edit = %d, want 409", r.Code)
 	}
 
@@ -198,7 +204,7 @@ func TestUIDraftEditAndDelete(t *testing.T) {
 	mustHave(t, w.writer.get("/invoices/"+inv), "Edited work", "30.00")
 	// a stale form (old version) is refused, not silently applied
 	r = w.writer.post("/invoices/"+inv, url.Values{"currency": {"USD"}, "version": {"1"}, "desc": {"Stale"}, "qty": {"1"}, "price": {"1"}, "disc": {""}, "tax": {""}, "sku": {""}})
-	status(t, r, 412)
+	status(t, r, 409) // a stale form is a conflict, as in the other UIs
 	status(t, w.writer.post("/invoices/"+inv+"/delete", url.Values{"version": {"2"}}), 303)
 	status(t, w.writer.get("/invoices/"+inv), 404)
 }
@@ -228,7 +234,7 @@ func TestUIVoidAndCreditNote(t *testing.T) {
 		t.Fatalf("approving a credit note above the balance = %d, want 422: %s", r.Code, r.Body.String())
 	}
 	// void needs a reason and the approve scope; the invoice has a credit note, so it is a conflict
-	if r := w.approver.post("/invoices/"+inv+"/void", url.Values{"reason": {"mistake"}}); r.Code != 409 {
+	if r := w.approver.post("/invoices/"+inv+"/void", url.Values{"reason": {"mistake"}, "version": {fmt.Sprint(mustInvoice(t, w, inv).Version)}}); r.Code != 409 {
 		t.Fatalf("void with a credit note = %d, want 409", r.Code)
 	}
 	inv2 := w.draft(t, "Other", "10.00")
@@ -343,8 +349,11 @@ func TestUIErasureShowsRetentionHonestly(t *testing.T) {
 	status(t, page, 200)
 	mustHave(t, page, "legal retention", `name="confirm"`)
 	// confirmation is required
-	status(t, w.admin.post("/parties/"+w.party+"/erase", url.Values{"confirm": {"no"}}), 422)
-	r := w.admin.post("/parties/"+w.party+"/erase", url.Values{"confirm": {"ERASE"}})
+	status(t, w.admin.post("/parties/"+w.party+"/erase", url.Values{"confirm": {"no"}, "token": {w.adminTok}}), 422)
+	// the sign-in token must be entered again; a wrong or missing one erases nothing
+	status(t, w.admin.post("/parties/"+w.party+"/erase", url.Values{"confirm": {"ERASE"}}), 422)
+	status(t, w.admin.post("/parties/"+w.party+"/erase", url.Values{"confirm": {"ERASE"}, "token": {"wrong-token"}}), 422)
+	r := w.admin.post("/parties/"+w.party+"/erase", url.Values{"confirm": {"ERASE"}, "token": {w.adminTok}})
 	status(t, r, 200)
 	// the outcome is what the service reports: erased fields, deleted drafts, what is kept and why
 	mustHave(t, r, "Erased fields", "email", "Deleted drafts", "finance-invoice-unpaid", "unpaid invoices are never purged")
@@ -383,7 +392,7 @@ func TestUIScopedTokenSeesOnlyItsParty(t *testing.T) {
 	status(t, c.get("/parties/"+otherID), 404)
 	status(t, c.get("/parties/"+otherID+"/edit"), 404)
 	status(t, c.get("/invoices/"+theirs+"/html"), 404)
-	status(t, c.post("/invoices/"+theirs+"/send", nil), 404)
+	status(t, c.post("/invoices/"+theirs+"/send", url.Values{"version": {"1"}}), 404)
 	mustNot(t, c.get("/parties"), "Other Co")
 	mustNot(t, c.get("/reports/aging"), "Other Co")
 }
@@ -538,7 +547,7 @@ func TestUIExpenseFlowWithReceiptMetadataAndApproval(t *testing.T) {
 	status(t, both.post("/expenses/"+bid+"/submit", nil), 303)
 	mustHave(t, both.get("/expenses/"+bid), "disabled", "someone else must approve")
 	mustNot(t, both.get("/expenses/"+bid), `action="/expenses/`+bid+`/approve"`)
-	status(t, both.post("/expenses/"+bid+"/approve", nil), 403)
+	status(t, both.post("/expenses/"+bid+"/approve", url.Values{"version": {"2"}}), 403)
 	status(t, w.approver.post("/expenses/"+id+"/reject", url.Values{"reason": {""}}), 422)
 	status(t, w.approver.post("/expenses/"+id+"/approve", nil), 303)
 	mustHave(t, w.approver.get("/expenses/"+id), "Approved")
@@ -598,7 +607,7 @@ func TestUIRecurringPurchaseOrdersReportsAndSettings(t *testing.T) {
 	status(t, po, 303)
 	poID := locID(t, po.Header().Get("Location"), "/purchase-orders/")
 	mustHave(t, w.writer.get("/purchase-orders/"+poID), "Widgets", "25.00")
-	status(t, w.writer.post("/purchase-orders/"+poID+"/approve", nil), 403)
+	status(t, w.writer.post("/purchase-orders/"+poID+"/approve", url.Values{"version": {"1"}}), 403)
 	status(t, w.approver.post("/purchase-orders/"+poID+"/approve", nil), 303)
 	mustHave(t, w.readonly.get("/purchase-orders"), "Parts Ltd")
 

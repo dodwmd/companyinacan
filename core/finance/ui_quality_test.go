@@ -135,7 +135,8 @@ func renderAllPages(t *testing.T) []shot {
 	maker := u.login(t, u.token("user:maker", []string{"finance.write", "finance.approve"}, nil, nil, false))
 	boss := u.login(t, u.token("user:boss", []string{"finance.approve"}, nil, nil, false))
 	ro := u.login(t, u.token("user:ro", []string{"finance.read"}, nil, nil, false))
-	adm := u.login(t, u.token("user:root", []string{"finance.admin"}, nil, nil, false))
+	admTok := u.token("user:root", []string{"finance.admin"}, nil, nil, false)
+	adm := u.login(t, admTok)
 	emp := u.login(t, u.token("user:emp", []string{"finance.write", "finance.read"}, nil, nil, true))
 
 	loc := func(w *client, path string, form url.Values, prefix string) string {
@@ -241,7 +242,7 @@ func renderAllPages(t *testing.T) []shot {
 	add("settings", ro, "/settings")
 	add("err-not-found", maker, "/invoices/99999")
 	add("err-forbidden", ro, "/invoices/new")
-	erased := adm.post("/parties/"+vendor+"/erase", url.Values{"confirm": {"ERASE"}})
+	erased := adm.post("/parties/"+vendor+"/erase", url.Values{"confirm": {"ERASE"}, "token": {admTok}})
 	out = append(out, shot{"party-erased", erased.Body.String()})
 	bad := maker.post("/invoices/"+draft+"/approve", nil)
 	out = append(out, shot{"err-separation", bad.Body.String()})

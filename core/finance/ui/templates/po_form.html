@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1>{{t "po.new"}}</h1>
+{{template "partysearch" (dict "Path" "/purchase-orders/new" "Q" .Data.PQ "More" .Data.More "Hidden" (dict))}}
 <form method="post" action="/purchase-orders" class="card wide">
 {{template "csrf" .}}
 <input type="hidden" name="idem" value="{{.Data.Idem}}">

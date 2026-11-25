@@ -1,6 +1,7 @@
 {{define "content"}}
 <h1>{{t "nav.settings"}}</h1>
 <p class="hint">{{t "settings.readonly"}}</p>
+{{if .Data.ShowSeries}}
 <section aria-labelledby="h-series">
 <h2 id="h-series">{{t "settings.series"}}</h2>
 {{if .Data.Series}}
@@ -12,6 +13,9 @@
 {{else}}<p class="muted">{{t "settings.series_none"}}</p>{{end}}
 <p class="hint">{{t "settings.series_hint"}}</p>
 </section>
+{{else}}
+<p class="hint">{{t "settings.series_scoped"}}</p>
+{{end}}
 <section aria-labelledby="h-tax">
 <h2 id="h-tax">{{t "settings.tax"}}</h2>
 {{if .Data.TaxRates}}
