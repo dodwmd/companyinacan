@@ -3,6 +3,7 @@ Description=Company in a Can backup (restic)
 Documentation=https://github.com/dodwmd/companyinacan/blob/main/docs/backup-restore.md
 After=network-online.target k3s.service
 Wants=network-online.target
+OnFailure=can-backup-failure.service
 
 [Service]
 Type=oneshot
@@ -10,6 +11,9 @@ ExecStart=/usr/local/sbin/can-backup
 TimeoutStartSec=6h
 Nice=10
 IOSchedulingClass=idle
+CacheDirectory=can-backup
 PrivateTmp=true
 ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/can /var/lib/can/dumps -/var/lib/rancher/k3s/server/db
 NoNewPrivileges=true

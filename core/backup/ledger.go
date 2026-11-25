@@ -1,7 +1,6 @@
 package backup
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -79,36 +78,52 @@ type Ledger struct {
 }
 
 // Read returns all entries after verifying the chain. A missing file is empty.
+// A torn final line (a crash mid-append: no trailing newline, not valid JSON)
+// is ignored; any other malformed line is an error.
 func (l *Ledger) Read() ([]Entry, error) {
-	f, err := os.Open(l.Path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	var es []Entry
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		if strings.TrimSpace(sc.Text()) == "" {
-			continue
-		}
-		var e Entry
-		dec := json.NewDecoder(strings.NewReader(sc.Text()))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&e); err != nil {
-			return nil, fmt.Errorf("erasure ledger %s: %w", l.Path, err)
-		}
-		es = append(es, e)
-	}
-	if err := sc.Err(); err != nil {
-		return nil, err
-	}
-	return es, VerifyChain(es)
+	es, _, err := l.read()
+	return es, err
 }
 
-// Append records an erasure. It is idempotent per (subject, class): added is
+// read also returns the byte length of the valid prefix.
+func (l *Ledger) read() ([]Entry, int, error) {
+	raw, err := os.ReadFile(l.Path) //nolint:gosec // can-core's own path
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	var es []Entry
+	valid := 0
+	rest := string(raw)
+	for rest != "" {
+		line, tail, hasNL := strings.Cut(rest, "\n")
+		var e Entry
+		dec := json.NewDecoder(strings.NewReader(line))
+		dec.DisallowUnknownFields()
+		if strings.TrimSpace(line) != "" {
+			if err := dec.Decode(&e); err != nil {
+				if !hasNL { // torn last line
+					break
+				}
+				return nil, 0, fmt.Errorf("erasure ledger %s: %w", l.Path, err)
+			}
+			es = append(es, e)
+		}
+		valid += len(line)
+		if hasNL {
+			valid++
+		}
+		rest = tail
+	}
+	return es, valid, VerifyChain(es)
+}
+
+// Append records an erasure. Subject ids are only checked against a character
+// pattern: the ledger cannot know that an id is not personal data, so callers
+// must pass opaque ids.
+// It is idempotent per (subject, class): added is
 // false when the pair is already recorded. The file is only ever appended to.
 func (l *Ledger) Append(subject, class string) (e Entry, added bool, err error) {
 	if !subjectRe.MatchString(subject) {
@@ -119,9 +134,14 @@ func (l *Ledger) Append(subject, class string) (e Entry, added bool, err error) 
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	es, err := l.Read()
+	es, valid, err := l.read()
 	if err != nil {
 		return e, false, err
+	}
+	if st, serr := os.Stat(l.Path); serr == nil && int(st.Size()) > valid {
+		if err := os.Truncate(l.Path, int64(valid)); err != nil { // drop a torn tail before appending
+			return e, false, err
+		}
 	}
 	for _, x := range es {
 		if x.Subject == subject && x.Class == class {
@@ -329,6 +349,9 @@ type S3Store struct {
 	SecretAccessKey          string
 	HTTP                     *http.Client
 	Now                      func() time.Time
+	// AllowInsecure permits an http:// endpoint (tests, local MinIO). The default
+	// refuses it: the signed request would otherwise be sent in clear.
+	AllowInsecure bool
 }
 
 func hmacSHA(key []byte, s string) []byte {
@@ -342,7 +365,10 @@ func (s *S3Store) do(ctx context.Context, method, key string, body []byte) ([]by
 	if err != nil || base.Host == "" {
 		return nil, fmt.Errorf("s3: bad endpoint %q", s.Endpoint)
 	}
-	uri := (&url.URL{Path: "/" + s.Bucket + "/" + key}).EscapedPath()
+	if base.Scheme != "https" && (base.Scheme != "http" || !s.AllowInsecure) {
+		return nil, fmt.Errorf("s3: endpoint %q must be https", s.Endpoint)
+	}
+	uri := (&url.URL{Path: strings.TrimRight(base.Path, "/") + "/" + s.Bucket + "/" + key}).EscapedPath()
 	u := base.Scheme + "://" + base.Host + uri
 	req, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(body))
 	if err != nil {
@@ -388,7 +414,7 @@ func (s *S3Store) do(ctx context.Context, method, key string, body []byte) ([]by
 		return nil, err
 	}
 	switch {
-	case resp.StatusCode == http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound && bytes.Contains(data, []byte("NoSuchKey")):
 		return nil, ErrNotFound
 	case resp.StatusCode/100 != 2:
 		return nil, fmt.Errorf("s3 %s %s: HTTP %d", method, key, resp.StatusCode)
@@ -405,4 +431,24 @@ func (s *S3Store) Put(ctx context.Context, key string, data []byte) error {
 // Get implements ObjectStore.
 func (s *S3Store) Get(ctx context.Context, key string) ([]byte, error) {
 	return s.do(ctx, http.MethodGet, key, nil)
+}
+
+// CheckNotBehind refuses a bucket ledger that lacks entries the snapshot's copy
+// has: that is a rolled-back or truncated bucket object. It returns the union
+// of both, which is what restore must apply.
+func CheckNotBehind(bucket, snapshot []Entry) ([]Entry, error) {
+	have := map[string]bool{}
+	for _, e := range bucket {
+		have[e.key()] = true
+	}
+	var missing []string
+	for _, e := range snapshot {
+		if !have[e.key()] {
+			missing = append(missing, e.Subject+"/"+e.Class)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("the bucket's erasure ledger lacks %d entries that the snapshot's copy has (%s): the bucket object was rolled back or truncated; refusing to go live", len(missing), strings.Join(missing, ", "))
+	}
+	return MergeLedgers(bucket, snapshot), nil
 }

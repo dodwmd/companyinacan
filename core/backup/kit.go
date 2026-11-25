@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -65,26 +64,38 @@ type KitInput struct {
 	AccessKeyID, SecretAccessKey string
 	ProviderType                 string
 	ProviderOptions              map[string]any
+	// Password reuses an existing restic password: never generate a second one
+	// for a repository that already exists. Empty means generate.
+	Password string
 }
 
-var secretKeyRe = regexp.MustCompile(`(?i)token|secret|password|passphrase`)
+// kitOptionAllow lists the provider options copied into a kit. It is an
+// allow-list: a new option (possibly a secret) is never copied by default.
+var kitOptionAllow = map[string]bool{
+	"host": true, "port": true, "user": true, "ssh_port": true, "ssh_user": true,
+	"location": true, "server_type": true, "image": true, "region": true, "datacenter": true,
+}
 
 // NewKit generates a kit with a fresh random restic password.
 func NewKit(in KitInput) (*Kit, error) {
-	pw := make([]byte, 32)
-	if _, err := rand.Read(pw); err != nil {
-		return nil, err
+	password := in.Password
+	if password == "" {
+		pw := make([]byte, 32)
+		if _, err := rand.Read(pw); err != nil {
+			return nil, err
+		}
+		password = base64.RawURLEncoding.EncodeToString(pw)
 	}
 	k := &Kit{Version: KitVersion, Created: time.Now().UTC().Truncate(time.Second)}
 	k.Company.Name, k.Company.Domain = in.CompanyName, in.Domain
-	k.Restic.Password = base64.RawURLEncoding.EncodeToString(pw)
+	k.Restic.Password = password
 	k.Restic.Repository = "s3:" + strings.TrimRight(in.Endpoint, "/") + "/" + in.Bucket + "/restic"
 	k.Bucket.Endpoint, k.Bucket.Name, k.Bucket.Region = in.Endpoint, in.Bucket, in.Region
 	k.Bucket.AccessKeyID, k.Bucket.SecretAccessKey = in.AccessKeyID, in.SecretAccessKey
 	k.Provider.Type = in.ProviderType
 	k.Provider.Options = map[string]string{}
 	for key, v := range in.ProviderOptions {
-		if s, ok := v.(string); ok && !secretKeyRe.MatchString(key) {
+		if s, ok := v.(string); ok && kitOptionAllow[key] {
 			k.Provider.Options[key] = s
 		}
 	}
@@ -100,6 +111,8 @@ func (k *Kit) Validate() error {
 		return errors.New("recovery kit: restic password missing or too short")
 	case !strings.HasPrefix(k.Restic.Repository, "s3:"):
 		return errors.New("recovery kit: repository must be an s3: URL")
+	case !strings.HasPrefix(k.Bucket.Endpoint, "https://"):
+		return errors.New("recovery kit: bucket endpoint must be an https:// URL")
 	case k.Bucket.AccessKeyID == "" || k.Bucket.SecretAccessKey == "":
 		return errors.New("recovery kit: bucket credentials missing")
 	case k.Provider.Type == "":
@@ -157,23 +170,17 @@ func (k *Kit) Repo(passwordFile string) Repo {
 // PasswordFile writes the restic password to a 0600 file in dir and returns its
 // path and a cleanup func. The password is never passed on a command line.
 func (k *Kit) PasswordFile(dir string) (string, func(), error) {
-	f, err := os.CreateTemp(dir, "restic-pw-")
+	d, err := os.MkdirTemp(dir, "can-restic-")
 	if err != nil {
 		return "", nil, err
 	}
-	name := f.Name()
-	cleanup := func() { _ = os.Remove(name) }
-	if err := os.Chmod(name, 0o600); err != nil {
-		_ = f.Close()
+	cleanup := func() { _ = os.RemoveAll(d) }
+	name := filepath.Join(d, "password")
+	if err := os.WriteFile(name, []byte(k.Restic.Password), 0o600); err != nil {
 		cleanup()
 		return "", nil, err
 	}
-	if _, err := f.WriteString(k.Restic.Password); err != nil {
-		_ = f.Close()
-		cleanup()
-		return "", nil, err
-	}
-	return name, cleanup, f.Close()
+	return name, cleanup, nil
 }
 
 // --- encryption: argon2id + XChaCha20-Poly1305 ----------------------------
@@ -298,13 +305,26 @@ func ParseKit(data []byte, ask func(prompt string) (string, error)) (*Kit, error
 	return decodeKit(bytes.TrimSpace(data))
 }
 
-// insideGitRepo reports whether path lies in a git working tree.
+// insideGitRepo reports whether path lies in a git working tree. Symlinks are
+// resolved first, so a link from outside into a repository does not hide it.
 func insideGitRepo(path string) bool {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return true // fail closed
 	}
-	for dir := filepath.Dir(abs); ; dir = filepath.Dir(dir) {
+	existing, tail := filepath.Dir(abs), ""
+	for { // deepest existing ancestor
+		if _, err := os.Lstat(existing); err == nil || existing == filepath.Dir(existing) {
+			break
+		}
+		tail = filepath.Join(filepath.Base(existing), tail)
+		existing = filepath.Dir(existing)
+	}
+	if r, err := filepath.EvalSymlinks(existing); err == nil {
+		existing = r
+	}
+	dir := filepath.Join(existing, tail)
+	for ; ; dir = filepath.Dir(dir) {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			return true
 		}
@@ -334,7 +354,28 @@ func WriteKitFile(path string, k *Kit, passphrase string) error {
 		_ = os.Remove(path)
 		return err
 	}
-	return f.Close()
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return err
+	}
+	// Read it back and decrypt it: a kit that cannot be opened is worse than none.
+	back, err := os.ReadFile(path) //nolint:gosec // just written
+	if err == nil {
+		var got *Kit
+		if got, err = ParseKit(back, func(string) (string, error) { return passphrase, nil }); err == nil && got.Restic.Password != k.Restic.Password {
+			err = errors.New("decrypted kit differs from the original")
+		}
+	}
+	if err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("verifying the written kit file: %w", err)
+	}
+	return nil
 }
 
 // PrintOnce shows the kit after an explicit confirmation and asks the operator

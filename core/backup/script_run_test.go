@@ -27,6 +27,9 @@ func newScriptEnv(t *testing.T, resticExit string) *scriptEnv {
 	e := &scriptEnv{dir: dir, calls: filepath.Join(dir, "calls.log")}
 	s := DefaultSettings()
 	s.DumpsDir, s.StateDir, s.K3sDir, s.ConfigDir = dir+"/dumps", dir+"/state", dir+"/k3s", dir+"/conf"
+	s.HostStateDir = dir + "/state/host"
+	s.LedgerSource = dir + "/ledger.jsonl"
+	s.CanBin = dir + "/bin/can"
 	s.PVCRoot = dir + "/pvc"
 	s.Repository = "s3:https://s3.example.invalid/b/r"
 	e.s = s
@@ -42,10 +45,12 @@ func newScriptEnv(t *testing.T, resticExit string) *scriptEnv {
 	}
 	write(s.ConfigDir+"/"+EnvFileName, "AWS_ACCESS_KEY_ID=fake\n", 0o600)
 	write(s.ConfigDir+"/"+PasswordFileName, "pw\n", 0o600)
-	write(dir+"/bin/restic", fmt.Sprintf("#!/bin/sh\necho \"restic $*\" >> %s\ncase \"$1\" in backup) exit %s;; esac\nexit 0\n", e.calls, resticExit), 0o755)
+	write(dir+"/bin/restic", fmt.Sprintf("#!/bin/sh\necho \"restic $*\" >> %s\ncase \"$1\" in backup) [ -x %s/on-backup ] && %s/on-backup; exit %s;; esac\nexit 0\n", e.calls, dir, dir, resticExit), 0o755)
+	write(dir+"/bin/can", fmt.Sprintf("#!/bin/sh\necho \"can $*\" >> %s\nexit $(cat %s/can-rc 2>/dev/null || echo 0)\n", e.calls, dir), 0o755)
+	write(dir+"/bin/curl", fmt.Sprintf("#!/bin/sh\necho \"curl $*\" >> %s\ncat >> %s/curl.stdin\n", e.calls, dir), 0o755)
 	write(dir+"/bin/logger", "#!/bin/sh\nexit 0\n", 0o755)
 	p, _ := testPlan()
-	p.Sources = []string{s.DumpsDir}
+	p.Sources = []string{s.DumpsDir, s.HostStateDir}
 	p.Excludes = nil
 	e.script = dir + "/can-backup"
 	write(e.script, GenerateScript(p, s), 0o755)
@@ -104,12 +109,12 @@ func TestScriptRunSuccess(t *testing.T) {
 		t.Fatalf("code %d\n%s", code, out)
 	}
 	calls := e.calledRestic()
-	for _, want := range []string{"restic unlock", "restic backup --tag can --tag run-r9", "restic forget --keep-within 35d --prune"} {
+	for _, want := range []string{"restic unlock", "restic backup --tag can --tag run-r9", "restic forget --group-by  --keep-within 35d --prune --tag can"} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("missing call %q in:\n%s", want, calls)
 		}
 	}
-	m, err := os.ReadFile(e.s.DumpsDir + "/" + ManifestName)
+	m, err := os.ReadFile(e.s.HostStateDir + "/" + ManifestName)
 	if err != nil || !strings.Contains(string(m), "./a.dump") {
 		t.Errorf("manifest not written: %v %q", err, m)
 	}
@@ -141,5 +146,168 @@ func TestScriptRunLocked(t *testing.T) {
 	code, out := e.run(t)
 	if code != ExitLocked {
 		t.Fatalf("code %d, want %d\n%s", code, ExitLocked, out)
+	}
+}
+
+func (e *scriptEnv) fresh(t *testing.T) {
+	t.Helper()
+	_ = os.WriteFile(e.s.DumpsDir+"/a.dump", []byte("x"), 0o600)
+	_ = WriteMarker(e.s.DumpsDir+"/"+MarkerName, Marker{RunID: "r1", FinishedAt: time.Now()})
+}
+
+func TestScriptRunMarkerChangedDuringBackup(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	hook := fmt.Sprintf("#!/bin/sh\nprintf 'run_id=r2\\nfinished_at=%d\\n' > %s/%s\n", time.Now().Unix(), e.s.DumpsDir, MarkerName)
+	_ = os.WriteFile(e.dir+"/on-backup", []byte(hook), 0o755)
+	code, out := e.run(t)
+	if code != ExitMarkerStale {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	calls := e.calledRestic()
+	if !strings.Contains(calls, "restic tag --tag attempt-") || !strings.Contains(calls, "--add inconsistent") {
+		t.Errorf("snapshot not tagged inconsistent:\n%s", calls)
+	}
+	if strings.Contains(calls, "forget") {
+		t.Error("forget ran after an inconsistent snapshot")
+	}
+}
+
+func TestScriptRunLedgerSyncedEvenWhenBackupFails(t *testing.T) {
+	e := newScriptEnv(t, "1")
+	e.fresh(t)
+	_ = os.WriteFile(e.s.LedgerSource, []byte("{}\n"), 0o600)
+	code, _ := e.run(t)
+	if code != ExitBackupFailed {
+		t.Fatalf("code %d, want the backup failure to win", code)
+	}
+	if b, _ := os.ReadFile(e.calls); !strings.Contains(string(b), "can backup ledger-sync") {
+		t.Errorf("ledger not synced:\n%s", b)
+	}
+	if _, err := os.Stat(e.s.HostStateDir + "/" + LedgerCopy); err != nil {
+		t.Error("ledger copy missing from host state (it goes into the snapshot)")
+	}
+}
+
+func TestScriptRunLedgerSyncedWithoutMarker(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	_ = os.WriteFile(e.s.LedgerSource, []byte("{}\n"), 0o600)
+	code, _ := e.run(t)
+	if code != ExitMarkerMissing {
+		t.Fatalf("code %d", code)
+	}
+	if b, _ := os.ReadFile(e.calls); !strings.Contains(string(b), "can backup ledger-sync") {
+		t.Error("ledger not synced when the marker is missing")
+	}
+}
+
+func TestScriptRunLedgerFailureCode(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	_ = os.WriteFile(e.s.LedgerSource, []byte("{}\n"), 0o600)
+	_ = os.WriteFile(e.dir+"/can-rc", []byte("1"), 0o600)
+	code, _ := e.run(t)
+	if code != ExitLedgerFailed {
+		t.Fatalf("code %d, want %d", code, ExitLedgerFailed)
+	}
+	if !strings.Contains(e.calledRestic(), "restic forget") {
+		t.Error("backup and forget must still run when only the ledger failed")
+	}
+}
+
+func TestScriptRunResticExit3IsASnapshot(t *testing.T) {
+	e := newScriptEnv(t, "3")
+	e.fresh(t)
+	code, out := e.run(t)
+	if code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if !strings.Contains(e.calledRestic(), "restic forget") {
+		t.Error("exit 3 is a created snapshot; forget must run")
+	}
+	if !strings.Contains(out, "exit 3") {
+		t.Error("exit 3 not reported explicitly")
+	}
+}
+
+func TestScriptRunRefusesSymlinkInDumps(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	_ = os.Symlink("/etc/shadow", e.s.DumpsDir+"/evil")
+	code, _ := e.run(t)
+	if code != ExitUnsafeDumps {
+		t.Fatalf("code %d, want %d", code, ExitUnsafeDumps)
+	}
+	if strings.Contains(e.calledRestic(), "backup") {
+		t.Error("backup ran with a symlink in the dumps dir")
+	}
+}
+
+func TestScriptRunRefusesWorldWritableDumps(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	_ = os.Chmod(e.s.DumpsDir, 0o777)
+	if code, _ := e.run(t); code != ExitUnsafeDumps {
+		t.Fatalf("code %d", code)
+	}
+}
+
+func TestScriptRunHostStateOutsideDumps(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d %s", code, out)
+	}
+	if _, err := os.Stat(e.s.DumpsDir + "/" + ManifestName); err == nil {
+		t.Error("manifest written into the can-core-writable dumps dir")
+	}
+	if b, err := os.ReadFile(e.s.HostStateDir + "/" + MarkerCopy); err != nil || !strings.Contains(string(b), "run_id=r1") {
+		t.Errorf("marker copy: %v %q", err, b)
+	}
+	// Each snapshot is ungrouped and the host state dir is a restic source.
+	if c := e.calledRestic(); !strings.Contains(c, e.s.HostStateDir) {
+		t.Errorf("host state not backed up:\n%s", c)
+	}
+}
+
+func TestScriptRunWebhookSecretNotOnArgv(t *testing.T) {
+	e := newScriptEnv(t, "1")
+	e.fresh(t)
+	_ = os.WriteFile(e.s.ConfigDir+"/"+WebhookFileName, []byte("https://hooks.example.invalid/SECRETTOKEN\n"), 0o600)
+	e.run(t)
+	b, _ := os.ReadFile(e.calls)
+	if strings.Contains(string(b), "SECRETTOKEN") {
+		t.Errorf("webhook secret on argv:\n%s", b)
+	}
+	in, _ := os.ReadFile(e.dir + "/curl.stdin")
+	if !strings.Contains(string(in), `url = "https://hooks.example.invalid/SECRETTOKEN"`) {
+		t.Errorf("curl config not on stdin: %q", in)
+	}
+	if !strings.Contains(string(b), "-K -") {
+		t.Errorf("curl -K - missing:\n%s", b)
+	}
+}
+
+func TestScriptJSONEscape(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	body, _ := os.ReadFile(e.script)
+	fn := string(body[strings.Index(string(body), "json_escape() {"):])
+	fn = fn[:strings.Index(fn, "\n}\n")+3]
+	cmd := exec.Command("bash", "-c", fn+`json_escape "$1"`, "x", "a\"b\\c\nd\te\x01f")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != `a\"b\\c d ef` {
+		t.Errorf("escaped = %q", out)
+	}
+}
+
+func TestScriptStateDirCreatedBeforeLock(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	_ = os.RemoveAll(e.s.StateDir)
+	e.fresh(t)
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d %s", code, out)
 	}
 }

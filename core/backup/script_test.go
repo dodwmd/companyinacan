@@ -35,7 +35,7 @@ func testPlan() (*Plan, Settings) {
 	s := DefaultSettings()
 	s.Repository = "s3:https://s3.example.invalid/company-backups/restic"
 	p := &Plan{
-		Sources:  []string{s.DumpsDir, s.PVCRoot},
+		Sources:  []string{s.DumpsDir, s.PVCRoot, s.HostStateDir},
 		Excludes: []string{"/var/lib/rancher/k3s/storage/pvc-*_mod-forms_*/**/*.db"},
 		Dumps:    []Dump{{Module: "forms", File: "modules/forms.dump"}},
 	}
@@ -51,6 +51,7 @@ func TestUnitGolden(t *testing.T) {
 	_, s := testPlan()
 	golden(t, "can-backup.service.golden", GenerateService(s))
 	golden(t, "can-backup.timer.golden", GenerateTimer(s))
+	golden(t, "can-backup-failure.service.golden", GenerateFailureService())
 }
 
 func TestScriptDeterministic(t *testing.T) {
@@ -68,7 +69,7 @@ func TestScriptProperties(t *testing.T) {
 		"set -Eeuo pipefail",
 		"flock -n 9",
 		"restic unlock",
-		"forget --keep-within 35d",
+		"forget --group-by '' --keep-within 35d",
 		"--prune",
 		"logger -t can-backup",
 		"RESTIC_PASSWORD_FILE",
@@ -96,6 +97,11 @@ func TestScriptProperties(t *testing.T) {
 	for _, bad := range []string{"Environment=", "RESTIC_PASSWORD", "AWS_"} {
 		if strings.Contains(svc, bad) {
 			t.Errorf("unit carries credentials via %q", bad)
+		}
+	}
+	for _, want := range []string{"OnFailure=can-backup-failure.service", "ProtectSystem=strict", "ReadWritePaths="} {
+		if !strings.Contains(svc, want) {
+			t.Errorf("unit lacks %q", want)
 		}
 	}
 	if !strings.Contains(svc, "Type=oneshot") || !strings.Contains(GenerateTimer(s), "Persistent=true") {
@@ -156,6 +162,7 @@ func TestSystemdAnalyzeVerify(t *testing.T) {
 	tmr := filepath.Join(dir, "can-backup.timer")
 	_ = os.WriteFile(svc, []byte(GenerateService(s)), 0o644)
 	_ = os.WriteFile(tmr, []byte(GenerateTimer(s)), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "can-backup-failure.service"), []byte(GenerateFailureService()), 0o644)
 	out, err := exec.Command(sa, "verify", svc, tmr).CombinedOutput()
 	if err != nil {
 		var ours []string

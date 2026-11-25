@@ -1,0 +1,6 @@
+[Unit]
+Description=Company in a Can backup failed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/logger -t can-backup -p user.crit "can-backup.service failed; see: journalctl -u can-backup.service"

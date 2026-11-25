@@ -45,6 +45,14 @@ bucket, host or cluster and is **not** done (see docs/backup-restore.md).
 - [x] T016 `core/cli/backup.go`; register in `root.go`; `Hooks` in `core/config/module.go`
 - [x] T017 `docs/backup-restore.md` with the restore-time measurement procedure and the unverified list
 
+## QA round 1 (PR #12)
+
+- [x] T023 Marker re-check and `inconsistent` tagging; restore requires a consistent marker and picks a good snapshot
+- [x] T024 Ledger sync independent of the backup; restic exit 3 handled; ledger copy in every snapshot, rollback refused
+- [x] T025 `forget --group-by ''`; host state in a root-owned directory; symlink and permission refusals; unit hardening and OnFailure
+- [x] T026 Blank-host guard, staging validation, volume overwrite guard; kit passphrase confirmation and read-back, existing password and repository checks, option allow-list
+- [x] T027 Webhook URL off argv, JSON escaping, quoted env file, S3 https/NoSuchKey/path prefix, torn ledger line, restore state fsync and snapshot pin rules
+
 ## Not done
 
 - [ ] T018 [V] Real can-core `Cluster` and `Provisioner` adapters (E03, E06 follow-up)

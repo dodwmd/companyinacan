@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,7 +57,7 @@ func TestResticArgvAndCredentials(t *testing.T) {
 		"restic snapshots --json",
 		"restic restore latest --target /tmp/x --include /var/lib/can/dumps",
 		"restic check --read-data",
-		"restic forget --keep-within 35d --prune --tag can",
+		"restic forget --group-by  --keep-within 35d --prune --tag can",
 	}
 	for i, w := range want {
 		if joined[i] != w {
@@ -132,7 +133,7 @@ func fakeRepo(files map[string]string) *FakeRestic {
 		f.Files["/var/lib/can/dumps/"+p] = []byte(c)
 		fmt.Fprintf(&man, "%s  ./%s\n", hashOf([]byte(c)), p)
 	}
-	f.Files["/var/lib/can/dumps/"+ManifestName] = []byte(man.String())
+	f.Files["/var/lib/can/host-state/"+ManifestName] = []byte(man.String())
 	return f
 }
 
@@ -176,7 +177,7 @@ func TestVerifyFailures(t *testing.T) {
 		t.Error("no snapshots must fail verify")
 	}
 	noMan := fakeRepo(map[string]string{"a": "A"})
-	delete(noMan.Files, "/var/lib/can/dumps/"+ManifestName)
+	delete(noMan.Files, "/var/lib/can/host-state/"+ManifestName)
 	if _, err := Verify(ctx, noMan, o); err == nil {
 		t.Error("missing manifest must fail verify")
 	}
@@ -208,5 +209,22 @@ func TestStatus(t *testing.T) {
 	rep = Status(context.Background(), old, dir, now, 24*time.Hour)
 	if len(rep.Problems) == 0 {
 		t.Error("stale snapshot not flagged")
+	}
+}
+
+func TestEnvFileQuotingRoundTrip(t *testing.T) {
+	in := []string{"AWS_ACCESS_KEY_ID=AKIA", "AWS_SECRET_ACCESS_KEY=pa ss'w\"o$rd`x`\\y;&|<>#"}
+	p := filepath.Join(t.TempDir(), "restic.env")
+	if err := os.WriteFile(p, []byte(FormatEnvFile(in)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadEnvFile(p)
+	if err != nil || strings.Join(got, "\n") != strings.Join(in, "\n") {
+		t.Fatalf("go parse: %v %q", err, got)
+	}
+	// The backup script sources the same file with bash: both must agree.
+	out, err := exec.Command("bash", "-c", `set -a; . "$1"; printf %s "$AWS_SECRET_ACCESS_KEY"`, "x", p).Output()
+	if err != nil || string(out) != strings.TrimPrefix(in[1], "AWS_SECRET_ACCESS_KEY=") {
+		t.Fatalf("bash parse: %v %q", err, out)
 	}
 }

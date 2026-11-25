@@ -10,7 +10,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -74,16 +76,20 @@ type Restore struct {
 	Cluster     Cluster
 	Ledger      LedgerSource
 
-	Root       string // host root the dumps are restored under (default "/")
-	DumpsDir   string
-	PVCRoot    string
-	StagingDir string // scratch for the PVC restore (must have room for the data)
-	CompanyDir string // company.yaml is written back here ("" skips)
-	StatePath  string
-	Snapshot   string // "" = latest, pinned on first run
+	Root         string // host root the dumps are restored under (default "/")
+	DumpsDir     string
+	HostStateDir string // holds the manifest, marker copy and ledger copy (default Settings.HostStateDir)
+	PVCRoot      string
+	StagingDir   string // scratch for the PVC restore (must have room for the data)
+	CompanyDir   string // company.yaml is written back here ("" skips)
+	StatePath    string
+	Snapshot     string // "" = latest, pinned on first run
 
 	AllowNoLedger bool // proceed when the bucket has no ledger at all
-	Out           io.Writer
+	// Force skips the blank-host guard (dumps dir, volumes) and accepts a bucket
+	// ledger that is behind the snapshot's copy. Dangerous: overwrites data.
+	Force bool
+	Out   io.Writer
 }
 
 // Restore step ids, in order.
@@ -117,7 +123,8 @@ type restoreState struct {
 	Snapshot    string               `json:"snapshot"`
 	Steps       map[string]stepState `json:"steps"`
 	Modules     []string             `json:"modules,omitempty"`
-	LedgerDone  int                  `json:"ledger_done"`
+	DumpsDone   bool                 `json:"dumps_restored,omitempty"`
+	Applied     []string             `json:"ledger_applied,omitempty"` // "subject\x00class" keys already purged
 }
 
 // PlanStep is one line of `can restore --plan`.
@@ -169,14 +176,34 @@ func (o *Restore) save(st *restoreState) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(o.StatePath), 0o700); err != nil {
+	dir := filepath.Dir(o.StatePath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	tmp := o.StatePath + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // operator-chosen path
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, o.StatePath)
+	if _, err := f.Write(b); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, o.StatePath); err != nil {
+		return err
+	}
+	if d, err := os.Open(dir); err == nil { //nolint:gosec // same directory
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
 
 // Plan lists the six steps and which are already done. It touches nothing
@@ -236,24 +263,103 @@ func (o *Restore) stepProvision(ctx context.Context, _ *restoreState) error {
 	return o.Provisioner.Provision(ctx, o.Kit)
 }
 
-// pin resolves and records the snapshot once, so a resume never mixes snapshots.
+func (o *Restore) hostState() string {
+	if o.HostStateDir == "" {
+		return DefaultSettings().HostStateDir
+	}
+	return o.HostStateDir
+}
+
+// markersAt reads the dumps marker and the copy the backup took under, both
+// below root, and requires them to agree (same run id and finish time).
+func (o *Restore) markersAt(root string) (Marker, error) {
+	under := func(p string) string { return filepath.Join(root, filepath.FromSlash(p)) }
+	m, err := ReadMarker(filepath.Join(under(o.DumpsDir), MarkerName))
+	if err != nil {
+		return m, fmt.Errorf("snapshot dumps: %w", err)
+	}
+	c, err := ReadMarker(filepath.Join(under(o.hostState()), MarkerCopy))
+	if err != nil {
+		return m, fmt.Errorf("snapshot host state: %w", err)
+	}
+	if c.RunID != m.RunID || !c.FinishedAt.Equal(m.FinishedAt) {
+		return m, fmt.Errorf("dumps marker (run %s) differs from the marker the backup ran under (run %s): inconsistent snapshot", m.RunID, c.RunID)
+	}
+	return m, nil
+}
+
+// pin resolves and records the snapshot once, so a resume never mixes
+// snapshots. Without --snapshot it picks the newest snapshot that is tagged
+// "can", not tagged "inconsistent", and whose completion marker is present
+// and consistent; older good snapshots are the fallback.
 func (o *Restore) pin(ctx context.Context, st *restoreState) (string, error) {
 	if st.Snapshot != "" {
+		if o.Snapshot != "" && o.Snapshot != st.Snapshot {
+			return "", fmt.Errorf("this restore was started with snapshot %s; --snapshot %s conflicts (delete %s to start over)", st.Snapshot, o.Snapshot, o.StatePath)
+		}
 		return st.Snapshot, nil
 	}
 	if o.Snapshot != "" {
 		st.Snapshot = o.Snapshot
-	} else {
-		snaps, err := o.Restic.Snapshots(ctx)
+		return st.Snapshot, o.save(st)
+	}
+	snaps, err := o.Restic.Snapshots(ctx)
+	if err != nil {
+		return "", err
+	}
+	var rejected []string
+	tried := 0
+	for _, sn := range snaps {
+		if !slices.Contains(sn.Tags, "can") || slices.Contains(sn.Tags, "inconsistent") {
+			continue
+		}
+		if tried++; tried > 10 {
+			break
+		}
+		tmp, err := os.MkdirTemp("", "can-probe-")
 		if err != nil {
 			return "", err
 		}
-		if len(snaps) == 0 {
-			return "", errors.New("repository has no snapshots")
+		err = o.Restic.Restore(ctx, sn.ID, tmp, []string{path.Join(o.DumpsDir, MarkerName), path.Join(o.hostState(), MarkerCopy)})
+		if err == nil {
+			_, err = o.markersAt(tmp)
 		}
-		st.Snapshot = snaps[0].ID
+		_ = os.RemoveAll(tmp)
+		if err != nil {
+			rejected = append(rejected, sn.ID+": "+err.Error())
+			continue
+		}
+		st.Snapshot = sn.ID
+		return sn.ID, o.save(st)
 	}
-	return st.Snapshot, o.save(st)
+	if len(rejected) > 0 {
+		return "", fmt.Errorf("no usable snapshot; rejected: %s", strings.Join(rejected, "; "))
+	}
+	return "", errors.New("repository has no usable snapshot (tagged can and not inconsistent)")
+}
+
+const dumpsGuardMarker = ".can-restore-in-progress"
+
+// blankHost refuses to restore over existing data: the dumps and host-state
+// directories must be absent or empty, or hold our in-progress marker.
+func (o *Restore) blankHost() error {
+	dumps := o.hostPath(o.DumpsDir)
+	if _, err := os.Stat(filepath.Join(dumps, dumpsGuardMarker)); err == nil {
+		return nil // resuming our own partial restore
+	}
+	for _, d := range []string{dumps, o.hostPath(o.hostState())} {
+		ents, err := os.ReadDir(d)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if len(ents) > 0 && !o.Force {
+			return fmt.Errorf("%s is not empty: this does not look like a blank host (use --force to restore over it; existing files will be overwritten)", d)
+		}
+	}
+	return nil
 }
 
 func (o *Restore) stepDumps(ctx context.Context, st *restoreState) error {
@@ -261,21 +367,43 @@ func (o *Restore) stepDumps(ctx context.Context, st *restoreState) error {
 	if err != nil {
 		return err
 	}
-	if err := o.Restic.Restore(ctx, snap, o.root(), []string{o.DumpsDir}); err != nil {
-		return err
-	}
-	if err := o.checkDumps(); err != nil {
-		return err
+	if !st.DumpsDone {
+		if err := o.blankHost(); err != nil {
+			return err
+		}
+		dumps := o.hostPath(o.DumpsDir)
+		if err := os.MkdirAll(dumps, 0o700); err != nil {
+			return err
+		}
+		guard := filepath.Join(dumps, dumpsGuardMarker)
+		if err := os.WriteFile(guard, nil, 0o600); err != nil {
+			return err
+		}
+		if err := o.Restic.Restore(ctx, snap, o.root(), []string{o.DumpsDir, o.hostState()}); err != nil {
+			return err
+		}
+		if err := o.checkDumps(); err != nil {
+			return err
+		}
+		_ = os.Remove(guard)
+		st.DumpsDone = true
+		if err := o.save(st); err != nil {
+			return err
+		}
 	}
 	return o.Cluster.ImportState(ctx, o.DumpsDir)
 }
 
-// checkDumps hashes every restored dump against the manifest taken at backup time.
+// checkDumps requires a consistent completion marker and hashes every restored
+// dump against the manifest taken at backup time.
 func (o *Restore) checkDumps() error {
+	if _, err := o.markersAt(o.root()); err != nil {
+		return err
+	}
 	dir := o.hostPath(o.DumpsDir)
-	raw, err := os.ReadFile(filepath.Join(dir, ManifestName)) //nolint:gosec // our restore root
+	raw, err := os.ReadFile(filepath.Join(o.hostPath(o.hostState()), ManifestName)) //nolint:gosec // our restore root
 	if err != nil {
-		return fmt.Errorf("restored dumps have no %s: %w", ManifestName, err)
+		return fmt.Errorf("restored host state has no %s: %w", ManifestName, err)
 	}
 	man, err := ParseManifest(raw)
 	if err != nil {
@@ -333,9 +461,70 @@ func (o *Restore) stepHooks(ctx context.Context, st *restoreState) error {
 	return nil
 }
 
+const stagingMarker = ".can-restore-staging"
+const copyMarker = ".can-restore-copying"
+
+// checkStaging refuses root, shallow paths and non-empty unmarked directories:
+// the staging directory is deleted, so it must be ours.
+func checkStaging(p string) error {
+	if p == "" {
+		return errors.New("staging directory not set")
+	}
+	c := filepath.Clean(p)
+	if !filepath.IsAbs(c) {
+		return fmt.Errorf("staging directory %q must be absolute", p)
+	}
+	if n := len(strings.FieldsFunc(c, func(r rune) bool { return r == filepath.Separator })); n < 3 {
+		return fmt.Errorf("staging directory %q is too shallow to be safe to delete (need at least 3 path components)", p)
+	}
+	ents, err := os.ReadDir(c)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(ents) == 0 {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(c, stagingMarker)); err != nil {
+		return fmt.Errorf("staging directory %s is not empty and was not created by can restore; refusing to delete it", c)
+	}
+	return nil
+}
+
+// copyVolume copies one staged volume into the new one. A destination that
+// already holds data is refused unless it carries our in-progress marker (an
+// earlier interrupted copy) or Force is set.
+func (o *Restore) copyVolume(src, dst string) error {
+	guard := filepath.Join(dst, copyMarker)
+	if _, err := os.Stat(guard); err != nil {
+		ents, rerr := os.ReadDir(dst)
+		if rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+			return rerr
+		}
+		if len(ents) > 0 && !o.Force {
+			return fmt.Errorf("volume %s already holds data; refusing to overwrite it (use --force)", dst)
+		}
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil { //nolint:gosec // CopyTree sets modes
+		return err
+	}
+	if err := os.WriteFile(guard, nil, 0o600); err != nil {
+		return err
+	}
+	if err := CopyTree(src, dst); err != nil {
+		return err
+	}
+	return os.Remove(guard)
+}
+
 func (o *Restore) stepPVCs(ctx context.Context, st *restoreState) error {
 	snap, err := o.pin(ctx, st)
 	if err != nil {
+		return err
+	}
+	if err := checkStaging(o.StagingDir); err != nil {
 		return err
 	}
 	if err := o.Cluster.ScaleDown(ctx, st.Modules); err != nil {
@@ -345,6 +534,9 @@ func (o *Restore) stepPVCs(ctx context.Context, st *restoreState) error {
 		return err
 	}
 	if err := os.MkdirAll(o.StagingDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(o.StagingDir, stagingMarker), nil, 0o600); err != nil {
 		return err
 	}
 	defer func() { _ = os.RemoveAll(o.StagingDir) }()
@@ -373,8 +565,13 @@ func (o *Restore) stepPVCs(ctx context.Context, st *restoreState) error {
 	if len(unmatched) > 0 {
 		return fmt.Errorf("backed-up volumes with no matching claim on the new cluster (not restored): %s", strings.Join(unmatched, ", "))
 	}
-	for from, to := range matched {
-		if err := CopyTree(filepath.Join(stagedRoot, from), filepath.Join(o.hostPath(o.PVCRoot), to)); err != nil {
+	froms := make([]string, 0, len(matched))
+	for from := range matched {
+		froms = append(froms, from)
+	}
+	sort.Strings(froms)
+	for _, from := range froms {
+		if err := o.copyVolume(filepath.Join(stagedRoot, from), filepath.Join(o.hostPath(o.PVCRoot), matched[from])); err != nil {
 			return fmt.Errorf("copying %s: %w", from, err)
 		}
 	}
@@ -382,29 +579,49 @@ func (o *Restore) stepPVCs(ctx context.Context, st *restoreState) error {
 }
 
 func (o *Restore) stepErasure(ctx context.Context, st *restoreState) error {
+	// The snapshot carries its own copy of the ledger: a bucket copy that is
+	// shorter than it has been rolled back or truncated.
+	snapEntries, err := (&Ledger{Path: filepath.Join(o.hostPath(o.hostState()), LedgerCopy)}).Read()
+	if err != nil {
+		return fmt.Errorf("ledger copy inside the snapshot: %w", err)
+	}
 	es, err := o.Ledger.Fetch(ctx)
 	switch {
 	case errors.Is(err, ErrNoLedger):
-		if !o.AllowNoLedger {
+		if len(snapEntries) > 0 && !o.Force {
+			return fmt.Errorf("%w, but the snapshot's copy holds %d entries: the bucket object was deleted or rolled back; refusing to go live (--force to apply the snapshot's copy only)", err, len(snapEntries))
+		}
+		if len(snapEntries) == 0 && !o.AllowNoLedger {
 			return fmt.Errorf("%w: refusing to go live without applying erasures (re-run with --allow-no-ledger if no erasure was ever requested)", err)
 		}
 		es = nil
 	case err != nil:
 		return fmt.Errorf("fetching the erasure ledger: %w", err)
 	}
-	if err := VerifyChain(es); err != nil && len(es) > 0 {
-		return err
-	}
-	for i := st.LedgerDone; i < len(es); i++ {
-		if err := o.Cluster.Purge(ctx, es[i].Subject, es[i].Class); err != nil {
-			return fmt.Errorf("purge %s/%s: %w", es[i].Subject, es[i].Class, err)
+	merged, err := CheckNotBehind(es, snapEntries)
+	if err != nil {
+		if !o.Force {
+			return err
 		}
-		st.LedgerDone = i + 1
+		merged = MergeLedgers(es, snapEntries)
+	}
+	applied := map[string]bool{}
+	for _, k := range st.Applied {
+		applied[k] = true
+	}
+	for _, e := range merged {
+		if applied[e.key()] {
+			continue
+		}
+		if err := o.Cluster.Purge(ctx, e.Subject, e.Class); err != nil {
+			return fmt.Errorf("purge %s/%s: %w", e.Subject, e.Class, err)
+		}
+		st.Applied = append(st.Applied, e.key())
 		if err := o.save(st); err != nil {
 			return err
 		}
 	}
-	if err := o.Cluster.ReapplyTombstones(ctx, es); err != nil {
+	if err := o.Cluster.ReapplyTombstones(ctx, merged); err != nil {
 		return err
 	}
 	return o.Cluster.ScaleUp(ctx)

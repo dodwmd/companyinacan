@@ -24,6 +24,7 @@ type Settings struct {
 	K3sDir        string // k3s data directory (datastore copy, token, encryption key)
 	ConfigDir     string // /etc/can/backup.d: restic.env, password, webhook
 	StateDir      string // /var/lib/can: status file, lock
+	HostStateDir  string // root-owned: host state, manifest, marker and ledger copies (a restic source)
 	ScriptPath    string // installed backup script
 	Repository    string // restic repository, e.g. s3:https://host/bucket/restic
 	RetentionDays int    // forget horizon; also the erasure "beyond use" horizon
@@ -42,6 +43,7 @@ func DefaultSettings() Settings {
 		K3sDir:        "/var/lib/rancher/k3s",
 		ConfigDir:     "/etc/can/backup.d",
 		StateDir:      "/var/lib/can",
+		HostStateDir:  "/var/lib/can/host-state",
 		ScriptPath:    "/usr/local/sbin/can-backup",
 		RetentionDays: 35,
 		MaxMarkerAge:  24 * time.Hour,
@@ -61,7 +63,7 @@ var (
 func (s Settings) Validate() error {
 	for name, p := range map[string]string{
 		"dumps dir": s.DumpsDir, "pvc root": s.PVCRoot, "k3s dir": s.K3sDir,
-		"config dir": s.ConfigDir, "state dir": s.StateDir, "script path": s.ScriptPath,
+		"config dir": s.ConfigDir, "state dir": s.StateDir, "host state dir": s.HostStateDir, "script path": s.ScriptPath,
 		"ledger source": s.LedgerSource, "can binary": s.CanBin,
 	} {
 		if !absPathRe.MatchString(p) {
@@ -111,7 +113,7 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
-	p := &Plan{Sources: []string{s.DumpsDir, s.PVCRoot}}
+	p := &Plan{Sources: []string{s.DumpsDir, s.PVCRoot, s.HostStateDir}}
 	ids := make([]string, 0, len(co.Modules))
 	for id, e := range co.Modules {
 		if e.IsEnabled() {

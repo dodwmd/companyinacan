@@ -42,6 +42,7 @@ func makeKit(t *testing.T) (kit, pass, company string) {
 	t.Helper()
 	company = writeCompany(t, testCompany)
 	tmp := t.TempDir()
+	seams(t, noRepoRunner())
 	kit, pass = filepath.Join(tmp, "kit.enc"), filepath.Join(tmp, "pass")
 	if err := os.WriteFile(pass, []byte("a long enough passphrase\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -54,9 +55,19 @@ func makeKit(t *testing.T) (kit, pass, company string) {
 	return kit, pass, company
 }
 
+func noRepoRunner() *backup.FakeRunner {
+	return &backup.FakeRunner{Handle: func(c backup.Cmd) ([]byte, error) {
+		if c.Name == "restic" && c.Args[0] == "cat" {
+			return nil, &backup.CmdError{Code: 10, Stderr: "no repository"}
+		}
+		return nil, nil
+	}}
+}
+
 func TestBackupKitPrintOnce(t *testing.T) {
+	seams(t, noRepoRunner())
 	company := writeCompany(t, testCompany)
-	args := []string{"backup", "kit", "--dir", company, "--endpoint", "https://s3.example.invalid", "--bucket", "acme", "--credentials-file", credsFile(t)}
+	args := []string{"backup", "kit", "--dir", company, "--endpoint", "https://s3.example.invalid", "--bucket", "acme", "--credentials-file", credsFile(t), "--password-file", filepath.Join(t.TempDir(), "none")}
 	code, out, _ := runIn(t, "show\nsaved\n", args...)
 	if code != ExitOK || !strings.Contains(out, "Restic password:") || !strings.Contains(out, "fakesecret") {
 		t.Fatalf("code=%d out=%s", code, out)
@@ -73,6 +84,7 @@ func TestBackupKitPrintOnce(t *testing.T) {
 }
 
 func TestBackupKitRefusesGitTree(t *testing.T) {
+	seams(t, noRepoRunner())
 	company := writeCompany(t, testCompany)
 	_ = os.Mkdir(filepath.Join(company, ".git"), 0o755)
 	pass := filepath.Join(t.TempDir(), "p")
@@ -266,6 +278,95 @@ func TestLedgerAddCmd(t *testing.T) {
 	}
 	code, _, errs := runIn(t, "", "backup", "ledger-add", "--ledger", l, "--subject", "jane@example.com", "--class", "x")
 	if code != ExitFailure || !strings.Contains(errs, "PII") {
+		t.Fatalf("code=%d %s", code, errs)
+	}
+}
+
+func kitArgs(t *testing.T, extra ...string) []string {
+	t.Helper()
+	company := writeCompany(t, testCompany)
+	return append([]string{"backup", "kit", "--dir", company, "--endpoint", "https://s3.example.invalid", "--bucket", "acme",
+		"--credentials-file", credsFile(t)}, extra...)
+}
+
+func TestBackupKitRefusesWhenRepositoryExists(t *testing.T) {
+	for name, err := range map[string]error{"exists": nil, "wrong password": &backup.CmdError{Code: 12, Stderr: "wrong password"}} {
+		fr := &backup.FakeRunner{Handle: func(backup.Cmd) ([]byte, error) { return nil, err }}
+		seams(t, fr)
+		code, out, errs := runIn(t, "show\nsaved\n", kitArgs(t, "--password-file", filepath.Join(t.TempDir(), "none"))...)
+		if code != ExitFailure || !strings.Contains(errs, "already exist") || strings.Contains(out, "Restic password") {
+			t.Errorf("%s: code=%d out=%q err=%q", name, code, out, errs)
+		}
+	}
+}
+
+func TestBackupKitReusesExistingPassword(t *testing.T) {
+	fr := &backup.FakeRunner{}
+	seams(t, fr)
+	pw := filepath.Join(t.TempDir(), "restic.password")
+	_ = os.WriteFile(pw, []byte("the-existing-restic-password-0123\n"), 0o600)
+	code, out, errs := runIn(t, "show\nsaved\n", kitArgs(t, "--password-file", pw)...)
+	if code != ExitOK || !strings.Contains(out, "the-existing-restic-password-0123") || !strings.Contains(errs, "reusing") {
+		t.Fatalf("code=%d out=%s err=%s", code, out, errs)
+	}
+	if len(fr.Calls) != 0 {
+		t.Errorf("repo probe ran although the password already exists: %v", fr.Calls)
+	}
+}
+
+func TestBackupKitPassphraseConfirmation(t *testing.T) {
+	seams(t, noRepoRunner())
+	old := newPassphraseSource
+	t.Cleanup(func() { newPassphraseSource = old })
+	answers := []string{"first passphrase!!", "different passphrase"}
+	newPassphraseSource = func(string) func(string) (string, error) {
+		return func(string) (string, error) { a := answers[0]; answers = answers[1:]; return a, nil }
+	}
+	out := filepath.Join(t.TempDir(), "kit.enc")
+	code, _, errs := runIn(t, "", kitArgs(t, "--out", out, "--password-file", filepath.Join(t.TempDir(), "none"))...)
+	if code != ExitFailure || !strings.Contains(errs, "do not match") {
+		t.Fatalf("code=%d %s", code, errs)
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Error("kit written despite mismatched passphrases")
+	}
+	answers = []string{"same passphrase!!", "same passphrase!!"}
+	if code, _, errs := runIn(t, "", kitArgs(t, "--out", out, "--password-file", filepath.Join(t.TempDir(), "none"))...); code != ExitOK {
+		t.Fatalf("code=%d %s", code, errs)
+	}
+}
+
+func TestRestoreHelpSaysNotFunctional(t *testing.T) {
+	_, out, _ := runIn(t, "", "restore", "--help")
+	if !strings.Contains(out, "NOT FUNCTIONAL") {
+		t.Errorf("help must state restore is not functional yet:\n%s", out)
+	}
+}
+
+func TestInstallWritesQuotedEnvAndFailureUnit(t *testing.T) {
+	kit, pass, _ := makeKit(t)
+	company := writeCompany(t, testCompany)
+	root := t.TempDir()
+	if code, _, errs := runIn(t, "", "backup", "install", "--dir", company, "--root", root, "--kit", kit, "--passphrase-file", pass); code != ExitOK {
+		t.Fatalf("code=%d %s", code, errs)
+	}
+	env, _ := os.ReadFile(filepath.Join(root, "etc/can/backup.d", backup.EnvFileName))
+	if !strings.Contains(string(env), "AWS_SECRET_ACCESS_KEY='fakesecret'") {
+		t.Errorf("env values not quoted:\n%s", env)
+	}
+	if _, err := os.Stat(filepath.Join(root, "etc/systemd/system/can-backup-failure.service")); err != nil {
+		t.Error("failure unit not installed")
+	}
+}
+
+func TestLedgerSyncRefusesPlainHTTP(t *testing.T) {
+	dir := t.TempDir()
+	pw := filepath.Join(dir, "pw")
+	_ = os.WriteFile(pw, []byte("pw-pw-pw-pw-pw-pw-pw"), 0o600)
+	l := filepath.Join(dir, "l.jsonl")
+	_, _, _ = runIn(t, "", "backup", "ledger-add", "--ledger", l, "--subject", "s1", "--class", "c")
+	code, _, errs := runIn(t, "", "backup", "ledger-sync", "--ledger", l, "--repo", "s3:http://127.0.0.1:9/b/restic", "--password-file", pw, "--env-file", credsFile(t))
+	if code != ExitFailure || !strings.Contains(errs, "https") {
 		t.Fatalf("code=%d %s", code, errs)
 	}
 }

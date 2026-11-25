@@ -103,8 +103,8 @@ func LoadEnvFile(path string) ([]string, error) {
 		if !ok || k == "" {
 			return nil, fmt.Errorf("%s: malformed line", path)
 		}
-		if n := len(v); n >= 2 && (v[0] == '"' || v[0] == '\'') && v[n-1] == v[0] {
-			v = v[1 : n-1]
+		if v, err = unquoteShell(v); err != nil {
+			return nil, fmt.Errorf("%s: %s: %w", path, k, err)
 		}
 		env = append(env, k+"="+v)
 	}
@@ -174,6 +174,21 @@ func (r *Restic) EnsureInit(ctx context.Context) (created bool, err error) {
 	return true, nil
 }
 
+// EnsureNoRepo returns nil when restic reports that no repository exists
+// (exit 10). If a repository answers, or anything else fails, it returns the
+// error so callers refuse rather than guess.
+func (r *Restic) EnsureNoRepo(ctx context.Context) (bool, error) {
+	_, err := r.run(ctx, "cat", "config")
+	var ce *CmdError
+	if errors.As(err, &ce) && ce.Code == 10 {
+		return true, nil
+	}
+	if err == nil {
+		return false, &CmdError{Cmd: "restic cat config", Code: 0, Stderr: "a repository already exists"}
+	}
+	return false, err
+}
+
 // Check implements ResticAPI.
 func (r *Restic) Check(ctx context.Context, readData bool) error {
 	args := []string{"check"}
@@ -210,6 +225,57 @@ func (r *Restic) Restore(ctx context.Context, snapshot, target string, includes 
 
 // Forget applies the retention policy and prunes.
 func (r *Restic) Forget(ctx context.Context, days int) error {
-	_, err := r.run(ctx, "forget", "--keep-within", fmt.Sprintf("%dd", days), "--prune", "--tag", "can")
+	_, err := r.run(ctx, "forget", "--group-by", "", "--keep-within", fmt.Sprintf("%dd", days), "--prune", "--tag", "can")
 	return err
+}
+
+// shellQuote single-quotes v for sourcing by a POSIX shell.
+func shellQuote(v string) string { return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'" }
+
+// FormatEnvFile renders KEY=VALUE entries as a file the backup script can source
+// and LoadEnvFile reads back identically (values are single-quoted).
+func FormatEnvFile(env []string) string {
+	var b strings.Builder
+	for _, e := range env {
+		k, v, _ := strings.Cut(e, "=")
+		b.WriteString(k + "=" + shellQuote(v) + "\n")
+	}
+	return b.String()
+}
+
+// unquoteShell evaluates one shell word made of '...', "..." and \x parts.
+// No expansion is performed: $ and backticks are literal, as the script's
+// credentials are never meant to expand.
+func unquoteShell(v string) (string, error) {
+	var out strings.Builder
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; c {
+		case '\'':
+			j := strings.IndexByte(v[i+1:], '\'')
+			if j < 0 {
+				return "", errors.New("unterminated single quote")
+			}
+			out.WriteString(v[i+1 : i+1+j])
+			i += j + 1
+		case '"':
+			i++
+			for ; i < len(v) && v[i] != '"'; i++ {
+				if v[i] == '\\' && i+1 < len(v) && strings.ContainsRune("\\\"$`", rune(v[i+1])) {
+					i++
+				}
+				out.WriteByte(v[i])
+			}
+			if i >= len(v) {
+				return "", errors.New("unterminated double quote")
+			}
+		case '\\':
+			i++
+			if i < len(v) {
+				out.WriteByte(v[i])
+			}
+		default:
+			out.WriteByte(c)
+		}
+	}
+	return out.String(), nil
 }

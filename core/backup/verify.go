@@ -50,10 +50,11 @@ func ParseManifest(b []byte) (map[string]string, error) {
 
 // VerifyOptions configure `can backup verify`.
 type VerifyOptions struct {
-	DumpsDir string
-	Sample   int    // number of dump files to restore and hash (default 3)
-	TempDir  string // parent for the scratch restore (default os.TempDir)
-	ReadData bool   // restic check --read-data (slow)
+	DumpsDir     string
+	HostStateDir string // holds the manifest (default Settings.HostStateDir)
+	Sample       int    // number of dump files to restore and hash (default 3)
+	TempDir      string // parent for the scratch restore (default os.TempDir)
+	ReadData     bool   // restic check --read-data (slow)
 }
 
 // VerifyReport is the outcome of Verify.
@@ -91,7 +92,10 @@ func Verify(ctx context.Context, r ResticAPI, o VerifyOptions) (*VerifyReport, e
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
-	manPath := path.Join(o.DumpsDir, ManifestName)
+	if o.HostStateDir == "" {
+		o.HostStateDir = DefaultSettings().HostStateDir
+	}
+	manPath := path.Join(o.HostStateDir, ManifestName)
 	if err := r.Restore(ctx, rep.Snapshot, tmp, []string{manPath}); err != nil {
 		return rep, fmt.Errorf("restoring manifest: %w", err)
 	}

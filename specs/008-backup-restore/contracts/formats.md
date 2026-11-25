@@ -2,7 +2,7 @@
 
 **Completion marker** (`<dumps>/COMPLETE`): `run_id=<id>\nfinished_at=<unix seconds>\n`.
 
-**Manifest** (`<dumps>/MANIFEST.sha256`): `sha256sum` output, paths `./relative`, excluding `COMPLETE` and itself.
+**Host state directory** (`/var/lib/can/host-state`, root-owned, a restic source): `MANIFEST.sha256` (`sha256sum` output, paths `./relative` to the dumps dir, excluding `COMPLETE`), `COMPLETE` (copy of the marker the backup ran under), `erasure-ledger.jsonl` (copy of the ledger), `k3s-state.db`, `token`, `encryption-config.json`.
 
 **Recovery kit**: text with a human summary and a block between `-----BEGIN CAN RECOVERY KIT-----` and
 `-----END CAN RECOVERY KIT-----` holding JSON (see data-model.md). Raw JSON is also accepted. Encrypted form:

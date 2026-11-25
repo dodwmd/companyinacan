@@ -3,6 +3,7 @@ package backup
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -77,17 +78,21 @@ func newRestoreEnv(t *testing.T) *restoreEnv {
 	t.Helper()
 	root := t.TempDir()
 	dumps := "/var/lib/can/dumps"
+	hs := "/var/lib/can/host-state"
+	marker := []byte("run_id=r1\nfinished_at=1800000000\n")
 	files := map[string][]byte{
 		dumps + "/company.yaml":                      []byte("schema: 1\n"),
 		dumps + "/state.db":                          []byte("state"),
 		dumps + "/modules/a.dump":                    []byte("dump-a"),
+		dumps + "/" + MarkerName:                     marker,
+		hs + "/" + MarkerCopy:                        marker,
 		"/pvc/pvc-OLD1_mod-forms_data/uploads/f.txt": []byte("file"),
 	}
-	files[dumps+"/"+ManifestName] = []byte(
+	files[hs+"/"+ManifestName] = []byte(
 		hashOf(files[dumps+"/company.yaml"]) + "  ./company.yaml\n" +
 			hashOf(files[dumps+"/state.db"]) + "  ./state.db\n" +
 			hashOf(files[dumps+"/modules/a.dump"]) + "  ./modules/a.dump\n")
-	rs := &FakeRestic{Snaps: []Snapshot{{ID: "snapA", Time: time.Unix(100, 0)}}, Files: files}
+	rs := &FakeRestic{Snaps: []Snapshot{{ID: "snapA", Time: time.Unix(100, 0), Tags: []string{"can"}}}, Files: files}
 	r := &rec{
 		failOnce: map[string]error{}, modules: []string{"forms"},
 		pvcDirs: []string{"pvc-NEW9_mod-forms_data", "pvc-NEW8_mod-wiki_data"},
@@ -100,7 +105,7 @@ func newRestoreEnv(t *testing.T) *restoreEnv {
 	out := &bytes.Buffer{}
 	o := &Restore{
 		Kit: kit, Provisioner: r, Restic: rs, Cluster: r, Ledger: r,
-		Root: root, DumpsDir: dumps, PVCRoot: "/pvc", StagingDir: filepath.Join(root, "stage"),
+		Root: root, DumpsDir: dumps, HostStateDir: hs, PVCRoot: "/pvc", StagingDir: filepath.Join(root, "stage"),
 		CompanyDir: filepath.Join(root, "company"), StatePath: filepath.Join(root, "restore.json"), Out: out,
 	}
 	return &restoreEnv{r: r, rs: rs, o: o, root: root, out: out}
@@ -125,11 +130,12 @@ func TestRestoreSixStepOrder(t *testing.T) {
 		t.Errorf("scale-up must be last: %v", r.events)
 	}
 	// Dumps restored first, then the PVC area into staging.
-	if len(e.rs.Restores) != 2 || e.rs.Restores[0].Includes[0] != "/var/lib/can/dumps" || e.rs.Restores[1].Includes[0] != "/pvc" {
+	real := e.realRestores()
+	if len(real) != 2 || real[0].Includes[0] != "/var/lib/can/dumps" || real[0].Includes[1] != "/var/lib/can/host-state" || real[1].Includes[0] != "/pvc" {
 		t.Fatalf("restores = %+v", e.rs.Restores)
 	}
-	if e.rs.Restores[0].Snapshot != "snapA" {
-		t.Errorf("snapshot not resolved: %v", e.rs.Restores[0].Snapshot)
+	if real[0].Snapshot != "snapA" {
+		t.Errorf("snapshot not resolved: %v", real[0].Snapshot)
 	}
 	// company.yaml written back, PVC data copied into the NEW volume directory.
 	if b, _ := os.ReadFile(filepath.Join(e.root, "company", "company.yaml")); string(b) != "schema: 1\n" {
@@ -150,7 +156,7 @@ func TestRestoreResumes(t *testing.T) {
 		t.Fatal("expected failure")
 	}
 	// A newer snapshot appearing in between must not change the pinned one.
-	e.rs.Snaps = append(e.rs.Snaps, Snapshot{ID: "snapB", Time: time.Unix(200, 0)})
+	e.rs.Snaps = append(e.rs.Snaps, Snapshot{ID: "snapB", Time: time.Unix(200, 0), Tags: []string{"can"}})
 	if err := e.o.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +169,7 @@ func TestRestoreResumes(t *testing.T) {
 	if n := e.r.count("apply"); n != 2 {
 		t.Errorf("apply ran %d times, want 2 (failed then retried)", n)
 	}
-	for _, c := range e.rs.Restores {
+	for _, c := range e.realRestores() {
 		if c.Snapshot != "snapA" {
 			t.Errorf("resume used snapshot %s", c.Snapshot)
 		}
@@ -316,5 +322,215 @@ func TestCopyTree(t *testing.T) {
 	st, _ := os.Stat(filepath.Join(dst, "a/b/f"))
 	if st.Mode().Perm() != 0o640 {
 		t.Errorf("mode %v", st.Mode())
+	}
+}
+
+// realRestores drops the marker probes pin() does into a scratch directory.
+func (e *restoreEnv) realRestores() []RestoreCall {
+	var out []RestoreCall
+	for _, c := range e.rs.Restores {
+		if !strings.HasSuffix(c.Includes[0], "/"+MarkerName) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func okFiles(e *restoreEnv, run string) map[string][]byte {
+	m := map[string][]byte{}
+	for k, v := range e.rs.Files {
+		m[k] = v
+	}
+	mk := []byte("run_id=" + run + "\nfinished_at=1800000000\n")
+	m["/var/lib/can/dumps/"+MarkerName] = mk
+	m["/var/lib/can/host-state/"+MarkerCopy] = mk
+	return m
+}
+
+func TestRestorePinPrefersConsistentSnapshot(t *testing.T) {
+	e := newRestoreEnv(t)
+	good := okFiles(e, "good")
+	bad := okFiles(e, "new")
+	bad["/var/lib/can/host-state/"+MarkerCopy] = []byte("run_id=old\nfinished_at=1800000000\n") // marker changed during backup
+	delete(bad, "/var/lib/can/dumps/"+MarkerName+"x")
+	noMarker := okFiles(e, "x")
+	delete(noMarker, "/var/lib/can/dumps/"+MarkerName)
+	e.rs.Snaps = []Snapshot{
+		{ID: "snapBad", Time: time.Unix(400, 0), Tags: []string{"can"}},
+		{ID: "snapNoMarker", Time: time.Unix(300, 0), Tags: []string{"can"}},
+		{ID: "snapFlagged", Time: time.Unix(250, 0), Tags: []string{"can", "inconsistent"}},
+		{ID: "snapGood", Time: time.Unix(200, 0), Tags: []string{"can"}},
+		{ID: "snapForeign", Time: time.Unix(500, 0), Tags: []string{"other"}},
+	}
+	e.rs.SnapFiles = map[string]map[string][]byte{"snapBad": bad, "snapNoMarker": noMarker, "snapFlagged": good, "snapGood": good, "snapForeign": good}
+	if err := e.o.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range e.realRestores() {
+		if c.Snapshot != "snapGood" {
+			t.Errorf("restored from %s, want the older good snapshot", c.Snapshot)
+		}
+	}
+}
+
+func TestRestoreNoUsableSnapshot(t *testing.T) {
+	e := newRestoreEnv(t)
+	e.rs.Snaps = []Snapshot{{ID: "s", Time: time.Unix(1, 0), Tags: []string{"can", "inconsistent"}}}
+	if err := e.o.Run(context.Background()); err == nil || e.r.count("import-state") != 0 {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRestoreRequiresMarkerInRestoredDumps(t *testing.T) {
+	e := newRestoreEnv(t)
+	delete(e.rs.Files, "/var/lib/can/dumps/"+MarkerName)
+	e.o.Snapshot = "snapA" // explicit, bypasses the probe: checkDumps must still refuse
+	if err := e.o.Run(context.Background()); err == nil || e.r.count("import-state") != 0 {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRestoreRefusesNonBlankHost(t *testing.T) {
+	e := newRestoreEnv(t)
+	dumps := filepath.Join(e.root, "var/lib/can/dumps")
+	_ = os.MkdirAll(dumps, 0o755)
+	_ = os.WriteFile(filepath.Join(dumps, "existing.db"), []byte("precious"), 0o600)
+	err := e.o.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "blank host") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(e.realRestores()) != 0 {
+		t.Error("restic restore ran over existing data")
+	}
+	e.o.Force = true
+	if err := e.o.Run(context.Background()); err != nil {
+		t.Fatalf("--force: %v", err)
+	}
+}
+
+func TestRestoreResumeAfterPartialDumpsIsAllowed(t *testing.T) {
+	e := newRestoreEnv(t)
+	e.r.failOnce["import-state"] = errors.New("core not ready")
+	if err := e.o.Run(context.Background()); err == nil {
+		t.Fatal("expected failure")
+	}
+	if err := e.o.Run(context.Background()); err != nil {
+		t.Fatalf("resume refused its own restored dumps: %v", err)
+	}
+	if n := len(e.realRestores()); n != 2 {
+		t.Errorf("dumps restored again on resume: %d restores", n)
+	}
+}
+
+func TestStagingValidation(t *testing.T) {
+	for _, p := range []string{"", "/", "/tmp", "/var/lib", "relative/dir/here"} {
+		if checkStaging(p) == nil {
+			t.Errorf("staging %q accepted", p)
+		}
+	}
+	dir := filepath.Join(t.TempDir(), "a", "stage")
+	if err := checkStaging(dir); err != nil {
+		t.Errorf("absent dir rejected: %v", err)
+	}
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "important"), []byte("x"), 0o600)
+	if checkStaging(dir) == nil {
+		t.Error("non-empty foreign directory accepted")
+	}
+	_ = os.WriteFile(filepath.Join(dir, stagingMarker), nil, 0o600)
+	if err := checkStaging(dir); err != nil {
+		t.Errorf("marked directory rejected: %v", err)
+	}
+}
+
+func TestRestoreNeverDeletesForeignStaging(t *testing.T) {
+	e := newRestoreEnv(t)
+	_ = os.MkdirAll(e.o.StagingDir, 0o755)
+	keep := filepath.Join(e.o.StagingDir, "keep.txt")
+	_ = os.WriteFile(keep, []byte("x"), 0o600)
+	if err := e.o.Run(context.Background()); err == nil {
+		t.Fatal("restore used a foreign staging directory")
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatal("foreign staging content deleted")
+	}
+}
+
+func TestRestoreRefusesToOverwriteExistingVolume(t *testing.T) {
+	e := newRestoreEnv(t)
+	vol := filepath.Join(e.root, "pvc", "pvc-NEW9_mod-forms_data")
+	_ = os.WriteFile(filepath.Join(vol, "live.db"), []byte("live data"), 0o600)
+	err := e.o.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Fatalf("err = %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(vol, "live.db")); string(b) != "live data" {
+		t.Error("existing volume data touched")
+	}
+	e.o.Force = true
+	if err := e.o.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestoreLedgerRollbackDetected(t *testing.T) {
+	e := newRestoreEnv(t)
+	snapLedger := MergeLedgers(nil, []Entry{{Subject: "s1", Class: "lead-submission", Date: "2026-11-01"}, {Subject: "s9", Class: "lead-submission", Date: "2026-11-05"}})
+	var b strings.Builder
+	for _, en := range snapLedger {
+		j, _ := json.Marshal(en)
+		b.Write(j)
+		b.WriteString("\n")
+	}
+	e.rs.Files["/var/lib/can/host-state/"+LedgerCopy] = []byte(b.String())
+	// The bucket copy lacks s9 (older than the snapshot's own copy).
+	err := e.o.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "s9/lead-submission") {
+		t.Fatalf("err = %v", err)
+	}
+	if e.r.count("scale-up") != 0 {
+		t.Fatal("went live with a rolled-back ledger")
+	}
+	// If the bucket is ahead, the union is applied (snapshot-only entries included).
+	e2 := newRestoreEnv(t)
+	e2.rs.Files["/var/lib/can/host-state/"+LedgerCopy] = []byte(b.String())
+	e2.r.ledger = MergeLedgers(e2.r.ledger, snapLedger)
+	if err := e2.o.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if e2.r.count("purge s9/") != 1 {
+		t.Errorf("union not applied: %v", e2.r.events)
+	}
+}
+
+func TestRestoreBucketLedgerMissingButSnapshotHasOne(t *testing.T) {
+	e := newRestoreEnv(t)
+	j, _ := json.Marshal(MergeLedgers(nil, []Entry{{Subject: "s1", Class: "c", Date: "2026-11-01"}})[0])
+	e.rs.Files["/var/lib/can/host-state/"+LedgerCopy] = append(j, '\n')
+	e.r.ledger, e.r.ledgErr = nil, ErrNoLedger
+	e.o.AllowNoLedger = true // must NOT be enough when the snapshot proves a ledger existed
+	if err := e.o.Run(context.Background()); err == nil || e.r.count("scale-up") != 0 {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRestoreSnapshotFlagConflictOnResume(t *testing.T) {
+	e := newRestoreEnv(t)
+	e.r.failOnce["apply"] = errors.New("x")
+	_ = e.o.Run(context.Background())
+	e.o.Snapshot = "other"
+	if err := e.o.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "conflicts") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRestoreLedgerAppliedKeyedBySubjectAndClass(t *testing.T) {
+	e := newRestoreEnv(t)
+	e.r.ledger = MergeLedgers(nil, []Entry{{Subject: "s1", Class: "a", Date: "2026-11-01"}, {Subject: "s1", Class: "b", Date: "2026-11-02"}})
+	e.r.failOnce["purge s1/b"] = errors.New("hook failed")
+	_ = e.o.Run(context.Background())
+	_ = e.o.Run(context.Background())
+	if e.r.count("purge s1/a") != 1 || e.r.count("purge s1/b") != 2 {
+		t.Errorf("events = %v", e.r.events)
 	}
 }

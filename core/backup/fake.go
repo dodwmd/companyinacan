@@ -21,7 +21,8 @@ type RestoreCall struct {
 type FakeRestic struct {
 	Snaps       []Snapshot
 	Files       map[string][]byte
-	Corrupt     map[string][]byte // returned instead of Files content
+	SnapFiles   map[string]map[string][]byte // optional per-snapshot content, instead of Files
+	Corrupt     map[string][]byte            // returned instead of Files content
 	CheckErr    error
 	RestoreErr  error
 	CheckCalled bool
@@ -58,7 +59,11 @@ func (f *FakeRestic) Restore(_ context.Context, snapshot, target string, include
 			return fmt.Errorf("fake restic: no snapshot %q", snapshot)
 		}
 	}
-	for p, c := range f.Files {
+	files := f.Files
+	if sf, ok := f.SnapFiles[snapshot]; ok {
+		files = sf
+	}
+	for p, c := range files {
 		if len(includes) > 0 && !underAny(p, includes) {
 			continue
 		}

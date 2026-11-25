@@ -181,7 +181,7 @@ func TestS3StoreSignsAndRoundTrips(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	s := &S3Store{Endpoint: srv.URL, Bucket: "b", Region: "auto", AccessKeyID: "AKIAFAKE", SecretAccessKey: "fakesecret", Now: func() time.Time { return time.Unix(1_800_000_000, 0) }}
+	s := &S3Store{AllowInsecure: true, Endpoint: srv.URL, Bucket: "b", Region: "auto", AccessKeyID: "AKIAFAKE", SecretAccessKey: "fakesecret", Now: func() time.Time { return time.Unix(1_800_000_000, 0) }}
 	ctx := context.Background()
 	if _, err := s.Get(ctx, "ledger/x"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v", err)
