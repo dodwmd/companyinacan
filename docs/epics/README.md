@@ -10,7 +10,7 @@ Epics are ordered by dependency. Phases refer to the roadmap in `SPEC.md` §9.
 
 | # | Epic | Phase | Depends on | Status |
 |---|---|---|---|---|
-| E00 | Phase 0 measurements (k3s baseline, footprint harness, timing) | 0 | — | planned |
+| E00 | Phase 0 measurements (k3s baseline, footprint harness, timing) | 0 | — | partial: CI-runnable part done (harness, k3s/forms/can-static numbers, NetworkPolicy and TokenReview proofs, findings); real 2 GB/4 GB VPS and `make up` timing blocked on a provider account — `specs/009-phase0-measurements/`, `docs/measurements/phase0-ci.md` |
 | E01 | Foundation: repo layout, `can` CLI skeleton, schemas, CI | 1 | — | done — `specs/001-project-foundation/` |
 | E02 | Local dev cluster (`make dev`, k3d provider, base manifests) | 1 | E01 | in review |
 | E03 | can-core MVP (in-cluster control plane, module API, auth, audit) | 1 | E01, E02 | in progress: part 1 (state, auth, registry, audit, events, `can apply` behind interfaces) in `specs/005-can-core-mvp/`; part 2 (Helm installer, email.send, cluster tests) open |

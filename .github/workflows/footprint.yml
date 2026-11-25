@@ -1,0 +1,192 @@
+name: footprint
+
+# Phase 0 measurements (epic E00). NOT a required check: every job is continue-on-error and this
+# file is kept out of ci.yml so it cannot affect the required job names. It runs real k3d clusters
+# on GitHub's ubuntu runner, so the numbers describe THAT machine (2-4 vCPU, ~16 GB RAM), not a
+# 2 GB VPS: see docs/measurements/phase0-ci.md for what they do and do not prove.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "dev/footprint/**"
+      - "core/footprint/**"
+      - "test/integration/**"
+      - "deploy/**"
+      - ".github/workflows/footprint.yml"
+
+permissions:
+  contents: read
+
+env:
+  CAN: bin/can
+
+jobs:
+  baseline:
+    name: baseline-${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [default, trimmed, lean]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - run: go build -o bin/can ./cmd/can
+      - name: Measure idle RAM (k3s + Traefik + CoreDNS + local-path, no workload)
+        run: |
+          dev/footprint/measure.sh --label "baseline-${{ matrix.variant }}" --name "fp-${{ matrix.variant }}" \
+            --k3d-config "dev/footprint/k3d-${{ matrix.variant }}.yaml" --out "out/${{ matrix.variant }}"
+      - name: Summary
+        if: always()
+        run: |
+          [ -f "out/${{ matrix.variant }}/report.json" ] && dev/footprint/summary.sh "out/${{ matrix.variant }}" >>"$GITHUB_STEP_SUMMARY" || true
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A || true
+          docker ps -a || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: footprint-baseline-${{ matrix.variant }}
+          path: out/
+          if-no-files-found: ignore
+
+  platform:
+    name: platform-base
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - run: go build -o bin/can ./cmd/can
+      - name: Measure idle RAM with deploy/base applied (can dev up, i.e. dev/k3d.yaml plus deploy/base)
+        run: dev/footprint/measure.sh --label deploy-base --name fp-base --use-can-dev --out out/base
+      - name: Summary
+        if: always()
+        run: |
+          [ -f out/base/report.json ] && dev/footprint/summary.sh out/base >>"$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: footprint-platform-base
+          path: out/
+          if-no-files-found: ignore
+
+  images:
+    name: images-can-static-forms
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - run: go build -o bin/can ./cmd/can
+      - name: Build can-static and can-forms from the repo Dockerfiles
+        # The Dockerfiles ship digest placeholders on purpose (a release pins them). For this
+        # measurement the digests are resolved from the current tags, which is not a pinned build.
+        run: |
+          godigest=$(docker buildx imagetools inspect golang:1.27 --format '{{.Manifest.Digest}}')
+          rtdigest=$(docker buildx imagetools inspect gcr.io/distroless/static-debian12:nonroot --format '{{.Manifest.Digest}}')
+          docker build -f deploy/can-static/Dockerfile \
+            --build-arg "GO_IMAGE=golang:1.27@${godigest}" \
+            --build-arg "RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot@${rtdigest}" \
+            -t can-static:fp .
+          docker build -f deploy/forms/Dockerfile \
+            --build-arg "GO_IMAGE_DIGEST=${godigest}" --build-arg "DISTROLESS_DIGEST=${rtdigest}" \
+            -t can-forms:fp .
+          docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep ':fp'
+      - name: Measure can-static and forms on the trimmed k3s
+        run: |
+          dev/footprint/measure.sh --label can-static-and-forms --name fp-img \
+            --k3d-config dev/footprint/k3d-trimmed.yaml --out out/images \
+            --import can-static:fp --import can-forms:fp \
+            --manifest dev/footprint/manifests/can-static.yaml --manifest dev/footprint/manifests/forms.yaml
+      - name: Check forms against modules/forms/module.yaml ram_mb (Constitution II, +20%)
+        run: |
+          bin/can footprint check --report out/images/report.json --namespace mod-forms \
+            --module modules/forms/module.yaml | tee out/images/forms-check.txt
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f out/images/report.json ]; then
+            dev/footprint/summary.sh out/images >>"$GITHUB_STEP_SUMMARY"
+            { echo; echo "forms check: $(cat out/images/forms-check.txt 2>/dev/null)"; } >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A || true
+          kubectl -n mod-forms logs deploy/forms --tail=30 || true
+          kubectl -n fp-static logs deploy/can-static --tail=30 || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: footprint-images
+          path: out/
+          if-no-files-found: ignore
+
+  proofs:
+    name: proofs-networkpolicy-tokenreview
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Phase 0 proofs (module namespace template, egress denial, TokenReview, RBAC)
+        env:
+          CAN_PHASE0_PROOFS: "1"
+        run: |
+          set -o pipefail
+          go test -tags integration -count=1 -v -timeout 20m ./test/integration/... 2>&1 | tee proofs.log
+      - name: Summary
+        if: always()
+        run: |
+          { echo '### Integration tests (all, including Phase 0 proofs)'; echo '```'; grep -E '^(--- |ok|FAIL|PASS)' proofs.log || true; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,networkpolicy -A || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: footprint-proofs
+          path: proofs.log
+          if-no-files-found: ignore
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down
