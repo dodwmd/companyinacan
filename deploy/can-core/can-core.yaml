@@ -103,7 +103,7 @@ spec:
             - {name: CAN_MODULE_ADDR, value: ":8090"}
             - {name: CAN_DB_PATH, value: /var/lib/can/state.db}
             # Nightly dumps at 02:30 UTC (CAN_DUMP_AT), before the host timer's 03:30.
-            - {name: CAN_DUMPS_DIR, value: /var/lib/can-dumps/dumps}
+            - {name: CAN_DUMPS_DIR, value: /var/lib/can-dumps}
             - {name: CAN_TOKEN_REVIEW, value: kubernetes}
             - {name: CAN_PLATFORM_URL, value: "http://can-core.can-system.svc.cluster.local:8090"}
             # Behind Traefik (the only route to the admin port, externalTrafficPolicy: Local): see

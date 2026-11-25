@@ -4,7 +4,6 @@
 # hooks image (deploy/hooks) and these variables, injected by can-core:
 #   CAN_API_URL  CAN_MODULE  [CAN_TOKEN_FILE]   module API and projected audience-`can` token
 #   DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD  from the module's `can-database` Secret
-# The dump endpoint path is provisional until epic E08 fixes it (contracts/hooks.md).
 set -eu
 
 : "${CAN_API_URL:?}" "${CAN_MODULE:?}" "${DB_HOST:?}" "${DB_NAME:?}" "${DB_USER:?}" "${DB_PASSWORD:?}"

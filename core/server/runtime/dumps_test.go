@@ -19,7 +19,7 @@ func TestDumpConfig(t *testing.T) {
 	if err != nil || c.DumpsDir != "" {
 		t.Fatalf("dumps must be off unless CAN_DUMPS_DIR is set: %q %v", c.DumpsDir, err)
 	}
-	c, err = FromEnv(env(map[string]string{"CAN_DUMPS_DIR": "/var/lib/can-dumps/dumps", "CAN_DB_PATH": "/var/lib/can/state.db"}))
+	c, err = FromEnv(env(map[string]string{"CAN_DUMPS_DIR": "/var/lib/can-dumps", "CAN_DB_PATH": "/var/lib/can/state.db"}))
 	if err != nil {
 		t.Fatal(err)
 	}

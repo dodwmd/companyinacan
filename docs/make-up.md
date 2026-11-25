@@ -48,7 +48,7 @@ development path, not a supply-chain guarantee. Release images are signed and at
  7 admin      -- kubectl exec ... admin bootstrap ------> admin account; password on stdin, never argv
  8 site       -- build locally, ConfigMap site-content -> site pod (can-static) unpacks it
  9 routes     -- IngressRoutes -------------------------> site, admin, same-origin /_forms (forms module installed by can-core)
-10 backup     -- files over ssh (only with --backup-*) -> restic timer, repository initialised
+10 backup     -- files over ssh (only with --backup-*) -> pinned restic, dumps dir, timer, repository initialised
 11 ready      -- kubectl wait Available ----------------> can-core, site, forms
 12 dns / probe / summary   Cloudflare records or printed records; URL probe; credentials and kit shown once
 ```
@@ -80,6 +80,9 @@ propagation is not part of the five-minute budget.
   (`Type 'show'`, then `'saved'`) or written encrypted with `--kit-out FILE --kit-passphrase-file FILE`.
   It is never written inside a git working tree or to `.can/`, and a run that has no way to deliver it stops
   before provisioning.
+- The first backup needs a dump run: can-core makes one about 10 minutes after it starts, then nightly at 02:30
+  UTC. To back up at once: `kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m`,
+  then `can backup run` on the server.
 
 ### The default bundle
 
@@ -247,14 +250,12 @@ Do not run this from CI. With a fresh Hetzner account:
 
 ## Known gaps
 
-- **Backups do not work yet, so `--backup-*` is refused** unless you pass `--allow-broken-backup` (usage error, exit 2, before anything is provisioned). With it, the kit header says `CAVEAT: this kit belongs to a repository that has no data yet` and so does the summary. The backup script needs can-core to write its dumps and a
-  completion marker to `/var/lib/can/dumps` on the host. The can-core pod cannot mount that directory: the
-  `can-system` namespace enforces Pod Security `baseline`, which forbids `hostPath` volumes, so every backup run
-  exits 10 (marker missing). With `--backup-*`, `can up` installs the timer and produces the kit but prints and
-  returns a `BACKUPS DO NOT WORK YET` warning. The fix is a design decision (dumps on a PVC read through the
-  local-path directory, or an in-cluster backup job) and is not part of this change.
-- Uploading images through `k3s ctr images import`, and `apt install restic`, are not yet exercised on a real
-  host (CI uses k3d's importer and a recording fake host).
+- **Backups** work as described in [backup-restore.md](backup-restore.md) and are verified on k3d with a local
+  restic repository only. Not verified: a real S3 bucket, a real server (systemd timer, k3s paths) and a restore
+  onto a blank host (`can restore` is not functional yet). `--allow-broken-backup` is a deprecated no-op.
+- Uploading images through `k3s ctr images import`, and the host tool installation (pinned restic, `sqlite3`
+  from apt), are not yet exercised on a real server (CI uses k3d's importer and runs the install script on the
+  CI runner).
 - **The five-minute budget is not verified on real hardware.** Only the in-cluster part is measured, on k3d.
 - The default bundle (forms) is enabled in the cluster only unless you pass `--write-bundle`, which rewrites
   `company.yaml` (comments may be reformatted); otherwise add `forms: {}` yourself.

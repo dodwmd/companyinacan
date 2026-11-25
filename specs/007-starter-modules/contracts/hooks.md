@@ -1,7 +1,7 @@
 # Contract: backup and restore hooks
 
-Provisional until epic E08 fixes the dump endpoint (research R9). The scripts and this file change
-together.
+The dump endpoint was fixed by epic E08b (specs/037-backup-dumps/contracts). The scripts and this file
+change together.
 
 ## Execution
 

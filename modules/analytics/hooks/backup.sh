@@ -5,7 +5,6 @@
 # Runs as a Job in this module's namespace with the hooks image (deploy/hooks), the module's
 # data volume mounted at GOATCOUNTER_DATA (default /data), and:
 #   CAN_API_URL  CAN_MODULE  [CAN_TOKEN_FILE]   module API and projected audience-`can` token
-# The dump endpoint path is provisional until epic E08 fixes it (contracts/hooks.md).
 set -eu
 
 : "${CAN_API_URL:?}" "${CAN_MODULE:?}"

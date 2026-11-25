@@ -30,7 +30,7 @@ func TestCanCoreDumpsVolume(t *testing.T) {
 	}
 	d := ofKind(docs, "Deployment")[0]
 	pod := toJSON(d.get("spec", "template", "spec"))
-	for _, want := range []string{`"claimName":"can-dumps"`, `"mountPath":"/var/lib/can-dumps"`, `"CAN_DUMPS_DIR"`, `"value":"/var/lib/can-dumps/dumps"`} {
+	for _, want := range []string{`"claimName":"can-dumps"`, `"mountPath":"/var/lib/can-dumps"`, `"CAN_DUMPS_DIR"`, `"value":"/var/lib/can-dumps"`} {
 		if !strings.Contains(pod, want) {
 			t.Errorf("can-core pod lacks %s", want)
 		}
