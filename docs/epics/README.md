@@ -18,7 +18,7 @@ Epics are ordered by dependency. Phases refer to the roadmap in `SPEC.md` §9.
 | E05 | Forms gateway and `leads` capability | 1 | E03, E04 | partial: library and contract (integration pending E03/E06) — `specs/003-forms-gateway/` |
 | E06 | Server providers and `make up` (ssh, Hetzner, sslip.io) | 1 | E02, E03 | built offline; real-server checks pending |
 | E07 | Starter modules: support, newsletter, analytics | 1 | E03 | built offline (manifests, charts, hooks, contracts, email policy); adapters, images and cluster checks pending — `specs/007-starter-modules/` |
-| E08 | Backup, restore and recovery kit | 1 | E03, E06 | planned |
+| E08 | Backup, restore and recovery kit | 1 | E03, E06 | partly implemented (offline part, `core/backup`; see specs/008-backup-restore) |
 
 Backlog (broken down into epics when the previous phase is done):
 

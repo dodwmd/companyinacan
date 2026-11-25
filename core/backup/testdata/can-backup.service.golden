@@ -1,0 +1,15 @@
+[Unit]
+Description=Company in a Can backup (restic)
+Documentation=https://github.com/dodwmd/companyinacan/blob/main/docs/backup-restore.md
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/can-backup
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true

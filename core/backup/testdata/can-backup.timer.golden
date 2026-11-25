@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Company in a Can backup, after can-core has produced its dumps
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=can-backup.service
+
+[Install]
+WantedBy=timers.target

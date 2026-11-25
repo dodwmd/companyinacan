@@ -51,6 +51,16 @@ type Module struct {
 		Webhook string `yaml:"webhook"`
 		Status  string `yaml:"status"` // available (default) or planned
 	} `yaml:"subscribes"`
+	// Hooks are the lifecycle scripts the module ships (schema module.v1 hooks).
+	Hooks struct {
+		Image   string `yaml:"image"`
+		Install string `yaml:"install"`
+		Backup  string `yaml:"backup"`
+		Restore string `yaml:"restore"`
+		Purge   string `yaml:"purge"`
+		Export  string `yaml:"export"`
+		Import  string `yaml:"import"`
+	} `yaml:"hooks"`
 	Permissions []string            `yaml:"permissions"`
 	Roles       map[string][]string `yaml:"roles"`
 	DataClasses []struct {

@@ -77,6 +77,8 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newDownCmd(g),
 		newStatusCmd(g),
 		newLicencesCmd(g),
+		newBackupCmd(g),
+		newRestoreCmd(g),
 	)
 	err := root.Execute()
 	if err == nil {
