@@ -1,0 +1,75 @@
+# Provisioning: in-house Go service (cmd/can-provision, library core/provision). The
+# `identity.provision` capability: a SCIM 2.0 server over the people directory, so external
+# applications and identity providers can sync users and groups, and joiner, mover and leaver
+# workflows that create, update and (on the last day, never before) disable accounts in downstream
+# systems, with retries, dead-lettering, compensation, approvals for privileged access, and a
+# can-core kill switch for the tokens and sessions of people who left.
+# This is a tool, not legal or security advice; offboarding is the operator's responsibility
+# (docs/provisioning.md lists exactly what is and is not verified).
+schema: 1
+id: provisioning
+name: Identity provisioning
+description: SCIM 2.0 server over the people directory (users read-mostly, groups, filter eq/and, pagination, PATCH, ETag, scoped bearer tokens) and joiner, mover and leaver workflows against downstream systems through connectors (SCIM client and signed webhook; Google Workspace, GitHub and Slack are documented, unverified stubs), with effective-dated offboarding, urgent terminations, approvals for privileged access, retries with dead-lettering, compensation, a persisted state machine and an audit trail of ids only.
+category: people
+version: 0.1.0
+# experimental: unit-, contract- and race-tested offline against fakes (a fake directory, a fake SCIM
+# server, httptest receivers), and the chart installs through can-core's installer in unit tests.
+# No connector has talked to a real service, the image has not been built or run on a cluster, and
+# the default module-namespace NetworkPolicy does not yet allow this module to reach the people
+# module or any downstream system (see docs/provisioning.md, "Known gaps").
+status: experimental
+provider:
+  type: inhouse
+  name: can-provision
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  # Only the SCIM endpoints are public (see chart/templates/ingressroute.yaml): the identity
+  # provider of the company calls them. The /v1 provisioning API stays cluster-internal.
+  subdomain: scim
+requires:
+  database: sqlite
+  capabilities: [directory]
+  sso: none
+resources:
+  # Idle RAM target 20 MB. Measured on the static linux/amd64 build: see
+  # specs/028-identity-provision/research.md R9.
+  ram_mb: 20
+  ram_limit_mb: 64
+  disk_mb: 1000
+provides:
+  - { capability: identity.provision, schema: identity.provision.v1, service: provisioning, port: 8090 }
+publishes:
+  - { event: provision.step.completed.v1, schema: ./events/provision.step.completed.v1.json }
+  - { event: provision.failed.v1, schema: ./events/provision.failed.v1.json }
+# The workflows start from the people module's events, always re-checked against the directory.
+# candidate.hired.v1 is not subscribed: the hire hand-off creates the person, and person.created.v1
+# is what starts the joiner. checklist.task_completed.v1 carries the identity.* checklist actions.
+subscribes:
+  - { event: person.created.v1, service: provisioning, port: 8090, webhook: /v1/can/events }
+  - { event: person.status_changed.v1, service: provisioning, port: 8090, webhook: /v1/can/events }
+  - { event: person.offboarded.v1, service: provisioning, port: 8090, webhook: /v1/can/events }
+  - { event: checklist.task_completed.v1, service: provisioning, port: 8090, webhook: /v1/can/events }
+  - { event: approval.decided.v1, service: provisioning, port: 8090, webhook: /v1/can/events }
+# can-core's approvals engine decides privileged access and the leaving of privileged accounts. The
+# requester is the person the run is about, so the engine's separation of duties keeps them from
+# approving their own access or removal; the module checks it again on the decision event.
+approvals:
+  - { type: privileged-access, default_chain: [admin] }
+  - { type: privileged-leaver, default_chain: [admin] }
+# provision.* gate the provisioning API (write includes read, admin includes both). scim.read and
+# scim.write are the scopes of the SCIM bearer tokens that provision.admin creates: they are not
+# can-core personal access token permissions.
+permissions: [provision.read, provision.write, provision.admin, scim.read, scim.write]
+roles:
+  it-reader: [provision.read]
+  it-operator: [provision.read, provision.write]
+  admin: [provision.read, provision.write, provision.admin, scim.read, scim.write]
+data_classes:
+  # Runs, steps and the account map: opaque ids, connector names, states and error codes. No names,
+  # emails or downstream responses. Kept after the run for the audit period.
+  - { class: provisioning-runs, retention: 2y, sensitivity: standard }
+  # The hash-chained audit trail of every provisioning action (actor, action, ids, counts).
+  - { class: provisioning-audit, retention: 7y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

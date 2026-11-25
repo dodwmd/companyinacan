@@ -172,3 +172,13 @@ var TimeOffApprovedV1 []byte
 //
 //go:embed timeoff.cancelled.v1.json
 var TimeOffCancelledV1 []byte
+
+// ProvisionStepCompletedV1 is the JSON Schema of the provision.step.completed.v1 event.
+//
+//go:embed provision.step.completed.v1.json
+var ProvisionStepCompletedV1 []byte
+
+// ProvisionFailedV1 is the JSON Schema of the provision.failed.v1 event.
+//
+//go:embed provision.failed.v1.json
+var ProvisionFailedV1 []byte

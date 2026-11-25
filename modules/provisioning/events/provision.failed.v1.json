@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/provision.failed.v1.json",
+  "title": "provision.failed.v1",
+  "description": "Published when a step is dead-lettered (retries exhausted or a permanent failure), refused by an approver, or could not be compensated. The run needs a person: see the dead-letter list of the provisioning API. Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids and machine values only, never names, emails, group names or free text (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "provision.failed.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "provisioning"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "party_id",
+        "kind",
+        "step",
+        "op",
+        "connector",
+        "reason",
+        "failed_at"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_[0-9a-f]{24}$"
+        },
+        "party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "joiner",
+            "mover",
+            "leaver"
+          ]
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "op": {
+          "enum": [
+            "create_account",
+            "update_account",
+            "disable_account",
+            "delete_account",
+            "add_group",
+            "remove_group",
+            "revoke_core",
+            "create_tasks"
+          ]
+        },
+        "connector": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "reason": {
+          "enum": [
+            "retries_exhausted",
+            "permanent",
+            "rejected",
+            "compensation_failed"
+          ]
+        },
+        "failed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

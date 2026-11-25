@@ -41,6 +41,7 @@ updates:
       - /deploy/hooks
       - /deploy/jobs
       - /deploy/people
+      - /deploy/provisioning
       - /deploy/work
     schedule:
       interval: weekly

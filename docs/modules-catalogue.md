@@ -23,6 +23,7 @@ provision's), not listed by the admin or module API and cannot be a `primary`.
 | `work` | in-house | experimental | 20 | Apache-2.0 | `work`, `projects` | Tests and local measurement offline. No web UI, image not built or run on a cluster |
 | `jobs` | in-house | experimental | 30 | Apache-2.0 | `jobs`, `ats` | Tests and local measurement (16 MiB idle) offline. No Helm templates, no recruiter UI, board connectors are stubs |
 | `finance` | in-house | experimental | 20 | Apache-2.0 | `invoices`, `contracts`, `timesheets` | Tests offline (16 MB measured idle per modules/README.md). Not run on a cluster |
+| `provisioning` | in-house | experimental | 20 | Apache-2.0 | `identity.provision` | Unit, race and contract tests offline against fakes (a fake directory, a fake SCIM server); RAM measured locally. No connector has talked to a real service (Google Workspace, GitHub and Slack are stubs), the module namespace NetworkPolicy does not yet allow its egress, and nothing ran on a cluster |
 | `equity` | in-house | experimental | 16 | Apache-2.0 | `equity` | Unit, race, fuzz and contract tests offline; 15.8 MiB idle measured locally. No Helm templates, no admin UI, no cluster run. A tool, not legal, tax or securities advice |
 
 ## Wrapped open-source modules

@@ -1,0 +1,596 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/identity.provision.v1.json",
+  "title": "identity.provision.v1",
+  "description": "Capability `identity.provision` (SPEC.md section 4.3): joiner, mover and leaver workflows that create, update, disable and delete accounts and group memberships in downstream systems, plus the SCIM 2.0 server (RFC 7643 and 7644 subset, served under /scim/v2 with its own scoped bearer tokens, see specs/028-identity-provision/contracts/openapi.yaml). Provided by the in-house provisioning module. Bodies are JSON over HTTP; callers authenticate with a bearer token (provision.read, provision.write, provision.admin). Runs and steps carry ids and machine values only: names, emails and downstream responses never appear. Consumers must not depend on anything not in this file.",
+  "x-capability": "identity.provision",
+  "x-verbs": [
+    {
+      "verb": "list_runs",
+      "method": "GET",
+      "path": "/v1/provision/runs",
+      "response": "RunList",
+      "permission": "provision.read",
+      "description": "Query: state, party_id, kind, cursor, limit (max 200). Newest first, without steps."
+    },
+    {
+      "verb": "get_run",
+      "method": "GET",
+      "path": "/v1/provision/runs/{id}",
+      "response": "Run",
+      "permission": "provision.read"
+    },
+    {
+      "verb": "list_dead_letters",
+      "method": "GET",
+      "path": "/v1/provision/dead-letters",
+      "response": "RunList",
+      "permission": "provision.read",
+      "description": "Runs with a dead-lettered step, with their steps."
+    },
+    {
+      "verb": "list_connectors",
+      "method": "GET",
+      "path": "/v1/provision/connectors",
+      "response": "ConnectorList",
+      "permission": "provision.read",
+      "description": "Names and verification state only, never URLs or credentials."
+    },
+    {
+      "verb": "plan",
+      "method": "POST",
+      "path": "/v1/provision/plans",
+      "request": "PlanRequest",
+      "response": "PlanResult",
+      "write": true,
+      "permission": "provision.read",
+      "description": "A dry run: the steps a run would have. Nothing is stored or executed. (POST because it takes a body; it changes nothing.)"
+    },
+    {
+      "verb": "start_run",
+      "method": "POST",
+      "path": "/v1/provision/runs",
+      "request": "StartRunRequest",
+      "response": "Run",
+      "write": true,
+      "permission": "provision.write",
+      "description": "Needs an Idempotency-Key header. The person's directory status must fit the workflow. 201 for a new run, 200 for a repeat."
+    },
+    {
+      "verb": "retry_run",
+      "method": "POST",
+      "path": "/v1/provision/runs/{id}/retry",
+      "write": true,
+      "permission": "provision.write",
+      "description": "Re-queues the dead-lettered steps with fresh attempts. 202."
+    },
+    {
+      "verb": "cancel_run",
+      "method": "POST",
+      "path": "/v1/provision/runs/{id}/cancel",
+      "write": true,
+      "permission": "provision.admin",
+      "description": "Stops an unfinished run; completed steps are not undone. 204."
+    },
+    {
+      "verb": "flag_urgent",
+      "method": "POST",
+      "path": "/v1/provision/people/{id}/urgent",
+      "write": true,
+      "permission": "provision.admin",
+      "description": "Access ends now, not on the last day. Only for a person who is offboarding or former, and never for yourself. 202."
+    },
+    {
+      "verb": "link_account",
+      "method": "PUT",
+      "path": "/v1/provision/people/{id}/accounts/{connector}",
+      "request": "LinkAccountRequest",
+      "write": true,
+      "permission": "provision.admin",
+      "description": "Records an existing downstream account so a later disable names it. 204."
+    },
+    {
+      "verb": "list_scim_tokens",
+      "method": "GET",
+      "path": "/v1/provision/scim-tokens",
+      "response": "ScimTokenList",
+      "permission": "provision.admin"
+    },
+    {
+      "verb": "create_scim_token",
+      "method": "POST",
+      "path": "/v1/provision/scim-tokens",
+      "request": "CreateScimTokenRequest",
+      "response": "ScimTokenCreated",
+      "write": true,
+      "permission": "provision.admin",
+      "description": "The token value is returned once."
+    },
+    {
+      "verb": "revoke_scim_token",
+      "method": "DELETE",
+      "path": "/v1/provision/scim-tokens/{id}",
+      "write": true,
+      "permission": "provision.admin",
+      "description": "204."
+    }
+  ],
+  "$defs": {
+    "Step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ord",
+        "op",
+        "connector",
+        "state",
+        "attempts"
+      ],
+      "properties": {
+        "ord": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "op": {
+          "enum": [
+            "create_account",
+            "update_account",
+            "disable_account",
+            "delete_account",
+            "add_group",
+            "remove_group",
+            "revoke_core",
+            "create_tasks"
+          ]
+        },
+        "connector": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "arg": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "running",
+            "awaiting_approval",
+            "done",
+            "dead",
+            "skipped",
+            "rejected",
+            "comp_pending",
+            "compensated",
+            "comp_failed"
+          ]
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "compensation": {
+          "enum": [
+            "create_account",
+            "update_account",
+            "disable_account",
+            "delete_account",
+            "add_group",
+            "remove_group",
+            "revoke_core",
+            "create_tasks"
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "next_attempt_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "approval_id": {
+          "type": "string",
+          "pattern": "^apr_[0-9a-f]{24}$"
+        },
+        "error_code": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "description": "A short machine code, never a downstream response."
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "party_id",
+        "state",
+        "trigger",
+        "urgent",
+        "dry_run",
+        "privileged",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^run_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "joiner",
+            "mover",
+            "leaver"
+          ]
+        },
+        "party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "running",
+            "scheduled",
+            "awaiting_approval",
+            "succeeded",
+            "failed",
+            "compensating",
+            "compensated",
+            "cancelled"
+          ]
+        },
+        "trigger": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "urgent": {
+          "type": "boolean"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "privileged": {
+          "type": "boolean"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "initiator": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "steps": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        }
+      }
+    },
+    "RunList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Run"
+          }
+        },
+        "next_cursor": {
+          "type": "string",
+          "pattern": "^run_[0-9a-f]{24}$"
+        }
+      }
+    },
+    "ConnectorList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "verified",
+              "privileged"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,31}$"
+              },
+              "type": {
+                "enum": [
+                  "scim-client",
+                  "webhook",
+                  "google-workspace",
+                  "github",
+                  "slack"
+                ]
+              },
+              "verified": {
+                "type": "boolean",
+                "description": "False for every adapter today: none has run against a real service."
+              },
+              "privileged": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "PlanRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "party_id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "joiner",
+            "mover",
+            "leaver"
+          ]
+        },
+        "party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "PlanResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "party_id",
+        "privileged",
+        "urgent",
+        "steps"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "joiner",
+            "mover",
+            "leaver"
+          ]
+        },
+        "party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "privileged": {
+          "type": "boolean"
+        },
+        "urgent": {
+          "type": "boolean"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "steps": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        }
+      }
+    },
+    "StartRunRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "party_id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "joiner",
+            "mover",
+            "leaver"
+          ]
+        },
+        "party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "LinkAccountRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "external_id"
+      ],
+      "properties": {
+        "external_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+=-]{0,255}$"
+        }
+      }
+    },
+    "CreateScimTokenRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "scopes",
+        "expires_in"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "scim.read",
+              "scim.write"
+            ]
+          }
+        },
+        "expires_in": {
+          "type": "string",
+          "pattern": "^[0-9]+h$",
+          "description": "A duration in hours between 1h and 8760h."
+        }
+      }
+    },
+    "ScimTokenCreated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "token",
+        "id",
+        "name",
+        "scopes",
+        "expires_at"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "pattern": "^scim_[A-Za-z0-9_-]{43}$"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^scimtok_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "scim.read",
+              "scim.write"
+            ]
+          }
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ScimTokenList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "scopes",
+              "created_by",
+              "created_at",
+              "expires_at",
+              "revoked",
+              "expired"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^scimtok_[0-9a-f]{24}$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "scim.read",
+                    "scim.write"
+                  ]
+                }
+              },
+              "created_by": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "revoked": {
+                "type": "boolean"
+              },
+              "expired": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

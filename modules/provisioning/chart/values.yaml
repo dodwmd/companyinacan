@@ -1,0 +1,70 @@
+# Values for the provisioning module chart (in-house can-provision, SQLite). Rendered by can-core's
+# installer. Secrets are not values: can-core puts CAN_PROVISIONING_API_TOKEN and
+# CAN_WEBHOOK_SECRET (generated once) and the can-core API settings into the can-module Secret,
+# which every container receives as environment. The directory token and each connector's
+# credential are ALSO read from the environment; see modules/provisioning/chart/README.md for how
+# they get there today and why that is an open platform gap.
+image:
+  repository: ghcr.io/dodwmd/can-provision
+  tag: 0.1.0
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+ports:
+  - { name: http, port: 8090 }
+services:                  # ClusterIP only; the `identity.provision` capability
+  - { name: provisioning, portName: http, port: 8090 }
+ingress:
+  # Only the SCIM endpoints are routed, and only when the manifest declares runtime.subdomain
+  # (host <subdomain>.<domain>, supplied by can-core). The /v1 provisioning API stays cluster-internal.
+  enabled: true
+  host: ""
+  tls: true
+  certResolver: letsencrypt
+  service: provisioning
+  port: 8090
+  pathPrefixes: [/scim/v2]
+  paths: []
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  mountPath: /data
+configMountPath: /etc/can-provisioning-config
+# Written verbatim to provisioning.yaml; only keys core/provision Config accepts (it loads the file
+# strictly). connectors is empty until an operator adds one: with none, workflows have nothing to do
+# except revoke can-core access and create tasks.
+config:
+  listen: ":8090"
+  db_path: /data/provision.db
+  directory:
+    url: "http://people-api.mod-people.svc.cluster.local:8081"
+    allow_insecure_http: true
+  tasks: { joiner_template: "", leaver_template: "" }
+  workflows:
+    privileged_groups: []
+    dry_run: true          # records every run and its plan but calls no connector, until you turn it off
+    delete_after_days: 0
+    timezone: UTC
+  retry: { max_attempts: 5, base_delay: 30s, max_delay: 1h, step_timeout: 30s }
+  scim: { max_scan: 5000 }
+  connectors: []
+resources:
+  requests: { memory: 20Mi, cpu: 5m }
+  limits: { memory: 64Mi }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /healthz, port: http }
+  liveness: { exec: [/can-provision, healthcheck, -addr, "127.0.0.1:8090"] }
+networkPolicy:
+  intraNamespace: false

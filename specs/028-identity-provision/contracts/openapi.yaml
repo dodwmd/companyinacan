@@ -1,0 +1,457 @@
+openapi: 3.1.0
+info:
+  title: can-provision API (identity.provision)
+  version: 0.1.0
+  description: |
+    The provisioning module of companyinacan: a SCIM 2.0 server (RFC 7643 and 7644, a subset) over the
+    people directory, and the joiner, mover and leaver provisioning API. This is a tool, not legal,
+    security or HR advice; offboarding is the operator's responsibility.
+
+    Two kinds of bearer token, never interchangeable. The SCIM server (`/scim/v2`) takes only SCIM
+    tokens (`scim_...`, scopes `scim.read`, `scim.write`, created through `/v1/provision/scim-tokens`).
+    The provisioning API (`/v1/provision`) takes can-core personal access tokens or the service token
+    with `provision.read`, `provision.write` or `provision.admin` (write includes read, admin includes
+    both). Valid credentials are never rate limited; invalid ones are slowed after a generous free
+    allowance. Errors of the provisioning API are RFC 9457 `application/problem+json`; errors of the
+    SCIM server are RFC 7644 `application/scim+json` error documents.
+
+    What the SCIM server never exposes: date of birth, national id, address, personal phone,
+    compensation, the account link, or the `leave` status (a person on leave is `active: true`).
+    Candidates are not shown. The stable cross-module subset of the provisioning API is
+    `schemas/capabilities/identity.provision.v1.json`.
+security:
+  - bearer: []
+servers:
+  - url: http://provisioning.mod-provisioning.svc.cluster.local:8090
+    description: cluster-internal (the /scim/v2 paths are also routed on the scim subdomain)
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness and readiness
+      security: []
+      responses:
+        "200": { description: ok }
+  /v1/can/events:
+    post:
+      operationId: receiveEvent
+      summary: can-core's signed event delivery (person.*, checklist.task_completed, approval.decided)
+      description: HMAC-verified (X-Can-Signature, X-Can-Timestamp, 5 minute window). Redeliveries are recognised by event id. A directory outage answers 500 so can-core retries; an event that does not fit the person's real status is acknowledged and audited.
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "204": { description: handled }
+        "401": { description: bad signature or stale timestamp }
+        "500": { description: not handled, redeliver }
+  /v1/provision/connectors:
+    get:
+      operationId: listConnectors
+      summary: Connectors, without URLs or credentials
+      x-permission: provision.read
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorList" } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/runs:
+    get:
+      operationId: listRuns
+      summary: Runs, newest first, without steps
+      x-permission: provision.read
+      parameters:
+        - { name: state, in: query, schema: { type: string } }
+        - { name: party_id, in: query, schema: { type: string, pattern: "^pers_[0-9a-f]{24}$" } }
+        - { name: kind, in: query, schema: { enum: [joiner, mover, leaver] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 200 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RunList" } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: startRun
+      summary: Start a run (idempotent)
+      description: The person's directory status must fit the workflow (joiner and mover for employed people who are not offboarding, leaver for offboarding or former people). A repeat with the same Idempotency-Key returns the same run with 200.
+      x-permission: provision.write
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_.:-]{1,128}$" } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StartRunRequest" } } }
+      responses:
+        "200": { description: an existing run, content: { application/json: { schema: { $ref: "#/components/schemas/Run" } } } }
+        "201": { description: a new run, content: { application/json: { schema: { $ref: "#/components/schemas/Run" } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /v1/provision/runs/{id}:
+    get:
+      operationId: getRun
+      summary: One run with its steps
+      x-permission: provision.read
+      parameters: [{ $ref: "#/components/parameters/RunID" }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/Run" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/runs/{id}/retry:
+    post:
+      operationId: retryRun
+      summary: Re-queue dead-lettered steps with fresh attempts
+      x-permission: provision.write
+      parameters: [{ $ref: "#/components/parameters/RunID" }]
+      responses:
+        "202": { description: queued }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/runs/{id}/cancel:
+    post:
+      operationId: cancelRun
+      summary: Stop an unfinished run (completed steps are not undone)
+      x-permission: provision.admin
+      parameters: [{ $ref: "#/components/parameters/RunID" }]
+      responses:
+        "204": { description: cancelled }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/dead-letters:
+    get:
+      operationId: listDeadLetters
+      summary: Runs with a dead-lettered step
+      x-permission: provision.read
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RunList" } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/plans:
+    post:
+      operationId: plan
+      summary: Dry run, the steps a run would have (nothing stored or executed)
+      x-permission: provision.read
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PlanRequest" } } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PlanResult" } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/people/{id}/urgent:
+    post:
+      operationId: flagUrgent
+      summary: End a termination's access now, not on the last day
+      description: Only for a person who is offboarding or former, and never for yourself. Urgent access removal does not wait for an approval (deleting accounts still does).
+      x-permission: provision.admin
+      parameters: [{ $ref: "#/components/parameters/PartyID" }]
+      responses:
+        "202": { description: flagged }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /v1/provision/people/{id}/accounts/{connector}:
+    put:
+      operationId: linkAccount
+      summary: Record an existing downstream account
+      x-permission: provision.admin
+      parameters:
+        - { $ref: "#/components/parameters/PartyID" }
+        - { name: connector, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/LinkAccountRequest" } } }
+      responses:
+        "204": { description: linked }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/scim-tokens:
+    get:
+      operationId: listScimTokens
+      summary: SCIM tokens (never their values)
+      x-permission: provision.admin
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/ScimTokenList" } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createScimToken
+      summary: Issue a SCIM token (the value is shown once)
+      x-permission: provision.admin
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateScimTokenRequest" } } }
+      responses:
+        "201": { description: created, content: { application/json: { schema: { $ref: "#/components/schemas/ScimTokenCreated" } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/scim-tokens/{id}:
+    delete:
+      operationId: revokeScimToken
+      summary: Revoke a SCIM token at once
+      x-permission: provision.admin
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "204": { description: revoked }
+        "404": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/provision/audit:
+    get:
+      operationId: listAudit
+      summary: The hash-chained audit trail (actor, action, ids and counts only)
+      x-permission: provision.admin
+      parameters:
+        - { name: after, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500 } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /scim/v2/ServiceProviderConfig:
+    get:
+      operationId: scimServiceProviderConfig
+      summary: SCIM discovery (patch, filter, etag supported; bulk, sort, changePassword not)
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      responses: { "200": { $ref: "#/components/responses/ScimOK" }, "401": { $ref: "#/components/responses/ScimError" } }
+  /scim/v2/ResourceTypes:
+    get:
+      operationId: scimResourceTypes
+      summary: SCIM resource types (User, Group)
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      responses: { "200": { $ref: "#/components/responses/ScimOK" }, "401": { $ref: "#/components/responses/ScimError" } }
+  /scim/v2/ResourceTypes/{id}:
+    get:
+      operationId: scimResourceType
+      summary: One SCIM resource type
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { $ref: "#/components/responses/ScimOK" }, "404": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+  /scim/v2/Schemas:
+    get:
+      operationId: scimSchemas
+      summary: SCIM schemas (User, Group, EnterpriseUser manager only)
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      responses: { "200": { $ref: "#/components/responses/ScimOK" }, "401": { $ref: "#/components/responses/ScimError" } }
+  /scim/v2/Schemas/{id}:
+    get:
+      operationId: scimSchema
+      summary: One SCIM schema
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { $ref: "#/components/responses/ScimOK" }, "404": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+  /scim/v2/Users:
+    get:
+      operationId: scimListUsers
+      summary: List users (filter eq/and, startIndex, count)
+      description: |
+        Filter: `attr eq "value"` terms joined by `and`, on id, userName, externalId, active, emails.value,
+        name.givenName, name.familyName, displayName, userType. Anything else is 400 invalidFilter.
+        Values are matched in memory, case-insensitively except id. Reading is bounded (`scim.max_scan`):
+        a directory larger than that answers 400 tooMany unless the filter is `id eq`. count is at most 100.
+        Candidates are not listed; leave is shown as active.
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      parameters:
+        - { name: filter, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: startIndex, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: count, in: query, schema: { type: integer, minimum: 0, maximum: 100 } }
+      responses:
+        "200": { $ref: "#/components/responses/ScimOK" }
+        "400": { $ref: "#/components/responses/ScimError" }
+        "401": { $ref: "#/components/responses/ScimError" }
+        "406": { $ref: "#/components/responses/ScimError" }
+        "503": { $ref: "#/components/responses/ScimError" }
+    post:
+      operationId: scimCreateUser
+      summary: Not supported, users are created in the people directory
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      responses: { "403": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+  /scim/v2/Users/{id}:
+    parameters: [{ $ref: "#/components/parameters/UserID" }]
+    get:
+      operationId: scimGetUser
+      summary: One user with an ETag
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/ScimOK" }
+        "404": { $ref: "#/components/responses/ScimError" }
+        "401": { $ref: "#/components/responses/ScimError" }
+        "503": { $ref: "#/components/responses/ScimError" }
+    patch:
+      operationId: scimPatchUser
+      summary: PATCH displayName and the work phone only
+      description: Operations add, replace and remove on `displayName` and `phoneNumbers` (also `phoneNumbers[type eq "work"].value` and the pathless object form). Every other attribute is managed in the people directory and answers 400 mutability. If-Match is honoured (412 when stale), and required when `scim.require_if_match` is set (428). The change is audited with ids only.
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      parameters: [{ name: If-Match, in: header, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/scim+json: { schema: { $ref: "#/components/schemas/PatchOp" } } }
+      responses:
+        "200": { $ref: "#/components/responses/ScimOK" }
+        "400": { $ref: "#/components/responses/ScimError" }
+        "401": { $ref: "#/components/responses/ScimError" }
+        "403": { $ref: "#/components/responses/ScimError" }
+        "404": { $ref: "#/components/responses/ScimError" }
+        "412": { $ref: "#/components/responses/ScimError" }
+        "413": { $ref: "#/components/responses/ScimError" }
+        "415": { $ref: "#/components/responses/ScimError" }
+        "428": { $ref: "#/components/responses/ScimError" }
+    put:
+      operationId: scimReplaceUser
+      summary: Not supported
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      responses: { "403": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+    delete:
+      operationId: scimDeleteUser
+      summary: Not supported, users end in the people directory
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      responses: { "403": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+  /scim/v2/Groups:
+    get:
+      operationId: scimListGroups
+      summary: List groups (filter on id, displayName, members.value)
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      parameters:
+        - { name: filter, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: startIndex, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: count, in: query, schema: { type: integer, minimum: 0, maximum: 100 } }
+      responses: { "200": { $ref: "#/components/responses/ScimOK" }, "400": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+    post:
+      operationId: scimCreateGroup
+      summary: Create a group (members must be directory users); 409 uniqueness on a repeated displayName
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      requestBody:
+        required: true
+        content: { application/scim+json: { schema: { $ref: "#/components/schemas/Group" } } }
+      responses:
+        "201": { $ref: "#/components/responses/ScimOK" }
+        "400": { $ref: "#/components/responses/ScimError" }
+        "401": { $ref: "#/components/responses/ScimError" }
+        "403": { $ref: "#/components/responses/ScimError" }
+        "409": { $ref: "#/components/responses/ScimError" }
+        "415": { $ref: "#/components/responses/ScimError" }
+  /scim/v2/Groups/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: scimGetGroup
+      summary: One group with an ETag
+      x-scim-scope: scim.read
+      security: [{ scim: [] }]
+      responses: { "200": { $ref: "#/components/responses/ScimOK" }, "404": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+    patch:
+      operationId: scimPatchGroup
+      summary: PATCH members (add, remove with `members[value eq "id"]`, replace) and displayName
+      description: A membership change starts a mover run for the people affected who already have a downstream account.
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      parameters: [{ name: If-Match, in: header, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/scim+json: { schema: { $ref: "#/components/schemas/PatchOp" } } }
+      responses:
+        "200": { $ref: "#/components/responses/ScimOK" }
+        "400": { $ref: "#/components/responses/ScimError" }
+        "401": { $ref: "#/components/responses/ScimError" }
+        "403": { $ref: "#/components/responses/ScimError" }
+        "404": { $ref: "#/components/responses/ScimError" }
+        "409": { $ref: "#/components/responses/ScimError" }
+        "412": { $ref: "#/components/responses/ScimError" }
+    put:
+      operationId: scimReplaceGroup
+      summary: Not supported, use PATCH
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      responses: { "501": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+    delete:
+      operationId: scimDeleteGroup
+      summary: Delete a group
+      x-scim-scope: scim.write
+      security: [{ scim: [] }]
+      parameters: [{ name: If-Match, in: header, schema: { type: string } }]
+      responses: { "204": { description: deleted }, "404": { $ref: "#/components/responses/ScimError" }, "412": { $ref: "#/components/responses/ScimError" }, "401": { $ref: "#/components/responses/ScimError" } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, description: "A can-core personal access token or the service token (provisioning API)." }
+    scim: { type: http, scheme: bearer, description: "A SCIM token (scim_...) with scope scim.read or scim.write." }
+  parameters:
+    RunID: { name: id, in: path, required: true, schema: { type: string, pattern: "^run_[0-9a-f]{24}$" } }
+    PartyID: { name: id, in: path, required: true, schema: { type: string, pattern: "^pers_[0-9a-f]{24}$" } }
+    UserID: { name: id, in: path, required: true, schema: { type: string, pattern: "^pers_[0-9a-f]{24}$" } }
+  responses:
+    Problem:
+      description: RFC 9457 problem
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    ScimOK:
+      description: A SCIM resource or list (application/scim+json)
+      content: { application/scim+json: { schema: { type: object } } }
+    ScimError:
+      description: RFC 7644 error (status as a string, optional scimType)
+      content: { application/scim+json: { schema: { $ref: "#/components/schemas/ScimError" } } }
+  schemas:
+    Problem:
+      type: object
+      required: [status, title]
+      properties: { type: { type: string }, title: { type: string }, status: { type: integer }, detail: { type: string } }
+    ScimError:
+      type: object
+      required: [schemas, status]
+      properties:
+        schemas: { type: array, items: { const: "urn:ietf:params:scim:api:messages:2.0:Error" } }
+        status: { type: string }
+        scimType: { enum: [invalidFilter, tooMany, uniqueness, mutability, invalidSyntax, invalidPath, noTarget, invalidValue] }
+        detail: { type: string }
+    PatchOp:
+      type: object
+      required: [schemas, Operations]
+      properties:
+        schemas: { type: array, items: { const: "urn:ietf:params:scim:api:messages:2.0:PatchOp" } }
+        Operations:
+          type: array
+          maxItems: 20
+          items: { type: object, required: [op], properties: { op: { enum: [add, replace, remove] }, path: { type: string }, value: {} } }
+    Group:
+      type: object
+      required: [displayName]
+      properties:
+        schemas: { type: array, items: { type: string } }
+        displayName: { type: string, maxLength: 100 }
+        members: { type: array, maxItems: 1000, items: { type: object, required: [value], properties: { value: { type: string, pattern: "^pers_[0-9a-f]{24}$" } } } }
+    Step: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/Step" }
+    Run: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/Run" }
+    RunList: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/RunList" }
+    ConnectorList: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/ConnectorList" }
+    PlanRequest: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/PlanRequest" }
+    PlanResult: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/PlanResult" }
+    StartRunRequest: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/StartRunRequest" }
+    LinkAccountRequest: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/LinkAccountRequest" }
+    CreateScimTokenRequest: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/CreateScimTokenRequest" }
+    ScimTokenCreated: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/ScimTokenCreated" }
+    ScimTokenList: { $ref: "../../../schemas/capabilities/identity.provision.v1.json#/$defs/ScimTokenList" }

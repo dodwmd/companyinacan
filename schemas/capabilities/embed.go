@@ -48,6 +48,11 @@ var JobsV1 []byte
 //go:embed ats.v1.json
 var AtsV1 []byte
 
+// IdentityProvisionV1 is the contract of the `identity.provision` capability (in-house provisioning module).
+//
+//go:embed identity.provision.v1.json
+var IdentityProvisionV1 []byte
+
 // InvoicesV1 is the contract of the `invoices` capability (in-house finance module).
 //
 //go:embed invoices.v1.json
