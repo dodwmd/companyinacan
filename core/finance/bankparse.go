@@ -129,6 +129,9 @@ func parseDecimalMinor(s string, exp int, decimal, thousands rune) (int64, error
 	}
 	var whole, frac []byte
 	seenDec := false
+	// Grouping is checked, not just stripped: the first group has 1 to 3 digits and every later one exactly 3, so
+	// a decimal comma read as a thousands separator ("12,50") is an error instead of 100 times the amount.
+	group, grouped := 0, false
 	for _, r := range s {
 		switch {
 		case r >= '0' && r <= '9':
@@ -136,13 +139,24 @@ func parseDecimalMinor(s string, exp int, decimal, thousands rune) (int64, error
 				frac = append(frac, byte(r))
 			} else {
 				whole = append(whole, byte(r))
+				group++
 			}
 		case r == decimal && !seenDec:
+			if grouped && group != 3 {
+				return 0, errors.New("not an amount: digit groups must have three digits")
+			}
 			seenDec = true
 		case thousands != 0 && r == thousands && !seenDec:
+			if group == 0 || group > 3 || (grouped && group != 3) {
+				return 0, errors.New("not an amount: digit groups must have three digits")
+			}
+			group, grouped = 0, true
 		default:
 			return 0, errors.New("not an amount")
 		}
+	}
+	if !seenDec && grouped && group != 3 {
+		return 0, errors.New("not an amount: digit groups must have three digits")
 	}
 	if len(whole) == 0 && len(frac) == 0 {
 		return 0, errors.New("not an amount")

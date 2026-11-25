@@ -349,3 +349,17 @@ func TestQAExportBatchIsBoundedByLines(t *testing.T) {
 		t.Errorf("batches %v", got)
 	}
 }
+
+// QA 12: digit groups must have three digits.
+func TestQAThousandsGroupsAreChecked(t *testing.T) {
+	for _, bad := range []string{"12,50", "1,23.45", "1,2345", ",123", "1,,000", "1234,567", "1,000,", "1,00,000.00"} {
+		if v, err := parseDecimalMinor(bad, 2, '.', ','); err == nil {
+			t.Errorf("%q = %d, want an error", bad, v)
+		}
+	}
+	for in, want := range map[string]int64{"1,000": 100000, "-12,345,678.90": -1234567890, "999": 99900, "1000.5": 100050} {
+		if v, err := parseDecimalMinor(in, 2, '.', ','); err != nil || v != want {
+			t.Errorf("%q = %d %v, want %d", in, v, err, want)
+		}
+	}
+}

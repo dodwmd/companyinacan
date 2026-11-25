@@ -107,7 +107,7 @@ over 64 bytes.
 - **CSV** (RFC 4180, `encoding/csv`): nothing is guessed. You give the delimiter (`comma`, `semicolon`, `tab`,
   `pipe`), the column numbers (`date_col`, `amount_col` or `debit_col` and `credit_col`, optional `reference_col`,
   `description_col`, `counterparty_col`, `id_col`), `date_layout` (a Go layout, default `2006-01-02`),
-  `decimal` (`dot` or `comma`), `thousands` and `header`. A bare quote, a short row, a bad date or a bad amount
+  `decimal` (`dot` or `comma`), `thousands` (digits must then be grouped in threes) and `header`. A bare quote, a short row, a bad date or a bad amount
   rejects the whole file. Text cells are stored as text; every CSV and HTML output escapes them (a cell
   starting with `=`, `+`, `-` or `@` is defused in exports).
 - **OFX / QFX 1.x** (SGML subset): bank statements, tags with or without closing tags. Any `<!` (document type or
