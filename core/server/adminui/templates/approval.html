@@ -1,0 +1,77 @@
+{{define "content"}}
+<p><a href="/approvals">{{t "ap.back"}}</a></p>
+<h1>{{.Data.Req.Title}}</h1>
+<p><span class="badge {{.Data.StatusClass}}">{{.Data.StatusLabel}}</span></p>
+<dl>
+<dt>{{t "ap.col_type"}}</dt><dd>{{.Data.Req.Type}}</dd>
+<dt>{{t "ap.module"}}</dt><dd>{{.Data.Req.ModuleID}}</dd>
+<dt>{{t "ap.col_requester"}}</dt><dd>{{.Data.Req.Requester}}</dd>
+{{if .Data.Req.Ref}}<dt>{{t "ap.ref"}}</dt><dd>{{.Data.Req.Ref}}</dd>
+{{end}}{{if .Data.Amount}}<dt>{{t "ap.col_amount"}}</dt><dd>{{.Data.Amount}}</dd>
+{{end}}<dt>{{t "ap.col_created"}}</dt><dd><time datetime="{{iso .Data.Req.CreatedAt}}">{{ts .Data.Req.CreatedAt}}</time></dd>
+{{if .Data.Req.ExpiresAt}}<dt>{{t "ap.expires"}}</dt><dd><time datetime="{{iso .Data.Req.ExpiresAt}}">{{ts .Data.Req.ExpiresAt}}</time></dd>
+{{end}}{{if .Data.Req.DecidedAt}}<dt>{{t "ap.decided_at"}}</dt><dd><time datetime="{{iso .Data.Req.DecidedAt}}">{{ts .Data.Req.DecidedAt}}</time></dd>
+{{end}}</dl>
+{{if .Data.Details}}
+<section aria-labelledby="h-details">
+<h2 id="h-details">{{t "ap.details"}}</h2>
+<dl>
+{{range .Data.Details}}<dt>{{.Key}}</dt><dd>{{.Value}}</dd>
+{{end}}</dl>
+</section>
+{{end}}
+<section aria-labelledby="h-steps">
+<h2 id="h-steps">{{t "ap.steps"}}</h2>
+<div class="table-wrap" role="region" aria-labelledby="cap-steps" tabindex="0">
+<table>
+<caption id="cap-steps" class="sr">{{t "ap.steps"}}</caption>
+<thead><tr><th scope="col">{{t "ap.step"}}</th><th scope="col">{{t "ap.approvers"}}</th><th scope="col">{{t "ap.progress"}}</th><th scope="col">{{t "ap.col_status"}}</th></tr></thead>
+<tbody>
+{{range .Data.Steps}}<tr><th scope="row">{{.Name}}</th><td>{{.Approvers}}</td><td>{{.Approvals}} / {{.Quorum}}</td><td><span class="badge {{if .StatusClass}}{{.StatusClass}}{{else}}neutral{{end}}">{{.StatusLabel}}</span></td></tr>
+{{end}}</tbody>
+</table>
+</div>
+</section>
+{{if .Data.CanDecide}}
+<section aria-labelledby="h-decide">
+<h2 id="h-decide">{{t "ap.decide_heading"}}</h2>
+<form method="post" action="/approvals/{{.Data.Req.ID}}/decide" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="dec-comment">{{t "ap.comment_opt"}}</label>
+<textarea id="dec-comment" name="comment" rows="3" maxlength="2000"></textarea></p>
+<p><button type="submit" name="decision" value="approve">{{t "ap.approve"}}</button>
+<button type="submit" name="decision" value="reject">{{t "ap.reject"}}</button></p>
+</form>
+</section>
+{{else if .Data.Own}}{{if eq .Data.Req.Status "pending"}}<p class="hint">{{t "ap.sod"}}</p>{{end}}{{end}}
+<section aria-labelledby="h-history">
+<h2 id="h-history">{{t "ap.history"}}</h2>
+{{if .Data.History}}<div class="table-wrap" role="region" aria-labelledby="cap-hist" tabindex="0">
+<table>
+<caption id="cap-hist" class="sr">{{t "ap.history"}}</caption>
+<thead><tr><th scope="col">{{t "audit.time"}}</th><th scope="col">{{t "ap.col_status"}}</th><th scope="col">{{t "audit.actor"}}</th><th scope="col">{{t "ap.comment"}}</th></tr></thead>
+<tbody>
+{{range .Data.History}}<tr><th scope="row"><time datetime="{{iso .At}}">{{ts .At}}</time></th><td>{{.KindLabel}}</td><td>{{.Actor}}{{if .OnBehalf}} ({{.OnBehalf}}){{end}}</td><td>{{.Comment}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{end}}
+<form method="post" action="/approvals/{{.Data.Req.ID}}/comment" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="cm-text">{{t "ap.comment"}}</label>
+<textarea id="cm-text" name="comment" rows="2" maxlength="2000" required></textarea></p>
+<p><button type="submit">{{t "ap.add_comment"}}</button></p>
+</form>
+</section>
+{{if .Data.CanCancel}}
+<section aria-labelledby="h-withdraw">
+<h2 id="h-withdraw">{{t "ap.withdraw"}}</h2>
+<form method="post" action="/approvals/{{.Data.Req.ID}}/cancel" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="cx-reason">{{t "ap.withdraw_reason"}}</label>
+<input id="cx-reason" name="reason" type="text" maxlength="2000"></p>
+<p><button type="submit">{{t "ap.withdraw"}}</button></p>
+</form>
+</section>
+{{end}}
+{{end}}

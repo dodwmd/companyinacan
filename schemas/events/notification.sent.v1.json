@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/notification.sent.v1.json",
+  "title": "notification.sent.v1",
+  "description": "Published by can-core for every successful delivery of a notification on a channel (inapp, email, webhook). Identifiers only: no address, title or body.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24,32}$"
+    },
+    "type": {
+      "const": "notification.sent.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "can-core"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "notification_id",
+        "subject",
+        "type",
+        "channel"
+      ],
+      "properties": {
+        "notification_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "subject": {
+          "type": "string",
+          "pattern": "^(user|party|channel):[A-Za-z0-9_.@-]{1,64}$"
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+        },
+        "channel": {
+          "enum": [
+            "inapp",
+            "email",
+            "webhook"
+          ]
+        }
+      }
+    }
+  }
+}

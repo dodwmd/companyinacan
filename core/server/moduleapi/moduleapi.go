@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
+	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
@@ -31,6 +34,10 @@ type Server struct {
 	Registry *registry.Registry
 	Bus      *events.Bus
 	Log      *slog.Logger
+	// Shared platform services (epic E11a, platform.go); nil answers 503 on their routes.
+	RBAC      *rbac.Service
+	Approvals *approvals.Engine
+	Notify    *notify.Service
 }
 
 type route struct {
@@ -45,6 +52,11 @@ func (s *Server) routes() []route {
 		{"POST /v1/tokens/introspect", s.authed(s.introspect)},
 		{"GET /v1/capabilities/{name}", s.authed(s.capability)},
 		{"POST /v1/events", s.authed(s.publish)},
+		{"POST /v1/check", s.authed(s.check)},
+		{"POST /v1/approvals", s.authed(s.createApproval)},
+		{"GET /v1/approvals/{id}", s.authed(s.getApproval)},
+		{"POST /v1/approvals/{id}/cancel", s.authed(s.cancelApproval)},
+		{"POST /v1/notifications", s.authed(s.sendNotification)},
 	}
 }
 
@@ -171,6 +183,10 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request, m store.Module)
 	}
 	if !events.ValidType(req.Type) {
 		httpx.Problem(w, http.StatusBadRequest, "invalid event type: want <noun>.<verb>.v<N>")
+		return
+	}
+	if config.IsReservedEvent(req.Type) {
+		httpx.Problem(w, http.StatusForbidden, "events in the approval. and notification. namespaces are published only by can-core")
 		return
 	}
 	declared := false

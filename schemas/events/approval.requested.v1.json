@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/approval.requested.v1.json",
+  "title": "approval.requested.v1",
+  "description": "Published by can-core when an approval request is created. Delivered only to the module that created it (and to in-process rules). Identifiers only: titles and payloads never appear in events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24,32}$"
+    },
+    "type": {
+      "const": "approval.requested.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "can-core"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "module_id",
+        "type",
+        "requester",
+        "amount"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "pattern": "^apr_[0-9a-f]{24}$"
+        },
+        "module_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,30}$"
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+        },
+        "ref": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "requester": {
+          "type": "string",
+          "pattern": "^(user|party|channel):[A-Za-z0-9_.@-]{1,64}$"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

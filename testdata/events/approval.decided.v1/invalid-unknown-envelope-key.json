@@ -1,0 +1,20 @@
+{
+  "id": "evt_0123456789abcdef0123456789abcdef",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "can-core",
+  "type": "approval.decided.v1",
+  "data": {
+    "request_id": "apr_0123456789abcdef01234567",
+    "module_id": "expenses",
+    "type": "expense",
+    "ref": "exp-1",
+    "requester": "user:emp",
+    "outcome": "approved",
+    "approvers": [
+      "user:boss",
+      "user:fin1"
+    ],
+    "decided_at": "2026-11-25T10:00:00Z"
+  },
+  "extra": 1
+}

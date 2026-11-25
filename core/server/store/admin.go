@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -22,15 +23,32 @@ type AdminUser struct {
 // CreateAdmin inserts an admin user.
 func (db *DB) CreateAdmin(ctx context.Context, username, passwordHash, totpSecret string) (AdminUser, error) {
 	now := db.Now()
-	res, err := db.ExecContext(ctx, `INSERT INTO admin_users(username, password_hash, totp_secret, created_at) VALUES (?,?,?,?)`,
-		username, passwordHash, totpSecret, now.Unix())
+	var id int64
+	// The first admin of an installation is its owner (break-glass role, specs/015); later admins
+	// start without any role and are given roles explicitly.
+	err := db.InTx(ctx, func(tx *sql.Tx) error {
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_users`).Scan(&n); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `INSERT INTO admin_users(username, password_hash, totp_secret, created_at) VALUES (?,?,?,?)`,
+			username, passwordHash, totpSecret, now.Unix())
+		if err != nil {
+			return err
+		}
+		id, _ = res.LastInsertId()
+		if n == 0 {
+			_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO rbac_assignments(subject, role, scope, granted_by, granted_at) VALUES (?,?,?,?,?)`,
+				"user:"+username, "owner", "", "bootstrap", now.Unix())
+		}
+		return err
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return AdminUser{}, ErrExists
 		}
 		return AdminUser{}, err
 	}
-	id, _ := res.LastInsertId()
 	return AdminUser{ID: id, Username: username, PasswordHash: passwordHash, TOTPSecret: totpSecret, CreatedAt: now}, nil
 }
 

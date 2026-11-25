@@ -30,6 +30,21 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `POST /settings/totp` | yes | Field `current`; shows a new secret to confirm |
 | `POST /settings/totp/confirm` | yes | Fields `current`, `otp` (current code), `secret`, `code` (code from the new secret) |
 | `POST /settings/sessions/{sid}/revoke` | yes | Revoke one session (16 character public id) |
+| `GET /approvals` | yes | Approvals inbox: waiting on me, my requests, all requests (approvals admins; query `status`), out-of-office delegations |
+| `GET /approvals/{id}` | yes | Request detail with steps and decision history; 404 for anyone who may not see it. Audited (`approval.read`) |
+| `POST /approvals/{id}/decide` | yes | Fields `decision` (`approve`, `reject`), `comment`. 403 for the requester (separation of duties) |
+| `POST /approvals/{id}/comment` | yes | Field `comment` |
+| `POST /approvals/{id}/cancel` | yes | Withdraw; field `reason`. Requester or approvals admin |
+| `POST /approvals/delegate` | yes | Fields `delegate` (user name), `until` (date, UTC) |
+| `POST /approvals/delegations/{did}/revoke` | yes | End one of your delegations |
+| `GET /notifications` | yes | Inbox, delivery settings and preferences. Query `before` (id) |
+| `POST /notifications/read` | yes | Mark all read |
+| `POST /notifications/settings` | yes | Fields `email`, `quiet_start`, `quiet_end` (HH:MM or empty), `tz`, `digest` |
+| `POST /notifications/prefs` | yes | Fields `type`, `channel` (`email`, `inapp`), `enabled` (absent = off) |
+| `POST /notifications/{id}/read` | yes | Mark one of your own read; 404 otherwise |
+| `GET /access` | yes (`rbac.manage`) | Users, role assignments and role definitions |
+| `POST /access/{username}/grant` | yes (`rbac.manage`) | Fields `role`, `scope` |
+| `POST /access/{username}/revoke` | yes (`rbac.manage`) | Fields `role`, `scope`; 409 for the last owner |
 | `GET /static/{file}` | no | Embedded stylesheet and icons (immutable cache) |
 | `GET /manifest.webmanifest` | no | Web app manifest |
 

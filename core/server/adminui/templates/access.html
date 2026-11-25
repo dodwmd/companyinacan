@@ -1,0 +1,40 @@
+{{define "content"}}
+<h1>{{t "ac.title"}}</h1>
+<p class="hint">{{t "ac.help"}}</p>
+
+<section aria-labelledby="h-users">
+<h2 id="h-users">{{t "ac.users"}}</h2>
+{{range $ui, $u := .Data.Users}}
+<h3 id="u-{{$ui}}">{{$u.Username}}</h3>
+{{if $u.Assignments}}<ul>
+{{range $u.Assignments}}<li>{{.Role}}{{if .Scope}} ({{.Scope}}){{end}}
+<form method="post" action="/access/{{$u.Username}}/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="role" value="{{.Role}}"><input type="hidden" name="scope" value="{{.Scope}}"><button type="submit">{{t "ac.revoke"}}</button></form></li>
+{{end}}</ul>
+{{else}}<p class="empty">{{t "ac.none"}}</p>{{end}}
+<form method="post" action="/access/{{$u.Username}}/grant" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<p><label for="g-role-{{$ui}}">{{t "ac.role"}}</label>
+<select id="g-role-{{$ui}}" name="role">
+{{range $.Data.Names}}<option value="{{.}}">{{.}}</option>
+{{end}}</select></p>
+<p><label for="g-scope-{{$ui}}">{{t "ac.scope"}}</label>
+<input id="g-scope-{{$ui}}" name="scope" type="text" maxlength="130" aria-describedby="g-hint-{{$ui}}">
+<span id="g-hint-{{$ui}}" class="hint">{{t "ac.scope_hint"}}</span></p>
+<p><button type="submit">{{t "ac.grant"}}</button></p>
+</form>
+{{end}}
+</section>
+
+<section aria-labelledby="h-roles">
+<h2 id="h-roles">{{t "ac.role_table"}}</h2>
+<div class="table-wrap" role="region" aria-labelledby="cap-roles" tabindex="0">
+<table>
+<caption id="cap-roles" class="sr">{{t "ac.role_table"}}</caption>
+<thead><tr><th scope="col">{{t "ac.role_name"}}</th><th scope="col">{{t "ac.role_perms"}}</th><th scope="col">{{t "ac.role_sources"}}</th></tr></thead>
+<tbody>
+{{range .Data.Roles}}<tr><th scope="row">{{.Name}}</th><td>{{.Permissions}}</td><td>{{.Sources}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+</section>
+{{end}}

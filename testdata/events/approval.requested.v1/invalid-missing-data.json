@@ -1,0 +1,6 @@
+{
+  "id": "evt_0123456789abcdef0123456789abcdef",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "can-core",
+  "type": "approval.requested.v1"
+}

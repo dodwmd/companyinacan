@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/approval.decided.v1.json",
+  "title": "approval.decided.v1",
+  "description": "Published by can-core once per request when it ends: approved, rejected, cancelled or expired. Delivered only to the module that created the request, signed like every webhook. Identifiers only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24,32}$"
+    },
+    "type": {
+      "const": "approval.decided.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "can-core"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "module_id",
+        "type",
+        "requester",
+        "outcome",
+        "approvers"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "pattern": "^apr_[0-9a-f]{24}$"
+        },
+        "module_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,30}$"
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+        },
+        "ref": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "requester": {
+          "type": "string",
+          "pattern": "^(user|party|channel):[A-Za-z0-9_.@-]{1,64}$"
+        },
+        "outcome": {
+          "enum": [
+            "approved",
+            "rejected",
+            "cancelled",
+            "expired"
+          ]
+        },
+        "approvers": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "pattern": "^(user|party|channel):[A-Za-z0-9_.@-]{1,64}$"
+          }
+        },
+        "decided_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "enum": [
+            "no_approver"
+          ]
+        }
+      }
+    }
+  }
+}

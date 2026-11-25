@@ -62,9 +62,12 @@ type Module struct {
 		Export  string `yaml:"export"`
 		Import  string `yaml:"import"`
 	} `yaml:"hooks"`
-	Permissions []string            `yaml:"permissions"`
-	Roles       map[string][]string `yaml:"roles"`
-	DataClasses []struct {
+	Permissions []string `yaml:"permissions"`
+	// Approvals and Notifications are the approval types and notification rules (epic E11a).
+	Approvals     []ManifestApproval  `yaml:"approvals"`
+	Notifications []NotifyRule        `yaml:"notifications"`
+	Roles         map[string][]string `yaml:"roles"`
+	DataClasses   []struct {
 		Class       string `yaml:"class"`
 		Retention   string `yaml:"retention"`
 		Sensitivity string `yaml:"sensitivity"`

@@ -222,6 +222,372 @@ paths:
         "403": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
         "409": { $ref: "#/components/responses/Problem" }
+  /api/v1/approvals:
+    get:
+      operationId: listApprovals
+      summary: "Approval requests: waiting on me, mine, or all"
+      description: "view=all needs approvals.admin. The requester never sees their own request under view=waiting."
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [waiting, requested, all] } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/approvals/{id}:
+    get:
+      operationId: getApproval
+      summary: "One request with steps and decision history"
+      description: "Anyone who may not see the request gets 404, as for a missing id. The read is audited (approval.read)."
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalDetail" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/approvals/{id}/decision:
+    post:
+      operationId: decideApproval
+      summary: "Approve or reject as an approver"
+      description: "403 when the caller is the requester (separation of duties) or is not an approver of an open step; 409 when already decided or already voted."
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DecisionRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Approval" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/approvals/{id}/comments:
+    post:
+      operationId: commentApproval
+      summary: "Add a comment"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommentRequest" }
+      responses:
+        "204": { description: Added }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/approvals/{id}/cancel:
+    post:
+      operationId: cancelApproval
+      summary: "Withdraw a pending request"
+      description: "The requester or an approvals admin."
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CancelRequest" }
+      responses:
+        "204": { description: Cancelled }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/delegations:
+    get:
+      operationId: listDelegations
+      summary: "Your current and future delegations"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DelegationList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createDelegation
+      summary: "Delegate your approvals while out of office"
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DelegationRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Created" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/delegations/{id}/revoke:
+    post:
+      operationId: revokeDelegation
+      summary: "End one of your delegations"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Empty" }
+      responses:
+        "204": { description: Revoked }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/notifications:
+    get:
+      operationId: listNotifications
+      summary: "Your inbox, newest first"
+      parameters:
+        - { name: unread, in: query, schema: { type: boolean } }
+        - { name: before, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/notifications/unread-count:
+    get:
+      operationId: unreadCount
+      summary: "Unread notifications, capped"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UnreadCount" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/notifications/read-all:
+    post:
+      operationId: readAllNotifications
+      summary: "Mark your whole inbox read"
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Empty" }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/notifications/{id}/read:
+    post:
+      operationId: readNotification
+      summary: "Mark one of your notifications read"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Empty" }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/notification-settings:
+    get:
+      operationId: getNotificationSettings
+      summary: "Your delivery settings"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationSettings" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: setNotificationSettings
+      summary: "Replace your delivery settings"
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationSettings" }
+      responses:
+        "204": { description: Saved }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/notification-preferences:
+    get:
+      operationId: listNotificationPreferences
+      summary: "Your per-type, per-channel preferences"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PreferenceList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: setNotificationPreference
+      summary: "Turn a channel on or off for a notification type"
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Preference" }
+      responses:
+        "204": { description: Saved }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/notification-deliveries:
+    get:
+      operationId: listNotificationDeliveries
+      summary: "Delivery log (notifications.admin)"
+      parameters:
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationDeliveryList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/roles:
+    get:
+      operationId: listRoles
+      summary: "Roles with effective permissions (rbac.manage)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/roles/{role}/overrides:
+    post:
+      operationId: overrideRole
+      summary: "Grant, revoke or reset one permission of a role (rbac.manage)"
+      description: "The owner role cannot be edited."
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: role, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OverrideRequest" }
+      responses:
+        "204": { description: Saved }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      summary: "Admin users with their role assignments (rbac.manage)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/roles:
+    post:
+      operationId: grantRole
+      summary: "Assign a role (rbac.manage)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoleRequest" }
+      responses:
+        "204": { description: Assigned }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/roles/revoke:
+    post:
+      operationId: revokeRole
+      summary: "Remove a role (rbac.manage)"
+      description: "409 when it would leave the installation without an owner."
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoleRequest" }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 components:
   securitySchemes:
     session:
@@ -343,3 +709,197 @@ components:
         status_code: { type: integer }
         error: { type: string }
         duration_ms: { type: integer }
+    Empty: { type: object, additionalProperties: false }
+    Created: { type: object, required: [id], properties: { id: { type: integer } } }
+    Approval:
+      type: object
+      required: [id, module_id, type, requester, status, created_at]
+      properties:
+        id: { type: string, pattern: "^apr_[0-9a-f]{24}$" }
+        module_id: { type: string }
+        type: { type: string }
+        requester: { type: string, description: "user:<name> or party:<id>" }
+        ref: { type: string }
+        title: { type: string }
+        amount: { type: integer, description: Minor units }
+        status: { type: string, enum: [pending, approved, rejected, cancelled, expired] }
+        outcome_reason: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time }
+    ApprovalList:
+      type: object
+      required: [approvals]
+      properties: { approvals: { type: array, items: { $ref: "#/components/schemas/Approval" } } }
+    ApprovalStep:
+      type: object
+      properties:
+        idx: { type: integer }
+        name: { type: string }
+        stage: { type: integer }
+        quorum: { type: integer }
+        status: { type: string, enum: [waiting, active, approved, rejected, skipped] }
+        roles: { type: array, items: { type: string } }
+        users: { type: array, items: { type: string } }
+        approvals: { type: integer }
+    ApprovalDecision:
+      type: object
+      properties:
+        id: { type: integer }
+        step_idx: { type: integer }
+        actor: { type: string }
+        on_behalf_of: { type: string }
+        kind: { type: string, enum: [approve, reject, comment, cancel, escalate, expire, system] }
+        comment: { type: string }
+        at: { type: string, format: date-time }
+    ApprovalDetail:
+      type: object
+      required: [request, steps, decisions]
+      properties:
+        request: { $ref: "#/components/schemas/Approval" }
+        steps: { type: array, items: { $ref: "#/components/schemas/ApprovalStep" } }
+        decisions: { type: array, items: { $ref: "#/components/schemas/ApprovalDecision" } }
+    DecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approve, reject] }
+        comment: { type: string, maxLength: 2000 }
+    CommentRequest:
+      type: object
+      additionalProperties: false
+      required: [comment]
+      properties: { comment: { type: string, minLength: 1, maxLength: 2000 } }
+    CancelRequest:
+      type: object
+      additionalProperties: false
+      properties: { reason: { type: string, maxLength: 2000 } }
+    DelegationRequest:
+      type: object
+      additionalProperties: false
+      required: [delegate, from, to]
+      properties:
+        delegate: { type: string, description: "user:<name> or party:<id>" }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time, description: At most 90 days after from }
+    DelegationList:
+      type: object
+      required: [delegations]
+      properties:
+        delegations:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              delegator: { type: string }
+              delegate: { type: string }
+              from: { type: string, format: date-time }
+              to: { type: string, format: date-time }
+    Notification:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        title: { type: string }
+        body: { type: string }
+        data: { type: object, additionalProperties: { type: string } }
+        link: { type: string }
+        urgent: { type: boolean }
+        created_at: { type: string, format: date-time }
+        read: { type: boolean }
+    NotificationList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Notification" } }
+        next_before: { type: integer, description: Pass as `before` for the next page }
+    UnreadCount:
+      type: object
+      required: [unread, capped_at]
+      properties: { unread: { type: integer }, capped_at: { type: integer } }
+    NotificationSettings:
+      type: object
+      additionalProperties: false
+      required: [email, quiet_start, quiet_end, tz, digest]
+      properties:
+        email: { type: string, maxLength: 254 }
+        quiet_start: { type: integer, minimum: -1, maximum: 1439, description: Minutes after midnight; -1 for none }
+        quiet_end: { type: integer, minimum: -1, maximum: 1439 }
+        tz: { type: string }
+        digest: { type: string, enum: [off, hourly, daily] }
+    Preference:
+      type: object
+      additionalProperties: false
+      required: [type, channel, enabled]
+      properties:
+        type: { type: string, description: Notification type or "*" }
+        channel: { type: string, enum: [email, inapp] }
+        enabled: { type: boolean }
+    PreferenceList:
+      type: object
+      required: [preferences]
+      properties: { preferences: { type: array, items: { $ref: "#/components/schemas/Preference" } } }
+    NotificationDeliveryList:
+      type: object
+      required: [deliveries]
+      properties:
+        deliveries:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              notification_id: { type: integer }
+              channel: { type: string }
+              status: { type: string, enum: [sent, failed, queued, suppressed] }
+              detail: { type: string }
+              at: { type: string, format: date-time }
+    RoleList:
+      type: object
+      required: [roles]
+      properties:
+        roles:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              permissions: { type: array, items: { type: string } }
+              sources: { type: array, items: { type: string } }
+              overrides: { type: array, items: { type: string } }
+    UserList:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          items:
+            type: object
+            properties:
+              username: { type: string }
+              subject: { type: string }
+              assignments:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    role: { type: string }
+                    scope: { type: string }
+                    granted_by: { type: string }
+                    granted_at: { type: string, format: date-time }
+    RoleRequest:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role: { type: string }
+        scope: { type: string, description: "Empty for everything, or a prefix ending in /*" }
+    OverrideRequest:
+      type: object
+      additionalProperties: false
+      required: [permission, effect]
+      properties:
+        permission: { type: string }
+        effect: { type: string, enum: [grant, revoke, reset] }

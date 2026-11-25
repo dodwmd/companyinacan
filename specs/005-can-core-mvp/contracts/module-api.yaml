@@ -117,6 +117,110 @@ paths:
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Problem" }
+  /v1/check:
+    post:
+      operationId: checkPermission
+      summary: "can.check(subject, permission, resource)"
+      description: "The permission must be one the calling module lists under `permissions`. Fails closed: errors answer 503, never allowed. Answers are cached for 30 seconds at most; changes made through can-core apply at once."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /v1/approvals:
+    post:
+      operationId: createApproval
+      summary: "Open an approval request (idempotent)"
+      description: "The type must be declared under `approvals` in the module manifest. 422 when no policy or default chain exists or no approver can be found. When the request ends, can-core delivers a signed `approval.decided.v1` webhook to this module only (subscribe in the manifest)."
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalView" }
+        "200":
+          description: The same request was already created with this key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "502": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /v1/approvals/{id}:
+    get:
+      operationId: getApproval
+      summary: "Status of a request the module created"
+      description: "Requests of other modules answer 404."
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /v1/approvals/{id}/cancel:
+    post:
+      operationId: cancelApproval
+      summary: "Withdraw a pending request"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalCancel" }
+      responses:
+        "204": { description: Cancelled }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /v1/notifications:
+    post:
+      operationId: sendNotification
+      summary: "Put an item in a person's inbox"
+      description: "Needs `notify` under requires.capabilities or consumes. The type must start with the module id and a dot. Use dedupe_key to make a reminder idempotent. Send identifiers, not personal data."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationSend" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 webhooks:
   event:
     post:
@@ -233,3 +337,57 @@ components:
         time: { type: string, format: date-time }
         source: { type: string, description: Publishing module id or can-core }
         data: { type: object }
+    CheckRequest:
+      type: object
+      additionalProperties: false
+      required: [subject, permission]
+      properties:
+        subject: { type: string, description: "user:<name> or party:<id>" }
+        permission: { type: string }
+        resource: { type: string, maxLength: 200 }
+    CheckResponse:
+      type: object
+      required: [allowed]
+      properties: { allowed: { type: boolean } }
+    ApprovalCreate:
+      type: object
+      additionalProperties: false
+      required: [type, requester]
+      properties:
+        type: { type: string }
+        requester: { type: string, description: "user:<name> or party:<id>; cannot approve their own request" }
+        ref: { type: string, maxLength: 200 }
+        title: { type: string, maxLength: 300 }
+        amount: { type: integer, minimum: 0, description: Minor units; compared with policy thresholds }
+        payload: { type: object, description: At most 64 KiB; shown to approvers, never put in events }
+    ApprovalView:
+      type: object
+      required: [id, type, requester, status, created_at]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        requester: { type: string }
+        ref: { type: string }
+        status: { type: string, enum: [pending, approved, rejected, cancelled, expired] }
+        reason: { type: string, enum: [no_approver] }
+        created_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time }
+    ApprovalCancel:
+      type: object
+      additionalProperties: false
+      properties: { reason: { type: string, maxLength: 2000 } }
+    NotificationSend:
+      type: object
+      additionalProperties: false
+      required: [subject, type]
+      properties:
+        subject: { type: string }
+        type: { type: string }
+        dedupe_key: { type: string, maxLength: 200 }
+        data: { type: object, additionalProperties: { type: string }, description: "At most 20 short string values; `title` and `body` are shown for module-defined types" }
+        link: { type: string, description: Site-relative admin UI path }
+        urgent: { type: boolean }
+    NotificationAccepted:
+      type: object
+      required: [created]
+      properties: { created: { type: boolean, description: false for a duplicate or a muted type } }
