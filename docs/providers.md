@@ -96,7 +96,10 @@ provider:
 ```
 
 Secret references are `env:NAME` with NAME in upper case (`A-Z`, `0-9`, `_`), or `file:PATH`; anything
-else, such as a token pasted after `env:`, is rejected without being printed.
+else, such as a token pasted after `env:`, is rejected without being printed. **Note for existing setups:**
+a lower-case name such as `env:hcloud_token` was accepted before and is now rejected; rename the variable
+to upper case (`HCLOUD_TOKEN`) or use `file:`. `operator_ip` must be a quoted string (an unquoted number is
+an error, not "unset").
 
 `~/` is expanded in `ssh_public_key_file`, `ssh_private_key_file`, `key_file` and `file:` secret
 references. The SSH port is fixed to 22 for `hetzner`: setting `port` to anything else is an error,
@@ -114,7 +117,9 @@ Create a project and a read/write API token in the Hetzner console, then
 already uploaded), a firewall (22, 80, 443, icmp) and the server with the bootstrap as cloud-init
 user-data, then waits until the completion marker appears. Every id is saved immediately, so an
 interrupted run resumes without creating duplicates. `can down --yes` deletes the server, the
-firewall, and the SSH key only if `can` uploaded it. **Deleting the server deletes its data.**
+firewall, and the SSH key only if `can` uploaded it (re-read first: name and fingerprint must still match). If several
+servers match the name and labels, `can down` refuses and names their ids. **Deleting the server deletes its
+data.**
 
 The defaults for `server_type`, `image` and `location` have not been checked against the live API
 yet (epic E00). Override them if Hetzner has renamed a type.
@@ -149,6 +154,12 @@ host firewall) allow port 22 from any address; key-only login is then the only b
 `operator_ip` to an IP or CIDR (`0.0.0.0/0` and `::/0` are rejected: leave it unset instead). Changing
 it later: a resumed `can up` that adopts the firewall by tag updates its rules to match; a firewall
 already recorded in state is not reconciled.
+
+**Two companies with the same name slug in one DigitalOcean account are indistinguishable to `can`** (same
+name, same tags): `can down` refuses to choose between several matching droplets and names their ids. Use
+different company names, or separate accounts or projects. The firewall `can` creates or adopts is
+**can's to manage**: its outbound rules and any inbound rule you add by hand are overwritten when `can up`
+updates it, and it is deleted by `can down`; use a separate firewall for anything of your own.
 
 **Ownership by tag.** The Droplet is tagged `managed-by:can` and `company:<slug>`; the firewall is
 named `can-<slug>`, targets exactly those two tags and is attached by id to no other droplet

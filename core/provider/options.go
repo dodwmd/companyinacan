@@ -21,6 +21,20 @@ func expandHome(p string) string {
 	return filepath.Join(home, strings.TrimPrefix(p, "~"))
 }
 
+// operatorIPString returns operator_ip, or an error if it is set but not a string
+// (an unquoted number would otherwise be ignored and leave SSH open to the world).
+func operatorIPString(o map[string]any) (string, error) {
+	v, ok := o["operator_ip"]
+	if !ok || v == nil {
+		return "", nil
+	}
+	s, isStr := v.(string)
+	if !isStr {
+		return "", fmt.Errorf("provider.options.operator_ip must be a string (an IP address or CIDR), got %v", v)
+	}
+	return s, nil
+}
+
 // CheckOperatorIP validates provider.options.operator_ip: an IP or CIDR. A
 // match-everything value (0.0.0.0/0, ::/0) is refused: leave the option unset instead.
 func CheckOperatorIP(s string) error {

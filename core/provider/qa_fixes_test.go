@@ -290,3 +290,77 @@ func TestCloudflarePreflightReadsDNSRecords(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestDODestroyRefusesWhenSeveralDropletsMatch(t *testing.T) {
+	f := newFakeDO(t)
+	f.firewalls = []*doFirewall{{ID: "fw-0000-aaaa", Name: "can-acme-co", Tags: ownedTags()}}
+	f.droplets = []*doDroplet{{ID: 8080, Name: "can-acme-co", Tags: ownedTags()}, {ID: 8081, Name: "can-acme-co", Tags: ownedTags()}}
+	for name, withState := range map[string]bool{"empty state": false, "state without server": true} {
+		t.Run(name, func(t *testing.T) {
+			x := doFixture(t, f, readyRunner())
+			if withState {
+				_ = x.st.Mutate(func(s *State) error { s.Provider, s.FirewallUUID = "digitalocean", "fw-0000-aaaa"; return nil })
+			}
+			err := x.p.Destroy(context.Background(), doSpec(), x.st, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), "8080") || !strings.Contains(err.Error(), "8081") || !strings.Contains(err.Error(), "refusing to choose") {
+				t.Fatalf("got %v", err)
+			}
+			if f.count("DELETE") != 0 {
+				t.Fatalf("deleted something: %v", f.calls)
+			}
+		})
+	}
+}
+
+func TestHetznerDestroyRefusesWhenSeveralServersMatch(t *testing.T) {
+	f := newFakeHetzner(t)
+	f.haveServer, f.dupServer, f.haveFW = true, true, true
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	_ = st.Mutate(func(s *State) error { s.Provider, s.FirewallID = "hetzner", 2022; return nil })
+	err := p.Destroy(context.Background(), hetznerSpec(), st, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "3033") || !strings.Contains(err.Error(), "3034") {
+		t.Fatalf("got %v", err)
+	}
+	if f.count("DELETE") != 0 {
+		t.Fatalf("deleted: %v", f.calls)
+	}
+}
+
+func TestHetznerKeyDeleteVerifiesNameAndFingerprint(t *testing.T) {
+	f := newFakeHetzner(t)
+	f.haveKey, f.keyOwned, f.keyRenamed = true, true, true
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	_ = st.Mutate(func(s *State) error { s.Provider, s.SSHKeyID, s.SSHKeyOwned = "hetzner", 1011, true; return nil })
+	var out strings.Builder
+	if err := p.Destroy(context.Background(), hetznerSpec(), st, &out); err != nil {
+		t.Fatal(err)
+	}
+	if f.count("DELETE /ssh_keys") != 0 || !strings.Contains(out.String(), "kept") {
+		t.Fatalf("deleted a renamed key: %v %q", f.calls, out.String())
+	}
+}
+
+func TestNonStringOperatorIPIsRejectedEverywhere(t *testing.T) {
+	for _, typ := range []string{"ssh", "hetzner", "digitalocean"} {
+		for _, v := range []any{12345, true, []any{"1.2.3.4"}} {
+			if len(CheckProviderOptions(typ, map[string]any{"operator_ip": v})) == 0 {
+				t.Errorf("%s: validate accepted operator_ip %v", typ, v)
+			}
+		}
+	}
+	if _, err := BootstrapOptionsFrom(Spec{Options: map[string]any{"operator_ip": 5}}); err == nil {
+		t.Error("ssh bootstrap ignored a non-string operator_ip")
+	}
+	x := doFixture(t, newFakeDO(t), readyRunner())
+	spec := doSpec()
+	spec.Options["operator_ip"] = 198
+	if err := x.p.Create(context.Background(), spec, x.st, io.Discard); err == nil {
+		t.Error("do accepted it")
+	}
+	h := Hetzner{deps: testDeps(nil)}
+	hs := hetznerSpec()
+	hs.Options["operator_ip"] = 198
+	if _, err := h.conf(hs); err == nil {
+		t.Error("hetzner accepted it")
+	}
+}

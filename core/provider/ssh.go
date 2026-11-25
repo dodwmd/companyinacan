@@ -45,11 +45,15 @@ func BootstrapOptionsFrom(spec Spec) (BootstrapOptions, error) {
 	if err != nil {
 		return BootstrapOptions{}, err
 	}
+	opIP, err := operatorIPString(spec.Options)
+	if err != nil {
+		return BootstrapOptions{}, err
+	}
 	bo := BootstrapOptions{
 		K3sVersion:   o.str("k3s_version", ""),
 		NodeName:     o.str("node_name", ""),
 		SSHPort:      port,
-		OperatorCIDR: o.str("operator_ip", ""),
+		OperatorCIDR: opIP,
 		SwapMB:       swap,
 	}
 	if l, ok := spec.Options["image_tarballs"].([]any); ok {

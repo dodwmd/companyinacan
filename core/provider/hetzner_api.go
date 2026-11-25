@@ -285,6 +285,26 @@ func (c *HetznerClient) DeleteFirewall(ctx context.Context, id int64) error {
 	return err
 }
 
+// FindServers lists the servers with the given name.
+func (c *HetznerClient) FindServers(ctx context.Context, name string) ([]HServer, error) {
+	var r struct {
+		Servers []HServer `json:"servers"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/servers?name="+url.QueryEscape(name), nil, &r); err != nil {
+		return nil, err
+	}
+	return r.Servers, nil
+}
+
+// GetSSHKey fetches a key by id (IsNotFound when gone).
+func (c *HetznerClient) GetSSHKey(ctx context.Context, id int64) (HSSHKey, error) {
+	var r struct {
+		Key HSSHKey `json:"ssh_key"`
+	}
+	err := c.do(ctx, http.MethodGet, "/ssh_keys/"+strconv.FormatInt(id, 10), nil, &r)
+	return r.Key, err
+}
+
 // FindServer looks a server up by name.
 func (c *HetznerClient) FindServer(ctx context.Context, name string) (HServer, bool, error) {
 	var r struct {

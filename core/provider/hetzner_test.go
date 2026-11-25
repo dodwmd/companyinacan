@@ -46,6 +46,7 @@ type fakeHetzner struct {
 	keyOwned                    bool // key list shows can labels
 	foreignFW, foreignServer    bool // same-named resource not created by can
 	pollsUntilRunning           int
+	keyRenamed, dupServer       bool
 	status                      map[string]int // "METHOD /path" -> forced status
 	forced                      map[string]string
 }
@@ -110,6 +111,18 @@ func (f *fakeHetzner) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "POST /ssh_keys":
 		f.haveKey, f.keyOwned = true, true
 		f.write(w, 201, "ssh_key_created")
+	case "GET /ssh_keys/1011":
+		if !f.haveKey {
+			f.write(w, 404, "error_not_found")
+			return
+		}
+		fp, _ := SSHFingerprint(testPubKey)
+		name := "can-acme-co"
+		if f.keyRenamed {
+			name = "my-laptop"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ssh_key": map[string]any{"id": 1011, "name": name, "fingerprint": fp}})
 	case "DELETE /ssh_keys/1011":
 		f.haveKey = false
 		f.write(w, 200, "empty")
@@ -137,7 +150,12 @@ func (f *fakeHetzner) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.haveFW = false
 		f.write(w, 200, "empty")
 	case "GET /servers":
-		if f.haveServer && f.foreignServer {
+		if f.haveServer && f.dupServer {
+			w.Header().Set("Content-Type", "application/json")
+			one := map[string]any{"id": 3033, "name": "can-acme-co", "status": "running", "labels": map[string]string{"company": "acme-co", "managed-by": "can"}}
+			two := map[string]any{"id": 3034, "name": "can-acme-co", "status": "running", "labels": map[string]string{"company": "acme-co", "managed-by": "can"}}
+			_ = json.NewEncoder(w).Encode(map[string]any{"servers": []any{one, two}})
+		} else if f.haveServer && f.foreignServer {
 			f.write(w, 200, "server_list_foreign")
 		} else if f.haveServer {
 			f.write(w, 200, "server_list_one")

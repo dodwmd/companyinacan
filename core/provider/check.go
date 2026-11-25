@@ -24,8 +24,12 @@ func CheckProviderOptions(typ string, o map[string]any) []Issue {
 		// the value is not echoed: a literal secret must not reach output
 		out = append(out, Issue{"semantic.secret-ref", "/provider/options/token_secret_ref", "token_secret_ref must be a reference (env:NAME or file:PATH), never the token itself"})
 	}
-	if ip, ok := o["operator_ip"].(string); ok && typ != "digitalocean" {
-		if err := CheckOperatorIP(ip); err != nil {
+	if typ != "digitalocean" { // digitalocean's option check below covers it
+		ip, err := operatorIPString(o)
+		if err == nil {
+			err = CheckOperatorIP(ip)
+		}
+		if err != nil {
 			out = append(out, Issue{"semantic.provider-option", "/provider/options/operator_ip", err.Error()})
 		}
 	}

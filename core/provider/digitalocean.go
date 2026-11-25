@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -109,6 +110,9 @@ func (p *DigitalOcean) conf(spec Spec) (doConf, error) {
 		return c, err
 	}
 	c.wait = time.Duration(wait) * time.Second
+	if _, err := operatorIPString(spec.Options); err != nil {
+		return c, err
+	}
 	if err := CheckOperatorIP(c.operator); err != nil {
 		return c, err
 	}
@@ -544,12 +548,13 @@ func (p *DigitalOcean) Destroy(ctx context.Context, spec Spec, st *Store, out io
 		if err != nil {
 			return err
 		}
-		for _, d := range drops {
-			if d.Name == c.serverName && OwnedByTags(d.Tags, c.slug) {
-				state.Server = &ServerState{ID: d.ID, Name: d.Name, IP: d.PublicIPv4(), User: "root", Port: 22}
-				fmt.Fprintf(out, "found droplet %d by name and tags\n", d.ID)
-				break
-			}
+		d, found, err := ownedDroplet(drops, c)
+		if err != nil {
+			return err
+		}
+		if found {
+			state.Server = &ServerState{ID: d.ID, Name: d.Name, IP: d.PublicIPv4(), User: "root", Port: 22}
+			fmt.Fprintf(out, "found droplet %d by name and tags\n", d.ID)
 		}
 	}
 	if state.Server != nil && state.Server.ID != 0 {
@@ -604,6 +609,29 @@ func (p *DigitalOcean) Destroy(ctx context.Context, spec Spec, st *Store, out io
 		}
 	}
 	return st.Remove()
+}
+
+// ownedDroplet picks the one droplet with our name and both owner tags. If
+// several match (two companies with the same slug in one account, or a manual
+// copy) it refuses rather than guess which to delete.
+func ownedDroplet(drops []DODroplet, c doConf) (DODroplet, bool, error) {
+	var hit []DODroplet
+	for _, d := range drops {
+		if d.Name == c.serverName && OwnedByTags(d.Tags, c.slug) {
+			hit = append(hit, d)
+		}
+	}
+	switch len(hit) {
+	case 0:
+		return DODroplet{}, false, nil
+	case 1:
+		return hit[0], true, nil
+	}
+	ids := make([]string, len(hit))
+	for i, d := range hit {
+		ids[i] = strconv.FormatInt(d.ID, 10)
+	}
+	return DODroplet{}, false, fmt.Errorf("refusing to choose: droplets %s all have the name %q and the tags managed-by:can, company:%s. Delete the extra ones in the DigitalOcean control panel (or rename one), then run `can down` again", strings.Join(ids, " and "), c.serverName, c.slug)
 }
 
 func serverID(s *State) int64 {
@@ -665,12 +693,11 @@ func (p *DigitalOcean) discover(ctx context.Context, api *DOClient, c doConf, ou
 	if err != nil {
 		return nil, err
 	}
-	for _, d := range drops {
-		if d.Name == c.serverName && OwnedByTags(d.Tags, c.slug) {
-			st.Server = &ServerState{ID: d.ID, Name: d.Name, IP: d.PublicIPv4(), User: "root", Port: 22}
-			fmt.Fprintf(out, "found droplet %d by name and tags\n", d.ID)
-			break
-		}
+	if d, found, err := ownedDroplet(drops, c); err != nil {
+		return nil, err
+	} else if found {
+		st.Server = &ServerState{ID: d.ID, Name: d.Name, IP: d.PublicIPv4(), User: "root", Port: 22}
+		fmt.Fprintf(out, "found droplet %d by name and tags\n", d.ID)
 	}
 	if st.Server == nil {
 		// report (and skip) a same-named droplet that is not ours

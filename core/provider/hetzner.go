@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -85,6 +86,9 @@ func (p *Hetzner) conf(spec Spec) (hetznerConf, error) {
 		return c, err
 	}
 	c.wait = time.Duration(wait) * time.Second
+	if _, err := operatorIPString(spec.Options); err != nil {
+		return c, err
+	}
 	if err := CheckOperatorIP(c.operator); err != nil {
 		return c, err
 	}
@@ -374,11 +378,11 @@ func (p *Hetzner) Destroy(ctx context.Context, spec Spec, st *Store, out io.Writ
 		// State may hold the key and firewall but no server (a crash between
 		// creating the server and saving its id): look it up by name and labels,
 		// so it is not orphaned when its firewall is deleted.
-		srv, found, err := api.FindServer(ctx, c.serverName)
+		srv, found, err := p.ownedServer(ctx, api, c)
 		if err != nil {
 			return err
 		}
-		if found && OwnedBy(srv.Labels, c.slug) {
+		if found {
 			state.Server = &ServerState{ID: srv.ID, Name: srv.Name, IP: srv.PublicNet.IPv4.IP, User: "root", Port: 22}
 			fmt.Fprintf(out, "found server %d by name and labels\n", srv.ID)
 		}
@@ -428,10 +432,9 @@ func (p *Hetzner) Destroy(ctx context.Context, spec Spec, st *Store, out io.Writ
 	}
 	if state.SSHKeyID != 0 {
 		if state.SSHKeyOwned {
-			if err := api.DeleteSSHKey(ctx, state.SSHKeyID); err != nil {
+			if err := p.deleteOwnedKey(ctx, api, c, state.SSHKeyID, out); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "ssh key %d deleted\n", state.SSHKeyID)
 		} else {
 			fmt.Fprintf(out, "ssh key %d kept (not uploaded by can)\n", state.SSHKeyID)
 		}
@@ -505,17 +508,70 @@ func (p *Hetzner) waitServerGone(ctx context.Context, api *HetznerClient, id int
 	return fmt.Errorf("server %d still exists after deletion was requested", id)
 }
 
+// deleteOwnedKey deletes the key can uploaded after re-reading it: it must
+// still have the expected name and the fingerprint of our key.
+func (p *Hetzner) deleteOwnedKey(ctx context.Context, api *HetznerClient, c hetznerConf, id int64, out io.Writer) error {
+	key, err := api.GetSSHKey(ctx, id)
+	if IsNotFound(err) {
+		fmt.Fprintf(out, "ssh key %d already gone\n", id)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var fp string
+	pub, perr := p.publicKey(c)
+	if perr == nil {
+		fp, perr = SSHFingerprint(pub)
+	}
+	if perr != nil || key.Name != c.keyName || key.Fingerprint != fp {
+		fmt.Fprintf(out, "ssh key %d kept (its name or fingerprint no longer matches what can uploaded)\n", id)
+		return nil
+	}
+	if err := api.DeleteSSHKey(ctx, id); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "ssh key %d deleted\n", id)
+	return nil
+}
+
+// ownedServer returns the one server with our name and labels; if several
+// match it refuses rather than guess which to delete.
+func (p *Hetzner) ownedServer(ctx context.Context, api *HetznerClient, c hetznerConf) (HServer, bool, error) {
+	list, err := api.FindServers(ctx, c.serverName)
+	if err != nil {
+		return HServer{}, false, err
+	}
+	var hit []HServer
+	for _, s := range list {
+		if OwnedBy(s.Labels, c.slug) {
+			hit = append(hit, s)
+		}
+	}
+	switch len(hit) {
+	case 0:
+		return HServer{}, false, nil
+	case 1:
+		return hit[0], true, nil
+	}
+	ids := make([]string, len(hit))
+	for i, s := range hit {
+		ids[i] = strconv.FormatInt(s.ID, 10)
+	}
+	return HServer{}, false, fmt.Errorf("refusing to choose: servers %s all have the name %q and the labels managed-by=can, company=%s. Delete the extra ones in the Hetzner console (or rename one), then run `can down` again", strings.Join(ids, " and "), c.serverName, c.slug)
+}
+
 // discover finds can-owned resources by name and labels when state has none.
 // Resources that exist under our names but lack our labels are reported and
 // skipped.
 func (p *Hetzner) discover(ctx context.Context, api *HetznerClient, c hetznerConf, out io.Writer) (*State, error) {
 	st := &State{Version: StateVersion, Provider: "hetzner"}
-	srv, found, err := api.FindServer(ctx, c.serverName)
+	srv, found, err := p.ownedServer(ctx, api, c)
 	if err != nil {
 		return nil, err
 	}
 	switch {
-	case found && OwnedBy(srv.Labels, c.slug):
+	case found:
 		st.Server = &ServerState{ID: srv.ID, Name: srv.Name, IP: srv.PublicNet.IPv4.IP, User: "root", Port: 22}
 		fmt.Fprintf(out, "found server %d by name and labels\n", srv.ID)
 	case found:
