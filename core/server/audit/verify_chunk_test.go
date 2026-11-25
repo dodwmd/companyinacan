@@ -2,47 +2,57 @@ package audit
 
 import (
 	"context"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
-	"time"
 )
 
 // A long log must not hold the store's only connection for the whole walk: a concurrent query has
 // to get in between chunks.
 func TestVerifyReleasesTheConnectionBetweenChunks(t *testing.T) {
 	l, db := newLog(t)
-	fill(t, l, 30000)
+	// The store has a single connection, so a concurrent query can only be served while Verify is
+	// still walking if Verify gives the connection back between chunks. That is asserted by
+	// counting, with no wall-clock threshold: if Verify held the connection for the whole walk the
+	// count would be zero.
+	fill(t, l, 3000)
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
-	var worst time.Duration
+	started := make(chan struct{})
+	var servedWhileVerifying atomic.Int64
+	var verifying atomic.Bool
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		close(started)
 		for {
 			select {
 			case <-stop:
 				return
 			default:
 			}
-			start := time.Now()
 			var n int
 			_ = db.QueryRowContext(ctx, `SELECT 1`).Scan(&n)
-			if d := time.Since(start); d > worst {
-				worst = d
+			if verifying.Load() {
+				servedWhileVerifying.Add(1)
 			}
-			time.Sleep(time.Millisecond)
+			runtime.Gosched()
 		}
 	}()
-	res, err := l.Verify(ctx, VerifyOptions{Chunk: 1000})
+	<-started
+	verifying.Store(true)
+	res, err := l.Verify(ctx, VerifyOptions{Chunk: 100})
+	verifying.Store(false)
 	close(stop)
 	wg.Wait()
-	if err != nil || !res.OK() || res.Entries != 30000 {
+	if err != nil || !res.OK() || res.Entries != 3000 {
 		t.Fatalf("verify: %+v %v", res, err)
 	}
-	if worst > 100*time.Millisecond {
-		t.Fatalf("a concurrent query waited %v for the connection", worst)
+	if servedWhileVerifying.Load() == 0 {
+		t.Fatal("no concurrent query was served while Verify was walking 30 chunks: it holds the connection")
 	}
 }
 

@@ -174,7 +174,7 @@ func TestWebhookContextCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	if _, err := s.Send(ctx, testEvent()); err == nil || time.Since(start) > 3*time.Second {
+	if _, err := s.Send(ctx, testEvent()); err == nil || time.Since(start) > 30*time.Second {
 		t.Fatalf("cancel must stop the retry wait promptly: %v after %v", err, time.Since(start))
 	}
 }

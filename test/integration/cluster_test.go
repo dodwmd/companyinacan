@@ -11,10 +11,12 @@
 package integration
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func kubeContext() string {
@@ -158,15 +160,20 @@ spec:
 	}
 }
 
-// pollReach retries briefly: policy programming by kube-router is asynchronous.
+// pollReach retries with bounded backoff (about 2 minutes in all): policy programming by
+// kube-router is asynchronous, so a probe made right after the policy is applied may still be denied.
 func pollReach(t *testing.T, ns, name, labels, ip string) bool {
 	t.Helper()
-	for i := 0; i < 6; i++ {
-		if reach(t, ns, name, labels, ip) {
+	deadline := time.Now().Add(2 * time.Minute)
+	for i := 0; ; i++ {
+		if reach(t, ns, fmt.Sprintf("%s-%d", name, i), labels, ip) {
 			return true
 		}
+		if time.Now().Add(backoff(i)).After(deadline) {
+			return false
+		}
+		time.Sleep(backoff(i))
 	}
-	return false
 }
 
 func TestDefaultDenyBlocksCrossNamespaceIngress(t *testing.T) {

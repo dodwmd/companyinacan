@@ -53,7 +53,16 @@ trap cleanup EXIT
 if [ "$use_can_dev" = 1 ]; then
   "${can[@]}" dev up --name "$name"
 else
-  k3d cluster create "$name" --config "$cfg" --wait --timeout 180s
+  # k3d occasionally fails with "could not start a docker container" (runner/docker hiccup): clean up
+  # the half-created cluster and retry a bounded number of times instead of failing the whole job.
+  attempt=1
+  until k3d cluster create "$name" --config "$cfg" --wait --timeout 180s; do
+    [ "$attempt" -lt 3 ] || { echo "k3d cluster create failed $attempt times" >&2; exit 1; }
+    echo "k3d cluster create failed (attempt $attempt), retrying" >&2
+    k3d cluster delete "$name" >/dev/null 2>&1 || true
+    sleep $((attempt * 5))
+    attempt=$((attempt + 1))
+  done
   kubectl --context "$ctx" wait --for=condition=Ready node --all --timeout=180s
 fi
 

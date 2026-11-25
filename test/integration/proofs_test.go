@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -94,47 +95,121 @@ func rprobe(t *testing.T, ns, name, labels, script string) string {
 	return out
 }
 
-func reachPort(t *testing.T, ns, name, host string, port int) bool {
-	t.Helper()
-	out := rprobe(t, ns, name, "app=probe",
-		fmt.Sprintf("if nc -z -w 3 %s %d; then echo REACHED; else echo BLOCKED; fi", host, port))
+// tryReachPort runs one probe pod. A probe pod that could not run, or that gave no verdict, is an
+// error, never "blocked": the callers decide whether to retry it or fail.
+func tryReachPort(ns, name, host string, port int) (reached bool, err error) {
+	script := fmt.Sprintf("if nc -z -w 3 %s %d; then echo REACHED; else echo BLOCKED; fi", host, port)
+	out, kerr := kubectl("-n", ns, "run", name, "--rm", "-i", "--restart=Never", "--quiet",
+		"--image=busybox:1.37.0", "--labels=app=probe", "--overrides="+overrides(name, script))
+	if kerr != nil {
+		_, _ = kubectl("-n", ns, "delete", "pod", name, "--now", "--ignore-not-found")
+		return false, fmt.Errorf("probe pod %s/%s failed to run: %v\n%s", ns, name, kerr, out)
+	}
 	switch {
 	case strings.Contains(out, "REACHED"):
-		return true
+		return true, nil
 	case strings.Contains(out, "BLOCKED"):
-		return false
+		return false, nil
 	}
-	t.Fatalf("probe %s/%s gave no verdict:\n%s", ns, name, out)
-	return false
+	return false, fmt.Errorf("probe %s/%s gave no verdict:\n%s", ns, name, out)
+}
+
+func reachPort(t *testing.T, ns, name, host string, port int) bool {
+	t.Helper()
+	ok, err := tryReachPort(ns, name, host, port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ok
+}
+
+// backoff returns the pause before retry number i: 2s, 3s, 4.5s ... capped at 15s.
+func backoff(i int) time.Duration {
+	d := 2 * time.Second
+	for ; i > 0 && d < 15*time.Second; i-- {
+		d = d * 3 / 2
+	}
+	if d > 15*time.Second {
+		d = 15 * time.Second
+	}
+	return d
+}
+
+var settleOnce sync.Once
+
+// settleCluster waits, once per test binary, until the cluster can actually carry pod traffic: the
+// node is Ready, the kube-system deployments (CoreDNS) are Available and every kube-system pod is
+// Running or Completed. kube-router programs NetworkPolicy and routes asynchronously after that, so
+// the positive controls below still poll, but they start from a settled cluster.
+func settleCluster(t *testing.T) {
+	t.Helper()
+	settleOnce.Do(func() {
+		_, _ = kubectl("wait", "--for=condition=Ready", "node", "--all", "--timeout=180s")
+		_, _ = kubectl("-n", "kube-system", "wait", "--for=condition=Available", "deployment", "--all", "--timeout=180s")
+		deadline := time.Now().Add(120 * time.Second)
+		for time.Now().Before(deadline) {
+			out, err := kubectl("-n", "kube-system", "get", "pods", "--no-headers")
+			pending := false
+			for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+				f := strings.Fields(l)
+				if len(f) >= 3 && f[2] != "Running" && f[2] != "Completed" {
+					pending = true
+				}
+			}
+			if err == nil && !pending {
+				return
+			}
+			time.Sleep(3 * time.Second)
+		}
+	})
 }
 
 // blockedWithin probes until the target is unreachable and returns how long that took, or -1 if
-// it was still reachable at the deadline.
+// it was still reachable at the deadline. A probe that could not run is retried, never counted as
+// blocked.
 func blockedWithin(t *testing.T, ns, name, host string, port int, limit time.Duration) time.Duration {
 	t.Helper()
 	start := time.Now()
+	var lastErr error
 	for i := 0; ; i++ {
-		if !reachPort(t, ns, fmt.Sprintf("%s-%d", name, i), host, port) {
+		reached, err := tryReachPort(ns, fmt.Sprintf("%s-%d", name, i), host, port)
+		if err == nil && !reached {
 			return time.Since(start)
 		}
+		lastErr = err
 		if time.Since(start) > limit {
+			if lastErr != nil {
+				t.Fatalf("no verdict on %s:%d within %s: %v", host, port, limit, lastErr)
+			}
 			return -1
 		}
 		time.Sleep(5 * time.Second)
 	}
 }
 
+// pollReachPort is the positive control for every BLOCKED verdict, so a slow start must not fail
+// the test. It retries with bounded backoff (about 4 minutes in all) because a fresh pod's network
+// (CNI, node routes, kube-router sync) can lag behind the pod reporting ready, and it retries a
+// probe pod that could not run. It only gives up with the last observed reason.
 func pollReachPort(t *testing.T, ns, name, host string, port int) bool {
 	t.Helper()
-	// Generous: a fresh pod's network (CNI, node routes) can lag behind the pod reporting ready, and
-	// this is the positive control for every BLOCKED verdict, so a slow start must not fail the test.
-	for i := 0; i < 15; i++ {
-		if reachPort(t, ns, fmt.Sprintf("%s-%d", name, i), host, port) {
+	settleCluster(t)
+	deadline := time.Now().Add(4 * time.Minute)
+	var lastErr error
+	for i := 0; ; i++ {
+		reached, err := tryReachPort(ns, fmt.Sprintf("%s-%d", name, i), host, port)
+		if reached {
 			return true
 		}
-		time.Sleep(4 * time.Second)
+		lastErr = err
+		if time.Now().Add(backoff(i)).After(deadline) {
+			if lastErr != nil {
+				t.Logf("last probe error: %v", lastErr)
+			}
+			return false
+		}
+		time.Sleep(backoff(i))
 	}
-	return false
 }
 
 // listener starts a restricted pod that accepts TCP on the given ports and returns its IP.

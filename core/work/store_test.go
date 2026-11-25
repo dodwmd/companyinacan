@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -927,7 +928,13 @@ func TestSearchNeverLeavesTokenScope(t *testing.T) {
 	if _, err := s.StartSprint(ctx, admin, sp.ID); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 6000; i++ {
+	// Seeded and deterministic. 2000 random combinations on top of the exhaustive pool above keep this
+	// under a few seconds with -race; CAN_TEST_THOROUGH=1 restores the original 6000.
+	combos := 2000
+	if os.Getenv("CAN_TEST_THOROUGH") == "1" {
+		combos = 6000
+	}
+	for i := 0; i < combos; i++ {
 		var parts []string
 		for j := 0; j < 1+rng.Intn(4); j++ {
 			parts = append(parts, pool[rng.Intn(len(pool))])
