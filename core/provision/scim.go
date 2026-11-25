@@ -701,6 +701,11 @@ func (s *SCIM) patchUser(w http.ResponseWriter, r *http.Request, pr *scimPrincip
 		return err
 	}
 	if pt.PreferredName != nil || pt.WorkPhone != nil {
+		// The directory cannot join our transaction, so the intent is audited first (a change that
+		// cannot be recorded is not made) and the outcome after.
+		if err := s.Store.Audit(r.Context(), "scim:"+pr.TokenID, "scim.user.patch.begin", p.ID, nil); err != nil {
+			return err
+		}
 		p, err = s.Dir.Update(r.Context(), p.ID, pt)
 		if errors.Is(err, ErrInvalid) {
 			return &SCIMError{Status: 400, Type: "invalidValue", Detail: "the directory refused the change"}
@@ -1152,8 +1157,12 @@ func (s *SCIM) deleteGroup(w http.ResponseWriter, r *http.Request, pr *scimPrinc
 		return err
 	}
 	err = s.Store.tx(r.Context(), func(ctx context.Context, tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM groups WHERE id=?`, id); err != nil {
+		res, err := tx.ExecContext(ctx, `DELETE FROM groups WHERE id=? AND version=?`, id, cur.Version)
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return &SCIMError{Status: 412, Detail: "the resource changed; fetch it again"}
 		}
 		return s.Store.audit(ctx, tx, "scim:"+pr.TokenID, "scim.group.delete", id, map[string]any{"members": len(cur.Members)})
 	})

@@ -462,7 +462,7 @@ func (e *Engine) gate(ctx context.Context, run Run, st *stepRow) error {
 		}
 		a, err := e.Approvals.CreateApproval(ctx, modclient.ApprovalInput{
 			Type: approvalType(run.Kind), Requester: "party:" + run.PartyID, Ref: fmt.Sprintf("%s#%d", run.ID, st.Ord),
-			Title: fmt.Sprintf("%s %s for %s", st.Op, st.Connector, run.PartyID), Key: fmt.Sprintf("prov:%s:%d", run.ID, st.Ord),
+			Title: fmt.Sprintf("%s %s for %s", st.Op, st.Connector, run.PartyID), Key: fmt.Sprintf("prov:%s:%d:%d", run.ID, st.Ord, st.gen),
 		})
 		if errors.Is(err, modclient.ErrApprovalRefused) {
 			return e.markStep(ctx, run, st, StepRejected, "approval_refused", "run.step.rejected", true)
@@ -585,11 +585,15 @@ func (e *Engine) execute(ctx context.Context, run Run, st *stepRow) (bool, error
 	if errors.Is(err, ErrUnavailable) {
 		code = "dependency_unavailable"
 	}
-	if !perm && (code == "dependency_unavailable" || code == "core_unavailable") {
-		// can-core or the directory being down, slow or rate limiting (429) is not the step's
-		// fault: it never uses up an attempt (so a mass offboarding cannot dead-letter itself) and
-		// is retried with the capped backoff for as long as it lasts.
+	waiting := !perm && (code == "dependency_unavailable" || code == "core_unavailable" || code == "not_offboarded_yet")
+	waits := st.waits
+	if waiting {
+		// can-core or the directory being down, slow or rate limiting (429), or the directory still
+		// saying "offboarding", is not the step's fault: it never uses up an attempt (so a mass
+		// offboarding cannot dead-letter itself) and backs off on its own counter, exponentially up
+		// to max_delay, for as long as it lasts.
 		attempt = st.Attempts
+		waits++
 	}
 	if perm || attempt >= e.Policy.MaxAttempts {
 		reason := "retries_exhausted"
@@ -620,8 +624,11 @@ func (e *Engine) execute(ctx context.Context, run Run, st *stepRow) (bool, error
 		})
 	}
 	delay := e.Policy.backoff(attempt)
+	if waiting {
+		delay = e.Policy.backoff(waits)
+	}
 	return false, e.Store.tx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE steps SET state='pending', attempts=?, error_code=?, next_at=? WHERE run_id=? AND ord=?`, attempt, code, now.Add(delay).Unix(), run.ID, st.Ord); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE steps SET state='pending', attempts=?, waits=?, error_code=?, next_at=? WHERE run_id=? AND ord=?`, attempt, waits, code, now.Add(delay).Unix(), run.ID, st.Ord); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE runs SET state='running', updated_at=? WHERE id=?`, now.Unix(), run.ID); err != nil {

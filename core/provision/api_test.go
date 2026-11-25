@@ -228,24 +228,23 @@ func TestAPIUrgentRetryCancelAndLink(t *testing.T) {
 		t.Fatal("urgent flag did not release the leaver")
 	}
 	run := e.runs()[0]
-	// the can-core kill switch cannot succeed until the person is former: retries, then dead-letters
-	for i := 0; i < 5; i++ {
+	// the can-core kill switch cannot succeed until the person is former: it waits (it is not the
+	// step's fault, so it is never dead-lettered and never uses up an attempt)
+	for i := 0; i < 8; i++ {
 		e.clk.add(5 * time.Minute)
 		e.settle()
 	}
 	_, dl, _ := e.do("GET", "/v1/provision/dead-letters", patRead, nil)
-	if len(dl["items"].([]any)) != 1 {
+	if len(dl["items"].([]any)) != 0 {
 		t.Fatalf("dead letters %v", dl)
 	}
-	// the person becomes former: retry now succeeds
+	// the person becomes former: the waiting step completes by itself
 	p.Status = "former"
 	e.dir.put(p)
-	if resp, _, _ := e.do("POST", "/v1/provision/runs/"+run.ID+"/retry", patWrite, nil); resp.StatusCode != 202 {
-		t.Errorf("retry: %d", resp.StatusCode)
-	}
+	e.clk.add(2 * time.Hour)
 	e.settle()
 	if got := e.runs()[0]; got.State != RunSucceeded || len(e.core.calls) != 1 {
-		t.Fatalf("after retry: %s, revocations %v", got.State, e.core.calls)
+		t.Fatalf("after the status change: %s, revocations %v", got.State, e.core.calls)
 	}
 	if resp, _, _ := e.do("POST", "/v1/provision/runs/"+run.ID+"/retry", patWrite, nil); resp.StatusCode != 409 {
 		t.Errorf("retry of a finished run: %d", resp.StatusCode)

@@ -180,7 +180,7 @@ offboarded (it records `person.offboarded.v1` from that authenticated source, ne
 field) whose `effective_date` has been reached, and only for the account the directory linked to them:
 the event carries `subject_ref`, the first 32 hex characters of the SHA-256 of their `sso_subject`. The
 call is idempotent, audited in the same transaction as the change (the party id and counts), and rate
-limited to 120 per module and minute, and the caller must be the resolved enabled provider of `identity.provision`. It also disables the account and drops its push subscriptions. For a termination that cannot wait for the person to be reported offboarded, an administrator with `rbac.manage` uses `POST /api/v1/identity/revoke-now`. Refusals: 400 malformed, 403 module or account not allowed, 409 not
+limited to 120 per module and minute, and the caller must be the resolved enabled provider of `identity.provision`. It also disables the account (never the last enabled owner: 409) and drops its push subscriptions. For a termination that cannot wait for the person to be reported offboarded, an administrator with `rbac.manage` uses `POST /api/v1/identity/revoke-now` (an owner is needed to disable an owner; an owner re-enables with `POST /api/v1/identity/enable` or `can-core admin enable`). Refusals: 400 malformed, 403 module or account not allowed, 409 not
 offboarded yet or not yet effective, 429 rate limited. See [`provisioning.md`](provisioning.md).
 
 ## What ran where

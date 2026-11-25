@@ -8,7 +8,7 @@ import (
 )
 
 const runCols = `id,kind,party_id,state,trigger,idem_key,urgent,dry_run,privileged,effective_date,initiator,created_at,updated_at`
-const stepCols = `ord,op,connector,arg,state,sensitive,optional,comp_op,attempts,not_before,next_at,approval_id,approved,external_id,error_code,completed_at`
+const stepCols = `ord,op,connector,arg,state,sensitive,optional,comp_op,attempts,not_before,next_at,approval_id,approved,external_id,error_code,completed_at,waits,gen`
 
 type scanner interface{ Scan(...any) error }
 
@@ -32,7 +32,7 @@ type stepRow struct {
 func scanStep(r scanner) (stepRow, error) {
 	var s stepRow
 	var sens, opt, appr, done int64
-	if err := r.Scan(&s.Ord, &s.Op, &s.Connector, &s.Arg, &s.State, &sens, &opt, &s.CompOp, &s.Attempts, &s.notBefore, &s.nextAt, &s.ApprovalID, &appr, &s.externalID, &s.ErrorCode, &done); err != nil {
+	if err := r.Scan(&s.Ord, &s.Op, &s.Connector, &s.Arg, &s.State, &sens, &opt, &s.CompOp, &s.Attempts, &s.notBefore, &s.nextAt, &s.ApprovalID, &appr, &s.externalID, &s.ErrorCode, &done, &s.waits, &s.gen); err != nil {
 		return s, err
 	}
 	s.Sensitive, s.Optional, s.approved = sens != 0, opt != 0, appr != 0

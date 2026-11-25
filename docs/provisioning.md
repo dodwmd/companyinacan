@@ -44,8 +44,12 @@ offboarding is called off (status back to `active`) a run in which nothing happe
 reports the person offboarded, so someone still `offboarding` and flagged urgent keeps their can-core
 tokens and sessions until then. An administrator with `rbac.manage` can end them at once with
 `POST /api/v1/identity/revoke-now {"subject": "user:..."}` on the can-core admin API (audited with the
-actor; not for your own account). There is no CLI wrapper and no API to re-enable a disabled account
-yet: that needs database access by the owner.
+actor; not for your own account). Disabling an owner needs an owner (403 otherwise), the last enabled
+owner can never be disabled (409; the module-driven revocation obeys the same rule), and an unknown
+account is 404, not an audited no-op. To undo a disable: an owner calls
+`POST /api/v1/identity/enable {"subject": "user:..."}` (audited), or `can-core admin enable --username <name>`
+inside the pod (break-glass, audited). `admin reset-password` refuses a disabled account, so a
+password reset can never quietly bring one back. Enabling does not restore tokens or sessions.
 
 **Urgent terminations**: `POST /v1/provision/people/{id}/urgent` (`provision.admin`, never for
 yourself, only for someone who is offboarding or former) releases every access-removal step at once and
@@ -56,7 +60,11 @@ releases the run at once (removal was never gated; deletion still is). The flag 
 * Every step is persisted before and after it runs; a step found `running` after a crash is retried
   with the **same idempotency key** (`<run id>:<step number>`) so a connector can de-duplicate.
 * Transient failures (network, 5xx, 408, 429) back off exponentially (`base_delay` doubling up to
-  `max_delay`) and stop after `max_attempts`; permanent failures (4xx, unimplemented, hostile
+  `max_delay`) and stop after `max_attempts`. Waiting is different from failing: an outage of can-core
+  or the directory, and the directory still saying `offboarding` while the kill switch is due, use a
+  separate wait counter, back off exponentially up to `max_delay` and never use up an attempt or
+  dead-letter the step. Retrying a dead-lettered step (`POST .../retry`) resets its counters and asks
+  for a fresh approval if it needs one; permanent failures (4xx, unimplemented, hostile
   responses) stop at once. A stopped step is **dead-lettered**: `provision.failed.v1` is published and
   the run appears in `GET /v1/provision/dead-letters` until an administrator retries it.
 * A failed **joiner or mover** is compensated: completed steps are undone newest first (accounts are
@@ -255,7 +263,6 @@ that never include a downstream response, a token or personal data.
   zone is ahead of UTC (it answers 409 and the step retries). The two are not unified.
 * **Re-hire.** The people module's `former` status is terminal, so a returning person is a new record
   with a new id and a new offboarding fact is not cleared by anything; nothing needs clearing.
-* **Disabled administrator accounts** have no re-enable action in the product.
 * **Mover triggers.** The people module has no "department changed" event; movers start from SCIM
   group changes or the API, not from directory edits.
 * **No UI.** Operators use the API; there is no portal or admin UI page.

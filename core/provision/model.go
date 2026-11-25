@@ -114,6 +114,8 @@ type Step struct {
 	CompletedAt string `json:"completed_at,omitempty"`
 
 	externalID string
+	waits      int
+	gen        int
 	notBefore  int64
 	nextAt     int64
 }

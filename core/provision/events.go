@@ -284,7 +284,7 @@ func (e *Engine) RetryRun(ctx context.Context, actor, id string) error {
 	}
 	err = e.Store.tx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		// a person may have a newer live run of the same kind: do not create a second
-		if _, err := tx.ExecContext(ctx, `UPDATE steps SET state='pending', attempts=0, next_at=0, error_code='', approval_id=CASE WHEN state='rejected' THEN '' ELSE approval_id END, approved=0 WHERE run_id=? AND state IN ('dead','rejected')`, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE steps SET state='pending', attempts=0, next_at=0, error_code='', waits=0, gen=gen+1, approval_id='', approved=0 WHERE run_id=? AND state IN ('dead','rejected')`, id); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE runs SET state='pending', updated_at=? WHERE id=?`, e.now().Unix(), id); err != nil {
