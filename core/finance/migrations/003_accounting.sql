@@ -243,7 +243,7 @@ CREATE TABLE export_batches (
     last_number  INTEGER NOT NULL,
     entry_count INTEGER NOT NULL,
     sha256      TEXT    NOT NULL,
-    content     TEXT    NOT NULL,
+    content     BLOB    NOT NULL,
     created_by  TEXT    NOT NULL,
     created_at  INTEGER NOT NULL
 );

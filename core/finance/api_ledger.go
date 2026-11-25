@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -305,6 +306,13 @@ func (a *api) createExport(w http.ResponseWriter, r *http.Request, p *Principal)
 func (a *api) downloadExport(w http.ResponseWriter, r *http.Request, p *Principal) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
+		return
+	}
+	select {
+	case a.downloads <- struct{}{}:
+		defer func() { <-a.downloads }()
+	case <-r.Context().Done():
+		a.fail(w, context.DeadlineExceeded)
 		return
 	}
 	b, content, err := a.store.ExportContent(r.Context(), p, id)

@@ -25,6 +25,7 @@ type api struct {
 	limiter    *rateLimiter  // per principal
 	failures   *rateLimiter  // failed authentications and bad links per client address
 	penalty    time.Duration // delay added to failures from an address over the limit
+	downloads  chan struct{} // slots for export downloads, each of which holds one batch file in memory
 }
 
 func (a *api) handler() http.Handler {

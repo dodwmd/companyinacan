@@ -147,10 +147,11 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	a := &api{
 		store: store, auth: auth, log: log, maxBody: cfg.MaxBodyBytes, trustProxy: cfg.TrustProxy, now: now,
 		cfg: cfg, linkSecret: []byte(sec.LinkSecret), payments: pay, esign: esign,
-		seller:   Seller{Name: cfg.Seller.Name, Address: cfg.Seller.Address, TaxID: cfg.Seller.TaxID},
-		limiter:  newRateLimiter(cfg.RateLimit.PerMinute, time.Minute, cfg.RateLimit.MaxTracked, now),
-		penalty:  300 * time.Millisecond,
-		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
+		seller:    Seller{Name: cfg.Seller.Name, Address: cfg.Seller.Address, TaxID: cfg.Seller.TaxID},
+		limiter:   newRateLimiter(cfg.RateLimit.PerMinute, time.Minute, cfg.RateLimit.MaxTracked, now),
+		penalty:   300 * time.Millisecond,
+		downloads: make(chan struct{}, exportDownloads),
+		failures:  newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
 	h := a.handler()
 	if opt.Can != nil {

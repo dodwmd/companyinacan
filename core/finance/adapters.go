@@ -21,11 +21,15 @@ import (
 	"time"
 )
 
-// One export batch is bounded by entries and by lines (an entry has at most 200), so the file it builds is a few
-// megabytes at worst, whatever the entries look like.
+// One export batch is bounded by entries and by the bytes of the file it builds. Lines would not do: memos and
+// names of 4-byte characters make a line forty times bigger than a plain one, and the file is held in memory
+// while it is written, stored and downloaded. A batch always takes at least one entry (the largest possible entry
+// is under 1 MiB), so an export can never get stuck.
 const (
 	exportBatchSize = 500
-	exportMaxLines  = 5000
+	exportMaxBytes  = 2 << 20
+	// exportDownloads is how many batch files may be in memory for downloading at once; others wait.
+	exportDownloads = 2
 )
 
 // PayrollDisclaimer is returned with every payroll import and printed in docs/accounting.md.
@@ -89,6 +93,7 @@ type csvJournal struct{ out *csvOut }
 
 // Write adds one row per journal line. Text cells are defused against spreadsheet formula injection.
 func (c csvJournal) Write(e *JournalEntry) error {
+	defer c.out.cw.Flush() // the caller measures the file after each entry
 	for _, l := range e.Lines {
 		var debit, credit Num
 		if l.DebitMinor > 0 {
@@ -119,7 +124,7 @@ type ExportBatch struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// ExportJournal exports, in posting order, the posted entries after the adapter's cursor, at most exportBatchSize, as one
+// ExportJournal exports, in posting order, the posted entries after the adapter's cursor, up to exportBatchSize or exportMaxBytes, as one
 // batch. The batch, the cursor and the audit entry are written in one transaction, so an entry is in
 // exactly one batch per adapter: running it twice never exports anything twice, and with an
 // Idempotency-Key a retry returns the same batch. Nothing to export returns a batch with ID 0.
@@ -140,21 +145,16 @@ func (s *Store) ExportJournal(ctx context.Context, a *Principal, adapter, idemKe
 			if err := tx.QueryRowContext(ctx, `SELECT last_number FROM export_cursors WHERE adapter = ?`, adapter).Scan(&cursor); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
 			}
-			rows, err := tx.QueryContext(ctx, `SELECT id, number, (SELECT COUNT(*) FROM journal_lines WHERE entry_id = journal_entries.id) FROM journal_entries WHERE status = 'posted' AND number > ? ORDER BY number LIMIT ?`, cursor, exportBatchSize)
+			rows, err := tx.QueryContext(ctx, `SELECT id, number FROM journal_entries WHERE status = 'posted' AND number > ? ORDER BY number LIMIT ?`, cursor, exportBatchSize)
 			if err != nil {
 				return nil, err
 			}
 			var ids, numbers []int64
-			lines := 0
 			for rows.Next() {
 				var id, number int64
-				var n int
-				if err := rows.Scan(&id, &number, &n); err != nil {
+				if err := rows.Scan(&id, &number); err != nil {
 					_ = rows.Close()
 					return nil, err
-				}
-				if lines += n; lines > exportMaxLines && len(ids) > 0 {
-					break
 				}
 				ids, numbers = append(ids, id), append(numbers, number)
 			}
@@ -164,27 +164,36 @@ func (s *Store) ExportJournal(ctx context.Context, a *Principal, adapter, idemKe
 			if len(ids) == 0 {
 				return &ExportBatch{Adapter: adapter, SHA256: "", CreatedAt: s.now().UTC()}, nil
 			}
-			var buf bytes.Buffer
-			w, err := ex.Open(&buf)
+			// Sized once, so growing the buffer does not leave copies of the file behind.
+			buf := bytes.NewBuffer(make([]byte, 0, exportMaxBytes+1<<20))
+			w, err := ex.Open(buf)
 			if err != nil {
 				return nil, err
 			}
+			taken := 0
 			for _, id := range ids {
 				e, err := s.loadEntry(ctx, tx, id)
 				if err != nil {
 					return nil, err
 				}
+				before := buf.Len()
 				if err := w.Write(e); err != nil {
 					return nil, err
 				}
+				if buf.Len() > exportMaxBytes && taken > 0 {
+					buf.Truncate(before) // it starts the next batch
+					break
+				}
+				taken++
 			}
 			if err := w.Close(); err != nil {
 				return nil, err
 			}
+			ids, numbers = ids[:taken], numbers[:taken]
 			sum := sha256.Sum256(buf.Bytes())
 			b := &ExportBatch{Adapter: adapter, FirstNumber: numbers[0], LastNumber: numbers[len(numbers)-1], EntryCount: len(ids), SHA256: hex.EncodeToString(sum[:]), CreatedBy: a.Subject, CreatedAt: s.now().UTC()}
 			res, err := tx.ExecContext(ctx, `INSERT INTO export_batches (adapter, first_number, last_number, entry_count, sha256, content, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				adapter, b.FirstNumber, b.LastNumber, b.EntryCount, b.SHA256, buf.String(), a.Subject, ts(s.now()))
+				adapter, b.FirstNumber, b.LastNumber, b.EntryCount, b.SHA256, buf.Bytes(), a.Subject, ts(s.now()))
 			if err != nil {
 				return nil, err
 			}
@@ -244,14 +253,14 @@ func (s *Store) ExportContent(ctx context.Context, a *Principal, id int64) (*Exp
 	defer cancel()
 	var b ExportBatch
 	var c int64
-	var content string
+	var content []byte
 	err := s.rdb.QueryRowContext(rctx, `SELECT id, adapter, first_number, last_number, entry_count, sha256, created_by, created_at, content FROM export_batches WHERE id = ?`, id).
 		Scan(&b.ID, &b.Adapter, &b.FirstNumber, &b.LastNumber, &b.EntryCount, &b.SHA256, &b.CreatedBy, &c, &content)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
 	b.CreatedAt = fromUnix(c)
-	return &b, []byte(content), err
+	return &b, content, err
 }
 
 // ---- payroll ------------------------------------------------------------------------------

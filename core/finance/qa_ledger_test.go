@@ -3,8 +3,10 @@ package finance
 // Regression tests for the E15c QA findings (PR #46), one or more per finding.
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"strings"
 	"testing"
 	"time"
@@ -313,28 +315,34 @@ func TestQACamtManyRemittanceLinesAreLinearAndCapped(t *testing.T) {
 	}
 }
 
-// QA 11: a batch is bounded by lines, and successive batches cover every entry once.
-func TestQAExportBatchIsBoundedByLines(t *testing.T) {
+// QA 11 and QA2 3: a batch is bounded by the bytes of its file, even with the longest multibyte fields, and
+// successive batches cover every entry once.
+func TestQAExportBatchIsBoundedByBytes(t *testing.T) {
 	e := newEnv(t)
 	ledgerOn(t, e)
 	s := e.app.store
 	var a, b int64
 	_ = s.db.QueryRow(`SELECT id FROM ledger_accounts WHERE code = '1000'`).Scan(&a)
 	_ = s.db.QueryRow(`SELECT id FROM ledger_accounts WHERE code = '4000'`).Scan(&b)
+	wide := func(n int) string { return strings.Repeat("\U0001F9FE\u5e33", n/2) }
+	if _, err := s.db.Exec(`UPDATE ledger_accounts SET name = ?`, wide(maxName)); err != nil {
+		t.Fatal(err)
+	}
 	var lines []lineSpec
 	for i := 0; i < maxJournalLines/2; i++ {
-		lines = append(lines, lineSpec{AccountID: a, Debit: 1}, lineSpec{AccountID: b, Credit: 1})
+		lines = append(lines, lineSpec{AccountID: a, Debit: 1, Memo: wide(200)}, lineSpec{AccountID: b, Credit: 1, Memo: wide(200)})
 	}
-	for i := 0; i < 40; i++ {
+	const entries = 7
+	for i := 0; i < entries; i++ {
 		if err := s.inTx(context.Background(), func(tx *sql.Tx) error {
-			_, err := s.postEntryTx(context.Background(), tx, postSpec{Source: "manual", Date: "2026-05-01", Currency: "USD", By: "p", Lines: lines})
+			_, err := s.postEntryTx(context.Background(), tx, postSpec{Source: "manual", Date: "2026-05-01", Currency: "USD", By: "p", Memo: wide(500), Lines: lines})
 			return err
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	p := &Principal{Subject: "dana", Permissions: []string{PermAdmin}}
-	var got []int
+	total, batches := 0, 0
 	for {
 		batch, _, err := s.ExportJournal(context.Background(), p, "csv", "")
 		if err != nil {
@@ -343,10 +351,20 @@ func TestQAExportBatchIsBoundedByLines(t *testing.T) {
 		if batch.EntryCount == 0 {
 			break
 		}
-		got = append(got, batch.EntryCount)
+		_, content, err := s.ExportContent(context.Background(), p, batch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(content) > exportMaxBytes || batch.FirstNumber != int64(total+1) {
+			t.Fatalf("batch of %d bytes starting at %d after %d entries", len(content), batch.FirstNumber, total)
+		}
+		if rows, err := csv.NewReader(bytes.NewReader(content)).ReadAll(); err != nil || len(rows) != 1+batch.EntryCount*maxJournalLines {
+			t.Fatalf("batch is not whole entries: %d rows, %v", len(rows), err)
+		}
+		total, batches = total+batch.EntryCount, batches+1
 	}
-	if len(got) != 2 || got[0] != exportMaxLines/maxJournalLines || got[0]+got[1] != 40 {
-		t.Errorf("batches %v", got)
+	if total != entries || batches < 3 {
+		t.Errorf("%d entries in %d batches", total, batches)
 	}
 }
 
