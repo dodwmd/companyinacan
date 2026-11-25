@@ -15,6 +15,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/can-static ./cmd/can-static
 COPY core/staticsrv ./core/staticsrv
+COPY core/obs ./core/obs
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/can-static ./cmd/can-static
 
 FROM ${RUNTIME_IMAGE}
