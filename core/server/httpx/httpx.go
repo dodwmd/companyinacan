@@ -108,6 +108,9 @@ type recorder struct {
 	bytes  int
 }
 
+// Unwrap lets http.ResponseController reach the connection (the dump transfers extend deadlines).
+func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
 func (r *recorder) WriteHeader(c int) { r.status = c; r.ResponseWriter.WriteHeader(c) }
 func (r *recorder) Write(b []byte) (int, error) {
 	if r.status == 0 {

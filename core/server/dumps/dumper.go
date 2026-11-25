@@ -126,10 +126,13 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("can-core state: %w", err)
 	}
 	var failed []error
-	if d.Modules != nil && d.Hooks != nil {
+	if d.Modules != nil {
 		mods, err := d.Modules(ctx)
 		if err != nil {
 			return Result{}, fmt.Errorf("list modules: %w", err)
+		}
+		if len(mods) > 0 && d.Hooks == nil {
+			return Result{}, fmt.Errorf("modules %v need their backup hooks run, but this can-core cannot run Jobs", mods)
 		}
 		for _, m := range mods {
 			hctx, cancel := context.WithTimeout(ctx, d.hookTimeout())

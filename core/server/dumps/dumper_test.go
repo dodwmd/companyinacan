@@ -112,6 +112,22 @@ func TestRunWithoutMarkerWhenAHookFails(t *testing.T) {
 	}
 }
 
+func TestRunFailsWhenHooksCannotRun(t *testing.T) {
+	d, _ := newDumper(t, []string{"wiki"}, &fakeHooks{})
+	d.Hooks = nil
+	if _, err := d.Run(context.Background()); err == nil {
+		t.Fatal("a marker without the module's dump would claim a complete set")
+	}
+}
+
+func TestNoMarkerWhenModulesHaveHooksButNothingCanRunThem(t *testing.T) {
+	d, _ := newDumper(t, []string{"wiki"}, &fakeHooks{})
+	d.Hooks = nil
+	if _, err := d.Run(context.Background()); err == nil {
+		t.Fatal("a marker here would claim dumps that were never made (their raw SQLite files are excluded from the backup)")
+	}
+}
+
 func TestAcceptOnlyDuringARun(t *testing.T) {
 	d, _ := newDumper(t, nil, &fakeHooks{})
 	if err := d.Accept("wiki", "x", strings.NewReader("y")); !errors.Is(err, ErrNoRun) {
