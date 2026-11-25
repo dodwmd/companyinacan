@@ -1,6 +1,6 @@
 # Data model: OpenID Connect single sign-on (E11b)
 
-Migration `core/server/store/migrations/0004_oidc_sso.sql`.
+Migration `core/server/store/migrations/0005_oidc_sso.sql`.
 
 ## admin_users (changed)
 

@@ -9,9 +9,9 @@ The normative route table is `specs/010-admin-ui/contracts/ui-routes.md` (extend
 
 ```text
 GET /login (button) -> GET /auth/oidc/login[?next=/path]
-   sets can_oidc (signed, HttpOnly, Secure, Lax, 10 min, path /auth/oidc) -> 303 IdP /authorize
+   sets can_oidc_<flow id> (signed, HttpOnly, Secure, Lax, 10 min, path /auth/oidc; at most 4 per browser) -> 303 IdP /authorize
 IdP -> GET /auth/oidc/callback?code&state
-   clears can_oidc; verifies; sets can_session (Strict); 200 interstitial -> meta refresh -> next
+   clears that cookie; verifies; sets can_session (Strict); 200 interstitial -> meta refresh -> next
 POST /logout (csrf) -> 303 /login            (rp_logout off)
                     -> 200 interstitial -> IdP end_session_endpoint?client_id&post_logout_redirect_uri   (rp_logout on)
 ```

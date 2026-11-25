@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
@@ -55,6 +56,19 @@ func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		s.renderLogin(w, r, http.StatusServiceUnavailable, randToken(), "", "login.sso_unavailable")
 		return
 	}
+	// Bound the browser's set of transaction cookies: with MaxFlowCookies already present the older
+	// ones are expired (an abandoned login leaves one behind for at most ten minutes).
+	var old []string
+	for _, c := range r.Cookies() {
+		if strings.HasPrefix(c.Name, sso.StateCookiePrefix) {
+			old = append(old, c.Name)
+		}
+	}
+	if len(old) >= sso.MaxFlowCookies {
+		for _, n := range old {
+			http.SetCookie(w, sso.ClearStateCookie(n, s.Secure))
+		}
+	}
 	http.SetCookie(w, ck)
 	http.Redirect(w, r, loc, http.StatusSeeOther)
 }
@@ -65,13 +79,19 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var state, old string
-	if c, err := r.Cookie(sso.StateCookieName); err == nil {
-		state = c.Value
+	cookieName := ""
+	if n, ok := sso.FlowCookieName(r.URL.Query().Get("state")); ok {
+		cookieName = n
+		if c, err := r.Cookie(n); err == nil {
+			state = c.Value
+		}
 	}
 	if c, err := r.Cookie(auth.CookieName); err == nil {
 		old = c.Value
 	}
-	http.SetCookie(w, sso.ClearStateCookie(s.Secure)) // single use, whatever happens next
+	if cookieName != "" {
+		http.SetCookie(w, sso.ClearStateCookie(cookieName, s.Secure)) // single use, whatever happens next
+	}
 	res, err := s.SSO.Complete(r.Context(), sso.CompleteRequest{Query: r.URL.Query(), StateCookie: state, IP: httpx.ClientIP(r, s.TrustProxy), OldToken: old})
 	var locked *auth.LockedError
 	var denied *sso.Denied

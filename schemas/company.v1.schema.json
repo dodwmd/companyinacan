@@ -94,6 +94,7 @@
         "confirm_disable_local_login": { "type": "boolean" },
         "revalidate_interval": { "type": "string", "maxLength": 16 },
         "rp_logout": { "type": "boolean" },
+        "allow_any_account": { "type": "boolean" },
         "allow_insecure_dev": { "type": "boolean" }
       }
     },

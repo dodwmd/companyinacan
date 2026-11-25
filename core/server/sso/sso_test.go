@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1034,4 +1035,83 @@ func base64url(b []byte) string {
 		}
 	}
 	return string(out)
+}
+
+func TestDiscoveryIsSingleFlightAndSurvivesACancelledCaller(t *testing.T) {
+	e := newEnv(t, nil)
+	if _, err := e.svc.Status(context.Background()); err != nil { // load the provider once
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := e.svc.Begin(context.Background(), ""); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if e.idp.DiscHits != 1 {
+		t.Fatalf("discovery fetched %d times for 12 concurrent logins", e.idp.DiscHits)
+	}
+	// A caller whose request is already cancelled does not poison the shared fetch.
+	e2 := newEnv(t, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := e2.svc.Begin(ctx, ""); err != nil {
+		t.Fatalf("the shared fetch must not depend on the first caller's context: %v", err)
+	}
+}
+
+func TestFlowCookieNames(t *testing.T) {
+	if n, ok := FlowCookieName("abcdEFG1" + strings.Repeat("x", 32)); !ok || n != "can_oidc_abcdEFG1" {
+		t.Fatal(n, ok)
+	}
+	for _, bad := range []string{"", "short", "ab;d EFG" + strings.Repeat("x", 32), "../../../" + strings.Repeat("x", 32), strings.Repeat("a", 200)} {
+		if _, ok := FlowCookieName(bad); ok {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+func TestTwoLoginsAtOnceDoNotInterfere(t *testing.T) {
+	e := newEnv(t, nil)
+	loc1, ck1 := e.start("/a")
+	loc2, ck2 := e.start("/b")
+	r2, err := e.callback(e.idp.Approve(loc2, alice()), ck2, "")
+	if err != nil || r2.Next != "/b" {
+		t.Fatal(err)
+	}
+	r1, err := e.callback(e.idp.Approve(loc1, alice()), ck1, "")
+	if err != nil || r1.Next != "/a" {
+		t.Fatal(err)
+	}
+}
+
+func TestLocalLoginDisabledFallsBackToOwnerOnlyWhenSSOIsFailing(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, func(c *config.SSO) { c.LocalLogin = config.LocalLoginDisabled; c.ConfirmDisableLocalLogin = true })
+	adm := alice()
+	adm.Groups = []string{"admins"}
+	e.mustLogin(adm)
+	root, _ := e.db.AdminByUsername(ctx, "root")
+	if e.svc.AllowLocalLogin(ctx, root) {
+		t.Fatal("disabled and healthy: the local owner is refused")
+	}
+	e.svc.Secrets = StaticSecrets{} // the secret becomes unreadable
+	e.svc.Reload()
+	if !e.svc.AllowLocalLogin(ctx, root) {
+		t.Fatal("SSO failing: the owner must keep the break-glass login")
+	}
+	st, _ := e.svc.Status(ctx)
+	if st.LocalLoginEffective != config.LocalLoginOwnerOnly {
+		t.Fatalf("%+v", st)
+	}
+	hash, _ := auth.HashPassword(ownerPW)
+	op, _ := e.db.CreateAdmin(ctx, "ops", hash, auth.NewTOTPSecret())
+	if e.svc.AllowLocalLogin(ctx, op) {
+		t.Fatal("a non-owner is not let in by the fallback")
+	}
 }

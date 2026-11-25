@@ -7,3 +7,4 @@ sso:
   issuer: http://idp.example.org/
   client_id: can
   client_secret_ref: acme-sso
+  allowed_email_domains: [acme.example]

@@ -7,3 +7,4 @@ sso:
   issuer: https://169.254.169.254/
   client_id: can
   client_secret_ref: acme-sso
+  allowed_email_domains: [acme.example]

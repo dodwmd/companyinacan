@@ -38,7 +38,7 @@ type Server struct {
 	// Mod is module management (epic E12b); nil answers 503 on its endpoints.
 	Mod *modmgr.Service
 	// PATs issues and revokes personal access tokens for module APIs; nil answers 503 on its routes.
-	PATs       *pat.Service
+	PATs *pat.Service
 	// SSO is OpenID Connect sign-in (epic E11b); nil answers 503 on its endpoints.
 	SSO        *sso.Service
 	Log        *slog.Logger

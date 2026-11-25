@@ -62,13 +62,14 @@ changes need no restart. A secret change is picked up the same way. It is **not*
 | `scopes` | Default `openid email profile`; `openid` is always sent. |
 | `redirect_base_url` | Origin of the admin UI. Default `https://admin.<domain>`. |
 | `claims.{subject,email,groups,name}` | Claim names (default `sub`, `email`, `groups`, `name`). Use another subject claim only if you know it is stable and unique per person at this issuer. |
+| `allow_any_account` | Must be `true` when none of `allowed_email_domains`, `group_roles` or `require_mapped_role` is set: with none of them, **every** account the IdP authenticates may sign in (with no role). `can validate` refuses the block otherwise. |
 | `allowed_email_domains` | If set, the email's domain (exact, lowercase, no subdomains) must be listed. Needs a verified email unless `require_email_verified: false`. |
 | `require_email_verified` | Default **true**. |
 | `require_amr` | Any one of these `amr` values must be in the token (for example `mfa`). Empty: not checked (the IdP's MFA is assumed). |
 | `group_roles` | IdP group -> roles. Roles are built-in (`operator`, `auditor`, `owner`) or module-namespaced (`finance:approver`). Not mapped means no role (least privilege). |
 | `confirm_owner_mapping` | Must be `true` if any group maps to `owner`: everyone in that group gets full control. |
 | `require_mapped_role` | Refuse sign-in for users who end up with no role (default: they sign in with none). |
-| `local_login` | `all`, `owner_only` (only users holding `owner` may use the password form) or `disabled` (needs `confirm_disable_local_login: true` and a group mapped to `owner`; ignored, with a warning on the status page, while no SSO user holds `owner`). |
+| `local_login` | `all`, `owner_only` (only users holding `owner` may use the password form) or `disabled` (needs `confirm_disable_local_login: true` and a group mapped to `owner`; behaves as `owner_only`, shown on the status page, while no SSO user holds `owner` **and while SSO is failing**: an unreadable client secret, an invalid block or an unreachable provider never turns the break-glass login off). |
 | `revalidate_interval` | Default `1h` (5m to 24h). How long an SSO session lives before the browser is sent back to the IdP. |
 | `rp_logout` | Also end the IdP session at logout (needs `end_session_endpoint`; register `https://admin.<domain>/login` as a post-logout redirect URI). |
 | `allow_insecure_dev` | Allow `http://` and private addresses for the IdP. Development only; shown in red on the status page. |
@@ -76,8 +77,12 @@ changes need no restart. A secret change is picked up the same way. It is **not*
 ## How sign-in works
 
 `GET /auth/oidc/login` creates `state`, `nonce` and a PKCE verifier (S256), stores them in a signed,
-HttpOnly, Secure, **SameSite=Lax** cookie `can_oidc` (10 minutes, path `/auth/oidc`) and redirects to the
-IdP. The callback `GET /auth/oidc/callback`:
+HttpOnly, Secure, **SameSite=Lax** cookie `can_oidc_<flow id>` (10 minutes, path `/auth/oidc`; the flow id is
+the first 8 characters of the state, so two tabs signing in at once do not overwrite each other, and a browser
+holds at most four: starting another expires the older ones) and redirects to the IdP. The cookie is signed
+(HMAC), not encrypted: it holds the PKCE verifier and nonce, which are only secret from other people's
+browsers, not from the user's own. The signing key is **per process**: restarting can-core (or running a second
+replica) invalidates logins that are in flight; the user simply starts again. The callback `GET /auth/oidc/callback`:
 
 1. checks the cookie signature and expiry, compares `state` in constant time and accepts each state once;
 2. exchanges the code (client authentication by HTTP Basic, PKCE verifier);
@@ -128,7 +133,8 @@ logout is not implemented.
 SSO users have no password or authentication code in can-core; their MFA is whatever the IdP enforces.
 Set `require_amr: [mfa]` if your IdP reports `amr` and you want can-core to insist. Local accounts keep
 password + TOTP. `local_login: owner_only` restricts the password form to owners; `disabled` turns it off
-once an SSO owner exists. In every mode `can-core admin ...` inside the pod (the break-glass CLI) keeps
+once an SSO owner exists and SSO is working; if the provider, the client secret or the configuration is
+failing, it falls back to `owner_only`. In every mode `can-core admin ...` inside the pod (the break-glass CLI) keeps
 working. Local sign-in with valid credentials is never throttled; refused sign-ins by policy are not counted
 as failures.
 
@@ -142,13 +148,26 @@ and `post_logout_redirect_uri`; no `id_token_hint`, which would mean storing the
 
 ## For modules
 
-`POST /v1/tokens/introspect` on the module API also accepts an end-user **session token** (the value of the
-`can_session` cookie, 43 characters, passed by the user's client as a bearer token to a module, which
-forwards it). For a live session created by SSO the answer is `active: true` with `kind: "user"`,
-`subject`/`sub` (`oidc:...`), `username` (`user:sso-...`), `email`, `name`, `groups`, `amr` and `roles`:
-the **caller's own** role names (`people:hr` is `hr` for the people module) plus built-ins, and `all_roles` with
-full names. Local-password sessions, expired, revoked or unknown tokens answer `{"active": false}`. This is
-what the `IntrospectAuthenticator` of `people`, `equity` and `finance` expect (`subject`, `roles`).
+`POST /v1/tokens/introspect` on the module API distinguishes three token kinds by shape: a projected
+ServiceAccount token (a dotted JWT, TokenReview), a **personal access token** (`canpat_...`, `specs/016-module-wiring`),
+and an end-user **session token** (the value of the `can_session` cookie: exactly 43 base64url characters, no
+dots, never `canpat_`). For a live session created by SSO the answer is `active: true`, `kind: "user"` and the
+same shape a PAT gets: `subject` = `user:sso-...` (the can-core RBAC subject, which the modules' `user:` subject
+check accepts) and `permissions` = the caller module's permissions the person holds right now, plus `sub`
+(`oidc:<issuer-hash>:<sub>`, the stable external identity), `email`, `name`, `groups`, `amr`, `roles` (the
+**caller's own** role names: `people:hr` is `hr` for the people module, plus built-ins) and `all_roles` (full
+names). Local-password sessions and expired, revoked or unknown tokens answer `{"active": false}`.
+
+- **PATs and SSO users.** SSO users have ordinary `user:sso-...` subjects, so they can issue and use personal access
+  tokens exactly like local admins (`/tokens`); PAT introspection is unchanged and stays a separate path.
+  The external `oidc:` identity is not a PAT subject; it is only reported as `sub`. Nothing in the modules
+  needs to change.
+- **Bare-name ambiguity.** `roles` strips the caller's own module prefix, so a module role `hr` and a built-in
+  role of the same bare name would look alike to the module. Built-in names (`owner`, `operator`, `auditor`) are
+  reserved by can-core and modules may not define them, so no collision arises today; `all_roles` always has the
+  unambiguous names.
+- **Trust.** Every enabled module may call introspection, and sees `email`, `name`, `groups` and roles for any
+  session token it is shown. A session token is the user's session: only hand it to modules you trust with that.
 
 ## Security properties (tested)
 
@@ -205,4 +224,4 @@ roles by hand or link identities. `rp_logout` has no effect (no end-session endp
   tested at the HTTP level only.
 - Back-channel logout and `id_token_hint` logout are not implemented.
 - The mounted Secret path in `deploy/can-core` and the 30 s reload were not run on a cluster.
-- Idle RAM was measured only with SSO disabled (see the epic report); an enabled provider adds a JWKS cache of a few KiB.
+- Footprint, measured on this build against `origin/main`: stripped can-core binary 19,140,871 to 19,362,055 bytes (+221 KB). Idle RSS (after 20 requests) 47.7 MiB on main, 48.1 MiB with this change and SSO off, **50.6 MiB with SSO enabled after 20 complete sign-ins** against the in-process fake provider (about +2.9 MiB over main; the fake provider ran in another process). can-core's budget is 48 MiB requested / 96 MiB limit: main alone is already at the request, so SSO enabled is above the request and well under the limit. Not measured against a real provider or under load.

@@ -15,6 +15,7 @@ is rejected as an unknown field). Semantic rules: `core/config/sso.go` (`config.
 | `semantic.sso-mapping`, `-role` | at most 200 groups, 20 roles each; roles built in or `module:role` |
 | `semantic.sso-owner-confirm` | a group maps to `owner` without `confirm_owner_mapping: true` |
 | `semantic.sso-local-login` | unknown mode; `disabled` without `confirm_disable_local_login: true`; `disabled` without an owner mapping |
+| `semantic.sso-open-access` | none of `allowed_email_domains`, `group_roles`, `require_mapped_role` is set and `allow_any_account: true` is not |
 | `semantic.sso-revalidate` | duration between 5m and 24h |
 
 can-core re-validates the block when it reads the applied file; an invalid block disables sign-in (the status

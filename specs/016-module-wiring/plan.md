@@ -36,7 +36,7 @@ cluster, no network. The only cluster run is the advisory dev-cluster workflow.
 ```
 core/server/pat/                 issue, revoke, list, introspect personal access tokens
 core/server/modsecrets/          which secrets are generated per module, how to rotate
-core/server/store/wiring.go      tokens, publish de-duplication, rotation requests (migration 0004)
+core/server/store/wiring.go      tokens, publish de-duplication, rotation requests (migration 0005)
 core/server/{moduleapi,adminapi,adminui}   introspection of tokens, /api/v1/tokens, /tokens page
 core/server/{installer,reconcile,corecli}  generated secrets, rollout on change, `admin secrets rotate`
 core/modclient/                  module-side client, introspector, receiver; fakecore/ for tests

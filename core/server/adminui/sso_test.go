@@ -56,7 +56,12 @@ func (s *ssoHarness) begin(next string) (loc string, state *http.Cookie) {
 	if r.StatusCode != http.StatusSeeOther {
 		s.t.Fatalf("login: %d %s", r.StatusCode, r.body)
 	}
-	c := cookieNamed(r.Response, sso.StateCookieName)
+	var c *http.Cookie
+	for _, x := range r.Cookies() {
+		if strings.HasPrefix(x.Name, sso.StateCookiePrefix) && x.MaxAge >= 0 {
+			c = x
+		}
+	}
 	if c == nil || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode || c.Path != "/auth/oidc" {
 		s.t.Fatalf("state cookie %+v", c)
 	}
@@ -119,8 +124,12 @@ func TestSSOFlowEndToEnd(t *testing.T) {
 		t.Fatalf("session cookie %+v", sc)
 	}
 	// The transaction cookie is cleared; the page moves on by itself (not by redirect) to next.
-	if c := cookieNamed(r.Response, sso.StateCookieName); c == nil || c.MaxAge >= 0 {
-		t.Fatalf("state cookie not cleared: %+v", c)
+	cleared := false
+	for _, c := range r.Cookies() {
+		cleared = cleared || (strings.HasPrefix(c.Name, sso.StateCookiePrefix) && c.MaxAge < 0)
+	}
+	if !cleared {
+		t.Fatal("state cookie not cleared")
 	}
 	if m := metaRe.FindStringSubmatch(r.body); m == nil || m[1] != "/modules" {
 		t.Fatalf("interstitial: %v\n%s", m, r.body)
@@ -311,5 +320,41 @@ func TestSSOPagesAreUnavailableWithoutService(t *testing.T) {
 	root := h.login()
 	if r := h.do("GET", "/settings/sso", nil, root.with()...); r.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("%d", r.StatusCode)
+	}
+}
+
+func TestTwoTabsHaveTheirOwnTransactionCookies(t *testing.T) {
+	s := newSSOHarness(t, nil)
+	loc1, st1 := s.begin("/a")
+	loc2, st2 := s.begin("/b")
+	if st1.Name == st2.Name {
+		t.Fatal("each login needs its own cookie")
+	}
+	cookies := []*http.Cookie{st1, st2}
+	r2 := s.callback(s.idp.Approve(loc2, opUser()), cookies...)
+	r1 := s.callback(s.idp.Approve(loc1, opUser()), cookies...)
+	for i, r := range []resp{r1, r2} {
+		if r.StatusCode != http.StatusOK || cookieNamed(r.Response, "can_session") == nil {
+			t.Fatalf("tab %d: %d %s", i, r.StatusCode, r.body)
+		}
+	}
+	if m := metaRe.FindStringSubmatch(r1.body); m == nil || m[1] != "/a" {
+		t.Fatal(m)
+	}
+	// Beyond MaxFlowCookies the older ones are expired.
+	var held []*http.Cookie
+	for i := 0; i < sso.MaxFlowCookies; i++ {
+		_, c := s.begin("")
+		held = append(held, c)
+	}
+	r := s.do("GET", "/auth/oidc/login", nil, held...)
+	cleared := 0
+	for _, c := range r.Cookies() {
+		if strings.HasPrefix(c.Name, sso.StateCookiePrefix) && c.MaxAge < 0 {
+			cleared++
+		}
+	}
+	if cleared != sso.MaxFlowCookies {
+		t.Fatalf("expired %d of %d old transaction cookies", cleared, sso.MaxFlowCookies)
 	}
 }

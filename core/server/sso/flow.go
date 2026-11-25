@@ -14,9 +14,32 @@ import (
 	"time"
 )
 
-// StateCookieName is the short-lived cookie that carries the login transaction (state, nonce, PKCE
-// verifier, where to go next) from /auth/oidc/login to /auth/oidc/callback.
-const StateCookieName = "can_oidc"
+// StateCookiePrefix names the short-lived cookies that carry a login transaction (state, nonce, PKCE
+// verifier, where to go next) from /auth/oidc/login to /auth/oidc/callback. Each login has its own
+// cookie, can_oidc_<flow id>, where the flow id is the first FlowIDLen characters of its state, so
+// two tabs signing in at once do not overwrite each other. The browser's set is bounded by the
+// handler (see MaxFlowCookies) and each cookie lives StateTTL at most.
+const StateCookiePrefix = "can_oidc_"
+
+// FlowIDLen is the length of the flow id at the start of a state value.
+const FlowIDLen = 8
+
+// MaxFlowCookies is how many transaction cookies a browser may hold; starting another login beyond
+// it expires the older ones.
+const MaxFlowCookies = 4
+
+// FlowCookieName returns the cookie name for a state value, or false if the state is malformed.
+func FlowCookieName(state string) (string, bool) {
+	if len(state) < FlowIDLen+16 || len(state) > 128 {
+		return "", false
+	}
+	for _, c := range state[:FlowIDLen] {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' {
+			return "", false
+		}
+	}
+	return StateCookiePrefix + state[:FlowIDLen], true
+}
 
 // StateTTL bounds how long a login may take at the identity provider.
 const StateTTL = 10 * time.Minute
@@ -82,13 +105,13 @@ func open(key []byte, v string, now time.Time) (stateData, error) {
 // StateCookie builds the transaction cookie. SameSite=Lax (not Strict): the callback is a
 // cross-site top-level navigation from the identity provider and must carry it. Path-scoped to the
 // OIDC routes and HttpOnly.
-func StateCookie(value string, secure bool) *http.Cookie {
-	return &http.Cookie{Name: StateCookieName, Value: value, Path: "/auth/oidc", MaxAge: int(StateTTL.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
+func StateCookie(name, value string, secure bool) *http.Cookie {
+	return &http.Cookie{Name: name, Value: value, Path: "/auth/oidc", MaxAge: int(StateTTL.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
 }
 
 // ClearStateCookie expires the transaction cookie.
-func ClearStateCookie(secure bool) *http.Cookie {
-	return &http.Cookie{Name: StateCookieName, Value: "", Path: "/auth/oidc", MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
+func ClearStateCookie(name string, secure bool) *http.Cookie {
+	return &http.Cookie{Name: name, Value: "", Path: "/auth/oidc", MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
 }
 
 // SafeNext reduces a post-login destination to a local path: anything that could leave this site

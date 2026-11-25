@@ -76,3 +76,29 @@ func TestNormalisedDefaults(t *testing.T) {
 		t.Fatalf("openid not forced: %v", got)
 	}
 }
+
+func TestOpenAccessNeedsConfirmation(t *testing.T) {
+	s := &SSO{Enabled: true, Issuer: "https://idp.example.org", ClientID: "c", ClientSecretRef: "acme-sso"}
+	if len(ValidateSSO(s, "acme.example")) != 1 {
+		t.Fatalf("%v", ValidateSSO(s, "acme.example"))
+	}
+	s.AllowAnyAccount = true
+	if len(ValidateSSO(s, "acme.example")) != 0 {
+		t.Fatal("confirmed")
+	}
+	for _, f := range []func(*SSO){func(s *SSO) { s.AllowedEmailDomains = []string{"acme.example"} }, func(s *SSO) { s.RequireMappedRole = true }, func(s *SSO) { s.GroupRoles = map[string][]string{"g": {"auditor"}} }} {
+		s := &SSO{Enabled: true, Issuer: "https://idp.example.org", ClientID: "c", ClientSecretRef: "acme-sso"}
+		f(s)
+		if is := ValidateSSO(s, "acme.example"); len(is) != 0 {
+			t.Fatalf("%v", is)
+		}
+	}
+}
+
+func TestPublicIPDeniesTransitionForms(t *testing.T) {
+	for _, s := range []string{"2002:c0a8:0101::1", "2002:0a00:0001::1", "::10.0.0.1", "::127.0.0.1", "2001:0:4136:e378:8000:63bf:3fff:fdd2"} {
+		if PublicIP(net.ParseIP(s)) {
+			t.Errorf("%s must not be public", s)
+		}
+	}
+}

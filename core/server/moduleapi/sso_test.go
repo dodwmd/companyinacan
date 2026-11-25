@@ -9,9 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
+	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/sso"
+	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
 type fakeUsers struct {
@@ -90,5 +94,38 @@ func TestIntrospectNeedsAModuleCaller(t *testing.T) {
 	resp, _ := h.call("POST", "/v1/tokens/introspect", "", map[string]string{"token": sessionTok})
 	if resp.StatusCode != 401 {
 		t.Fatalf("an anonymous caller must not introspect sessions: %d", resp.StatusCode)
+	}
+}
+
+func TestPATsAndSessionsStayDistinct(t *testing.T) {
+	u := &fakeUsers{info: sso.UserInfo{Active: true}}
+	h := usersHarness(t, u)
+	pat := "canpat_" + strings.Repeat("a", 36) // 43 characters, but a personal access token
+	_, b := h.call("POST", "/v1/tokens/introspect", "tok-support", map[string]string{"token": pat})
+	if len(u.seen) != 0 || strings.TrimSpace(string(b)) != `{"active":false}` {
+		t.Fatalf("a PAT-shaped token must never reach the session introspector: %v %s", u.seen, b)
+	}
+}
+
+func TestSessionIntrospectionListsTheCallersPermissions(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	m := store.Module{ID: "support", Version: "1", Namespace: "mod-support", ServiceAccount: "support", State: store.StateEnabled, HMACSecret: "x",
+		Manifest: config.Module{ID: "support", Permissions: []string{"support.read", "support.write"}, Roles: map[string][]string{"agent": {"support.read"}}}}
+	if err := h.db.UpsertModule(ctx, m, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	rb := rbac.New(h.db, audit.New(h.db), rbac.Options{BreakGlass: true})
+	if err := rb.Grant(ctx, rbac.CLIActor, "user:sso-x", "support:agent", ""); err != nil {
+		t.Fatal(err)
+	}
+	u := &fakeUsers{info: sso.UserInfo{Active: true, Sub: "oidc:a:b", Subject: "user:sso-x", Roles: []string{"support:agent"}}}
+	s := &Server{Auth: modauth.New(h.tr, h.db), Registry: h.reg, Bus: events.NewBus(h.db), Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), Users: u, RBAC: rb}
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	h.srv = srv
+	_, b := h.call("POST", "/v1/tokens/introspect", "tok-support", map[string]string{"token": sessionTok})
+	if !strings.Contains(string(b), `"permissions":["support.read"]`) || !strings.Contains(string(b), `"subject":"user:sso-x"`) || !strings.Contains(string(b), `"roles":["agent"]`) {
+		t.Fatalf("%s", b)
 	}
 }

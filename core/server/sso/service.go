@@ -211,13 +211,14 @@ func (s *Service) Begin(ctx context.Context, next string) (string, *http.Cookie,
 	if c.err != nil {
 		return "", nil, c.err
 	}
-	sd := stateData{State: randString(32), Nonce: randString(32), Verifier: randString(48), Next: SafeNext(next), Exp: s.Now().Add(StateTTL).Unix()}
+	sd := stateData{State: randString(6) + randString(32), Nonce: randString(32), Verifier: randString(48), Next: SafeNext(next), Exp: s.Now().Add(StateTTL).Unix()}
 	loc, err := c.prov.AuthURL(ctx, sd.State, sd.Nonce, pkceChallenge(sd.Verifier))
 	if err != nil {
 		s.Log.Error("sso: starting login failed", "error", err)
 		return "", nil, errors.New("the identity provider cannot be reached")
 	}
-	return loc, StateCookie(seal(s.stateKey, sd), s.Secure), nil
+	name, _ := FlowCookieName(sd.State)
+	return loc, StateCookie(name, seal(s.stateKey, sd), s.Secure), nil
 }
 
 // CompleteRequest is the callback.
@@ -491,8 +492,8 @@ func (s *Service) AllowLocalLogin(ctx context.Context, u store.AdminUser) bool {
 		return true
 	}
 	mode := c.cfg.LocalLogin
-	if c.err != nil && mode == "" {
-		mode = config.LocalLoginOwnerOnly
+	if c.err != nil {
+		mode = config.LocalLoginOwnerOnly // a failing provider or secret never turns the break-glass login off
 	}
 	switch mode {
 	case "", config.LocalLoginAll:

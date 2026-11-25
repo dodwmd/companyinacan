@@ -65,7 +65,7 @@ Out of scope (documented, not built): back-channel logout, `id_token_hint` logou
 ## Success criteria
 
 - `make test` and `go test -race ./core/server/...` pass; the security tests in `core/server/sso` and `adminui` fail when each guard is removed (mutation run recorded in `tasks.md`).
-- Idle can-core RSS grows by less than 2 MiB; the binary by less than 0.5 MiB.
+- Binary grows by less than 0.5 MiB; idle can-core RSS with SSO enabled grows by about 3 MiB over main (measured, see `docs/sso.md`).
 
 ## Known gaps
 

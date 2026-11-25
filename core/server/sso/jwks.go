@@ -105,7 +105,10 @@ func (k *keySet) refresh(ctx context.Context) error {
 	k.lastTry = k.now()
 	k.mu.Unlock()
 
-	keys, err := k.fetch(ctx)
+	// Shared by every waiting caller, so it must not die with the first caller's request context.
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), callTimeout+2*time.Second)
+	keys, err := k.fetch(fctx)
+	cancel()
 
 	k.mu.Lock()
 	if err == nil {

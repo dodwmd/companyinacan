@@ -17,7 +17,7 @@ description: "Task list for Epic E11b: OpenID Connect single sign-on"
 
 ## Phase 2: Store, auth, RBAC
 
-- [x] T004 Migration 0004; `store/sso.go` (identities, JIT user, link, unlink, owner count)
+- [x] T004 Migration 0005; `store/sso.go` (identities, JIT user, link, unlink, owner count)
 - [x] T005 `auth`: session source and revalidation, `CreateSSOSession`, SSO users cannot use the password path, `LocalPolicy`
 - [x] T006 `rbac.SyncSSORoles` (own assignments only, unknown roles skipped, owner confirmation, last owner kept, audit before/after) and tests
 
@@ -41,9 +41,9 @@ description: "Task list for Epic E11b: OpenID Connect single sign-on"
 
 - [x] T017 `docs/sso.md`, `docs/admin-ui.md`, `docs/approvals.md`, epics table
 - [x] T018 Mutation run: each guard below removed in turn, `go test ./core/server/sso ./core/server/auth` had to fail. Result: all failed once two tests were strengthened (alg allowlist: a refusal must happen before any key lookup; redirects: the target must not be contacted). Guards: nonce, aud, iss, exp, alg allowlist, replay set, email_verified, session fixation, JWKS refetch limit, revalidation, cookie signature, connect-time address check, no-redirect policy
-- [x] T019 Footprint: binary 19,001,607 to 19,255,559 bytes (+254 KB, `-trimpath -s -w`); idle RSS after 20 requests 46.7 to 47.6 MiB (SSO off, 64 MiB soft limit)
+- [x] T019 Footprint against current main (`-trimpath -s -w`): binary 19,140,871 to 19,362,055 bytes (+221 KB); idle RSS after 20 requests 47.7 MiB (main), 48.1 MiB (SSO off), 50.6 MiB (SSO enabled, 20 complete sign-ins against the fake provider)
 - [ ] T020 [V] Real provider (Keycloak, Authentik, Google, Entra): claim quirks, trailing-slash issuers, groups size limits, missing `email_verified`
 - [ ] T021 [V] Browser: SameSite handling and the interstitial, provider logout, cookies across the redirect
-- [ ] T022 [V] Cluster: mounted Secret `sso-client`, ConfigMap refresh within 30 s, RSS with SSO enabled
+- [ ] T022 [V] Cluster: mounted Secret `sso-client`, ConfigMap refresh within 30 s, RSS under a real provider
 - [ ] T023 Back-channel logout (`logout_token` validation, `sid` to session map) and `id_token_hint`
 - [ ] T024 `identity.provision` / SCIM (E13)

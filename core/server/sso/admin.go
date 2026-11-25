@@ -69,7 +69,9 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		st.LocalLogin = config.LocalLoginAll
 	}
 	st.LocalLoginEffective = st.LocalLogin
-	if st.LocalLogin == config.LocalLoginDisabled {
+	if st.LocalLogin == config.LocalLoginDisabled && c.err != nil {
+		st.LocalLoginEffective = config.LocalLoginOwnerOnly // SSO is failing: owners keep the break-glass login
+	} else if st.LocalLogin == config.LocalLoginDisabled {
 		if n, err := s.DB.SSOOwnerCount(ctx); err != nil || n == 0 {
 			st.LocalLoginEffective = config.LocalLoginOwnerOnly // safety net: no SSO owner exists yet
 		}

@@ -67,10 +67,11 @@ type Provider struct {
 	now    func() time.Time
 	keys   *keySet
 
-	mu      sync.Mutex
-	disc    *Discovery
-	discAt  time.Time
-	discTry time.Time
+	mu         sync.Mutex
+	disc       *Discovery
+	discAt     time.Time
+	discTry    time.Time
+	discFlight *flight
 }
 
 // NewProvider returns a provider for a validated, normalised configuration.
@@ -93,32 +94,60 @@ func (p *Provider) RedirectURI() string { return p.cfg.RedirectBaseURL + "/auth/
 // less than a day old). The answer is validated: the issuer must equal the configured one exactly
 // and every endpoint must be https (and public unless allow_insecure_dev).
 func (p *Provider) Discover(ctx context.Context) (*Discovery, error) {
+	now := p.now()
 	p.mu.Lock()
 	d, at, try := p.disc, p.discAt, p.discTry
-	p.mu.Unlock()
-	now := p.now()
 	if d != nil && now.Sub(at) < discoveryTTL {
+		p.mu.Unlock()
+		return d, nil
+	}
+	if f := p.discFlight; f != nil { // join the fetch in progress
+		p.mu.Unlock()
+		select {
+		case <-f.done:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		p.mu.Lock()
+		d, at = p.disc, p.discAt
+		p.mu.Unlock()
+		if f.err != nil && (d == nil || p.now().Sub(at) >= keyMaxStale) {
+			return nil, f.err
+		}
 		return d, nil
 	}
 	if !try.IsZero() && now.Sub(try) < keyMinRefetch {
+		p.mu.Unlock()
 		if d != nil && now.Sub(at) < keyMaxStale {
 			return d, nil
 		}
 		return nil, errors.New("discovery is failing; not retried yet")
 	}
-	p.mu.Lock()
-	p.discTry = now
+	f := &flight{done: make(chan struct{})}
+	p.discFlight, p.discTry = f, now
 	p.mu.Unlock()
-	nd, err := p.fetchDiscovery(ctx)
+
+	// One fetch is shared by every waiting caller, so it must not die with the first caller's
+	// request context: it runs detached, bounded by its own timeout.
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), callTimeout+2*time.Second)
+	nd, err := p.fetchDiscovery(fctx)
+	cancel()
+
+	p.mu.Lock()
+	if err == nil {
+		p.disc, p.discAt = nd, now
+	}
+	p.discFlight = nil
+	d, at = p.disc, p.discAt
+	p.mu.Unlock()
+	f.err = err
+	close(f.done)
 	if err != nil {
 		if d != nil && now.Sub(at) < keyMaxStale {
 			return d, nil
 		}
 		return nil, err
 	}
-	p.mu.Lock()
-	p.disc, p.discAt = nd, now
-	p.mu.Unlock()
 	return nd, nil
 }
 
