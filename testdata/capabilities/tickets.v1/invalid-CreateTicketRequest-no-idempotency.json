@@ -1,0 +1,7 @@
+{
+  "subject": "Hi",
+  "body": "Hello",
+  "customer": {
+    "email": "a@example.com"
+  }
+}

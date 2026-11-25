@@ -57,5 +57,5 @@ server-down: down ## alias of down, kept for scripts that used the E06 name
 status: ## show the server state; exit 0 only when ready
 	@$(GO) run ./cmd/can status $(ARGS)
 
-release-check: ## fail if deploy Dockerfiles still have placeholder image digests
+release-check: ## fail if deploy Dockerfiles or module charts still have placeholder image digests
 	sh scripts/check-image-pins.sh

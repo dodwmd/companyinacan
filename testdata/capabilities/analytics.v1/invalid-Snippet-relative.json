@@ -1,0 +1,5 @@
+{
+  "endpoint": "/count",
+  "script_src": "https://stats.example.com/count.js",
+  "html": "<script data-goatcounter=\"https://stats.example.com/count\" async src=\"https://stats.example.com/count.js\"></script>"
+}

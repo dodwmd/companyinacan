@@ -1,0 +1,6 @@
+apiVersion: v2
+name: analytics
+description: Privacy-friendly web analytics (GoatCounter) for companyinacan
+type: application
+version: 0.1.0
+appVersion: "2.x"

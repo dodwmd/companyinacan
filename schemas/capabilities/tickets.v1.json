@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/tickets.v1.json",
+  "title": "tickets.v1",
+  "description": "Capability `tickets` (SPEC.md section 4.3): create, read, update and reassign support tickets. Provided by an adapter in front of FreeScout today and by the in-house support module later; consumers must not depend on anything not in this file. Write verbs are flagged. Bodies are JSON over HTTP; the adapter authenticates callers with the projected ServiceAccount token (audience `can`).",
+  "x-capability": "tickets",
+  "x-verbs": [
+    { "verb": "list", "method": "GET", "path": "/v1/tickets", "response": "TicketList", "permission": "tickets.read", "description": "Query: status, mailbox, assignee, customer_email, updated_since, cursor, limit (max 100)." },
+    { "verb": "get", "method": "GET", "path": "/v1/tickets/{id}", "response": "Ticket", "permission": "tickets.read" },
+    { "verb": "create", "method": "POST", "path": "/v1/tickets", "request": "CreateTicketRequest", "response": "Ticket", "write": true, "permission": "tickets.write", "description": "Idempotent on `idempotency_key`: a retry returns the original ticket." },
+    { "verb": "update_status", "method": "PATCH", "path": "/v1/tickets/{id}", "request": "UpdateStatusRequest", "response": "Ticket", "write": true, "permission": "tickets.write" },
+    { "verb": "reassign", "method": "PUT", "path": "/v1/tickets/{id}/assignee", "request": "ReassignRequest", "response": "Ticket", "write": true, "permission": "tickets.write" }
+  ],
+  "$defs": {
+    "Customer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["email"],
+      "properties": {
+        "email": { "type": "string", "maxLength": 254 },
+        "name": { "type": "string", "maxLength": 200 },
+        "party_id": { "type": "string", "minLength": 1, "description": "Directory party id, kept in external_ids by the helpdesk when known." }
+      }
+    },
+    "Ticket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "number", "subject", "status", "mailbox", "customer", "created_at", "updated_at"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^tk_[0-9]{1,18}$" },
+        "number": { "type": "integer", "minimum": 1, "description": "Number shown to agents and customers." },
+        "subject": { "type": "string", "maxLength": 998 },
+        "status": { "enum": ["active", "pending", "closed", "spam"] },
+        "mailbox": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" },
+        "assignee": { "type": ["string", "null"], "maxLength": 254, "description": "Agent email, or null when unassigned." },
+        "customer": { "$ref": "#/$defs/Customer" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "TicketList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/Ticket" } },
+        "next_cursor": { "type": "string" }
+      }
+    },
+    "CreateTicketRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "body", "customer", "idempotency_key"],
+      "properties": {
+        "subject": { "type": "string", "minLength": 1, "maxLength": 998 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 100000 },
+        "mailbox": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$", "description": "Defaults to the module's default mailbox." },
+        "customer": { "$ref": "#/$defs/Customer" },
+        "idempotency_key": { "type": "string", "minLength": 8, "maxLength": 128 }
+      }
+    },
+    "UpdateStatusRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": { "status": { "enum": ["active", "pending", "closed", "spam"] } }
+    },
+    "ReassignRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assignee"],
+      "properties": { "assignee": { "type": ["string", "null"], "maxLength": 254, "description": "Agent email; null unassigns." } }
+    }
+  }
+}

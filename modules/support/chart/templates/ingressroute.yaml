@@ -1,0 +1,34 @@
+{{- /* Inbound-email parse webhooks reach the adapter through adapterRoutes; it verifies their signature. */ -}}
+{{- if .Values.ingress.enabled }}
+{{- $host := required "ingress.host (<subdomain>.<domain>) is supplied by can-core and is required" .Values.ingress.host }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - {{ ternary "websecure" "web" .Values.ingress.tls }}
+  routes:
+    - match: Host(`{{ $host }}`)
+      kind: Rule
+      services:
+        - name: {{ .Chart.Name }}
+          port: {{ .Values.service.port }}
+    {{- if .Values.adapter.enabled }}
+    {{- range .Values.ingress.adapterRoutes }}
+    - match: Host(`{{ $host }}`) && PathPrefix(`{{ .pathPrefix }}`)
+      kind: Rule
+      priority: {{ .priority }}
+      services:
+        - name: {{ $.Chart.Name }}-adapter
+          port: {{ $.Values.adapter.port }}
+    {{- end }}
+    {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    certResolver: {{ .Values.ingress.certResolver }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,51 @@
+# Support inbox: FreeScout (PHP, AGPL-3.0) wrapped behind the `tickets` capability.
+schema: 1
+id: support
+name: Support inbox
+description: Shared support inbox with email in and out, assignment and canned replies. Wraps FreeScout; an adapter exposes the tickets capability and the ticket.created.v1 event. Inbound mail arrives over IMAP or an inbound-parse webhook (docs/email-policy.md).
+category: support
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: FreeScout
+  # AGPL-3.0 is network copyleft: see modules/README.md. We run FreeScout unmodified.
+  licence: AGPL-3.0-only
+  licence_class: osi
+  upstream: https://github.com/freescout-help-desk/freescout
+  upstream_version: "1.x"
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  subdomain: support
+  ui: { service: support, port: 8080 }
+requires:
+  database: mariadb
+  capabilities: [email.send]
+  sso: none
+resources:
+  # Estimate from SPEC.md section 6.1 (~250 MB idle for the PHP stack); not yet measured on a
+  # real server (research.md R5). The adapter (10 MB request) is inside this figure.
+  ram_mb: 250
+  ram_limit_mb: 512
+  disk_mb: 2048
+provides:
+  - { capability: tickets, schema: tickets.v1, service: support-adapter, port: 8081 }
+publishes:
+  - { event: ticket.created.v1, schema: ./events/ticket.created.v1.json }
+permissions: [tickets.read, tickets.write, tickets.admin]
+roles:
+  agent: [tickets.read, tickets.write]
+  viewer: [tickets.read]
+  admin: [tickets.read, tickets.write, tickets.admin]
+data_classes:
+  # Customer messages and attachments: personal data, standard sensitivity. Three years covers
+  # the usual dispute and warranty window; shorten it in settings if the business allows.
+  - { class: support-conversation, retention: 3y, sensitivity: standard }
+  - { class: support-attachment, retention: 3y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+hooks:
+  # The upstream image has neither curl nor the MariaDB client; see deploy/hooks/.
+  image: ghcr.io/dodwmd/can-hooks:0.1.0
+  backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
+healthcheck: /login

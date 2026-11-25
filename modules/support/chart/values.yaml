@@ -1,0 +1,67 @@
+# Values for the support module chart (FreeScout). can-core supplies ingress.host
+# (<subdomain>.<domain>) and may override anything below from the module's settings.
+# See specs/007-starter-modules/contracts/module-charts.md for the Secret key contract.
+image:
+  # Community image of FreeScout (no official upstream image exists). Unverified here: it must
+  # run as a non-root user to satisfy the `restricted` pod-security profile of module namespaces;
+  # see modules/support/README.md "Open items".
+  repository: docker.io/tiredofit/freescout
+  tag: REPLACE_WITH_TAG    # unverified offline: resolve the FreeScout release tag when pinning (README)
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+service:
+  port: 8080
+ingress:
+  enabled: true
+  host: ""                 # supplied by can-core
+  tls: true                # false on local dev (plain HTTP, no certificate resolver)
+  certResolver: letsencrypt
+  adapterRoutes:           # public paths served by the adapter (inbound-parse webhook)
+    - { pathPrefix: /inbound, priority: 100 }
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: ""
+  mountPath: /data         # attachments, uploaded modules, logs
+resources:
+  requests: { memory: 240Mi, cpu: 50m }
+  limits: { memory: 480Mi }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities: { drop: [ALL] }
+# Names of the Secrets can-core creates in the module namespace (docs/email-policy.md).
+secrets:
+  database: can-database   # keys: host port name user password
+  smtp: can-smtp           # keys: host port user password from encryption
+  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+probes:
+  readiness: { path: /login, port: http }
+  liveness: { path: /login, port: http }
+  startup: { path: /login, port: http, failureThreshold: 60, periodSeconds: 5 }   # first boot runs migrations
+app:
+  nginxListenPort: 8080
+  applicationName: Support
+email:
+  # false: no relay credentials injected; the app starts and keeps conversations, mail stays queued.
+  injectRelay: true
+inbound:
+  mode: imap               # imap | webhook (a setting of the module, docs/email-policy.md)
+adapter:
+  enabled: false           # needs the can-adapter-support image (deferred, see tasks.md)
+  port: 8081
+  image:
+    repository: ghcr.io/dodwmd/can-adapter-support
+    tag: 0.1.0
+    digest: sha256:REPLACE_WITH_DIGEST
+  env: {}
+  resources:
+    requests: { memory: 10Mi, cpu: 5m }
+    limits: { memory: 32Mi }

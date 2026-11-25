@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Newsletter module settings",
+  "description": "Operator settings of the newsletter module. Relay passwords are never settings: they live in the module's Secrets (docs/email-policy.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "from_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "From address of campaigns; its domain must carry the SPF/DKIM/DMARC records for the bulk relay." },
+    "double_opt_in": { "type": "boolean", "default": true, "description": "Require a confirmation click before the first campaign. Turn off only for imports that already carry recorded consent." },
+    "relay": { "enum": ["shared", "bulk"], "default": "shared", "description": "shared: the company's transactional relay. bulk: a separate bulk relay (recommended once lists grow), so campaign complaints cannot hurt support and invoice mail." },
+    "subscribe_from_forms": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" },
+      "default": [],
+      "description": "Form ids whose submissions subscribe the sender when they ticked the newsletter field."
+    },
+    "default_list": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$", "default": "newsletter" }
+  }
+}

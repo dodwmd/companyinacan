@@ -1,0 +1,45 @@
+# Analytics: GoatCounter (Go, EUPL-1.2) wrapped behind the `analytics` capability.
+schema: 1
+id: analytics
+name: Analytics
+description: Cookie-free, privacy-friendly web analytics for the company site. Wraps GoatCounter on SQLite (chosen over Umami for footprint, see specs/007-starter-modules/research.md); an adapter exposes the analytics capability.
+category: marketing
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: GoatCounter
+  # EUPL-1.2 is network copyleft: see modules/README.md. We run GoatCounter unmodified.
+  licence: EUPL-1.2
+  licence_class: osi
+  upstream: https://github.com/arp242/goatcounter
+  upstream_version: "2.x"
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  subdomain: stats
+  ui: { service: analytics, port: 8080 }
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Estimate from SPEC.md section 6.1 (~20 MB) for a single Go binary on SQLite; not yet
+  # measured (research.md R5). The adapter (6 MB request) is inside this figure.
+  ram_mb: 20
+  ram_limit_mb: 64
+  disk_mb: 1024
+provides:
+  - { capability: analytics, schema: analytics.v1, service: analytics-adapter, port: 8081 }
+permissions: [analytics.read, analytics.admin]
+roles:
+  viewer: [analytics.read]
+  admin: [analytics.read, analytics.admin]
+data_classes:
+  # Aggregated page views without cookies or stored IP addresses: not personal data in the usual
+  # sense, still bounded so the database stays small.
+  - { class: pageview-aggregate, retention: 3y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+hooks:
+  image: ghcr.io/dodwmd/can-hooks:0.1.0
+  backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
+healthcheck: /status

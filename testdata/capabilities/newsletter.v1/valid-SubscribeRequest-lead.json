@@ -1,0 +1,10 @@
+{
+  "email": "ada@example.com",
+  "lists": [
+    "news"
+  ],
+  "consent": {
+    "given_at": "2026-11-25T10:00:00Z",
+    "source": "lead:ld_0123456789abcdef01234567"
+  }
+}

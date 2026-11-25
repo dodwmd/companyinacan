@@ -1,0 +1,54 @@
+# Newsletter: Listmonk (Go, AGPL-3.0) wrapped behind the `newsletter` capability.
+schema: 1
+id: newsletter
+name: Newsletter
+description: Mailing lists, double opt-in, campaigns and subscriber management. Wraps Listmonk; an adapter exposes the newsletter capability, publishes subscriber.added.v1 and subscribes people who opt in on a form (lead.created.v1). Sends through a bulk relay (docs/email-policy.md).
+category: marketing
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: Listmonk
+  # AGPL-3.0 is network copyleft: see modules/README.md. We run Listmonk unmodified.
+  licence: AGPL-3.0-only
+  licence_class: osi
+  upstream: https://github.com/knadh/listmonk
+  upstream_version: "5.x"
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  subdomain: newsletter
+  ui: { service: newsletter, port: 9000 }
+requires:
+  database: postgres
+  capabilities: [email.send]
+  sso: none
+resources:
+  # Estimate from SPEC.md section 6.1 (~50 MB) and upstream's description as a single Go
+  # binary; not yet measured (research.md R5). The adapter (10 MB request) is inside this figure.
+  ram_mb: 50
+  ram_limit_mb: 128
+  disk_mb: 1024
+provides:
+  - { capability: newsletter, schema: newsletter.v1, service: newsletter-adapter, port: 8081 }
+consumes: [leads]
+publishes:
+  - { event: subscriber.added.v1, schema: ./events/subscriber.added.v1.json }
+subscribes:
+  # Only forms that carry the newsletter opt-in field are subscribed; the adapter ignores the rest.
+  - { event: lead.created.v1, service: newsletter-adapter, port: 8081, webhook: /hooks/lead, optional: true }
+permissions: [newsletter.read, newsletter.write, newsletter.admin]
+roles:
+  marketing: [newsletter.read, newsletter.write]
+  viewer: [newsletter.read]
+  admin: [newsletter.read, newsletter.write, newsletter.admin]
+data_classes:
+  # Addresses and names of subscribers, kept while subscribed. The retention is the horizon
+  # after unsubscribing; erasure (purge) removes a person sooner on request.
+  - { class: newsletter-subscriber, retention: 3y, sensitivity: standard }
+  - { class: campaign-engagement, retention: 2y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+hooks:
+  image: ghcr.io/dodwmd/can-hooks:0.1.0
+  backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
+healthcheck: /health

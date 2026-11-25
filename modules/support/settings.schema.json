@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Support module settings",
+  "description": "Operator settings of the support module. Passwords and API keys are never settings: they live in the module's Secrets (docs/email-policy.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "support_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Address customers write to, e.g. support@example.com. Replies leave with this From address." },
+    "inbound": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["imap", "webhook"], "default": "imap", "description": "imap: FreeScout fetches a hosted mailbox that the support address forwards to. webhook: an inbound-parse service posts to /inbound on the support host." },
+        "imap": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "host": { "type": "string", "minLength": 1 },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 993 },
+            "username": { "type": "string" },
+            "encryption": { "enum": ["ssl", "tls", "none"], "default": "ssl" },
+            "folder": { "type": "string", "default": "INBOX" }
+          }
+        },
+        "webhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "provider": { "enum": ["postmark", "mailgun", "ses"] } }
+        }
+      }
+    },
+    "retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Matches the support-conversation data class (3y)." }
+  }
+}

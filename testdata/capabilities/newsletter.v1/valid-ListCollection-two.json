@@ -1,0 +1,15 @@
+{
+  "items": [
+    {
+      "slug": "news",
+      "name": "News",
+      "double_opt_in": true,
+      "subscriber_count": 10
+    },
+    {
+      "slug": "product",
+      "name": "Product",
+      "subscriber_count": 0
+    }
+  ]
+}

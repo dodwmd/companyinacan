@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/newsletter.v1.json",
+  "title": "newsletter.v1",
+  "description": "Capability `newsletter` (SPEC.md section 4.3): lists and subscribers of an email-marketing module (Listmonk today). Subscribing requires recorded consent; with double opt-in on (the default) a new subscriber is `unconfirmed` until they click the confirmation link, and no campaign reaches them before that. Authentication: projected ServiceAccount token (audience `can`).",
+  "x-capability": "newsletter",
+  "x-verbs": [
+    { "verb": "list_lists", "method": "GET", "path": "/v1/lists", "response": "ListCollection", "permission": "newsletter.read" },
+    { "verb": "get_subscriber", "method": "GET", "path": "/v1/subscribers/{id}", "response": "Subscriber", "permission": "newsletter.read" },
+    { "verb": "subscribe", "method": "POST", "path": "/v1/subscribers", "request": "SubscribeRequest", "response": "Subscriber", "write": true, "permission": "newsletter.write", "description": "Idempotent on email: an existing subscriber gains the lists but never loses status." },
+    { "verb": "unsubscribe", "method": "POST", "path": "/v1/subscribers/{id}/unsubscribe", "request": "UnsubscribeRequest", "response": "Subscriber", "write": true, "permission": "newsletter.write" },
+    { "verb": "erase", "method": "DELETE", "path": "/v1/subscribers/{id}", "write": true, "permission": "newsletter.admin", "description": "Deletes the subscriber and their campaign view/click records (GDPR erasure)." }
+  ],
+  "$defs": {
+    "ListSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "name", "subscriber_count"],
+      "properties": {
+        "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "double_opt_in": { "type": "boolean" },
+        "subscriber_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ListCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": { "items": { "type": "array", "items": { "$ref": "#/$defs/ListSummary" } } }
+    },
+    "Subscriber": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "email", "status", "lists", "created_at"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^sb_[0-9]{1,18}$" },
+        "email": { "type": "string", "maxLength": 254 },
+        "name": { "type": "string", "maxLength": 200 },
+        "status": { "enum": ["unconfirmed", "confirmed", "unsubscribed", "blocklisted"] },
+        "lists": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" } },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["given_at", "source"],
+      "properties": {
+        "given_at": { "type": "string", "format": "date-time" },
+        "source": { "type": "string", "minLength": 1, "maxLength": 2000, "description": "Where consent was given: the form URL, or `lead:<lead_id>` for a lead whose form carried the newsletter opt-in checkbox." },
+        "text": { "type": "string", "maxLength": 2000, "description": "The wording shown to the person." }
+      }
+    },
+    "SubscribeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["email", "lists", "consent"],
+      "properties": {
+        "email": { "type": "string", "minLength": 3, "maxLength": 254 },
+        "name": { "type": "string", "maxLength": 200 },
+        "lists": { "type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" } },
+        "consent": { "$ref": "#/$defs/Consent" },
+        "party_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "UnsubscribeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "lists": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" }, "description": "Omit to unsubscribe from every list." } }
+    }
+  }
+}

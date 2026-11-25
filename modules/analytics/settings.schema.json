@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Analytics module settings",
+  "description": "Operator settings of the analytics module.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "site_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$", "description": "Domain of the tracked site; defaults to the company domain." },
+    "retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Matches the pageview-aggregate data class (3y)." }
+  }
+}

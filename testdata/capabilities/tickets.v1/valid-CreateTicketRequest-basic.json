@@ -1,0 +1,8 @@
+{
+  "subject": "Hi",
+  "body": "Hello",
+  "customer": {
+    "email": "a@example.com"
+  },
+  "idempotency_key": "lead-0123456789"
+}
