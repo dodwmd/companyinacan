@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
@@ -213,12 +215,8 @@ func (h *harness) seed() {
 	forms.ID, forms.Name, forms.Version, forms.Description = "forms", "Forms gateway", "1.2.0", "Lead capture."
 	forms.Provider.Name, forms.Provider.Licence, forms.Provider.LicenceClass, forms.Provider.Type = "Company in a Can", "Apache-2.0", "osi", "in-house"
 	forms.Resources.RAMMB = 32
-	forms.Provides = []struct {
-		Capability string `yaml:"capability"`
-		Schema     string `yaml:"schema"`
-		Service    string `yaml:"service"`
-		Port       int    `yaml:"port"`
-	}{{Capability: "leads", Schema: "leads.v1", Service: "forms-api", Port: 8081}}
+	// Decoded from YAML so the fixture does not depend on the manifest struct exact shape.
+	must(h.t, yaml.Unmarshal([]byte("provides:\n  - {capability: leads, schema: leads.v1, service: forms-api, port: 8081}\n"), &forms))
 	forms.Permissions = []string{"leads.read", "leads.write"}
 	forms.Consumes = []string{"email.send"}
 
