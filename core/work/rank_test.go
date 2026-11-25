@@ -59,3 +59,17 @@ func TestRankRandomInsertsKeepOrder(t *testing.T) {
 		t.Fatal("list not sorted")
 	}
 }
+
+func TestRankAppendsGrowSlowly(t *testing.T) {
+	r := rankBetween("", "")
+	for i := 0; i < 1000; i++ {
+		n := rankBetween(r, "")
+		if n <= r {
+			t.Fatalf("%q is not after %q", n, r)
+		}
+		r = n
+	}
+	if len(r) > 60 {
+		t.Fatalf("1000 appends produced a %d-character rank", len(r))
+	}
+}

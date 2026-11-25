@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type scanner interface{ Scan(...any) error }
@@ -254,6 +255,9 @@ func (s *Store) createInTx(ctx context.Context, tx dbq, a *Principal, proj *proj
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
+	if err := s.maybeRebalance(ctx, tx, proj.id, rank); err != nil {
+		return nil, err
+	}
 	for _, l := range dedupe(in.Labels) {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO issue_labels (issue_id, label) VALUES (?, ?)`, id, l); err != nil {
 			return nil, err
@@ -487,7 +491,10 @@ var sortClauses = map[string]string{
 	"-priority": "i.priority DESC, i.id DESC",
 }
 
-const maxOffset = 100000
+const (
+	maxOffset    = 10000
+	queryTimeout = 4 * time.Second
+)
 
 // ListIssues searches issues the caller may see. q is the search language (query.go);
 // project narrows to one project; the result has at most limit items and next is the
@@ -504,11 +511,12 @@ func (s *Store) ListIssues(ctx context.Context, a *Principal, project, q, sortBy
 	if !ok {
 		return nil, -1, invalid("sort", "must be one of created, -created, updated, -updated, priority, -priority, due, rank")
 	}
-	f, err := ParseQuery(q, s.now(), a.Subject)
+	f, err := ParseQueryScoped(q, s.now(), a.Subject, a.Projects)
 	if err != nil {
 		return nil, -1, invalid("q", "%v", err)
 	}
 	where, args := f.SQL()
+	where = "(" + where + ")" // the scope below is ANDed to the whole query, never to part of it
 	if project != "" {
 		if !projectKeyRE.MatchString(project) {
 			return nil, -1, invalid("project", "must be a project key")
@@ -522,7 +530,11 @@ func (s *Store) ListIssues(ctx context.Context, a *Principal, project, q, sortBy
 			args = append(args, k)
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, issueSelect+` WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, append(args, limit+1, offset)...)
+	// Searches run on the read pool with a deadline: a slow query neither blocks writers nor
+	// holds a connection for longer than queryTimeout.
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	rows, err := s.rdb.QueryContext(ctx, issueSelect+` WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, append(args, limit+1, offset)...)
 	if err != nil {
 		return nil, -1, err
 	}
@@ -543,7 +555,7 @@ func (s *Store) ListIssues(ctx context.Context, a *Principal, project, q, sortBy
 		res = res[:limit]
 		next = offset + limit
 	}
-	if err := s.fillLabels(ctx, s.db, res); err != nil {
+	if err := s.fillLabels(ctx, s.rdb, res); err != nil {
 		return nil, -1, err
 	}
 	items = make([]Issue, len(res))

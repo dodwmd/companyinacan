@@ -28,7 +28,11 @@ const (
 type Filter struct {
 	clauses []string
 	args    []any
+	scope   []string // project keys the caller may see; empty means all
+	text    int      // free-text terms seen
 }
+
+const maxTextTerms = 3
 
 var (
 	issueKeyRE = regexp.MustCompile(`^([A-Z][A-Z0-9]{1,9})-([1-9][0-9]{0,9})$`)
@@ -73,6 +77,13 @@ func tokenize(q string) ([]string, error) {
 
 // ParseQuery parses q. now anchors relative dates; me is what `me` means (the caller).
 func ParseQuery(q string, now time.Time, me string) (*Filter, error) {
+	return ParseQueryScoped(q, now, me, nil)
+}
+
+// ParseQueryScoped is ParseQuery for a caller limited to some projects: terms that look at
+// other issues (is:blocked) only consider issues in those projects, so they cannot reveal
+// what happens outside the scope. The caller still ANDs the scope onto the result rows.
+func ParseQueryScoped(q string, now time.Time, me string, scope []string) (*Filter, error) {
 	if len(q) > maxQueryLen {
 		return nil, fmt.Errorf("query longer than %d characters", maxQueryLen)
 	}
@@ -83,7 +94,7 @@ func ParseQuery(q string, now time.Time, me string) (*Filter, error) {
 	if len(toks) > maxQueryTerms {
 		return nil, fmt.Errorf("query has more than %d terms", maxQueryTerms)
 	}
-	f := &Filter{}
+	f := &Filter{scope: scope}
 	for _, tok := range toks {
 		if err := f.addTerm(tok, now, me); err != nil {
 			return nil, err
@@ -100,9 +111,12 @@ func (f *Filter) SQL() (string, []any) {
 	return strings.Join(f.clauses, " AND "), f.args
 }
 
+// add appends one term. Every clause is wrapped in parentheses, so a clause containing OR can
+// never change how the surrounding ANDs (including the caller's project scope) bind.
 func (f *Filter) add(neg bool, clause string, args ...any) {
+	clause = "(" + clause + ")"
 	if neg {
-		clause = "NOT (" + clause + ")"
+		clause = "NOT " + clause
 	}
 	f.clauses = append(f.clauses, clause)
 	f.args = append(f.args, args...)
@@ -122,6 +136,9 @@ func (f *Filter) addTerm(tok string, now time.Time, me string) error {
 	idx := strings.IndexAny(tok, ":<>=")
 	if idx <= 0 {
 		// Free text. A leading "-" on plain text negates it too.
+		if f.text++; f.text > maxTextTerms {
+			return fmt.Errorf("at most %d free-text terms (use field:value terms to narrow)", maxTextTerms)
+		}
 		f.add(neg, "(i.title LIKE ? ESCAPE '\\' OR i.description LIKE ? ESCAPE '\\')", "%"+escapeLike(tok)+"%", "%"+escapeLike(tok)+"%")
 		return nil
 	}
@@ -219,6 +236,9 @@ func (f *Filter) addTerm(tok string, now time.Time, me string) error {
 		return f.addIs(neg, vals, now)
 	case "text":
 		for _, v := range vals {
+			if f.text++; f.text > maxTextTerms {
+				return fmt.Errorf("at most %d free-text terms (use field:value terms to narrow)", maxTextTerms)
+			}
 			f.add(neg, "(i.title LIKE ? ESCAPE '\\' OR i.description LIKE ? ESCAPE '\\')", "%"+escapeLike(v)+"%", "%"+escapeLike(v)+"%")
 		}
 	default:
@@ -256,7 +276,15 @@ func (f *Filter) addIs(neg bool, vals []string, now time.Time) error {
 		case "overdue":
 			f.add(neg, "i.resolved_at IS NULL AND i.due_date IS NOT NULL AND i.due_date < ?", now.UTC().Format(time.DateOnly))
 		case "blocked":
-			f.add(neg, "EXISTS (SELECT 1 FROM issue_links k JOIN issues b ON b.id = k.source_id WHERE k.type = 'blocks' AND k.target_id = i.id AND b.resolved_at IS NULL)")
+			clause := "EXISTS (SELECT 1 FROM issue_links k JOIN issues b ON b.id = k.source_id JOIN projects bp ON bp.id = b.project_id WHERE k.type = 'blocks' AND k.target_id = i.id AND b.resolved_at IS NULL"
+			var args []any
+			if len(f.scope) > 0 {
+				clause += " AND bp.key IN (" + placeholders(len(f.scope)) + ")"
+				for _, k := range f.scope {
+					args = append(args, k)
+				}
+			}
+			f.add(neg, clause+")", args...)
 		default:
 			return fmt.Errorf("is: %q is not open, resolved, overdue or blocked", v)
 		}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 )
 
 // Status categories group workflow statuses for boards, search and "resolved" tracking.
@@ -91,7 +92,8 @@ func (w *Workflow) Validate() error {
 			}
 		}
 	}
-	// Every status must be able to reach a done status; otherwise issues get stuck.
+	// Issues start at the initial status, so every status reachable from it must be able to
+	// reach a done status; otherwise issues can get stuck in a dead end.
 	reach := map[string]bool{w.Initial: true}
 	queue := []string{w.Initial}
 	for len(queue) > 0 {
@@ -104,12 +106,40 @@ func (w *Workflow) Validate() error {
 			}
 		}
 	}
-	for n, ok := range reach {
-		if ok && cat[n] == CategoryDone {
-			return nil
+	// Walk backwards from the done statuses to find everything that can reach one.
+	canFinish := map[string]bool{}
+	for _, s := range w.Statuses {
+		if s.Category == CategoryDone {
+			canFinish[s.Name] = true
 		}
 	}
-	return errors.New("no done status is reachable from the initial status")
+	for changed := true; changed; {
+		changed = false
+		for from, tos := range w.Transitions {
+			if canFinish[from] {
+				continue
+			}
+			for _, to := range tos {
+				if canFinish[to] {
+					canFinish[from], changed = true, true
+					break
+				}
+			}
+		}
+	}
+	if !canFinish[w.Initial] {
+		return errors.New("no done status is reachable from the initial status")
+	}
+	var stuck []string
+	for _, s := range w.Statuses {
+		if reach[s.Name] && !canFinish[s.Name] {
+			stuck = append(stuck, s.Name)
+		}
+	}
+	if len(stuck) > 0 {
+		return fmt.Errorf("statuses %s are dead ends: no done status can be reached from them", strings.Join(stuck, ", "))
+	}
+	return nil
 }
 
 // Allows reports whether an issue may move from one status to another.

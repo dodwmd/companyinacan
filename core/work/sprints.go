@@ -218,8 +218,44 @@ func (s *Store) CompleteSprint(ctx context.Context, a *Principal, id int64, move
 			target = *moveTo
 		}
 		now := ts(s.now())
+		// Moved issues get the same trail as any other sprint change: a new version, an
+		// activity entry and an updated event.
+		rs, err := tx.QueryContext(ctx, `SELECT id FROM issues WHERE sprint_id = ? AND resolved_at IS NULL ORDER BY id`, id)
+		if err != nil {
+			return err
+		}
+		var moved []int64
+		for rs.Next() {
+			var iid int64
+			if err := rs.Scan(&iid); err != nil {
+				_ = rs.Close()
+				return err
+			}
+			moved = append(moved, iid)
+		}
+		if err := rs.Close(); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE issues SET sprint_id = ?, version = version + 1, updated_at = ? WHERE sprint_id = ? AND resolved_at IS NULL`, target, now, id); err != nil {
 			return err
+		}
+		var to *int64
+		if moveTo != nil {
+			to = moveTo
+		}
+		from := id
+		for _, iid := range moved {
+			changes := map[string]Change{"sprint_id": {From: from, To: to}}
+			if err := s.addActivity(ctx, tx, iid, a.Subject, "updated", changes); err != nil {
+				return err
+			}
+			is, err := s.loadIssueByID(ctx, tx, iid)
+			if err != nil {
+				return err
+			}
+			if err := s.emit(ctx, tx, EventIssueUpdated, issueUpdatedData{IssueKey: is.Key, Project: is.Project, Version: is.Version, Actor: a.Subject, Changes: changes, UpdatedAt: is.UpdatedAt}); err != nil {
+				return err
+			}
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE sprints SET state = 'closed', updated_at = ? WHERE id = ?`, now, id)
 		return err
@@ -254,7 +290,9 @@ const boardColumnLimit = 200
 
 // GetBoard returns the board for a project.
 func (s *Store) GetBoard(ctx context.Context, a *Principal, project, selection string) (*Board, error) {
-	proj, err := s.loadProject(ctx, s.db, a, project)
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	proj, err := s.loadProject(ctx, s.rdb, a, project)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +308,7 @@ func (s *Store) GetBoard(ctx context.Context, a *Principal, project, selection s
 	case "backlog":
 		where = "i.sprint_id IS NULL"
 	case "active":
-		err := s.db.QueryRowContext(ctx, `SELECT id FROM sprints WHERE project_id = ? AND state = 'active'`, proj.id).Scan(new(int64))
+		err := s.rdb.QueryRowContext(ctx, `SELECT id FROM sprints WHERE project_id = ? AND state = 'active'`, proj.id).Scan(new(int64))
 		if errors.Is(err, sql.ErrNoRows) {
 			where = "0=1" // no active sprint: empty columns, not an error
 		} else if err != nil {
@@ -293,7 +331,7 @@ func (s *Store) GetBoard(ctx context.Context, a *Principal, project, selection s
 		args = append(args, n)
 	}
 	if selection == "active" {
-		rs, err := s.db.QueryContext(ctx, sprintSelect+` WHERE s.project_id = ? AND s.state = 'active'`, proj.id)
+		rs, err := s.rdb.QueryContext(ctx, sprintSelect+` WHERE s.project_id = ? AND s.state = 'active'`, proj.id)
 		if err != nil {
 			return nil, err
 		}
@@ -308,7 +346,7 @@ func (s *Store) GetBoard(ctx context.Context, a *Principal, project, selection s
 	for _, st := range proj.wf.Statuses {
 		b.Columns = append(b.Columns, BoardColumn{Status: st.Name, Category: st.Category, Issues: []Issue{}})
 	}
-	rs, err := s.db.QueryContext(ctx, issueSelect+` WHERE i.project_id = ? AND `+where+` ORDER BY i.rank, i.id`, append([]any{proj.id}, args...)...)
+	rs, err := s.rdb.QueryContext(ctx, issueSelect+` WHERE i.project_id = ? AND `+where+` ORDER BY i.rank, i.id`, append([]any{proj.id}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +362,7 @@ func (s *Store) GetBoard(ctx context.Context, a *Principal, project, selection s
 	if err := rs.Close(); err != nil {
 		return nil, err
 	}
-	if err := s.fillLabels(ctx, s.db, rows); err != nil {
+	if err := s.fillLabels(ctx, s.rdb, rows); err != nil {
 		return nil, err
 	}
 	for _, r := range rows {
@@ -394,7 +432,16 @@ func (s *Store) Rank(ctx context.Context, a *Principal, key string, req RankRequ
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE issues SET rank = ?, updated_at = ? WHERE id = ?`, rankBetween(lo, hi), ts(s.now()), row.id); err != nil {
+		// Reordering is not an edit of the issue: version and updated_at stay put (an ETag held
+		// by a client is still good), but the move is recorded in the activity log.
+		newRank := rankBetween(lo, hi)
+		if _, err := tx.ExecContext(ctx, `UPDATE issues SET rank = ? WHERE id = ?`, newRank, row.id); err != nil {
+			return err
+		}
+		if err := s.maybeRebalance(ctx, tx, row.projectID, newRank); err != nil {
+			return err
+		}
+		if err := s.addActivity(ctx, tx, row.id, a.Subject, "ranked", req); err != nil {
 			return err
 		}
 		r, err := s.loadIssueByID(ctx, tx, row.id)

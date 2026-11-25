@@ -76,7 +76,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	auth := opt.Auth
 	if auth == nil {
 		st := &StaticTokens{}
-		st.Add(sec.AdminToken, Principal{Subject: "bootstrap-admin", Kind: "static", Permissions: []string{PermAdmin}})
+		st.Add(sec.AdminToken, Principal{Subject: bootstrapSubject, Kind: "static", Permissions: []string{PermAdmin}})
 		auth = Chain{st, TokenAuth{Store: store}}
 	}
 	app := &App{cfg: cfg, store: store, log: log, now: now}

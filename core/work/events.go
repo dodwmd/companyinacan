@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -18,14 +19,16 @@ import (
 
 // Event types published by the work module. Payload schemas are schemas/events/<type>.json.
 const (
-	EventIssueCreated     = "work.issue.created.v1"
-	EventIssueUpdated     = "work.issue.updated.v1"
-	EventIssueTransition  = "work.issue.transitioned.v1"
-	EventCommentCreated   = "work.comment.created.v1"
-	eventSource           = "work"
-	maxDeliveryAttempts   = 8
-	outboxBatch           = 20
-	outboxRetentionPeriod = 7 * 24 * time.Hour
+	EventIssueCreated    = "work.issue.created.v1"
+	EventIssueUpdated    = "work.issue.updated.v1"
+	EventIssueTransition = "work.issue.transitioned.v1"
+	EventCommentCreated  = "work.comment.created.v1"
+	eventSource          = "work"
+	maxBackoff           = 6 * time.Hour
+	deliveryWindow       = 7 * 24 * time.Hour // undelivered after this long: dead-lettered, not dropped
+	deadRetention        = 90 * 24 * time.Hour
+	outboxBatch          = 20
+	deliveredRetention   = 7 * 24 * time.Hour
 )
 
 // Event is the platform event envelope (SPEC.md section 4.3).
@@ -160,16 +163,17 @@ func (d *Dispatcher) DeliverDue(ctx context.Context) (int, error) {
 		eventID  string
 		typ      string
 		attempts int
+		created  int64
 	}
-	rows, err := d.store.db.QueryContext(ctx, `SELECT id, event_id, type, payload, attempts FROM outbox WHERE delivered_at IS NULL AND attempts < ? AND next_attempt <= ? ORDER BY id LIMIT ?`,
-		maxDeliveryAttempts, ts(now), outboxBatch)
+	rows, err := d.store.db.QueryContext(ctx, `SELECT id, event_id, type, payload, attempts, created_at FROM outbox WHERE delivered_at IS NULL AND dead_at IS NULL AND next_attempt <= ? ORDER BY id LIMIT ?`,
+		ts(now), outboxBatch)
 	if err != nil {
 		return 0, err
 	}
 	var due []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.id, &r.eventID, &r.typ, &r.payload, &r.attempts); err != nil {
+		if err := rows.Scan(&r.id, &r.eventID, &r.typ, &r.payload, &r.attempts, &r.created); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
@@ -180,6 +184,14 @@ func (d *Dispatcher) DeliverDue(ctx context.Context) (int, error) {
 	}
 	sent := 0
 	for _, r := range due {
+		if now.Sub(fromUnix(r.created)) > deliveryWindow {
+			// Keep it, flag it and say so: an admin lists dead events and replays them.
+			if _, err := d.store.db.ExecContext(ctx, `UPDATE outbox SET dead_at = ? WHERE id = ?`, ts(now), r.id); err != nil {
+				return sent, err
+			}
+			d.Log.Error("webhook event dead-lettered: not delivered within the delivery window; list with GET /v1/events/dead and replay", "event_id", r.eventID, "type", r.typ, "attempts", r.attempts)
+			continue
+		}
 		sendErr := d.send(ctx, r.eventID, r.typ, []byte(r.payload), now)
 		if sendErr == nil {
 			sent++
@@ -189,7 +201,7 @@ func (d *Dispatcher) DeliverDue(ctx context.Context) (int, error) {
 			if delay <= 0 {
 				delay = 30 * time.Second
 			}
-			delay = min(delay<<r.attempts, 6*time.Hour)
+			delay = min(delay<<min(r.attempts, 12), maxBackoff)
 			_, err = d.store.db.ExecContext(ctx, `UPDATE outbox SET attempts = attempts + 1, next_attempt = ?, last_error = ? WHERE id = ?`, ts(now.Add(delay)), sendErr.Error(), r.id)
 		}
 		if err != nil {
@@ -228,9 +240,55 @@ func (d *Dispatcher) send(ctx context.Context, id, typ string, body []byte, now 
 	return nil
 }
 
-// PurgeDelivered removes delivered and exhausted outbox rows older than the retention.
+// purgeOutbox removes delivered events after a week and dead ones after 90 days.
 func (s *Store) purgeOutbox(ctx context.Context, tx dbq, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `DELETE FROM outbox WHERE created_at < ? AND (delivered_at IS NOT NULL OR attempts >= ?)`,
-		ts(now.Add(-outboxRetentionPeriod)), maxDeliveryAttempts)
+	_, err := tx.ExecContext(ctx, `DELETE FROM outbox WHERE (delivered_at IS NOT NULL AND created_at < ?) OR (dead_at IS NOT NULL AND dead_at < ?)`,
+		ts(now.Add(-deliveredRetention)), ts(now.Add(-deadRetention)))
 	return err
+}
+
+// DeadEvent is an event that was not delivered within the delivery window.
+type DeadEvent struct {
+	EventID   string    `json:"event_id"`
+	Type      string    `json:"type"`
+	CreatedAt time.Time `json:"created_at"`
+	DeadAt    time.Time `json:"dead_at"`
+	Attempts  int       `json:"attempts"`
+	LastError string    `json:"last_error"`
+}
+
+// ListDeadEvents lists undelivered events past the delivery window, oldest first.
+func (s *Store) ListDeadEvents(ctx context.Context, limit int) ([]DeadEvent, error) {
+	rs, err := s.db.QueryContext(ctx, `SELECT event_id, type, created_at, dead_at, attempts, last_error FROM outbox WHERE dead_at IS NOT NULL AND delivered_at IS NULL ORDER BY id LIMIT ?`, clampLimit(limit))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rs.Close() }()
+	out := []DeadEvent{}
+	for rs.Next() {
+		var d DeadEvent
+		var c, dd int64
+		if err := rs.Scan(&d.EventID, &d.Type, &c, &dd, &d.Attempts, &d.LastError); err != nil {
+			return nil, err
+		}
+		d.CreatedAt, d.DeadAt = fromUnix(c), fromUnix(dd)
+		out = append(out, d)
+	}
+	return out, rs.Err()
+}
+
+// ReplayEvent puts a dead event back in the queue with a fresh delivery window. The event
+// keeps its id, so receivers that de-duplicate on it behave correctly.
+func (s *Store) ReplayEvent(ctx context.Context, a *Principal, eventID string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		now := ts(s.now())
+		res, err := tx.ExecContext(ctx, `UPDATE outbox SET dead_at = NULL, attempts = 0, next_attempt = ?, created_at = ?, last_error = '' WHERE event_id = ? AND dead_at IS NOT NULL AND delivered_at IS NULL`, now, now, eventID)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrNotFound
+		}
+		return s.audit(ctx, tx, a.Subject, "event.replay", eventID, map[string]any{})
+	})
 }

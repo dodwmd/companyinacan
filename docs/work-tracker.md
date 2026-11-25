@@ -33,7 +33,8 @@ Every call needs `Authorization: Bearer <token>`.
   only its SHA-256 is stored. A token has a `kind` (`personal` for a person, `service` for a bot
   or integration), a `subject` (who it acts as: the reporter, comment author and actor recorded
   on everything it does), `scopes`, optional `projects`, and an expiry. Personal tokens always
-  expire (default 90 days, at most 365). Revoking is immediate; `last_used_at` is recorded.
+  expire (default 90 days, at most 365). Revoking is immediate; `last_used_at` is recorded. The
+  subject `bootstrap-admin` is reserved for the environment token.
 
 | Scope | Allows |
 |---|---|
@@ -113,10 +114,14 @@ curl -sSG $CAN_WORK_URL/v1/issues -H "Authorization: Bearer $TOKEN" \
 | `-status:done` | a leading `-` negates a term |
 | `login "two words"` | bare words match title or description |
 
-Queries are capped at 500 characters and 20 terms. The language is parsed into fixed SQL
+Queries are capped at 500 characters, 20 terms and 3 free-text terms (substring matches are the
+expensive ones), run on a read-only connection pool with a 4 second deadline, and never block
+writers. The language is parsed into fixed SQL
 fragments and every value is bound as a parameter, so there is nothing to inject into.
-`limit` is at most 100; `cursor` is opaque (offset based: a page can shift if issues are created
-while you walk it).
+`limit` is at most 100; `cursor` is opaque and offset based (a page can shift if issues are created
+while you walk it) and stops at 10,000 results: narrow the query instead of paging deeper. Every
+term is wrapped in parentheses and the token's project scope is ANDed onto the whole query, so no
+combination of terms can return an issue outside the token's projects.
 
 ## Updating, transitioning, ranking
 
@@ -135,7 +140,9 @@ curl -sS -X POST $CAN_WORK_URL/v1/issues/ACME-2/transitions -H "Authorization: B
 curl -sS -X POST $CAN_WORK_URL/v1/issues/bulk-update -H "Authorization: Bearer $TOKEN" \
   -d '{"keys":["ACME-2","ACME-3"],"set":{"priority":"P1","labels_add":["q1"]},"transition":"in_progress"}'
 
-# Backlog order: put ACME-5 above ACME-2 (writes one fractional rank, no renumbering).
+# Backlog order: put ACME-5 above ACME-2 (writes one fractional rank, no renumbering). A move
+# does not change the issue's version or updated_at (your ETag stays valid) but is logged in
+# its activity; ranks are respaced automatically when they get long.
 curl -sS -X POST $CAN_WORK_URL/v1/issues/ACME-5/rank -H "Authorization: Bearer $TOKEN" -d '{"before":"ACME-2"}'
 ```
 
@@ -144,7 +151,7 @@ curl -sS -X POST $CAN_WORK_URL/v1/issues/ACME-5/rank -H "Authorization: Bearer $
 ```sh
 curl -sS -X POST $CAN_WORK_URL/v1/issues/ACME-2/comments -H "Authorization: Bearer $TOKEN" -d '{"body":"Started on this."}'
 curl -sS -X POST $CAN_WORK_URL/v1/issues/ACME-2/links    -H "Authorization: Bearer $TOKEN" -d '{"type":"blocks","target":"ACME-3"}'
-curl -sS -X PUT  $CAN_WORK_URL/v1/issues/ACME-2/watchers/carol@example.com -H "Authorization: Bearer $TOKEN"
+curl -sS -X PUT  $CAN_WORK_URL/v1/issues/ACME-2/watchers/svc:planner -H "Authorization: Bearer $TOKEN"   # yourself; adding others needs work.admin
 curl -sS $CAN_WORK_URL/v1/issues/ACME-2/activity -H "Authorization: Bearer $TOKEN"     # who changed what, before and after
 
 # Attachments are metadata only: the tracker stores no file bytes yet. url is never fetched.
@@ -161,6 +168,7 @@ curl -sS -X PATCH $CAN_WORK_URL/v1/issues/ACME-2 -H "Authorization: Bearer $TOKE
 curl -sS -X POST  $CAN_WORK_URL/v1/sprints/1/start    -H "Authorization: Bearer $TOKEN"
 curl -sS $CAN_WORK_URL/v1/projects/ACME/board         -H "Authorization: Bearer $TOKEN"   # ?sprint=backlog|all|<id>
 curl -sS -X POST  $CAN_WORK_URL/v1/sprints/1/complete -H "Authorization: Bearer $TOKEN" -d '{"move_to":2}'  # or {} for the backlog
+# Issues that move get a new version, an activity entry and a work.issue.updated.v1 event (changes.sprint_id).
 ```
 
 ## Workflows and SLA hints
@@ -213,13 +221,24 @@ outbox, in the same database transaction as the change, then POSTed:
 | `work.issue.transitioned.v1` | a status move, with `to_category` | `.../work.issue.transitioned.v1.json` |
 | `work.comment.created.v1` | a comment is added | `.../work.comment.created.v1.json` |
 
-Events carry identifiers and changed fields, never comment or description text. Headers:
+Events carry identifiers and changed fields, never comment or description text. They do carry
+the issue **title** (created event) and any changed title or assignee, so treat the webhook
+receiver as trusted with that much. Headers:
 `X-Can-Event-Id`, `X-Can-Event-Type`, `X-Can-Timestamp`, and
 `X-Can-Signature: sha256=hex(HMAC-SHA256(secret, timestamp + "." + body))` (the same scheme as
-the forms gateway). Delivery is at least once: failures (network, 5xx, 429, any non-2xx) retry
-with exponential backoff (30 s doubling, 8 attempts) and survive a restart because the outbox
-is in SQLite. Redirects are not followed. De-duplicate on the event `id` and reject timestamps
-older than a few minutes.
+the forms gateway). Delivery is at least once, per event, with caveats you should design for:
+
+* Failures (network error, 5xx, 429, any non-2xx) are retried with exponential backoff (30 s,
+  doubling, capped at 6 h) for **7 days**. The queue is the SQLite outbox, so a restart loses nothing.
+* After 7 days an undelivered event is *dead-lettered*, not dropped: it is logged at error level
+  ("webhook event dead-lettered"), listed by `GET /v1/events/dead` (admin) for 90 days, and can be
+  put back with `POST /v1/events/{id}/replay` (same event id, fresh 7-day window). Poll the dead
+  list (or alert on that log line) so a broken receiver is noticed.
+* **Ordering is not guaranteed** once a retry is involved: a later event can arrive before an
+  earlier one that is waiting to be retried. Use the `version` in `work.issue.updated.v1`, the
+  `time` of each event, or re-read the issue, instead of assuming arrival order.
+* Redirects are not followed. De-duplicate on the event `id` and reject timestamps older than a
+  few minutes (replayed events are re-signed with a current timestamp).
 
 ## Limits, rate limits and audit
 
@@ -227,7 +246,7 @@ older than a few minutes.
 |---|---|
 | Request body | 1 MiB (`max_body_bytes`, 413 above) |
 | Requests per token | 600 per minute (`rate_limit.per_minute`, 429 with `Retry-After`) |
-| Failed authentications | 30 per minute per client address, then 429 |
+| Failed authentications | 30 per minute per client address; further *bad* tokens from that address get 429. A valid token always works, so a shared address cannot be used to lock others out |
 | Title / description / comment | 200 / 50,000 / 20,000 characters |
 | Labels | 20 per issue, `[a-z0-9][a-z0-9._:-]{0,39}` |
 | Bulk operations | 100 items |
@@ -244,7 +263,8 @@ their email or directory id), comments, activity, attachment metadata, hashed to
 log. The access log omits query strings, client addresses and bodies. Resolved issues (with
 their comments, links and activity) are deleted `retention_days` after resolution (default 5
 years; 0 keeps them), audit entries after `audit_retention_days` (default 7 years); open issues
-are kept. A purge runs hourly. The manifest's `data_classes` mirror these defaults.
+are kept, and so is a resolved parent that still has a child to keep (no subtask is orphaned). A
+purge runs hourly. The manifest's `data_classes` mirror these defaults.
 
 ## Operating it
 

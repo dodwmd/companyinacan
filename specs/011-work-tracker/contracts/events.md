@@ -18,3 +18,13 @@ Headers: `X-Can-Event-Id`, `X-Can-Event-Type`, `X-Can-Timestamp` (unix seconds),
 No description or comment text is ever included. A priority change shows as `changes.priority`
 (there is no separate `issue.priority_changed` event in this slice; SPEC.md lists it for later, with
 manager notifications). A no-op update emits nothing.
+
+## Delivery
+
+At least once per event, retried with capped backoff (30 s doubling to 6 h) for 7 days, then
+dead-lettered: logged, listed by `GET /v1/events/dead` for 90 days and replayable with
+`POST /v1/events/{id}/replay`. Arrival order is not guaranteed once a retry is involved; use
+`version` (`work.issue.updated.v1`) and `time`. Sprint completion emits `work.issue.updated.v1`
+(`changes.sprint_id`) for each issue it moves. `work.issue.created.v1` and the title in
+`changes.title` carry issue titles: the webhook receiver must be trusted with titles (descriptions
+and comment text never travel).

@@ -17,7 +17,10 @@
 - **Rationale**: One connection serialises writers, so the per-project key counter
   (`UPDATE projects SET next_number = next_number + 1 ... RETURNING`) and rank neighbour reads
   cannot race. Human-speed traffic makes throughput irrelevant; idle memory is minimal.
-- **Cost**: a read waits for an in-flight write. Acceptable here; a multi-node or high-write
+- **Read pool**: searches and boards use a second, read-only connection pool (WAL readers do not
+  block the writer, and `query_only` is on) with a 4 s deadline, 3 free-text terms at most and an
+  offset cap of 10,000, so one expensive search cannot serialise the service. (QA finding.)
+- **Cost**: a write waits for other writes; reads of single issues still share the writer connection. Acceptable here; a multi-node or high-write
   deployment would need Postgres (the `requires.database` field makes that a module-level choice).
 - **Pitfall recorded**: with one connection, calling `s.db` inside a transaction deadlocks. Helpers
   therefore take a `dbq` (`*sql.DB` or `*sql.Tx`).
@@ -26,6 +29,10 @@
 - **Decision**: Rank is a string over `0-9a-z` read as a base-36 fraction, compared
   lexicographically; ranks never end in `0`; `rankBetween(lo, hi)` returns a string strictly
   between. New issues rank after the project's maximum.
+- **Respacing**: appends bump the first bumpable character (growth about one character per 18
+  appends); when any rank exceeds 24 characters the project's ranks are rewritten evenly spaced, in
+  order. A move leaves `version` and `updated_at` alone (it is not an edit and must not invalidate
+  ETags) but is logged in the activity.
 - **Rationale**: Reordering writes one row, with no renumbering and no locking of neighbours, and
   ordering is a plain index scan (`issues_project_rank`).
 - **Limit**: repeated insertion at one spot grows the string by one character per about 35
@@ -82,8 +89,12 @@ not on a small server; the cluster measurement is part of the pending checks.
 ## R8. Webhooks and the outbox
 - **Decision**: A transactional outbox table written in the same transaction as the change and a
   single dispatcher goroutine that signs and POSTs (HMAC-SHA256 over `timestamp.body`, headers
-  `X-Can-*`, the forms scheme), retrying with doubling backoff from 30 s up to 8 attempts, no
-  redirects, bounded response read. No webhook configured means nothing is queued.
+  `X-Can-*`, the forms scheme), retrying with doubling backoff from 30 s capped at 6 h for a 7-day
+  delivery window, then dead-lettering (kept 90 days, logged, listed and replayable by an admin),
+  no redirects, bounded response read. QA found the first design (8 attempts, about an hour) dropped
+  events during any receiver outage longer than that.
+- **Ordering**: events are taken oldest first but a failing one is retried later, so arrival order
+  is not guaranteed; consumers use `version` and `time`. No webhook configured means nothing is queued.
 - **Rationale**: E05's in-memory retry loses events on restart; here the SQLite outbox makes
   delivery at least once across restarts without a broker. When the can-core event bus lands the
   dispatcher is replaced by a publish call; the payloads do not change.
@@ -106,7 +117,8 @@ not on a small server; the cluster measurement is part of the pending checks.
   insert); `relates` is symmetric and cycles are harmless.
 - **Workflow**: statuses with categories (`todo`, `active`, `done`) and an explicit transition map,
   validated (names, initial not done, every transition targets a status, a done status is
-  reachable). `resolved_at` is derived from the category, so custom workflows, retention and
+  reachable from the initial status, and every status reachable from it can reach a done one, so
+  issues cannot get stuck in a dead end). `resolved_at` is derived from the category, so custom workflows, retention and
   `is:open` work without knowing status names.
 - **Status is not patchable**: only `POST .../transitions` changes it, so the workflow cannot be
   bypassed and the transitioned event is always emitted.
@@ -118,8 +130,9 @@ not on a small server; the cluster measurement is part of the pending checks.
   idempotency of the whole plan.
 
 ## R12. Threat notes
-- Brute force: tokens are 256-bit; failed authentications are throttled per client address
-  (default 30 per minute) and successful calls per token (600 per minute). Behind a proxy set
+- Brute force: tokens are 256-bit; failed authentications from one address are answered 429 past a
+  limit (default 30 per minute) while valid tokens are never throttled by it (a shared ingress
+  address must not become a lockout lever); calls per token are limited (600 per minute). Behind a proxy set
   `trust_proxy` so the address is the real client's.
 - Denial of service: request bodies, queries, list sizes, bulk sizes, label counts, attachments per
   issue, board column size and rate limiter maps are bounded.

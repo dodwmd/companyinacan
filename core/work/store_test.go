@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math/rand"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -87,7 +88,7 @@ func TestMigrationsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	if v, _ := s.SchemaVersion(context.Background()); v != 1 {
+	if v, _ := s.SchemaVersion(context.Background()); v != 2 {
 		t.Fatalf("schema version %d", v)
 	}
 }
@@ -489,7 +490,13 @@ func TestCommentsActivityWatchersAttachments(t *testing.T) {
 	if len(cs) != 1 || cs[0].Body != "Looks good" {
 		t.Fatalf("comments: %+v", cs)
 	}
-	if err := s.SetWatcher(ctx, alice, is.Key, "carol@example.com", true); err != nil {
+	if err := s.SetWatcher(ctx, alice, is.Key, "carol@example.com", true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("a writer subscribing someone else: %v", err)
+	}
+	if err := s.SetWatcher(ctx, alice, is.Key, alice.Subject, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetWatcher(ctx, admin, is.Key, "carol@example.com", true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.AddAttachment(ctx, alice, is.Key, NewAttachment{Filename: "spec.pdf", SizeBytes: 1024, SHA256: strings.Repeat("a", 64), URL: "https://files.example.com/spec.pdf"}); err != nil {
@@ -645,7 +652,7 @@ func TestSearchAndPagination(t *testing.T) {
 	if n := len(list("%")); n != 1 {
 		t.Fatalf("bare percent matched %d (wildcard leak)", n)
 	}
-	if n := len(list(`x'; DROP TABLE issues; --`)); n != 0 {
+	if n := len(list(`"x'; DROP TABLE issues; --"`)); n != 0 {
 		t.Fatalf("injection string matched %d", n)
 	}
 	if n := len(list("")); n != 8 {
@@ -861,5 +868,278 @@ func TestPurgeRetention(t *testing.T) {
 	}
 	if n, _ := s.Purge(ctx, 0, 0); n != 0 {
 		t.Fatal("retention 0 keeps everything")
+	}
+}
+
+// Regression (QA blocker): a multi-value key: term used to bind only its last alternative to
+// the caller's project scope. No query-language combination may return an out-of-scope issue.
+func TestSearchNeverLeavesTokenScope(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustProject(t, s, "ACME")
+	mustProject(t, s, "SEC")
+	ctx := context.Background()
+	secEpic := mustIssue(t, s, admin, "SEC", CreateIssue{Type: "epic", Title: "layoffs"})
+	sec := mustIssue(t, s, admin, "SEC", CreateIssue{Title: "secret plan", Priority: "P0", Assignee: ptr("ceo"), Labels: []string{"x"}, Parent: &secEpic.Key})
+	own := mustIssue(t, s, admin, "ACME", CreateIssue{Title: "mine", Priority: "P0", Assignee: ptr("ceo"), Labels: []string{"x"}})
+	if _, err := s.AddLink(ctx, admin, sec.Key, "blocks", own.Key); err != nil {
+		t.Fatal(err)
+	}
+	pool := []string{
+		"key:SEC-1,ACME-1", "key:ACME-1,SEC-1", "key:SEC-2", "key:SEC-1,SEC-2,ACME-1", "-key:ACME-1", "project:SEC,ACME", "project:SEC",
+		"-project:ACME", "is:blocked", "-is:blocked", "is:open", "-is:resolved", "priority:P0", "-priority:P3", "assignee:ceo", "label:x",
+		"-label:none", "parent:SEC-1", "parent:none", "-parent:none", "sprint:none", "layoffs", "secret", "text:plan", "type:epic,task",
+		"status:todo", "-status:done", "created>=-7d", "updated>2000-01-01", "due<2100-01-01", "-assignee:none", "reporter:root",
+	}
+	rng := rand.New(rand.NewSource(11))
+	check := func(q string) {
+		t.Helper()
+		items, _, err := s.ListIssues(ctx, acmeRW, "", q, "", 100, 0)
+		if err != nil {
+			return // a rejected query returns nothing
+		}
+		for _, it := range items {
+			if it.Project != "ACME" {
+				t.Fatalf("query %q leaked %s to an ACME-only token", q, it.Key)
+			}
+		}
+	}
+	for _, q := range pool {
+		check(q)
+		check("project:ACME " + q)
+	}
+	for i := 0; i < 3000; i++ {
+		var parts []string
+		for j := 0; j < 1+rng.Intn(4); j++ {
+			parts = append(parts, pool[rng.Intn(len(pool))])
+		}
+		check(strings.Join(parts, " "))
+	}
+	// The exact bypass: either order must give exactly the own issue.
+	for _, q := range []string{"key:SEC-1,ACME-1", "key:ACME-1,SEC-1"} {
+		items, _, _ := s.ListIssues(ctx, acmeRW, "", q, "", 100, 0)
+		if len(items) != 1 || items[0].Key != "ACME-1" {
+			t.Fatalf("%q = %+v", q, items)
+		}
+	}
+	// is:blocked must not reveal that an out-of-scope issue blocks ours.
+	items, _, _ := s.ListIssues(ctx, acmeRW, "", "is:blocked", "", 100, 0)
+	if len(items) != 0 {
+		t.Fatalf("is:blocked leaked the existence of an invisible blocker: %+v", items)
+	}
+	if items, _, _ = s.ListIssues(ctx, admin, "", "is:blocked", "", 100, 0); len(items) != 1 {
+		t.Fatalf("admin should see the blocked issue: %+v", items)
+	}
+}
+
+func TestSearchLimits(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustProject(t, s, "ACME")
+	ctx := context.Background()
+	if _, _, err := s.ListIssues(ctx, alice, "", "a b c d", "", 10, 0); !isInvalid(err) {
+		t.Fatalf("four free-text terms: %v", err)
+	}
+	if _, _, err := s.ListIssues(ctx, alice, "", "a b c status:todo", "", 10, 0); err != nil {
+		t.Fatalf("three free-text terms plus a field: %v", err)
+	}
+	if _, _, err := s.ListIssues(ctx, alice, "", "", "", 10, maxOffset+1); !isInvalid(err) {
+		t.Fatalf("offset past the clamp: %v", err)
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, _, err := s.ListIssues(cctx, alice, "", "", "", 10, 0); err == nil {
+		t.Fatal("a cancelled or timed-out search must stop")
+	}
+}
+
+// Searches run on their own read pool: a write transaction that is open must not stall them.
+func TestSearchDoesNotWaitForWriters(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustProject(t, s, "ACME")
+	ctx := context.Background()
+	mustIssue(t, s, alice, "ACME", CreateIssue{})
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `UPDATE projects SET name = 'held'`); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		items, _, err := s.ListIssues(ctx, alice, "", "", "", 10, 0)
+		if err == nil && len(items) != 1 {
+			err = errors.New("wrong result")
+		}
+		if _, e := s.GetBoard(ctx, alice, "ACME", "all"); err == nil {
+			err = e
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("search blocked behind an open write transaction")
+	}
+}
+
+func TestWorkflowRejectsDeadEnds(t *testing.T) {
+	wf := Workflow{
+		Statuses:    []Status{{"open", CategoryTodo}, {"stuck", CategoryActive}, {"shipped", CategoryDone}},
+		Initial:     "open",
+		Transitions: map[string][]string{"open": {"stuck", "shipped"}}, // stuck has no way out
+	}
+	if err := wf.Validate(); err == nil || !strings.Contains(err.Error(), "stuck") {
+		t.Fatalf("dead end accepted: %v", err)
+	}
+	wf.Transitions["stuck"] = []string{"open"}
+	if err := wf.Validate(); err != nil {
+		t.Fatalf("with a way out: %v", err)
+	}
+	// A status nobody can reach is harmless, since issues never enter it.
+	wf.Statuses = append(wf.Statuses, Status{"orphan", CategoryActive})
+	if err := wf.Validate(); err != nil {
+		t.Fatalf("unreachable status: %v", err)
+	}
+}
+
+func TestBootstrapSubjectIsReserved(t *testing.T) {
+	s, _ := newTestStore(t)
+	for _, sub := range []string{"bootstrap-admin", "Bootstrap-Admin"} {
+		if _, _, err := s.CreateToken(context.Background(), admin, NewToken{Kind: KindService, Subject: sub, Scopes: []string{PermRead}}); !isInvalid(err) {
+			t.Errorf("%s: %v", sub, err)
+		}
+	}
+}
+
+func TestLinkToArchivedProjectRefused(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustProject(t, s, "ACME")
+	mustProject(t, s, "OLD")
+	ctx := context.Background()
+	a := mustIssue(t, s, alice, "ACME", CreateIssue{}).Key
+	b := mustIssue(t, s, alice, "OLD", CreateIssue{}).Key
+	if _, err := s.UpdateProject(ctx, admin, "OLD", ProjectPatch{Archived: ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddLink(ctx, alice, a, "relates", b); !errors.Is(err, ErrConflict) {
+		t.Fatalf("link into an archived project: %v", err)
+	}
+	acts, _, _ := s.ListActivity(ctx, alice, b, 0, 50)
+	for _, ac := range acts {
+		if ac.Kind == "linked" {
+			t.Fatal("archived project's activity changed")
+		}
+	}
+}
+
+func TestPurgeKeepsParentsOfSurvivingChildren(t *testing.T) {
+	s, clk := newTestStore(t)
+	mustProject(t, s, "ACME")
+	ctx := context.Background()
+	epic := mustIssue(t, s, alice, "ACME", CreateIssue{Type: "epic", Title: "E"})
+	story := mustIssue(t, s, alice, "ACME", CreateIssue{Type: "story", Title: "S", Parent: &epic.Key})
+	sub := mustIssue(t, s, alice, "ACME", CreateIssue{Type: "subtask", Title: "T", Parent: &story.Key})
+	for _, k := range []string{epic.Key, story.Key} {
+		for _, to := range []string{"in_progress", "done"} {
+			if _, err := s.Transition(ctx, alice, k, to, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	clk.Advance(400 * 24 * time.Hour)
+	if n, err := s.Purge(ctx, 365, 0); err != nil || n != 0 {
+		t.Fatalf("parents with an open child must survive: %d %v", n, err)
+	}
+	if d, err := s.GetIssue(ctx, alice, sub.Key); err != nil || d.Parent == nil {
+		t.Fatalf("subtask orphaned: %+v %v", d, err)
+	}
+	for _, to := range []string{"in_progress", "done"} {
+		if _, err := s.Transition(ctx, alice, sub.Key, to, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clk.Advance(400 * 24 * time.Hour)
+	if n, err := s.Purge(ctx, 365, 0); err != nil || n != 3 {
+		t.Fatalf("whole resolved tree should go: %d %v", n, err)
+	}
+}
+
+func TestCompleteSprintRecordsMovedIssues(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustProject(t, s, "ACME")
+	s.events = true
+	ctx := context.Background()
+	sp1, _ := s.CreateSprint(ctx, alice, "ACME", NewSprint{Name: "1"})
+	sp2, _ := s.CreateSprint(ctx, alice, "ACME", NewSprint{Name: "2"})
+	is := mustIssue(t, s, alice, "ACME", CreateIssue{SprintID: &sp1.ID})
+	if _, err := s.StartSprint(ctx, alice, sp1.ID); err != nil {
+		t.Fatal(err)
+	}
+	var before int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM outbox`).Scan(&before)
+	if _, err := s.CompleteSprint(ctx, alice, sp1.ID, &sp2.ID); err != nil {
+		t.Fatal(err)
+	}
+	var after int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM outbox WHERE type = ?`, EventIssueUpdated).Scan(&after)
+	if after != 1 {
+		t.Fatalf("moved issue emitted %d updated events", after)
+	}
+	acts, _, _ := s.ListActivity(ctx, alice, is.Key, 0, 50)
+	if last := acts[len(acts)-1]; last.Kind != "updated" || !strings.Contains(string(last.Data), "sprint_id") {
+		t.Fatalf("activity: %+v", last)
+	}
+	got, _ := s.GetIssue(ctx, alice, is.Key)
+	if got.Version != is.Version+1 {
+		t.Fatalf("version %d", got.Version)
+	}
+}
+
+func TestRankKeepsVersionButLogsActivityAndStaysShort(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustProject(t, s, "ACME")
+	ctx := context.Background()
+	a := mustIssue(t, s, alice, "ACME", CreateIssue{})
+	b := mustIssue(t, s, alice, "ACME", CreateIssue{})
+	moved, err := s.Rank(ctx, alice, b.Key, RankRequest{Before: a.Key})
+	if err != nil || moved.Version != b.Version || !moved.UpdatedAt.Equal(b.UpdatedAt) {
+		t.Fatalf("rank must not change version or updated_at: %v %+v", err, moved)
+	}
+	acts, _, _ := s.ListActivity(ctx, alice, b.Key, 0, 50)
+	if acts[len(acts)-1].Kind != "ranked" {
+		t.Fatalf("activity: %+v", acts)
+	}
+	// Hammer one spot (always insert at the very front) and append many: ranks stay bounded
+	// and the order stays right.
+	var keys []string
+	for i := 0; i < 120; i++ {
+		is := mustIssue(t, s, alice, "ACME", CreateIssue{Title: "n"})
+		if _, err := s.Rank(ctx, alice, is.Key, RankRequest{Position: "first"}); err != nil {
+			t.Fatal(err)
+		}
+		keys = append([]string{is.Key}, keys...)
+	}
+	all, _, err := s.ListIssues(ctx, alice, "ACME", "", "rank", 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, it := range all {
+		if len(it.Rank) > maxRankLen+1 {
+			t.Fatalf("rank %q is %d long", it.Rank, len(it.Rank))
+		}
+		if i < 100 && it.Key != keys[i] {
+			t.Fatalf("position %d is %s, want %s", i, it.Key, keys[i])
+		}
+	}
+	for i := 0; i < 300; i++ {
+		mustIssue(t, s, alice, "ACME", CreateIssue{})
+	}
+	last, _, _ := s.ListIssues(ctx, alice, "ACME", "", "-created", 1, 0)
+	if len(last[0].Rank) > maxRankLen+1 {
+		t.Fatalf("appends grew the rank to %q", last[0].Rank)
 	}
 }

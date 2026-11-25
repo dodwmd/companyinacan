@@ -191,18 +191,6 @@ func (l *rateLimiter) allow(key string) (bool, time.Duration) {
 	return true, 0
 }
 
-// peek reports whether key is already over its limit, without counting.
-func (l *rateLimiter) over(key string) (bool, time.Duration) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	w := l.windows[key]
-	now := l.now()
-	if w == nil || now.Sub(w.start) >= l.window || w.n < l.limit {
-		return false, 0
-	}
-	return true, l.window - now.Sub(w.start)
-}
-
 // clientIP returns the address used for rate limiting. Forwarding headers are honoured
 // only when the operator says a trusted proxy sets them, and then the right-most entry
 // (appended by that proxy) is used, never a client-supplied left-most one.

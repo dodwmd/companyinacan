@@ -168,6 +168,9 @@ func (s *Store) AddLink(ctx context.Context, a *Principal, key, typ, target stri
 			}
 			return err
 		}
+		if dst.archived {
+			return fmt.Errorf("%w: project %s is archived", ErrConflict, dst.Project)
+		}
 		if src.id == dst.id {
 			return invalid("target", "an issue cannot be linked to itself")
 		}
@@ -246,9 +249,14 @@ func (s *Store) SetWatcher(ctx context.Context, a *Principal, key, subject strin
 		return invalid("subject", "must be a non-empty identifier of at most %d characters", maxSubject)
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		row, err := s.writeRow(ctx, tx, a, key)
+		row, err := s.writeRow(ctx, tx, a, key) // first, so an out-of-scope key is 404 whatever the subject
 		if err != nil {
 			return err
+		}
+		// People add and remove themselves; changing who else watches is an admin's call, so a
+		// write token cannot subscribe an arbitrary address to a project's activity.
+		if subject != a.Subject && !a.Can(PermAdmin) {
+			return fmt.Errorf("%w: only an admin can change who else watches", ErrForbidden)
 		}
 		if watch {
 			_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO watchers (issue_id, subject) VALUES (?, ?)`, row.id, subject)

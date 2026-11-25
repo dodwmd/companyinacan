@@ -30,6 +30,7 @@ type dbq interface {
 // concurrency) live here so every API path gets them.
 type Store struct {
 	db  *sql.DB
+	rdb *sql.DB // read-only pool for searches and boards (WAL readers do not block the writer)
 	now func() time.Time
 	// events turns the outbox on; with no webhook configured nothing is queued.
 	events bool
@@ -56,11 +57,22 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	rq := url.Values{}
+	rq.Add("_pragma", "busy_timeout(5000)")
+	rq.Add("_pragma", "query_only(1)")
+	rdb, err := sql.Open("sqlite", "file:"+path+"?"+rq.Encode())
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	rdb.SetMaxOpenConns(3)
+	rdb.SetConnMaxIdleTime(time.Minute)
+	s.rdb = rdb
 	return s, nil
 }
 
 // Close releases the database.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error { return errors.Join(s.rdb.Close(), s.db.Close()) }
 
 // Ping checks that the database answers.
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }

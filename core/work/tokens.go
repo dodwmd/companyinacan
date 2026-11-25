@@ -31,6 +31,10 @@ const (
 	lastUsedInterval = time.Minute
 )
 
+// bootstrapSubject is who the environment-supplied admin token acts as; stored tokens cannot
+// claim it, so audit entries and activity never confuse the two.
+const bootstrapSubject = "bootstrap-admin"
+
 var allScopes = []string{PermRead, PermWrite, PermAdmin}
 
 // TokenInfo describes a token. The secret is shown once, at creation, and never stored.
@@ -67,6 +71,8 @@ func (s *Store) CreateToken(ctx context.Context, a *Principal, in NewToken) (*To
 	}
 	if !validSubject(in.Subject) {
 		p.add("subject", "required, at most %d characters", maxSubject)
+	} else if strings.EqualFold(in.Subject, bootstrapSubject) {
+		p.add("subject", "%q is reserved for the bootstrap token", bootstrapSubject)
 	}
 	if !validText(in.Name, 100) || strings.ContainsAny(in.Name, "\r\n") {
 		p.add("name", "one line, at most 100 characters")

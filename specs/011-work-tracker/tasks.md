@@ -60,7 +60,8 @@ same sessions as the code in small increments (see plan.md, Constitution Check I
 ## Phase 8: Polish
 
 - [x] T024 `make test` green (lint, unit, contract, licences); `go test -race` clean
-- [ ] T025 CI green on the pull request (watched after push)
+- [x] T025 CI green on the pull request
+- [x] T026 QA round 1 fixes: parenthesised search clauses and an always-ANDed scope with a fuzz test (blocker); auth-failure throttle no longer rejects valid tokens; read-only connection pool, query deadline, free-text and offset caps; outbox with 7-day capped-backoff retries, dead-letter list and replay; walk of every OpenAPI operation for 401 and 403; `is:blocked` scoped; sprint completion records activity and events; rank keeps ETags, is logged and respaced; archived link targets refused; purge keeps parents of surviving children; workflow dead-end check; watchers self-only unless admin; `bootstrap-admin` reserved
 
 ## Known gaps (recorded, not hidden)
 
@@ -76,6 +77,8 @@ same sessions as the code in small increments (see plan.md, Constitution Check I
   into reports' work needs `directory` (E13) and the RBAC engine (E11). Assignees and reporters are
   free-form identifiers (an email or directory id), not validated against a party model.
 - **No attachment storage.** Metadata only, until `files` (E13) exists.
+- **Event titles.** Events carry issue titles (not descriptions or comments); a receiver must be trusted
+  with them. Omitting them would need a schema change and is a decision for the event-bus work.
 - **Events: no `issue.priority_changed` event and no manager notifications.** `work.issue.updated.v1`
   carries `changes.priority`; `notify` integration and ageing views come with the notification
   and reporting work. Webhooks go to one URL; the can-core bus replaces the dispatcher later.
@@ -83,6 +86,7 @@ same sessions as the code in small increments (see plan.md, Constitution Check I
   (substring match), offset paging (can shift under concurrent creates).
 - **No time tracking, SCM links, MCP server, per-person workload views, Plane wrapper, `performance` or
   timesheets** (the rest of E14).
+- **Event ordering** is not guaranteed across retries (documented; consumers use `version` and `time`).
 - **Single SQLite writer.** Fine for one company; backup and restore arrive with E08 (SQLite online
   copy), and the retention purge is the only background job besides webhook delivery.
 - **Performance was measured only for idle and a short load** on a development machine, not on a small

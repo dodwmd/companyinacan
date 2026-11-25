@@ -69,6 +69,8 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("POST /v1/tokens", a.guard(admin, a.createToken))
 	mux.HandleFunc("DELETE /v1/tokens/{id}", a.guard(admin, a.revokeToken))
 	mux.HandleFunc("GET /v1/audit", a.guard(admin, a.listAudit))
+	mux.HandleFunc("GET /v1/events/dead", a.guard(admin, a.listDead))
+	mux.HandleFunc("POST /v1/events/{id}/replay", a.guard(admin, a.replayEvent))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setSecurityHeaders(w)
@@ -79,18 +81,19 @@ func (a *api) handler() http.Handler {
 type handlerFunc func(w http.ResponseWriter, r *http.Request, p *Principal)
 
 // guard authenticates, rate-limits, checks the permission and caps the body before the
-// handler runs. Failed authentications are counted per client address, so guessing tokens
-// is slowed down without letting one noisy client lock out the rest.
+// handler runs. Failed authentications are counted per client address and, past the limit,
+// answered 429 without even being checked. Only the failing path is throttled: a valid token
+// always authenticates, so an attacker behind a shared address (an ingress, a NAT) can slow
+// other bad guesses but can never lock legitimate callers out.
 func (a *api) guard(perm string, next handlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ip := clientIP(r, a.trustProxy)
-		if over, wait := a.failures.over(ip); over {
-			tooMany(w, wait)
-			return
-		}
 		p, err := a.auth.Authenticate(r)
 		if err != nil {
-			a.failures.allow(ip)
+			ip := clientIP(r, a.trustProxy)
+			if ok, wait := a.failures.allow(ip); !ok {
+				tooMany(w, wait)
+				return
+			}
 			w.Header().Set("WWW-Authenticate", `Bearer realm="can-work"`)
 			writeError(w, http.StatusUnauthorized, "unauthenticated", "a valid bearer token is required")
 			return
@@ -630,4 +633,29 @@ func (a *api) listAudit(w http.ResponseWriter, r *http.Request, p *Principal) {
 		resp["next_cursor"] = encodeCursor(items[len(items)-1].ID)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (a *api) listDead(w http.ResponseWriter, r *http.Request, p *Principal) {
+	if !p.Unscoped() {
+		a.fail(w, ErrForbidden)
+		return
+	}
+	items, err := a.store.ListDeadEvents(r.Context(), queryInt(r, "limit"))
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *api) replayEvent(w http.ResponseWriter, r *http.Request, p *Principal) {
+	if !p.Unscoped() {
+		a.fail(w, ErrForbidden)
+		return
+	}
+	if err := a.store.ReplayEvent(r.Context(), p, r.PathValue("id")); err != nil {
+		a.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

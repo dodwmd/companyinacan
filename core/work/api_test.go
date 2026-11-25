@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
 const bootstrap = "bootstrap-token-0123456789abc"
@@ -383,14 +386,16 @@ func TestRateLimits(t *testing.T) {
 	h.clk.Advance(61 * time.Second)
 	h.mustDo(200, "GET", "/v1/me", bootstrap, nil)
 
-	// Token guessing is throttled per client address, and the good token from the same
-	// address is throttled with it for the window, not the rest of the world.
+	// Token guessing is throttled per client address, but only the failing path: a valid
+	// token from the same (shared) address keeps working, so nobody can lock others out.
+	h.clk.Advance(61 * time.Second)
 	for i := 0; i < 3; i++ {
 		h.mustDo(401, "GET", "/v1/me", "guess-guess-guess-guess-guess", nil)
 	}
-	if r := h.do("GET", "/v1/me", "guess-guess-guess-guess-guess", nil); r.Code != 429 {
+	if r := h.do("GET", "/v1/me", "guess-guess-guess-guess-guess", nil); r.Code != 429 || r.Header.Get("Retry-After") == "" {
 		t.Fatalf("auth failure limit: %d", r.Code)
 	}
+	h.mustDo(200, "GET", "/v1/me", bootstrap, nil)
 	req := httptest.NewRequest("GET", "/v1/me", nil)
 	req.RemoteAddr = "198.51.100.7:1"
 	req.Header.Set("Authorization", "Bearer "+bootstrap)
@@ -508,7 +513,9 @@ func TestFullWorkflowOverHTTP(t *testing.T) {
 	h.mustDo(200, "POST", "/v1/issues/ACME-2/transitions", writer, map[string]any{"to": "in_progress"})
 	h.mustDo(201, "POST", "/v1/issues/ACME-2/comments", writer, map[string]any{"body": "started"})
 	h.mustDo(201, "POST", "/v1/issues/ACME-2/attachments", writer, map[string]any{"filename": "mock.png", "size_bytes": 10})
-	h.mustDo(204, "PUT", "/v1/issues/ACME-2/watchers/carol@example.com", writer, nil)
+	h.mustDo(403, "PUT", "/v1/issues/ACME-2/watchers/carol@example.com", writer, nil)
+	h.mustDo(204, "PUT", "/v1/issues/ACME-2/watchers/planner-bot", writer, nil)
+	h.mustDo(204, "PUT", "/v1/issues/ACME-2/watchers/carol@example.com", bootstrap, nil)
 	sp := h.mustDo(201, "POST", "/v1/projects/ACME/sprints", writer, map[string]any{"name": "S1"})
 	sid := int(sp["id"].(float64))
 	h.mustDo(200, "PATCH", "/v1/issues/ACME-2", writer, map[string]any{"sprint_id": sid})
@@ -705,5 +712,120 @@ func TestMainCommands(t *testing.T) {
 	}
 	if code := Main([]string{"healthcheck", "-addr", "127.0.0.1:1"}, env, &out, &errb); code != 1 {
 		t.Fatalf("healthcheck of nothing: %d", code)
+	}
+}
+
+func TestUndeliveredEventsAreRetriedThenDeadLetteredAndReplayable(t *testing.T) {
+	recv := &hook{fail: 1 << 30}
+	srv := httptest.NewServer(recv)
+	defer srv.Close()
+	h := newHarness(t, func(c *Config) { c.Webhook.URL = srv.URL })
+	writer := h.setup()
+	h.mustDo(201, "POST", "/v1/projects/ACME/issues", writer, map[string]any{"type": "task", "title": "x"})
+	d := h.app.dispatcher
+	ctx := context.Background()
+	// Retries continue well beyond the old 8-attempt (about 1 hour) cut-off, with capped backoff.
+	for i := 0; i < 60; i++ {
+		_, _ = d.DeliverDue(ctx)
+		h.clk.Advance(7 * time.Hour)
+		if i == 20 {
+			var attempts int
+			_ = h.app.store.db.QueryRow(`SELECT attempts FROM outbox`).Scan(&attempts)
+			if attempts < 15 {
+				t.Fatalf("only %d attempts after 20 backoff periods", attempts)
+			}
+		}
+		if h.clk.Now().Sub(time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)) > 6*24*time.Hour {
+			break
+		}
+	}
+	h.mustDo(200, "GET", "/v1/events/dead", bootstrap, nil)
+	if n := len(h.mustDo(200, "GET", "/v1/events/dead", bootstrap, nil)["items"].([]any)); n != 0 {
+		t.Fatalf("dead too early: %d", n)
+	}
+	h.clk.Advance(2 * 24 * time.Hour)
+	_, _ = d.DeliverDue(ctx)
+	dead := h.mustDo(200, "GET", "/v1/events/dead", bootstrap, nil)["items"].([]any)
+	if len(dead) != 1 {
+		t.Fatalf("want one dead event, got %v", dead)
+	}
+	id := dead[0].(map[string]any)["event_id"].(string)
+	if n, _ := d.DeliverDue(ctx); n != 0 {
+		t.Fatal("dead events are not retried")
+	}
+	// Receiver recovers; replay delivers the very same event id.
+	recv.mu.Lock()
+	recv.fail = 0
+	recv.mu.Unlock()
+	h.mustDo(403, "POST", "/v1/events/"+id+"/replay", writer, nil)
+	h.mustDo(204, "POST", "/v1/events/"+id+"/replay", bootstrap, nil)
+	h.mustDo(404, "POST", "/v1/events/"+id+"/replay", bootstrap, nil)
+	if n, err := d.DeliverDue(ctx); err != nil || n != 1 {
+		t.Fatalf("replayed delivery: %d %v", n, err)
+	}
+	if got := recv.calls(); len(got) != 1 || got[0].header.Get("X-Can-Event-Id") != id {
+		t.Fatalf("replayed event: %+v", got)
+	}
+	h.mustDo(403, "GET", "/v1/events/dead", writer, nil)
+}
+
+// Every documented operation: 401 without a token, 403 with a token one scope too low, and
+// never 401 or 403 with a token that holds the documented scope.
+func TestEveryOperationEnforcesItsDocumentedScope(t *testing.T) {
+	raw, err := os.ReadFile("../../specs/011-work-tracker/contracts/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Paths map[string]map[string]any `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, func(c *Config) { c.RateLimit.PerMinute = 0; c.RateLimit.AuthFailuresPerMin = 0 })
+	h.setup()
+	toks := map[string]string{
+		PermRead:  h.newToken("service", "r", []string{PermRead}),
+		PermWrite: h.newToken("service", "w", []string{PermWrite}),
+		PermAdmin: bootstrap,
+	}
+	lower := map[string]string{PermWrite: PermRead, PermAdmin: PermWrite}
+	n := 0
+	for path, item := range doc.Paths {
+		for method, raw := range item {
+			opm, _ := raw.(map[string]any)
+			if method == "parameters" || opm["security"] != nil { // security: [] marks the public health check
+				continue
+			}
+			op := struct{ Scope string }{Scope: fmt.Sprint(opm["x-required-scope"])}
+			if opm["x-required-scope"] == nil {
+				t.Errorf("%s %s has no x-required-scope", method, path)
+				continue
+			}
+			key := "ACME-1"
+			if strings.HasPrefix(path, "/v1/projects/") {
+				key = "ACME"
+			}
+			concrete := strings.NewReplacer("{key}", key, "{id}", "1", "{subject}", "x").Replace(path)
+			verb := strings.ToUpper(method)
+			n++
+			if r := h.do(verb, concrete, "", nil); r.Code != 401 {
+				t.Errorf("%s %s without a token = %d, want 401", method, path, r.Code)
+			}
+			if r := h.do(verb, concrete, "cwt_0123456789abcdef_"+strings.Repeat("z", 43), nil); r.Code != 401 {
+				t.Errorf("%s %s with a bogus token = %d, want 401", method, path, r.Code)
+			}
+			if low, ok := lower[op.Scope]; ok {
+				if r := h.do(verb, concrete, toks[low], nil); r.Code != 403 {
+					t.Errorf("%s %s with %s = %d, want 403", method, path, low, r.Code)
+				}
+			}
+			if r := h.do(verb, concrete, toks[op.Scope], map[string]any{}); r.Code == 401 || r.Code == 403 {
+				t.Errorf("%s %s with %s = %d, must be allowed", method, path, op.Scope, r.Code)
+			}
+		}
+	}
+	if n < 35 {
+		t.Fatalf("only %d operations walked", n)
 	}
 }

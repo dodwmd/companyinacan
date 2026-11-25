@@ -14,7 +14,8 @@ info:
 
     Conventions: JSON bodies with unknown fields rejected (400); validation problems are 422 with a
     per-field list; `ETag` carries the issue version and `If-Match` guards updates (412 when stale);
-    creates accept `Idempotency-Key`; lists take `limit` (max 100) and an opaque `cursor`.
+    creates accept `Idempotency-Key`; lists take `limit` (max 100) and an opaque `cursor`. Each operation's
+    `x-required-scope` is the scope the token needs (checked by a test against the router).
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -43,6 +44,7 @@ paths:
     get:
       tags: [meta]
       operationId: me
+      x-required-scope: work.read
       summary: Who the token is and what it may do
       responses:
         "200":
@@ -62,6 +64,7 @@ paths:
     get:
       tags: [projects]
       operationId: listProjects
+      x-required-scope: work.read
       summary: Projects the token can see
       responses:
         "200": { description: Projects, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Project" } } } } } } }
@@ -69,6 +72,7 @@ paths:
     post:
       tags: [projects]
       operationId: createProject
+      x-required-scope: work.admin
       summary: Create a project (work.admin, unscoped token)
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewProject" } } } }
       responses:
@@ -81,12 +85,14 @@ paths:
     get:
       tags: [projects]
       operationId: getProject
+      x-required-scope: work.read
       responses:
         "200": { description: The project, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
         "404": { $ref: "#/components/responses/Error" }
     patch:
       tags: [projects]
       operationId: updateProject
+      x-required-scope: work.admin
       summary: Rename, archive, or change the workflow or SLA hints (work.admin)
       description: A new workflow must still contain every status in use by issues (422 otherwise). resolved_at follows the new status categories.
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectPatch" } } } }
@@ -100,6 +106,7 @@ paths:
     post:
       tags: [issues]
       operationId: createIssue
+      x-required-scope: work.write
       summary: Create an issue
       description: Idempotent on the Idempotency-Key header or the body's idempotency_key; a retry returns the original issue with 200 and Idempotent-Replayed true. The same key with a different body is 422 idempotency_mismatch. The reporter is the token's subject.
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
@@ -117,6 +124,7 @@ paths:
     post:
       tags: [issues]
       operationId: bulkCreateIssues
+      x-required-scope: work.write
       summary: Create up to 100 issues atomically (all or none)
       description: Problems name the failing item as issues[N].field. Idempotent on the Idempotency-Key header.
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
@@ -138,6 +146,7 @@ paths:
     get:
       tags: [sprints]
       operationId: getBoard
+      x-required-scope: work.read
       summary: Board view data, one column per workflow status, issues in rank order
       parameters:
         - { name: sprint, in: query, description: "active (default), backlog, all or a sprint id", schema: { type: string } }
@@ -149,11 +158,13 @@ paths:
     get:
       tags: [sprints]
       operationId: listSprints
+      x-required-scope: work.read
       responses:
         "200": { description: Sprints, newest first, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Sprint" } } } } } } }
     post:
       tags: [sprints]
       operationId: createSprint
+      x-required-scope: work.write
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewSprint" } } } }
       responses:
         "201": { description: Created (state planned), content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
@@ -163,12 +174,14 @@ paths:
     get:
       tags: [sprints]
       operationId: getSprint
+      x-required-scope: work.read
       responses:
         "200": { description: The sprint, content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
         "404": { $ref: "#/components/responses/Error" }
     patch:
       tags: [sprints]
       operationId: updateSprint
+      x-required-scope: work.write
       description: Planned and active sprints only; a closed sprint is 409.
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SprintPatch" } } } }
       responses:
@@ -179,6 +192,7 @@ paths:
     post:
       tags: [sprints]
       operationId: startSprint
+      x-required-scope: work.write
       description: A planned sprint becomes the project's active sprint; a project has at most one (409).
       responses:
         "200": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
@@ -188,6 +202,7 @@ paths:
     post:
       tags: [sprints]
       operationId: completeSprint
+      x-required-scope: work.write
       description: Closes an active sprint. Unresolved issues move to move_to (a planned sprint of the same project) or back to the backlog.
       requestBody:
         content:
@@ -200,6 +215,7 @@ paths:
     get:
       tags: [issues]
       operationId: searchIssues
+      x-required-scope: work.read
       summary: Search and filter issues
       description: |
         `q` is a space-separated list of terms that must all match. Fields: `status`, `priority`
@@ -224,6 +240,7 @@ paths:
     post:
       tags: [issues]
       operationId: bulkUpdateIssues
+      x-required-scope: work.write
       summary: Apply one patch and/or one transition to up to 100 issues
       description: Each issue succeeds or fails on its own; the response lists the outcome per key (out-of-scope keys are not_found). Optimistic versions and parent changes are not supported here.
       requestBody:
@@ -262,12 +279,14 @@ paths:
     get:
       tags: [issues]
       operationId: getIssue
+      x-required-scope: work.read
       responses:
         "200": { description: The issue with relations, headers: { ETag: { $ref: "#/components/headers/ETag" } }, content: { application/json: { schema: { $ref: "#/components/schemas/IssueDetail" } } } }
         "404": { $ref: "#/components/responses/Error" }
     patch:
       tags: [issues]
       operationId: updateIssue
+      x-required-scope: work.write
       summary: Change fields (never status, reporter or key)
       parameters: [{ $ref: "#/components/parameters/IfMatch" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/IssuePatch" } } } }
@@ -281,11 +300,13 @@ paths:
     get:
       tags: [issues]
       operationId: listTransitions
+      x-required-scope: work.read
       responses:
         "200": { description: Statuses the issue can move to now, content: { application/json: { schema: { type: object, properties: { allowed: { type: array, items: { type: string } } } } } } }
     post:
       tags: [issues]
       operationId: transitionIssue
+      x-required-scope: work.write
       parameters: [{ $ref: "#/components/parameters/IfMatch" }]
       requestBody:
         required: true
@@ -300,6 +321,7 @@ paths:
     post:
       tags: [issues]
       operationId: rankIssue
+      x-required-scope: work.write
       summary: Move an issue in the project's ordering (one fractional rank is written)
       requestBody:
         required: true
@@ -318,12 +340,14 @@ paths:
     get:
       tags: [issues]
       operationId: listComments
+      x-required-scope: work.read
       parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
       responses:
         "200": { description: Oldest first, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Comment" } }, next_cursor: { type: string } } } } } }
     post:
       tags: [issues]
       operationId: addComment
+      x-required-scope: work.write
       requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, required: [body], properties: { body: { type: string, minLength: 1, maxLength: 20000 } } } } } }
       responses:
         "201": { description: Added, content: { application/json: { schema: { $ref: "#/components/schemas/Comment" } } } }
@@ -333,6 +357,7 @@ paths:
     get:
       tags: [issues]
       operationId: listActivity
+      x-required-scope: work.read
       summary: Per-issue history (created, updated with before/after, transitioned, commented, linked, attachments)
       parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
       responses:
@@ -342,6 +367,7 @@ paths:
     post:
       tags: [issues]
       operationId: addLink
+      x-required-scope: work.write
       summary: Link this issue to another
       description: "`blocks` means this issue blocks the target; `duplicates` means this issue duplicates the target. Self links, repeats and cycles are rejected (409); `relates` is symmetric."
       requestBody:
@@ -362,6 +388,7 @@ paths:
     delete:
       tags: [issues]
       operationId: removeLink
+      x-required-scope: work.write
       responses:
         "204": { description: Removed }
         "404": { $ref: "#/components/responses/Error" }
@@ -370,16 +397,19 @@ paths:
     put:
       tags: [issues]
       operationId: addWatcher
+      x-required-scope: work.write
       responses: { "204": { description: Watching }, "404": { $ref: "#/components/responses/Error" } }
     delete:
       tags: [issues]
       operationId: removeWatcher
+      x-required-scope: work.write
       responses: { "204": { description: Not watching }, "404": { $ref: "#/components/responses/Error" } }
   /v1/issues/{key}/attachments:
     parameters: [{ $ref: "#/components/parameters/IssueKey" }]
     post:
       tags: [issues]
       operationId: addAttachment
+      x-required-scope: work.write
       summary: Record attachment metadata (the tracker stores no file bytes yet)
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewAttachment" } } } }
       responses:
@@ -390,11 +420,13 @@ paths:
     delete:
       tags: [issues]
       operationId: removeAttachment
+      x-required-scope: work.write
       responses: { "204": { description: Removed }, "404": { $ref: "#/components/responses/Error" } }
   /v1/tokens:
     get:
       tags: [admin]
       operationId: listTokens
+      x-required-scope: work.admin
       summary: Token metadata, never secrets (work.admin, unscoped token)
       responses:
         "200": { description: Tokens, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/TokenInfo" } } } } } } }
@@ -402,6 +434,7 @@ paths:
     post:
       tags: [admin]
       operationId: createToken
+      x-required-scope: work.admin
       summary: Mint a personal or service token (work.admin)
       description: The secret is returned once. A creator can only grant scopes and projects it holds. Personal tokens always expire (default 90 days, at most 365); service tokens may be non-expiring.
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewToken" } } } }
@@ -419,6 +452,7 @@ paths:
     delete:
       tags: [admin]
       operationId: revokeToken
+      x-required-scope: work.admin
       summary: Revoke a token; effective immediately
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "204": { description: Revoked }, "403": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
@@ -426,11 +460,42 @@ paths:
     get:
       tags: [admin]
       operationId: listAudit
+      x-required-scope: work.admin
       summary: Admin action log, newest first (work.admin, unscoped token)
       parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
       responses:
         "200": { description: Entries, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }, next_cursor: { type: string } } } } } }
         "403": { $ref: "#/components/responses/Error" }
+  /v1/events/dead:
+    get:
+      tags: [admin]
+      operationId: listDeadEvents
+      x-required-scope: work.admin
+      summary: Webhook events not delivered within the 7-day delivery window (unscoped admin)
+      description: Undelivered events are retried with capped backoff (30 s doubling to 6 h) for 7 days, are then kept as dead (logged at error level) for 90 days and can be replayed. Delivery is at least once, per event; ordering across events is not guaranteed once a retry is involved, so receivers should use `version` and `time`.
+      parameters: [{ $ref: "#/components/parameters/Limit" }]
+      responses:
+        "200":
+          description: Dead events, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties: { event_id: { type: string }, type: { type: string }, created_at: { type: string, format: date-time }, dead_at: { type: string, format: date-time }, attempts: { type: integer }, last_error: { type: string } }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/events/{id}/replay:
+    post:
+      tags: [admin]
+      operationId: replayEvent
+      x-required-scope: work.admin
+      summary: Put a dead event back in the queue with a fresh delivery window (unscoped admin)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: Queued again, same event id }, "403": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, description: "API token (cwt_...) or the bootstrap admin token" }
