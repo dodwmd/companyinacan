@@ -1,0 +1,9 @@
+{
+  "name": "Example Pty Ltd",
+  "jurisdiction": "AU",
+  "entity_type": "private company",
+  "incorporated_on": "2020-07-01",
+  "fiscal_year_end": "June",
+  "registration_number": "000 111 222",
+  "equity_entity_ref": "ent_0123456789abcdef01234567"
+}

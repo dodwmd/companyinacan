@@ -39,6 +39,8 @@ server) are in [docs/getting-started.md](docs/getting-started.md).
 | `finance` | Parties, invoices, payments, contracts, timesheets, expenses, purchase orders, web UI | experimental | 28 MB | Fake payment and e-sign providers only |
 | `provisioning` | Joiner, mover and leaver account provisioning (SCIM) driven by people events | experimental | 20 MB | Tested against a fake directory and a fake SCIM server only; not in the compose stack ([docs/provisioning.md](docs/provisioning.md)) |
 | `equity` | Cap table, option grants with vesting, exercises, ledger | experimental | 16 MB | A tool, not legal or tax advice; quantities stored in plaintext |
+| `board` | Boards and committees, meetings, quorum, resolutions (roll call, written consent, secret ballot), minutes | experimental | 20 MB | A tool, not legal advice; not in the compose stack; secret ballots are unlinkable only after the vote closes |
+| `entity` | Legal entities, officers and directors, statutory registers with as-of views, filings calendar | experimental | 20 MB | A tool, not legal advice; same binary as `board`; register share counts stored in plaintext |
 | `support`, `crm` | Wrapped FreeScout, EspoCRM | **not-deployable** | 250, 350 MB | Image needs root, tags unresolved |
 | `newsletter`, `analytics`, `wiki`, `status` | Wrapped Listmonk, GoatCounter, DokuWiki, Uptime Kuma | experimental | 20 to 128 MB | Charts checked offline only, never started |
 

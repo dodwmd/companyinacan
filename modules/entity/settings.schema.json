@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/modules/entity/settings.schema.json",
+  "title": "entity settings",
+  "description": "Operator settings for the entity module (company.yaml modules.entity). Secrets (API token, webhook secret, encryption keys) are never settings; can-core generates them as Secrets. This module is a tool, not legal advice: review every retention value against local law.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per data class retention. Statutory registers, filings and the audit trail are the legal record and can only be `legal`.",
+      "properties": {
+        "entity-register": { "const": "legal" },
+        "entity-filings": { "const": "legal" },
+        "entity-audit": { "const": "legal" },
+        "entity-person": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+      }
+    }
+  }
+}

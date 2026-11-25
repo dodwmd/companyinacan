@@ -14,7 +14,7 @@ tag starts `.github/workflows/release.yml`, which, in order:
    script self-tests.
 2. **build**: static binaries (`CGO_ENABLED=0`, `-trimpath`, linux amd64 and arm64; macOS and Windows are not
    built) for `can`, `can-core`, `can-static`, `can-forms`, `can-work`, `can-people`, `can-jobs`, `can-finance`,
-   `can-equity`, `can-provision`. Built **twice**; the sha256 of every archive must match or the release stops. Then a CycloneDX
+   `can-equity`, `can-board`, `can-provision`. Built **twice**; the sha256 of every archive must match or the release stops. Then a CycloneDX
    SBOM per binary, `THIRD_PARTY_LICENSES`, `SHA256SUMS`, and release notes from the commit log.
 3. **images-check**: builds the ten container images (`deploy/*/Dockerfile`) with the base-image digests
    resolved right then by `scripts/resolve-base-digests.sh` (`docker buildx imagetools inspect`), without pushing.

@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "id": "ctc_0123456789abcdef01234567",
+      "kind": "registered_office",
+      "address": "1 Example Street",
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31"
+    }
+  ]
+}

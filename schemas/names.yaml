@@ -15,6 +15,9 @@ capabilities:
   - { name: time }
   - { name: timesheets }
   - { name: equity }
+  - { name: board }
+  - { name: resolutions }
+  - { name: entity }
   - { name: work }
   - { name: projects }
   - { name: performance }

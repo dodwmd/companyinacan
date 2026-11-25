@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "id": "agi_0123456789abcdef01234567",
+      "position": 1,
+      "title": "Approve the budget",
+      "kind": "resolution",
+      "resolution_id": "res_0123456789abcdef01234567"
+    }
+  ]
+}

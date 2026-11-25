@@ -1,0 +1,11 @@
+{
+  "title": "Q1 board meeting",
+  "starts_on": "2026-12-10",
+  "mode": "telepathy",
+  "invitees": [
+    {
+      "person_id": "pers_0123456789abcdef01234567",
+      "capacity": "officer"
+    }
+  ]
+}

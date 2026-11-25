@@ -1,0 +1,8 @@
+{
+  "resolution_id": "res_0123456789abcdef01234567",
+  "body_id": "bdy_0123456789abcdef01234567",
+  "type": "equity.grant",
+  "ref": "grt_0123456789abcdef01234567",
+  "outcome": "approved",
+  "decided_on": "2026-12-10"
+}

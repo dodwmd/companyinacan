@@ -1,0 +1,10 @@
+{
+  "id": "mtg_0123456789abcdef01234567",
+  "body_id": "bdy_0123456789abcdef01234567",
+  "title": "Q1 board meeting",
+  "starts_on": "2026-12-10",
+  "mode": "hybrid",
+  "status": "done",
+  "notice_given_on": "2026-11-25",
+  "notice_days_required": 7
+}

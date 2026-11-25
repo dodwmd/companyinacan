@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/entity.filing.due.v1.json",
+  "title": "entity.filing.due.v1",
+  "description": "Published as a filing comes due: once per reminder point of the obligation (days_before is the point reached). Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids, dates and the result only: never names, resolution text, minutes, votes or amounts (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "entity.filing.due.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "entity"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filing_id",
+        "obligation_id",
+        "entity_id",
+        "due_on",
+        "days_before"
+      ],
+      "properties": {
+        "filing_id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        },
+        "obligation_id": {
+          "type": "string",
+          "pattern": "^obl_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^lge_[0-9a-f]{24}$"
+        },
+        "due_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "days_before": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 366
+        }
+      }
+    }
+  }
+}

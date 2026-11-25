@@ -1,0 +1,14 @@
+{
+  "meeting_id": "mtg_0123456789abcdef01234567",
+  "issued_on": "2026-11-26",
+  "items": [
+    {
+      "id": "pki_0123456789abcdef01234567",
+      "doc_ref": "doc:budget-fy27",
+      "title": "FY27 budget",
+      "size_bytes": 1024,
+      "position": 1,
+      "supplementary": false
+    }
+  ]
+}

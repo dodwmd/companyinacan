@@ -1,0 +1,32 @@
+{
+  "id": "res_0123456789abcdef01234567",
+  "body_id": "bdy_0123456789abcdef01234567",
+  "meeting_id": "mtg_0123456789abcdef01234567",
+  "kind": "meeting",
+  "status": "passed",
+  "secret_ballot": false,
+  "version": 2,
+  "title": "Approve the budget",
+  "text": "RESOLVED.",
+  "pass_num": 1,
+  "pass_den": 2,
+  "pass_inclusive": false,
+  "eligible": 5,
+  "quorum_required": 3,
+  "quorum_present": 4,
+  "result": {
+    "for": 3,
+    "against": 1,
+    "abstain": 0,
+    "reason": "tally"
+  },
+  "closed_on": "2026-12-10",
+  "voted": true,
+  "conflicts": [
+    {
+      "id": "cfl_0123456789abcdef01234567",
+      "person_id": "pers_0123456789abcdef01234567",
+      "treatment": "recuse"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "id": "doc_0123456789abcdef01234567",
+      "kind": "constitution",
+      "doc_ref": "doc:constitution",
+      "title": "Constitution"
+    }
+  ]
+}

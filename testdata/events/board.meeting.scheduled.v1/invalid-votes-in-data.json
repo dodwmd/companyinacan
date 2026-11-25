@@ -1,0 +1,15 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "board.meeting.scheduled.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "board",
+  "data": {
+    "meeting_id": "mtg_0123456789abcdef01234567",
+    "body_id": "bdy_0123456789abcdef01234567",
+    "starts_on": "2026-12-10",
+    "votes": {
+      "for": 3,
+      "against": 1
+    }
+  }
+}

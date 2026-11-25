@@ -129,7 +129,7 @@ cannot be amended (cancel the rest and grant again).
 requires the engine to report `approved`; its decider becomes the approver of record and is bound by the
 same separation of duties. Without an engine, the `board` role approves grants directly in this service
 and `finance`, `board` or `admin` approve exercises. The manifest declares both approval types. **The
-interface is not wired to can-core yet** (no adapter exists; only tests use a fake).
+interface is not wired to can-core yet** (no adapter exists; only tests use a fake). The board side now exists: the `board` module (`docs/board.md`) exposes a `resolutions` capability (request a resolution for `equity.grant` and a grant id, read its outcome `pending`, `approved`, `rejected` or `cancelled`) and publishes `board.resolution.passed.v1`, so an adapter can implement `Request` and `Status` on top of it. That adapter is not built and equity is unchanged.
 
 ## Vesting calculator
 
@@ -361,6 +361,6 @@ The table stores resource ids only, so a replay re-reads the record under the ca
   what-if model only, not in the cap table; the model is illustrative.
 - A for-cause termination forfeits everything unexercised; real plans differ. Acceleration is data plus
   recorded triggers.
-- No admin UI, no investor or employee portal, no `board` or `entity` modules yet (later in E17), no
+- No admin UI, no investor or employee portal, the `board` and `entity` modules are separate (E17b, `docs/board.md`, `docs/entity.md`), no
   import of Captable files, no PDF export.
 - Not verified on a cluster; no load or soak measurements beyond the RAM figure in the module README.

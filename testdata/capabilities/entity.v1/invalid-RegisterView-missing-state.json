@@ -1,0 +1,20 @@
+{
+  "entity_id": "lge_0123456789abcdef01234567",
+  "register": "directors",
+  "as_of": "2026-11-25",
+  "entries": [
+    {
+      "id": "reg_0123456789abcdef01234567",
+      "register": "directors",
+      "kind": "appointed",
+      "party_ref": "pers_0123456789abcdef01234567",
+      "office": "director",
+      "effective_on": "2026-01-01",
+      "recorded_on": "2026-11-25",
+      "attested": false,
+      "detail": {
+        "name": "Dee One"
+      }
+    }
+  ]
+}

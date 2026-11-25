@@ -1,0 +1,15 @@
+{
+  "subject": "stk_0123456789abcdef01234567",
+  "classes": [
+    "board-private",
+    "entity-person"
+  ],
+  "date": "2026-11-25",
+  "retained": [
+    {
+      "class": "board-resolutions",
+      "count": 2,
+      "reason": "legal retention"
+    }
+  ]
+}

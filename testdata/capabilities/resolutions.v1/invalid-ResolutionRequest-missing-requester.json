@@ -1,0 +1,8 @@
+{
+  "type": "equity.grant",
+  "ref": "grt_0123456789abcdef01234567",
+  "body_id": "bdy_0123456789abcdef01234567",
+  "subjects": [
+    "pers_0123456789abcdef01234567"
+  ]
+}

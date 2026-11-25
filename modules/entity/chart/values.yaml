@@ -1,0 +1,48 @@
+# Values for the entity module chart. `entity` is served by the same binary as `board` (cmd/can-board): when both modules are
+# enabled they are ONE release with one pod, one database and one keyring, so the values below must equal the board module's
+# (modules/board/chart/values.yaml). Enabling `entity` alone runs the same binary; the board routes then have no operator and
+# nobody holds the board roles. can-core does not yet merge two manifests into one release (gap, docs/entity.md).
+sharedRelease: board
+image:
+  repository: ghcr.io/dodwmd/can-board
+  digest: ""
+service:
+  api: { name: board-api, port: 8082 }
+persistence:
+  size: 200Mi
+  mountPath: /data
+resources:
+  requests: { memory: 20Mi, cpu: 5m }
+  limits: { memory: 64Mi }
+config:
+  keyring_file: /etc/can-board/keys/keyring
+  retention: {}   # see modules/entity/settings.schema.json (registers, filings and the audit trail stay `legal`)
+  introspect:
+    url: ""
+    allow_insecure_http: false
+  webhook:
+    url: ""
+secrets:
+  env:
+    - CAN_BOARD_API_TOKEN
+    - CAN_BOARD_ADMIN_TOKEN
+    - CAN_BOARD_WEBHOOK_SECRET
+    - CAN_BOARD_INTROSPECT_TOKEN
+  keyring:
+    secretName: can-board-keys
+    key: keyring
+    mountPath: /etc/can-board/keys
+    subPath: keyring
+probes:
+  readiness: { path: /healthz, port: 8082 }
+  liveness: { exec: [/can-board, healthcheck, -addr, "127.0.0.1:8082"] }
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities: { drop: [ALL] }
+networkPolicy:
+  ingressFromCapabilityConsumers: true

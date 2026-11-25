@@ -1,0 +1,10 @@
+{
+  "name": "Board of Directors",
+  "kind": "board",
+  "quorum_num": 1,
+  "quorum_den": 2,
+  "pass_num": 1,
+  "pass_den": 2,
+  "notice_days": 7,
+  "surprise": 1
+}

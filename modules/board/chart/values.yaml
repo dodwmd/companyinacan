@@ -1,0 +1,50 @@
+# Default values for the board module chart (shared with the entity module: one binary, one release). The chart templates are
+# delivered with the module deployment epic (E03); this file fixes the contract the service expects, as for people, finance and equity.
+image:
+  repository: ghcr.io/dodwmd/can-board
+  # Pinned by digest at release time; see deploy/board/README.md.
+  digest: ""
+service:
+  api: { name: board-api, port: 8082 }  # ClusterIP only: the `board`, `resolutions` and `entity` capabilities. No public listener, no ingress.
+persistence:
+  size: 200Mi
+  mountPath: /data
+resources:
+  requests: { memory: 20Mi, cpu: 5m }
+  limits: { memory: 64Mi }
+config:
+  # Mounted at /etc/can-board/board.yaml. keyring_file points at the mounted Secret below.
+  keyring_file: /etc/can-board/keys/keyring
+  retention: {}   # override per data class, see modules/board/settings.schema.json (minutes, resolutions, registers, filings and the audit trail stay `legal`)
+  introspect:
+    url: ""       # can-core token introspection (resolves user tokens to subject, roles and person id); empty = service account only. https or loopback unless:
+    allow_insecure_http: false
+  webhook:
+    url: ""       # can-core event endpoint for the outbox; empty = events stay in the outbox
+secrets:
+  # Names only; the values are created by can-core and never appear in values or git.
+  env:
+    - CAN_BOARD_API_TOKEN          # service account with the integration role only (request a resolution, read its outcome) used by can-core
+    - CAN_BOARD_ADMIN_TOKEN        # optional separate service account with the admin role only (erasure, legal hold, tombstones)
+    - CAN_BOARD_WEBHOOK_SECRET
+    - CAN_BOARD_INTROSPECT_TOKEN
+  keyring:
+    secretName: can-board-keys     # one key `keyring`: lines of `<key-id> <64 hex>`, newest first; mounted 0400
+    key: keyring
+    mountPath: /etc/can-board/keys
+    subPath: keyring               # mount the single key with subPath: the loader refuses symlinks (Secret volumes use ..data links)
+probes:
+  readiness: { path: /healthz, port: 8082 }
+  liveness: { exec: [/can-board, healthcheck, -addr, "127.0.0.1:8082"] }
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities: { drop: [ALL] }
+networkPolicy:
+  # Default deny; ingress only from can-core and from the modules that consume the capabilities (labelled by can-core when
+  # they declare it: `resolutions` for equity's approval seam). Egress only to can-core.
+  ingressFromCapabilityConsumers: true
