@@ -1,0 +1,17 @@
+schema: 1
+id: gamma
+name: Gamma
+description: Test module gamma.
+version: 0.1.0
+provider:
+  type: inhouse
+runtime:
+  chart: ./chart
+  subdomain: gamma
+  ui: { service: app, port: 8080 }
+requires:
+  database: none
+resources:
+  ram_mb: 20
+provides:
+  - { capability: tickets, schema: tickets.v1, service: app, port: 8080 }

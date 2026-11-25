@@ -1,0 +1,29 @@
+# Known capability names (SPEC.md §4.3). Unknown names in a manifest produce a warning
+# until a capability schema exists for them.
+schema: 1
+capabilities:
+  - { name: contacts }
+  - { name: tickets }
+  - { name: files }
+  - { name: directory }
+  - { name: jobs }
+  - { name: vendors }
+  - { name: documents }
+  - { name: contracts }
+  - { name: invoices }
+  - { name: time }
+  - { name: equity }
+  - { name: work }
+  - { name: performance }
+  - { name: leads }
+  - { name: content }
+  - { name: auth.oidc }
+  - { name: identity.provision }
+  - { name: reports, aggregate: true }
+  - { name: portal.view, aggregate: true }
+  # provided by can-core itself; modules consume them
+  - { name: approvals, platform: true }
+  - { name: notify, platform: true }
+  - { name: search, platform: true }
+  - { name: email.send, platform: true }
+  - { name: events, platform: true }

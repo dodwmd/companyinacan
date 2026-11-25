@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.module-manifest-missing
+    path: "/modules/nosuch"

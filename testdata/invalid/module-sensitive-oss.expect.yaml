@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.sensitive-requires-inhouse
+    path: "/data_classes/0/sensitivity"

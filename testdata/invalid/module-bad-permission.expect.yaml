@@ -1,0 +1,5 @@
+problems:
+  - rule: schema.pattern
+    path: "/permissions/0"
+  - rule: semantic.role-permission
+    path: "/roles/sales/0"

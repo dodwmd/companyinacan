@@ -1,0 +1,17 @@
+schema: 1
+id: delta
+name: Delta
+description: Test module delta.
+version: 0.1.0
+provider:
+  type: inhouse
+runtime:
+  chart: ./chart
+  subdomain: alpha
+  ui: { service: app, port: 8080 }
+requires:
+  database: none
+resources:
+  ram_mb: 20
+provides:
+  - { capability: files, schema: files.v1, service: app, port: 8080 }

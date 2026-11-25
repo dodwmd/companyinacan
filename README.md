@@ -10,7 +10,7 @@ make dev       # same thing locally on k3s (k3d)
 
 Every capability is a **module** you can switch on or off (support, CRM, wiki, newsletter, analytics, …). Modules initially wrap existing open-source apps and are meant to be replaced by in-house implementations over time, without changing how the rest of the system interacts with them. It runs on a single-node k3s cluster on any provider that gives you a VM with SSH, with first-class support for a few (Hetzner first).
 
-> **Status:** pre-alpha. Nothing is implemented yet — this repo currently contains the project spec.
+> **Status:** pre-alpha. The foundation (epic E01) is in place: the `can` CLI skeleton (`init`, `validate`, `doctor`, `licences`), the `company.yaml` / `module.yaml` schemas with contract tests, licence checks and CI. `make up` and `make dev` are not implemented yet; see [docs/epics](docs/epics/README.md) for the plan.
 
 ## Goals
 
@@ -22,15 +22,30 @@ Every capability is a **module** you can switch on or off (support, CRM, wiki, n
 - **Modular:** pick only the modules you need.
 - **One front door:** one admin UI, one login, one backup, one update flow.
 - **Multi-company:** manage several companies from the same tooling (one server per company).
+- **Web and Android:** a responsive/PWA web UI and a native Android companion app, both on the same public API (no macOS/iOS for now).
 - **Replaceable internals:** stable module contracts, so OSS apps can be swapped for in-house ones.
 
 ## Documentation
 
 See [SPEC.md](SPEC.md) for the architecture, module system, catalogue and roadmap.
 
+## Development
+
+Requires Go (see `go.mod`), `git` and `make`.
+
+```sh
+make test                      # lint + unit + contract tests + licence check
+make build                     # builds bin/can
+bin/can init my-company --name "My Co" --domain myco.example --non-interactive
+bin/can validate my-company --modules-dir modules
+bin/can doctor
+```
+
+The project is developed spec-first with [GitHub Spec Kit](https://github.com/github/spec-kit): see [CONTRIBUTING.md](CONTRIBUTING.md) and `specs/`.
+
 ## Contributing
 
-Not yet open for contributions while the design settles. Ideas and feedback via issues are welcome once the repo is public.
+Not yet open for outside contributions while the design settles; the rules are in [CONTRIBUTING.md](CONTRIBUTING.md) (DCO sign-off, Spec Kit workflow) and [SECURITY.md](SECURITY.md). Ideas and feedback via issues are welcome once the repo is public.
 
 ## Licence
 

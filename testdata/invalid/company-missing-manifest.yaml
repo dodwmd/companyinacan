@@ -1,0 +1,6 @@
+schema: 1
+name: Acme
+domain: acme.example
+provider: { type: local }
+modules:
+  nosuch: {}

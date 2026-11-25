@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.primary-invalid
+    path: "/primary/contacts"

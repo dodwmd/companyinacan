@@ -1,0 +1,28 @@
+schema: 1
+id: people
+name: People
+description: Directory, onboarding and time off.
+version: 1.0.0
+provider:
+  type: inhouse
+runtime:
+  chart: ./chart
+  subdomain: people
+  ui: { service: app, port: 8080 }
+requires:
+  database: sqlite
+  capabilities: [approvals, notify, email.send]
+resources:
+  ram_mb: 30
+provides:
+  - { capability: directory, schema: directory.v1, service: app, port: 8080 }
+publishes:
+  - { event: person.hired.v1, schema: ./events/person.hired.v1.json }
+  - { event: person.left.v1, schema: ./events/person.left.v1.json }
+permissions: [people.read, people.write]
+approvals:
+  - { type: leave, default_chain: [manager, hr] }
+data_classes:
+  - { class: employee-record, retention: legal, sensitivity: sensitive }
+  - { class: salary, retention: 7y, sensitivity: sensitive }
+hooks: { backup: ./hooks/backup.sh, purge: ./hooks/purge.sh }

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/company.v1.schema.json",
+  "title": "Company description (company.yaml), schema version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name", "domain", "provider"],
+  "properties": {
+    "schema": { "const": 1, "description": "Schema version; this file validates version 1." },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "domain": {
+      "type": "string",
+      "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
+      "description": "Public DNS name of the company (lowercase)."
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["local", "ssh", "hetzner", "digitalocean", "static"] },
+        "options": { "type": "object", "description": "Provider-specific options, validated per provider in later epics." }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{1,30}$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "settings": { "type": "object" }
+        }
+      }
+    },
+    "primary": {
+      "type": "object",
+      "description": "Capability name -> module id designated as the primary provider.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9]+)*$" },
+      "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" }
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tagline": { "type": "string", "maxLength": 200 },
+        "template": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "brand": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "colours": { "type": "array", "items": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" } },
+            "logo": { "type": "string" }
+          }
+        }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": { "type": "string", "pattern": "^https?://" },
+        "bucket": { "type": "string", "minLength": 3 },
+        "region": { "type": "string" },
+        "secret_ref": { "$ref": "#/$defs/secretRef" }
+      }
+    },
+    "email": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "relay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host"],
+          "properties": {
+            "host": { "type": "string", "minLength": 1 },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "secret_ref": { "$ref": "#/$defs/secretRef" }
+          }
+        },
+        "inbound": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "mode": { "enum": ["imap", "parse"] } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "secretRef": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]*$",
+      "description": "Name of a secret stored outside this file. Never the secret value itself."
+    }
+  }
+}

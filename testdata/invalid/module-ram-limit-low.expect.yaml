@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.ram-limit
+    path: "/resources/ram_limit_mb"

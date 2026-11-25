@@ -1,0 +1,3 @@
+problems:
+  - rule: schema.required
+    path: "/provider/licence"

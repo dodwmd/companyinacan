@@ -1,0 +1,22 @@
+name: Epic
+description: A unit of work developed through Spec Kit (specs/NNN-name/)
+labels: [epic]
+body:
+  - type: input
+    id: epic
+    attributes:
+      label: Epic id and name
+      description: As in docs/epics/README.md, e.g. "E02 Local dev cluster".
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal and scope
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Observable outcomes; link the spec once `/speckit-specify` has run.

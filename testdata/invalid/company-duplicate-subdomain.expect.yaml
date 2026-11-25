@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.duplicate-subdomain
+    path: "/modules/delta"

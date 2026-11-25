@@ -1,0 +1,23 @@
+# SPDX identifiers accepted for wrapped third-party apps (Constitution VI).
+# Anything else must be marked `licence_class: source-available` in the module
+# manifest, which makes it opt-in and flagged. Changes here are reviewed like code.
+schema: 1
+accepted:
+  - id: Apache-2.0
+  - id: MIT
+  - id: BSD-2-Clause
+  - id: BSD-3-Clause
+  - id: ISC
+  - id: 0BSD
+  - id: Unlicense
+  - id: MPL-2.0
+  - id: LGPL-2.1-only
+  - id: LGPL-2.1-or-later
+  - id: LGPL-3.0-only
+  - id: LGPL-3.0-or-later
+  - id: GPL-2.0-only
+  - id: GPL-2.0-or-later
+  - id: GPL-3.0-only
+  - id: GPL-3.0-or-later
+  - id: AGPL-3.0-only
+  - id: AGPL-3.0-or-later

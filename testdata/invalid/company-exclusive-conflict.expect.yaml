@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.exclusive-capability
+    path: "/modules"

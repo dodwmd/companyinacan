@@ -1,0 +1,26 @@
+schema: 1
+name: Acme Co
+domain: acme.example
+provider:
+  type: hetzner
+  options: { location: fsn1 }
+modules:
+  alpha: { enabled: true, settings: { theme: dark } }
+  gamma: {}
+  beta: { enabled: false }
+primary:
+  contacts: alpha
+site:
+  tagline: Anvils, delivered.
+  template: classic
+  brand:
+    colours: ["#112233", "#aabbcc"]
+    logo: ./logo.svg
+backup:
+  endpoint: https://s3.example.com
+  bucket: acme-backups
+  region: eu-central
+  secret_ref: acme/backup
+email:
+  relay: { host: smtp.example.com, port: 587, secret_ref: acme/smtp }
+  inbound: { mode: imap }

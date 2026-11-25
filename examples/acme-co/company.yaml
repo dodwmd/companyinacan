@@ -1,0 +1,10 @@
+# Example company repository. All values are fake; acme.example is a reserved domain.
+schema: 1
+name: Acme Co
+domain: acme.example
+provider:
+  type: local
+modules:
+  example: {}
+site:
+  tagline: Anvils, delivered.

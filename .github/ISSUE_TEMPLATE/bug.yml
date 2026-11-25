@@ -1,0 +1,21 @@
+name: Bug report
+description: Something does not work as the spec says
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands, files (with fake data only) and `can version` output.
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Relevant SPEC.md section or epic

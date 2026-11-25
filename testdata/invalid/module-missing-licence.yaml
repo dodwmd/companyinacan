@@ -1,0 +1,37 @@
+schema: 1
+id: crm
+name: Example CRM
+description: Contacts and deals.
+category: sales
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: ExampleCRM
+  upstream: https://example.com/examplecrm
+runtime:
+  chart: ./chart
+  subdomain: crm
+  ui: { service: app, port: 8080 }
+requires:
+  database: mariadb
+  capabilities: [email.send]
+  sso: oidc
+resources:
+  ram_mb: 400
+  ram_limit_mb: 600
+  disk_mb: 500
+provides:
+  - { capability: contacts, schema: contacts.v1, service: adapter, port: 8081 }
+consumes: [tickets]
+publishes:
+  - { event: contact.created.v1, schema: ./events/contact.created.v1.json }
+subscribes:
+  - { event: lead.created.v1, service: adapter, port: 8081, webhook: /hooks/lead, optional: true }
+permissions: [contacts.read, contacts.write]
+roles:
+  sales: [contacts.read, contacts.write]
+approvals: []
+data_classes:
+  - { class: customer-contact, retention: 7y }
+hooks: { backup: ./hooks/backup.sh, restore: ./hooks/restore.sh }
+healthcheck: /health

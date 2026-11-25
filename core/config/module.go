@@ -1,0 +1,67 @@
+package config
+
+// Module is the typed view of module.yaml (schema module.v1).
+type Module struct {
+	Schema      int    `yaml:"schema"`
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	Category    string `yaml:"category"`
+	Version     string `yaml:"version"`
+	Provider    struct {
+		Type            string `yaml:"type"`
+		Name            string `yaml:"name"`
+		Licence         string `yaml:"licence"`
+		LicenceSelected string `yaml:"licence_selected"`
+		LicenceClass    string `yaml:"licence_class"`
+		Upstream        string `yaml:"upstream"`
+		UpstreamVersion string `yaml:"upstream_version"`
+	} `yaml:"provider"`
+	Runtime struct {
+		Chart     string `yaml:"chart"`
+		Subdomain string `yaml:"subdomain"`
+	} `yaml:"runtime"`
+	Requires struct {
+		Database     string   `yaml:"database"`
+		Capabilities []string `yaml:"capabilities"`
+		SSO          string   `yaml:"sso"`
+	} `yaml:"requires"`
+	Resources struct {
+		RAMMB      int `yaml:"ram_mb"`
+		RAMLimitMB int `yaml:"ram_limit_mb"`
+		DiskMB     int `yaml:"disk_mb"`
+	} `yaml:"resources"`
+	Provides []struct {
+		Capability string `yaml:"capability"`
+		Schema     string `yaml:"schema"`
+		Service    string `yaml:"service"`
+		Port       int    `yaml:"port"`
+	} `yaml:"provides"`
+	Consumes  []string `yaml:"consumes"`
+	Publishes []struct {
+		Event  string `yaml:"event"`
+		Schema string `yaml:"schema"`
+	} `yaml:"publishes"`
+	Subscribes []struct {
+		Event   string `yaml:"event"`
+		Service string `yaml:"service"`
+		Port    int    `yaml:"port"`
+		Webhook string `yaml:"webhook"`
+	} `yaml:"subscribes"`
+	Permissions []string            `yaml:"permissions"`
+	Roles       map[string][]string `yaml:"roles"`
+	DataClasses []struct {
+		Class       string `yaml:"class"`
+		Retention   string `yaml:"retention"`
+		Sensitivity string `yaml:"sensitivity"`
+	} `yaml:"data_classes"`
+}
+
+// DecodeModule decodes a loaded document into the typed struct.
+func DecodeModule(d *Doc) (*Module, error) {
+	var m Module
+	if err := d.Root.Decode(&m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}

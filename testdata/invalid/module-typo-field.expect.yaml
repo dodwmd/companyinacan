@@ -1,0 +1,5 @@
+problems:
+  - rule: schema.required
+    path: "/resources/ram_mb"
+  - rule: schema.unknown-field
+    path: "/resources/ram_mbb"

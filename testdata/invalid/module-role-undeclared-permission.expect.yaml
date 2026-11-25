@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.role-permission
+    path: "/roles/sales/1"

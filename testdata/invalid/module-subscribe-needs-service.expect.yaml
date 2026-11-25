@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.subscribe-service
+    path: "/subscribes/0/service"

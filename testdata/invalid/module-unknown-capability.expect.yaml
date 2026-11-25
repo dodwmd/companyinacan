@@ -1,0 +1,4 @@
+problems:
+  - rule: semantic.unknown-capability
+    path: "/consumes/0"
+    severity: warning

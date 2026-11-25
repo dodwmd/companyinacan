@@ -1,0 +1,44 @@
+# Example module manifest (fake upstream). Directories starting with "_" are examples:
+# they are validated by tests but are not listed in THIRD_PARTY_LICENSES.
+schema: 1
+id: example
+name: Example
+description: A fake wrapped app that demonstrates every manifest section.
+category: example
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: ExampleApp
+  licence: MIT
+  upstream: https://example.com/exampleapp
+  upstream_version: "1.x"
+runtime:
+  chart: ./chart
+  subdomain: example
+  ui: { service: app, port: 8080 }
+requires:
+  database: postgres
+  capabilities: [email.send]
+  sso: oidc
+resources:
+  ram_mb: 100
+  ram_limit_mb: 150
+  disk_mb: 200
+provides:
+  - { capability: contacts, schema: contacts.v1, service: adapter, port: 8081 }
+consumes: [tickets]
+publishes:
+  - { event: contact.created.v1, schema: ./events/contact.created.v1.json }
+subscribes:
+  - { event: lead.created.v1, service: adapter, port: 8081, webhook: /hooks/lead, optional: true }
+permissions: [contacts.read, contacts.write]
+roles:
+  sales: [contacts.read, contacts.write]
+approvals: []
+data_classes:
+  - { class: customer-contact, retention: 7y }
+settings_schema: ./settings.schema.json
+hooks:
+  backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
+healthcheck: /health

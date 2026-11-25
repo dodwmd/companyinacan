@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/module.v1.schema.json",
+  "title": "Module manifest (module.yaml), schema version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "name", "description", "version", "provider", "runtime", "requires", "resources"],
+  "properties": {
+    "schema": { "const": 1 },
+    "id": { "$ref": "#/$defs/moduleId" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "description": { "type": "string", "minLength": 1 },
+    "category": { "type": "string", "pattern": "^[a-z][a-z-]*$" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$" },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["oss-wrapper", "inhouse", "external"] },
+        "name": { "type": "string", "minLength": 1 },
+        "licence": { "type": "string", "minLength": 1, "description": "SPDX licence expression of the wrapped upstream app." },
+        "licence_selected": { "type": "string", "description": "For OR expressions: the alternative the operator elects." },
+        "licence_class": { "enum": ["osi", "source-available"] },
+        "upstream": { "type": "string", "pattern": "^https?://" },
+        "upstream_version": { "type": "string" }
+      },
+      "if": { "required": ["type"], "properties": { "type": { "enum": ["oss-wrapper", "external"] } } },
+      "then": { "required": ["name", "licence", "upstream"] }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chart"],
+      "dependentRequired": { "ui": ["subdomain"] },
+      "properties": {
+        "chart": { "$ref": "#/$defs/relPath" },
+        "subdomain": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$" },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["service", "port"],
+          "properties": {
+            "service": { "type": "string", "minLength": 1 },
+            "port": { "$ref": "#/$defs/port" }
+          }
+        },
+        "values": { "$ref": "#/$defs/relPath" }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["database"],
+      "properties": {
+        "database": { "enum": ["postgres", "mariadb", "sqlite", "none"] },
+        "capabilities": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/capName" } },
+        "sso": { "enum": ["oidc", "forward-auth", "none"] }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ram_mb"],
+      "properties": {
+        "ram_mb": { "type": "integer", "minimum": 1, "description": "Idle RAM request in MB; CI fails above 1.2x." },
+        "ram_limit_mb": { "type": "integer", "minimum": 1, "description": "Kubernetes memory limit; defaults to 1.5x ram_mb." },
+        "disk_mb": { "type": "integer", "minimum": 0, "description": "Advisory; local-path does not enforce capacity." }
+      }
+    },
+    "provides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability", "schema", "service", "port"],
+        "properties": {
+          "capability": { "$ref": "#/$defs/capName" },
+          "schema": { "type": "string", "pattern": "^[a-z][a-z0-9.]*\\.v[1-9][0-9]*$" },
+          "service": { "type": "string", "minLength": 1 },
+          "port": { "$ref": "#/$defs/port" }
+        }
+      }
+    },
+    "consumes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/capName" } },
+    "publishes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event", "schema"],
+        "properties": {
+          "event": { "$ref": "#/$defs/eventName" },
+          "schema": { "$ref": "#/$defs/relPath" }
+        }
+      }
+    },
+    "subscribes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event", "webhook"],
+        "properties": {
+          "event": { "$ref": "#/$defs/eventName" },
+          "service": { "type": "string", "minLength": 1 },
+          "port": { "$ref": "#/$defs/port" },
+          "webhook": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]*$" },
+          "optional": { "type": "boolean" }
+        }
+      }
+    },
+    "permissions": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/permission" } },
+    "roles": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/permission" } }
+    },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "schema": { "$ref": "#/$defs/relPath" },
+          "default_chain": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "data_classes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["class", "retention"],
+        "properties": {
+          "class": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "retention": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$", "description": "e.g. 7y, 12m, 30d, 0 (none) or legal (as required by law)." },
+          "sensitivity": { "enum": ["standard", "sensitive"] }
+        }
+      }
+    },
+    "settings_schema": { "$ref": "#/$defs/relPath" },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": { "type": "string", "minLength": 1, "description": "Image used to run hook scripts when the upstream image lacks a shell." },
+        "install": { "$ref": "#/$defs/relPath" },
+        "configure": { "$ref": "#/$defs/relPath" },
+        "backup": { "$ref": "#/$defs/relPath" },
+        "restore": { "$ref": "#/$defs/relPath" },
+        "upgrade": { "$ref": "#/$defs/relPath" },
+        "export": { "$ref": "#/$defs/relPath" },
+        "import": { "$ref": "#/$defs/relPath" },
+        "purge": { "$ref": "#/$defs/relPath" },
+        "uninstall": { "$ref": "#/$defs/relPath" }
+      }
+    },
+    "healthcheck": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]*$" }
+  },
+  "$defs": {
+    "moduleId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" },
+    "capName": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9]+)*$" },
+    "eventName": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+\\.v[1-9][0-9]*$" },
+    "permission": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9-]+)+$" },
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "relPath": {
+      "type": "string",
+      "allOf": [
+        { "pattern": "^(\\./)?[A-Za-z0-9_./-]+$" },
+        { "not": { "pattern": "\\.\\." } }
+      ]
+    }
+  }
+}

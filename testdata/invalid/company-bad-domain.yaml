@@ -1,0 +1,4 @@
+schema: 1
+name: Acme
+domain: Not_A_Domain
+provider: { type: local }

@@ -1,0 +1,3 @@
+problems:
+  - rule: schema.required
+    path: "/data_classes/0/retention"

@@ -1,0 +1,11 @@
+# build output
+/bin/
+# local company state and secrets (never commit)
+.can/
+*.local
+.env
+.env.*
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
