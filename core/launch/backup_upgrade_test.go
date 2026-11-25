@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/provider"
 )
 
@@ -83,5 +84,31 @@ func TestOutdatedInstallWithoutFlagsWarns(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(res.Warnings, "\n"), "--backup-") {
 		t.Fatalf("no warning: %v", res.Warnings)
+	}
+}
+
+// QA 6: `can up` with backups on says what they do not do; plan warnings are not discarded.
+func TestBackupWarningsReachTheOperator(t *testing.T) {
+	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
+	o, d, _ := newStack(t, k, &fakeLoader{})
+	d.Host = &hostFake{}
+	o.Backup = backupInstall(t, o)
+	hooked := &config.Module{ID: "wiki"}
+	hooked.Hooks.Backup, hooked.Hooks.Image = "./hooks/backup.sh", "ghcr.io/dodwmd/can-hooks:0.1.0"
+	lite := &config.Module{ID: "people"}
+	lite.Requires.Database = "sqlite"
+	o.Company.Modules = map[string]config.ModuleEntry{"wiki": {}, "people": {}}
+	o.Backup.Mods = map[string]*config.Module{"wiki": hooked, "people": lite}
+	for i := range 2 { // the first install and a re-run
+		res, err := Run(context.Background(), o, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all := strings.Join(res.Warnings, "\n")
+		for _, want := range []string{"RESTORE IS NOT FUNCTIONAL", `"people" keeps SQLite`, `"wiki" has a backup hook that cannot run`} {
+			if !strings.Contains(all, want) {
+				t.Errorf("run %d: missing %q in:\n%s", i+1, want, all)
+			}
+		}
 	}
 }

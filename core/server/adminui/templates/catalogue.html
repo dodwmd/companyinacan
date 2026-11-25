@@ -28,7 +28,7 @@
 {{range .Data.Rows}}<tr>
 <th scope="row"><a href="/catalogue/{{.ID}}">{{.Name}}</a>
 <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{if .RecordedLabel}} <span class="badge {{.RecordedClass}}">{{.RecordedLabel}}</span>{{end}}
-{{if .Description}}<span class="hint">{{.Description}}</span>{{end}}{{if .Invalid}}<span class="hint errtext">{{t "cg.invalid" .Invalid}}</span>{{end}}</th>
+{{if .Description}}<span class="hint">{{.Description}}</span>{{end}}{{if .BackupWarning}}<span class="hint errtext">{{t "cg.backup_unrunnable" .BackupWarning}}</span>{{end}}{{if .Invalid}}<span class="hint errtext">{{t "cg.invalid" .Invalid}}</span>{{end}}</th>
 <td data-label="{{t "mod.licence"}}">{{.Licence}}{{if .SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</td>
 <td data-label="{{t "mod.ram"}}">{{t "mod.mb" .RAMMB}} <span class="muted">({{t "mod.limit"}} {{t "mod.mb" .LimitMB}})</span></td>
 <td data-label="{{t "cg.graph"}}">{{if .Requires}}<p class="graph">{{t "mod.requires"}}</p><ul>{{template "needs" .Requires}}</ul>{{end}}{{if .Provides}}<p class="graph">{{t "mod.provides"}}</p><ul>{{template "provides" .Provides}}</ul>{{end}}{{range .ConflictNote}}<p class="errtext">{{t "cg.conflicts_with" .}}</p>{{end}}</td>

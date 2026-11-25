@@ -63,6 +63,7 @@ func init() {
 		"cg.ack_experimental":      "I understand %s is experimental",
 		"cg.not_deployable":        "Not deployable yet",
 		"cg.invalid":               "Cannot be enabled: %s",
+		"cg.backup_unrunnable":     "Enabling this module stops all backups: its backup hook cannot run (%s).",
 		"cg.preview":               "Preview changes",
 		"cg.read_only":             "You can look at the catalogue but not change it.",
 		"cg.empty":                 "No module manifests were found.",

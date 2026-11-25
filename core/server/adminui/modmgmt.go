@@ -111,7 +111,7 @@ type catRow struct {
 	SourceAvailable, Experimental               bool
 	RAMMB, LimitMB, DiskMB                      int
 	Enabled, Selectable                         bool
-	Invalid                                     string
+	Invalid, BackupWarning                      string
 	RecordedState, RecordedClass, RecordedLabel string
 	Requires                                    []capView
 	Provides                                    []provView
@@ -231,7 +231,7 @@ func (s *Server) catalogue(w http.ResponseWriter, r *http.Request, sc *sessionCt
 }
 
 func (s *Server) catRowFor(e *modmgr.Entry, cat *modmgr.Catalogue, enabled map[string]bool, primary map[string]string, rec map[string]store.Module, canPurge bool) catRow {
-	row := catRow{ID: e.ID, Name: e.ID, Invalid: modmgr.Sanitise(e.Invalid), Enabled: enabled[e.ID], Selectable: e.Deployable() || enabled[e.ID]}
+	row := catRow{ID: e.ID, Name: e.ID, Invalid: modmgr.Sanitise(e.Invalid), BackupWarning: e.BackupWarning(), Enabled: enabled[e.ID], Selectable: e.Deployable() || enabled[e.ID]}
 	l := moduleStatusLabels[e.Status()]
 	row.StatusLabel, row.StatusClass = s.msg(l[0]), l[1]
 	if m := e.Manifest; m != nil {

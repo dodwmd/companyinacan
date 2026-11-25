@@ -50,6 +50,14 @@ func (e *Entry) Status() string {
 // manifest never is.
 func (e *Entry) Deployable() bool { return e.Status() != "not-deployable" && e.Invalid == "" }
 
+// BackupWarning says why enabling the module would stop backups, or "".
+func (e *Entry) BackupWarning() string {
+	if e.Manifest == nil {
+		return ""
+	}
+	return e.Manifest.BackupHookUnrunnable()
+}
+
 // SourceAvailable reports licence_class: source-available (enabling needs an explicit opt-in).
 func (e *Entry) SourceAvailable() bool {
 	return e.Manifest != nil && e.Manifest.Provider.LicenceClass == "source-available"

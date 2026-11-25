@@ -80,6 +80,10 @@ func moduleRules(doc *config.Doc, m *config.Module) []problem.Problem {
 		}
 	}
 
+	if why := m.BackupHookUnrunnable(); why != "" && m.Hooks.Image != "" {
+		add("semantic.backup-hooks-image", "/hooks/backup",
+			fmt.Sprintf("module %q has a backup hook that cannot run: %s. While it is enabled every dump run fails and NOTHING is backed up", m.ID, why), problem.Warning)
+	}
 	if m.Status == "experimental" || m.Status == "not-deployable" {
 		add("semantic.module-status", "/status", fmt.Sprintf("module %q is %s: it is not ready to enable on a real server (see its README)", m.ID, m.Status), problem.Warning)
 	}

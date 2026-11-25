@@ -35,6 +35,9 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		return false, "", err
 	}
 	s := b.Settings
+	if err := r.warnBackupLimits(b); err != nil {
+		return false, "", err
+	}
 	shown := st.Launch != nil && st.Launch.KitShown
 	if st.Launch != nil && st.Launch.BackupInstalled && st.Launch.BackupVersion >= BackupInstallVersion {
 		if st.Launch.KitShown {
@@ -140,4 +143,21 @@ func (r *runner) noteKit(k *backup.Kit) {
 
 func validPassword(s string) bool {
 	return len(s) >= 16 && len(s) <= 256 && !strings.ContainsAny(s, " \t\r\n")
+}
+
+// RestoreCaveat is shown by every `can up` with backups on.
+const RestoreCaveat = "RESTORE IS NOT FUNCTIONAL YET: `can restore` stops at its first step. Snapshots are taken, but recovering from them is manual work with restic (docs/backup-restore.md)"
+
+// warnBackupLimits says, on every run, what the backup does not do for this company.
+func (r *runner) warnBackupLimits(b *BackupInstall) error {
+	plan, err := backup.BuildPlan(r.o.Company, b.Mods, b.Settings)
+	if err != nil {
+		return err
+	}
+	r.res.Warnings = append(r.res.Warnings, RestoreCaveat)
+	r.res.Warnings = append(r.res.Warnings, plan.Warnings...)
+	if r.res.BundleAdded {
+		r.res.Warnings = append(r.res.Warnings, `module "forms" keeps SQLite on a PVC but has no backup hook: raw database files are backed up and may be inconsistent`)
+	}
+	return nil
 }
