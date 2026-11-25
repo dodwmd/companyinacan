@@ -33,6 +33,8 @@ type Spec struct {
 	// HMACSecret signs can-core's webhooks to this module; the installer injects it into the
 	// module's environment (SPEC §3.1).
 	HMACSecret string
+	// Domain is the company domain from company.yaml (a module's public host is <subdomain>.<domain>).
+	Domain string
 }
 
 // ModuleInstaller applies and removes module workloads. Implementations must be idempotent.
@@ -284,7 +286,7 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
 		State: store.StateEnabled, SettingsHash: settingsHash(man, settings), HMACSecret: secret, Manifest: *man,
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.

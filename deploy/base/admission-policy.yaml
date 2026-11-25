@@ -65,8 +65,8 @@ spec:
       message: "module namespaces must enforce the restricted pod security standard"
     - expression: "has(object.metadata.labels) && 'can.dev/namespace-kind' in object.metadata.labels && object.metadata.labels['can.dev/namespace-kind'] == 'module'"
       message: "module namespaces must carry can.dev/namespace-kind=module (the NetworkPolicies select on it)"
-    - expression: "!has(object.metadata.labels) || !('pod-security.kubernetes.io/exempt' in object.metadata.labels)"
-      message: "module namespaces cannot opt out of pod security"
+    - expression: "has(object.metadata.labels) && 'pod-security.kubernetes.io/enforce-version' in object.metadata.labels && object.metadata.labels['pod-security.kubernetes.io/enforce-version'].startsWith('v1.')"
+      message: "module namespaces must pin pod-security.kubernetes.io/enforce-version (v1.x) so the standard does not drift with the cluster"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

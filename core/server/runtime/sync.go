@@ -34,7 +34,7 @@ func (c Config) newInstaller(log *slog.Logger) (reconcile.ModuleInstaller, error
 	if c.PostgresAdminURL != "" {
 		prov = &dbprov.Postgres{AdminURL: c.PostgresAdminURL, Host: c.PostgresHost, Port: 5432}
 	}
-	return installer.New(installer.Config{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL, NodeIP: c.NodeIP, DB: prov, Log: log}), nil
+	return installer.New(installer.Config{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL, NodeIP: c.NodeIP, Domain: c.CompanyDomain, RequireAdmission: true, DB: prov, Log: log}), nil
 }
 
 // reconcileOnce applies the company.yaml at cfg.CompanyFile (in a cluster: the mounted ConfigMap

@@ -78,8 +78,11 @@ func TestCanCorePolicyMatchesRBACGrant(t *testing.T) {
 			t.Errorf("ClusterRole can-core lost %s: the admission policy was written against it", want)
 		}
 	}
-	if strings.Contains(text, "admissionregistration") {
-		t.Error("can-core must not be able to edit the admission policies that constrain it")
+	for _, r := range cr.get("rules").([]any) {
+		rule := r.(map[string]any)
+		if strings.Contains(toJSON(rule["apiGroups"]), "admissionregistration") && toJSON(rule["verbs"]) != `["get"]` {
+			t.Errorf("can-core may only read the admission policies that constrain it, got verbs %v", rule["verbs"])
+		}
 	}
 }
 

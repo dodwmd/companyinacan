@@ -57,6 +57,9 @@ var kinds = map[string]kindInfo{
 	"RoleBinding":           {"rbac.authorization.k8s.io/v1", "/apis/rbac.authorization.k8s.io/v1", "rolebindings", true},
 	"IngressRoute":          {"traefik.io/v1alpha1", "/apis/traefik.io/v1alpha1", "ingressroutes", true},
 	"Middleware":            {"traefik.io/v1alpha1", "/apis/traefik.io/v1alpha1", "middlewares", true},
+	// Read-only use: can-core verifies at start that its admission policies exist.
+	"ValidatingAdmissionPolicy":        {"admissionregistration.k8s.io/v1", "/apis/admissionregistration.k8s.io/v1", "validatingadmissionpolicies", false},
+	"ValidatingAdmissionPolicyBinding": {"admissionregistration.k8s.io/v1", "/apis/admissionregistration.k8s.io/v1", "validatingadmissionpolicybindings", false},
 }
 
 // Known reports whether the client can handle kind.
@@ -312,7 +315,8 @@ func (c *Client) Delete(ctx context.Context, kind, namespace, name string) error
 	if err != nil {
 		return err
 	}
-	_, err = c.do(ctx, http.MethodDelete, p, "", "", nil)
+	// Background propagation: dependents (a Job's pods) go with the object instead of lingering.
+	_, err = c.do(ctx, http.MethodDelete, p, "propagationPolicy=Background", "", nil)
 	if IsNotFound(err) {
 		return nil
 	}

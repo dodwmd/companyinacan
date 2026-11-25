@@ -49,6 +49,12 @@ rules:
     resources: [clusterroles]
     resourceNames: [can-core-module]
     verbs: [bind]
+  # Read-only: can-core checks that the admission policies exist before creating module namespaces
+  # (it cannot edit them).
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingadmissionpolicies, validatingadmissionpolicybindings]
+    resourceNames: [can-core-rolebindings, can-core-namespaces]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

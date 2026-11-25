@@ -1,6 +1,7 @@
 package tokenreview
 
 import (
+	"container/list"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -58,10 +59,12 @@ type Cached struct {
 	next Reviewer
 	o    CacheOptions
 
-	mu      sync.Mutex
-	entries map[[32]byte]entry
-	global  bucket
-	sources map[string]*bucket
+	mu       sync.Mutex
+	entries  map[[32]byte]*list.Element // value: *item; front = most recently used
+	lru      *list.List
+	inflight map[[32]byte]*call
+	global   bucket
+	sources  map[string]*bucket
 }
 
 // NewCached returns a Cached reviewer.
@@ -84,7 +87,7 @@ func NewCached(next Reviewer, o CacheOptions) *Cached {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Cached{next: next, o: o, entries: map[[32]byte]entry{}, sources: map[string]*bucket{}, global: bucket{tokens: float64(o.Burst), last: o.Now()}}
+	return &Cached{next: next, o: o, entries: map[[32]byte]*list.Element{}, lru: list.New(), inflight: map[[32]byte]*call{}, sources: map[string]*bucket{}, global: bucket{tokens: float64(o.Burst), last: o.Now()}}
 }
 
 func (c *Cached) size() int {
@@ -151,23 +154,62 @@ func tokenExpiry(token string) (time.Time, bool) {
 	return time.Unix(claims.Exp, 0), true
 }
 
+type item struct {
+	k [32]byte
+	e entry
+}
+
+// call is one in-flight review shared by concurrent callers with the same token (singleflight), so
+// a burst of identical requests costs the API server one TokenReview.
+type call struct {
+	done chan struct{}
+	id   Identity
+	err  error
+}
+
 // Review implements Reviewer.
 func (c *Cached) Review(ctx context.Context, token, audience string) (Identity, error) {
 	now := c.o.Now()
 	k := cacheKey(token, audience)
 	c.mu.Lock()
-	if e, ok := c.entries[k]; ok {
-		if now.Before(e.expires) {
+	if el, ok := c.entries[k]; ok {
+		it := el.Value.(*item)
+		if now.Before(it.e.expires) {
+			c.lru.MoveToFront(el)
 			c.mu.Unlock()
-			return e.id, e.err
+			return it.e.id, it.e.err
 		}
+		c.lru.Remove(el)
 		delete(c.entries, k)
+	}
+	if cl, ok := c.inflight[k]; ok { // someone is already asking about this very token
+		c.mu.Unlock()
+		select {
+		case <-cl.done:
+			return cl.id, cl.err
+		case <-ctx.Done():
+			return Identity{}, ctx.Err()
+		}
 	}
 	c.mu.Unlock()
 
 	if !c.allow(ctx, now) {
 		return Identity{}, ErrRateLimited
 	}
+	cl := &call{done: make(chan struct{})}
+	c.mu.Lock()
+	if other, ok := c.inflight[k]; ok { // lost a race with another caller since the check above
+		c.mu.Unlock()
+		select {
+		case <-other.done:
+			return other.id, other.err
+		case <-ctx.Done():
+			return Identity{}, ctx.Err()
+		}
+	}
+	c.inflight[k] = cl
+	c.mu.Unlock()
+
 	id, err := c.next.Review(ctx, token, audience)
 	switch {
 	case err == nil:
@@ -183,24 +225,28 @@ func (c *Cached) Review(ctx context.Context, token, audience string) (Identity, 
 	case errors.Is(err, ErrInvalidToken):
 		c.store(k, entry{err: err, expires: now.Add(c.o.NegativeTTL)}, now)
 	}
+	c.mu.Lock()
+	delete(c.inflight, k)
+	c.mu.Unlock()
+	cl.id, cl.err = id, err
+	close(cl.done)
 	return id, err
 }
 
-func (c *Cached) store(k [32]byte, e entry, now time.Time) {
+// store inserts at the front and evicts least recently used entries beyond MaxEntries, so a flood of
+// junk tokens pushes out other junk first and a busy module's entry stays hot.
+func (c *Cached) store(k [32]byte, e entry, _ time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.entries) >= c.o.MaxEntries {
-		for key, old := range c.entries { // drop expired entries first
-			if !now.Before(old.expires) {
-				delete(c.entries, key)
-			}
-		}
-		for key := range c.entries { // still full: evict arbitrary entries (map order) down to 7/8
-			if len(c.entries) < c.o.MaxEntries-c.o.MaxEntries/8 {
-				break
-			}
-			delete(c.entries, key)
-		}
+	if el, ok := c.entries[k]; ok {
+		el.Value.(*item).e = e
+		c.lru.MoveToFront(el)
+		return
 	}
-	c.entries[k] = e
+	c.entries[k] = c.lru.PushFront(&item{k: k, e: e})
+	for c.lru.Len() > c.o.MaxEntries {
+		last := c.lru.Back()
+		c.lru.Remove(last)
+		delete(c.entries, last.Value.(*item).k)
+	}
 }

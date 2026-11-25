@@ -56,8 +56,12 @@ type Config struct {
 	ModulesDir  string // directory of module directories (module.yaml, chart/)
 	PlatformURL string // CAN_API_URL given to modules
 	NodeIP      string // excluded from module egress (templates/module-namespace.yaml)
-	DB          dbprov.Provisioner
-	Log         *slog.Logger
+	Domain      string // company domain: the only parent of a module's public host (<subdomain>.<domain>)
+	// RequireAdmission makes Enable refuse to create anything until the can-core ValidatingAdmissionPolicies
+	// and their Deny bindings are seen in the cluster (fail closed).
+	RequireAdmission bool
+	DB               dbprov.Provisioner
+	Log              *slog.Logger
 
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
@@ -111,6 +115,9 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err != nil {
 		return err
 	}
+	if err := in.checkAdmission(ctx); err != nil {
+		return err
+	}
 	// 2. Namespace, RBAC, policies, quota.
 	if err := in.ensureNamespace(ctx, s); err != nil {
 		return err
@@ -128,7 +135,7 @@ func (in *Installer) Disable(ctx context.Context, id string) error {
 	if !idRE.MatchString(id) {
 		return fmt.Errorf("invalid module id %q", id)
 	}
-	ns, sel := "mod-"+id, labelModule+"="+id
+	ns, sel := "mod-"+id, labelModule+"="+id+","+labelManaged+"=can-core"
 	if _, err := in.cfg.API.Get(ctx, "Namespace", "", ns); kube.IsNotFound(err) {
 		return nil
 	} else if err != nil {
@@ -246,8 +253,14 @@ func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) erro
 	// (deploy/base/rbac.yaml), so labels on an existing namespace can never be relaxed through it.
 	for _, o := range append(objs[:1:1], rbac...) {
 		setLabels(o, labels)
-		if _, err := in.cfg.API.Create(ctx, o); err != nil {
+		created, err := in.cfg.API.Create(ctx, o)
+		if err != nil {
 			return fmt.Errorf("creating %v %s: %w", o["kind"], nameOf(o), err)
+		}
+		if !created { // already there: adopt it only if it is what we would have made
+			if err := in.verifyAdopted(ctx, o, s); err != nil {
+				return err
+			}
 		}
 	}
 	// Policies, limits and quota are applied (kept current on every enable). The first call can
@@ -375,28 +388,34 @@ func (in *Installer) values(s reconcile.Spec, dir string) (map[string]any, error
 	}
 	out := map[string]any{"settings": settings}
 	if vf := s.Manifest.Runtime.Values; vf != "" {
-		p := filepath.Join(dir, filepath.Clean("/"+vf)) // cannot escape dir
-		b, err := os.ReadFile(p)                        //nolint:gosec // module directory
+		rootDir, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			return nil, err
+		}
+		b, err := readInside(rootDir, filepath.Join(rootDir, filepath.Clean("/"+vf))) // cannot escape the module directory
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", vf, err)
 		}
-		t, err := template.New("values").Option("missingkey=zero").Funcs(funcs(nil)).Parse(string(b))
+		t, err := template.New("values").Option("missingkey=zero").Funcs(funcs(nil, nil)).Parse(string(b))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", vf, err)
 		}
-		var buf bytes.Buffer
+		buf := &limitWriter{max: maxObjectBytes}
 		input := map[string]any{
 			"Settings": settings, "Can": map[string]any{"APIURL": can["apiUrl"], "Namespace": s.Namespace, "ServiceAccount": s.ServiceAccount, "SecretName": secretModule, "DBSecretName": secretDB, "TokenDir": TokenDir},
 			"Module": map[string]any{"ID": s.ID, "Version": s.Version},
 		}
-		if err := t.Execute(&buf, input); err != nil {
+		if err := t.Execute(buf, input); err != nil {
 			return nil, fmt.Errorf("%s: %w", vf, err)
 		}
 		var mapped map[string]any
-		if err := yaml.Unmarshal([]byte(strings.ReplaceAll(buf.String(), "<no value>", "")), &mapped); err != nil {
+		if err := yaml.Unmarshal([]byte(strings.ReplaceAll(buf.buf.String(), "<no value>", "")), &mapped); err != nil {
 			return nil, fmt.Errorf("%s is not valid YAML after rendering: %w", vf, err)
 		}
 		out = deepMerge(out, mapped)
+	}
+	if h := in.hostFor(s); h != "" { // last, so no values file can override the host can-core validates routes against
+		out = deepMerge(out, map[string]any{"ingress": map[string]any{"host": h}})
 	}
 	out["can"] = can
 	return out, nil
@@ -437,8 +456,8 @@ func (in *Installer) render(s reconcile.Spec) ([]kube.Object, error) {
 		if name == "" {
 			return nil, fmt.Errorf("chart object %s has no name", kind)
 		}
-		if !kube.Known(kind) || kind == "Namespace" || kind == "RoleBinding" || kind == "Pod" {
-			return nil, fmt.Errorf("chart may not contain %s %s", kind, name)
+		if err := in.checkObject(o, s); err != nil {
+			return nil, err
 		}
 		if ns := nsOf(o); ns != "" && ns != s.Namespace {
 			return nil, fmt.Errorf("chart object %s/%s targets namespace %q; only %q is allowed", kind, name, ns, s.Namespace)
@@ -552,7 +571,10 @@ func asList(v any) []any {
 func key(o kube.Object) string { return fmt.Sprint(o["kind"]) + "/" + nameOf(o) }
 
 func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.Object) error {
-	prev, _ := in.loadRelease(ctx, s)
+	prev, err := in.loadRelease(ctx, s)
+	if err != nil {
+		return fmt.Errorf("the recorded release in Secret %s is unreadable or fails its checksum (%w); inspect it or delete it to reinstall", secretRelease, err)
+	}
 	if err := in.applyAll(ctx, objs); err != nil {
 		in.restore(ctx, s, prev, objs)
 		return fmt.Errorf("applying chart (rolled back): %w", err)
@@ -575,7 +597,7 @@ func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.
 			if have[key(o)] || kind == "PersistentVolumeClaim" || kind == "Secret" {
 				continue
 			}
-			if err := in.cfg.API.Delete(ctx, kind, s.Namespace, nameOf(o)); err != nil {
+			if err := in.deleteOwned(ctx, s, kind, nameOf(o)); err != nil {
 				in.cfg.Log.Warn("pruning removed chart object failed", "module", s.ID, "object", key(o), "error", err)
 			}
 		}
@@ -670,7 +692,7 @@ func (in *Installer) restore(ctx context.Context, s reconcile.Spec, prev, failed
 		}
 		for _, o := range failed { // objects only the failed release had
 			if kind := fmt.Sprint(o["kind"]); !keep[key(o)] && kind != "PersistentVolumeClaim" && kind != "Secret" {
-				_ = in.cfg.API.Delete(rctx, kind, s.Namespace, nameOf(o))
+				_ = in.deleteOwned(rctx, s, kind, nameOf(o))
 			}
 		}
 		return
@@ -678,7 +700,7 @@ func (in *Installer) restore(ctx context.Context, s reconcile.Spec, prev, failed
 	for _, o := range failed {
 		switch kind := fmt.Sprint(o["kind"]); kind {
 		case "Deployment", "StatefulSet", "Job", "CronJob", "Service", "Ingress", "IngressRoute", "Middleware":
-			if err := in.cfg.API.Delete(rctx, kind, s.Namespace, nameOf(o)); err != nil {
+			if err := in.deleteOwned(rctx, s, kind, nameOf(o)); err != nil {
 				in.cfg.Log.Error("cleanup after failed install", "module", s.ID, "object", key(o), "error", err)
 			}
 		}
@@ -687,6 +709,10 @@ func (in *Installer) restore(ctx context.Context, s reconcile.Spec, prev, failed
 
 // The release record is a Secret holding the last good rendering (gzip + base64 in one key).
 func (in *Installer) saveRelease(ctx context.Context, s reconcile.Spec, objs []kube.Object) error {
+	return in.saveReleaseObjects(ctx, s, objs)
+}
+
+func (in *Installer) saveReleaseObjects(ctx context.Context, s reconcile.Spec, objs []kube.Object) error {
 	raw, err := json.Marshal(objs)
 	if err != nil {
 		return err
@@ -718,8 +744,45 @@ func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.
 	if err != nil {
 		return nil, err
 	}
+	sum := sha256.Sum256(raw)
+	if want := in.existingSecretKey(ctx, s.Namespace, secretRelease, "sha256"); want == "" || want != hex.EncodeToString(sum[:]) {
+		return nil, errors.New("sha256 does not match")
+	}
 	var objs []kube.Object
-	return objs, json.Unmarshal(raw, &objs)
+	if err := json.Unmarshal(raw, &objs); err != nil {
+		return nil, err
+	}
+	// The record is replayed on rollback, so it gets the same scrutiny as a fresh render.
+	for _, o := range objs {
+		if err := in.checkObject(o, s); err != nil {
+			return nil, err
+		}
+		if ns := nsOf(o); ns != s.Namespace {
+			return nil, fmt.Errorf("%s targets namespace %q", key(o), ns)
+		}
+	}
+	return objs, nil
+}
+
+// deleteOwned deletes a chart object only if it carries this module's labels: a name collision with
+// something else in the namespace (or a record that names a foreign object) must not delete it.
+func (in *Installer) deleteOwned(ctx context.Context, s reconcile.Spec, kind, name string) error {
+	if kind == "PersistentVolumeClaim" || kind == "Secret" || kind == "Namespace" {
+		return nil // data and credentials are never deleted by the installer
+	}
+	cur, err := in.cfg.API.Get(ctx, kind, s.Namespace, name)
+	if kube.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	l := asMap(asMap(cur["metadata"])["labels"])
+	if l[labelModule] != s.ID || l[labelManaged] != "can-core" {
+		in.cfg.Log.Warn("not deleting an object without this module's labels", "module", s.ID, "object", kind+"/"+name)
+		return nil
+	}
+	return in.cfg.API.Delete(ctx, kind, s.Namespace, name)
 }
 
 var _ reconcile.ModuleInstaller = (*Installer)(nil)

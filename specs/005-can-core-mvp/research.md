@@ -206,3 +206,49 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   attempts exactly that and requires the denial message to come from the policy (RBAC alone would have allowed it).
 - **Still open**: the kube-system Role (`coredns-custom`, `HelmChartConfig/traefik`) is not covered; nor is a
   compromised can-core creating arbitrary workloads in `mod-*` (pod security `restricted` bounds them).
+
+## R18. Hardening after QA (renderer sandbox, chart rules, integrity)
+- **This is not Helm.** `chart.go` is a Go `text/template` renderer with a Helm-flavoured function set. Supported:
+  `.Values`, `.Release.{Name,Namespace,Service}`, `.Chart.{Name,Version}`, `define`/`template`/`include`, `toYaml`,
+  `toJson`, `indent`, `nindent`, `quote`, `squote`, `default`, `empty`, `required`, `fail`, `trim*`, `trunc`, `lower`,
+  `upper`, `replace`, `contains`, `has{Prefix,Suffix,Key}`, `b64enc`, `toString`, `list`, `join`, `ternary`. Not supported
+  (render fails): sprig beyond that list, `lookup`, `tpl`, `.Files`, `.Capabilities`, subcharts and dependencies, hooks,
+  `helm test`, library charts, `NOTES.txt`, CRDs, JSON-schema validation of values. Release history is a single record
+  (`can-release`), not Helm's revision list.
+- **Sandbox limits** (tests in `hostile_test.go`): `include` nesting 20; any single function result 1 MiB; `indent` and
+  `nindent` 0..1024 columns and a result bound; `replace` growth bound; one template file 1 MiB of output, a chart 8 MiB;
+  chart files over 1 MiB are not read; 10 s wall-clock checked at each `include`; a panic while rendering is recovered.
+  Reads refuse symlinks and anything that resolves outside the chart directory (`values.yaml`, `Chart.yaml`, the templates
+  directory and every template); YAML errors never echo file contents. Not bounded: CPU spent in `range` over large
+  values (values come from reviewed repository files and `company.yaml` settings, not from the chart).
+- **Object rules.** Allowed kinds: ConfigMap, Secret (Opaque only, no `kubernetes.io/*` annotations), PersistentVolumeClaim,
+  Service (ClusterIP only; no NodePort, LoadBalancer, ExternalName, externalIPs), Deployment, StatefulSet, Job, CronJob,
+  NetworkPolicy, IngressRoute. Names must be DNS-1123. A NetworkPolicy may only select specific pods and allow
+  same-namespace bare `podSelector` peers (the shape the starter charts use); allow-all, `ipBlock`, `namespaceSelector`,
+  port-only and empty-peer rules are refused. An IngressRoute may only match the module's own host
+  (`<runtime.subdomain>.<company domain>`, which can-core also injects as `.Values.ingress.host` last, so a values file
+  cannot override it), may not use `HostRegexp`, and may not reference services or middlewares in other namespaces;
+  Ingress and Middleware are can-core's. The starter charts (support, newsletter, analytics) are installed through the
+  installer in `TestStarterModuleChartsStillInstall`.
+- **Deletion and integrity.** Deletes use `propagationPolicy=Background`. Prune and rollback delete an object only after
+  reading it back and finding `can.dev/module` and `managed-by=can-core`; PVCs, Secrets and Namespaces are never deleted.
+  The release record carries a SHA-256 that is verified on load (a mismatch refuses the enable instead of replaying it),
+  and every replayed object passes the same checks as a fresh render. A pre-existing namespace or RoleBinding (create
+  returned a conflict) is adopted only if the labels (`restricted`, `module`, managed-by, module id) or roleRef and single
+  subject are exactly what can-core would have created.
+- **Admission.** The `exempt` check was removed (that label is not a pod-security input, so it checked nothing); the
+  policy now requires a pinned `pod-security.kubernetes.io/enforce-version` (`v1.x`; the template pins `v1.31`, the k3s
+  minor in `dev/k3d.yaml`). With `CAN_INSTALLER=kubernetes` the installer refuses to create anything until it can read
+  both policies and sees a `Deny` binding for each (can-core has `get` only on those two names), so a cluster without
+  `deploy/base` fails loudly instead of running with the standing RBAC alone.
+- **TokenReview cache**: LRU eviction and singleflight, so a burst of identical tokens is one API call and junk tokens
+  evict junk first.
+- **MariaDB** is accepted by `module.v1` (`requires.database: mariadb`) but not provisioned: Enable fails with
+  "database kind is not configured" before any workload is created.
+- **In-cluster RSS, unexplained gap.** The CI run printed VmHWM 45.4 MB and VmRSS 25.1 MB for the can-core process after the
+  whole integration run; the local idle figure is 41.5 MB (3 s after start). The HWM is the comparable number (peak, which
+  includes startup and the Postgres/Argon2-free request paths); the 25 MB RSS was sampled minutes after the load had
+  ended, so the Go runtime had very likely returned memory to the OS, but this is not verified. Neither figure is a
+  steady-state-under-load measurement.
+- **Evidence status.** The k3d lifecycle test runs in the `dev-cluster` workflow, which is `continue-on-error` and not a
+  required check: it is advisory evidence, not a merge gate.

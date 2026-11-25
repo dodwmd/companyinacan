@@ -76,14 +76,14 @@ func TestReconcileLoopRunsUntilCancelled(t *testing.T) {
 	go func() { reconcileLoop(ctx, cfg, r, quiet()); close(done) }()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(fk.Enabled) == 1 {
+		if fk.EnabledCount() == 1 {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	cancel()
 	<-done
-	if len(fk.Enabled) != 1 {
+	if fk.EnabledCount() != 1 {
 		t.Fatal("loop never applied")
 	}
 }

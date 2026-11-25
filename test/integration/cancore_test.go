@@ -95,7 +95,7 @@ func TestAdmissionPolicyDeniesBindIntoKubeSystem(t *testing.T) {
 
 func TestAdmissionPolicyNamespaceAndBindingRules(t *testing.T) {
 	waitForPolicy(t)
-	good := map[string]string{"can.dev/namespace-kind": "module", "pod-security.kubernetes.io/enforce": "restricted"}
+	good := map[string]string{"can.dev/namespace-kind": "module", "pod-security.kubernetes.io/enforce": "restricted", "pod-security.kubernetes.io/enforce-version": "v1.31"}
 	t.Cleanup(func() {
 		_, _ = kubectl("delete", "namespace", "mod-vaptest", "mod-vapbad", "--ignore-not-found", "--wait=false")
 	})
@@ -104,9 +104,9 @@ func TestAdmissionPolicyNamespaceAndBindingRules(t *testing.T) {
 		name, yaml, want string
 	}{
 		{"name outside mod-*", nsYAML("evil-ns", good), "only create module namespaces"},
-		{"relaxed pod security", nsYAML("mod-vapbad", map[string]string{"can.dev/namespace-kind": "module", "pod-security.kubernetes.io/enforce": "privileged"}), "restricted pod security"},
+		{"relaxed pod security", nsYAML("mod-vapbad", map[string]string{"can.dev/namespace-kind": "module", "pod-security.kubernetes.io/enforce": "privileged", "pod-security.kubernetes.io/enforce-version": "v1.31"}), "restricted pod security"},
 		{"no labels", nsYAML("mod-vapbad", nil), "restricted pod security"},
-		{"pod security exemption", nsYAML("mod-vapbad", map[string]string{"can.dev/namespace-kind": "module", "pod-security.kubernetes.io/enforce": "restricted", "pod-security.kubernetes.io/exempt": "true"}), "cannot opt out"},
+		{"no enforce-version pin", nsYAML("mod-vapbad", map[string]string{"can.dev/namespace-kind": "module", "pod-security.kubernetes.io/enforce": "restricted"}), "enforce-version"},
 	}
 	for _, d := range denied {
 		out, err := asCanCoreStdin(d.yaml, "create", "-f", "-")

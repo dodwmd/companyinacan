@@ -13,8 +13,22 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"time"
 
 	"go.yaml.in/yaml/v3"
+)
+
+// Sandbox limits of the renderer. A chart is reviewed repository code, but a hostile or buggy one
+// must not be able to take can-core down (stack overflow is fatal in Go, a huge allocation is an
+// OOM kill), so every amplification path is bounded.
+const (
+	maxIncludeDepth = 20
+	maxIndent       = 1024
+	maxStringBytes  = 1 << 20 // any single string a template function produces
+	maxObjectBytes  = 1 << 20 // rendered output of one template file
+	maxTotalBytes   = 8 << 20 // rendered output of the whole chart
+	maxFileBytes    = 1 << 20 // any chart file read from disk
+	renderTimeout   = 10 * time.Second
 )
 
 // ReleaseInfo is the .Release object of a chart.
@@ -23,29 +37,86 @@ type ReleaseInfo struct {
 	Chart, Version  string
 }
 
+type renderState struct {
+	depth    int
+	deadline time.Time
+}
+
+// limitWriter fails once more than max bytes were written.
+type limitWriter struct {
+	buf bytes.Buffer
+	max int
+}
+
+func (w *limitWriter) Write(p []byte) (int, error) {
+	if w.buf.Len()+len(p) > w.max {
+		return 0, fmt.Errorf("rendered output exceeds %d bytes", w.max)
+	}
+	return w.buf.Write(p)
+}
+
+// readInside reads a chart file, refusing symlinks and anything that resolves outside root (the
+// resolved chart directory) or is larger than maxFileBytes. A missing file is fs.ErrNotExist.
+func readInside(root, path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s is a symlink; refused", filepath.Base(path))
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || !strings.HasPrefix(resolved, root+string(filepath.Separator)) {
+		return nil, fmt.Errorf("%s resolves outside the chart; refused", filepath.Base(path))
+	}
+	if info.Size() > maxFileBytes {
+		return nil, fmt.Errorf("%s is larger than %d bytes; refused", filepath.Base(path), maxFileBytes)
+	}
+	return os.ReadFile(resolved) //nolint:gosec // resolved inside the chart directory
+}
+
 // RenderChart renders chartDir/templates with a Helm-compatible subset of the template language and
 // returns the objects. Supported: .Values, .Release.{Name,Namespace}, .Chart.{Name,Version},
 // named templates (define/include/template from *.tpl and *.yaml), and the functions in funcs below.
 // Not supported (a chart using them fails with an "undefined function" error): lookup, tpl,
-// subcharts, hooks, .Capabilities, .Files. Why not the real Helm engine: research R16.
-func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) ([]map[string]any, error) {
-	tdir := filepath.Join(chartDir, "templates")
+// subcharts, hooks, .Capabilities, .Files. This is not Helm: see research R16 for the list and the
+// sandbox limits (include depth, output size, string size, indentation, wall-clock).
+func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) (out []map[string]any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = nil, fmt.Errorf("chart rendering panicked: %v", r)
+		}
+	}()
+	root, err := filepath.EvalSymlinks(chartDir)
+	if err != nil {
+		return nil, fmt.Errorf("chart directory: %w", err)
+	}
+	tdir := filepath.Join(root, "templates")
+	if info, err := os.Lstat(tdir); err != nil || info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
+		return nil, errors.New("chart has no templates directory (or it is a symlink)")
+	}
 	ents, err := os.ReadDir(tdir)
 	if err != nil {
 		return nil, fmt.Errorf("chart has no templates directory: %w", err)
 	}
 	values := map[string]any{}
-	if b, err := os.ReadFile(filepath.Join(chartDir, "values.yaml")); err == nil { //nolint:gosec // module chart path
+	switch b, err := readInside(root, filepath.Join(root, "values.yaml")); {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return nil, fmt.Errorf("values.yaml: %w", err)
+	default:
+		// yaml errors can quote the offending text; do not echo file contents.
 		if err := yaml.Unmarshal(b, &values); err != nil {
-			return nil, fmt.Errorf("values.yaml: %w", err)
+			return nil, errors.New("values.yaml is not valid YAML")
 		}
 	}
 	merged := deepMerge(values, overrides)
 	if rel.Chart == "" {
-		rel.Chart, rel.Version = chartMeta(chartDir)
+		rel.Chart, rel.Version = chartMeta(root)
 	}
-	root := template.New("chart").Option("missingkey=zero")
-	root.Funcs(funcs(root))
+	st := &renderState{deadline: time.Now().Add(renderTimeout)}
+	rt := template.New("chart").Option("missingkey=zero")
+	rt.Funcs(funcs(rt, st))
 	var names []string
 	for _, e := range ents {
 		n := e.Name()
@@ -53,16 +124,12 @@ func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) ([]
 		if e.IsDir() || !templated {
 			continue
 		}
-		info, err := os.Lstat(filepath.Join(tdir, n))
-		if err != nil || info.Mode()&fs.ModeSymlink != 0 {
-			return nil, fmt.Errorf("template %s is a symlink; refused", n)
-		}
-		b, err := os.ReadFile(filepath.Join(tdir, n)) //nolint:gosec // module chart path
+		b, err := readInside(root, filepath.Join(tdir, n))
 		if err != nil {
-			return nil, err
-		}
-		if _, err := root.New(n).Parse(string(b)); err != nil {
 			return nil, fmt.Errorf("template %s: %w", n, err)
+		}
+		if _, err := rt.New(n).Parse(string(b)); err != nil {
+			return nil, fmt.Errorf("template %s does not parse", n)
 		}
 		if !strings.HasPrefix(n, "_") && !strings.HasSuffix(n, ".tpl") {
 			names = append(names, n)
@@ -74,13 +141,17 @@ func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) ([]
 		"Release": map[string]any{"Name": rel.Name, "Namespace": rel.Namespace, "Service": "can-core"},
 		"Chart":   map[string]any{"Name": rel.Chart, "Version": rel.Version},
 	}
-	var out []map[string]any
+	total := 0
 	for _, n := range names {
-		var buf bytes.Buffer
-		if err := root.ExecuteTemplate(&buf, n, data); err != nil {
+		w := &limitWriter{max: maxObjectBytes}
+		st.depth = 0
+		if err := rt.ExecuteTemplate(w, n, data); err != nil {
 			return nil, fmt.Errorf("rendering %s: %w", n, err)
 		}
-		text := strings.ReplaceAll(buf.String(), "<no value>", "")
+		if total += w.buf.Len(); total > maxTotalBytes {
+			return nil, fmt.Errorf("rendered chart exceeds %d bytes", maxTotalBytes)
+		}
+		text := strings.ReplaceAll(w.buf.String(), "<no value>", "")
 		dec := yaml.NewDecoder(strings.NewReader(text))
 		for {
 			var doc map[string]any
@@ -89,7 +160,7 @@ func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) ([]
 				break
 			}
 			if err != nil {
-				return nil, fmt.Errorf("%s is not valid YAML after rendering: %w", n, err)
+				return nil, fmt.Errorf("%s is not valid YAML after rendering", n)
 			}
 			if len(doc) == 0 {
 				continue
@@ -106,8 +177,8 @@ func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) ([]
 	return out, nil
 }
 
-func chartMeta(dir string) (name, version string) {
-	b, err := os.ReadFile(filepath.Join(dir, "Chart.yaml")) //nolint:gosec // module chart path
+func chartMeta(root string) (name, version string) {
+	b, err := readInside(root, filepath.Join(root, "Chart.yaml"))
 	if err != nil {
 		return "", ""
 	}
@@ -134,7 +205,7 @@ func deepMerge(base, over map[string]any) map[string]any {
 	return out
 }
 
-func funcs(root *template.Template) template.FuncMap {
+func funcs(root *template.Template, st *renderState) template.FuncMap {
 	toYAML := func(v any) string {
 		b, err := yaml.Marshal(v)
 		if err != nil {
@@ -142,9 +213,16 @@ func funcs(root *template.Template) template.FuncMap {
 		}
 		return strings.TrimSuffix(string(b), "\n")
 	}
-	indent := func(n int, s string) string {
+	indent := func(n int, s string) (string, error) {
+		if n < 0 || n > maxIndent {
+			return "", fmt.Errorf("indent %d is outside 0..%d", n, maxIndent)
+		}
+		// Every line gains n bytes: bound the result before building it.
+		if (strings.Count(s, "\n")+1)*n+len(s) > maxStringBytes {
+			return "", fmt.Errorf("indent would produce a string over %d bytes", maxStringBytes)
+		}
 		pad := strings.Repeat(" ", n)
-		return pad + strings.ReplaceAll(s, "\n", "\n"+pad)
+		return pad + strings.ReplaceAll(s, "\n", "\n"+pad), nil
 	}
 	truthy := func(v any) bool {
 		switch x := v.(type) {
@@ -171,8 +249,9 @@ func funcs(root *template.Template) template.FuncMap {
 		"toYaml": toYAML,
 		"toJson": func(v any) string { b, _ := json.Marshal(v); return string(b) },
 		"indent": indent,
-		"nindent": func(n int, s string) string {
-			return "\n" + indent(n, s)
+		"nindent": func(n int, s string) (string, error) {
+			r, err := indent(n, s)
+			return "\n" + r, err
 		},
 		"quote":  func(v any) string { return fmt.Sprintf("%q", fmt.Sprint(v)) },
 		"squote": func(v any) string { return "'" + strings.ReplaceAll(fmt.Sprint(v), "'", "''") + "'" },
@@ -193,15 +272,23 @@ func funcs(root *template.Template) template.FuncMap {
 		"trim":       strings.TrimSpace,
 		"trimSuffix": func(suf, s string) string { return strings.TrimSuffix(s, suf) },
 		"trimPrefix": func(pre, s string) string { return strings.TrimPrefix(s, pre) },
-		"trunc": func(n int, s string) string {
-			if n < len(s) {
-				return s[:n]
+		"trunc": func(n int, s string) (string, error) {
+			if n < 0 {
+				return "", errors.New("trunc: negative length")
 			}
-			return s
+			if n < len(s) {
+				return s[:n], nil
+			}
+			return s, nil
 		},
-		"lower":     strings.ToLower,
-		"upper":     strings.ToUpper,
-		"replace":   func(old, new, s string) string { return strings.ReplaceAll(s, old, new) },
+		"lower": strings.ToLower,
+		"upper": strings.ToUpper,
+		"replace": func(old, new, s string) (string, error) {
+			if old != "" && len(new) > len(old) && strings.Count(s, old)*(len(new)-len(old))+len(s) > maxStringBytes {
+				return "", fmt.Errorf("replace would produce a string over %d bytes", maxStringBytes)
+			}
+			return strings.ReplaceAll(s, old, new), nil
+		},
 		"contains":  func(sub, s string) bool { return strings.Contains(s, sub) },
 		"hasPrefix": func(pre, s string) bool { return strings.HasPrefix(s, pre) },
 		"hasSuffix": func(suf, s string) bool { return strings.HasSuffix(s, suf) },
@@ -223,14 +310,24 @@ func funcs(root *template.Template) template.FuncMap {
 			return b
 		},
 		"include": func(name string, data any) (string, error) {
-			if root == nil {
+			if root == nil || st == nil {
 				return "", errors.New("include is not available here")
 			}
-			var buf bytes.Buffer
-			if err := root.ExecuteTemplate(&buf, name, data); err != nil {
+			// Recursion through include restarts the template engine's own depth counter, and
+			// a Go stack overflow is fatal, so the depth is capped here.
+			if st.depth >= maxIncludeDepth {
+				return "", fmt.Errorf("include nested deeper than %d", maxIncludeDepth)
+			}
+			if time.Now().After(st.deadline) {
+				return "", fmt.Errorf("rendering took longer than %s", renderTimeout)
+			}
+			st.depth++
+			defer func() { st.depth-- }()
+			w := &limitWriter{max: maxStringBytes}
+			if err := root.ExecuteTemplate(w, name, data); err != nil {
 				return "", err
 			}
-			return buf.String(), nil
+			return w.buf.String(), nil
 		},
 	}
 }
