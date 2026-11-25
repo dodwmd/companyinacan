@@ -55,6 +55,10 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   admin to still log in. See [deployment.md](deployment.md).
 - **Known limit**: in the shared-address mode an attacker who knows the password can guess TOTP codes at a bounded
   rate; `CAN_TRUST_PROXY=true` plus the Traefik IP allowlist (SPEC 3.1) is the control.
+- **Limits of the back-off (documented, accepted)**:
+  - `maxSleepers` (256) bounds logins waiting out a back-off, not a burst of concurrent junk logins that all start at zero failure counters; those are bounded only by the HTTP server timeouts and connection limits.
+  - `ErrBusy` (503) returns immediately and is not padded to the 150 ms floor; the timing difference reveals only that the server is saturated, a negligible oracle.
+  - Failure counters restart when their 15-minute window ends (or an expired lock ends), so a slow attacker below the threshold per window is never delayed; the threshold applies per window, not cumulatively.
   Client address comes from the last `X-Forwarded-For` entry only when `CAN_TRUST_PROXY=true`.
 - **Rationale**: stops online guessing even with a leaked password (TOTP), survives restarts, and a distinct address
   limit stops username spraying.

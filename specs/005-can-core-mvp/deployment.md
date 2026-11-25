@@ -29,13 +29,13 @@ address. can-core therefore has two throttling modes and picks one from `CAN_TRU
 - **`CAN_TRUST_PROXY=false` (the binary's default, correct when addresses cannot be trusted).** Nothing is ever
   refused for failures, because a shared address would let an anonymous attacker lock the real admin out. Failures
   only add an increasing delay (250 ms doubling to 2 s) and at most 256 logins wait at once (more get 503). The admin
-  with valid credentials and TOTP code always gets in, only slower while under attack.
+  with valid credentials and TOTP code gets in, only slower, unless the 256-waiter cap is saturated by a sustained flood (503 while it lasts; no persistent lockout; existing sessions are unaffected).
 
 In both modes: the TOTP code is checked before the password, so junk logins never run the 19 MiB argon2 step (a
 guess passes the code check with probability about 3 in a million); argon2 runs under a concurrency cap; every login
 takes at least 150 ms regardless of which check failed. Residual risk in the shared-address mode: an attacker who
 already knows the password can guess TOTP codes at a bounded rate (roughly 100 requests a second at the cap, about
-3e-6 chance each). Turn on `CAN_TRUST_PROXY` and add the Traefik IP allowlist (SPEC 3.1) to close that.
+3e-6 chance each). Turn on `CAN_TRUST_PROXY` and add the Traefik IP allowlist (SPEC 3.1) to close that. The IP allowlist is also the availability mitigation against a sustained flood saturating the waiter cap.
 
 Recovery from inside the pod: `can-core admin unlock [--username]` and `can-core admin reset-password
 [--rotate-totp]`.
