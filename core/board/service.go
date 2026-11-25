@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/obs/obssql"
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
 )
 
@@ -78,6 +79,7 @@ func Open(path string, opt Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	obssql.WatchDefault(db)
 	db.SetMaxOpenConns(1) // serialises writes (pool and balance checks rely on it) and keeps idle RAM low
 	s := &Service{db: db, keys: opt.Keyring, audit: opt.Auditor, retention: opt.Retention, now: opt.Now}
 	if s.now == nil {

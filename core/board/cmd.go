@@ -15,6 +15,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/obs"
+	obslog "github.com/dodwmd/companyinacan/core/obs/log"
 )
 
 // Version is set at build time with -ldflags "-X .../core/board.Version=...".
@@ -69,7 +72,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "keys: %v\n", err)
 		return 2
 	}
-	log := slog.New(slog.NewJSONHandler(stderr, nil)).With("service", "can-board", "version", Version)
+	log := obslog.New(stderr, obslog.Options{Service: "can-board", Version: Version, Level: getenv("CAN_LOG_LEVEL"), Format: getenv("CAN_LOG_FORMAT")})
 
 	if cmd != "serve" {
 		return maintenance(cmd, cfg, kr, rules, *subject, *class, stdout, stderr)
@@ -105,8 +108,12 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if err := obs.Setup(ctx, getenv, obs.BuildInfo{Version: Version}, log); err != nil {
+		fmt.Fprintf(stderr, "metrics: %v\n", err)
+		return 2
+	}
 	api := &API{Svc: svc, Auth: auth, Log: log}
-	srv := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
+	srv := &http.Server{Handler: obs.Instrument(api.Handler()), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { defer wg.Done(); background(ctx, svc, disp, log) }()
