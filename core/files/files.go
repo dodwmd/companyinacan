@@ -572,6 +572,13 @@ func (s *Store) ListFiles(ctx context.Context, p *Principal, q ListQuery) (Page[
 			return out, s.forbid(ctx, p, "file.list", "space:"+q.SpaceID, err)
 		}
 	}
+	listed := "files"
+	if q.SpaceID != "" {
+		listed = "space:" + q.SpaceID
+	}
+	if err := s.auditRead(cctx, p.Subject, "file.list", listed); err != nil {
+		return out, err
+	}
 	rows, err := s.db.QueryContext(cctx, `SELECT `+fileCols+`, m.r FROM files f
 		JOIN (SELECT space_id, MAX(CASE role WHEN 'manager' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END) AS r FROM space_members WHERE (principal IN (`+placeholders(len(keys))+`)) GROUP BY space_id) m ON (m.space_id = f.space_id)
 		LEFT JOIN versions v ON (v.file_id = f.id) AND (v.n = f.current_version)
@@ -618,6 +625,9 @@ func (s *Store) ListVersions(ctx context.Context, p *Principal, id string) ([]Ve
 	defer cancel()
 	_, role, err := s.getFile(ctx, s.db, p, id, RoleViewer)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.auditRead(ctx, p.Subject, "file.versions", "file:"+id); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT n, size, content_type, sha256, scan, created_by, created_at, purged_at FROM versions WHERE (file_id = ?) ORDER BY n DESC LIMIT 1000`, id)

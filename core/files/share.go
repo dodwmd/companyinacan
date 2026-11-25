@@ -149,6 +149,9 @@ func (s *Store) ListShares(ctx context.Context, p *Principal, fileID string) ([]
 	if err != nil {
 		return nil, s.forbid(ctx, p, "share.list", "file:"+fileID, err)
 	}
+	if err := s.auditRead(ctx, p.Subject, "share.list", "file:"+fileID); err != nil {
+		return nil, err
+	}
 	q := `SELECT id, version, label_sealed, expires_at, one_time, uses, created_by, created_at, revoked_at FROM shares WHERE (file_id = ?)`
 	args := []any{fileID}
 	if role < RoleManager {

@@ -127,3 +127,46 @@ func TestRestoreTokenOpensOnlyThePurgeRoute(t *testing.T) {
 		t.Errorf("purge as a writer: %d", resp.StatusCode)
 	}
 }
+
+// QA major 9: names and other sealed metadata were returned by list reads that left no trace.
+func TestEveryReadOfSealedMetadataIsAuditedFirst(t *testing.T) {
+	e := newEnv(t)
+	sp := e.space(e.alice, "S")
+	f := e.upload(e.alice, sp.ID, "a.pdf", pdf(""))
+	if _, err := e.s.CreateFolder(ctx, e.alice, sp.ID, "", "folder"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.s.CreateShare(ctx, e.alice, f.ID, ShareRequest{Label: "l"}); err != nil {
+		t.Fatal(err)
+	}
+	reads := map[string]func() error{
+		"ListSpaces": func() error { _, err := e.s.ListSpaces(ctx, e.alice, "", 0); return err },
+		"GetSpace":   func() error { _, err := e.s.GetSpace(ctx, e.alice, sp.ID); return err },
+		"ListFiles":  func() error { _, err := e.s.ListFiles(ctx, e.alice, ListQuery{SpaceID: sp.ID}); return err },
+		"ListFiles across spaces": func() error {
+			_, err := e.s.ListFiles(ctx, e.alice, ListQuery{})
+			return err
+		},
+		"ListVersions": func() error { _, err := e.s.ListVersions(ctx, e.alice, f.ID); return err },
+		"ListFolders":  func() error { _, err := e.s.ListFolders(ctx, e.alice, sp.ID); return err },
+		"ListShares":   func() error { _, err := e.s.ListShares(ctx, e.alice, f.ID); return err },
+		"ListMembers":  func() error { _, err := e.s.ListMembers(ctx, e.alice, sp.ID); return err },
+	}
+	for name, fn := range reads {
+		before := e.count(`SELECT COUNT(*) FROM audit_log`)
+		if err := fn(); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if e.count(`SELECT COUNT(*) FROM audit_log`) != before+1 {
+			t.Errorf("%s left no audit entry", name)
+		}
+	}
+	if _, err := e.s.db.Exec(`CREATE TRIGGER no_more_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'audit down'); END`); err != nil {
+		t.Fatal(err)
+	}
+	for name, fn := range reads {
+		if err := fn(); !errors.Is(err, ErrUnavailable) {
+			t.Errorf("%s with the audit log down = %v, want unavailable", name, err)
+		}
+	}
+}

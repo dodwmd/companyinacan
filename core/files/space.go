@@ -168,6 +168,9 @@ func (s *Store) GetSpace(ctx context.Context, p *Principal, id string) (*Space, 
 	if role == RoleNone {
 		return nil, ErrNotFound
 	}
+	if err := s.auditRead(ctx, p.Subject, "space.read", "space:"+id); err != nil {
+		return nil, err
+	}
 	var name sql.NullString
 	var owner string
 	var created int64
@@ -193,6 +196,9 @@ func (s *Store) ListSpaces(ctx context.Context, p *Principal, cursor string, lim
 	keys := p.memberKeys()
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
+	if err := s.auditRead(ctx, p.Subject, "space.list", "spaces"); err != nil {
+		return out, err
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT sp.id, sp.name_sealed, sp.owner, sp.created_at, m.r FROM spaces sp
 		JOIN (SELECT space_id, MAX(CASE role WHEN 'manager' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END) AS r FROM space_members WHERE (principal IN (`+placeholders(len(keys))+`)) GROUP BY space_id) m ON (m.space_id = sp.id)
 		WHERE (sp.id > ?) ORDER BY sp.id LIMIT ?`, append(anyArgs(keys), cursor, limit+1)...)
@@ -259,6 +265,9 @@ func (s *Store) ListMembers(ctx context.Context, p *Principal, spaceID string) (
 	defer cancel()
 	if _, err := s.need(ctx, s.db, p, spaceID, RoleManager, "members.list"); err != nil {
 		return nil, s.forbid(ctx, p, "members.list", "space:"+spaceID, err)
+	}
+	if err := s.auditRead(ctx, p.Subject, "members.list", "space:"+spaceID); err != nil {
+		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT principal, role FROM space_members WHERE (space_id = ?) ORDER BY principal LIMIT 1000`, spaceID)
 	if err != nil {
@@ -446,6 +455,9 @@ func (s *Store) ListFolders(ctx context.Context, p *Principal, spaceID string) (
 	defer cancel()
 	if _, err := s.need(ctx, s.db, p, spaceID, RoleViewer, "folder.list"); err != nil {
 		return nil, s.forbid(ctx, p, "folder.list", "space:"+spaceID, err)
+	}
+	if err := s.auditRead(ctx, p.Subject, "folder.list", "space:"+spaceID); err != nil {
+		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id, parent_id, name_sealed, created_at FROM folders WHERE (space_id = ?) ORDER BY id LIMIT 5000`, spaceID)
 	if err != nil {
