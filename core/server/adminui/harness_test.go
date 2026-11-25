@@ -177,7 +177,7 @@ func cookieNamed(r *http.Response, name string) *http.Cookie {
 func (h *harness) loginForm() (*http.Cookie, string) {
 	h.t.Helper()
 	r := h.do("GET", "/login", nil)
-	c := cookieNamed(r.Response, "can_login_csrf")
+	c := cookieNamed(r.Response, "__Host-can_login_csrf")
 	if c == nil {
 		h.t.Fatal("no login csrf cookie")
 	}

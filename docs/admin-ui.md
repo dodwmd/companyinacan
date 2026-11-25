@@ -11,7 +11,7 @@ framework, no build step. Source: `core/server/adminui`. Specification: `specs/0
 | `/login` | Username, password and authentication code. Same throttling and error text as the JSON API |
 | `/` | Dashboard: company, module cards (enabled, failed, last error), capability map, webhook delivery health with a requeue button per dead delivery, recent audit entries |
 | `/modules`, `/modules/{id}` | Installed modules with state, version, licence (a **Source-available** badge when `licence_class: source-available`), declared RAM and its total; detail shows the manifest summary |
-| `/audit` | Audit log, newest first, filter by actor, action prefix and target; **Verify chain**; **Export as JSON lines** |
+| `/audit` | Audit log, newest first, filter by actor, action prefix and target; **Verify chain**; **Export as JSON lines** (both are POST buttons; only one runs at a time) |
 | `/events`, `/events/{id}` | Event deliveries and the attempt log; requeue for dead deliveries. Event payloads are deliberately not shown (they can hold personal data) |
 | `/leads`, `/leads/{id}` | Read-only list of form submissions with a status filter, and a status change form |
 | `/settings` | Change password, rotate the authentication (TOTP) secret, list and revoke sessions |
@@ -38,9 +38,13 @@ the can-core log.
 - Content-Security-Policy `default-src 'none'; script-src 'none'; style-src 'self'; ...; frame-ancestors 'none'`.
   There is no script on any page, so a template injection bug cannot run code. Everything that comes from
   modules, audit entries or leads is HTML-escaped by `html/template` (tested with hostile data).
-- Changing the password or the authentication secret needs the current password (5 wrong attempts lock
-  account changes for 15 minutes) and signs you out everywhere. A new secret takes effect only after you
+- Changing the password or the authentication secret needs the current password **and** a fresh authentication
+  code (5 wrong attempts lock account changes for 15 minutes; each attempt is counted before it is checked)
+  and signs you out everywhere. A code can be used once, so right after signing in you wait for the next one. A new secret takes effect only after you
   confirm it with a code generated from it.
+- The login CSRF cookie is `__Host-` prefixed when cookies are Secure (plain-HTTP development uses a plain name).
+- **HSTS is not sent by can-core.** The ingress (Traefik) must send `Strict-Transport-Security` for the admin host;
+  without it a browser's first request can still be downgraded.
 - Authenticated pages are `Cache-Control: no-store`. There is no service worker, so nothing authenticated
   is ever cached by the app.
 
@@ -55,7 +59,7 @@ display. It opens the live site; there is no offline mode by design.
 Skip link, landmarks, one `h1` per page and ordered headings, labelled controls, table captions and
 header scopes, visible focus, 44 px touch targets, colour pairs checked against WCAG AA in light and dark
 schemes, `prefers-reduced-motion` and `forced-colors` honoured, usable at 200% zoom. The checks that can be
-automated run in `go test ./core/server/adminui` (`a11y_test.go`); a manual screen-reader pass is still
+automated run in `go test ./core/server/adminui` (`a11y_test.go`); a manual screen-reader pass (and a read-through of these docs by someone who did not write them) is still
 owed (see the plan's known gaps).
 
 ## Working on it

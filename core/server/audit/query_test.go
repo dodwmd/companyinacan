@@ -34,6 +34,13 @@ func TestQueryFiltersNewestFirstAndPages(t *testing.T) {
 	if len(got) != 1 || got[0].Seq != 2 {
 		t.Fatalf("paging: %+v", got)
 	}
+	// Non-ASCII prefixes are counted in characters, not bytes.
+	if _, err := l.Append(ctx, Entry{Actor: "root", Action: "módulo.enable", Target: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = l.Query(ctx, Filter{ActionPrefix: "módulo.", Limit: 10}); len(got) != 1 {
+		t.Fatalf("multi-byte prefix: %+v", got)
+	}
 	// LIKE wildcards in the filter are literal.
 	got, _ = l.Query(ctx, Filter{ActionPrefix: "%", Limit: 10})
 	if len(got) != 0 {

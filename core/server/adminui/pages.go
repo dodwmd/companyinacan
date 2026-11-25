@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
@@ -22,14 +23,22 @@ import (
 
 // --- login / logout ------------------------------------------------------------------------------
 
-const loginCSRFCookie = "can_login_csrf"
+// The login CSRF cookie is __Host- prefixed wherever Secure applies (the browser then refuses a
+// cookie set by a sibling subdomain or with another Path); plain HTTP development keeps the
+// unprefixed name, since browsers reject __Host- cookies without Secure.
+func (s *Server) loginCookieName() string {
+	if s.Secure {
+		return "__Host-can_login_csrf"
+	}
+	return "can_login_csrf"
+}
 
 type loginData struct {
 	Username, Error, LoginCSRF string
 }
 
 func (s *Server) loginCookie(tok string) *http.Cookie {
-	return &http.Cookie{Name: loginCSRFCookie, Value: tok, Path: "/login", HttpOnly: true, Secure: s.Secure, SameSite: http.SameSiteStrictMode, MaxAge: 3600}
+	return &http.Cookie{Name: s.loginCookieName(), Value: tok, Path: "/", HttpOnly: true, Secure: s.Secure, SameSite: http.SameSiteStrictMode, MaxAge: 3600}
 }
 
 func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int, tok, username, errKey string) {
@@ -51,7 +60,7 @@ func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, nil, http.StatusBadRequest, "err.bad_request", "err.bad_request_msg")
 		return
 	}
-	c, err := r.Cookie(loginCSRFCookie)
+	c, err := r.Cookie(s.loginCookieName())
 	if err != nil || !equalTokens(c.Value, r.PostFormValue("csrf")) {
 		s.renderLogin(w, r, http.StatusForbidden, randToken(), r.PostFormValue("username"), "login.csrf")
 		return
@@ -298,8 +307,8 @@ type auditData struct {
 
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) > n {
-		s = s[:n]
+	if utf8.RuneCountInString(s) > n {
+		s = string([]rune(s)[:n])
 	}
 	return s
 }
@@ -340,7 +349,21 @@ func (s *Server) auditPage(w http.ResponseWriter, r *http.Request, sc *sessionCt
 	s.render(w, r, http.StatusOK, "audit.html", s.page(r, sc, "audit", s.msg("audit.title"), d))
 }
 
+// busy takes the single-flight lock of the whole-log operations; false means one is running.
+func (s *Server) busy(w http.ResponseWriter, r *http.Request, sc *sessionCtx) bool {
+	if s.heavy.TryLock() {
+		return false
+	}
+	w.Header().Set("Retry-After", "5")
+	s.fail(w, r, sc, http.StatusServiceUnavailable, "err.busy", "err.busy_msg")
+	return true
+}
+
 func (s *Server) auditVerify(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
+	if s.busy(w, r, sc) {
+		return
+	}
+	defer s.heavy.Unlock()
 	res, err := s.Audit.Verify(r.Context(), audit.VerifyOptions{})
 	if err != nil {
 		s.internal(w, r, sc, err)
@@ -364,6 +387,10 @@ func (s *Server) auditVerify(w http.ResponseWriter, r *http.Request, sc *session
 }
 
 func (s *Server) auditExport(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
+	if s.busy(w, r, sc) {
+		return
+	}
+	defer s.heavy.Unlock()
 	if _, err := s.Audit.Append(r.Context(), audit.Entry{Actor: sc.User.Username, Action: "audit.export", Target: "audit"}); err != nil {
 		s.internal(w, r, sc, err)
 		return
@@ -710,7 +737,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, sc *sess
 		s.renderSettings(w, r, sc, http.StatusBadRequest, "settings.weak")
 		return
 	}
-	err := s.Auth.ChangePassword(r.Context(), sc.User, r.PostFormValue("current"), next, httpx.ClientIP(r, s.TrustProxy))
+	err := s.Auth.ChangePassword(r.Context(), sc.User, r.PostFormValue("current"), strings.TrimSpace(r.PostFormValue("otp")), next, httpx.ClientIP(r, s.TrustProxy))
 	if err != nil {
 		if status, key, ok := accountError(w, err); ok {
 			s.renderSettings(w, r, sc, status, key)
@@ -754,7 +781,7 @@ func (s *Server) totpConfirm(w http.ResponseWriter, r *http.Request, sc *session
 		s.fail(w, r, sc, http.StatusBadRequest, "err.bad_request", "err.bad_request_msg")
 		return
 	}
-	err := s.Auth.RotateTOTP(r.Context(), sc.User, r.PostFormValue("current"), secret, strings.TrimSpace(r.PostFormValue("code")), httpx.ClientIP(r, s.TrustProxy))
+	err := s.Auth.RotateTOTP(r.Context(), sc.User, r.PostFormValue("current"), strings.TrimSpace(r.PostFormValue("otp")), secret, strings.TrimSpace(r.PostFormValue("code")), httpx.ClientIP(r, s.TrustProxy))
 	switch {
 	case err == nil:
 		s.endSessions(w, r, "flash.totp_rotated")

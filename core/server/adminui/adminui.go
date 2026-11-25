@@ -55,8 +55,11 @@ type Server struct {
 	TrustProxy bool
 	Now        func() time.Time
 
-	once sync.Once
-	tpl  map[string]*template.Template
+	// heavy serializes the whole-log operations (verify, export): each holds the only database
+	// connection for as long as the log is long. A second request while one runs is refused.
+	heavy sync.Mutex
+	once  sync.Once
+	tpl   map[string]*template.Template
 }
 
 type route struct {
@@ -74,7 +77,7 @@ func (s *Server) routes() []route {
 		{"GET /modules/{id}", s.authed(s.module)},
 		{"GET /audit", s.authed(s.auditPage)},
 		{"POST /audit/verify", s.authed(s.auditVerify)},
-		{"GET /audit/export", s.authed(s.auditExport)},
+		{"POST /audit/export", s.authed(s.auditExport)},
 		{"GET /events", s.authed(s.events)},
 		{"GET /events/{id}", s.authed(s.event)},
 		{"POST /events/{id}/requeue", s.authed(s.requeue)},

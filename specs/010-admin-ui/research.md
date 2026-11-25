@@ -14,7 +14,8 @@ API (`auth.Service.Authenticate`), so a login in either is valid in both. The AP
 cross-site sends in modern browsers; the token and a `Sec-Fetch-Site` check are defence in depth.
 
 **R3. Login CSRF.** The login form has no session yet. A random token is set as an HttpOnly,
-SameSite=Strict cookie on `GET /login` and must equal the hidden field (double submit). This stops
+SameSite=Strict cookie (`__Host-` prefixed, Path `/`, wherever Secure applies, so a sibling subdomain cannot plant it;
+plain-HTTP development uses the unprefixed name) on `GET /login` and must equal the hidden field (double submit). This stops
 login-CSRF (forcing a victim into the attacker's session) without server state.
 
 **R4. No service worker.** Chrome on Android installs a PWA from a valid manifest with icons and an HTTPS
@@ -31,8 +32,12 @@ a throwaway Go program and committed; no image tooling is needed at build time.
 TOTP change logs the operator out everywhere; the UI says so. Rotation needs proof of possession of the
 new secret: the secret is rendered in a hidden field of the confirmation form (it is shown on the page
 anyway; the operator is authenticated and re-enters the password), and the confirm step validates a code
-generated from it. No server-side pending state is needed. Wrong current passwords are throttled per
-account (5 failures, 15 minutes) so a stolen session cannot be used as a password oracle.
+generated from it. No server-side pending state is needed. Both operations need the current password **and** a
+current, unused TOTP code, so a stolen session alone cannot change credentials. Attempts are counted before
+verification, in one transaction (parallel guesses cannot slip past), and a success clears the count: 5
+failures lock account changes for 15 minutes.
+
+**R7a. Whole-log operations.** Verify and export each walk the entire log while holding the single SQLite connection, so they are single-flight (a mutex with `TryLock`; a concurrent request gets 503 `Retry-After`). Export is a POST (it writes an audit row, so a cross-site GET must not trigger it).
 
 **R7. Audit filters.** `audit.Log.Query` filters on actor (exact), action (literal prefix, no LIKE
 wildcards), target (exact) and pages with `before=<seq>`; newest first. The hash chain is unchanged.

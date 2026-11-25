@@ -64,7 +64,7 @@ func renderAll(t *testing.T) (map[string]string, []page) {
 		{name: "lead-detail", method: "GET", path: "/leads/7", status: 200},
 		{name: "settings", method: "GET", path: "/settings", status: 200},
 		{name: "settings-totp", method: "POST", path: "/settings/totp", form: url.Values{"csrf": {s.csrf}, "current": {h.pw}}, status: 200},
-		{name: "settings-password-error", method: "POST", path: "/settings/password", form: url.Values{"csrf": {s.csrf}, "current": {h.pw}, "new": {"a new long password"}, "confirm": {"nope"}}, status: 400},
+		{name: "settings-password-error", method: "POST", path: "/settings/password", form: url.Values{"csrf": {s.csrf}, "current": {h.pw}, "otp": {"123456"}, "new": {"a new long password"}, "confirm": {"nope"}}, status: 400},
 		{name: "not-found", method: "GET", path: "/nope", status: 404},
 		{name: "module-not-found", method: "GET", path: "/modules/zzz", status: 404},
 		{name: "requeue-conflict", method: "POST", path: "/events/" + id + "/requeue", form: url.Values{"csrf": {s.csrf}}, status: 303},

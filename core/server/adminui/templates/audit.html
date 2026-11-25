@@ -24,7 +24,7 @@
 <p>{{t "audit.chain_help"}}</p>
 <div class="actions">
 <form method="post" action="/audit/verify"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">{{t "audit.verify"}}</button></form>
-<a class="button" href="/audit/export">{{t "audit.export"}}</a>
+<form method="post" action="/audit/export"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">{{t "audit.export"}}</button></form>
 </div>
 </section>
 

@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 )
 
 // Filter selects audit records for the admin UI. Zero fields match everything.
@@ -28,7 +29,7 @@ func (l *Log) Query(ctx context.Context, f Filter) ([]Record, error) {
 		where, args = append(where, "actor=?"), append(args, f.Actor)
 	}
 	if f.ActionPrefix != "" {
-		where, args = append(where, "substr(action,1,?)=?"), append(args, len(f.ActionPrefix), f.ActionPrefix)
+		where, args = append(where, "substr(action,1,?)=?"), append(args, utf8.RuneCountInString(f.ActionPrefix), f.ActionPrefix)
 	}
 	if f.Target != "" {
 		where, args = append(where, "target=?"), append(args, f.Target)

@@ -5,7 +5,7 @@ Served on the admin listener next to the JSON API (`/api/v1/*` and `/healthz` be
 this table with `adminui.Routes()`.
 
 Unsafe requests are `application/x-www-form-urlencoded` posts carrying the hidden field `csrf` (the
-session's CSRF token; on the login form, the double-submit token from the `can_login_csrf` cookie).
+session's CSRF token; on the login form, the double-submit token from the login cookie: `__Host-can_login_csrf` when cookies are Secure, `can_login_csrf` on plain-HTTP development).
 Unauthenticated requests to a session route get `303 /login`. Unknown paths get the 404 page.
 
 | Route | Session | Purpose |
@@ -18,7 +18,7 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `GET /modules/{id}` | yes | Manifest summary |
 | `GET /audit` | yes | Audit viewer. Query `actor`, `action` (prefix), `target`, `before` (seq) |
 | `POST /audit/verify` | yes | Verify the hash chain, shows the result |
-| `GET /audit/export` | yes | JSON lines download (audited) |
+| `POST /audit/export` | yes | JSON lines download (audited; a POST because it writes an audit entry). `POST /audit/verify` and export share a single-flight lock: a second request while one runs gets 503 with `Retry-After` |
 | `GET /events` | yes | Recent deliveries |
 | `GET /events/{id}` | yes | Delivery detail and attempts |
 | `POST /events/{id}/requeue` | yes | Requeue a dead delivery; field `next` is `/` or `/events/{id}` |
@@ -26,9 +26,9 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `GET /leads/{id}` | yes | Lead detail with status form |
 | `POST /leads/{id}/status` | yes | Field `status` (`new`, `contacted`, `qualified`, `closed`, `spam`) |
 | `GET /settings` | yes | Account, sessions |
-| `POST /settings/password` | yes | Fields `current`, `new`, `confirm` |
+| `POST /settings/password` | yes | Fields `current` (password), `otp` (current authentication code, single use), `new`, `confirm` |
 | `POST /settings/totp` | yes | Field `current`; shows a new secret to confirm |
-| `POST /settings/totp/confirm` | yes | Fields `current`, `secret`, `code` |
+| `POST /settings/totp/confirm` | yes | Fields `current`, `otp` (current code), `secret`, `code` (code from the new secret) |
 | `POST /settings/sessions/{sid}/revoke` | yes | Revoke one session (16 character public id) |
 | `GET /static/{file}` | no | Embedded stylesheet and icons (immutable cache) |
 | `GET /manifest.webmanifest` | no | Web app manifest |

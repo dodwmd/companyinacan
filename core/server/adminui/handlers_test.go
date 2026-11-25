@@ -103,8 +103,8 @@ func TestLoginPageAndCSRF(t *testing.T) {
 	if r.StatusCode != 200 || !strings.Contains(r.body, `name="totp"`) || !strings.Contains(r.body, `type="password"`) {
 		t.Fatalf("%d %s", r.StatusCode, r.body)
 	}
-	c := cookieNamed(r.Response, "can_login_csrf")
-	if c == nil || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode {
+	c := cookieNamed(r.Response, "__Host-can_login_csrf")
+	if c == nil || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode || c.Path != "/" || c.Domain != "" {
 		t.Fatalf("login csrf cookie: %+v", c)
 	}
 	good := url.Values{"username": {"root"}, "password": {h.pw}, "totp": {h.code()}}
@@ -436,7 +436,10 @@ func TestAuditViewerFilterVerifyExport(t *testing.T) {
 		t.Fatalf("tampering not reported:\n%s", v.body)
 	}
 
-	e := h.do("GET", "/audit/export", nil, s.with()...)
+	if g := h.do("GET", "/audit/export", nil, s.with()...); g.StatusCode == 200 {
+		t.Fatal("export must not be reachable with GET (it writes an audit row)")
+	}
+	e := h.do("POST", "/audit/export", url.Values{"csrf": {s.csrf}}, s.with()...)
 	if e.StatusCode != 200 || !strings.Contains(e.Header.Get("Content-Disposition"), "attachment") || !strings.Contains(e.Header.Get("Content-Type"), "ndjson") {
 		t.Fatalf("%d %v", e.StatusCode, e.Header)
 	}
@@ -524,8 +527,10 @@ func TestLeadsUnavailableAndGatewayFailure(t *testing.T) {
 func TestSettingsChangePassword(t *testing.T) {
 	h := newHarness(t)
 	s := h.login()
+	*h.now = h.now.Add(31 * time.Second) // a TOTP step the login has not used
+	otp := h.code()
 	form := func(cur, n, c string) url.Values {
-		return url.Values{"csrf": {s.csrf}, "current": {cur}, "new": {n}, "confirm": {c}}
+		return url.Values{"csrf": {s.csrf}, "current": {cur}, "otp": {otp}, "new": {n}, "confirm": {c}}
 	}
 	if r := h.do("POST", "/settings/password", form(h.pw, "a new long password", "different"), s.with()...); r.StatusCode != 400 || !strings.Contains(r.body, "do not match") {
 		t.Fatalf("%d", r.StatusCode)
@@ -534,8 +539,17 @@ func TestSettingsChangePassword(t *testing.T) {
 		t.Fatalf("%d", r.StatusCode)
 	}
 	r := h.do("POST", "/settings/password", form("wrong current pw", "a new long password", "a new long password"), s.with()...)
-	if r.StatusCode != 401 || !strings.Contains(r.body, "current password is incorrect") {
+	if r.StatusCode != 401 || !strings.Contains(r.body, "is incorrect") {
 		t.Fatalf("%d %s", r.StatusCode, r.body)
+	}
+	bad := form(h.pw, "a new long password", "a new long password")
+	bad.Set("otp", "000000")
+	if r := h.do("POST", "/settings/password", bad, s.with()...); r.StatusCode != 401 {
+		t.Fatalf("wrong authentication code accepted: %d", r.StatusCode)
+	}
+	bad.Del("otp")
+	if r := h.do("POST", "/settings/password", bad, s.with()...); r.StatusCode != 401 {
+		t.Fatalf("missing authentication code accepted: %d", r.StatusCode)
 	}
 	r = h.do("POST", "/settings/password", form(h.pw, "a new long password", "a new long password"), s.with()...)
 	if r.StatusCode != http.StatusSeeOther || !strings.HasPrefix(r.Header.Get("Location"), "/login") {
@@ -567,12 +581,17 @@ func TestSettingsRotateTOTP(t *testing.T) {
 	if u, _ := h.db.AdminByUsername(context.Background(), "root"); u.TOTPSecret != h.secret {
 		t.Fatal("secret replaced before confirmation")
 	}
+	*h.now = h.now.Add(31 * time.Second)
 	conf := func(code string) resp {
-		return h.do("POST", "/settings/totp/confirm", url.Values{"csrf": {s.csrf}, "current": {h.pw}, "secret": {secret[1]}, "code": {code}}, s.with()...)
+		return h.do("POST", "/settings/totp/confirm", url.Values{"csrf": {s.csrf}, "current": {h.pw}, "otp": {h.code()}, "secret": {secret[1]}, "code": {code}}, s.with()...)
+	}
+	if r := h.do("POST", "/settings/totp/confirm", url.Values{"csrf": {s.csrf}, "current": {h.pw}, "secret": {secret[1]}, "code": {"000000"}}, s.with()...); r.StatusCode != 401 {
+		t.Fatalf("missing current code accepted: %d", r.StatusCode)
 	}
 	if r := conf("000000"); r.StatusCode != 400 || !strings.Contains(r.body, "otpauth://") {
 		t.Fatalf("%d", r.StatusCode) // re-shows the secret so the operator can retry
 	}
+	*h.now = h.now.Add(31 * time.Second) // the first attempt consumed its current code
 	key, _ := authDecode(secret[1])
 	code := authCode(key, *h.now)
 	r = conf(code)
@@ -680,5 +699,45 @@ func TestCombinedHandlerSendsAPIPathsToTheAPI(t *testing.T) {
 	r, _ := http.Get(srv.URL + "/login")
 	if !strings.Contains(readAll(r), "<form") {
 		t.Fatal("UI not served at /login")
+	}
+}
+
+func TestAuditVerifyAndExportAreSingleFlight(t *testing.T) {
+	h := newHarness(t)
+	s := h.login()
+	h.ui.heavy.Lock() // a verification is "running"
+	for _, p := range []string{"/audit/verify", "/audit/export"} {
+		r := h.do("POST", p, url.Values{"csrf": {s.csrf}}, s.with()...)
+		if r.StatusCode != http.StatusServiceUnavailable || r.Header.Get("Retry-After") == "" {
+			t.Errorf("%s while busy -> %d", p, r.StatusCode)
+		}
+	}
+	h.ui.heavy.Unlock()
+	if r := h.do("POST", "/audit/verify", url.Values{"csrf": {s.csrf}}, s.with()...); r.StatusCode != 200 {
+		t.Fatalf("lock not released: %d", r.StatusCode)
+	}
+	if r := h.do("POST", "/audit/verify", url.Values{"csrf": {s.csrf}}, s.with()...); r.StatusCode != 200 {
+		t.Fatalf("second sequential verify: %d", r.StatusCode)
+	}
+}
+
+func TestClipCountsRunes(t *testing.T) {
+	if got := clip(strings.Repeat("é", 70), 64); got != strings.Repeat("é", 64) {
+		t.Fatalf("clip cut inside a character: %q", got)
+	}
+	if got := clip("  ab  ", 64); got != "ab" {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestPlainHTTPDevKeepsUnprefixedLoginCookie(t *testing.T) {
+	h := newHarness(t)
+	h.ui.Secure = false
+	r := h.do("GET", "/login", nil)
+	if c := cookieNamed(r.Response, "can_login_csrf"); c == nil || c.Secure {
+		t.Fatalf("%+v", c)
+	}
+	if cookieNamed(r.Response, "__Host-can_login_csrf") != nil {
+		t.Fatal("__Host- cookies need Secure")
 	}
 }
