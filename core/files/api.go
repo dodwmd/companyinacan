@@ -19,6 +19,7 @@ const (
 	maxJSONBody      = 64 << 10
 	authFailsPerMin  = 30
 	downloadDeadline = 15 * time.Minute
+	answerGrace      = 30 * time.Second
 )
 
 // API is the files HTTP API. Handlers only parse and render: every decision (who may see what,
@@ -368,6 +369,18 @@ func (a *API) deleteFolder(w http.ResponseWriter, r *http.Request, p *Principal)
 
 // ---- files ---------------------------------------------------------------------------------------
 
+// uploadBudget is the time receiving, scanning and storing one upload may take.
+func (a *API) uploadBudget() time.Duration {
+	d := a.Store.cfg.UploadDeadline()
+	return d + d/2
+}
+
+// longOperation lets an administrative request that deletes many objects outlive the server's
+// WriteTimeout.
+func longOperation(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(downloadDeadline))
+}
+
 // body returns the upload body, bounded. A declared length over the limit is refused before a
 // byte is read; the Store enforces the same limit while streaming.
 func (a *API) body(w http.ResponseWriter, r *http.Request) (io.Reader, error) {
@@ -376,7 +389,12 @@ func (a *API) body(w http.ResponseWriter, r *http.Request) (io.Reader, error) {
 		return nil, ErrTooLarge
 	}
 	// one deadline for the whole upload: a client that trickles bytes cannot hold a slot
-	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(a.Store.cfg.UploadDeadline()))
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(a.Store.cfg.UploadDeadline()))
+	// The server's WriteTimeout would otherwise run while the file is received, scanned and stored,
+	// and a stored file would be answered with a dropped connection (which a client retries, making
+	// a duplicate). The answer may be written until after the work's own deadline.
+	_ = rc.SetWriteDeadline(time.Now().Add(a.uploadBudget() + answerGrace))
 	return http.MaxBytesReader(w, r.Body, max+1), nil
 }
 
@@ -389,7 +407,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request, p *Principal) error
 		return err
 	}
 	q := r.URL.Query()
-	ctx, cancel := context.WithTimeout(r.Context(), a.Store.cfg.UploadDeadline()+a.Store.cfg.UploadDeadline()/2)
+	ctx, cancel := context.WithTimeout(r.Context(), a.uploadBudget())
 	defer cancel()
 	f, err := a.Store.Upload(ctx, p, UploadRequest{SpaceID: r.PathValue("id"), FolderID: q.Get("folder"), Name: q.Get("name"), Description: q.Get("description"),
 		Subject: q.Get("subject"), Ref: q.Get("ref"), Body: body})
@@ -408,7 +426,7 @@ func (a *API) uploadVersion(w http.ResponseWriter, r *http.Request, p *Principal
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), a.Store.cfg.UploadDeadline()+a.Store.cfg.UploadDeadline()/2)
+	ctx, cancel := context.WithTimeout(r.Context(), a.uploadBudget())
 	defer cancel()
 	f, err := a.Store.UploadVersion(ctx, p, r.PathValue("id"), body)
 	if err != nil {
@@ -639,6 +657,7 @@ func (a *API) adminFiles(w http.ResponseWriter, r *http.Request, p *Principal) e
 }
 
 func (a *API) erase(w http.ResponseWriter, r *http.Request, p *Principal) error {
+	longOperation(w)
 	er, err := a.Store.EraseSubject(r.Context(), p, r.PathValue("subject"))
 	if err != nil {
 		return err
@@ -658,6 +677,7 @@ func (a *API) listErasures(w http.ResponseWriter, r *http.Request, p *Principal)
 }
 
 func (a *API) purge(w http.ResponseWriter, r *http.Request, p *Principal) error {
+	longOperation(w)
 	var in struct {
 		Subject string `json:"subject"`
 		Class   string `json:"class"`
@@ -673,6 +693,7 @@ func (a *API) purge(w http.ResponseWriter, r *http.Request, p *Principal) error 
 }
 
 func (a *API) runRetention(w http.ResponseWriter, r *http.Request, p *Principal) error {
+	longOperation(w)
 	if !p.Has(PermAdmin) {
 		return ErrForbidden
 	}
