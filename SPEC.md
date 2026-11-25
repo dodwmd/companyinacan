@@ -501,6 +501,8 @@ make doctor      # check local prerequisites and provider credentials
 
 `make up` ends by printing: the live URL, the admin URL and one-time credentials, the DNS records still to add (if no DNS plugin), and the **recovery kit** (§6.5). Phase 2 adds a browser wizard on `admin.<domain>` for everything after `make up` (templates, modules, DNS), so the day-to-day flow needs no terminal.
 
+> **Implementation note (epic E24, specs/033-make-up-e2e).** `can up` runs these phases: preflight (nothing is provisioned until the DNS plugin, `kubectl`, the container images and the backup settings check out), provision and bootstrap k3s, kubeconfig and SSH tunnel, platform base, images, company ConfigMap, can-core, admin account, site, routes (site, admin, same-origin `/_forms`), optional backup timer and recovery kit, readiness, DNS. Each phase is checkpointed in `.can/state.json`, a re-run resumes and never wipes data, and secrets (admin password, TOTP secret, recovery kit) are shown once and only in a terminal or with `--print-secrets`. Images come from a release manifest that pins them by digest, or from tarballs built with `make images` and shipped over SSH with sha256 verification, so a source checkout needs no registry. The in-cluster phases are verified on k3d in CI; provisioning a real server and the five-minute budget on one remain a human-gated measurement (docs/make-up.md).
+
 ### 6.2 Landing & SPA builder
 
 - Section-based templates (hero, features, pricing, FAQ, waitlist/contact CTA), content in `company.yaml`/Markdown, brand colours/logo/fonts as tokens.

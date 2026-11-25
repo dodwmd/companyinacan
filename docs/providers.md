@@ -35,13 +35,19 @@ in `company.yaml`: use a reference, `env:NAME` or `file:/path`.
      the cloud controller disabled, secrets encryption on, Traefik, CoreDNS and local-path kept;
    - optional image pre-seeding: tarballs from `image_tarballs` are downloaded in parallel with the
      k3s install, SHA-256 verified, and placed in `/var/lib/rancher/k3s/agent/images`;
-   - placeholders for backups (`/etc/can/backup.d`, `/var/lib/can/dumps`; the restic and systemd
-     timer arrive with epic E08);
+   - directories for backups (`/etc/can/backup.d`, `/var/lib/can/dumps`); the restic timer is
+     installed by `can up --backup-*` after the stack is up (epic E24, see [make-up.md](make-up.md));
    - completion marker `/var/lib/can/bootstrap.done` containing the k3s version.
 3. **Kubeconfig**: read from the host, rewritten to `https://127.0.0.1:16443` and stored in
    `.can/kubeconfig` (mode 0600). `can` reaches the API through
    `ssh -N -L 127.0.0.1:16443:127.0.0.1:6443`; the API port is never exposed.
-4. **State** in `.can/state.json` (mode 0600, no secrets, updated under a file lock) so that
+4. **Then the company** (epic E24): the providers only deliver a running k3s and a kubeconfig. `can up`
+   goes on, through the same SSH tunnel, to deploy the platform, can-core, the site and forms, create the
+   admin, and optionally install the backup timer. That is provider-independent and described, with its
+   phases and the resume table, in [make-up.md](make-up.md). Nothing in it changes the ports or firewall
+   rules above. For a server you bring (`ssh`), `can down` also removes the backup timer and its restic
+   credentials before it uninstalls k3s.
+5. **State** in `.can/state.json` (mode 0600, no secrets, updated under a file lock) so that
    `can up` can be re-run safely and `can down` knows what to remove.
 
 ## ssh
@@ -294,7 +300,8 @@ becomes `203-0-113-7`), with `admin.` and `help.` prefixes and one certificate p
 
 Otherwise it prints `http://<ip>` instead: plain HTTP, public site only, and the admin UI reachable
 only through the SSH tunnel until a domain and TLS are set. The certificates themselves are issued
-by Traefik once can-core deploys the site (epic E03), which also records each attempt in state.
+by Traefik once `can up` has deployed the site (epic E24); the routes for these hosts use the
+`letsencrypt` resolver, and the plain-HTTP fallback leaves the admin UI unrouted.
 
 ## Output and secrets
 

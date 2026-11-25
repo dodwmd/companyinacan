@@ -1,85 +1,210 @@
 # `make up`, `make down`, `make status`
 
-Thin wrappers over `can up|down|status` (extra flags go in `ARGS`). Run them in the directory that
-holds `company.yaml`, or pass the directory: `make up ARGS=./my-company`.
+`make up` turns a `company.yaml` and a server (yours over SSH, or a Hetzner or DigitalOcean account) into
+a live company: k3s, the platform, can-core, your site, the contact form, an admin login, optionally the
+backup timer and its recovery kit. It is a thin wrapper over `can up|down|status`; extra flags go in `ARGS`.
+Run it in the directory that holds `company.yaml`, or pass the directory: `make up ARGS=./my-company`.
 
 ```sh
-make up ARGS=--plan     # show what would happen, change nothing
-make up                 # provision, bootstrap k3s, print URL and DNS records
-make status             # exit 0 only when the server is ready
-make down ARGS=--plan   # show what would be removed
-make down ARGS=--yes    # tear down (destructive, needs --yes)
+make images                       # once, from a source checkout: build the three images into build/images
+make up ARGS=--plan IMAGES_FROM=build/images     # show every phase, change nothing
+make up IMAGES_FROM=build/images  # provision, deploy, print the summary
+make status                       # exit 0 only when the server and the stack are up
+make down ARGS=--plan             # show what would be removed
+make down ARGS=--yes              # tear down (destructive, needs --yes)
 ```
 
-`make down` runs `can down`, which depends on `provider.type` in `company.yaml` (so it needs a
-`company.yaml` in the directory): `local` deletes the k3d cluster exactly like `can dev down` (no
-`--yes` needed, `ARGS=--plan` prints the k3d commands); `ssh`, `hetzner` and `digitalocean` destroy what `make up`
-created (plus the Cloudflare DNS records it created, if `dns.provider: cloudflare`) and require `--yes`. `make server-down` is kept as an alias.
+`can up` needs `kubectl` on your machine (it applies the company through an SSH tunnel to the k3s API; port
+6443 stays closed on the server). It checks for it, for the images and for the backup settings **before** it
+creates or pays for anything.
 
-## What `make up` does today
+## Getting the images
 
-1. Validates `company.yaml`.
-2. Checks the DNS plugin (Cloudflare: token and zone, read-only), so a bad token fails before a
-   server exists.
-3. Runs the provider (`ssh`, `hetzner` or `digitalocean`, see [providers.md](providers.md)):
-   preflight, bootstrap, wait for k3s to be Ready.
-4. Fetches the kubeconfig to `.can/kubeconfig`.
-5. Prints the address and the instant URL (https on sslip.io, or the plain-HTTP fallback with the
-   reason), then creates the DNS records (Cloudflare) or prints them for you to add (manual).
+The three images (`can-core`, `can-static`, `can-forms`) are built and pinned at release time. A source
+checkout has two ways to get them; pass exactly one:
 
-Not yet part of `make up`: installing can-core and the site (epic E03/E04), generating admin
-credentials, the recovery kit (epic E08). Until then the server runs bare k3s, so the instant URL
-does not serve a site yet.
+| Way | Command | What happens |
+|---|---|---|
+| Build locally, ship over SSH | `make images` then `make up IMAGES_FROM=build/images` | `scripts/build-images.sh` builds with podman or docker (`ENGINE=`), writes `build/images/*.tar` and `images.json` with the sha256 of each. `can up` re-checks the checksums, uploads over SSH, checks them again on the server with `sha256sum` and imports them into k3s (`k3s ctr -n k8s.io images import`; the tarballs stay in `/var/lib/rancher/k3s/agent/images`). No registry is involved. Local tags are used (`can-core:dev`), the forms image gets the tag its chart expects. |
+| Pull by digest from a release | `can up --release-manifest deploy/release-images.json` (also the default when that file exists) | `deploy/release-images.json` lists every image as `repository@sha256:<digest>`; the server pulls them from GHCR. A tag, a placeholder or a malformed digest is refused. The file is produced by the release pipeline with `scripts/gen-release-images.sh`. |
 
-It is safe to run `make up` again after a failure or interruption: finished steps are skipped and
-resources are adopted instead of duplicated.
+With neither, `can up` stops before provisioning and says so. `make images` builds your working tree on the
+base-image digests the registry serves today (the Dockerfiles keep their release placeholders); it is a
+development path, not a supply-chain guarantee. Release images are signed and attested (docs/releasing.md).
+
+## What `make up` does
+
+```
+ operator machine                                          server
+ ----------------                                          ------
+ 0 preflight  company.yaml, DNS token, kubectl, images, backup flags      (nothing exists yet)
+ 1 provision  ------------------ ssh / cloud API ---------> create (hetzner, digitalocean) or probe (ssh)
+              ------------------ bootstrap script -------> k3s, firewall 22/80/443, swap   [existing, unchanged]
+ 2 access     <----------------- kubeconfig over ssh ----- .can/kubeconfig; ssh -L 16443 -> 127.0.0.1:6443
+ 3 base       -- kubectl apply deploy/base -------------> namespaces, network policies, RBAC, admission policy, Traefik
+ 4 images     -- tarballs over ssh, sha256 checked ------> k3s containerd   (or: the server pulls by digest)
+ 5 company    -- ConfigMap can-system/company ----------> company.yaml (+ forms, the default bundle)
+ 6 core       -- can-core Deployment, wait -------------> can-core, 1 pod, SQLite on a PVC
+ 7 admin      -- kubectl exec ... admin bootstrap ------> admin account; password on stdin, never argv
+ 8 site       -- build locally, ConfigMap site-content -> site pod (can-static) unpacks it
+ 9 routes     -- IngressRoutes -------------------------> site, admin, same-origin /_forms (forms module installed by can-core)
+10 backup     -- files over ssh (only with --backup-*) -> restic timer, repository initialised
+11 ready      -- kubectl wait Available ----------------> can-core, site, forms
+12 dns / probe / summary   Cloudflare records or printed records; URL probe; credentials and kit shown once
+```
+
+The summary prints the site URL, the admin URL, the admin username and the one-time password and TOTP secret
+(scan the secret or the `otpauth://` URI into an authenticator app), the phase timings, and next steps. The
+admin password and the recovery kit are shown once, each after a confirmation prompt, and only in a terminal.
+
+### Instant URL and DNS
+
+If `<ip-dashed>.sslip.io` resolves to the server and the Let's Encrypt limits allow it, the site is served
+with real TLS on `https://<ip-dashed>.sslip.io` and the admin UI on `https://admin.<ip-dashed>.sslip.io`.
+Otherwise the public site is served over plain HTTP on the IP and **the admin UI is not exposed**: reach it
+with the `kubectl port-forward` command the summary prints. Your own domain is routed (with TLS) only once its
+records resolve: automatically with `dns.provider: cloudflare`, otherwise add the printed records and run
+`can up --domain-live` (this avoids requesting certificates for names that do not resolve yet). DNS
+propagation is not part of the five-minute budget.
+
+### Secrets
+
+- The admin password is generated on your machine, sent to `can-core admin bootstrap` on stdin, and shown
+  once. It is never an argument, a log line, a Secret or in `.can/state.json`.
+- Without a terminal nothing secret is printed. For CI use `--print-secrets` (credentials and kit in the
+  output, or in `--output json`); without it a non-terminal run says the credentials were **not** shown and the
+  next run issues new ones. Once shown (terminal and confirmed, or `--print-secrets`), they are never changed
+  by a later run.
+- The recovery kit comes with `--backup-endpoint URL --backup-bucket NAME --backup-credentials-file FILE`
+  (KEY=VALUE with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`). It is shown once in a terminal
+  (`Type 'show'`, then `'saved'`) or written encrypted with `--kit-out FILE --kit-passphrase-file FILE`.
+  It is never written inside a git working tree or to `.can/`, and a run that has no way to deliver it stops
+  before provisioning.
+
+### The default bundle
+
+If `company.yaml` does not mention the forms module, `can up` enables it in the cluster so the contact form
+works. The file on disk is not changed and the summary tells you to add `forms: {}` under `modules:`; if you
+do not, a later `can apply` disables it again (its data is kept). `--no-default-bundle` turns this off; an
+explicit `forms: {enabled: false}` is always respected.
+
+## Safe to repeat
+
+Run `make up` again after any failure or interruption. Every phase is recorded in `.can/state.json`
+(`launch.phases`); `can up` never deletes data (no volume, ConfigMap or admin is replaced), and two runs at
+once are refused (`another can up or can down is already running`).
+
+| Interrupted or failed at | What `can up` does next time |
+|---|---|
+| preflight | nothing exists yet; fix the message and run again |
+| provision (server created, k3s not ready) | adopts the server by its tags or recorded id, re-runs the bootstrap only if k3s is not at the pinned version |
+| access (tunnel) | opens it again; if local port 16443 is busy, close the other tunnel |
+| base | `kubectl apply` again (converges) |
+| images | uploads again unless the same set (fingerprint) was recorded as loaded |
+| company, core, site, routes | applied again (converges; an unchanged site does not restart the pod) |
+| admin, before the account was created | creates it |
+| admin, created but the credentials were never shown | issues a new password and TOTP secret (nobody has the old ones) and shows them |
+| admin, credentials already shown | leaves the account alone and says so; lost them: `kubectl -n can-system exec -i deploy/can-core -- /can-core admin reset-password --rotate-totp` (new password on stdin) |
+| backup, timer installed, kit not shown | rebuilds the kit from the password already on the server and shows it |
+| backup, kit already shown | nothing |
+| ready / dns / summary | repeated |
+
+A failure prints `phase "<id>" failed: <cause>`, a `look:` line with the commands to inspect, and a `resume:`
+line. Every wait has a bound (rollouts 3 min, k3s CRDs 3 min, module install 5 min, public probe 60 s).
+
+## `make down`
+
+`make down` runs `can down`, which depends on `provider.type` in `company.yaml`: `local` deletes the k3d
+cluster like `can dev down` (no `--yes` needed, `ARGS=--plan` prints the k3d commands); `ssh`, `hetzner` and
+`digitalocean` destroy what `make up` created, plus the Cloudflare records it created, and need `--yes`. For
+`ssh`, where the machine stays, it first removes the backup timer, its unit files and the restic credentials
+(`/etc/can/backup.d`) from the server, and stops if it cannot. `make server-down` is an alias.
+
+## `make status`
+
+Exit 0 only when the provider reports ready **and**, for a company deployed by `can up`, `phases` (the last run
+finished), `can-core`, `site` and `forms` have available replicas. The stack checks are read through the SSH
+tunnel; if it cannot be opened that is a failed check, not a silent pass.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | success (`status`: ready) |
-| 1 | failure: invalid `company.yaml`, preflight failed, API or SSH error, status not ready |
+| 1 | failure: invalid `company.yaml`, preflight failed, a phase failed, API or SSH error, status not ready |
 | 2 | usage: unknown flag, too many arguments, `down` without `--yes` |
 | 3 | not implemented: provider `local` or `static`, or the `provider-native` DNS plugin |
 
+The full CLI contract, including `--output json`, is in `specs/033-make-up-e2e/contracts/cli.md`.
+
 ## Troubleshooting
 
+- `kubectl was not found in PATH`: install kubectl; nothing was provisioned.
+- `no container images to deploy`: run `make images` and pass `IMAGES_FROM=build/images`, or use a release manifest.
+- `image X: tarball ... has sha256 ... but images.json records ...`: rebuild with `make images`.
+- `cannot reach the cluster API through the SSH tunnel`: the server is provisioned; check `ssh` to it and that
+  local port 16443 is free, then run `can up` again.
+- `phase "core" failed`: `kubectl --kubeconfig .can/kubeconfig -n can-system logs deploy/can-core` (open the tunnel
+  with `can status` or `ssh -N -L 16443:127.0.0.1:6443 user@host` first).
+- `phase "routes" failed ... forms module was not installed`: can-core installs it on its next reconcile and pulls
+  its image; look at can-core's log and `kubectl -n mod-forms get pods`.
+- `restic is not installed on the server`: install restic 0.17 or newer there.
 - `preflight failed: ram: ...`: the server is too small; use at least 2 GB.
-- `ssh ...: exit status 255`: SSH could not connect; check `host`, `user`, `key_file`, and that you
-  can `ssh user@host` yourself. The first connection trusts the host key.
-- `secret reference "env:HCLOUD_TOKEN" is not usable (the environment variable is empty or unset)`: export the token.
+- `ssh ...: exit status 255`: SSH could not connect; check `host`, `user`, `key_file`, and that you can `ssh user@host`
+  yourself. The first connection trusts the host key (cloud servers keep it in `.can/known_hosts`).
+- `secret reference "env:HCLOUD_TOKEN" is not usable`: export the token.
 - Hetzner and DigitalOcean: look at `/var/log/can-bootstrap.log` on the server if the bootstrap wait times out.
-- DigitalOcean: `a droplet named ... was not created by can`: a Droplet with that name exists without
-  the `managed-by:can` and `company:<slug>` tags; rename it, delete it yourself, or set
-  `provider.options.server_name`. Same for a firewall named `can-<slug>`.
-- Cloudflare: `cannot read DNS records in the zone`: the token can see the zone but lacks DNS edit permission.
-- Cloudflare: `no Cloudflare zone found`: the domain is not a zone in the account the token belongs
-  to, or the token lacks Zone Read for it. `already exists ... not created by can`: see
-  `adopt_existing` in [providers.md](providers.md).
-- `.can/state.json` says something that is no longer true (server deleted by hand): `can status`
-  reports `absent`; remove `.can/` to start clean.
+- DigitalOcean: `a droplet named ... was not created by can`: rename or delete it, or set `provider.options.server_name`.
+- Cloudflare: `cannot read DNS records in the zone`, `no Cloudflare zone found`, `already exists ... not created by can`:
+  see [providers.md](providers.md).
+- `.can/state.json` says something that is no longer true (server deleted by hand): `can status` reports
+  `absent`; remove `.can/` to start clean.
 
-## Timing the five-minute budget (human-gated, epic E00)
+## The five-minute budget
 
-The budget in SPEC.md section 3.4 is **not measured yet** and this feature does not claim it. To
-measure it, a human with a fresh Hetzner account does the following. Do not run it from CI.
+SPEC.md section 3.4 sets the target. Honest status: **the end-to-end time on a real server has not been
+measured**; that run needs a fresh cloud account and stays human-gated (below). What is measured is the part
+that does not depend on a cloud provider: the in-cluster phases, on k3d on a GitHub-hosted runner.
 
-1. Create a throwaway project and API token; `export HCLOUD_TOKEN=...`. Use a new company
-   directory with `provider: {type: hetzner}` and an SSH key not used elsewhere.
-2. Make sure the local machine has `ssh` and a warm Go build (`make build`), so build time is not
-   counted.
-3. Note the wall clock, then run `time make up`. Also note the moments printed in the progress
-   lines: server created, server running, `bootstrap: done`.
-4. Record: total time, time to server running, time from running to bootstrap done (this covers the
-   k3s install and image pulls; without `image_tarballs` containerd pulls on first use), the
-   server type and location, and whether `image_tarballs` were configured.
-5. On the server, record idle memory after the bootstrap settles for two minutes:
-   `free -m`, and the memory line of `systemctl status k3s` (`kubectl top` is unavailable because
-   metrics-server is disabled).
-6. Run `make up` a second time and record how long the idempotent re-run takes.
-7. `make down ARGS=--yes`; confirm in the Hetzner console that the server, firewall and key are gone.
-8. Repeat three times and report median and worst case in `specs/000-*/measurements.md` (E00).
+Budget by phase, with what is known:
 
-Until the whole stack is deployed (epic E03) the measurement covers only provisioning plus k3s, not
-the full "live HTTPS page" milestone; label results accordingly.
+| Step | SPEC target | Measured | Notes |
+|---|---|---|---|
+| Create VM (provider API) | 30-60 s | not measured | human run |
+| Boot + k3s install (bootstrap script) | about 60 s | not measured | human run |
+| images: upload and import (`--images-from`) | in parallel with k3s in the SPEC | not measured on a server; CI imports with `k3d image import` (see below) | the tarballs are tens of MiB; upload time depends on your uplink. A release manifest has no upload, the server pulls |
+| base + company + core + admin + site + routes + ready | about 30 s deploy | see the k3d table | |
+| Instant URL | immediate | n/a | needs the server's real address |
+
+### Measured on k3d in CI (workflow `make-up-e2e`, advisory)
+
+TIMINGS_PLACEHOLDER
+
+These numbers include image pulls of Traefik and k3s system images done when the cluster was created (outside
+the table), exclude VM creation and the k3s install, and run on a shared runner; treat them as a floor for the
+deploy part, not a promise for a fresh server.
+
+### Timing a real server (human-gated, epic E00)
+
+Do not run this from CI. With a fresh Hetzner account:
+
+1. Create a throwaway project and API token; `export HCLOUD_TOKEN=...`. Use a new company directory with
+   `provider: {type: hetzner}` and an SSH key not used elsewhere.
+2. Build the images (`make images`) and a warm Go build (`make build`) first, so neither is counted.
+3. Note the wall clock, then run `time make up IMAGES_FROM=build/images ARGS="--output json"` and keep the JSON:
+   `phases[].seconds` and `total_seconds` give the breakdown. Note when the server was created and running from
+   the progress lines.
+4. Record the server type and location, whether `image_tarballs` or a release manifest was used, and the
+   upload time of the images (`images` phase).
+5. On the server, record idle memory two minutes after the run: `free -m`, `systemctl status k3s`.
+6. Run `make up` again and record the idempotent re-run time.
+7. `make down ARGS=--yes`; confirm in the provider console that the server, firewall and key are gone.
+8. Repeat three times and report median and worst case in `specs/000-*/measurements.md`.
+
+## Known gaps
+
+- The backup script needs can-core to write its dumps to `/var/lib/can/dumps` on the host. The can-core
+  Deployment does not mount that hostPath yet, so a backup run exits 10 (marker missing) until it does.
+- Uploading images through `k3s ctr images import`, and `apt install restic`, are not yet exercised on a real
+  host (CI uses k3d's importer and a recording fake host).
+- Email: connect a relay after `make up`; it is outside the budget (SPEC.md section 3.4).

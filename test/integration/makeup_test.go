@@ -231,10 +231,15 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	if !res.FormsRouted {
 		t.Fatal("the forms route was not applied")
 	}
-	st, body, _ = edge(t, "GET", "http://"+siteHost+"/_forms/contact/token", nil, nil)
-	if st != 200 {
-		t.Fatalf("form token: %d %s", st, body)
-	}
+	// Traefik loads a new route a moment after it is applied: wait for it, not for a fixed time.
+	eventually(t, 45*time.Second, "the /_forms route to be live in Traefik", func() (bool, string) {
+		st, body, _ = edge(t, "GET", "http://"+siteHost+"/_forms/contact/token", nil, nil)
+		if st == 200 {
+			return true, ""
+		}
+		ir, _ := kubectl("-n", "mod-forms", "get", "ingressroute,middleware", "-o", "yaml")
+		return false, fmt.Sprintf("status %d %.120s\n%s", st, body, ir)
+	})
 	var tok struct {
 		Token string `json:"token"`
 	}
