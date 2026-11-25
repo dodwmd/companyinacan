@@ -11,6 +11,9 @@ runtime:
   chart: ./chart
 requires:
   database: none
+hooks:
+  image: curlimages/curl:8.11.1
+  backup: ./hooks/backup.sh
 resources:
   ram_mb: 20
   ram_limit_mb: 40

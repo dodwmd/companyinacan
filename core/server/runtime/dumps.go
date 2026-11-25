@@ -65,7 +65,7 @@ func backupModules(db *store.DB) func(context.Context) ([]string, error) {
 
 // newDumper builds the dump runner; hooks can only run (as Jobs) with the Kubernetes installer.
 func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error) {
-	d := &dumps.Dumper{Store: &dumps.Store{Dir: c.DumpsDir}, DB: db.DB, Modules: backupModules(db), Log: log}
+	d := &dumps.Dumper{Store: &dumps.Store{Dir: c.DumpsDir}, DB: db.DB, Modules: backupModules(db), CompanyFile: c.CompanyFile, Log: log}
 	if c.Installer == "kubernetes" && c.ModuleInstaller == nil {
 		api, err := kube.NewInCluster(c.KubeAPI, c.SAToken, c.SACA)
 		if err != nil {

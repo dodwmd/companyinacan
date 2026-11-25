@@ -32,8 +32,10 @@ type Dumper struct {
 	Hooks HookRunner
 	// Modules lists the enabled modules that have a backup hook.
 	Modules func(ctx context.Context) ([]string, error)
-	Now     func() time.Time // default time.Now
-	Log     *slog.Logger
+	// CompanyFile is the applied company.yaml, copied into every run ("" skips).
+	CompanyFile string
+	Now         func() time.Time // default time.Now
+	Log         *slog.Logger
 	// HookTimeout bounds one module's hook (default 15 minutes).
 	HookTimeout time.Duration
 
@@ -125,6 +127,9 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 	if err := d.dumpState(ctx); err != nil {
 		return Result{}, fmt.Errorf("can-core state: %w", err)
 	}
+	if err := d.dumpCompany(); err != nil {
+		return Result{}, fmt.Errorf("company.yaml: %w", err)
+	}
 	var failed []error
 	if d.Modules != nil {
 		mods, err := d.Modules(ctx)
@@ -159,6 +164,26 @@ func (d *Dumper) hookTimeout() time.Duration {
 		return d.HookTimeout
 	}
 	return 15 * time.Minute
+}
+
+// dumpCompany copies the applied company.yaml into the dumps, where `can restore` expects it.
+func (d *Dumper) dumpCompany() error {
+	dst := filepath.Join(d.Store.Dir, "company.yaml")
+	if d.CompanyFile == "" {
+		return nil
+	}
+	f, err := os.Open(d.CompanyFile)
+	if errors.Is(err, os.ErrNotExist) {
+		if rerr := os.Remove(dst); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+			return rerr
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	return d.Store.writeAtomic(d.Store.Dir, "company.yaml", f)
 }
 
 // dumpState writes a consistent copy of can-core's SQLite database (VACUUM INTO) and checks it.

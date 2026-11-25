@@ -98,6 +98,32 @@ func TestRunDumpsStateRunsHooksThenWritesMarkerLast(t *testing.T) {
 	}
 }
 
+// `can restore` writes company.yaml back from the restored dumps (SPEC 6.5 step 3).
+func TestRunIncludesTheAppliedCompanyFile(t *testing.T) {
+	d, _ := newDumper(t, nil, &fakeHooks{})
+	d.CompanyFile = filepath.Join(t.TempDir(), "company.yaml")
+	if err := os.WriteFile(d.CompanyFile, []byte("name: Acme\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(d.Store.Dir, "company.yaml"))
+	if err != nil || string(b) != "name: Acme\n" {
+		t.Fatalf("%q %v", b, err)
+	}
+	// a company that was never applied is not an error, and a stale copy does not survive
+	if err := os.Remove(d.CompanyFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(d.Store.Dir, "company.yaml")); err == nil {
+		t.Fatal("stale company.yaml kept")
+	}
+}
+
 func TestRunWithoutMarkerWhenAHookFails(t *testing.T) {
 	h := &fakeHooks{fail: map[string]error{"support": errors.New("boom")}}
 	d, _ := newDumper(t, []string{"support", "wiki"}, h)
