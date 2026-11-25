@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/goal.updated.v1.json",
+  "title": "goal.updated.v1",
+  "description": "Published when a goal is created or changes: fields, status, key results or progress. Titles and descriptions are not included. Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids and machine values only, never names, contact data or free text (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "goal.updated.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "people"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goal_id",
+        "scope",
+        "change",
+        "status",
+        "progress"
+      ],
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "pattern": "^goal_[0-9a-f]{24}$"
+        },
+        "scope": {
+          "enum": [
+            "person",
+            "team",
+            "company"
+          ]
+        },
+        "change": {
+          "enum": [
+            "created",
+            "updated",
+            "status",
+            "key_result_added",
+            "progress"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "active",
+            "achieved",
+            "abandoned"
+          ]
+        },
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "owner_party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$",
+          "description": "Present for personal goals."
+        },
+        "parent_goal_id": {
+          "type": "string",
+          "pattern": "^goal_[0-9a-f]{24}$"
+        }
+      }
+    }
+  }
+}

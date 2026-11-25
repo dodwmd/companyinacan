@@ -1,0 +1,9 @@
+{
+  "id": "pers_0123456789abcdef01234567",
+  "kind": "contractor",
+  "status": "candidate",
+  "given_name": "Bo",
+  "family_name": "Example",
+  "created_at": "2026-11-25T10:00:00Z",
+  "updated_at": "2026-11-25T10:00:00Z"
+}

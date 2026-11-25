@@ -1,0 +1,193 @@
+# People and performance (`can-people`)
+
+The in-house `people` module holds the company's **directory** (people records, org structure,
+employment lifecycle, onboarding and offboarding checklists) and **performance** data (1:1s and
+goals). It provides the `directory` and `performance` capabilities and is the first module that stores
+the most sensitive data classes in the platform.
+
+> **This is a tool, not legal, HR or payroll advice.** It records and protects data; it does not
+> compute pay or tax, and it does not know your jurisdiction's employment, privacy or retention
+> law. The retention defaults below are starting points. The operator is responsible for compliance
+> and should take advice from a qualified professional.
+
+Status: **experimental**. Unit-, contract- and race-tested offline; not yet exercised on a cluster
+(see [Gaps](#gaps)). Epic E13a, spec in `specs/012-people-directory/`.
+
+## What it does
+
+| Area | Features |
+|---|---|
+| Directory | People (employee, contractor) with a lifecycle `candidate -> onboarding -> active <-> leave -> offboarding -> former`, effective dating (future-dated changes apply on their date), status history, departments, teams, positions, a manager chain with cycle prevention |
+| Fields | `directory-basic` (names, work contact, org, dates) and `people-sensitive` (date of birth, national id, home address, personal phone, salary). Sensitive fields are encrypted per field at rest and every read is audited per field |
+| 1:1s | A series between a manager and one direct report, meetings, agenda items either side can add, shared notes, **manager-private notes**, action items that can link to a `work` issue, follow-ups from earlier meetings, history |
+| Goals | Personal, team and company goals with key results, progress updates, alignment to a manager's, team's or company goal, and four visibility levels (private, manager, team, company) |
+| Checklists | Onboarding and offboarding templates (assignee role, due date relative to an anchor, optional machine `action`), instantiated manually or automatically when a person enters a status; completion emits an event for later identity provisioning |
+| Retention | Per data class retention, legal hold, erasure requests that tombstone and purge, an erasure ledger feed |
+| API | REST JSON, OpenAPI 3.1 at `specs/012-people-directory/contracts/people-api.yaml`, bearer tokens, one policy layer |
+
+Not included in this slice: time off, payroll (never built, see SPEC.md), reviews/360 cycles,
+feedback and praise, the admin and portal UI, search and reporting.
+
+## Roles and who can see what
+
+Roles come from the caller's token (SSO groups): `employee`, `manager`, `hr`, `admin`. A role is
+necessary but never sufficient: the policy layer (`core/people/policy.go`) also checks the caller's
+relationship to the record (self, direct manager, anywhere in the manager chain, same team) and the
+caller's own employment status. Anything not allowed is denied.
+
+| Data | self | direct manager | skip-level manager | hr / admin | other staff |
+|---|---|---|---|---|---|
+| Basic fields | yes | yes | yes | yes | yes, for active, on-leave and onboarding people |
+| Date of birth, national id, home address, personal phone, salary | read; write only address and phone | **no** | **no** | read and write | no |
+| Status history | yes | no | no | yes | no |
+| 1:1 agenda, shared notes, actions | yes | yes | **no** | **no** | no |
+| Manager-private 1:1 notes | **no** | yes (the author) | **no** | **no** | no |
+| Goals | always own | `manager`, `team`, `company` visibility | same | all but `private` | `team` (teammates), `company` |
+| Checklists | yes | yes | no | yes | no |
+| Create people, change status, set manager, legal hold, erasure, retention | no | no | no | yes | no |
+
+Rules worth knowing:
+
+- **Fail closed.** No recognised role, or a person record that is a candidate or former, gets
+  nothing. A terminated manager's token may stay valid for a while upstream; their person record says
+  `former`, so every call is refused. When a person becomes former, their reports lose the
+  reporting line and HR must reassign them.
+- **Elevated roles need an active person.** `manager`, `hr` and `admin` powers are suspended while the
+  person is on leave or offboarding; self-service stays. The can-core service account (hr + admin, no
+  person record) is exempt from this because it has no employment status; it never gets manager powers.
+- **404, not 403,** when the caller may not see the record at all, so ids cannot be probed.
+- **A manager who is replaced loses access** to the old 1:1 series immediately, private notes
+  included. The new manager starts a new series and sees nothing of the old one. The report keeps
+  their history.
+- **HR and admin cannot read 1:1 content or private goals by role.** If your policy needs HR to see
+  them, that is a deliberate product change, not a config flag.
+- **Operators and database administrators can still read the database file.** Sensitive fields and
+  all 1:1 notes are encrypted at the application level, so a copy of the file without the keyring is
+  not enough, but whoever holds both the file and the keyring can read everything.
+
+## Encryption at rest
+
+Sensitive columns (`people.sens_*`) and 1:1 notes are sealed with XChaCha20-Poly1305. The ciphertext
+is bound to its row and column (`<person id>:<field>`, `<meeting id>:<notes kind>`) so a value copied
+to another record does not open. The format is `v1.<key-id>.<base64url(nonce||ciphertext)>`.
+
+The keyring is a file mounted from a Secret (`/etc/can-people/keys/keyring`, mode 0400; the service
+refuses to start if it is readable by group or others):
+
+```
+# newest key first; the first line is the active key
+k2 <64 hex characters>
+k1 <64 hex characters>
+```
+
+Rotation: add a new key on top, restart, run `can-people rotate-keys` (it re-seals every value
+written under an older key and prints how many), repeat until it reports 0, then remove the old key.
+Removing a key that still protects data makes that data unreadable. Back up the keyring separately from
+the database; **losing it loses the sensitive data**. Generate a key with `head -c 32 /dev/urandom | xxd -p -c 64`.
+
+Not encrypted: names, work contact, dates and ids (`directory-basic`), 1:1 agenda items and action
+items, goals. Protect the volume and backups as sensitive anyway (encrypted backups only, SPEC.md section 5).
+
+## Audit
+
+`Auditor` is an interface (`core/people/audit.go`). The default writes an append-only, hash-chained
+`audit_log` table; can-core can supply an implementation that forwards to its own log. Recorded:
+
+- every read of sensitive fields (per field names, never values), every read of a 1:1 meeting, every
+  read of someone else's goal;
+- every write, and every **denied** access attempt on sensitive resources;
+- the actor is a person id (or `svc:<subject>`), never a name.
+
+A sensitive read happens **only after** its audit record was written: if the audit hook fails, the read
+fails. Write audit is recorded after the commit, so a failure there is reported as an error although the
+write persisted. `can-people verify-audit` recomputes the chain. The audit log is not erased with the
+person (legal retention beats erasure; it holds opaque ids only).
+
+## Retention, legal hold and erasure
+
+Retention is per data class, from the day a person becomes former (1:1 meetings and closed goals
+also expire by age). Defaults (override in `people.yaml` under `retention:` or in the module settings):
+
+| Class | Sensitivity | Default |
+|---|---|---|
+| `directory-basic` | standard | 7y |
+| `people-sensitive` | sensitive | 7y |
+| `people-checklists` | standard | 2y |
+| `performance-oneonone` | sensitive | 2y |
+| `performance-goals` | sensitive | 2y |
+
+Syntax is `30d`, `12m`, `7y`, `0` (purge as soon as the person leaves) or `legal` (never purged
+automatically). The sweep runs hourly and on demand (`POST /v1/retention/run`, `can-people retention`).
+
+- **Legal hold** (`PUT /v1/people/{id}/legal-hold`, hr or admin) blocks erasure and every retention purge
+  for that person.
+- **Erasure** (`POST /v1/people/{id}/erasure`, hr or admin) works only on former people and candidates
+  and is refused (409) under a legal hold. It purges all five classes, blanks the record into a
+  tombstone (the row stays, status `former`, names replaced, SSO link removed), and records
+  `(subject, class, date)` for each class. The **subject is the person's own random id**
+  (`pers_<24 hex>`): opaque, and it satisfies the E08 ledger's subject and class patterns
+  (`core/backup/ledger.go`). `GET /v1/erasures?after=<seq>` returns the tombstones for can-core to append
+  to the erasure ledger.
+- **After a restore**, replay the ledger with `can-people purge -subject <id> -class <class>` (or
+  `-class all`). It is idempotent, ignores legal holds (the erasure was authorised when it was
+  recorded) and is a no-op for an unknown subject.
+- **Kept on purpose:** the status history's dates and transitions (employment records are often legally
+  required; notes are cleared), and the audit log. Event payloads contain only ids and machine values.
+- Backups keep erased data until the last snapshot containing it expires (SPEC.md section 3.7).
+
+## Events
+
+Delivered at least once through the outbox (webhook, HMAC-signed with the same scheme as the forms
+gateway), de-duplicate on `id`. Payloads carry ids and machine values only. Schemas in
+`schemas/events/`:
+
+`person.created.v1`, `person.status_changed.v1` (when a change takes effect, with `effective_date`),
+`person.offboarded.v1`, `oneonone.scheduled.v1`, `goal.updated.v1`, `checklist.task_completed.v1`
+(carries the task's `action`, for example `identity.provision`, so a provisioning integration can react).
+
+SPEC.md names `person.hired.v1` and `person.left.v1`; this module publishes the finer-grained
+`person.created`, `person.status_changed` and `person.offboarded` instead (a hire is `status_changed` to
+`active`; `person.offboarded` carries the `effective_date` that `person.left` was specified to carry).
+
+## Running it
+
+```
+can-people serve -config /etc/can-people/people.yaml
+can-people check-config | healthcheck | rotate-keys | retention | verify-audit | purge -subject ID -class CLASS | version
+```
+
+```yaml
+# people.yaml (secrets are never in this file)
+listen: ":8081"              # ClusterIP only; there is no public listener
+db_path: /data/people.db     # SQLite, WAL, secure_delete on
+keyring_file: /etc/can-people/keys/keyring
+introspect: { url: "" }      # can-core token introspection; empty = service account only
+webhook: { url: "" }         # event delivery target; empty = events wait in the outbox
+retention: {}                # per class overrides
+```
+
+Environment: `CAN_PEOPLE_API_TOKEN` (required, 24+ characters; the can-core service account, roles hr + admin),
+`CAN_PEOPLE_WEBHOOK_SECRET` (required when a webhook is set), `CAN_PEOPLE_INTROSPECT_TOKEN`.
+
+Authentication is an interface (`Authenticator`). Shipped: static bearer tokens (constant time) and an
+introspection client (`POST {"token"}` -> `{"active","subject","roles"}`, unknown roles dropped, positive
+answers cached 30 s, every error denies). A user's `subject` is linked to a person through
+`sso_subject`; a token whose subject has no person record gets no staff access.
+
+## Footprint
+
+Idle RAM was measured locally: **13.8 MiB RSS idle, 22.3 MiB after 100 creates and 300 list requests**
+(Linux, static binary, pure-Go SQLite). The manifest declares 30 MB requested and 64 MB limit.
+Details and method: `specs/012-people-directory/measurements.md`. Not measured on k3d.
+
+## Gaps
+
+- No Helm templates yet (values only, as for forms), no image build or digest pin, no k3d or integration
+  tests: the module is marked `experimental`.
+- can-core does not yet create the keyring Secret, route `introspect`, accept the webhook, or append the
+  tombstones to the E08 ledger (this module exposes the feed and the purge hook).
+- Reporting-line approval chains (SPEC.md section 3.7) are not wired: `GET /v1/people/{id}/reports` and the
+  manager link exist, the approval engine does not consume them yet.
+- No UI, no portal, no time off, no reviews/360, no feedback, no `identity.provision` consumer, no
+  `work` issue creation from action items (the link field exists).
+- Write auditing is after the commit (see Audit); search indexing of sensitive classes is out by design.

@@ -1,0 +1,47 @@
+# Default values for the people module chart. The chart templates are delivered with the
+# module deployment epic (E03); this file fixes the contract the service expects, as for forms.
+image:
+  repository: ghcr.io/dodwmd/can-people
+  # Pinned by digest at release time; see deploy/people/README.md.
+  digest: ""
+service:
+  api: { name: people-api, port: 8081 }  # ClusterIP only: the `directory` and `performance` capabilities. No public listener, no ingress.
+persistence:
+  size: 200Mi
+  mountPath: /data
+resources:
+  requests: { memory: 30Mi, cpu: 5m }
+  limits: { memory: 64Mi }
+config:
+  # Mounted at /etc/can-people/people.yaml. keyring_file points at the mounted Secret below.
+  keyring_file: /etc/can-people/keys/keyring
+  retention: {}   # override per data class, see modules/people/settings.schema.json
+  introspect:
+    url: ""       # can-core token introspection (resolves user tokens to subject + roles); empty = service account only
+  webhook:
+    url: ""       # can-core event endpoint for the outbox; empty = events stay in the outbox
+secrets:
+  # Names only; the values are created by can-core and never appear in values or git.
+  env:
+    - CAN_PEOPLE_API_TOKEN          # service account (hr+admin) used by can-core
+    - CAN_PEOPLE_WEBHOOK_SECRET
+    - CAN_PEOPLE_INTROSPECT_TOKEN
+  keyring:
+    secretName: can-people-keys     # one key `keyring`: lines of `<key-id> <64 hex>`, newest first; mounted 0400
+    key: keyring
+    mountPath: /etc/can-people/keys
+probes:
+  readiness: { path: /healthz, port: 8081 }
+  liveness: { exec: [/can-people, healthcheck, -addr, "127.0.0.1:8081"] }
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities: { drop: [ALL] }
+networkPolicy:
+  # Default deny; ingress only from can-core and from the modules that consume directory/performance
+  # (labelled by can-core when they declare the capability). Egress only to can-core.
+  ingressFromCapabilityConsumers: true

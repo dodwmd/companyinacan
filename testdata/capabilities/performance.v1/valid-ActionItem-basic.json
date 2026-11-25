@@ -1,0 +1,7 @@
+{
+  "id": "act_0123456789abcdef01234567",
+  "meeting_id": "mtg_0123456789abcdef01234567",
+  "text": "Send roadmap",
+  "assignee_id": "pers_0123456789abcdef01234567",
+  "status": "open"
+}

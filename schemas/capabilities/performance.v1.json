@@ -1,0 +1,718 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/performance.v1.json",
+  "title": "performance.v1",
+  "description": "Capability `performance` (SPEC.md section 4.3): 1:1 series, agendas, shared and private notes, action items that link to `work` issues, and goals with key results and alignment. Provided by the in-house people module. Bodies are JSON over HTTP. A 1:1 is readable only by its two participants (the report and the report's current direct manager); HR, admins and skip-level managers get 404. The manager's private notes are returned to the manager only and are encrypted at rest. Goal visibility (private, manager, team, company) is enforced server-side. Delivery signals are context, never an automatic score. Authorisation is enforced by the provider per caller and per field (roles employee, manager, hr, admin): a caller who may not see a person gets 404, a caller who may see the person but not a field gets 403. Consumers must not depend on anything not in this file.",
+  "x-capability": "performance",
+  "x-verbs": [
+    {
+      "verb": "create_series",
+      "method": "POST",
+      "path": "/v1/oneonones",
+      "request": "CreateSeriesRequest",
+      "response": "Series",
+      "write": true,
+      "permission": "performance.write",
+      "description": "The caller must be the report's current direct manager."
+    },
+    {
+      "verb": "list_series",
+      "method": "GET",
+      "path": "/v1/oneonones",
+      "response": "SeriesList",
+      "permission": "performance.read"
+    },
+    {
+      "verb": "schedule_meeting",
+      "method": "POST",
+      "path": "/v1/oneonones/{id}/meetings",
+      "request": "ScheduleMeetingRequest",
+      "response": "MeetingSummary",
+      "write": true,
+      "permission": "performance.write",
+      "description": "Emits oneonone.scheduled.v1."
+    },
+    {
+      "verb": "get_meeting",
+      "method": "GET",
+      "path": "/v1/meetings/{id}",
+      "response": "Meeting",
+      "permission": "performance.read",
+      "description": "Audited read."
+    },
+    {
+      "verb": "add_agenda_item",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/agenda",
+      "request": "TextRequest",
+      "write": true,
+      "permission": "performance.write"
+    },
+    {
+      "verb": "set_notes",
+      "method": "PUT",
+      "path": "/v1/meetings/{id}/notes",
+      "request": "TextRequest",
+      "write": true,
+      "permission": "performance.write",
+      "description": "Shared notes."
+    },
+    {
+      "verb": "set_private_notes",
+      "method": "PUT",
+      "path": "/v1/meetings/{id}/private-notes",
+      "request": "TextRequest",
+      "write": true,
+      "permission": "performance.write",
+      "description": "Manager only."
+    },
+    {
+      "verb": "add_action",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/actions",
+      "request": "AddActionRequest",
+      "response": "ActionItem",
+      "write": true,
+      "permission": "performance.write"
+    },
+    {
+      "verb": "update_action",
+      "method": "PATCH",
+      "path": "/v1/actions/{id}",
+      "request": "UpdateActionRequest",
+      "response": "ActionItem",
+      "write": true,
+      "permission": "performance.write",
+      "description": "Sets status and/or work_issue_id, the link to a `work` issue."
+    },
+    {
+      "verb": "list_goals",
+      "method": "GET",
+      "path": "/v1/goals",
+      "response": "GoalList",
+      "permission": "performance.read",
+      "description": "Query: owner_id, team_id, parent_id, scope."
+    },
+    {
+      "verb": "create_goal",
+      "method": "POST",
+      "path": "/v1/goals",
+      "request": "CreateGoalRequest",
+      "response": "Goal",
+      "write": true,
+      "permission": "performance.write"
+    },
+    {
+      "verb": "get_goal",
+      "method": "GET",
+      "path": "/v1/goals/{id}",
+      "response": "Goal",
+      "permission": "performance.read"
+    },
+    {
+      "verb": "update_goal",
+      "method": "PATCH",
+      "path": "/v1/goals/{id}",
+      "request": "UpdateGoalRequest",
+      "response": "Goal",
+      "write": true,
+      "permission": "performance.write"
+    },
+    {
+      "verb": "add_key_result",
+      "method": "POST",
+      "path": "/v1/goals/{id}/key-results",
+      "request": "CreateKeyResultRequest",
+      "response": "KeyResult",
+      "write": true,
+      "permission": "performance.write"
+    },
+    {
+      "verb": "record_progress",
+      "method": "POST",
+      "path": "/v1/key-results/{id}/progress",
+      "request": "RecordProgressRequest",
+      "response": "Goal",
+      "write": true,
+      "permission": "performance.write",
+      "description": "Emits goal.updated.v1."
+    }
+  ],
+  "$defs": {
+    "CreateSeriesRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_id",
+        "cadence"
+      ],
+      "properties": {
+        "report_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "cadence": {
+          "enum": [
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        }
+      }
+    },
+    "Series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "manager_id",
+        "report_id",
+        "cadence",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ser_[0-9a-f]{24}$"
+        },
+        "manager_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "report_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "cadence": {
+          "enum": [
+            "weekly",
+            "biweekly",
+            "monthly"
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "SeriesList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Series"
+          }
+        }
+      }
+    },
+    "ScheduleMeetingRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheduled_at"
+      ],
+      "properties": {
+        "scheduled_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "TextRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      }
+    },
+    "MeetingSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "series_id",
+        "scheduled_at",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        },
+        "series_id": {
+          "type": "string"
+        },
+        "scheduled_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "scheduled",
+            "held",
+            "cancelled"
+          ]
+        }
+      }
+    },
+    "ActionItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "meeting_id",
+        "text",
+        "assignee_id",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^act_[0-9a-f]{24}$"
+        },
+        "meeting_id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "assignee_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "due_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "done"
+          ]
+        },
+        "work_issue_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+          "description": "Id of the linked `work` issue."
+        }
+      }
+    },
+    "AddActionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "assignee_id"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "assignee_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "due_date": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "UpdateActionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "status": {
+          "enum": [
+            "open",
+            "done"
+          ]
+        },
+        "work_issue_id": {
+          "type": "string",
+          "pattern": "^([A-Za-z0-9][A-Za-z0-9._:-]{0,63})?$"
+        }
+      }
+    },
+    "Meeting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "series_id",
+        "scheduled_at",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "series_id": {
+          "type": "string"
+        },
+        "scheduled_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "scheduled",
+            "held",
+            "cancelled"
+          ]
+        },
+        "shared_notes": {
+          "type": "string"
+        },
+        "private_notes": {
+          "type": "string",
+          "description": "Present only for the manager of the series; absent, not empty, for the report."
+        },
+        "agenda": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "author_id",
+              "text",
+              "created_at"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "author_id": {
+                "type": "string",
+                "pattern": "^pers_[0-9a-f]{24}$"
+              },
+              "text": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActionItem"
+          }
+        },
+        "follow_ups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActionItem"
+          }
+        }
+      }
+    },
+    "KeyResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "goal_id",
+        "title",
+        "start_value",
+        "target_value",
+        "current_value",
+        "progress"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^kr_[0-9a-f]{24}$"
+        },
+        "goal_id": {
+          "type": "string",
+          "pattern": "^goal_[0-9a-f]{24}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "start_value": {
+          "type": "number"
+        },
+        "target_value": {
+          "type": "number"
+        },
+        "current_value": {
+          "type": "number"
+        },
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "Goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "scope",
+        "title",
+        "visibility",
+        "status",
+        "progress",
+        "key_results",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^goal_[0-9a-f]{24}$"
+        },
+        "scope": {
+          "enum": [
+            "person",
+            "team",
+            "company"
+          ]
+        },
+        "owner_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "team_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "period": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "manager",
+            "team",
+            "company"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "active",
+            "achieved",
+            "abandoned"
+          ]
+        },
+        "parent_id": {
+          "type": "string",
+          "pattern": "^goal_[0-9a-f]{24}$"
+        },
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "key_results": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/KeyResult"
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "GoalList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Goal"
+          }
+        }
+      }
+    },
+    "CreateGoalRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "title"
+      ],
+      "properties": {
+        "scope": {
+          "enum": [
+            "person",
+            "team",
+            "company"
+          ]
+        },
+        "owner_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "team_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "period": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "manager",
+            "team",
+            "company"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "active",
+            "achieved",
+            "abandoned"
+          ]
+        },
+        "parent_id": {
+          "type": "string",
+          "pattern": "^goal_[0-9a-f]{24}$"
+        }
+      }
+    },
+    "UpdateGoalRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "period": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "manager",
+            "team",
+            "company"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "active",
+            "achieved",
+            "abandoned"
+          ]
+        },
+        "parent_id": {
+          "type": "string",
+          "pattern": "^(goal_[0-9a-f]{24})?$",
+          "description": "Empty string clears the alignment."
+        }
+      }
+    },
+    "CreateKeyResultRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "start_value",
+        "target_value"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "start_value": {
+          "type": "number"
+        },
+        "target_value": {
+          "type": "number"
+        }
+      }
+    },
+    "RecordProgressRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "comment": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    }
+  }
+}

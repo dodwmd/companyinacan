@@ -37,3 +37,33 @@ var WorkIssueTransitionedV1 []byte
 //
 //go:embed work.comment.created.v1.json
 var WorkCommentCreatedV1 []byte
+
+// PersonCreatedV1 is the JSON Schema of the person.created.v1 event.
+//
+//go:embed person.created.v1.json
+var PersonCreatedV1 []byte
+
+// PersonStatusChangedV1 is the JSON Schema of the person.status_changed.v1 event.
+//
+//go:embed person.status_changed.v1.json
+var PersonStatusChangedV1 []byte
+
+// PersonOffboardedV1 is the JSON Schema of the person.offboarded.v1 event.
+//
+//go:embed person.offboarded.v1.json
+var PersonOffboardedV1 []byte
+
+// OneOnOneScheduledV1 is the JSON Schema of the oneonone.scheduled.v1 event.
+//
+//go:embed oneonone.scheduled.v1.json
+var OneOnOneScheduledV1 []byte
+
+// GoalUpdatedV1 is the JSON Schema of the goal.updated.v1 event.
+//
+//go:embed goal.updated.v1.json
+var GoalUpdatedV1 []byte
+
+// ChecklistTaskCompletedV1 is the JSON Schema of the checklist.task_completed.v1 event.
+//
+//go:embed checklist.task_completed.v1.json
+var ChecklistTaskCompletedV1 []byte

@@ -1,0 +1,13 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "checklist.task_completed.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "task_id": "task_0123456789abcdef01234567",
+    "checklist_id": "chk_0123456789abcdef01234567",
+    "party_id": "pers_0123456789abcdef01234567",
+    "completed_at": "2026-12-01T09:30:00Z",
+    "action": "identity.provision"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/person.offboarded.v1.json",
+  "title": "person.offboarded.v1",
+  "description": "Published when a person becomes former. Consumers revoke access and end vesting from `effective_date`. Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids and machine values only, never names, contact data or free text (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "person.offboarded.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "people"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "party_id",
+        "kind",
+        "effective_date"
+      ],
+      "properties": {
+        "party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "employee",
+            "contractor"
+          ]
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "pers_0123456789abcdef01234567",
+  "kind": "employee",
+  "status": "hired",
+  "given_name": "Ada",
+  "family_name": "Example",
+  "created_at": "2026-11-25T10:00:00Z",
+  "updated_at": "2026-11-25T10:00:00Z"
+}
