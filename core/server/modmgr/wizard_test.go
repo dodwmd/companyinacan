@@ -3,10 +3,10 @@ package modmgr
 import (
 	"context"
 	"errors"
-	"github.com/dodwmd/companyinacan/core/backup"
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 )
 
