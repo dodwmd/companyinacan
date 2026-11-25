@@ -1,0 +1,12 @@
+# E2E ONLY (dev/compose/e2e.yml): the dev people config plus token introspection against the
+# introstub service, so the suite can act as an employee, a manager and HR at once.
+listen: ":8081"
+db_path: /data/people.db
+keyring_file: /secrets/people-keyring
+introspect:
+  url: http://introstub:8099/
+  allow_insecure_http: true
+ui:
+  enabled: true
+  insecure_cookies: true
+  trust_proxy: true

@@ -19,12 +19,12 @@ provision's), not listed by the admin or module API and cannot be a `primary`.
 | Module | Kind | Status | RAM (MB) | Licence | Capabilities | Verified |
 |---|---|---|---|---|---|---|
 | `forms` | in-house | ready | 15 | Apache-2.0 | `leads` | Unit and contract tests offline; 13.9 MiB RSS measured locally on the static build. Not run on a cluster by these tests |
-| `people` | in-house | experimental | 30 | Apache-2.0 | `directory`, `performance` | Unit, race and contract tests offline; 13.8 MiB idle measured locally. No Helm templates, no admin UI, no cluster run |
-| `work` | in-house | experimental | 20 | Apache-2.0 | `work`, `projects` | Tests and local measurement offline. No web UI, image not built or run on a cluster |
-| `jobs` | in-house | experimental | 30 | Apache-2.0 | `jobs`, `ats` | Tests and local measurement (16 MiB idle) offline. No Helm templates, no recruiter UI, board connectors are stubs |
-| `finance` | in-house | experimental | 20 | Apache-2.0 | `invoices`, `contracts`, `timesheets` | Tests offline (16 MB measured idle per modules/README.md). Not run on a cluster |
+| `people` | in-house | experimental | 30 | Apache-2.0 | `directory`, `performance` | Unit, race and contract tests offline; 13.8 MiB idle measured locally; self-service web UI (E13c); runs in the compose stack and its e2e suite (two identities through a fake introspection service). No Helm templates for the UI route, no cluster run |
+| `work` | in-house | experimental | 28 | Apache-2.0 | `work`, `projects` | Tests and local measurement offline; web UI (E14c); installed through can-core on k3d once in the advisory CI job; runs in the compose e2e suite |
+| `jobs` | in-house | experimental | 30 | Apache-2.0 | `jobs`, `ats` | Tests and local measurement (16 MiB idle) offline; recruiter, hiring-manager and interviewer UI (E16b); runs in the compose e2e suite (careers page, public application, blind feedback). Board connectors are stubs, no cluster run |
+| `finance` | in-house | experimental | 28 | Apache-2.0 | `invoices`, `contracts`, `timesheets` | Tests offline (16 MB measured idle per modules/README.md, before the UI); web UI (E15b); invoice flow with a second approver and the public link run in the compose e2e suite. Not run on a cluster |
 | `provisioning` | in-house | experimental | 20 | Apache-2.0 | `identity.provision` | Unit, race and contract tests offline against fakes (a fake directory, a fake SCIM server); RAM measured locally. No connector has talked to a real service (Google Workspace, GitHub and Slack are stubs), the module namespace NetworkPolicy does not yet allow its egress, and nothing ran on a cluster |
-| `equity` | in-house | experimental | 16 | Apache-2.0 | `equity` | Unit, race, fuzz and contract tests offline; 15.8 MiB idle measured locally. No Helm templates, no admin UI, no cluster run. A tool, not legal, tax or securities advice |
+| `equity` | in-house | experimental | 16 | Apache-2.0 | `equity` | Unit, race, fuzz and contract tests offline; 15.8 MiB idle measured locally; grant approval by a board identity and vesting run in the compose e2e suite (fake introspection). No Helm templates, no admin UI, no cluster run. A tool, not legal, tax or securities advice |
 
 ## Wrapped open-source modules
 
@@ -56,5 +56,5 @@ Open verification work is tracked per spec: `specs/007-starter-modules/tasks.md`
 ## Not modules yet
 
 Simple tasks (Vikunja) from Epic E10, SSO, the approval engine and notifications (E11; the latter two
-are built inside can-core, not as modules), the admin dashboard (E12), booking, e-sign and equity are
+are built inside can-core, not as modules), the admin dashboard (E12), booking and e-sign are
 not in `modules/`.

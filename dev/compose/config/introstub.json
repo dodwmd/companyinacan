@@ -1,0 +1,7 @@
+{
+  "e2e-intro-hr-token-0123456789abcdef": {"subject": "user:e2e-hr", "roles": ["hr"]},
+  "e2e-intro-manager-token-0123456789abcdef": {"subject": "user:e2e-manager", "roles": ["employee", "manager"]},
+  "e2e-intro-ann-token-0123456789abcdef": {"subject": "user:e2e-ann", "roles": ["employee"]},
+  "e2e-intro-ben-token-0123456789abcdef": {"subject": "user:e2e-ben", "roles": ["employee"]},
+  "e2e-intro-board-token-0123456789abcdef": {"subject": "user:e2e-board", "roles": ["board"]}
+}

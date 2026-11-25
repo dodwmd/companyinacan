@@ -1,14 +1,5 @@
 # docs
 
-Project documentation. `epics/` holds the epic breakdown; measurements recorded by epic E00 go in `measurements/`.
+Project documentation. **Start at [index.md](index.md)**, which lists every document by purpose.
 
-- [admin-ui.md](admin-ui.md): the admin web UI (routes, security model, installing it on Android).
-- [recruiting-ui.md](recruiting-ui.md): the recruiter, hiring-manager and interviewer web UI of the jobs module (sign-in, roles, blind feedback, candidate data reveal, diversity report).
-- [pwa.md](pwa.md): installing the admin UI on a phone, Web Push notifications, operator notes and limits.
-- [work-tracker.md](work-tracker.md): the in-house work tracker (API tokens, curl examples, `can work` CLI, events).
-- [releasing.md](releasing.md): cutting, verifying, rolling back a release; the security-advisory flow.
-- [maintainers.md](maintainers.md): required checks, branch protection, why the footprint check is advisory.
-- [work-ui.md](work-ui.md): the work tracker web UI (sign-in with a token, backlog, board, sprints, epics, dashboard; security model, accessibility).
-- [equity.md](equity.md): the in-house equity service (cap table and employee stock options; access matrix, vesting rules, retention and erasure, limits). A tool, not legal, tax or securities advice.
-- [observability.md](observability.md): metrics, `/readyz`, request ids and log redaction, alert rules and dashboard, `can diagnose` support bundles, the measured footprint cost (epic E22).
-- [module-wiring.md](module-wiring.md): installing the in-house modules through can-core: secrets, personal access tokens, events, approvals, what ran where.
+`epics/` holds the epic breakdown and its statuses; `measurements/` holds dated measurements (epic E00).

@@ -39,6 +39,16 @@ http://finance.localhost:8080 {
 	reverse_proxy finance:8080
 }
 
+# Any other Host header (DNS rebinding, a typo, a scanner) gets nothing: not the site, not an API.
+# Without this block Caddy answers an unknown host with an empty 200.
+http://:8080 {
+	respond "unknown host" 421
+}
+
+http://equity.localhost:8080 {
+	reverse_proxy equity:8081
+}
+
 # The leads capability API of the forms gateway (bearer token), used by the smoke test.
 http://forms.localhost:8080 {
 	reverse_proxy forms:8081

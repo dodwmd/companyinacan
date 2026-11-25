@@ -9,10 +9,10 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check lint-scripts scan-secrets release-build compose-up compose-down compose-logs compose-test
+.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check lint-scripts scan-secrets release-build compose-up compose-down compose-logs compose-test e2e e2e-up e2e-down docs-check
 
 help: ## list targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
 build: ## build bin/can, bin/can-static and bin/can-core
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/can ./cmd/can
@@ -20,7 +20,7 @@ build: ## build bin/can, bin/can-static and bin/can-core
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-core ./cmd/can-core
 
 unit: ## unit tests
-	$(GO) test -race ./cmd/... ./core/... ./test/wiring/...
+	$(GO) test -race ./cmd/... ./core/... ./test/wiring/... ./test/e2e/harness/... ./dev/...
 
 contract: ## schema and example contract tests
 	$(GO) test ./test/contract/...
@@ -84,3 +84,20 @@ compose-logs: ## follow the compose stack logs
 
 compose-test: ## run the smoke test against the running compose stack
 	dev/compose/smoke.sh
+
+# End-to-end suite against the compose stack through the Caddy edge (epic E23, specs/032-e2e-docs).
+# The stack is project `can-e2e` with the dev/compose/e2e.yml overlay (fake token introspection for people and
+# equity). Override with E2E_COMPOSE / E2E_PORT. Needs docker compose v2 or podman-compose, curl-free, Go only.
+E2E_COMPOSE ?= docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml
+
+e2e-up: ## DEV ONLY: build and start the compose stack for the e2e suite (project can-e2e)
+	$(E2E_COMPOSE) up -d --build
+
+e2e: ## run the end-to-end suite against the running e2e stack (make e2e-up first); E2E_RESTART=0 skips the restart test
+	E2E_COMPOSE="$(E2E_COMPOSE)" $(GO) test -tags e2e -count=1 -timeout 15m -v ./test/e2e/...
+
+e2e-down: ## tear down the e2e stack and delete its volumes
+	$(E2E_COMPOSE) down -v
+
+docs-check: ## check that every relative link in the Markdown docs resolves (offline)
+	sh scripts/check-doc-links.sh

@@ -14,7 +14,7 @@ integrated, not built. Compliance with employment and data-protection law is the
 responsibility.
 
 **Status: experimental.** Tested offline (unit, race, contract); the chart installs through can-core's
-installer in unit tests; not yet run on a cluster, no admin UI. `can validate` warns accordingly.
+installer in unit tests; not yet run on a cluster. A self-service web UI exists ([`docs/people-ui.md`](../../docs/people-ui.md)); the module also runs in the Docker Compose stack and its end-to-end suite ([`docs/local-compose.md`](../../docs/local-compose.md)). `can validate` warns accordingly.
 
 **Installed under can-core** (see [`docs/module-wiring.md`](../../docs/module-wiring.md)): can-core generates `CAN_PEOPLE_API_TOKEN` and the
 sealed-field keyring once and rotates them on request (`can-core admin secrets rotate people keyring`

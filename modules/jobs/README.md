@@ -9,7 +9,7 @@ hand-off the people module consumes).
 
 **Status: experimental.** Built and tested offline and measured locally (16 MiB idle). The chart
 installs through can-core's installer in unit tests; the image has not been built or run on a cluster,
-there is no recruiter UI, and no real virus scanner or job-board connector ships.
+and no real virus scanner or job-board connector ships. A recruiter, hiring-manager and interviewer web UI exists ([`docs/recruiting-ui.md`](../../docs/recruiting-ui.md)); the module also runs in the Docker Compose stack and its end-to-end suite ([`docs/local-compose.md`](../../docs/local-compose.md)).
 
 **Installed under can-core** (see [`docs/module-wiring.md`](../../docs/module-wiring.md)): can-core generates the admin token, the candidate
 e-mail hash key, the form secret and the sealed-field keyring once. Personal access tokens are

@@ -13,7 +13,10 @@ out, not a supported way to run a company (use `make up` for that).
 
 - Docker with the Compose v2 plugin (`docker compose`), **or** rootless/rootful Podman with `podman-compose`
   (on machines where `docker` is a podman shim, `docker compose` delegates to `podman-compose`). The file is
-  verified end to end with podman-compose 1.6.0 on rootless Podman 6.1; it uses only features common to both tools.
+  verified end to end with podman-compose 1.6.0 on rootless Podman 6.1 and, in the advisory
+  [e2e workflow](../.github/workflows/e2e.yml), with the real Docker Compose v5.1.3 on Docker Engine 29.4.2 on
+  GitHub's `ubuntu-latest` (including `depends_on: condition: service_completed_successfully`, healthchecks and
+  `down` / `up` with the volumes kept); it uses only features common to both tools.
 - Network access to pull `golang:1.27`, `gcr.io/distroless/static-debian12:nonroot` and `caddy:2.8-alpine`
   (no digests are pinned for dev), and to download Go modules on the first build.
 - `curl` and `bash` on the host for the smoke test. No Go toolchain is needed.
@@ -40,11 +43,12 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://jobs.localhost:8080> | recruiting web UI (sign in with a jobs access token, [recruiting-ui.md](recruiting-ui.md)); public careers pages at `/careers`; API under `/v1` (bearer token) |
 | <http://finance.localhost:8080> | finance web UI (sign in with a finance token, see `docs/finance-ui.md`) and API (`/v1/...`, bearer token) |
 | <http://forms.localhost:8080> | leads API of the forms gateway (`/v1/leads`, bearer token) |
+| <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) |
 
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
 resolvers, older macOS tooling), use `curl --resolve admin.localhost:8080:127.0.0.1 ...`, add the names to
 `/etc/hosts` (`127.0.0.1 admin.localhost work.localhost people.localhost jobs.localhost finance.localhost
-forms.localhost`), or use a resolver such as dnsmasq with `address=/localhost/127.0.0.1`.
+forms.localhost equity.localhost`), or use a resolver such as dnsmasq with `address=/localhost/127.0.0.1`.
 
 ### Dev credentials (all fake, all public)
 
@@ -57,8 +61,9 @@ forms.localhost`), or use a resolver such as dnsmasq with `address=/localhost/12
 | Jobs admin token | `dev-only-jobs-admin-token-0123456789abcdef` |
 | Finance admin token | `dev-only-finance-admin-token-0123456789abcdef` |
 | Leads API token | `dev-only-forms-api-token-0123456789abcdef` |
+| Equity service token | `dev-only-equity-api-token-0123456789abcdef` (roles hr, finance, admin; never board) |
 
-Use tokens as `Authorization: Bearer <token>`. The people and jobs keyrings (field encryption) are random,
+Use tokens as `Authorization: Bearer <token>`. The people, jobs and equity keyrings (field encryption) are random,
 generated on the first `up` into the `dev-secrets` volume and never leave it.
 
 ### Logging in to the admin UI
@@ -93,7 +98,38 @@ SQLite data lives in named volumes (`companyinacan_core-data`, `forms-data`, `wo
 `jobs-data`, `finance-data`, plus `dev-secrets`), so `down` without `-v` keeps it. Config files and
 `secrets/*.env` are baked into / read at container creation: after editing one, recreate the service
 (`docker compose -p companyinacan up -d --build --force-recreate <service>`). podman-compose does not
-always notice an `env_file` change on its own.
+always notice an `env_file` change, or a rebuilt image, on its own: `up -d --build edge` left the old edge
+container running until `--force-recreate` was added.
+
+## The end-to-end suite
+
+```sh
+make e2e-up     # docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml up -d --build
+make e2e        # go test -tags e2e ./test/e2e/...   (about 30 s; E2E_RESTART=0 skips the restart test)
+make e2e-down   # down -v: removes the can-e2e containers and volumes only
+```
+
+Go scenarios in `test/e2e` drive the stack through the Caddy edge exactly like a browser or script (`*.localhost`
+host names, resolved to 127.0.0.1 by the test client, so no resolver setup). Each scenario creates uniquely named
+data and can be repeated against the same stack. The suite covers: the site and a contact form that becomes a lead
+(a); admin login with password and TOTP, dashboard, audit, leads and token pages (b); a work token creating a
+project and issue and the web UI board (c); people (1:1, leave request and decision, sensitive-field and leave
+masking) (d); a jobs requisition, careers page with JSON-LD, a public application, the recruiter UI, blind
+feedback (e); finance party, invoice, second-subject approval, public link, payment (f); equity grant from draft to
+board approval and vesting (g); cross-module token refusal, hostile `Host`, no metrics, anonymous refusal (h);
+`down` without `-v` and `up`, with all data and the admin TOTP secret intact (i).
+
+`make e2e-up` adds `dev/compose/e2e.yml`, which starts **introstub** (`dev/compose/introstub`, a 90-line fake of
+can-core's token introspection with five public fake identities: HR, manager, two employees and a board member) and
+starts `people` and `equity` with `*.e2e.yaml` configs that call it. Without it those two services accept one
+static token, so a second person could not exist. introstub is test infrastructure for compose only; it is not in
+any release.
+
+TOTP: the suite reads the secret from `can-core admin reset-password --rotate-totp` (the same thing
+`dev/compose/bootstrap-admin.sh` does), once per run, so **a run rotates the admin's TOTP secret**; sign in again
+with `bootstrap-admin.sh` if you were using an authenticator. The CI job is advisory
+(`.github/workflows/e2e.yml`: pull requests touching the stack, nightly, manual); it uploads the service logs when
+it fails. The harness (`test/e2e/harness`) has its own unit tests (RFC 6238 vectors).
 
 ## Metrics and the optional monitoring profile
 
@@ -121,11 +157,15 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
 - **can-core does not install modules.** It runs with `CAN_INSTALLER=none` (records state only). The services
   are started by Compose as **standalone** processes and are **not registered** with can-core and **not wired
   to each other**; the only shared piece is the edge proxy. Concretely:
+  - module management is off (no installer): `/catalogue` answers 503, the API tokens page offers no module, so no
+    personal access token can be issued and none is verified by a module (issue
+    [#43](https://github.com/dodwmd/companyinacan/issues/43));
   - the admin UI shows no installed modules and its leads view says leads are not available (no `leads`
     provider is registered, no leads token file is configured);
   - forms does not send email (`email.url` unset) and posts no webhook; work, people, jobs and finance post no
     events to can-core (`webhook.url` unset); can-core does not forward module events either;
-  - people does not use can-core token introspection (only its static service token works); finance, jobs and
+  - people does not use can-core token introspection in the base stack (only its static service token works; the
+    e2e overlay points it at a fake, see above); finance, jobs and
     people do not look each other up (hire hand-off from jobs to people, approvals through can-core, expense
     and timesheet links to work are stubs here: call the APIs directly);
   - finance uses the **fake** payment and e-sign providers; jobs has no virus scanner (`scanner_required:
@@ -164,11 +204,14 @@ same-origin proxy, and the static site; it cannot tell you whether the modules i
 Measured with `docker stats --no-stream` on rootless podman: right after the smoke test can-core is about 29 MiB,
 the edge about 15 MiB and the other services 2 to 5 MiB each; after some use (logins, clicking through the admin
 UI) can-core reaches about 50 MiB and the whole stack stays **under 100 MiB** (an independent check measured
-about 94 MiB). Building needs more: allow
-2 GB of free RAM and about 5 GB of disk while images build (Go compiles eight binaries). Idle RAM of the images
+about 94 MiB; with equity and the e2e stub, after a full e2e run, `docker stats` summed to about 94 MB again: core 35, edge 13, work 9, people 9, jobs 8, finance 6, equity 4, forms 4, site 3, introstub 2). Building needs more: allow
+2 GB of free RAM and about 5 GB of disk while images build (Go compiles ten binaries). Idle RAM of the images
 is far below the budgets in the module READMEs because `docker stats` reports cgroup memory, not RSS.
 
 ## Troubleshooting
+
+- **Only one stack at a time.** Containers have fixed `container_name: can-*` names, so a second compose project
+  name (for example `companyinacan` and `can-e2e`) collides with a running one. Tear one down before starting the other.
 
 - **Port 8080 already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
   in `docker-compose.yml` (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
@@ -182,9 +225,9 @@ is far below the budgets in the module READMEs because `docker stats` reports cg
 - **SELinux and `:z`.** The stack has no bind mounts (config is baked into images), so no `:z`/`:Z` labels are
   needed. If you add a bind mount on an SELinux host, append `:z` (shared) or `:Z` (private) to the volume.
 - **`down` and `up` ordering errors with podman-compose.** `depends_on` uses `condition:
-  service_completed_successfully` only for the one-shot `init` job (verified with podman-compose 1.6.0; Docker
-  Compose v2 supports it natively but was not run on this machine); the `init` job is idempotent and may be re-run by podman-compose once per dependent
-  service, so "already bootstrapped" lines in its log are normal. Nothing relies on `service_healthy`.
+  service_completed_successfully` for the one-shot `init` job (verified with podman-compose 1.6.0 and with Docker
+  Compose v5.1.3 in CI), and, in the e2e overlay only, `service_healthy` for the introspection stub; the `init` job is idempotent and may be re-run by podman-compose once per dependent
+  service, so "already bootstrapped" lines in its log are normal. Outside the overlay nothing relies on `service_healthy`.
 - **A service restarts in a loop.** `docker compose -p companyinacan logs <service>`: secrets and config are
   validated at start and the message names the problem (for example a token shorter than 32 characters).
 - **Keyring "must not be accessible by group or others" / "owned by uid".** The `init` job creates keyrings
@@ -203,13 +246,19 @@ is far below the budgets in the module READMEs because `docker stats` reports cg
   behind the edge, and every local client reaches it from the same address, so 5 bad logins lock the account
   (and 20 the address) for 15 minutes, correct logins included. Clear it with
   `docker compose -p companyinacan exec core /can-core admin unlock`.
+- **`make e2e` says the edge did not answer.** The suite waits 90 s for `/_edge/healthz` and then exits with a pointer
+  to `make e2e-up`. Check `docker compose -p can-e2e ps -a` and the logs of the service that is not healthy.
+- **Admin login fails in the suite with 401 right after a login.** An authentication code can be used once; the
+  suite waits for the next 30 s step and retries once, so a slow run is normal.
 - **First build takes a few minutes and needs the network.** It pulls `golang:1.27`, distroless and caddy
   (not measured on a cold cache here) and downloads Go modules. Later builds are cached.
 - **`no pod ... pod_companyinacan` on `down`.** A harmless message from podman-compose; the containers,
   network and (with `-v`) volumes are still removed.
-- **Unknown Host headers.** The edge serves any request whose Host matches no vhost from the public site vhost
-  (`localhost`). Only the public example site is reachable that way, but it means a DNS-rebinding page could read
-  it; another reason to keep the port on 127.0.0.1 and not to put anything private on the site.
+- **Unknown Host headers.** The edge answers any request whose Host matches no vhost with `421 unknown host`
+  (a catch-all block at the end of `dev/compose/config/Caddyfile`): not the site, no API, no admin page. Earlier
+  versions of this document said such requests were served from the public site; in fact Caddy answered them with
+  an empty `200`, which is why the catch-all was added (found by the end-to-end suite). Still keep the port on
+  127.0.0.1.
 - **Admin login keeps failing.** TOTP codes depend on the clock; check the system time. Run
   `dev/compose/bootstrap-admin.sh` for a fresh secret and clear lockouts with
   `docker compose -p companyinacan exec core /can-core admin unlock`.

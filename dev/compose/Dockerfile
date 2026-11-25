@@ -20,11 +20,13 @@ COPY deploy/templates ./deploy/templates
 COPY schemas ./schemas
 COPY modules ./modules
 COPY examples ./examples
+COPY dev/compose/introstub ./dev/compose/introstub
 COPY templates ./templates
 RUN set -e; mkdir -p /out; \
-    for b in can can-core can-static can-forms can-work can-people can-jobs can-finance; do \
+    for b in can can-core can-static can-forms can-work can-people can-jobs can-finance can-equity; do \
       CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/$b ./cmd/$b; \
-    done
+    done; \
+    CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/introstub ./dev/compose/introstub
 # The example site, rendered once at build time and baked into the `site` image.
 COPY dev/compose/site-extra /site-extra
 RUN /out/can site build examples/acme-co --out /site --base-url http://localhost:8080 \
@@ -62,7 +64,7 @@ CMD ["serve"]
 FROM base AS people
 COPY --from=build /out/can-people /can-people
 COPY --from=build --chown=65532:65532 /rootfs/data /data
-COPY dev/compose/config/people.yaml /etc/can-people/people.yaml
+COPY dev/compose/config/people.yaml dev/compose/config/people.e2e.yaml /etc/can-people/
 EXPOSE 8081
 ENTRYPOINT ["/can-people"]
 CMD ["serve", "-config", "/etc/can-people/people.yaml"]
@@ -82,6 +84,21 @@ COPY dev/compose/config/finance.yaml /etc/can-finance/finance.yaml
 EXPOSE 8080
 ENTRYPOINT ["/can-finance"]
 CMD ["serve"]
+
+FROM base AS equity
+COPY --from=build /out/can-equity /can-equity
+COPY --from=build --chown=65532:65532 /rootfs/data /data
+COPY dev/compose/config/equity.yaml dev/compose/config/equity.e2e.yaml /etc/can-equity/
+EXPOSE 8081
+ENTRYPOINT ["/can-equity"]
+CMD ["serve", "-config", "/etc/can-equity/equity.yaml"]
+
+# E2E ONLY (dev/compose/e2e.yml): fake token introspection for people and equity.
+FROM base AS introstub
+COPY --from=build /out/introstub /introstub
+COPY dev/compose/config/introstub.json /etc/introstub/tokens.json
+EXPOSE 8099
+ENTRYPOINT ["/introstub"]
 
 FROM base AS core
 COPY --from=build /out/can-core /can-core

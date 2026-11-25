@@ -31,7 +31,14 @@ make unit       # unit tests only
 make contract   # schema fixtures and examples
 make licences   # regenerate THIRD_PARTY_LICENSES after changing a module manifest
 make build      # build bin/can
+make docs-check # every relative Markdown link must resolve (also run by `make contract`)
+make e2e-up e2e # end-to-end suite on the Docker Compose stack (advisory in CI; needs Docker Compose v2 or podman-compose)
+make e2e-down   # remove that stack and its volumes
 ```
+
+End-to-end scenarios live in `test/e2e` (build tag `e2e`, helpers in `test/e2e/harness`); see
+[docs/getting-started.md](docs/getting-started.md). New user-facing behaviour needs a scenario there only when it
+crosses the compose edge; module logic is still tested in the module's own package.
 
 No network is needed after dependencies are downloaded (the first `make lint` fetches the
 pinned linter and falls back to `go vet` if it cannot).
