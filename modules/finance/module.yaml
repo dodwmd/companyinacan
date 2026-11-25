@@ -12,10 +12,12 @@ name: Finance
 description: Customers and vendors, invoices and credit notes with gap-free numbering and immutability after approval, multi-currency with a stored FX rate per document, payments, receivables aging, recurring invoices, contracts with versions, hashes and e-signature, timesheets with approval and billing, expenses with receipt metadata and approval, and minimal purchase orders. Integer minor-unit money, tax as data, separation of duties, per-party and per-project scoping, audited exports, retention and erasure that respects legal retention.
 category: finance
 version: 0.1.0
-# experimental: the service and its tests are complete and measured locally, but the image has not
-# been built or run on a cluster, there are no Helm templates yet (values only), no web UI, no real
-# payment or e-signature adapter (fakes only), and can-core does not yet inject the secrets, route
-# the public invoice link or introspect tokens. See specs/014-finance-basics/tasks.md.
+# experimental: the service and its tests are complete and measured locally, and the chart installs
+# through can-core's installer in unit tests (specs/016-module-wiring); the image has not been built
+# or run on a cluster, there is no web UI and no real payment or e-signature adapter (fakes only).
+# can-core generates the secrets, introspects personal access tokens, routes events and decides
+# invoice approvals (tested with fakes, not on a cluster). The public invoice link is not routed
+# (no subdomain, so the installer refuses a route). See specs/014-finance-basics/tasks.md.
 status: experimental
 provider:
   type: inhouse
@@ -43,6 +45,10 @@ publishes:
   - { event: contract.expiring.v1, schema: ./events/contract.expiring.v1.json }
   - { event: timesheet.approved.v1, schema: ./events/timesheet.approved.v1.json }
   - { event: expense.approved.v1, schema: ./events/expense.approved.v1.json }
+# can-core's approvals engine decides invoices (approval.decided.v1 comes back signed); the other
+# approval types are declared for policy and notification but still use the finance.approve rule.
+subscribes:
+  - { event: approval.decided.v1, service: finance, port: 8080, webhook: /v1/can/events }
 permissions: [finance.read, finance.write, finance.approve, finance.admin]
 roles:
   employee: [finance.write]          # with an own_only token: their own timesheets and expenses only

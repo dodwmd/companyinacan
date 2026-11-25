@@ -6,9 +6,10 @@ id: work
 name: Work tracker
 description: API-first issue tracker. Projects, epics, stories, tasks, bugs and subtasks, P0 to P3 priorities, configurable workflows, sprints and boards, comments, links, watchers and an activity log. Scoped API tokens for people and service accounts, idempotent creates, signed webhook events, and the work and projects capabilities.
 category: operations
-# experimental: the service and its tests are complete and measured locally, but the image
-# has not been built or run on a cluster yet (specs/011-work-tracker/tasks.md, known gaps);
-# `can validate` warns so it is not offered as enable-ready until that is checked.
+# experimental: the service and its tests are complete and measured locally, and the chart installs
+# through can-core's installer in unit tests (specs/016-module-wiring); the advisory dev-cluster CI
+# job builds the image and installs work through can-core (see docs/module-wiring.md for what that
+# proves). `can validate` warns so it is not offered as enable-ready until that is checked.
 status: experimental
 version: 0.1.0
 provider:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,7 +68,12 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 0
 	}
 	log := slog.New(slog.NewJSONHandler(stderr, nil)).With("service", "can-finance", "version", Version)
-	app, err := NewApp(cfg, sec, Options{Logger: log})
+	can, err := modclient.FromEnv(getenv)
+	if err != nil {
+		fmt.Fprintf(stderr, "can-core: %v\n", err)
+		return 2
+	}
+	app, err := NewApp(cfg, sec, Options{Logger: log, Can: can, CanSecret: getenv("CAN_WEBHOOK_SECRET")})
 	if err != nil {
 		fmt.Fprintf(stderr, "start: %v\n", err)
 		return 2

@@ -197,6 +197,11 @@ func (s *Service) checkManager(ctx context.Context, q querier, personID, manager
 
 // CreatePerson creates a directory record. hr or admin only.
 func (s *Service) CreatePerson(ctx context.Context, a Actor, in PersonInput) (*Person, error) {
+	return s.createPerson(ctx, a, in, "")
+}
+
+// createPerson is CreatePerson plus the hire reference of the jobs hand-off ("" for none).
+func (s *Service) createPerson(ctx context.Context, a Actor, in PersonInput, hireRef string) (*Person, error) {
 	if !Decide(a, ActDirCreate, Fact{}) {
 		s.auditDeny(ctx, a, "create", "person", nil)
 		return nil, ErrForbidden
@@ -217,9 +222,9 @@ func (s *Service) CreatePerson(ctx context.Context, a Actor, in PersonInput) (*P
 		}
 		start := in.StartDate
 		if _, err := tx.ExecContext(ctx, `INSERT INTO people (id, kind, status, sso_subject, given_name, family_name, preferred_name, work_email, work_phone, location,
-			department_id, team_id, position_id, manager_id, start_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			department_id, team_id, position_id, manager_id, start_date, created_at, updated_at, hire_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			id, in.Kind, string(in.Status), nullStr(in.SSOSubject), in.GivenName, in.FamilyName, in.PreferredName, in.WorkEmail, in.WorkPhone, in.Location,
-			nullStr(in.DepartmentID), nullStr(in.TeamID), nullStr(in.PositionID), nullStr(in.ManagerID), start, now, now); err != nil {
+			nullStr(in.DepartmentID), nullStr(in.TeamID), nullStr(in.PositionID), nullStr(in.ManagerID), start, now, now, nullStr(hireRef)); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE") {
 				return conflict("that sso_subject is already linked to a person")
 			}

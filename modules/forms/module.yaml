@@ -28,6 +28,9 @@ provides:
 publishes:
   - { event: lead.created.v1, schema: ./events/lead.created.v1.json }
 permissions: [leads.read, leads.write]
+# A new lead notifies the people holding the sales role (in-app, and e-mail per their settings).
+notifications:
+  - { event: lead.created.v1, recipients: ["role:sales"] }
 roles:
   sales: [leads.read, leads.write]
   viewer: [leads.read]

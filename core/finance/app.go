@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"errors"
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net"
@@ -44,13 +45,18 @@ func SecretsFromEnv(getenv func(string) string) (Secrets, error) {
 
 // Options override collaborators; tests use them to inject fakes.
 type Options struct {
-	Auth     Authenticator // replaces the built-in token authenticators (introspection seam)
-	Approver Approver      // replaces the finance.approve rule (reporting-line approvals)
-	Payments PaymentProvider
-	ESign    ESigner
-	Logger   *slog.Logger
-	Now      func() time.Time
-	Client   *http.Client
+	// Can is the can-core client of an installed module (CAN_API_URL): personal access tokens are
+	// introspected through it and events are published through it instead of a webhook URL.
+	Can *modclient.Client
+	// CanSecret verifies the webhooks can-core delivers (CAN_WEBHOOK_SECRET).
+	CanSecret string
+	Auth      Authenticator // replaces the built-in token authenticators (introspection seam)
+	Approver  Approver      // replaces the finance.approve rule (reporting-line approvals)
+	Payments  PaymentProvider
+	ESign     ESigner
+	Logger    *slog.Logger
+	Now       func() time.Time
+	Client    *http.Client
 }
 
 // App wires the store, the webhook dispatcher and the HTTP API.
@@ -99,9 +105,13 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		return nil, err
 	}
 	store.now = now
-	store.events = cfg.Webhook.URL != ""
+	store.events = cfg.Webhook.URL != "" || opt.Can != nil
 	store.base = cfg.BaseCurrency
 	store.payInstr = cfg.PaymentInstructions
+	if opt.Can != nil {
+		store.core = opt.Can
+		store.approver = &CoreApprover{store: store} // invoices are approved through can-core's engine
+	}
 	if opt.Approver != nil {
 		store.approver = opt.Approver
 	}
@@ -111,10 +121,13 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		st := &StaticTokens{}
 		st.Add(sec.AdminToken, Principal{Subject: bootstrapSubject, Kind: "static", Permissions: []string{PermAdmin}})
 		auth = Chain{st, TokenAuth{Store: store}}
+		if opt.Can != nil {
+			auth = append(auth.(Chain), &CanAuth{In: &modclient.Introspector{API: opt.Can}})
+		}
 	}
 	app := &App{cfg: cfg, store: store, log: log, now: now}
 	if store.events {
-		app.dispatcher = &Dispatcher{store: store, URL: cfg.Webhook.URL, Secret: []byte(sec.WebhookSecret), Client: opt.Client, Log: log, Now: now}
+		app.dispatcher = &Dispatcher{store: store, URL: cfg.Webhook.URL, Secret: []byte(sec.WebhookSecret), Client: opt.Client, Log: log, Now: now, Can: opt.Can}
 	}
 	a := &api{
 		store: store, auth: auth, log: log, maxBody: cfg.MaxBodyBytes, trustProxy: cfg.TrustProxy, now: now,
@@ -124,7 +137,15 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		penalty:  300 * time.Millisecond,
 		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
-	app.handler = withMiddleware(log, a.handler())
+	h := a.handler()
+	if opt.Can != nil {
+		// can-core's signed webhooks (approval decisions). Authenticated by the HMAC signature, not by a token.
+		mux := http.NewServeMux()
+		mux.Handle("POST /v1/can/events", &modclient.Receiver{Secret: opt.CanSecret, Handle: store.CanEventHandler(), Now: now})
+		mux.Handle("/", h)
+		h = mux
+	}
+	app.handler = withMiddleware(log, h)
 	return app, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net/http"
@@ -71,6 +72,9 @@ type Dispatcher struct {
 	Secret []byte
 	Client *http.Client
 	Log    *slog.Logger
+	// Can, when set, publishes through can-core (POST /v1/events) instead of posting to URL: the
+	// module-to-module path goes through can-core only.
+	Can *modclient.Client
 }
 
 // NewDispatcher builds a dispatcher whose client never follows redirects.
@@ -131,6 +135,9 @@ func truncate(s string, n int) string {
 }
 
 func (d *Dispatcher) post(ctx context.Context, id, typ string, body []byte, now time.Time) error {
+	if d.Can != nil {
+		return d.Can.PublishEnvelope(ctx, body)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.URL, bytes.NewReader(body))
 	if err != nil {
 		return err

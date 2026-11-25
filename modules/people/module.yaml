@@ -10,9 +10,10 @@ name: People and performance
 description: Directory (people records, org chart, employment status with effective dating, onboarding and offboarding checklists) and performance (1:1s with shared and private notes, goals and key results). Per-field access control by role, audited sensitive reads, encrypted sensitive fields, retention, legal hold and erasure tombstones. Not payroll.
 category: people
 version: 0.1.0
-# experimental: unit-, contract- and race-tested, but not yet exercised on a cluster; there are no Helm
-# templates yet (values only, like forms), no portal or admin UI, and can-core does not yet inject the
-# keyring Secret or route its introspection endpoint. See modules/people/README.md.
+# experimental: unit-, contract- and race-tested, and the chart installs through can-core's installer
+# in unit tests (specs/016-module-wiring); not yet exercised on a cluster, no portal or admin UI.
+# can-core generates the API token and the keyring, introspects personal access tokens and delivers
+# the hire hand-off from jobs. See modules/people/README.md.
 status: experimental
 provider:
   type: inhouse
@@ -41,6 +42,9 @@ publishes:
   - { event: oneonone.scheduled.v1, schema: ./events/oneonone.scheduled.v1.json }
   - { event: goal.updated.v1, schema: ./events/goal.updated.v1.json }
   - { event: checklist.task_completed.v1, schema: ./events/checklist.task_completed.v1.json }
+# The hire hand-off from jobs starts a person in onboarding (core/people/hire.go).
+subscribes:
+  - { event: candidate.hired.v1, service: people-api, port: 8081, webhook: /v1/can/events }
 # Coarse permissions gate the capability verbs; the finer rules (self, manager chain, HR, admin, per field)
 # are enforced inside the service by one policy layer (core/people/policy.go).
 permissions: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin, performance.read, performance.write]

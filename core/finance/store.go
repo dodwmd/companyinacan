@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"net/url"
 	"sort"
 	"strconv"
@@ -39,6 +40,8 @@ type Store struct {
 	base     string
 	payInstr string
 	approver Approver
+	// core is can-core's approvals engine when the module runs installed (nil standalone).
+	core modclient.Approvals
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.

@@ -422,6 +422,31 @@ paths:
         "412": { description: "If-Match version is stale" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
+  /v1/invoices/{id}/request-approval:
+    post:
+      summary: "Open the can-core approval request of a draft invoice (idempotent per invoice version)"
+      description: "Needs a personal access token (a signed-in person is the requester and cannot approve). The decision arrives as approval.decided.v1; /approve then needs an approved request for the current version."
+      operationId: POST_v1_invoices_id_request-approval
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: "The request and its status (pending, approved or rejected)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approval_id: { type: string }
+                  status: { type: string, enum: [pending, approved, rejected] }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "Not a draft, or approvals through can-core are not configured" }
+        "422": { description: "No signed-in person, or can-core refused the request" }
+        "429": { description: "Rate limited" }
+        "503": { description: "can-core did not answer" }
   /v1/invoices/{id}/approve:
     post:
       summary: "Approve: assigns the gap-free number, freezes buyer data (separation of duties)"

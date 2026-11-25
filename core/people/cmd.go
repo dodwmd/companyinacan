@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net"
@@ -93,8 +94,22 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	if cfg.Introspect.URL != "" {
 		auth = append(auth, &IntrospectAuthenticator{URL: cfg.Introspect.URL, Token: sec.IntrospectToken})
 	}
+	can, err := modclient.FromEnv(getenv)
+	if err != nil {
+		fmt.Fprintf(stderr, "can-core: %v\n", err)
+		return 2
+	}
+	var canEvents http.Handler
+	if can != nil {
+		auth = append(auth, &CanAuth{In: &modclient.Introspector{API: can}})
+		canEvents = &modclient.Receiver{Secret: sec.CanSecret, Handle: svc.CanEventHandler()}
+	}
 	var disp *Dispatcher
-	if cfg.Webhook.URL != "" {
+	switch {
+	case can != nil:
+		disp = NewDispatcher("", nil, log) // events go through can-core only
+		disp.Can = can
+	case cfg.Webhook.URL != "":
 		disp = NewDispatcher(cfg.Webhook.URL, []byte(sec.WebhookSecret), log)
 	}
 	ln, err := listen(cfg.Listen)
@@ -104,7 +119,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	api := &API{Svc: svc, Auth: auth, Log: log}
+	api := &API{Svc: svc, Auth: auth, Log: log, Can: canEvents}
 	srv := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup
 	wg.Add(1)

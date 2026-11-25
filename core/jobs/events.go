@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"io"
 	"log/slog"
 	"net/http"
@@ -140,6 +141,9 @@ type Dispatcher struct {
 	Now    func() time.Time
 	// Backoff is the delay before the second attempt; it doubles per attempt.
 	Backoff time.Duration
+	// Can, when set, publishes through can-core (POST /v1/events) instead of posting to URL: the
+	// module-to-module path goes through can-core only.
+	Can *modclient.Client
 }
 
 // Run delivers until ctx is done, waking on new events and on a timer.
@@ -217,6 +221,9 @@ func (d *Dispatcher) DeliverDue(ctx context.Context) (int, error) {
 }
 
 func (d *Dispatcher) send(ctx context.Context, id, typ string, body []byte, now time.Time) error {
+	if d.Can != nil {
+		return d.Can.PublishEnvelope(ctx, body)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.URL, bytes.NewReader(body))
 	if err != nil {
 		return err

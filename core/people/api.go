@@ -23,6 +23,9 @@ type API struct {
 	Svc  *Service
 	Auth Authenticator
 	Log  *slog.Logger
+	// Can, when set, serves can-core's signed event deliveries at POST /v1/can/events (it
+	// authenticates by the HMAC signature, not by a token, and is not part of the API contract).
+	Can http.Handler
 
 	routes []string
 
@@ -455,6 +458,9 @@ func (a *API) Handler() http.Handler {
 		return http.StatusOK, g, err
 	})
 
+	if a.Can != nil {
+		mux.Handle("POST /v1/can/events", a.Can)
+	}
 	return withMiddleware(a.Log, mux)
 }
 

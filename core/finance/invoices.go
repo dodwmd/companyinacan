@@ -731,6 +731,10 @@ func (s *Store) releaseDraftEntries(ctx context.Context, tx dbq, idQuery string,
 type ApprovalRequest struct {
 	Kind  string // invoice, timesheet, expense, purchase_order
 	Owner string // the person the record belongs to (timesheets, expenses), else ""
+	// Ref and Version identify the record and its version for approvals through can-core
+	// ("invoice:<id>"); empty for a decision that is not tied to a can-core request.
+	Ref     string
+	Version int64
 }
 
 // Approver decides whether a principal may approve a record. The default accepts anyone with
@@ -777,7 +781,7 @@ func (s *Store) ApproveInvoice(ctx context.Context, a *Principal, id int64, ifMa
 		if v.Status != StDraft {
 			return fmt.Errorf("%w: invoice is already %s", ErrConflict, v.Status)
 		}
-		if err := s.authorizeApproval(ctx, a, ApprovalRequest{Kind: "invoice"}, v.CreatedBy, v.updatedBy); err != nil {
+		if err := s.authorizeApproval(withTx(ctx, tx), a, ApprovalRequest{Kind: "invoice", Ref: fmt.Sprintf("invoice:%d", v.ID), Version: v.Version}, v.CreatedBy, v.updatedBy); err != nil {
 			return err
 		}
 		if v.Kind == KindInvoice {
