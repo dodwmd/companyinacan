@@ -492,3 +492,25 @@ func TestQAOFXEmptyLeavesAndCurrencyAggregate(t *testing.T) {
 		t.Error("a EUR statement (CURDEF) was accepted")
 	}
 }
+
+// QA 17: a provider payment that would post into a closed period is recorded as unmatched, not retried forever.
+func TestQAWebhookIntoAClosedPeriodIsRecordedUnmatched(t *testing.T) {
+	e := newEnv(t)
+	ledgerOn(t, e)
+	maker, boss := e.token("maker", rw, nil, nil, false), e.token("boss", app, nil, nil, false)
+	party := e.party(maker, "Hook Co", "customer")
+	inv := e.approveInvoice(maker, boss, party, obj{"issue_date": "2026-06-01"}, line("x", 1000, 1000))
+	e.must(200, adminTok, "POST", "/v1/ledger/periods/close", obj{"closed_through": "2026-12-31"}, nil)
+	body := `{"id":"evt-closed","type":"payment.succeeded","invoice_id":` + id(inv.ID) + `,"amount_minor":100,"currency":"USD"}`
+	var r struct{ Status string }
+	code := e.do("", "POST", "/v1/webhooks/payments", body, &r, "X-Fake-Signature", SignFake([]byte(provSec), e.now, []byte(body)))
+	if code != 200 || r.Status != "unmatched" {
+		t.Fatalf("webhook = %d %q", code, r.Status)
+	}
+	var n, pays int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action = 'payment.unmatched' AND target = 'evt-closed'`).Scan(&n)
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM payments`).Scan(&pays)
+	if n != 1 || pays != 0 {
+		t.Errorf("unmatched records %d, payments %d", n, pays)
+	}
+}

@@ -184,7 +184,8 @@ automatically; review them if you answer a data subject request. Data classes in
 1. Add `CAN_FINANCE_SEAL_KEY` (can-core generates it for new installs; for an existing install add it to the module Secret once and keep it).
 2. As `finance.ledger.admin`: `POST /v1/ledger/accounts/template` with `{"apply_mappings": true}`, review the chart and the mapping, adjust.
 3. From that moment finance events post automatically. Approvals that would post into a closed period fail with `period_locked`:
-   open the period (audited) or date the document in an open one. Documents approved before the mappings were set are not back-filled: see Cut-over.
+   open the period (audited) or date the document in an open one. A payment provider's notification that would post into a closed
+period is acknowledged (200) and kept as `payment.unmatched` in the audit log for a person to record. Documents approved before the mappings were set are not back-filled: see Cut-over.
 4. Add a bank account, import statements, work the queue (UI: Bank), sign off months, close periods, export the journal.
 
 Limits worth knowing: one currency per entry and no conversion; single ledger (no entities or tracking categories); the journal

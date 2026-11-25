@@ -552,10 +552,10 @@ func (a *api) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 	pay, dup, err := a.store.RecordProviderPayment(r.Context(), a.payments, n)
 	if err != nil {
 		// A verified notification that cannot be applied (unknown or void invoice, overpayment, wrong
-		// currency) will never succeed on retry. Answer 200 so the provider stops, and keep a record
+		// currency, a closed ledger period) is not helped by retrying. Answer 200 so the provider stops, and keep a record
 		// for a person to reconcile instead of dropping it.
 		var ie *InvalidError
-		if errors.As(err, &ie) || errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) {
+		if errors.As(err, &ie) || errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrLocked) {
 			if aerr := a.store.recordUnmatched(r.Context(), a.payments.Name(), n, err); aerr != nil {
 				a.fail(w, aerr)
 				return
