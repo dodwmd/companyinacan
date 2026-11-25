@@ -210,3 +210,32 @@ func TestQACutOverCoversEveryHook(t *testing.T) {
 		t.Errorf("%d opening entries", n)
 	}
 }
+
+// QA 7: only manual and payroll journals are reversed by hand, and never by their poster.
+func TestQAOnlyManualJournalsAreReversedByHand(t *testing.T) {
+	e := newEnv(t)
+	ledgerOn(t, e)
+	maker, boss := e.token("maker", rw, nil, nil, false), e.token("boss", app, nil, nil, false)
+	alex, bea := e.token("alex", ledApp, nil, nil, false), e.token("bea", ledApp, nil, nil, false)
+	drafter := e.token("dana", acct, nil, nil, false)
+	party := e.party(maker, "Rev Co", "customer")
+	inv := e.approveInvoice(maker, boss, party, nil, line("x", 1000, 5000))
+	e.must(201, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 100}, nil)
+	var js struct{ Items []JournalEntry }
+	e.must(200, alex, "GET", "/v1/ledger/journals", nil, &js)
+	if len(js.Items) != 2 {
+		t.Fatalf("%d entries", len(js.Items))
+	}
+	for _, j := range js.Items {
+		if code := e.do(alex, "POST", "/v1/ledger/journals/"+id(j.ID)+"/reverse", obj{"date": "2026-12-01", "reason": "no"}, nil); code != 409 {
+			t.Errorf("reversing a %s entry = %d, want 409", j.Source, code)
+		}
+	}
+	var j JournalEntry
+	e.must(201, drafter, "POST", "/v1/ledger/journals", manual("2026-05-01", "USD", "5000", "1000", 100), &j)
+	e.must(200, alex, "POST", "/v1/ledger/journals/"+id(j.ID)+"/post", nil, nil)
+	if code := e.do(alex, "POST", "/v1/ledger/journals/"+id(j.ID)+"/reverse", obj{"date": "2026-05-02", "reason": "r"}, nil); code != 403 {
+		t.Errorf("the poster reversing = %d, want 403", code)
+	}
+	e.must(201, bea, "POST", "/v1/ledger/journals/"+id(j.ID)+"/reverse", obj{"date": "2026-05-02", "reason": "r"}, nil)
+}

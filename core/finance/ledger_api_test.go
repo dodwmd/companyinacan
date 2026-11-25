@@ -117,6 +117,10 @@ func TestManualJournalNeedsAnotherApprover(t *testing.T) {
 	if code := e.do(drafter, "POST", path+"/reverse", obj{"date": "2026-03-11", "reason": "typo"}, nil); code != 403 {
 		t.Errorf("reversal without ledger.approve = %d", code)
 	}
+	if code := e.do(approver, "POST", path+"/reverse", obj{"date": "2026-03-11", "reason": "typo"}, nil); code != 403 {
+		t.Errorf("the poster reversed their own posting = %d", code)
+	}
+	approver = e.token("bea", ledApp, nil, nil, false)
 	var rev JournalEntry
 	e.must(201, approver, "POST", path+"/reverse", obj{"date": "2026-03-11", "reason": "typo"}, &rev)
 	if rev.ReversalOf == nil || *rev.ReversalOf != j.ID || rev.Source != "reversal" || rev.TotalMinor != 12345 {

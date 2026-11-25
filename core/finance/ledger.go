@@ -954,7 +954,8 @@ func (s *Store) PostJournal(ctx context.Context, a *Principal, id int64) (*Journ
 
 // ReverseJournal corrects a posted entry by posting its mirror image on the given date (which must be in
 // an open period), linked to the original. An entry is reversed once; a reversal cannot be reversed
-// (post a new entry instead). The reverser is not the person who created the original.
+// (post a new entry instead). Only manual and payroll journals are reversed by hand, and not by the person who
+// drafted or posted the original.
 func (s *Store) ReverseJournal(ctx context.Context, a *Principal, id int64, date, reason string) (*JournalEntry, error) {
 	if !a.Can(PermLedgerApprove) {
 		return nil, ErrForbidden
@@ -975,8 +976,14 @@ func (s *Store) reverseEntry(ctx context.Context, a *Principal, id int64, date, 
 		if err != nil {
 			return err
 		}
-		if err := s.authorizeApproval(ctx, a, ApprovalRequest{Kind: "journal", Perm: PermLedgerApprove}, orig.CreatedBy); err != nil {
+		// Separation of duties: whoever drafted or posted the original does not undo it alone.
+		if err := s.authorizeApproval(ctx, a, ApprovalRequest{Kind: "journal", Perm: PermLedgerApprove}, orig.CreatedBy, deref(orig.PostedBy)); err != nil {
 			return err
+		}
+		// An automatic entry mirrors a document: reversing it by hand would leave the document and the ledger
+		// disagreeing. Correct the document (void, credit note) or post an adjusting journal.
+		if orig.Source != "manual" && orig.Source != "payroll" {
+			return fmt.Errorf("%w: only manual and payroll journals are reversed by hand; correct the document (void or credit note) or post an adjusting journal", ErrConflict)
 		}
 		rid, err := s.reverseTx(ctx, tx, orig, date, "Reversal of "+deref(orig.Number)+": "+reason, a.Subject)
 		if err != nil {

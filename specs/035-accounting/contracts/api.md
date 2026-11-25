@@ -23,7 +23,7 @@ whatever the permission, and the same `403` for an id that exists or not).
 | `POST /v1/ledger/journals` | write | `Idempotency-Key`; draft; `{entry_date, currency, memo, lines: [{account_code, debit_minor, credit_minor, memo}]}` |
 | `DELETE /v1/ledger/journals/{id}` | write | drafts only |
 | `POST /v1/ledger/journals/{id}/post` | approve | not the drafter; open period |
-| `POST /v1/ledger/journals/{id}/reverse` | approve | `{date, reason}`; once per entry |
+| `POST /v1/ledger/journals/{id}/reverse` | approve | `{date, reason}`; once per entry; manual and payroll journals only; not its drafter or poster |
 | `GET /v1/ledger/reports/{trial-balance,balance-sheet}` | read | `as_of` |
 | `GET /v1/ledger/reports/profit-loss` | read | `from`, `to` |
 | `GET /v1/ledger/reports/general-ledger` | read | `account` (code), `from`, `to`, `cursor`, `limit` |

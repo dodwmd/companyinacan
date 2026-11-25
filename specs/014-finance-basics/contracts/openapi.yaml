@@ -2233,7 +2233,7 @@ paths:
         "503": { description: "Not configured (for example no seal key) or timed out" }
   /v1/ledger/journals/{id}/reverse:
     post:
-      summary: "Post the mirror image of a posted entry on a date in an open period; once per entry (409)"
+      summary: "Post the mirror image of a posted entry on a date in an open period; once per entry; manual and payroll journals only (409), not by its drafter or poster (403)"
       operationId: POST_v1_ledger_journals_id_reverse
       x-scope: finance.ledger.approve
       requestBody:

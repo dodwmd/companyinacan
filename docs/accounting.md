@@ -61,7 +61,10 @@ by the ledger. If you trade in more than one currency, the multi-currency treatm
 
 A posted entry is immutable (database triggers, not just code). To correct one, post its reversal
 (`POST /v1/ledger/journals/{id}/reverse`): the mirror entry, dated in an open period, linked both ways, allowed
-once per entry, and itself not reversible (post a new entry instead). Voiding an invoice posts the reversal
+once per entry, and itself not reversible (post a new entry instead). **Only manual and payroll journals** are
+reversed this way: an entry posted by a document (invoice, credit note, payment, expense, the cut-over) answers 409,
+because reversing it alone would leave the document and the ledger disagreeing. Void or credit the invoice, or post an
+adjusting manual journal. Voiding an invoice posts the reversal
 for you. A payment is append-only; correct a payment with a credit note or a documented adjustment journal.
 
 ## Separation of duties
@@ -69,7 +72,7 @@ for you. A payment is append-only; correct a payment with a credit note or a doc
 One rule, `authorizeApproval`, decides every approval in the module. A manual journal is drafted with
 `finance.ledger.write` and posted with `finance.ledger.approve`; the poster cannot be the drafter, however many
 permissions they hold. The same applies to a payroll journal (the importer is the drafter) and to a reversal
-(the reverser is not the creator of the entry). Signing off a bank reconciliation month needs `finance.ledger.approve`.
+(the reverser is neither the drafter nor the poster of the entry). Signing off a bank reconciliation month needs `finance.ledger.approve`.
 
 ## Permissions and scopes
 
