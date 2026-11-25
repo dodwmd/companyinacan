@@ -141,19 +141,25 @@ func formatAmount(v int64) string {
 }
 
 type delegationRow struct {
-	ID       int64
-	Delegate string
+	ID        int64
+	Delegate  string
 	Delegator string
-	From, To time.Time
-	Mine     bool
+	From, To  time.Time
+	Mine      bool
+}
+
+type tableData struct {
+	Rows               []approvalRow
+	ID, Caption, Empty string
 }
 
 type approvalsData struct {
-	Waiting, Requested, All []approvalRow
-	IsAdmin                 bool
-	Status                  string
-	Statuses                []statusOption
-	Delegations             []delegationRow
+	WaitingT, RequestedT, AllT tableData
+	Waiting, Requested, All    []approvalRow
+	IsAdmin                    bool
+	Status                     string
+	Statuses                   []statusOption
+	Delegations                []delegationRow
 }
 
 func (s *Server) approvalsPage(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
@@ -192,6 +198,9 @@ func (s *Server) approvalsPage(w http.ResponseWriter, r *http.Request, sc *sessi
 			d.Statuses = append(d.Statuses, statusOption{Value: st, Label: s.msg("st." + st), Selected: d.Status == st})
 		}
 	}
+	d.WaitingT = tableData{d.Waiting, "waiting", s.msg("ap.waiting"), s.msg("ap.waiting_empty")}
+	d.RequestedT = tableData{d.Requested, "mine", s.msg("ap.requested"), s.msg("ap.requested_empty")}
+	d.AllT = tableData{d.All, "all", s.msg("ap.all"), s.msg("ap.waiting_empty")}
 	ds, err := s.Approvals.Delegations(ctx, me)
 	if err != nil {
 		s.internal(w, r, sc, err)
@@ -213,14 +222,14 @@ type decisionRow struct {
 	At                                  time.Time
 }
 
-type kv struct{ Key, Value string }
+type detailKV struct{ Key, Value string }
 
 type approvalData struct {
 	Req                                   approvals.Request
 	StatusLabel, StatusClass, Amount      string
 	Steps                                 []stepRowView
 	History                               []decisionRow
-	Details                               []kv
+	Details                               []detailKV
 	CanDecide, CanCancel, CanComment, Own bool
 }
 
@@ -254,7 +263,7 @@ var payloadKey = regexp.MustCompile(`^[A-Za-z0-9_. -]{1,60}$`)
 
 // payloadDetails lists the scalar members of the module's payload for the approver. Nested values
 // are not shown; everything is escaped by the template.
-func payloadDetails(raw json.RawMessage) []kv {
+func payloadDetails(raw json.RawMessage) []detailKV {
 	var m map[string]any
 	if json.Unmarshal(raw, &m) != nil {
 		return nil
@@ -264,7 +273,7 @@ func payloadDetails(raw json.RawMessage) []kv {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var out []kv
+	var out []detailKV
 	for _, k := range keys {
 		if !payloadKey.MatchString(k) || len(out) >= 30 {
 			continue
@@ -281,7 +290,7 @@ func payloadDetails(raw json.RawMessage) []kv {
 		if len(v) > 300 {
 			v = v[:300] + "..."
 		}
-		out = append(out, kv{k, v})
+		out = append(out, detailKV{k, v})
 	}
 	return out
 }
@@ -428,11 +437,11 @@ func usernameOK(s string) bool { return userRe.MatchString(s) }
 // --- notifications ----------------------------------------------------------------------------
 
 type notifRow struct {
-	ID            int64
-	Title, Body   string
-	Link          string
-	Created       time.Time
-	Read, Urgent  bool
+	ID           int64
+	Title, Body  string
+	Link         string
+	Created      time.Time
+	Read, Urgent bool
 }
 
 type prefCell struct {
@@ -441,11 +450,16 @@ type prefCell struct {
 }
 
 type notifData struct {
-	Items                            []notifRow
-	NextURL                          string
+	Items                           []notifRow
+	NextURL                         string
 	Email, QuietStart, QuietEnd, TZ string
-	Digests                          []statusOption
-	EmailPrefs, InAppPrefs           []prefCell
+	Digests                         []statusOption
+	EmailT, InAppT                  prefTable
+}
+
+type prefTable struct {
+	ID, Caption, CSRF string
+	Cells             []prefCell
 }
 
 func minutesToClock(m int) string {
@@ -466,7 +480,14 @@ func clockToMinutes(s string) (int, bool) {
 	return t.Hour()*60 + t.Minute(), true
 }
 
-var prefTypes = []string{"approval.requested", "approval.escalated", "approval.decided", "lead.created", "*"}
+var digestKeys = map[string]string{"off": "nt.digest_off", "hourly": "nt.digest_hourly", "daily": "nt.digest_daily"}
+
+var prefLabelKeys = map[string]string{
+	"approval.requested": "nt.type_approval_requested", "approval.escalated": "nt.type_approval_escalated",
+	"approval.decided": "nt.type_approval_decided", "lead" + ".created": "nt.type_lead_created",
+}
+
+var prefTypes = []string{"approval.requested", "approval.escalated", "approval.decided", "lead" + ".created", "*"}
 
 func (s *Server) notificationsPage(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 	if s.Notify == nil {
@@ -494,7 +515,7 @@ func (s *Server) notificationsPage(w http.ResponseWriter, r *http.Request, sc *s
 	}
 	d.Email, d.QuietStart, d.QuietEnd, d.TZ = set.Email, minutesToClock(set.QuietStart), minutesToClock(set.QuietEnd), set.TZ
 	for _, v := range []string{"off", "hourly", "daily"} {
-		d.Digests = append(d.Digests, statusOption{Value: v, Label: s.msg("nt.digest_" + v), Selected: set.Digest == v})
+		d.Digests = append(d.Digests, statusOption{Value: v, Label: s.msg(digestKeys[v]), Selected: set.Digest == v})
 	}
 	prefs, err := s.Notify.Prefs(ctx, me)
 	if err != nil {
@@ -508,14 +529,16 @@ func (s *Server) notificationsPage(w http.ResponseWriter, r *http.Request, sc *s
 	cell := func(ch, typ string) prefCell {
 		label := s.msg("nt.type_all")
 		if typ != "*" {
-			label = s.msg("nt.type_" + typ)
+			label = s.msg(prefLabelKeys[typ])
 		}
 		v, ok := on[ch+"|"+typ]
 		return prefCell{Type: typ, Label: label, Channel: ch, On: !ok || v}
 	}
+	d.EmailT = prefTable{ID: "pe", Caption: s.msg("nt.channel_email"), CSRF: sc.Session.CSRF}
+	d.InAppT = prefTable{ID: "pi", Caption: s.msg("nt.channel_inapp"), CSRF: sc.Session.CSRF}
 	for _, t := range prefTypes {
-		d.EmailPrefs = append(d.EmailPrefs, cell(notify.ChannelEmail, t))
-		d.InAppPrefs = append(d.InAppPrefs, cell(notify.ChannelInApp, t))
+		d.EmailT.Cells = append(d.EmailT.Cells, cell(notify.ChannelEmail, t))
+		d.InAppT.Cells = append(d.InAppT.Cells, cell(notify.ChannelInApp, t))
 	}
 	s.render(w, r, http.StatusOK, "notifications.html", s.page(r, sc, "notifications", s.msg("nt.title"), d))
 }
