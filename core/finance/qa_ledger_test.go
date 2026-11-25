@@ -312,3 +312,40 @@ func TestQACamtManyRemittanceLinesAreLinearAndCapped(t *testing.T) {
 		t.Errorf("took %s", d)
 	}
 }
+
+// QA 11: a batch is bounded by lines, and successive batches cover every entry once.
+func TestQAExportBatchIsBoundedByLines(t *testing.T) {
+	e := newEnv(t)
+	ledgerOn(t, e)
+	s := e.app.store
+	var a, b int64
+	_ = s.db.QueryRow(`SELECT id FROM ledger_accounts WHERE code = '1000'`).Scan(&a)
+	_ = s.db.QueryRow(`SELECT id FROM ledger_accounts WHERE code = '4000'`).Scan(&b)
+	var lines []lineSpec
+	for i := 0; i < maxJournalLines/2; i++ {
+		lines = append(lines, lineSpec{AccountID: a, Debit: 1}, lineSpec{AccountID: b, Credit: 1})
+	}
+	for i := 0; i < 40; i++ {
+		if err := s.inTx(context.Background(), func(tx *sql.Tx) error {
+			_, err := s.postEntryTx(context.Background(), tx, postSpec{Source: "manual", Date: "2026-05-01", Currency: "USD", By: "p", Lines: lines})
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &Principal{Subject: "dana", Permissions: []string{PermAdmin}}
+	var got []int
+	for {
+		batch, _, err := s.ExportJournal(context.Background(), p, "csv", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if batch.EntryCount == 0 {
+			break
+		}
+		got = append(got, batch.EntryCount)
+	}
+	if len(got) != 2 || got[0] != exportMaxLines/maxJournalLines || got[0]+got[1] != 40 {
+		t.Errorf("batches %v", got)
+	}
+}

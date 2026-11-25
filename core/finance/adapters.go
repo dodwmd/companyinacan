@@ -21,8 +21,12 @@ import (
 	"time"
 )
 
-// exportBatchSize bounds one export batch.
-const exportBatchSize = 500
+// One export batch is bounded by entries and by lines (an entry has at most 200), so the file it builds is a few
+// megabytes at worst, whatever the entries look like.
+const (
+	exportBatchSize = 500
+	exportMaxLines  = 5000
+)
 
 // PayrollDisclaimer is returned with every payroll import and printed in docs/accounting.md.
 const PayrollDisclaimer = "This module does not calculate payroll, tax, super or any statutory amount. A payroll journal is read from a file produced by your payroll provider, checked only for balance, and held as a draft until someone other than the importer approves it. Verify it with your payroll provider and accountant."
@@ -31,10 +35,15 @@ const PayrollDisclaimer = "This module does not calculate payroll, tax, super or
 type AccountingExporter interface {
 	// Name is the adapter's id in the API.
 	Name() string
-	// Implemented is false for a documented stub: Export then returns ErrNotImplemented and writes nothing.
-	Implemented() bool
-	// Export writes the entries, oldest first, to w.
-	Export(ctx context.Context, entries []JournalEntry, w io.Writer) error
+	// Open starts a file on w. A documented stub returns ErrNotImplemented and writes nothing.
+	Open(w io.Writer) (JournalWriter, error)
+}
+
+// JournalWriter takes the entries of one batch one at a time, in posting order, so a batch is never held in
+// memory as a whole besides the file being written.
+type JournalWriter interface {
+	Write(e *JournalEntry) error
+	Close() error
 }
 
 // PayrollAdapter reads a payroll provider's journal file into manual journal drafts. It is inbound only.
@@ -59,39 +68,43 @@ func ExporterNames() []string { return sortedKeys(exporters) }
 
 type stubExporter struct{ name string }
 
-func (s stubExporter) Name() string      { return s.name }
-func (s stubExporter) Implemented() bool { return false }
-func (s stubExporter) Export(context.Context, []JournalEntry, io.Writer) error {
-	return fmt.Errorf("%w: the %s adapter is a documented stub; it makes no network call. Use the csv adapter and import the file", ErrNotImplemented, s.name)
+func (s stubExporter) Name() string { return s.name }
+func (s stubExporter) Open(io.Writer) (JournalWriter, error) {
+	return nil, fmt.Errorf("%w: the %s adapter is a documented stub; it makes no network call. Use the csv adapter and import the file", ErrNotImplemented, s.name)
 }
 
 type csvExporter struct{}
 
-func (csvExporter) Name() string      { return "csv" }
-func (csvExporter) Implemented() bool { return true }
+func (csvExporter) Name() string { return "csv" }
 
-// Export writes one row per journal line. Text cells are defused against spreadsheet formula injection.
-func (csvExporter) Export(_ context.Context, entries []JournalEntry, w io.Writer) error {
+func (csvExporter) Open(w io.Writer) (JournalWriter, error) {
 	out, err := newCSV(w, []string{"entry_number", "entry_date", "source", "source_ref", "memo", "currency", "line", "account_code", "account_name", "debit", "credit", "line_memo"})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for _, e := range entries {
-		for _, l := range e.Lines {
-			var debit, credit Num
-			if l.DebitMinor > 0 {
-				debit = Num(FormatMinor(l.DebitMinor, e.Currency))
-			}
-			if l.CreditMinor > 0 {
-				credit = Num(FormatMinor(l.CreditMinor, e.Currency))
-			}
-			if err := out.row(deref(e.Number), e.EntryDate, e.Source, e.SourceRef, e.Memo, e.Currency, Num(itoa(int64(l.Position))), l.AccountCode, l.AccountName, debit, credit, l.Memo); err != nil {
-				return err
-			}
+	return csvJournal{out}, nil
+}
+
+type csvJournal struct{ out *csvOut }
+
+// Write adds one row per journal line. Text cells are defused against spreadsheet formula injection.
+func (c csvJournal) Write(e *JournalEntry) error {
+	for _, l := range e.Lines {
+		var debit, credit Num
+		if l.DebitMinor > 0 {
+			debit = Num(FormatMinor(l.DebitMinor, e.Currency))
+		}
+		if l.CreditMinor > 0 {
+			credit = Num(FormatMinor(l.CreditMinor, e.Currency))
+		}
+		if err := c.out.row(deref(e.Number), e.EntryDate, e.Source, e.SourceRef, e.Memo, e.Currency, Num(itoa(int64(l.Position))), l.AccountCode, l.AccountName, debit, credit, l.Memo); err != nil {
+			return err
 		}
 	}
-	return out.close()
+	return nil
 }
+
+func (c csvJournal) Close() error { return c.out.close() }
 
 // ExportBatch describes an export. Content is never in the JSON: download it by id.
 type ExportBatch struct {
@@ -115,8 +128,8 @@ func (s *Store) ExportJournal(ctx context.Context, a *Principal, adapter, idemKe
 	if !ok {
 		return nil, false, invalid("adapter", "one of %s", strings.Join(ExporterNames(), ", "))
 	}
-	if !ex.Implemented() {
-		return nil, false, ex.Export(ctx, nil, io.Discard)
+	if _, err := ex.Open(io.Discard); err != nil {
+		return nil, false, err // a stub: nothing is read, moved or written
 	}
 	var out *ExportBatch
 	var replayed bool
@@ -127,16 +140,21 @@ func (s *Store) ExportJournal(ctx context.Context, a *Principal, adapter, idemKe
 			if err := tx.QueryRowContext(ctx, `SELECT last_number FROM export_cursors WHERE adapter = ?`, adapter).Scan(&cursor); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
 			}
-			rows, err := tx.QueryContext(ctx, `SELECT id, number FROM journal_entries WHERE status = 'posted' AND number > ? ORDER BY number LIMIT ?`, cursor, exportBatchSize)
+			rows, err := tx.QueryContext(ctx, `SELECT id, number, (SELECT COUNT(*) FROM journal_lines WHERE entry_id = journal_entries.id) FROM journal_entries WHERE status = 'posted' AND number > ? ORDER BY number LIMIT ?`, cursor, exportBatchSize)
 			if err != nil {
 				return nil, err
 			}
 			var ids, numbers []int64
+			lines := 0
 			for rows.Next() {
 				var id, number int64
-				if err := rows.Scan(&id, &number); err != nil {
+				var n int
+				if err := rows.Scan(&id, &number, &n); err != nil {
 					_ = rows.Close()
 					return nil, err
+				}
+				if lines += n; lines > exportMaxLines && len(ids) > 0 {
+					break
 				}
 				ids, numbers = append(ids, id), append(numbers, number)
 			}
@@ -146,16 +164,21 @@ func (s *Store) ExportJournal(ctx context.Context, a *Principal, adapter, idemKe
 			if len(ids) == 0 {
 				return &ExportBatch{Adapter: adapter, SHA256: "", CreatedAt: s.now().UTC()}, nil
 			}
-			entries := make([]JournalEntry, 0, len(ids))
+			var buf bytes.Buffer
+			w, err := ex.Open(&buf)
+			if err != nil {
+				return nil, err
+			}
 			for _, id := range ids {
 				e, err := s.loadEntry(ctx, tx, id)
 				if err != nil {
 					return nil, err
 				}
-				entries = append(entries, *e)
+				if err := w.Write(e); err != nil {
+					return nil, err
+				}
 			}
-			var buf bytes.Buffer
-			if err := ex.Export(ctx, entries, &buf); err != nil {
+			if err := w.Close(); err != nil {
 				return nil, err
 			}
 			sum := sha256.Sum256(buf.Bytes())
