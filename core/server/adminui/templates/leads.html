@@ -1,0 +1,28 @@
+{{define "content"}}
+<h1>{{t "lead.title"}}</h1>
+{{if .Data.Unavailable}}<p class="empty">{{t "lead.unavailable"}}</p>
+{{else}}
+<form method="get" action="/leads" class="filters">
+<p><label for="f-status">{{t "lead.status"}}</label>
+<select id="f-status" name="status">
+<option value=""{{if not .Data.Status}} selected{{end}}>{{t "lead.all"}}</option>
+{{range .Data.Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+{{end}}</select></p>
+<p><button type="submit">{{t "audit.apply"}}</button></p>
+</form>
+{{if .Data.Items}}<div class="table-wrap" role="region" aria-labelledby="cap-leads" tabindex="0">
+<table>
+<caption id="cap-leads" class="sr">{{t "lead.title"}}</caption>
+<thead><tr><th scope="col">{{t "lead.received"}}</th><th scope="col">{{t "lead.name"}}</th><th scope="col">{{t "lead.email"}}</th><th scope="col">{{t "lead.form"}}</th><th scope="col">{{t "lead.status"}}</th></tr></thead>
+<tbody>
+{{range .Data.Items}}<tr>
+<th scope="row"><a href="/leads/{{.ID}}"><time datetime="{{iso .CreatedAt}}">{{ts .CreatedAt}}</time></a></th>
+<td>{{.Name}}</td><td>{{.Email}}</td><td>{{.FormID}}</td><td><span class="badge neutral">{{.StatusLabel}}</span></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .Data.NextURL}}<p><a href="{{.Data.NextURL}}" rel="next">{{t "lead.next"}}</a></p>{{end}}
+{{else}}<p class="empty">{{t "lead.empty"}}</p>{{end}}
+{{end}}
+{{end}}

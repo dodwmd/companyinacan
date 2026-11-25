@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>{{t "mod.title"}}</h1>
+{{if .Data.Modules}}<div class="table-wrap" role="region" aria-labelledby="cap-mods" tabindex="0">
+<table>
+<caption id="cap-mods" class="sr">{{t "mod.title"}}</caption>
+<thead><tr><th scope="col">{{t "mod.module"}}</th><th scope="col">{{t "mod.state"}}</th><th scope="col">{{t "mod.version"}}</th><th scope="col">{{t "mod.licence"}}</th><th scope="col">{{t "mod.ram"}}</th></tr></thead>
+<tbody>
+{{range .Data.Modules}}<tr>
+<th scope="row"><a href="/modules/{{.ID}}">{{.Name}}</a></th>
+<td><span class="badge {{.StateClass}}">{{.StateLabel}}</span></td>
+<td>{{.Version}}</td>
+<td>{{.Licence}}{{if .SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</td>
+<td>{{t "mod.mb" .RAMMB}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+<p>{{t "mod.ram_total" .Data.RAMTotal}}</p>
+{{else}}<p class="empty">{{t "mod.empty"}} <code>make enable &lt;module&gt;</code></p>{{end}}
+{{end}}

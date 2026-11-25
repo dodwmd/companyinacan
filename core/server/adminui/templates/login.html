@@ -1,0 +1,17 @@
+{{define "content"}}
+<section class="narrow">
+<h1>{{t "login.title"}}</h1>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+<form method="post" action="/login" class="stack">
+<input type="hidden" name="csrf" value="{{.Data.LoginCSRF}}">
+<p><label for="username">{{t "login.username"}}</label>
+<input id="username" name="username" type="text" value="{{.Data.Username}}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></p>
+<p><label for="password">{{t "login.password"}}</label>
+<input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+<p><label for="totp">{{t "login.totp"}}</label>
+<input id="totp" name="totp" type="text" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" required aria-describedby="totp-hint">
+<span id="totp-hint" class="hint">{{t "login.totp_hint"}}</span></p>
+<p><button type="submit">{{t "login.submit"}}</button></p>
+</form>
+</section>
+{{end}}

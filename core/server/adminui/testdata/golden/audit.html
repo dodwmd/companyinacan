@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Audit log - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit" aria-current="page">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Audit log</h1>
+
+
+
+<section aria-labelledby="h-filter">
+<h2 id="h-filter">Filter</h2>
+<form method="get" action="/audit" class="filters">
+<p><label for="f-actor">Actor</label>
+<input id="f-actor" name="actor" type="text" value="" maxlength="64"></p>
+<p><label for="f-action">Action starts with</label>
+<input id="f-action" name="action" type="text" value="" maxlength="64"></p>
+<p><label for="f-target">Target</label>
+<input id="f-target" name="target" type="text" value="" maxlength="128"></p>
+<p><button type="submit">Apply filter</button> <a href="/audit">Clear filter</a></p>
+</form>
+</section>
+
+<section aria-labelledby="h-chain">
+<h2 id="h-chain">Integrity</h2>
+<p>Each entry is hash-chained to the one before it. Verifying walks the whole chain and reports the first entry that was changed, reordered or removed.</p>
+<div class="actions">
+<form method="post" action="/audit/verify"><input type="hidden" name="csrf" value="CSRF"><button type="submit">Verify chain</button></form>
+<a class="button" href="/audit/export">Export as JSON lines</a>
+</div>
+</section>
+
+<section aria-labelledby="h-entries">
+<h2 id="h-entries">Entries, newest first</h2>
+<div class="table-wrap" role="region" aria-labelledby="cap-entries" tabindex="0">
+<table>
+<caption id="cap-entries" class="sr">Entries, newest first</caption>
+<thead><tr><th scope="col">No.</th><th scope="col">Time (UTC)</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Detail</th></tr></thead>
+<tbody>
+<tr><th scope="row">2</th><td><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></td><td>root</td><td>admin.login</td><td>admin</td><td class="mono">{&#34;ip&#34;:&#34;127.0.0.1&#34;}</td></tr>
+<tr><th scope="row">1</th><td><time datetime="2023-11-14T22:13:20Z">2023-11-14 22:13:20</time></td><td>cli</td><td>module.enable</td><td>forms</td><td class="mono">{}</td></tr>
+</tbody>
+</table>
+</div>
+
+
+</section>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

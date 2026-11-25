@@ -1,0 +1,48 @@
+{{define "content"}}
+<h1>{{t "settings.title"}}</h1>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+<p>{{t "settings.signed_in_as" .User}}</p>
+<p class="hint">{{t "settings.ends_sessions"}}</p>
+
+<section aria-labelledby="h-pw">
+<h2 id="h-pw">{{t "settings.password"}}</h2>
+<form method="post" action="/settings/password" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="pw-current">{{t "settings.current"}}</label>
+<input id="pw-current" name="current" type="password" autocomplete="current-password" maxlength="1024" required></p>
+<p><label for="pw-new">{{t "settings.new"}}</label>
+<input id="pw-new" name="new" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required aria-describedby="pw-hint">
+<span id="pw-hint" class="hint">{{t "settings.new_hint"}}</span></p>
+<p><label for="pw-confirm">{{t "settings.confirm"}}</label>
+<input id="pw-confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></p>
+<p><button type="submit">{{t "settings.change_password"}}</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-totp">
+<h2 id="h-totp">{{t "settings.totp"}}</h2>
+<p>{{t "settings.totp_help"}}</p>
+<form method="post" action="/settings/totp" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="totp-current">{{t "settings.current"}}</label>
+<input id="totp-current" name="current" type="password" autocomplete="current-password" maxlength="1024" required></p>
+<p><button type="submit">{{t "settings.totp_start"}}</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-sessions">
+<h2 id="h-sessions">{{t "settings.sessions"}}</h2>
+<div class="table-wrap" role="region" aria-labelledby="cap-sess" tabindex="0">
+<table>
+<caption id="cap-sess" class="sr">{{t "settings.sessions"}}</caption>
+<thead><tr><th scope="col">{{t "settings.started"}}</th><th scope="col">{{t "settings.from"}}</th><th scope="col">{{t "settings.expires"}}</th><th scope="col">{{t "ev.action"}}</th></tr></thead>
+<tbody>
+{{range .Data.Sessions}}<tr>
+<th scope="row"><time datetime="{{iso .Created}}">{{ts .Created}}</time></th><td>{{.IP}}</td><td><time datetime="{{iso .Expires}}">{{ts .Expires}}</time></td>
+<td>{{if .Current}}<strong>{{t "settings.this_session"}}</strong>{{else}}<form method="post" action="/settings/sessions/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">{{t "settings.revoke"}}</button></form>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+</section>
+{{end}}

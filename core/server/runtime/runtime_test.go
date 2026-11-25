@@ -24,6 +24,10 @@ func TestConfigFromEnvDefaultsAndOverrides(t *testing.T) {
 	if err != nil || c.AdminAddr != "127.0.0.1:9" || c.SecureCookies || !c.TrustProxy || c.DBPath != "/x/y.db" || c.TokenReview != "fake" || c.MemLimitMB != 32 {
 		t.Fatalf("%+v %v", c, err)
 	}
+	env["CAN_COMPANY_NAME"], env["CAN_COMPANY_DOMAIN"], env["CAN_LEADS_TOKEN_FILE"] = "Acme", "acme.example", "/run/leads/token"
+	if c, _ = FromEnv(func(k string) string { return env[k] }); c.CompanyName != "Acme" || c.CompanyDomain != "acme.example" || c.LeadsTokenFile != "/run/leads/token" {
+		t.Fatalf("%+v", c)
+	}
 	for _, bad := range []map[string]string{{"CAN_COOKIE_SECURE": "maybe"}, {"CAN_TOKEN_REVIEW": "magic"}, {"CAN_MEMLIMIT_MB": "-1"}, {"CAN_ADMIN_ADDR": "x", "CAN_MODULE_ADDR": "x"}} {
 		if _, err := FromEnv(func(k string) string { return bad[k] }); err == nil {
 			t.Errorf("accepted %v", bad)
@@ -73,6 +77,10 @@ func TestRunServesTwoSeparateListenersAndShutsDownGracefully(t *testing.T) {
 	}
 	if get(t, admin+"/api/v1/session") != 401 || get(t, mod+"/v1/self") != 401 {
 		t.Fatal("protected routes must demand credentials")
+	}
+	// the admin UI is served on the admin listener only
+	if get(t, admin+"/login") != 200 || get(t, admin+"/static/admin.css") != 200 || get(t, mod+"/login") != 404 {
+		t.Fatal("admin UI mounting")
 	}
 	cancel()
 	select {

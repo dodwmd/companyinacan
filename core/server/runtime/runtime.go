@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/server/adminapi"
+	"github.com/dodwmd/companyinacan/core/server/adminui"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/events"
@@ -45,6 +46,9 @@ type Config struct {
 	SACA            string        // CAN_SA_CA_FILE
 	MemLimitMB      int           // CAN_MEMLIMIT_MB: soft Go memory limit (idle RAM target, see plan.md)
 	LogLevel        string        // CAN_LOG_LEVEL
+	CompanyName     string        // CAN_COMPANY_NAME: shown on the admin dashboard
+	CompanyDomain   string        // CAN_COMPANY_DOMAIN: shown on the admin dashboard
+	LeadsTokenFile  string        // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
 	ShutdownTimeout time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
 
 	// OnListen is called once both listeners are bound (tests use it to learn ports).
@@ -85,6 +89,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		SAToken:     str("CAN_SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		SACA:        str("CAN_SA_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
 		LogLevel:    str("CAN_LOG_LEVEL", "info"), ShutdownTimeout: 15 * time.Second,
+		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"),
 	}
 	if c.SecureCookies, err = boolean("CAN_COOKIE_SECURE", true); err != nil {
 		return c, err
@@ -171,6 +176,12 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		Auth: auth.NewService(db, al, auth.Options{Log: log, Policy: loginPolicy(cfg)}), DB: db, Audit: al, Registry: reg,
 		Log: log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
+	uiSrv := &adminui.Server{
+		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
+		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: adminui.FileToken(cfg.LeadsTokenFile)},
+		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
+		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
+	}
 	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log}
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
@@ -193,7 +204,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	servers := []struct {
 		srv *http.Server
 		ln  net.Listener
-	}{{mk(adminSrv.Handler()), adminLn}, {mk(moduleSrv.Handler()), moduleLn}}
+	}{{mk(uiSrv.Handler(adminSrv.Handler())), adminLn}, {mk(moduleSrv.Handler()), moduleLn}}
 
 	workCtx, stopWork := context.WithCancel(ctx)
 	var wg sync.WaitGroup

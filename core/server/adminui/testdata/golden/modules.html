@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Modules - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules" aria-current="page">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Modules</h1>
+<div class="table-wrap" role="region" aria-labelledby="cap-mods" tabindex="0">
+<table>
+<caption id="cap-mods" class="sr">Modules</caption>
+<thead><tr><th scope="col">Module</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Licence</th><th scope="col">Declared RAM</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row"><a href="/modules/forms">Forms gateway</a></th>
+<td><span class="badge ok">Enabled</span></td>
+<td>1.2.0</td>
+<td>Apache-2.0</td>
+<td>32 MB</td>
+</tr>
+<tr>
+<th scope="row"><a href="/modules/wiki">Wiki</a></th>
+<td><span class="badge err">Failed</span></td>
+<td>0.4.1</td>
+<td>BUSL-1.1 <span class="badge warn">Source-available</span></td>
+<td>256 MB</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Total declared RAM of enabled modules: 32 MB</p>
+
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>
