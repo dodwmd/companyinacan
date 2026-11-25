@@ -12,9 +12,9 @@ Epics are ordered by dependency. Phases refer to the roadmap in `SPEC.md` §9.
 |---|---|---|---|---|
 | E00 | Phase 0 measurements (k3s baseline, footprint harness, timing) | 0 | — | partial: CI-runnable part done (harness, k3s/forms/can-static numbers, NetworkPolicy and TokenReview proofs, findings); real 2 GB/4 GB VPS and `make up` timing blocked on a provider account — `specs/009-phase0-measurements/`, `docs/measurements/phase0-ci.md` |
 | E01 | Foundation: repo layout, `can` CLI skeleton, schemas, CI | 1 | — | done — `specs/001-project-foundation/` |
-| E02 | Local dev cluster (`make dev`, k3d provider, base manifests) | 1 | E01 | in review |
-| E03 | can-core MVP (in-cluster control plane, module API, auth, audit) | 1 | E01, E02 | in progress: part 1 (state, auth, registry, audit, events, `can apply` behind interfaces) in `specs/005-can-core-mvp/`; part 2 (Helm installer, email.send, cluster tests) open |
-| E04 | Site renderer and static server | 1 | E01, E02 | done (PR open; `static` provider deploy and PVC wiring deferred) — `specs/002-site-renderer/` |
+| E02 | Local dev cluster (`make dev`, k3d provider, base manifests) | 1 | E01 | done — verified on a real k3d in CI (advisory job); ACME issuance, `externalTrafficPolicy: Local` and local-machine/Podman runs unverified — `specs/004-local-dev-cluster/` |
+| E03 | can-core MVP (in-cluster control plane, module API, auth, audit) | 1 | E01, E02 | done for the platform core (part 1 + part 2: installer, admission policy, TokenReview cache, sandboxed chart renderer, k3d lifecycle test in advisory CI); `email.send`, MariaDB provisioning, upstream-Helm-chart support and admin enable/disable UI pending — `specs/005-can-core-mvp/` |
+| E04 | Site renderer and static server | 1 | E01, E02 | done (`static` provider deploy and PVC wiring deferred) — `specs/002-site-renderer/` |
 | E05 | Forms gateway and `leads` capability | 1 | E03, E04 | partial: library and contract (integration pending E03/E06) — `specs/003-forms-gateway/` |
 | E06 | Server providers and `make up` (ssh, Hetzner, sslip.io) | 1 | E02, E03 | built offline; real-server checks pending |
 | E07 | Starter modules: support, newsletter, analytics | 1 | E03 | built offline (manifests, charts, hooks, contracts, email policy); adapters, images and cluster checks pending — `specs/007-starter-modules/` |
@@ -25,8 +25,8 @@ Backlog (broken down into epics when the previous phase is done):
 | # | Epic | Phase |
 |---|---|---|
 | E10 | CRM, wiki, status page, simple tasks | 2 |
-| E11 | SSO, RBAC, approval engine, notifications, webhooks, retention engine | 2 |
-| E12 | Admin dashboard and onboarding wizard; DigitalOcean provider; Cloudflare DNS | 2 |
+| E11 | SSO, RBAC, approval engine, notifications, webhooks, retention engine | 2 — **E11a (approvals, notifications, module-namespaced RBAC inside can-core) is built**; SSO, retention engine and role-override UI pending: `specs/015-approvals-notifications/` |
+| E12 | Admin dashboard and onboarding wizard; DigitalOcean provider; Cloudflare DNS | 2 — **E12a (server-rendered admin UI: login, dashboard, modules, audit, deliveries, leads, settings, PWA manifest) is built**; onboarding wizard, module enable/disable, DigitalOcean, Cloudflare pending: `specs/010-admin-ui/` |
 | E13 | `files`, `directory`/`people`, `identity.provision`, hire/leave workflows | 3a |
 | E14 | `work` tracker (API-first) and `performance` (1:1s, goals, reviews); timesheets. **E14a (in-house `work` service, API, CLI, contracts) is built offline**: web UI, image and cluster checks, `performance` and timesheets pending, see `specs/011-work-tracker/` | 3a |
 | E13a | first slice of E13/E14: in-house `people` (directory, org, lifecycle, checklists) and `performance` (1:1s, goals), retention/erasure | 3a — built offline, experimental: `specs/012-people-directory/` |
