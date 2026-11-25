@@ -1,0 +1,9 @@
+schema: 1
+name: Stub Co
+domain: stub.example
+provider:
+  type: local
+modules:
+  stub:
+    settings:
+      greeting: hi-from-company-yaml

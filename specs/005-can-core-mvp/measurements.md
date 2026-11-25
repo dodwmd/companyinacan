@@ -27,3 +27,20 @@ Notes:
 ## Test and CI results
 
 `make test` (lint, unit, contract, licence check) is green locally. CI on PR #9 (commit 9da6930): `lint`, `unit`, `contract`, `licences`, `dco` all green.
+
+## Part 2 (E03b)
+
+Recorded 2026-11-25 on the author's workstation (not k3d), `can-core serve` with `CAN_TOKEN_REVIEW=fake`, installer off,
+fresh database, 3 s after start.
+
+| Check | Result | Part 1 |
+|---|---|---|
+| Binary size (`-trimpath -ldflags '-s -w'`, CGO off) | 16.96 MB | 13.3 MB |
+| Idle RSS | 41.5 MB (VmRSS 41552 kB) | 38 MB |
+
+The +3.5 MB comes from the Kubernetes client, installer, chart renderer and the `lib/pq` Postgres driver. For
+comparison, importing the Helm engine alone adds about 15 MB of resident memory (research R16). The post-login figure
+(about 55 MB before) was NOT re-measured; if it grows by the same 3.5 MB it is about 58 MB, just over the CI check bound (57.6 MB for a
+48 MB request); the request should move to about 56 MB, or `debug.FreeOSMemory` after Argon2 should be evaluated.
+The dev-cluster workflow prints the in-cluster RSS of the can-core process after the lifecycle test; the real in-cluster
+figures, and what the workflow run showed, are recorded in the PR description.

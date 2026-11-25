@@ -26,6 +26,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
 	"github.com/dodwmd/companyinacan/core/server/moduleapi"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
@@ -34,27 +35,36 @@ import (
 
 // Config is can-core's configuration (all from CAN_* environment variables).
 type Config struct {
-	AdminAddr       string        // CAN_ADMIN_ADDR, default :8080
-	ModuleAddr      string        // CAN_MODULE_ADDR, default :8090
-	DBPath          string        // CAN_DB_PATH
-	SecureCookies   bool          // CAN_COOKIE_SECURE, default true
-	TrustProxy      bool          // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For (set it behind Traefik; see deploy notes)
-	TokenReview     string        // CAN_TOKEN_REVIEW: kubernetes (default) or fake (development only)
-	PlatformURL     string        // CAN_PLATFORM_URL: module-API URL as seen from module namespaces
-	KubeAPI         string        // CAN_KUBE_API
-	SAToken         string        // CAN_SA_TOKEN_FILE
-	SACA            string        // CAN_SA_CA_FILE
-	MemLimitMB      int           // CAN_MEMLIMIT_MB: soft Go memory limit (idle RAM target, see plan.md)
-	LogLevel        string        // CAN_LOG_LEVEL
-	CompanyName     string        // CAN_COMPANY_NAME: shown on the admin dashboard
-	CompanyDomain   string        // CAN_COMPANY_DOMAIN: shown on the admin dashboard
-	LeadsTokenFile  string        // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
-	ShutdownTimeout time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
+	AdminAddr         string        // CAN_ADMIN_ADDR, default :8080
+	ModuleAddr        string        // CAN_MODULE_ADDR, default :8090
+	DBPath            string        // CAN_DB_PATH
+	SecureCookies     bool          // CAN_COOKIE_SECURE, default true
+	TrustProxy        bool          // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For (set it behind Traefik; see deploy notes)
+	TokenReview       string        // CAN_TOKEN_REVIEW: kubernetes (default) or fake (development only)
+	PlatformURL       string        // CAN_PLATFORM_URL: module-API URL as seen from module namespaces
+	KubeAPI           string        // CAN_KUBE_API
+	SAToken           string        // CAN_SA_TOKEN_FILE
+	SACA              string        // CAN_SA_CA_FILE
+	MemLimitMB        int           // CAN_MEMLIMIT_MB: soft Go memory limit (idle RAM target, see plan.md)
+	LogLevel          string        // CAN_LOG_LEVEL
+	CompanyName       string        // CAN_COMPANY_NAME: shown on the admin dashboard
+	CompanyDomain     string        // CAN_COMPANY_DOMAIN: shown on the admin dashboard
+	LeadsTokenFile    string        // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
+	Installer         string        // CAN_INSTALLER: kubernetes (deploy modules) or none (default; no deploys)
+	CompanyFile       string        // CAN_COMPANY_FILE: the applied company.yaml (mounted ConfigMap)
+	ModulesDir        string        // CAN_MODULES_DIR: module directories baked into the image
+	NodeIP            string        // CAN_NODE_IP: the node address (downward API status.hostIP)
+	ReconcileInterval time.Duration // CAN_RECONCILE_INTERVAL_SECONDS, default 30
+	PostgresAdminURL  string        // CAN_POSTGRES_ADMIN_URL: admin connection used to create module databases
+	PostgresHost      string        // CAN_POSTGRES_HOST: Postgres Service as seen by modules
+	ShutdownTimeout   time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
 
 	// OnListen is called once both listeners are bound (tests use it to learn ports).
 	OnListen func(admin, module net.Addr)
 	// Reviewer overrides the token reviewer (tests).
 	Reviewer tokenreview.Reviewer
+	// ModuleInstaller overrides the installer (tests).
+	ModuleInstaller reconcile.ModuleInstaller
 }
 
 // DefaultMemLimitMB is the soft memory limit applied when GOMEMLIMIT and CAN_MEMLIMIT_MB are unset.
@@ -90,6 +100,9 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		SACA:        str("CAN_SA_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
 		LogLevel:    str("CAN_LOG_LEVEL", "info"), ShutdownTimeout: 15 * time.Second,
 		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"),
+		Installer: str("CAN_INSTALLER", "none"), CompanyFile: str("CAN_COMPANY_FILE", "/etc/can/company/company.yaml"), ModulesDir: str("CAN_MODULES_DIR", "/modules"),
+		NodeIP: getenv("CAN_NODE_IP"), PostgresAdminURL: getenv("CAN_POSTGRES_ADMIN_URL"), PostgresHost: str("CAN_POSTGRES_HOST", "postgres.can-data.svc.cluster.local"),
+		ReconcileInterval: 30 * time.Second,
 	}
 	if c.SecureCookies, err = boolean("CAN_COOKIE_SECURE", true); err != nil {
 		return c, err
@@ -108,6 +121,16 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			return c, fmt.Errorf("CAN_SHUTDOWN_TIMEOUT_SECONDS: %q is not a positive integer", v)
 		}
 		c.ShutdownTimeout = time.Duration(n) * time.Second
+	}
+	if v := getenv("CAN_RECONCILE_INTERVAL_SECONDS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return c, fmt.Errorf("CAN_RECONCILE_INTERVAL_SECONDS: %q is not a positive integer", v)
+		}
+		c.ReconcileInterval = time.Duration(n) * time.Second
+	}
+	if c.Installer != "kubernetes" && c.Installer != "none" {
+		return c, fmt.Errorf("CAN_INSTALLER: %q must be kubernetes or none", c.Installer)
 	}
 	if c.TokenReview != "kubernetes" && c.TokenReview != "fake" {
 		return c, fmt.Errorf("CAN_TOKEN_REVIEW: %q must be kubernetes or fake", c.TokenReview)
@@ -142,7 +165,7 @@ func (c Config) reviewer(log *slog.Logger) (tokenreview.Reviewer, error) {
 	}
 	pool.AppendCertsFromPEM(ca)
 	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
-	return &tokenreview.HTTP{APIServer: c.KubeAPI, Client: client, BearerToken: tokenreview.FileToken(c.SAToken)}, nil
+	return tokenreview.NewCached(&tokenreview.HTTP{APIServer: c.KubeAPI, Client: client, BearerToken: tokenreview.FileToken(c.SAToken)}, tokenreview.CacheOptions{}), nil
 }
 
 // Run starts can-core and blocks until ctx is cancelled, then shuts down gracefully.
@@ -212,6 +235,20 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	go func() { defer wg.Done(); disp.Run(workCtx, bus.Wake(), 30*time.Second) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); housekeeping(workCtx, db, log) }()
+	inst, err := cfg.newInstaller(log)
+	if err != nil {
+		stopWork()
+		return fmt.Errorf("installer: %w", err)
+	}
+	if inst != nil {
+		if cfg.Installer == "kubernetes" && cfg.NodeIP == "" && cfg.ModuleInstaller == nil {
+			stopWork()
+			return errors.New("CAN_NODE_IP is required with CAN_INSTALLER=kubernetes")
+		}
+		rec := newReconciler(db, reg, al, inst)
+		wg.Add(1)
+		go func() { defer wg.Done(); reconcileLoop(workCtx, cfg, rec, log) }()
+	}
 
 	errc := make(chan error, len(servers))
 	for _, s := range servers {

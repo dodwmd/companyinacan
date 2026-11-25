@@ -152,3 +152,174 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
 - Every module-API call performs a TokenReview. A negative cache and a per-source rate limit (so a misbehaving
   module cannot hammer the API server, and an outage degrades gracefully) are part-2 work, together with positive
   caching for the token's remaining lifetime.
+- **Part 2 status**: the negative cache, positive cache (30 s, capped by the token's `exp`) and a global plus per-source
+  rate limit are built (`tokenreview.Cached`); the module API maps a refused review to 429. Trade-off stated in the
+  code: a token revoked by deleting its pod keeps working for up to the positive TTL. mTLS stays out of scope.
+
+## R16. Helm SDK versus a small client (part 2 decision)
+- **Measured** on the author's workstation (Go 1.27.3, CGO off, `-trimpath -s -w`), a program that only imports the
+  package and reads its own RSS at start:
+
+  | Imports | Binary | RSS at start |
+  |---|---|---|
+  | nothing (baseline) | 2.7 MB | about 4 MB |
+  | `client-go/rest` + `client-go/dynamic` | 8.2 MB | 8 MB |
+  | `helm.sh/helm/v3/pkg/engine` + `chart/loader` + client-go dynamic | 26.5 MB | 23.6 MB |
+  | `helm.sh/helm/v3/pkg/action` + client-go rest | 28.7 MB | 27 MB |
+
+  can-core today is 13.3 MB and 38 MB idle (measurements.md) against a declared 48 MB request / 96 MB limit. The
+  Helm template engine alone would add about 15 MB of resident memory at start-up (scheme and sprig registration),
+  the action package about 19 MB: that is the whole headroom, paid by every install forever, to save a few hundred
+  lines.
+- **Decision**: no Helm SDK and no client-go. `core/server/kube` is a net/http client for the 18 kinds the installer
+  needs (server-side apply with a field manager, create, get, list, delete, merge-patch). `installer/chart.go` renders
+  `chart/templates` with `text/template` and a Helm-compatible subset (`.Values`, `.Release`, `.Chart`, `include`,
+  `define`, `toYaml`, `toJson`, `nindent`, `default`, `required`, `quote`, `trunc`, `b64enc`, ...). Atomic semantics
+  are rebuilt: apply, wait for Deployment/StatefulSet readiness, and on failure re-apply the previous rendering
+  (stored gzip+base64 in Secret `can-release`) or, for a first install, delete the new workloads and keep the data.
+  Measured result: binary 16.96 MB (+3.7 MB), idle RSS 41.5 MB (+3.5 MB), both including the Postgres driver.
+- **What this gives up, plainly**: charts that use `lookup`, `tpl`, `.Files`, `.Capabilities`, subcharts, hooks or
+  library charts fail with an "undefined function" error instead of rendering. SPEC 3.1 expects upstream charts as
+  subcharts, so wrapping an upstream chart needs either the full engine (open task T030f; the options are a
+  build-tagged `can-core-helm` variant or rendering with `helm template` at image build time and baking the result in)
+  or a module-owned minimal chart, which SPEC 4.1 already allows. The seam is `chart.RenderChart`.
+- **Guard rails** (tests in `installer_test.go`): chart objects may not target another namespace, be a Namespace,
+  RoleBinding or Pod, or reuse names can-core owns (`can-module`, `can-db`, `can-release`, the module ServiceAccount,
+  the four policies, quota, limit range); pod templates may not use host namespaces, privileged containers, hostPath
+  or another ServiceAccount; every pod template is rewritten to the module's ServiceAccount, no token automount and
+  the projected `can` token. A chart can still add its own NetworkPolicies (additive); modules are reviewed repository
+  code, and a hostile chart is out of the threat model for now.
+- **Disable/enable**: disable merge-patches replicas to 0 and `suspend: true` and deletes running Jobs; the renderer
+  always writes explicit `replicas` and `suspend`, so the next server-side apply (forced, same field manager)
+  restores them. No code path deletes a PVC, Secret or Namespace (tested by scanning the fake's call log).
+- **Alternatives**: Helm SDK in-process (rejected by the numbers); shelling out to `helm` (no shell in the image);
+  client-go dynamic client alone (+4.5 MB binary, +4 MB RSS for what 300 lines do; reconsider with the Helm engine).
+
+## R17. Admission policy for can-core's RoleBinding and Namespace creation
+- **Decision**: two ValidatingAdmissionPolicies with Deny bindings (`deploy/base/admission-policy.yaml`), matched on
+  `request.userInfo.username == system:serviceaccount:can-system:can-core` so administrators and k3s are untouched.
+  RoleBindings: namespace `mod-*`, roleRef the ClusterRole `can-core-module`, one subject (can-core itself).
+  Namespaces: name `mod-*`, `pod-security.kubernetes.io/enforce=restricted`, `can.dev/namespace-kind=module`, no
+  `exempt` label. `failurePolicy: Fail`. Needs Kubernetes 1.30 (k3s v1.31.5 is pinned).
+- **Why it is real**: RBAC grants can-core `create` on rolebindings cluster-wide plus `bind` on one ClusterRole, which
+  without the policy lets a compromised can-core bind into `kube-system`. The k3d test impersonates can-core,
+  attempts exactly that and requires the denial message to come from the policy (RBAC alone would have allowed it).
+- **Still open**: the kube-system Role (`coredns-custom`, `HelmChartConfig/traefik`) is not covered; nor is a
+  compromised can-core creating arbitrary workloads in `mod-*` (pod security `restricted` bounds them).
+
+## R18. Hardening after QA (renderer sandbox, chart rules, integrity)
+- **This is not Helm.** `chart.go` is a Go `text/template` renderer with a Helm-flavoured function set. Supported:
+  `.Values`, `.Release.{Name,Namespace,Service}`, `.Chart.{Name,Version}`, `define`/`template`/`include`, `toYaml`,
+  `toJson`, `indent`, `nindent`, `quote`, `squote`, `default`, `empty`, `required`, `fail`, `trim*`, `trunc`, `lower`,
+  `upper`, `replace`, `contains`, `has{Prefix,Suffix,Key}`, `b64enc`, `toString`, `list`, `join`, `ternary`. Not supported
+  (render fails): sprig beyond that list, `lookup`, `tpl`, `.Files`, `.Capabilities`, subcharts and dependencies, hooks,
+  `helm test`, library charts, `NOTES.txt`, CRDs, JSON-schema validation of values. Release history is a single record
+  (`can-release`), not Helm's revision list.
+- **Sandbox limits** (tests in `hostile_test.go`): `include` nesting 20; any single function result 1 MiB; `indent` and
+  `nindent` 0..1024 columns and a result bound; `replace` growth bound; one template file 1 MiB of output, a chart 8 MiB;
+  chart files over 1 MiB are not read; 10 s wall-clock checked at each `include`; a panic while rendering is recovered.
+  Reads refuse symlinks and anything that resolves outside the chart directory (`values.yaml`, `Chart.yaml`, the templates
+  directory and every template); YAML errors never echo file contents. Not bounded: CPU spent in `range` over large
+  values (values come from reviewed repository files and `company.yaml` settings, not from the chart).
+- **Object rules.** Allowed kinds: ConfigMap, Secret (Opaque only, no `kubernetes.io/*` annotations), PersistentVolumeClaim,
+  Service (ClusterIP only; no NodePort, LoadBalancer, ExternalName, externalIPs), Deployment, StatefulSet, Job, CronJob,
+  NetworkPolicy, IngressRoute. Names must be DNS-1123. A NetworkPolicy may only select specific pods and allow
+  same-namespace bare `podSelector` peers (the shape the starter charts use); allow-all, `ipBlock`, `namespaceSelector`,
+  port-only and empty-peer rules are refused. An IngressRoute may only match the module's own host
+  (`<runtime.subdomain>.<company domain>`, which can-core also injects as `.Values.ingress.host` last, so a values file
+  cannot override it), may not use `HostRegexp`, and may not reference services or middlewares in other namespaces;
+  Ingress and Middleware are can-core's. The starter charts (support, newsletter, analytics) are installed through the
+  installer in `TestStarterModuleChartsStillInstall`.
+- **Deletion and integrity.** Deletes use `propagationPolicy=Background`. Prune and rollback delete an object only after
+  reading it back and finding `can.dev/module` and `managed-by=can-core`; PVCs, Secrets and Namespaces are never deleted.
+  The release record carries a SHA-256 that is verified on load (a mismatch refuses the enable instead of replaying it),
+  and every replayed object passes the same checks as a fresh render. A pre-existing namespace or RoleBinding (create
+  returned a conflict) is adopted only if the labels (`restricted`, `module`, managed-by, module id) or roleRef and single
+  subject are exactly what can-core would have created.
+- **Admission.** The `exempt` check was removed (that label is not a pod-security input, so it checked nothing); the
+  policy now requires a pinned `pod-security.kubernetes.io/enforce-version` (`v1.x`; the template pins `v1.31`, the k3s
+  minor in `dev/k3d.yaml`). With `CAN_INSTALLER=kubernetes` the installer refuses to create anything until it can read
+  both policies and sees a `Deny` binding for each (can-core has `get` only on those two names), so a cluster without
+  `deploy/base` fails loudly instead of running with the standing RBAC alone.
+- **TokenReview cache**: LRU eviction and singleflight, so a burst of identical tokens is one API call and junk tokens
+  evict junk first.
+- **MariaDB** is accepted by `module.v1` (`requires.database: mariadb`) but not provisioned: Enable fails with
+  "database kind is not configured" before any workload is created.
+- **In-cluster RSS, unexplained gap.** The CI run printed VmHWM 45.4 MB and VmRSS 25.1 MB for the can-core process after the
+  whole integration run; the local idle figure is 41.5 MB (3 s after start). The HWM is the comparable number (peak, which
+  includes startup and the Postgres/Argon2-free request paths); the 25 MB RSS was sampled minutes after the load had
+  ended, so the Go runtime had very likely returned memory to the OS, but this is not verified. Neither figure is a
+  steady-state-under-load measurement.
+- **Evidence status.** The k3d lifecycle test runs in the `dev-cluster` workflow, which is `continue-on-error` and not a
+  required check: it is advisory evidence, not a merge gate.
+
+### R18 addendum (QA round 2)
+- **Routing rules** are parsed, not pattern-matched (`installer/match.go`): one `&&` chain of plain matcher calls with
+  backtick arguments and exactly one `Host(`<subdomain>.<domain>`)`; matcher names are case-insensitive and
+  allowlisted (Host, PathPrefix, Path, Method, Headers); `||`, `!`, grouping parentheses, HostRegexp, HostSNI,
+  HeaderRegexp, ClientIP, Query and anything else are refused. entryPoints are limited to `web` and `websecure`;
+  service and middleware names may not contain `@` (other providers) and may not name another namespace.
+- **Render CPU bound**: Go templates cannot be interrupted, so every `range` body (also inside `define`d templates and
+  `values.tmpl.yaml`) is instrumented with a tick that counts iterations (200000 per render, `include` counts too) and
+  checks the 10 s deadline and the caller's context; Enable additionally renders in a goroutine under a 30 s timeout.
+  Test: a nested range over two 200k lists stops with an error, also when hidden behind `include`.
+- **Pod templates** (`installer/pod.go`): volume types limited to configMap, secret, emptyDir, persistentVolumeClaim and
+  the `can` projected token; Secret, ConfigMap and PVC references (volumes, `env.valueFrom`, `envFrom`) must name objects
+  the chart defines, the Secrets can-core creates (`can-module`, `can-db`), or Secret names the chart declares under
+  `.Values.secrets` (the starter charts' contract); the release record can never be read. hostPort, ephemeralContainers,
+  shareProcessNamespace and the `serviceAccount` alias are refused; booleans are read robustly (`"true"`, `"True"`, 1).
+  A chart's own `can-token` volume and mount (the starter charts declare one) is replaced by can-core's, never duplicated.
+- **Claims and metadata**: PVCs and volumeClaimTemplates may not set `volumeName`, `selector`, `dataSource`,
+  `dataSourceRef`, and `storageClassName` is empty or `local-path`; `apiVersion` must be the canonical one for the kind;
+  `ownerReferences`, `finalizers`, `generateName` and `deletionTimestamp` are refused.
+- **Release record** is authenticated with HMAC-SHA256 under the module's signing secret (kept in can-core's database,
+  not in the cluster), so write access to Secrets in the namespace does not allow forging a record that rollback replays.
+- **What the advisory CI run covers.** The `dev-cluster` workflow `integration` job (continue-on-error) runs the E02
+  tests that are not gated, the admission tests, the stub-module lifecycle and the Postgres test. These tests are
+  *skipped* there (`t.Skip`, gated by `CAN_PHASE0_PROOFS=1`): TestModuleTemplateApplies,
+  TestModuleEgressDeniedToNodeAndAPI, TestModuleDNSRewriteFromModuleNamespace, TestModulesIsolatedFromEachOther,
+  TestModuleReachesOnlyTheModuleAPIPort, TestTokenReviewAuthenticatesModule, TestCanCoreRBACScope,
+  TestDiagnosePodToNodeEgress. They are slow and one fails on purpose while issue #13 is open, so the `footprint`
+  workflow's `proofs-networkpolicy-tokenreview` job (also continue-on-error) runs them with the variable set; it passed on
+  this PR's head. So module isolation, module-egress denial, TokenReview and RBAC scope are covered by that job, not by the
+  `integration` job, and neither is a required check. Those proofs run against the E02 templates and not against
+  namespaces created by the new installer; the lifecycle test is what exercises the installer's own namespaces.
+
+### R18 addendum (QA round 3)
+- `{{ template "x" }}` calls are instrumented like `range` and `include`, so an exponential chain of defines
+  (45 levels, two calls each) hits the 200000-step budget in well under a second, and the abandoned render goroutine
+  finishes because the budget, not a timer, ends it. At most one render per module runs at a time; a reconcile that finds
+  one still running fails instead of starting another. Tests assert the time and that the goroutine count returns to baseline.
+- Secret references in a pod template may only name chart-defined Secrets, `can-module`, `can-db`, and the two names
+  can-core provides for the starter charts (`can-database`, `can-smtp`); names are no longer taken from chart values.
+  A chart volume called `can-token` must be the projected `can` token. IngressRoute `tls` may only set
+  `certResolver: letsencrypt` (no `domains`, `secretName`, `options`).
+
+### R18 addendum (QA round 4): charts render in a child process
+- **Why.** In-process limits cannot stop everything a template can do: a pointer-shared list DAG
+  (`$l = list $l $l` forty times) serialises to 2^40 nodes through any printing path, and Go's
+  "fatal error: out of memory" is not recoverable, so it would kill can-core. Budgets and caps stay as defence in depth
+  (tick budget, string and output caps, a node cap in `toYaml`, `toJson`, `join`, `toString`, `quote`, `squote`, `print`,
+  `println`, `printf`), but the boundary is a process.
+- **How.** The installer re-executes its own binary (`os.Executable()`, so the image needs nothing extra) as the hidden
+  `can-core render-chart` subcommand: job JSON on stdin (module directory, chart path, values file, settings, release),
+  result JSON on stdout. Limits: clean environment (only `GOMAXPROCS`, `GOMEMLIMIT`), working directory a fresh temp
+  directory, own process group killed on timeout or cancel, 15 s wall clock (the child also stops itself at 10 s), stdout
+  capped at 16 MiB and stderr at 4 KiB, `RLIMIT_AS` set to the start-up address space plus 256 MiB, and a heap watchdog that
+  exits the child above 32 MiB of live heap within about 5 ms. Any crash, kill, limit or missing output is a render error
+  in the parent, which keeps running. If the child cannot be started the enable fails with "refusing to render in-process";
+  there is no in-process fallback. The one-render-per-module guard stays.
+- **Linux only** for `RLIMIT_AS` and the process group (`child_linux.go`); other platforms compile but have only the heap
+  watchdog and the wall-clock kill. A fixed absolute address-space limit does not work for a Go binary (measured: the
+  static binary fails to start at 512 MiB, starts at 1 GiB, and a limit set below the current size after start makes the
+  next runtime allocation fatal), hence start-up size plus headroom.
+- **Cost, measured** (workstation, stub and `support` charts, static binary): 6 ms wall per render and 15.6 MB peak RSS in
+  the child, transient. The child's memory counts against the same container limit as can-core (96 MiB), so a render adds
+  up to about 16 MB to can-core's 41 to 55 MB for a few milliseconds, and at most about 32 MB of heap before the watchdog
+  fires; keep the limit at or above 96 MiB.
+- **Tests** (`round4_test.go`, `limits_test.go`): the list DAG through toYaml, toJson, join, toString, printf, print, quote
+  and squote is a render error (guard); through `{{ $l }}`, `html` and `urlquery`, which have no guard, the child dies at
+  the heap limit (exit 5) and the test process, which stands in for can-core, survives with bounded peak RSS and still
+  installs a normal chart afterwards; a missing renderer binary fails clearly before the cluster is touched; goroutines
+  return to baseline; the 45-define chain still fails in under 2 s; the starter charts still install; the production limits
+  work both with and without the race detector.

@@ -11,11 +11,13 @@
 # can-core-module in can-system and can-data. No wildcards, no escalate/impersonate, never
 # cluster-admin.
 #
-# This is a REDUCED STANDING GRANT, not least privilege. Residual risks (cannot be expressed in
-# RBAC; to be closed by a ValidatingAdmissionPolicy in E03). A compromised can-core can:
-#  (1) create RoleBindings cluster-wide and bind can-core-module into any namespace, including
-#      kube-system, so it is effectively cluster-admin until that policy exists;
-#  (2) create namespaces with relaxed pod-security labels;
+# This is a REDUCED STANDING GRANT, not least privilege. RBAC alone cannot express two limits, which
+# deploy/base/admission-policy.yaml (ValidatingAdmissionPolicy, E03 part 2) now enforces for can-core:
+#  (1) RoleBindings only in mod-* namespaces, only of can-core-module, only to can-core itself
+#      (without it a compromised can-core could bind into kube-system and be cluster-admin);
+#  (2) namespaces only named mod-* with pod-security `restricted` and can.dev/namespace-kind=module.
+# Proven by test/integration/cancore_test.go (a bind into kube-system is denied by the policy).
+# Residual risk that remains (cannot be expressed in RBAC or by those policies):
 #  (3) via the kube-system Role below: update HelmChartConfig/traefik (arbitrary chart values,
 #      e.g. extra containers, volumes, args) and ConfigMap/coredns-custom (hijack any cluster
 #      DNS name, for example point auth.<domain> at an attacker).
@@ -47,6 +49,12 @@ rules:
     resources: [clusterroles]
     resourceNames: [can-core-module]
     verbs: [bind]
+  # Read-only: can-core checks that the admission policies exist before creating module namespaces
+  # (it cannot edit them).
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingadmissionpolicies, validatingadmissionpolicybindings]
+    resourceNames: [can-core-rolebindings, can-core-namespaces]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

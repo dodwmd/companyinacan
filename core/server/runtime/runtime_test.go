@@ -37,7 +37,7 @@ func TestConfigFromEnvDefaultsAndOverrides(t *testing.T) {
 
 func get(t *testing.T, url string) int {
 	t.Helper()
-	resp, err := http.Get(url) //nolint:gosec,noctx // test against a local listener
+	resp, err := noKeepAlive.Get(url) //nolint:gosec,noctx // test against a local listener
 	if err != nil {
 		t.Fatal(err)
 	}

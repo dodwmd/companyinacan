@@ -24,7 +24,7 @@ injection; `can apply` reconciliation from the in-cluster `company.yaml`." SPEC.
 | US4 Tamper-evident audit log | P1 | **Part 1** |
 | US5 Events reach subscribed modules, signed | P1 | **Part 1** |
 | US6 `can apply` reconciles company.yaml with recorded state | P1 | **Part 1** (reconciler, plan, record-only mode; installer behind an interface with a fake) |
-| US7 Real module deployment (Helm install, namespaces, NetworkPolicies, Secrets, DB creation and credential injection) | P1 | Part 2 |
+| US7 Real module deployment (chart install, namespaces, NetworkPolicies, Secrets, DB creation and credential injection) | P1 | **Part 2** (Postgres only; chart rendering is a Helm-compatible subset, research R16) |
 | US8 `email.send` (SMTP relay wrapper) and `leads` surface for the admin UI | P2 | Part 2 (`leads` itself is E05) |
 
 ## User Scenarios & Testing *(mandatory)*
@@ -169,8 +169,24 @@ state and installs, upgrades, enables or disables modules through a `ModuleInsta
 - **FR-010** All Kubernetes and Helm work MUST be behind interfaces (`tokenreview.Reviewer`,
   `reconcile.ModuleInstaller`) so the whole behaviour is testable without a cluster (Constitution III).
 - **FR-011** can-core's idle RAM MUST be documented as a target and measured (plan.md, measurements.md).
-- **FR-012** Part 2 (not this PR): real Helm installer, namespaces/NetworkPolicies/Secrets, database creation,
-  credential injection, `email.send`, in-cluster `company.yaml` ConfigMap, k3d integration test.
+- **FR-012** Part 2 (`epic/E03b-k8s-integration`, tasks.md): real installer, namespaces/NetworkPolicies/Secrets,
+  database creation, credential injection, in-cluster `company.yaml` ConfigMap, k3d integration test. Still open:
+  `email.send`, admin enable/disable UI, uninstall (keep/purge), MariaDB.
+- **FR-014** The installer MUST create `mod-<id>` from `deploy/templates`, give every module pod its own
+  ServiceAccount with `automountServiceAccountToken: false` and only the projected `can`-audience token, inject
+  `CAN_API_URL`, the webhook secret and database credentials from Secrets, refuse chart objects outside the module
+  namespace or of kinds it owns, wait for readiness and roll back (or remove a failed first install) on failure, and
+  MUST NOT contain any code path that deletes a PersistentVolumeClaim, Secret or Namespace.
+- **FR-015** Disable MUST scale workloads to zero and suspend CronJobs, keep all data and Secrets, and a later enable
+  MUST restore them.
+- **FR-016** Database provisioning MUST be idempotent, give each module its own database and role, and revoke
+  `CONNECT` from `PUBLIC` so one module's credentials do not open another's database.
+- **FR-017** can-core's RoleBinding and Namespace creation MUST be constrained by a ValidatingAdmissionPolicy
+  (`mod-*` only, `can-core-module` only, `restricted` pod security), proven on a real cluster.
+- **FR-018** Token reviews MUST be cached (positive for at most 30 s and never past the token's `exp`, negative for
+  10 s) and rate limited globally and per source; an overloaded limiter answers 429, an API outage 502.
+- **FR-019** `can apply` MUST write the validated `company.yaml` to ConfigMap `can-system/company`; can-core MUST
+  reconcile the mounted file on a timer and never apply an invalid file.
 
 ## Success Criteria
 

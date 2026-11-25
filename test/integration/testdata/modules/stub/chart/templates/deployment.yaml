@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stub
+spec:
+  selector:
+    matchLabels: {app: stub}
+  template:
+    metadata:
+      labels: {app: stub}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: stub
+          image: {{ .Values.image | quote }}
+          env:
+            - name: GREETING
+              value: {{ .Values.settings.greeting | quote }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "GREETING=$GREETING"
+              echo "CAN_API_URL=$CAN_API_URL"
+              echo "CAN_WEBHOOK_SECRET_SET=${CAN_WEBHOOK_SECRET:+yes}"
+              while true; do
+                tok=$(cat "$CAN_TOKEN_FILE")
+                echo "SELF $(wget -T 3 -qO- --header "Authorization: Bearer $tok" "$CAN_API_URL/v1/self" 2>&1)"
+                echo "NOAUTH $(wget -T 3 -qO- "$CAN_API_URL/v1/self" 2>&1 | head -c 80)"
+                if wget -T 3 -qO- http://can-core.can-system.svc.cluster.local:8080/healthz >/dev/null 2>&1; then echo "ADMIN reachable"; else echo "ADMIN blocked"; fi
+                sleep 2
+              done
+          readinessProbe:
+            exec: {command: [sh, -c, "test -s \"$CAN_TOKEN_FILE\""]}
+            periodSeconds: 2
+          resources:
+            requests: {memory: 8Mi, cpu: 5m}
+            limits: {memory: 32Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}

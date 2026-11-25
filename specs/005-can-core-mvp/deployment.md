@@ -41,3 +41,19 @@ already knows the password can guess TOTP codes at a bounded rate (roughly 100 r
 
 Recovery from inside the pod: `can-core admin unlock [--username]` and `can-core admin reset-password
 [--rotate-totp]`.
+
+## Part 2 variables (installer and reconcile loop)
+
+| Variable | Default | Deployment value |
+|---|---|---|
+| `CAN_INSTALLER` | `none` | `kubernetes` (deploys modules; `none` only records state) |
+| `CAN_COMPANY_FILE` | `/etc/can/company/company.yaml` | the mounted ConfigMap `can-system/company` written by `can apply` |
+| `CAN_MODULES_DIR` | `/modules` | module directories baked into the image |
+| `CAN_RECONCILE_INTERVAL_SECONDS` | `30` | `15` in the dev manifest (the kubelet refreshes a mounted ConfigMap within about a minute) |
+| `CAN_NODE_IP` | none (required with the Kubernetes installer) | downward API `status.hostIP`; excluded from module egress |
+| `CAN_POSTGRES_ADMIN_URL` | none | from optional Secret `can-postgres-admin` key `url`; without it a module that needs Postgres fails with a clear error |
+| `CAN_POSTGRES_HOST` | `postgres.can-data.svc.cluster.local` | the Service name modules use |
+
+The manifests are in `deploy/can-core/` (applied after `deploy/base`, not part of it: base is applied before any image
+exists). Build with `docker build -f deploy/can-core/Dockerfile -t can-core:dev .`; the base-image digests are
+placeholders until a release (`make release-check`).

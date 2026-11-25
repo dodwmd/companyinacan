@@ -53,3 +53,25 @@ func (f *FakeInstaller) Disable(_ context.Context, id string) error {
 	delete(f.Enabled, id)
 	return nil
 }
+
+// EnabledCount returns how many modules are currently enabled (safe to call while a reconcile runs).
+func (f *FakeInstaller) EnabledCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.Enabled)
+}
+
+// EnabledSpec returns the Spec an enabled module was given.
+func (f *FakeInstaller) EnabledSpec(id string) (Spec, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.Enabled[id]
+	return s, ok
+}
+
+// CallLog returns a copy of the recorded calls.
+func (f *FakeInstaller) CallLog() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.Calls...)
+}

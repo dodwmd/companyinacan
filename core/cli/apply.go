@@ -18,13 +18,15 @@ import (
 func newApplyCmd(g *globalOpts) *cobra.Command {
 	var modulesDir, statePath string
 	var dryRun, recordOnly bool
+	var kubeContext string
 	cmd := &cobra.Command{
 		Use:   "apply [dir]",
 		Short: "Reconcile company.yaml with the recorded module state",
 		Long: "Validates company.yaml and the manifests of its enabled modules, compares them with the state\n" +
 			"recorded in can-core's SQLite store and plans the install/upgrade/enable/disable steps.\n\n" +
-			"The Helm/Kubernetes installer is not implemented yet (epic E03 follow-up). Use --dry-run to print\n" +
-			"the plan, or --record-only to update the recorded state without touching a cluster (development).",
+			"Without flags it syncs company.yaml into the cluster (ConfigMap can-system/company) and can-core, which runs\n" +
+			"in the cluster, reconciles it. Use --dry-run to print the plan, or --record-only to update the recorded state\n" +
+			"without touching a cluster (development).",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -39,7 +41,12 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				return silent(ExitFailure)
 			}
 			if !dryRun && !recordOnly {
-				return &exitError{ExitNotImplemented, "can apply cannot deploy yet: the Helm installer is a follow-up to epic E03; use --dry-run to see the plan or --record-only to update recorded state"}
+				out, err := syncCompany(cmd, filepath.Join(dir, "company.yaml"), kubeContext)
+				if err != nil {
+					return failure("%v", err)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "synced company.yaml to ConfigMap can-system/company (%s)\ncan-core applies it within its reconcile interval; watch with: kubectl -n can-system logs deploy/can-core\n", out)
+				return nil
 			}
 
 			dbPath := statePath
@@ -89,5 +96,6 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&statePath, "state", "", "recorded-state database (default <dir>/.can/state.db)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan and change nothing")
 	cmd.Flags().BoolVar(&recordOnly, "record-only", false, "update recorded state without deploying (development)")
+	cmd.Flags().StringVar(&kubeContext, "context", os.Getenv("CAN_DEV_CONTEXT"), "kubectl context of the cluster to sync company.yaml to (default $CAN_DEV_CONTEXT, else the current context)")
 	return cmd
 }

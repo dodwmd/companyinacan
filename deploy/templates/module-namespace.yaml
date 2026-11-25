@@ -8,6 +8,7 @@ metadata:
   labels:
     can.dev/namespace-kind: module
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.31
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
