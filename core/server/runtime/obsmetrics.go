@@ -20,10 +20,12 @@ type platformMetrics struct {
 	auditEntries     *obs.Gauge
 	deadLetters      *obs.Gauge
 	pending          *obs.Gauge
-	verifyOK         *obs.Gauge
-	verifyAt         *obs.Gauge
+	verifyOK         *obs.GaugeVec // series created by the first completed run, so it can never read 0 before one
+	verifyAt         *obs.GaugeVec
 
 	verifyEvery time.Duration
+	retryEvery  time.Duration
+	verify      func(context.Context) (audit.Result, error)
 	mu          sync.Mutex
 	lastVerify  time.Time
 }
@@ -35,9 +37,10 @@ func newPlatformMetrics(reg *obs.Registry) *platformMetrics {
 		auditEntries:     g("can_audit_entries", "Entries in the tamper-evident audit chain (its length)."),
 		deadLetters:      g("can_webhook_dead_letters", "Webhook deliveries that exhausted their retries and need an operator."),
 		pending:          g("can_webhook_pending", "Webhook deliveries waiting for a first or repeated attempt."),
-		verifyOK:         g("can_audit_verify_ok", "1 when the last full audit chain verification passed, 0 when it found a violation."),
-		verifyAt:         g("can_audit_verify_last_run_timestamp_seconds", "Unix time of the last full audit chain verification."),
+		verifyOK:         reg.Gauge("can_audit_verify_ok", "1 when the last full audit chain verification passed, 0 when it found a violation. Absent until the first verification completes."),
+		verifyAt:         reg.Gauge("can_audit_verify_last_run_timestamp_seconds", "Unix time of the last completed full audit chain verification. Absent until one completes."),
 		verifyEvery:      time.Hour,
+		retryEvery:       5 * time.Minute,
 	}
 }
 
@@ -64,16 +67,25 @@ func (m *platformMetrics) collect(ctx context.Context, db *store.DB, al *audit.L
 	if !due {
 		return
 	}
-	res, err := al.Verify(ctx, audit.VerifyOptions{})
+	verify := m.verify
+	if verify == nil {
+		verify = func(ctx context.Context) (audit.Result, error) { return al.Verify(ctx, audit.VerifyOptions{}) }
+	}
+	res, err := verify(ctx)
 	if err != nil {
-		return // a database error is not evidence of tampering; leave the last answer
+		// A database error is not evidence of tampering: keep the last answer and try again soon
+		// instead of waiting a whole interval.
+		m.mu.Lock()
+		m.lastVerify = now.Add(m.retryEvery - m.verifyEvery)
+		m.mu.Unlock()
+		return
 	}
 	if res.OK() {
-		m.verifyOK.Set(1)
+		m.verifyOK.With().Set(1)
 	} else {
-		m.verifyOK.Set(0)
+		m.verifyOK.With().Set(0)
 	}
-	m.verifyAt.Set(float64(now.Unix()))
+	m.verifyAt.With().Set(float64(now.Unix()))
 }
 
 func (m *platformMetrics) run(ctx context.Context, db *store.DB, al *audit.Log, log *slog.Logger) {

@@ -39,11 +39,12 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diagnose",
 		Short: "Write a support bundle (versions, redacted config, checks, log tail, metrics) to a tar.gz",
-		Long: "Collects what a maintainer needs to help you and nothing else: versions, company.yaml with secrets and\n" +
-			"personal data removed, prerequisite and reachability checks, the last log lines of the files or compose\n" +
+		Long: "Collects what a maintainer needs to help you and nothing else: versions, company.yaml with secrets, URLs,\n" +
+			"email addresses and contact details removed, prerequisite and reachability checks, the last log lines of the files or compose\n" +
 			"project you name, and a metrics snapshot from --metrics-url (the bearer token is read from CAN_METRICS_TOKEN,\n" +
-			"never a flag). Only an allowlist of file names can be in the bundle, sizes are capped, every text is scrubbed,\n" +
-			"and an existing file is never overwritten. Review it before sharing if in doubt.",
+			"never a flag). Only an allowlist of file names can be in the bundle, sizes are capped, every text is scrubbed\n" +
+			"for secrets and email addresses (names and phone numbers in free text can survive), and an existing file is\n" +
+			"never overwritten. Review it before sharing.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if out == "" {
@@ -54,6 +55,9 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 					return usage("--metrics-url must be an http(s) URL without credentials (the token comes from CAN_METRICS_TOKEN)")
 				}
+			}
+			if composeProject != "" && !diagnose.ValidComposeProject(composeProject) {
+				return usage("--compose-project must be a docker compose project name: lower-case letters, digits, - and _, starting with a letter or digit")
 			}
 			if lines < 1 || lines > 5000 {
 				return usage("--lines must be between 1 and 5000")
@@ -114,7 +118,7 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 			if g.json() {
 				fmt.Fprintf(w, "{\"bundle\":%q,\"files\":%d}\n", out, len(b.Names())+1)
 			} else {
-				fmt.Fprintf(w, "wrote %s (%d files). Review it before sharing; secrets and personal data are removed, not zero-risk.\n", out, len(b.Names())+1)
+				fmt.Fprintf(w, "wrote %s (%d files). Review it before sharing; secrets and email addresses are removed, names and phone numbers in free text may remain.\n", out, len(b.Names())+1)
 				for _, p := range problems {
 					fmt.Fprintln(w, "note:", p)
 				}

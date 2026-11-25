@@ -5,8 +5,10 @@ package obslog
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -101,7 +103,7 @@ const Redacted = "[redacted]"
 var (
 	reURLCred = regexp.MustCompile(`(://[^/\s:@]*:)[^@\s/]+@`)
 	reBearer  = regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]+`)
-	reSecret  = regexp.MustCompile(`(?i)\b(password|passwd|secret|token|api[_-]?key|authorization)(\s*[=:]\s*)[^\s,;&"']+`)
+	reSecret  = regexp.MustCompile(`(?i)\b(password|passwd|secret|token|api[_-]?key|authorization|cookie)(\s*[=:]\s*)[^\s,;&"']+`)
 )
 
 // RedactString removes URL credentials, bearer tokens and key=value secrets from free text.
@@ -117,7 +119,7 @@ func RedactString(s string) string {
 		s = reBearer.ReplaceAllString(s, "$1 "+Redacted)
 	}
 	if strings.ContainsAny(s, "=:") {
-		for _, k := range []string{"password", "passwd", "secret", "token", "key", "authorization"} {
+		for _, k := range []string{"password", "passwd", "secret", "token", "key", "authorization", "cookie"} {
 			if strings.Contains(l, k) {
 				s = reSecret.ReplaceAllString(s, "$1$2"+Redacted)
 				break
@@ -125,6 +127,22 @@ func RedactString(s string) string {
 		}
 	}
 	return s
+}
+
+// anyText renders v like fmt's %+v, following pointers and showing []byte as text.
+func anyText(v any) string {
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer && !rv.IsNil() {
+		rv = rv.Elem()
+	}
+	if !rv.IsValid() || !rv.CanInterface() {
+		return ""
+	}
+	v = rv.Interface()
+	if b, ok := v.([]byte); ok {
+		return string(b)
+	}
+	return fmt.Sprintf("%+v", v)
 }
 
 func secretKey(k string) bool {
@@ -147,8 +165,19 @@ func redactAttr(_ []string, a slog.Attr) slog.Attr {
 			a.Value = slog.StringValue(RedactString(s))
 		}
 	case slog.KindAny:
-		if e, ok := a.Value.Any().(error); ok && e != nil {
-			a.Value = slog.StringValue(RedactString(e.Error()))
+		switch v := a.Value.Any().(type) {
+		case nil:
+		case error:
+			a.Value = slog.StringValue(RedactString(v.Error()))
+		default:
+			// Maps, structs, http.Header, []byte, Stringers and pointers to them: render the value the way
+			// fmt would and keep the original (so harmless values stay structured JSON) unless the text
+			// carries something secret-shaped.
+			if text := anyText(v); text != "" {
+				if red := RedactString(text); red != text {
+					a.Value = slog.StringValue(red)
+				}
+			}
 		}
 	}
 	return a

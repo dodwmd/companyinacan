@@ -41,12 +41,13 @@ type healthCheck struct {
 // non-critical check (can-core introspection, the notification webhook) only marks the service
 // degraded: it stays in rotation, because restarting or removing it would not fix the dependency.
 type Health struct {
-	mu      sync.Mutex
-	checks  []healthCheck
-	ttl     time.Duration
-	timeout time.Duration
-	last    Report
-	lastAt  time.Time
+	mu       sync.Mutex
+	checks   []healthCheck
+	ttl      time.Duration
+	timeout  time.Duration
+	last     Report
+	lastAt   time.Time
+	inflight *flight
 }
 
 // NewHealth returns an empty model: results are cached for 2 s and each check gets 2 s.
@@ -77,17 +78,49 @@ func (h *Health) SetTTL(d time.Duration) { h.mu.Lock(); h.ttl = d; h.mu.Unlock()
 // SetTimeout sets the per-check deadline.
 func (h *Health) SetTimeout(d time.Duration) { h.mu.Lock(); h.timeout = d; h.mu.Unlock() }
 
-// Check runs the checks (or returns the cached result).
+// flight is one run of all checks that concurrent callers share.
+type flight struct {
+	done chan struct{}
+	rep  Report
+}
+
+// Check returns the cached result, joins a run already in progress, or starts one.
+//
+// The run uses a context detached from the caller (context.WithoutCancel): the first prober
+// disconnecting must not cancel the database check and cache a false "down" for everyone else. The
+// caller itself still stops waiting when its own context ends, and then gets the last known result.
+// No lock is held while checks run, so concurrent probes never queue behind each other.
 func (h *Health) Check(ctx context.Context) Report {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.ttl > 0 && !h.lastAt.IsZero() && time.Since(h.lastAt) < h.ttl {
+		rep := h.last
+		h.mu.Unlock()
+		return rep
+	}
+	f := h.inflight
+	if f == nil {
+		f = &flight{done: make(chan struct{})}
+		h.inflight = f
+		checks := append([]healthCheck(nil), h.checks...)
+		timeout := h.timeout
+		go h.runAll(context.WithoutCancel(ctx), checks, timeout, f)
+	}
+	h.mu.Unlock()
+	select {
+	case <-f.done:
+		return f.rep
+	case <-ctx.Done():
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		return h.last
 	}
-	rep := Report{Status: StatusOK, Components: make([]Component, 0, len(h.checks))}
-	for _, c := range h.checks {
+}
+
+func (h *Health) runAll(ctx context.Context, checks []healthCheck, timeout time.Duration, f *flight) {
+	rep := Report{Status: StatusOK, Components: make([]Component, 0, len(checks))}
+	for _, c := range checks {
 		st := StatusOK
-		if err := h.run(ctx, c); err != nil {
+		if err := runCheck(ctx, c, timeout); err != nil {
 			if c.critical {
 				st = StatusDown
 				rep.Status = StatusDown
@@ -100,12 +133,15 @@ func (h *Health) Check(ctx context.Context) Report {
 		}
 		rep.Components = append(rep.Components, Component{c.name, st})
 	}
-	h.last, h.lastAt = rep, time.Now()
-	return rep
+	h.mu.Lock()
+	h.last, h.lastAt, h.inflight = rep, time.Now(), nil
+	h.mu.Unlock()
+	f.rep = rep
+	close(f.done)
 }
 
-func (h *Health) run(ctx context.Context, c healthCheck) error {
-	ctx, cancel := context.WithTimeout(ctx, h.timeout)
+func runCheck(ctx context.Context, c healthCheck, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {

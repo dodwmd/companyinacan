@@ -52,7 +52,7 @@ Enable per service with environment variables (charts and the compose file show 
 | `CAN_METRICS_TOKEN` or `CAN_METRICS_TOKEN_FILE` | bearer token, compared in constant time. Required unless the address is loopback |
 | `CAN_RAM_DECLARED_MB` / `CAN_RAM_DECLARED_BYTES` | the RAM the component declared, for the footprint self-check. Charts set it from `resources.requests.memory`; the can-core manifest from the Downward API |
 
-The listener serves `/metrics` and nothing else, GET and HEAD only. If `CAN_METRICS_ADDR` is not
+If the token file is readable by group or others the service logs a warning at start-up (Kubernetes Secret volumes default to mode 0644; set `defaultMode: 0400`). The listener serves `/metrics` and nothing else, GET and HEAD only. If `CAN_METRICS_ADDR` is not
 loopback-only and there is no token, the service **refuses to start** rather than publish metrics
 unauthenticated. The port is never on the public listener, the ingress route or the module API. A wrong
 token gets a bare 401; valid credentials are never throttled (there is no counting of failures to abuse).
@@ -87,7 +87,7 @@ Prometheus: `deploy/monitoring/networkpolicy-metrics.example.yaml` allows only p
 | `can_audit_entries` | gauge | | length of the audit chain |
 | `can_audit_verify_ok`, `can_audit_verify_last_run_timestamp_seconds` | gauge | | full chain verification, hourly |
 | `can_forms_leads_created_total`, `can_work_issues_created_total` | counter | | no labels |
-| `can_backup_last_success_timestamp_seconds` | gauge | | **not exported by a service**: written by `deploy/monitoring/backup-textfile.sh` for the node_exporter textfile collector |
+| `can_backup_last_success_timestamp_seconds`, `can_backup_last_run_ok` | gauge | | **not exported by a service**: written by `deploy/monitoring/backup-textfile.sh` for the node_exporter textfile collector; the script keeps the last good timestamp when a run fails, and `CanBackupMissing` fires when the series is absent |
 
 ### What can never be a label
 
@@ -107,7 +107,7 @@ Prometheus: `deploy/monitoring/networkpolicy-metrics.example.yaml` allows only p
 | File | What |
 |---|---|
 | `prometheus.yml` | scrape config for the compose stack, with a commented Kubernetes example |
-| `alerts.yml` | service down, 5xx ratio, **RAM over 120% of declared (Constitution II)**, reconcile failing or stale, **audit chain verification failing**, webhook dead letters growing, SQLite busy, disk over 85%, backup older than 36 h |
+| `alerts.yml` | service down, 5xx ratio (needs 0.1 requests per second so one 5xx cannot fire it), **RAM over 120% of declared (Constitution II)**, reconcile failing or stale, **audit chain verification failing**, webhook dead letters growing, SQLite busy, disk over 85%, backup older than 36 h, backup series missing, last backup check failed |
 | `grafana/dashboards/can-overview.json` | one overview dashboard (10 KB) |
 | `networkpolicy-metrics.example.yaml` | allow metrics scrapes from the monitoring namespace only |
 | `backup-textfile.sh` | writes the backup timestamp metric from `can backup status` |
@@ -152,7 +152,7 @@ kubectl -n can-system exec deploy/can-core -- can-core admin diagnose --out /tmp
 ```
 
 The bundle is a tar.gz of mode-0600 files from a fixed allowlist: `manifest.json`, `versions.json`,
-`config.yaml` (company.yaml, secrets and email addresses removed), `doctor.json`, `modules.json`,
+`config.yaml` (company.yaml with secret, URL, email and contact-detail values and all block text removed), `doctor.json`, `modules.json`,
 `state.json` (database sizes, schema version, counts of pending and dead deliveries and pending approvals,
 audit chain length and verification result), `reconcile.json`, `metrics.txt` (only `can_`, `go_`,
 `process_` series), `logs.txt` (last lines), `backup.json`. Nothing else can be added; each file is capped at
@@ -162,7 +162,7 @@ Everything passes a scrubber (bearer tokens, URL credentials, `key=value` secret
 well-known key prefixes, long random-looking tokens, email addresses) plus the provider redactor seeded with
 the values of every secret-looking environment variable. The database is opened read-only; `hmac_secret`,
 password hashes, TOTP secrets and session tokens are never selected, and no people, finance or lead rows are
-read. Scrubbing is a safety net, not a guarantee: skim the bundle before you attach it to a public issue.
+read. Scrubbing is a safety net, not a guarantee: names and phone numbers in free text or under keys it does not recognise can survive, so skim the bundle before you attach it to a public issue.
 
 `can doctor` additionally reports whether the Docker daemon, the `companyinacan` compose stack and the
 Kubernetes API answer (`ok`, `unreachable`, `not-running`). These never change its exit code.

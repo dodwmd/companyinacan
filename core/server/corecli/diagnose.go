@@ -91,7 +91,7 @@ func diagnoseCmd(getenv func(string) string) *cobra.Command {
 		if err := f.Close(); err != nil {
 			return fail("%v", err)
 		}
-		fmt.Fprintf(c.OutOrStdout(), "wrote %s. Review it before sharing; secrets and personal data are removed, not zero-risk.\n", *out)
+		fmt.Fprintf(c.OutOrStdout(), "wrote %s. Review it before sharing; secrets and email addresses are removed, names and phone numbers in free text may remain.\n", *out)
 		for _, p := range problems {
 			fmt.Fprintln(c.OutOrStdout(), "note:", p)
 		}

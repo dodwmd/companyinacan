@@ -208,6 +208,8 @@ type Violation struct {
 type VerifyOptions struct {
 	// Expected is an externally recorded head; the log must still contain that exact record.
 	Expected *Head
+	// Chunk is the page size (default DefaultVerifyChunk); tests use small values.
+	Chunk int
 }
 
 // Result is the outcome of Verify.
@@ -220,14 +222,20 @@ type Result struct {
 // OK reports whether the chain is intact.
 func (r Result) OK() bool { return r.Violation == nil }
 
+// DefaultVerifyChunk is how many records Verify reads before it gives the database connection back.
+const DefaultVerifyChunk = 5000
+
 // Verify walks the whole chain and reports the first violation, if any. An error is returned only
 // for database failures, never for tampering.
+//
+// The walk is keyset-paged: each chunk is read completely and its rows closed before the records are
+// hashed, so the store's single connection is free between chunks and a long log never stalls the
+// admin UI or module API for the length of the whole walk.
 func (l *Log) Verify(ctx context.Context, opt VerifyOptions) (Result, error) {
-	rows, err := l.db.QueryContext(ctx, `SELECT seq,time,actor,action,target,detail,prev_hash,hash FROM audit_log ORDER BY seq`)
-	if err != nil {
-		return Result{}, err
+	chunk := opt.Chunk
+	if chunk <= 0 {
+		chunk = DefaultVerifyChunk
 	}
-	defer func() { _ = rows.Close() }()
 	var res Result
 	prev, want := Genesis, int64(1)
 	anchorSeen := opt.Expected == nil
@@ -235,35 +243,58 @@ func (l *Log) Verify(ctx context.Context, opt VerifyOptions) (Result, error) {
 		res.Violation = &Violation{Seq: seq, Kind: kind, Message: fmt.Sprintf(format, a...)}
 		return res, nil
 	}
-	for rows.Next() {
-		r, err := scan(rows)
+	after := int64(0)
+	for {
+		recs, err := l.page(ctx, after, chunk)
 		if err != nil {
 			return res, err
 		}
-		if r.Seq != want {
-			return fail(r.Seq, KindSeqGap, "expected record %d but found %d: a record was deleted or reordered", want, r.Seq)
-		}
-		if r.PrevHash != prev {
-			return fail(r.Seq, KindChainBreak, "record %d does not chain to record %d", r.Seq, r.Seq-1)
-		}
-		if hashOf(r) != r.Hash {
-			return fail(r.Seq, KindHashMismatch, "record %d content does not match its hash: it was modified", r.Seq)
-		}
-		if opt.Expected != nil && r.Seq == opt.Expected.Seq {
-			if r.Hash != opt.Expected.Hash {
-				return fail(r.Seq, KindHeadMismatch, "record %d differs from the anchored head", r.Seq)
+		for _, r := range recs {
+			if r.Seq != want {
+				return fail(r.Seq, KindSeqGap, "expected record %d but found %d: a record was deleted or reordered", want, r.Seq)
 			}
-			anchorSeen = true
+			if r.PrevHash != prev {
+				return fail(r.Seq, KindChainBreak, "record %d does not chain to record %d", r.Seq, r.Seq-1)
+			}
+			if hashOf(r) != r.Hash {
+				return fail(r.Seq, KindHashMismatch, "record %d content does not match its hash: it was modified", r.Seq)
+			}
+			if opt.Expected != nil && r.Seq == opt.Expected.Seq {
+				if r.Hash != opt.Expected.Hash {
+					return fail(r.Seq, KindHeadMismatch, "record %d differs from the anchored head", r.Seq)
+				}
+				anchorSeen = true
+			}
+			prev, want = r.Hash, want+1
+			res.Entries++
+			res.Head = Head{Seq: r.Seq, Hash: r.Hash}
 		}
-		prev, want = r.Hash, want+1
-		res.Entries++
-		res.Head = Head{Seq: r.Seq, Hash: r.Hash}
-	}
-	if err := rows.Err(); err != nil {
-		return res, err
+		if len(recs) < chunk {
+			break
+		}
+		after = recs[len(recs)-1].Seq
 	}
 	if !anchorSeen {
 		return fail(opt.Expected.Seq, KindHeadMismatch, "the log ends at record %d but the anchored head is record %d: the tail was removed", res.Head.Seq, opt.Expected.Seq)
 	}
 	return res, nil
+}
+
+// page reads up to n records with seq > after and closes the rows before returning. A gap in seq
+// (a deleted record) still shows up: Verify compares each seq with the one it expects.
+func (l *Log) page(ctx context.Context, after int64, n int) ([]Record, error) {
+	rows, err := l.db.QueryContext(ctx, `SELECT seq,time,actor,action,target,detail,prev_hash,hash FROM audit_log WHERE seq > ? ORDER BY seq LIMIT ?`, after, n)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]Record, 0, n)
+	for rows.Next() {
+		r, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }

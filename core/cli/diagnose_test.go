@@ -151,3 +151,18 @@ func TestDoctorReportsReachability(t *testing.T) {
 		t.Fatalf("an unreachable daemon is reported but does not fail doctor: code=%d\n%s", code, out)
 	}
 }
+
+func TestDiagnoseRejectsUnsafeComposeProject(t *testing.T) {
+	oldRun := reachRunner
+	defer func() { reachRunner = oldRun }()
+	called := false
+	reachRunner = func(context.Context, string, ...string) (string, error) { called = true; return "", nil }
+	for _, bad := range []string{"--file=/etc/passwd", "a b", "A", "x;y", "../x"} {
+		if code, _, _ := run(t, "diagnose", "--compose-project", bad, "--out", filepath.Join(t.TempDir(), "x.tgz")); code != ExitUsage {
+			t.Errorf("%q: code %d, want usage error", bad, code)
+		}
+	}
+	if called {
+		t.Fatal("docker was invoked with an unsafe project name")
+	}
+}

@@ -21,7 +21,7 @@ adding a dependency or a default cost.
 3. **US3 Operator is told about integrity and delivery problems.** Alerts for audit chain verification
    failing, reconcile failing, webhook dead letters growing, disk over 85%, backup older than 36 h.
 4. **US4 Maintainer can help without a screen share.** `can diagnose` and `can-core admin diagnose` produce a
-   bundle that is safe to attach to an issue.
+   bundle with secrets and email addresses removed, to be skimmed and then attached to an issue (names and phone numbers in free text can survive).
 5. **US5 Security reviewer can trust the telemetry.** Metrics, logs and bundles cannot leak secrets or
    personal data, and the metrics endpoint cannot be reached anonymously from outside.
 
@@ -51,7 +51,7 @@ adding a dependency or a default cost.
   on records, redaction of secret-named keys and secret-shaped values, no query strings or bodies in access
   logs.
 - **FR-10** `can diagnose` and `can-core admin diagnose` write a tar.gz from a file-name allowlist with size
-  caps, scrubbing every text; seeded secrets and emails must not appear. The state database is opened
+  caps, scrubbing every text for secrets and email addresses; seeded secrets and emails must not appear. The state database is opened
   read-only and secret columns are never selected.
 - **FR-11** `can doctor` reports reachability of Docker, the `companyinacan` compose stack and the Kubernetes
   API when those tools exist, without ever failing the command.

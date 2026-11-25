@@ -59,6 +59,7 @@ func bearer(r *http.Request) string {
 // that tiny binaries stay tiny. Nil disables logging.
 type Logger interface {
 	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
 }
 
@@ -91,6 +92,9 @@ func StartMetrics(ctx context.Context, getenv func(string) string, reg *Registry
 			return nil, fmt.Errorf("CAN_METRICS_TOKEN_FILE: %w", err)
 		}
 		token = strings.TrimSpace(string(b))
+		if fi, err := os.Stat(f); err == nil && fi.Mode().Perm()&0o077 != 0 && log != nil {
+			log.Warn("CAN_METRICS_TOKEN_FILE is readable by group or others; restrict it (chmod 0400, or defaultMode: 0400 on the Secret volume)", "mode", fi.Mode().Perm().String())
+		}
 	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

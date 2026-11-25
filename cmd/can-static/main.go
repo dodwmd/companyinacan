@@ -57,6 +57,7 @@ func parseFlags(args []string) (config, error) {
 type lineLog struct{ w io.Writer }
 
 func (l lineLog) Info(msg string, args ...any)  { l.line("info", msg, args) }
+func (l lineLog) Warn(msg string, args ...any)  { l.line("warn", msg, args) }
 func (l lineLog) Error(msg string, args ...any) { l.line("error", msg, args) }
 func (l lineLog) line(level, msg string, args []any) {
 	fmt.Fprintf(l.w, "can-static: %s %q", level, msg)

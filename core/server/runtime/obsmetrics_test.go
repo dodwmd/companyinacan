@@ -102,3 +102,50 @@ func TestReconcileMetricsAndHealth(t *testing.T) {
 		t.Fatalf("recovered: %+v", rep)
 	}
 }
+
+func TestAuditVerifyGaugeIsAbsentUntilARunCompletesAndRetriesSoonAfterAnError(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	al := audit.New(db)
+	reg := obs.NewRegistry()
+	pm := newPlatformMetrics(reg)
+	if out := scrapeText(reg); hasSample(out, "can_audit_verify_ok") || hasSample(out, "can_audit_verify_last_run_timestamp_seconds") {
+		t.Fatalf("verify gauges must not exist (and so cannot read 0) before the first verification:\n%s", out)
+	}
+	fail := true
+	pm.verify = func(context.Context) (audit.Result, error) {
+		if fail {
+			return audit.Result{}, errors.New("database is locked")
+		}
+		return audit.Result{Entries: 1}, nil
+	}
+	t0 := time.Unix(1_700_000_000, 0)
+	pm.collect(ctx, db, al, t0)
+	if out := scrapeText(reg); hasSample(out, "can_audit_verify_ok") {
+		t.Fatalf("an errored verification is not evidence of anything:\n%s", out)
+	}
+	// not yet due after 1 minute, due after 5 (retry), not the full hour
+	fail = false
+	pm.collect(ctx, db, al, t0.Add(time.Minute))
+	if hasSample(scrapeText(reg), "can_audit_verify_ok") {
+		t.Fatal("retried too soon")
+	}
+	pm.collect(ctx, db, al, t0.Add(6*time.Minute))
+	if out := scrapeText(reg); !strings.Contains(out, "can_audit_verify_ok 1") || !strings.Contains(out, "can_audit_verify_last_run_timestamp_seconds 1700000360") {
+		t.Fatalf("retry after an error did not run:\n%s", out)
+	}
+}
+
+// hasSample reports whether the exposition has a sample line (not a HELP or TYPE comment) for name.
+func hasSample(out, name string) bool {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, name+" ") || strings.HasPrefix(l, name+"{") {
+			return true
+		}
+	}
+	return false
+}

@@ -5,7 +5,7 @@
 //   - an allowlist of file names: nothing else can be added, so no database, key file or
 //     environment dump can ride along by accident;
 //   - size caps per file and in total;
-//   - every text passes Scrub: bearer tokens, URL credentials, key=value secrets, PEM blocks, JWTs,
+//   - every text passes Scrub (and config.yaml RedactConfig first): bearer tokens, URL credentials, key=value secrets, PEM blocks, JWTs,
 //     well-known provider key prefixes, long random-looking tokens and email addresses are removed,
 //     plus any extra redactor the caller supplies (the provider Redactor, which knows the secrets
 //     this run resolved).
@@ -161,7 +161,6 @@ var (
 	reLong   = regexp.MustCompile(`[A-Za-z0-9_+=-]{32,}`)
 	reANSI   = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)")
 	reEmail  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
-	reKeyed  = regexp.MustCompile(`(?i)^(\s*(?:-\s+)?"?[A-Za-z0-9_.-]*(?:password|passwd|secret|token|api_?key|private_?key|credential|bearer)[A-Za-z0-9_.-]*"?\s*:\s*)(\S.*)$`)
 )
 
 // Scrub removes secrets and personal identifiers from free text.
@@ -194,16 +193,85 @@ func obslogRedact(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// RedactConfig blanks the value of every YAML-ish `key: value` line whose key names a secret.
-// It works on text so it cannot fail on a file the schema would reject.
+// secretKeyParts are case-insensitive substrings of key names whose values are removed. The list errs
+// on the side of removing too much from a diagnostic copy.
+var secretKeyParts = []string{
+	"password", "passwd", "pass", "secret", "token", "api_key", "apikey", "api-key", "key", "private", "credential",
+	"bearer", "dsn", "webhook", "url", "signing", "signature", "cookie", "auth", "email", "mail_to", "notify",
+	// people data: contact details and names, where a config carries them
+	"contact", "phone", "mobile", "tel", "owner", "person", "first_name", "last_name", "full_name", "surname", "address",
+}
+
+var reKeyLine = regexp.MustCompile(`^(\s*(?:-\s+)*)("?[A-Za-z0-9_.-]+"?)(\s*:\s*)(.*)$`)
+
+func suspiciousKey(k string, indent int) bool {
+	l := strings.ToLower(strings.Trim(k, `"`))
+	if l == "name" {
+		return indent > 0 // the company name at the top level is useful; a nested name is a person or a contact
+	}
+	if strings.HasSuffix(l, "_name") {
+		return true
+	}
+	for _, p := range secretKeyParts {
+		if strings.Contains(l, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func indentOf(s string) int { return len(s) - len(strings.TrimLeft(s, " \t")) }
+
+// RedactConfig removes sensitive values from YAML-ish text without parsing it (so it cannot fail on
+// a file the schema would reject): the value, and everything nested under it, of any key that names a
+// secret, a credential, a URL, an email or a person's contact details; and the body of every block
+// scalar (a value starting with a pipe or a greater-than sign), which is free text that can say
+// anything. Ordinary configuration (the company name, domains, hosts, numbers, booleans) is kept.
+// Names and phone numbers inside values of keys it does not recognise can survive: this is a safety
+// net, not a guarantee.
 func RedactConfig(s string) string {
 	lines := strings.Split(s, "\n")
+	skipBelow := -1 // while >= 0, lines indented deeper than this belong to a redacted value
 	for i, l := range lines {
-		if m := reKeyed.FindStringSubmatch(l); m != nil {
-			lines[i] = m[1] + "[redacted]"
+		if skipBelow >= 0 {
+			if strings.TrimSpace(l) == "" || indentOf(l) > skipBelow {
+				lines[i] = ""
+				continue
+			}
+			skipBelow = -1
+		}
+		m := reKeyLine.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		depth := len(m[1]) // a list dash counts as depth, so "- first_name" is nested
+		val := strings.TrimSpace(m[4])
+		block := strings.HasPrefix(val, "|") || strings.HasPrefix(val, ">")
+		switch {
+		case suspiciousKey(m[2], depth):
+			lines[i] = m[1] + m[2] + m[3] + "[redacted]"
+			skipBelow = indentOf(l)
+		case block:
+			lines[i] = m[1] + m[2] + m[3] + "[free text removed]"
+			skipBelow = indentOf(l)
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ValidComposeProject reports whether name is a safe docker compose project name (it is passed to
+// `docker compose -p`, so it must not look like a flag or contain separators).
+func ValidComposeProject(name string) bool {
+	if name == "" || len(name) > 64 || name[0] == '-' || name[0] == '_' {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // TailLines returns the last n lines of r, each cut to maxLine bytes. It streams, so a huge log

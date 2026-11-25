@@ -176,3 +176,57 @@ func TestScrubStripsTerminalEscapes(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+func TestRedactConfigHardening(t *testing.T) {
+	in := `name: Acme
+domain: acme.example
+smtp:
+  host: mail.example.com
+  pass: p1-seed
+  passwd: p2-seed
+  db_dsn: postgres://u:p3-seed@db/x
+  signing: s4-seed
+  webhook: https://hooks.example.com/T000/B000/s5-seed
+  endpoint_url: https://u:p6-seed@api.example.com
+  access_key: k7-seed
+contact:
+  name: Alice Smith
+  phone: "+1 555 0100"
+  mobile: 555-0101
+owner_name: Bob Jones
+notes: |
+  call Carol Diaz on 555 0102
+  password is p8-seed
+  more text
+description: >-
+  folded free text with a name Dave
+people:
+  - first_name: Erin
+    last_name: Frost
+after: 1
+`
+	out := RedactConfig(in)
+	for _, seed := range []string{"p1-seed", "p2-seed", "p3-seed", "s4-seed", "s5-seed", "p6-seed", "k7-seed", "Alice", "555 0100", "555-0101", "Bob", "Carol", "p8-seed", "more text", "Dave", "Erin", "Frost"} {
+		if strings.Contains(out, seed) {
+			t.Errorf("%q survived:\n%s", seed, out)
+		}
+	}
+	for _, keep := range []string{"name: Acme", "domain: acme.example", "host: mail.example.com", "after: 1"} {
+		if !strings.Contains(out, keep) {
+			t.Errorf("%q was lost:\n%s", keep, out)
+		}
+	}
+}
+
+func TestValidComposeProject(t *testing.T) {
+	for _, ok := range []string{"companyinacan", "a", "my-proj_2"} {
+		if !ValidComposeProject(ok) {
+			t.Errorf("%q rejected", ok)
+		}
+	}
+	for _, bad := range []string{"", "-x", "A", "a b", "a;rm", "../x", "a/b", strings.Repeat("a", 65), "--file"} {
+		if ValidComposeProject(bad) {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
