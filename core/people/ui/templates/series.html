@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>{{t "oo.series_title" .Data.With}}</h1>
+<p class="muted">{{.Data.Cadence}}</p>
+<section aria-labelledby="h-sched">
+<h2 id="h-sched">{{t "oo.schedule"}}</h2>
+<form method="post" action="/oneonones/{{.Data.ID}}/meetings" class="card">
+{{template "csrf" .}}
+<p><label for="scheduled_at">{{t "oo.when"}}</label>
+<input id="scheduled_at" name="scheduled_at" type="datetime-local" required aria-describedby="when-hint"></p>
+<p id="when-hint" class="hint">{{t "oo.when_hint"}}</p>
+<p><button type="submit">{{t "oo.schedule_go"}}</button></p>
+</form>
+</section>
+<section aria-labelledby="h-meetings">
+<h2 id="h-meetings">{{t "oo.meetings"}}</h2>
+{{if .Data.Meetings}}
+<ul class="list">{{range .Data.Meetings}}<li><a href="/meetings/{{.ID}}">{{when .When}}</a> <span class="badge">{{.Status}}</span></li>{{end}}</ul>
+{{else}}<p class="muted">{{t "oo.no_meetings"}}</p>{{end}}
+</section>
+{{end}}

@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>{{.Data.Name}}</h1>
+{{template "person_facts" .Data}}
+<p class="actions">
+<a href="/org/{{.Data.P.ID}}">{{t "person.org_link"}}</a>
+{{if .Data.Self}}<a href="/me">{{t "person.edit_link"}}</a>{{end}}
+{{if .Data.SeriesID}}<a href="/oneonones/{{.Data.SeriesID}}">{{t "person.oneonone_link"}}</a>{{end}}
+{{if .Data.CanSensitive}}<a href="{{.Data.SensitivePath}}">{{t "person.sensitive_link"}}</a>{{end}}
+</p>
+{{if .Data.Reports}}
+<section aria-labelledby="h-reports">
+<h2 id="h-reports">{{t "person.reports"}}</h2>
+<ul class="list">{{range .Data.Reports}}<li><a href="/people/{{.ID}}">{{.Name}}</a></li>{{end}}</ul>
+</section>
+{{end}}
+{{if .Data.Goals}}
+<section aria-labelledby="h-pgoals">
+<h2 id="h-pgoals">{{t "person.goals"}}</h2>
+<ul class="list">{{range .Data.Goals}}<li><a href="/goals/{{.ID}}">{{.Title}}</a> {{template "bar" .Progress}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}

@@ -1,0 +1,14 @@
+{{define "content"}}
+<h1>{{t "timeoff.queue"}}</h1>
+{{if .Data}}
+<div class="scroll">
+<table>
+<caption>{{t "to.queue_cap"}}</caption>
+<thead><tr><th scope="col">{{t "to.person"}}</th><th scope="col">{{t "to.dates"}}</th><th scope="col">{{t "to.length"}}</th><th scope="col">{{t "to.review"}}</th></tr></thead>
+<tbody>{{range .Data}}<tr><th scope="row">{{.Person}}</th><td>{{.Start}} - {{.End}}</td><td>{{.Days}}</td><td><a href="/timeoff/{{.ID}}">{{t "to.review"}}</a></td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "to.queue_none"}}</p>{{end}}
+<p><a href="/timeoff">{{t "to.title"}}</a></p>
+{{end}}

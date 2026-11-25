@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>My team - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team" aria-current="page">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>My team</h1>
+
+<div class="scroll">
+<table>
+<caption>My direct reports</caption>
+<thead><tr><th scope="col">Name</th><th scope="col">Status</th><th scope="col">Goals and 1:1</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row"><a href="/people/ID">Ann Example</a></th>
+<td>Active</td>
+<td>
+<a href="/goals?owner=ID">Goals</a>
+<a href="/oneonones/ID">1:1s</a>
+
+</td>
+</tr>
+<tr>
+<th scope="row"><a href="/people/ID">Ben Example</a></th>
+<td>Active</td>
+<td>
+<a href="/goals?owner=ID">Goals</a>
+
+<form method="post" action="/oneonones" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="report_id" value="ID">
+<label for="cad-ID" class="visually-hidden">Cadence</label>
+<select id="cad-ID" name="cadence"><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option></select>
+<button type="submit">Start 1:1s</button>
+</form>
+
+</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

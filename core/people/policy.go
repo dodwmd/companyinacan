@@ -404,3 +404,8 @@ func FieldAccess(a Actor, write bool, field string, f Fact) bool {
 
 // Self-service basic fields: what a person may change about their own directory entry.
 var selfEditableBasic = map[string]bool{"preferred_name": true, "work_phone": true}
+
+// Active reports whether the policy layer lets the actor use the service at all (a recognised
+// role and, when they have a person record, current staff status). The web UI ends the session of
+// anyone for whom it is false; it adds no rule of its own.
+func (a Actor) Active() bool { return !a.blocked() }

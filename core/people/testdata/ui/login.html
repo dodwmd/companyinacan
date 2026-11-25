@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Sign in - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+</header>
+<main id="main">
+
+
+<h1>Sign in</h1>
+
+<form method="post" action="/login" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="token">Personal access token</label>
+<input id="token" name="token" type="password" autocomplete="off" required aria-describedby="token-hint" maxlength="4096"></p>
+<p id="token-hint" class="hint">Create a personal access token in the admin interface and paste it here. It is checked once and kept only in memory on the server; your browser keeps a session cookie, never the token.</p>
+<p><button type="submit">Sign in</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Team calendar - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff" aria-current="page">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Who is out</h1>
+<p class="hint">Colleagues show only as out. Type and status are shown for you, your manager&#39;s view and HR.</p>
+<form method="get" action="/timeoff/calendar" class="card">
+<p><label for="from">From date</label><input id="from" name="from" type="date" value="2026-03-09"></p>
+<p><label for="days">Number of days (at most 92)</label><input id="days" name="days" type="number" min="1" max="92" value="28"></p>
+<p><button type="submit">Show</button></p>
+</form>
+
+<div class="scroll">
+<table>
+<caption>Absences</caption>
+<thead><tr><th scope="col">Person</th><th scope="col">From</th><th scope="col">To</th><th scope="col">What</th></tr></thead>
+<tbody><tr><th scope="row">Ann Example</th><td>23 Mar 2026 (afternoon)</td><td>24 Mar 2026</td><td>Vacation, Pending</td></tr>
+</tbody>
+</table>
+</div>
+
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

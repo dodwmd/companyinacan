@@ -1,0 +1,130 @@
+{{define "content"}}
+<h1>{{t "rev.page" .Data.Person}}</h1>
+<p>{{.Data.Cycle}} <span class="badge">{{.Data.State}}</span> <span class="badge">{{.Data.Status}}</span></p>
+
+{{if .Data.SelfForm}}
+<section aria-labelledby="h-self">
+<h2 id="h-self">{{t "rev.self"}}</h2>
+<p class="hint">{{t "rev.self_hint"}}</p>
+<form method="post" action="/reviews/{{.Data.ID}}/self" class="card">
+{{template "csrf" .}}
+{{template "qfields" .Data.SelfForm}}
+<p><button type="submit">{{t "rev.save"}}</button> <button type="submit" name="submit" value="1">{{t "rev.submit"}}</button></p>
+</form>
+</section>
+{{else if .Data.SelfRead}}
+<section aria-labelledby="h-selfr">
+<h2 id="h-selfr">{{t "rev.your_answers"}}</h2>
+{{template "qa" .Data.SelfRead}}
+</section>
+{{end}}
+
+{{if .Data.MgrForm}}
+<section aria-labelledby="h-mgr">
+<h2 id="h-mgr">{{t "rev.manager"}}</h2>
+<p class="hint">{{t "rev.manager_hint"}}</p>
+<form method="post" action="/reviews/{{.Data.ID}}/manager" class="card">
+{{template "csrf" .}}
+{{template "qfields" .Data.MgrForm}}
+{{$r := .Data.MgrRating}}
+<p><label for="rating">{{t "rev.rating"}}</label>
+<select id="rating" name="rating"><option value="">{{t "rev.select"}}</option>{{range .Data.RatingChoices}}<option value="{{.}}"{{if eq (printf "%d" .) $r}} selected{{end}}>{{.}}</option>{{end}}</select></p>
+<p><label for="summary">{{t "rev.summary"}}</label>
+<textarea id="summary" name="summary" rows="4" maxlength="2000">{{.Data.MgrSummary}}</textarea></p>
+<p><button type="submit">{{t "rev.save"}}</button> <button type="submit" name="submit" value="1">{{t "rev.submit"}}</button></p>
+</form>
+</section>
+{{else if .Data.HasManager}}
+<section aria-labelledby="h-mgrr">
+<h2 id="h-mgrr">{{t "rev.mgr_answers"}}</h2>
+{{template "qa" .Data.MgrRead}}
+{{if .Data.MgrRating}}<p>{{t "rev.rating"}}: {{.Data.MgrRating}}</p>{{end}}
+{{if .Data.MgrSummary}}<p class="prose">{{.Data.MgrSummary}}</p>{{end}}
+</section>
+{{end}}
+
+{{if .Data.HasCalibration}}
+<section aria-labelledby="h-cal" class="private">
+<h2 id="h-cal">{{t "rev.calibration"}}</h2>
+<p class="hint">{{t "rev.cal_hint"}}</p>
+<dl class="facts">
+{{if .Data.CalRating}}<dt>{{t "rev.cal_rating"}}</dt><dd>{{.Data.CalRating}}</dd>{{end}}
+{{if .Data.CalNotes}}<dt>{{t "rev.cal_notes"}}</dt><dd class="prose">{{.Data.CalNotes}}</dd>{{end}}
+{{if .Data.CalRejected}}<dt>{{t "rev.cal_rejected"}}</dt><dd class="prose">{{.Data.CalRejected}}</dd>{{end}}
+</dl>
+</section>
+{{end}}
+
+{{if .Data.HasOutcome}}
+<section aria-labelledby="h-out">
+<h2 id="h-out">{{t "rev.outcome"}}</h2>
+{{if .Data.Released}}<p>{{t "rev.outcome_final" .Data.OutcomeRating}}</p>{{if .Data.OutcomeSummary}}<p class="prose">{{.Data.OutcomeSummary}}</p>{{end}}{{else}}<p class="muted">{{t "rev.outcome_wait"}}</p>{{end}}
+</section>
+{{end}}
+
+{{if .Data.Feedback}}
+<section aria-labelledby="h-fb">
+<h2 id="h-fb">{{t "rev.feedback"}}</h2>
+{{range .Data.Feedback}}
+<h3>{{.Title}}</h3>
+{{if .Shown}}
+{{if .Ratings}}
+<table>
+<caption>{{t "rev.fb_ratings"}}</caption>
+<thead><tr><th scope="col">{{t "rev.question"}}</th><th scope="col">{{t "rev.fb_avg"}}</th><th scope="col">{{t "rev.fb_n"}}</th></tr></thead>
+<tbody>{{range .Ratings}}<tr><th scope="row">{{.Question}}</th><td>{{.Average}}</td><td>{{.N}}</td></tr>
+{{end}}</tbody>
+</table>
+{{end}}
+{{if .Comments}}<h4>{{t "rev.fb_comments"}}</h4>
+<ul class="list">{{range .Comments}}<li><span class="muted">{{.Question}}</span> <span class="prose">{{.Text}}</span>{{if .Reviewer}} <span class="muted">{{.Reviewer}}</span>{{end}}</li>{{end}}</ul>{{end}}
+{{else}}
+<p class="muted">{{t "rev.fb_wait"}}</p>
+{{end}}
+{{end}}
+</section>
+{{end}}
+
+{{if or .Data.Nominations .Data.Candidates}}
+<section aria-labelledby="h-nom">
+<h2 id="h-nom">{{t "rev.nominations"}}</h2>
+{{if .Data.Nominations}}
+<table>
+<caption>{{t "rev.nom_caption"}}</caption>
+<thead><tr><th scope="col">{{t "rev.nominee"}}</th><th scope="col">{{t "rev.kind"}}</th><th scope="col">{{t "rev.nom_status"}}</th><th scope="col">{{t "rev.nom_decide"}}</th></tr></thead>
+<tbody>{{range .Data.Nominations}}<tr><th scope="row">{{.Reviewer}}</th><td>{{.Kind}}</td><td>{{.Status}}</td><td>
+{{if .Decide}}<form method="post" action="/nominations/{{.ID}}/decide" class="inline">{{template "csrf" $}}<input type="hidden" name="review_id" value="{{$.Data.ID}}">
+<button type="submit" name="decision" value="approve">{{t "rev.nom_approve"}}</button>
+<button type="submit" name="decision" value="reject">{{t "rev.nom_decline"}}</button></form>{{end}}
+</td></tr>
+{{end}}</tbody>
+</table>
+{{end}}
+{{if .Data.Candidates}}
+<form method="post" action="/reviews/{{.Data.ID}}/nominations" class="card">
+{{template "csrf" .}}
+<p class="hint">{{t "rev.nominate_hint"}}</p>
+<p><label for="reviewer_id">{{t "rev.nominee"}}</label>
+<select id="reviewer_id" name="reviewer_id">{{range .Data.Candidates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></p>
+<p><label for="kind">{{t "rev.kind"}}</label>
+<select id="kind" name="kind"><option value="peer">{{t "kind.peer"}}</option>{{if not .Data.Self}}<option value="upward">{{t "kind.upward"}}</option>{{end}}</select></p>
+<p><button type="submit">{{t "rev.nom_go"}}</button></p>
+</form>
+{{end}}
+</section>
+{{end}}
+
+{{if .Data.Acked}}
+<p>{{t "rev.acked" (when .Data.AckAt)}}</p>
+{{else if .Data.Caps.Acknowledge}}
+<section aria-labelledby="h-ack">
+<h2 id="h-ack">{{t "rev.ack"}}</h2>
+<p class="hint">{{t "rev.ack_hint"}}</p>
+<form method="post" action="/reviews/{{.Data.ID}}/acknowledge" class="card">
+{{template "csrf" .}}
+<p><label for="comment">{{t "rev.ack_comment"}}</label><textarea id="comment" name="comment" rows="3" maxlength="1000"></textarea></p>
+<p><button type="submit">{{t "rev.ack_go"}}</button></p>
+</form>
+</section>
+{{end}}
+{{end}}

@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>{{t "to.detail"}}</h1>
+<dl class="facts">
+<dt>{{t "to.person"}}</dt><dd>{{.Data.Person}}</dd>
+<dt>{{t "to.type"}}</dt><dd>{{.Data.R.Type}}</dd>
+<dt>{{t "to.from"}}</dt><dd>{{.Data.Row.Start}}</dd>
+<dt>{{t "to.to"}}</dt><dd>{{.Data.Row.End}}</dd>
+<dt>{{t "to.length"}}</dt><dd>{{.Data.Row.Days}}</dd>
+<dt>{{t "to.status"}}</dt><dd><span class="badge">{{.Data.Row.Status}}</span></dd>
+{{if .Data.R.Note}}<dt>{{t "to.note"}}</dt><dd class="prose">{{.Data.R.Note}}</dd>{{end}}
+</dl>
+<div class="actions">
+{{if .Data.CanSubmit}}
+<form method="post" action="/timeoff/{{.Data.R.ID}}/submit" class="inline">{{template "csrf" .}}<button type="submit">{{t "to.submit"}}</button></form>
+{{end}}
+{{if .Data.CanDecide}}
+<form method="post" action="/timeoff/{{.Data.R.ID}}/decide" class="inline">{{template "csrf" .}}
+<button type="submit" name="decision" value="approve">{{t "to.approve"}}</button>
+<button type="submit" name="decision" value="reject">{{t "to.decline"}}</button></form>
+{{end}}
+{{if .Data.CanCancel}}
+<form method="post" action="/timeoff/{{.Data.R.ID}}/cancel" class="inline">{{template "csrf" .}}<button type="submit">{{t "to.cancel"}}</button></form>
+{{end}}
+</div>
+<p><a href="/timeoff">{{t "to.title"}}</a></p>
+{{end}}

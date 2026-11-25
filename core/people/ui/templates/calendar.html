@@ -1,0 +1,19 @@
+{{define "content"}}
+<h1>{{t "cal.title"}}</h1>
+<p class="hint">{{t "cal.hint"}}</p>
+<form method="get" action="/timeoff/calendar" class="card">
+<p><label for="from">{{t "cal.from"}}</label><input id="from" name="from" type="date" value="{{.Data.From}}"></p>
+<p><label for="days">{{t "cal.days"}}</label><input id="days" name="days" type="number" min="1" max="92" value="{{.Data.Days}}"></p>
+<p><button type="submit">{{t "cal.go"}}</button></p>
+</form>
+{{if .Data.Rows}}
+<div class="scroll">
+<table>
+<caption>{{t "cal.caption"}}</caption>
+<thead><tr><th scope="col">{{t "to.person"}}</th><th scope="col">{{t "to.from"}}</th><th scope="col">{{t "to.to"}}</th><th scope="col">{{t "cal.what"}}</th></tr></thead>
+<tbody>{{range .Data.Rows}}<tr><th scope="row">{{.Person}}</th><td>{{.Start}}</td><td>{{.End}}</td><td>{{if .Detail}}{{.Type}}, {{.Status}}{{else}}{{t "cal.out"}}{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "cal.none"}}</p>{{end}}
+{{end}}

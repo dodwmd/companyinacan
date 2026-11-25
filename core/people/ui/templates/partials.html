@@ -1,0 +1,49 @@
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.CSRF}}">{{end}}
+{{define "bar"}}<progress max="100" value="{{.}}" aria-label="{{t "goal.progress"}}">{{.}}%</progress> <span class="pct">{{.}}%</span>{{end}}
+{{define "person_facts"}}
+<dl class="facts">
+<dt>{{t "person.name"}}</dt><dd>{{.Name}}</dd>
+<dt>{{t "person.status"}}</dt><dd><span class="badge status-{{.P.Status}}">{{.Status}}</span></dd>
+{{with .P.WorkEmail}}<dt>{{t "person.email"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .P.WorkPhone}}<dt>{{t "person.work_phone"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .P.Location}}<dt>{{t "person.location"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Position}}<dt>{{t "person.position"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Department}}<dt>{{t "person.department"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Team}}<dt>{{t "person.team"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .P.StartDate}}<dt>{{t "person.start"}}</dt><dd>{{date .}}</dd>{{end}}
+{{if .ManagerID}}<dt>{{t "person.manager"}}</dt><dd><a href="/people/{{.ManagerID}}">{{.Manager}}</a></dd>{{end}}
+</dl>
+{{end}}
+{{define "actions"}}
+{{if .Items}}
+<ul class="list">
+{{range .Items}}
+<li>
+<span class="{{if .Done}}done{{end}}">{{.Text}}</span>
+<span class="muted">{{.Assignee}}{{if .DueDate}}, {{t "home.due" (date .DueDate)}}{{end}}</span>
+<form method="post" action="/actions/{{.ID}}/status" class="inline">
+{{template "csrf" $.P}}
+{{if .Done}}<button type="submit" name="status" value="open">{{t "oo.reopen"}}</button>{{else}}<button type="submit" name="status" value="done">{{t "oo.done"}}</button>{{end}}
+</form>
+</li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "oo.no_actions"}}</p>{{end}}
+{{end}}
+{{define "qfields"}}
+{{range .}}
+{{$val := .Value}}
+<p>
+{{if .Rating}}
+<label for="r-{{.ID}}">{{.Text}}</label>
+<select id="r-{{.ID}}" name="r_{{.ID}}"><option value="">{{t "rev.select"}}</option>{{range .Max}}<option value="{{.}}"{{if eq (printf "%d" .) $val}} selected{{end}}>{{.}}</option>{{end}}</select>
+{{else}}
+<label for="t-{{.ID}}">{{.Text}}</label>
+<textarea id="t-{{.ID}}" name="t_{{.ID}}" rows="4" maxlength="4000">{{.Value}}</textarea>
+{{end}}
+</p>
+{{end}}
+{{end}}
+{{define "qa"}}
+{{if .}}<dl class="facts">{{range .}}<dt>{{.Question}}</dt><dd class="prose">{{.Answer}}</dd>{{end}}</dl>{{else}}<p class="muted">{{t "rev.none_yet"}}</p>{{end}}
+{{end}}

@@ -2,3 +2,8 @@
 listen: ":8081"
 db_path: /data/people.db
 keyring_file: /secrets/people-keyring
+# Self-service web UI (specs/026-people-ui), at http://people.localhost:8080/. Plain HTTP in dev, so cookies are not Secure.
+ui:
+  enabled: true
+  insecure_cookies: true
+  trust_proxy: true

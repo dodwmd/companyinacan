@@ -1,0 +1,31 @@
+{{define "content"}}
+<h1>{{t "team.title"}}</h1>
+{{if .Data}}
+<div class="scroll">
+<table>
+<caption>{{t "team.caption"}}</caption>
+<thead><tr><th scope="col">{{t "person.name"}}</th><th scope="col">{{t "person.status"}}</th><th scope="col">{{t "team.links"}}</th></tr></thead>
+<tbody>
+{{range .Data}}<tr>
+<th scope="row"><a href="/people/{{.ID}}">{{.Name}}</a></th>
+<td>{{.Status}}</td>
+<td>
+<a href="/goals?owner={{.ID}}">{{t "nav.goals"}}</a>
+{{if .SeriesID}}<a href="/oneonones/{{.SeriesID}}">{{t "nav.oneonones"}}</a>
+{{else}}
+<form method="post" action="/oneonones" class="inline">
+{{template "csrf" $}}
+<input type="hidden" name="report_id" value="{{.ID}}">
+<label for="cad-{{.ID}}" class="visually-hidden">{{t "oo.cadence"}}</label>
+<select id="cad-{{.ID}}" name="cadence"><option value="weekly">{{t "cadence.weekly"}}</option><option value="biweekly">{{t "cadence.biweekly"}}</option><option value="monthly">{{t "cadence.monthly"}}</option></select>
+<button type="submit">{{t "oo.start"}}</button>
+</form>
+{{end}}
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "team.none"}}</p>{{end}}
+{{end}}

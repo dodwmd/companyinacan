@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>1:1s - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>1:1 with Ann Example</h1>
+<p>Thu 12 Mar 2026 09:00 UTC <span class="badge">Scheduled</span> <a href="/oneonones/ID">All meetings in this series</a></p>
+
+<section aria-labelledby="h-agenda">
+<h2 id="h-agenda">Agenda</h2>
+<p class="muted">No topics yet.</p>
+<form method="post" action="/meetings/ID/agenda" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="agenda-text">Add a topic</label>
+<input id="agenda-text" name="text" required maxlength="1000"></p>
+<p><button type="submit">Add</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-notes">
+<h2 id="h-notes">Shared notes</h2>
+<p class="hint">Both participants can read and edit these.</p>
+<form method="post" action="/meetings/ID/notes" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="shared-notes">Shared notes</label>
+<textarea id="shared-notes" name="text" rows="6" maxlength="20000"></textarea></p>
+<p><button type="submit">Save</button></p>
+</form>
+</section>
+
+
+<section aria-labelledby="h-private" class="private">
+<h2 id="h-private">Private manager notes</h2>
+<p class="hint">Only you can see this box. The person you meet with cannot see it or know it exists.</p>
+<form method="post" action="/meetings/ID/private-notes" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="private-notes">Private manager notes</label>
+<textarea id="private-notes" name="text" rows="6" maxlength="20000">private thoughts</textarea></p>
+<p><button type="submit">Save</button></p>
+</form>
+</section>
+
+
+<section aria-labelledby="h-actions">
+<h2 id="h-actions">Action items</h2>
+
+
+<ul class="list">
+
+<li>
+<span class="">Send the doc</span>
+<span class="muted">Ann Example, due 1 Apr 2026</span>
+<form method="post" action="/actions/ID/status" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" name="status" value="done">Mark done</button>
+</form>
+</li>
+
+</ul>
+
+
+
+<form method="post" action="/meetings/ID/actions" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="act-text">Action</label>
+<input id="act-text" name="text" required maxlength="1000"></p>
+<p><label for="act-who">Assigned to</label>
+<select id="act-who" name="assignee_id"><option value="ID">Boss Example</option><option value="ID">Ann Example</option></select></p>
+<p><label for="act-due">Due date</label>
+<input id="act-due" name="due_date" type="date"></p>
+<p><button type="submit">Add</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-mstatus">
+<h2 id="h-mstatus">Meeting status</h2>
+<form method="post" action="/meetings/ID/status" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" name="status" value="held">Held</button>
+<button type="submit" name="status" value="cancelled">Cancelled</button>
+<button type="submit" name="status" value="scheduled">Scheduled</button>
+</form>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

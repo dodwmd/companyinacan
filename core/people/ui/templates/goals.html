@@ -1,0 +1,41 @@
+{{define "content"}}
+<h1>{{.Data.Heading}}</h1>
+<p class="actions">
+<a href="/goals">{{t "goals.mine"}}</a>
+<a href="/goals?scope=team">{{t "goals.team"}}</a>
+<a href="/goals?scope=company">{{t "goals.company"}}</a>
+</p>
+{{if .Data.Rows}}
+<div class="scroll">
+<table>
+<caption>{{t "goals.caption"}}</caption>
+<thead><tr><th scope="col">{{t "goal.title"}}</th><th scope="col">{{t "goal.owner"}}</th><th scope="col">{{t "goal.period"}}</th><th scope="col">{{t "goal.status"}}</th><th scope="col">{{t "goal.progress"}}</th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr><th scope="row"><a href="/goals/{{.ID}}">{{.Title}}</a></th><td>{{.Owner}}</td><td>{{.Period}}</td><td>{{.Status}}</td><td>{{template "bar" .Progress}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "goals.none"}}</p>{{end}}
+
+<section aria-labelledby="h-new">
+<h2 id="h-new">{{t "goals.new"}}</h2>
+<form method="post" action="/goals" class="card">
+{{template "csrf" .}}
+<p><label for="g-title">{{t "goal.title"}}</label>
+<input id="g-title" name="title" required maxlength="200"></p>
+<p><label for="g-desc">{{t "goal.description"}}</label>
+<textarea id="g-desc" name="description" rows="3" maxlength="4000"></textarea></p>
+<p><label for="g-period">{{t "goal.period"}}</label>
+<input id="g-period" name="period" maxlength="20" aria-describedby="g-period-hint"></p>
+<p id="g-period-hint" class="hint">{{t "goal.period_hint"}}</p>
+<p><label for="g-scope">{{t "goal.scope"}}</label>
+<select id="g-scope" name="scope"><option value="person">{{t "scope.person"}}</option><option value="team">{{t "scope.team"}}</option><option value="company">{{t "scope.company"}}</option></select></p>
+<p><label for="g-team">{{t "goal.team"}}</label>
+<select id="g-team" name="team_id"><option value="">{{t "goal.no_team"}}</option>{{range .Data.Teams}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></p>
+<p><label for="g-vis">{{t "goal.visibility"}}</label>
+<select id="g-vis" name="visibility"><option value="manager">{{t "vis.manager"}}</option><option value="private">{{t "vis.private"}}</option><option value="team">{{t "vis.team"}}</option><option value="company">{{t "vis.company"}}</option></select></p>
+<p><button type="submit">{{t "goals.create"}}</button></p>
+</form>
+</section>
+{{end}}

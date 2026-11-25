@@ -1,0 +1,81 @@
+{{define "content"}}
+<h1>{{.Data.G.Title}}</h1>
+<dl class="facts">
+<dt>{{t "goal.scope"}}</dt><dd>{{.Data.Scope}}</dd>
+{{if .Data.Owner}}<dt>{{t "goal.owner"}}</dt><dd>{{.Data.Owner}}</dd>{{end}}
+{{if .Data.G.Period}}<dt>{{t "goal.period"}}</dt><dd>{{.Data.G.Period}}</dd>{{end}}
+<dt>{{t "goal.status"}}</dt><dd>{{.Data.Status}}</dd>
+<dt>{{t "goal.visibility"}}</dt><dd>{{.Data.Visibility}}</dd>
+<dt>{{t "goal.progress"}}</dt><dd>{{template "bar" .Data.G.Progress}}</dd>
+{{with .Data.Parent}}<dt>{{t "goal.aligned_to"}}</dt><dd><a href="/goals/{{.ID}}">{{.Title}}</a></dd>{{end}}
+</dl>
+{{if .Data.G.Description}}<p class="prose">{{.Data.G.Description}}</p>{{end}}
+
+<section aria-labelledby="h-krs">
+<h2 id="h-krs">{{t "goal.krs"}}</h2>
+{{if .Data.G.KeyResults}}
+<ul class="list">
+{{range .Data.G.KeyResults}}
+<li>
+<span>{{.Title}}</span>
+<span class="muted">{{.Current}} / {{.Target}} {{.Unit}}</span>
+{{template "bar" .Progress}}
+{{if $.Data.CanWrite}}
+<form method="post" action="/key-results/{{.ID}}/progress" class="inline">
+{{template "csrf" $}}
+<label for="kr-{{.ID}}" class="visually-hidden">{{t "goal.new_value"}}</label>
+<input id="kr-{{.ID}}" name="value" type="number" step="any" required value="{{.Current}}">
+<label for="krc-{{.ID}}" class="visually-hidden">{{t "goal.comment"}}</label>
+<input id="krc-{{.ID}}" name="comment" maxlength="1000" placeholder="{{t "goal.comment"}}">
+<button type="submit">{{t "goal.record"}}</button>
+</form>
+{{end}}
+</li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "goal.no_krs"}}</p>{{end}}
+{{if .Data.CanWrite}}
+<form method="post" action="/goals/{{.Data.G.ID}}/key-results" class="card">
+{{template "csrf" .}}
+<p><label for="kr-title">{{t "goal.kr_title"}}</label><input id="kr-title" name="title" required maxlength="200"></p>
+<p><label for="kr-unit">{{t "goal.kr_unit"}}</label><input id="kr-unit" name="unit" maxlength="20"></p>
+<p><label for="kr-start">{{t "goal.kr_start"}}</label><input id="kr-start" name="start_value" type="number" step="any" required value="0"></p>
+<p><label for="kr-target">{{t "goal.kr_target"}}</label><input id="kr-target" name="target_value" type="number" step="any" required></p>
+<p><button type="submit">{{t "common.add"}}</button></p>
+</form>
+{{end}}
+</section>
+
+{{if .Data.Children}}
+<section aria-labelledby="h-children">
+<h2 id="h-children">{{t "goal.children"}}</h2>
+<ul class="list">{{range .Data.Children}}<li><a href="/goals/{{.ID}}">{{.Title}}</a> {{template "bar" .Progress}}</li>{{end}}</ul>
+</section>
+{{end}}
+
+{{if .Data.CanWrite}}
+<section aria-labelledby="h-edit">
+<h2 id="h-edit">{{t "goal.edit"}}</h2>
+<form method="post" action="/goals/{{.Data.G.ID}}" class="card">
+{{template "csrf" .}}
+<p><label for="e-title">{{t "goal.title"}}</label><input id="e-title" name="title" required maxlength="200" value="{{.Data.G.Title}}"></p>
+<p><label for="e-desc">{{t "goal.description"}}</label><textarea id="e-desc" name="description" rows="3" maxlength="4000">{{.Data.G.Description}}</textarea></p>
+<p><label for="e-period">{{t "goal.period"}}</label><input id="e-period" name="period" maxlength="20" value="{{.Data.G.Period}}"></p>
+<p><label for="e-status">{{t "goal.status"}}</label>
+<select id="e-status" name="status">{{range .Data.Statuses}}<option value="{{.}}"{{if eq . $.Data.G.Status}} selected{{end}}>{{t (printf "gstatus.%s" .)}}</option>{{end}}</select></p>
+<p><label for="e-vis">{{t "goal.visibility"}}</label>
+<select id="e-vis" name="visibility">{{range .Data.Visibs}}<option value="{{.}}"{{if eq . $.Data.G.Visibility}} selected{{end}}>{{t (printf "vis.%s" .)}}</option>{{end}}</select></p>
+<p><label for="e-parent">{{t "goal.aligned_to"}}</label>
+<select id="e-parent" name="parent_id"><option value="">{{t "goal.no_parent"}}</option>{{range .Data.Candidates}}<option value="{{.ID}}"{{if eq .ID $.Data.G.ParentID}} selected{{end}}>{{.Title}}</option>{{end}}</select></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+</section>
+{{end}}
+
+{{if .Data.Updates}}
+<section aria-labelledby="h-log">
+<h2 id="h-log">{{t "goal.log"}}</h2>
+<ul class="list">{{range .Data.Updates}}<li><span class="muted">{{when .When}}, {{.Author}}</span> {{if .Value}}{{.Value}}{{end}} {{.Comment}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}
