@@ -36,21 +36,12 @@ func TestBuildPlanDumpsAndScope(t *testing.T) {
 	if p.Dumps[0].File != "modules/forms/" {
 		t.Errorf("dump file = %q", p.Dumps[0].File)
 	}
-	// SQLite-on-PVC module: its database files are excluded from the raw PVC copy.
-	var sawDB, sawWAL bool
+	// Module SQLite files are excluded by the script at run time, from what was dumped, never
+	// from the plan: a module that is disabled or fails later would silently lose its data.
 	for _, e := range p.Excludes {
-		if strings.Contains(e, "_mod-forms_") && strings.HasSuffix(e, "*.db") {
-			sawDB = true
+		if strings.Contains(e, "_mod-") {
+			t.Errorf("static module exclusion: %s", e)
 		}
-		if strings.Contains(e, "_mod-forms_") && strings.HasSuffix(e, "*-wal") {
-			sawWAL = true
-		}
-		if strings.Contains(e, "_mod-wiki_") {
-			t.Errorf("postgres module must not get sqlite excludes: %s", e)
-		}
-	}
-	if !sawDB || !sawWAL {
-		t.Errorf("sqlite excludes missing: %v", p.Excludes)
 	}
 	// can-core's live database is excluded: its dump covers it.
 	if !strings.Contains(strings.Join(p.Excludes, "\n"), "/var/lib/rancher/k3s/storage/pvc-*_can-system_can-core-data/state.db-wal") {

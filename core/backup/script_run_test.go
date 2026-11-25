@@ -394,3 +394,38 @@ func TestScriptRunRefusesSymlinkedStateDir(t *testing.T) {
 		t.Fatalf("code %d", code)
 	}
 }
+
+// QA 2: raw SQLite files are left out only for modules can-core says it dumped in this run.
+func TestScriptRunExcludesOnlyDumpedSQLite(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	list := "forms sqlite\nwiki none\n../evil sqlite\nbad;rm sqlite\n"
+	if err := os.WriteFile(e.s.DumpsDir+"/DUMPED", []byte(list), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	calls := e.calledRestic()
+	for _, want := range []string{"/pvc-*_mod-forms_*/**/*.db ", "/pvc-*_mod-forms_*/**/*-wal "} {
+		if !strings.Contains(calls, "--exclude "+e.s.PVCRoot+want) {
+			t.Errorf("missing exclusion %s:\n%s", want, calls)
+		}
+	}
+	for _, bad := range []string{"mod-wiki", "evil", "bad;rm"} {
+		if strings.Contains(calls, bad) {
+			t.Errorf("unexpected exclusion for %s:\n%s", bad, calls)
+		}
+	}
+}
+
+func TestScriptRunWithoutDumpedListExcludesNoModule(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if strings.Contains(e.calledRestic(), "_mod-") {
+		t.Errorf("exclusions without a dump list:\n%s", e.calledRestic())
+	}
+}

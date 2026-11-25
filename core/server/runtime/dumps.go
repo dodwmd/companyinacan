@@ -45,7 +45,8 @@ func (c *Config) dumpEnv(getenv func(string) string) error {
 // DefaultDumpRequestFile is the file `can-core dump-request` creates, next to the state database.
 func DefaultDumpRequestFile(dbPath string) string { return dirOf(dbPath) + "/dump.request" }
 
-// backupModules lists the enabled modules whose manifest ships a backup hook.
+// backupModules lists every recorded module whose manifest ships a backup hook, whatever its
+// state: a disabled or failed module keeps its data. Only a purge removes the record.
 func backupModules(db *store.DB) func(context.Context) ([]string, error) {
 	return func(ctx context.Context) ([]string, error) {
 		mods, err := db.ListModules(ctx)
@@ -54,7 +55,7 @@ func backupModules(db *store.DB) func(context.Context) ([]string, error) {
 		}
 		var ids []string
 		for _, m := range mods {
-			if m.State == store.StateEnabled && m.Manifest.Hooks.Backup != "" {
+			if m.Manifest.Hooks.Backup != "" {
 				ids = append(ids, m.ID)
 			}
 		}
@@ -65,7 +66,15 @@ func backupModules(db *store.DB) func(context.Context) ([]string, error) {
 
 // newDumper builds the dump runner; hooks can only run (as Jobs) with the Kubernetes installer.
 func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error) {
-	d := &dumps.Dumper{Store: &dumps.Store{Dir: c.DumpsDir}, DBPath: c.DBPath, Modules: backupModules(db), CompanyFile: c.CompanyFile, Log: log}
+	d := &dumps.Dumper{Store: &dumps.Store{Dir: c.DumpsDir}, DBPath: c.DBPath, Modules: backupModules(db),
+		Database: func(ctx context.Context, id string) string {
+			m, err := db.GetModule(ctx, id)
+			if err != nil || m.Manifest.Requires.Database == "" {
+				return "unknown"
+			}
+			return m.Manifest.Requires.Database
+		},
+		CompanyFile: c.CompanyFile, Log: log}
 	if c.Installer == "kubernetes" && c.ModuleInstaller == nil {
 		api, err := kube.NewInCluster(c.KubeAPI, c.SAToken, c.SACA)
 		if err != nil {

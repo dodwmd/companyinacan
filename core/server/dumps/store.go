@@ -80,7 +80,7 @@ func (s *Store) maxModuleBytes() int64 {
 }
 
 func validName(module, name string) error {
-	if !moduleRe.MatchString(module) || !nameRe.MatchString(name) || name == COMPLETE {
+	if !moduleRe.MatchString(module) || !nameRe.MatchString(name) || name == COMPLETE || name == DumpedList {
 		return ErrBadName
 	}
 	return nil
@@ -202,7 +202,7 @@ func (s *Store) clean(keep []string) error {
 func (s *Store) count() int {
 	n := 0
 	_ = filepath.WalkDir(s.Dir, func(p string, d os.DirEntry, err error) error {
-		if err == nil && d.Type().IsRegular() && d.Name() != COMPLETE && d.Name()[0] != '.' {
+		if err == nil && d.Type().IsRegular() && d.Name() != COMPLETE && d.Name() != DumpedList && d.Name()[0] != '.' {
 			n++
 		}
 		return nil

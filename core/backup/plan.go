@@ -102,8 +102,12 @@ type Plan struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// sqliteExcludes are the SQLite file patterns kept out of the raw PVC copy for
-// modules whose database is covered by a dump (SPEC.md section 6.5).
+// DumpedList is the file can-core writes into the dumps directory naming the modules dumped in
+// the run, one "<id> <database>" line each.
+const DumpedList = "DUMPED"
+
+// sqliteExcludes are the SQLite file patterns kept out of the raw PVC copy for the modules the
+// DumpedList names with a sqlite database (SPEC.md section 6.5).
 var sqliteExcludes = []string{"*.db", "*.sqlite", "*.sqlite3", "*-wal", "*-shm", "*-journal"}
 
 // BuildPlan derives the plan. Disabled modules are skipped; an enabled module
@@ -135,15 +139,8 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 		if hasDump {
 			p.Dumps = append(p.Dumps, Dump{Module: id, Hook: m.Hooks.Backup, File: "modules/" + id + "/"})
 		}
-		if m.Requires.Database != "sqlite" {
-			continue
-		}
-		if !hasDump {
+		if m.Requires.Database == "sqlite" && !hasDump {
 			p.Warnings = append(p.Warnings, fmt.Sprintf("module %q keeps SQLite on a PVC but has no backup hook: raw database files are backed up and may be inconsistent", id))
-			continue
-		}
-		for _, pat := range sqliteExcludes {
-			p.Excludes = append(p.Excludes, fmt.Sprintf("%s/pvc-*_mod-%s_*/**/%s", strings.TrimRight(s.PVCRoot, "/"), id, pat))
 		}
 	}
 	return p, nil

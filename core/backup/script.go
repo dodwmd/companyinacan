@@ -175,6 +175,19 @@ done
 (cd "$DUMPS" && find . -mindepth 1 -name '.*' -prune -o -type f ! -name {{q .Marker}} -print0 | sort -z | xargs -0 -r sha256sum) >"$HOSTSTATE/{{.Manifest}}.tmp"
 mv "$HOSTSTATE/{{.Manifest}}.tmp" "$HOSTSTATE/{{.Manifest}}"
 
+# Raw SQLite files are left out only for modules whose dump is in this run; a module that was
+# not dumped (added later, or without data then) keeps its raw files.
+PVCROOT={{q .PVCRoot}}
+EXCLUDES=()
+if [ -f "$DUMPS/{{.DumpedList}}" ]; then
+  while read -r mod db; do
+    [[ "$mod" =~ ^[a-z][a-z0-9-]*$ && "$db" == sqlite ]] || continue
+    for pat in {{range .SQLite}}{{q .}} {{end}}; do
+      EXCLUDES+=(--exclude "$PVCROOT/pvc-*_mod-${mod}_*/**/$pat")
+    done
+  done <"$DUMPS/{{.DumpedList}}"
+fi
+
 # Remove only stale restic locks (restic refuses to remove a live one).
 restic unlock || log "restic unlock failed (continuing)"
 
@@ -183,6 +196,7 @@ log "backup starting (run $RUN_ID, attempt $ATTEMPT)"
 brc=0
 restic backup --tag can --tag "run-$RUN_ID" --tag "attempt-$ATTEMPT" \
   --exclude "$DUMPS/.*" --exclude "$DUMPS/**/.*" \
+  ${EXCLUDES[@]+"${EXCLUDES[@]}"} \
 {{- range .Excludes}}
   --exclude {{q .}} \
 {{- end}}
@@ -213,7 +227,8 @@ type scriptData struct {
 	MaxAge                                 int
 	Webhook, EnvPath, PasswordPath, Marker string
 	Manifest, LedgerCopy, MarkerCopy       string
-	Excludes, Sources                      []string
+	Excludes, Sources, SQLite              []string
+	DumpedList                             string
 }
 
 // GenerateScript renders the host backup script for plan p.
@@ -222,7 +237,7 @@ func GenerateScript(p *Plan, s Settings) string {
 		Settings: s, MaxAge: int(s.MaxMarkerAge.Seconds()),
 		Webhook: s.ConfigDir + "/" + WebhookFileName, EnvPath: s.ConfigDir + "/" + EnvFileName, PasswordPath: s.ConfigDir + "/" + PasswordFileName,
 		Marker: MarkerName, Manifest: ManifestName, LedgerCopy: LedgerCopy, MarkerCopy: MarkerCopy,
-		Excludes: p.Excludes, Sources: p.Sources,
+		Excludes: p.Excludes, Sources: p.Sources, SQLite: sqliteExcludes, DumpedList: DumpedList,
 	}
 	var b bytes.Buffer
 	if err := scriptTmpl.Execute(&b, d); err != nil {

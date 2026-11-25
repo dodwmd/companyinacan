@@ -23,6 +23,7 @@ import (
 type dumpHarness struct {
 	srv *httptest.Server
 	d   *dumps.Dumper
+	db  *store.DB
 }
 
 func newDumpHarness(t *testing.T, wired bool) *dumpHarness {
@@ -42,7 +43,7 @@ func newDumpHarness(t *testing.T, wired bool) *dumpHarness {
 		}
 		tr.Add("tok-"+id, "mod-"+id, id)
 	}
-	h := &dumpHarness{d: &dumps.Dumper{Store: &dumps.Store{Dir: filepath.Join(t.TempDir(), "dumps")}, Now: func() time.Time { return time.Unix(1_700_000_000, 0) }}}
+	h := &dumpHarness{db: db, d: &dumps.Dumper{Store: &dumps.Store{Dir: filepath.Join(t.TempDir(), "dumps")}, Now: func() time.Time { return time.Unix(1_700_000_000, 0) }}}
 	s := &Server{Auth: modauth.New(tr, db), Registry: reg, Log: slog.New(slog.NewJSONHandler(io.Discard, nil))}
 	if wired {
 		s.Dumps = h.d
@@ -123,6 +124,27 @@ func TestDumpAPIModuleCannotTouchAnotherModulesDumps(t *testing.T) {
 	for _, m := range []string{"PUT", "GET"} {
 		if st, _ := h.do(t, m, "/v1/dumps/wiki/x", "tok-support", "theirs"); st != http.StatusForbidden {
 			t.Errorf("%s of another module's dump: %d, want 403", m, st)
+		}
+	}
+}
+
+// QA 2: a disabled module's hook may upload (its data still needs a dump), and nothing else of
+// the module API opens up for it.
+func TestDumpAPIDisabledModuleMayUploadDuringItsHook(t *testing.T) {
+	h := newDumpHarness(t, true)
+	if err := h.db.SetModuleState(context.Background(), "wiki", store.StateDisabled, ""); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := h.do(t, "PUT", "/v1/dumps/wiki/x", "tok-wiki", "a"); st != http.StatusConflict {
+		t.Fatalf("outside its hook: %d, want 409", st)
+	}
+	mustBegin(t, h, "wiki")
+	if st, b := h.do(t, "PUT", "/v1/dumps/wiki/x", "tok-wiki", "a"); st != http.StatusNoContent {
+		t.Fatalf("during its hook: %d %s", st, b)
+	}
+	for _, p := range []string{"/v1/dumps/wiki/x", "/v1/self"} {
+		if st, _ := h.do(t, "GET", p, "tok-wiki", ""); st != http.StatusForbidden {
+			t.Errorf("GET %s for a disabled module: %d, want 403", p, st)
 		}
 	}
 }

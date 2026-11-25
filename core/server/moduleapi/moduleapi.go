@@ -67,7 +67,7 @@ func (s *Server) routes() []route {
 		{"POST /v1/approvals/{id}/cancel", s.authed(s.cancelApproval)},
 		{"POST /v1/notifications", s.authed(s.sendNotification)},
 		{"POST /v1/identity/revoke", s.authed(s.revokeIdentity)},
-		{"PUT /v1/dumps/{module}/{name}", s.authed(s.putDump)},
+		{"PUT /v1/dumps/{module}/{name}", s.authedAnyState(s.putDump)},
 		{"GET /v1/dumps/{module}/{name}", s.authed(s.getDump)},
 	}
 }
@@ -94,6 +94,16 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) authed(h func(http.ResponseWriter, *http.Request, store.Module)) http.HandlerFunc {
+	return s.authn(false, h)
+}
+
+// authedAnyState also admits a recorded module that is disabled or failed. Used only for the
+// dump upload, which the dump store accepts solely while that module's backup hook is running.
+func (s *Server) authedAnyState(h func(http.ResponseWriter, *http.Request, store.Module)) http.HandlerFunc {
+	return s.authn(true, h)
+}
+
+func (s *Server) authn(anyState bool, h func(http.ResponseWriter, *http.Request, store.Module)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		m, err := s.Auth.Authenticate(tokenreview.WithSource(r.Context(), httpx.ClientIP(r, false)), httpx.BearerToken(r))
 		switch {
@@ -105,10 +115,10 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, store.Module)
 			w.Header().Set("Retry-After", "1")
 			httpx.Problem(w, http.StatusTooManyRequests, "too many token reviews; slow down")
 			return
-		case errors.Is(err, modauth.ErrForbidden):
+		case errors.Is(err, modauth.ErrForbidden) && !anyState:
 			httpx.Problem(w, http.StatusForbidden, "module is not enabled")
 			return
-		case err != nil:
+		case err != nil && !errors.Is(err, modauth.ErrForbidden):
 			s.Log.Error("module authentication failed", "request_id", httpx.RequestID(r.Context()), "error", err)
 			httpx.Problem(w, http.StatusBadGateway, "token review unavailable")
 			return

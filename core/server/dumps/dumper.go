@@ -34,6 +34,8 @@ type Dumper struct {
 	Hooks  HookRunner
 	// Modules lists the enabled modules that have a backup hook.
 	Modules func(ctx context.Context) ([]string, error)
+	// Database names a module's requires.database, recorded in the DumpedList.
+	Database func(ctx context.Context, module string) string
 	// CompanyFile is the applied company.yaml, copied into every run ("" skips).
 	CompanyFile string
 	Now         func() time.Time // default time.Now
@@ -50,6 +52,13 @@ type Dumper struct {
 	// syncPath flushes a file or directory to disk (default fsync); tests observe it.
 	syncPath func(string) error
 }
+
+// ErrNoData is returned by a HookRunner when a module has nothing to dump.
+var ErrNoData = errors.New("dump: the module has no data")
+
+// DumpedList is the file naming the modules dumped in the run ("<id> <database>" lines). The
+// backup script leaves raw SQLite files out only for the modules listed here.
+const DumpedList = backup.DumpedList
 
 // Result describes a finished run.
 type Result struct {
@@ -117,8 +126,10 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	marker := filepath.Join(d.Store.Dir, COMPLETE)
-	if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return Result{}, fmt.Errorf("remove the completion marker: %w", err)
+	for _, p := range []string{marker, filepath.Join(d.Store.Dir, DumpedList)} {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return Result{}, fmt.Errorf("remove the completion marker: %w", err)
+		}
 	}
 	var mods []string
 	if d.Modules != nil {
@@ -141,6 +152,7 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("company.yaml: %w", err)
 	}
 	var failed []error
+	var dumped strings.Builder
 	if len(mods) > 0 && d.Hooks == nil {
 		return Result{}, fmt.Errorf("modules %v need their backup hooks run, but this can-core cannot run Jobs", mods)
 	}
@@ -149,19 +161,33 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 		hctx, cancel := context.WithTimeout(ctx, d.hookTimeout())
 		err := d.Hooks.RunBackup(hctx, m)
 		cancel()
-		if n := d.endTurn(); err == nil && n == 0 {
+		n := d.endTurn()
+		if errors.Is(err, ErrNoData) {
+			d.log().Info("module has no data to dump", "module", m)
+			continue
+		}
+		if err == nil && n == 0 {
 			err = errors.New("the backup hook succeeded but uploaded nothing")
 		}
 		if err != nil {
 			d.log().Error("module backup hook failed", "module", m, "error", err)
 			failed = append(failed, fmt.Errorf("module %s: %w", m, err))
+			continue
 		}
+		db := "unknown"
+		if d.Database != nil {
+			db = d.Database(ctx, m)
+		}
+		fmt.Fprintf(&dumped, "%s %s\n", m, db)
 	}
 	if err := errors.Join(failed...); err != nil {
 		return Result{}, fmt.Errorf("dump run %s incomplete, no completion marker written: %w", runID, err)
 	}
 	if err := d.publish(); err != nil {
 		return Result{}, fmt.Errorf("publish the dumps: %w", err)
+	}
+	if err := d.Store.writeAtomic(d.Store.Dir, DumpedList, strings.NewReader(dumped.String())); err != nil {
+		return Result{}, fmt.Errorf("write the list of dumped modules: %w", err)
 	}
 	// The marker claims the set is complete: it must not reach the disk before the set does.
 	if err := d.syncAll(); err != nil {

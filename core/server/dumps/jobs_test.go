@@ -3,6 +3,7 @@ package dumps
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,9 @@ func hookFixture(t *testing.T) (*KubeHooks, *kube.Fake, *config.Module) {
 	m.Hooks.Image = "ghcr.io/dodwmd/can-hooks:0.1.0"
 	api := kube.NewFake()
 	if err := api.Apply(context.Background(), kube.Object{"apiVersion": "v1", "kind": "PersistentVolumeClaim", "metadata": map[string]any{"name": "wiki-data", "namespace": "mod-wiki"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.Apply(context.Background(), kube.Object{"apiVersion": "v1", "kind": "Namespace", "metadata": map[string]any{"name": "mod-wiki"}}); err != nil {
 		t.Fatal(err)
 	}
 	h := &KubeHooks{API: api, ModulesDir: root, PlatformURL: "http://can-core:8090", Poll: time.Millisecond,
@@ -117,5 +121,17 @@ func TestKubeHooksRefusesScriptOutsideTheModuleAndMissingImage(t *testing.T) {
 	m.Hooks.Backup, m.Hooks.Image = "./hooks/backup.sh", ""
 	if err := h.RunBackup(context.Background(), "wiki"); err == nil || !strings.Contains(err.Error(), "hooks.image") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// QA 2: a module record without any data (a failed first install, a namespace removed by hand)
+// has nothing to dump; it must neither block backups nor be reported as dumped.
+func TestKubeHooksReportsNoData(t *testing.T) {
+	h, api, _ := hookFixture(t)
+	if err := api.Delete(context.Background(), "PersistentVolumeClaim", "mod-wiki", "wiki-data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.RunBackup(context.Background(), "wiki"); !errors.Is(err, ErrNoData) {
+		t.Fatalf("got %v, want ErrNoData", err)
 	}
 }

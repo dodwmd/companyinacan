@@ -51,6 +51,11 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 		return err
 	}
 	ns := "mod-" + module
+	if ok, err := h.hasData(ctx, ns); err != nil {
+		return err
+	} else if !ok {
+		return ErrNoData
+	}
 	labels := obj{"app.kubernetes.io/name": "can-hook", "app.kubernetes.io/part-of": "companyinacan", "can.dev/hook": "backup"}
 	if err := h.API.Apply(ctx, kube.Object{"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": obj{"name": hookConfigMap, "namespace": ns, "labels": labels},
@@ -71,6 +76,29 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 		_ = h.API.Delete(cctx, "Job", ns, name)
 	}()
 	return h.wait(ctx, ns, name)
+}
+
+// hasData reports whether the module has anything to dump: a volume or a database. A module
+// that never installed, or whose namespace was removed, has neither.
+func (h *KubeHooks) hasData(ctx context.Context, ns string) (bool, error) {
+	if _, err := h.API.Get(ctx, "Namespace", "", ns); kube.IsNotFound(err) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("read the namespace: %w", err)
+	}
+	claims, err := h.API.List(ctx, "PersistentVolumeClaim", ns, "")
+	if err != nil {
+		return false, fmt.Errorf("list volumes: %w", err)
+	}
+	if len(claims) > 0 {
+		return true, nil
+	}
+	if _, err := h.API.Get(ctx, "Secret", ns, "can-database"); kube.IsNotFound(err) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("read the database Secret: %w", err)
+	}
+	return true, nil
 }
 
 // script reads the manifest's hook file, refusing anything outside the module's directory.

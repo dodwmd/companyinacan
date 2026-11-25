@@ -56,8 +56,10 @@ func TestModulesWithBackupHooks(t *testing.T) {
 	add("wiki", store.StateEnabled, "./hooks/backup.sh")
 	add("forms", store.StateEnabled, "")
 	add("crm", store.StateDisabled, "./hooks/backup.sh")
+	add("status", store.StateFailed, "./hooks/backup.sh")
+	// QA 2: disabled and failed modules still hold data, so their hooks run too.
 	got, err := backupModules(db)(ctx)
-	if err != nil || !reflect.DeepEqual(got, []string{"wiki"}) {
+	if err != nil || !reflect.DeepEqual(got, []string{"crm", "status", "wiki"}) {
 		t.Fatalf("%v %v", got, err)
 	}
 }

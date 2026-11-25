@@ -253,3 +253,34 @@ func TestStateCopyDoesNotNeedTheApplicationsConnection(t *testing.T) {
 		t.Fatalf("the run waited for the application's connection: %v", err)
 	}
 }
+
+// QA 2: the list the backup script builds its SQLite exclusions from names exactly the modules
+// dumped in this run.
+func TestDumpedListNamesOnlyWhatWasDumped(t *testing.T) {
+	d, _ := newDumper(t, []string{"empty", "forms", "wiki"}, &fakeHooks{})
+	d.Database = func(_ context.Context, m string) string {
+		if m == "wiki" {
+			return "none"
+		}
+		return "sqlite"
+	}
+	d.Hooks = hookFunc(func(_ context.Context, m string) error {
+		if m == "empty" {
+			return ErrNoData
+		}
+		return upload(d, m, "a", "v")
+	})
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(d.Store.Dir, DumpedList))
+	if err != nil || string(b) != "forms sqlite\nwiki none\n" {
+		t.Fatalf("%q %v", b, err)
+	}
+	// a failed run leaves no list behind
+	d.Hooks = hookFunc(func(context.Context, string) error { return errors.New("x") })
+	_, _ = d.Run(context.Background())
+	if exists(filepath.Join(d.Store.Dir, DumpedList)) {
+		t.Fatal("stale list of dumped modules")
+	}
+}
