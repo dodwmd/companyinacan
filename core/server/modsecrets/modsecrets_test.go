@@ -9,7 +9,7 @@ func TestEveryInHouseModuleHasItsRequiredSecrets(t *testing.T) {
 	want := map[string][]string{
 		"work":    {"CAN_WORK_ADMIN_TOKEN"},
 		"forms":   {"CAN_FORMS_TOKEN_KEY", "CAN_FORMS_API_TOKEN", "CAN_FORMS_API_READ_TOKEN"},
-		"finance": {"CAN_FINANCE_ADMIN_TOKEN", "CAN_FINANCE_LINK_SECRET"},
+		"finance": {"CAN_FINANCE_ADMIN_TOKEN", "CAN_FINANCE_LINK_SECRET", "CAN_FINANCE_SEAL_KEY"},
 		"jobs":    {"CAN_JOBS_ADMIN_TOKEN", "CAN_JOBS_HASH_KEY", "CAN_JOBS_FORM_SECRET", KeyringKey},
 		"people":  {"CAN_PEOPLE_API_TOKEN", KeyringKey},
 	}

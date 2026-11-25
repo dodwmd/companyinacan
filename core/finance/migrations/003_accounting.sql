@@ -200,7 +200,8 @@ CREATE TRIGGER bank_transactions_keep_facts BEFORE UPDATE OF bank_account_id, st
 BEGIN
     SELECT RAISE(ABORT, 'a bank transaction keeps what the bank reported');
 END;
-CREATE TRIGGER bank_transactions_decide_once BEFORE UPDATE ON bank_transactions WHEN OLD.status <> 'unmatched'
+CREATE TRIGGER bank_transactions_decide_once BEFORE UPDATE ON bank_transactions
+    WHEN OLD.status <> 'unmatched' AND (SELECT open FROM retention_gate) = 0
 BEGIN
     SELECT RAISE(ABORT, 'a bank transaction that was matched or ignored is final');
 END;

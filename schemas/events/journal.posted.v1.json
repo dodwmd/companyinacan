@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/journal.posted.v1.json",
+  "title": "journal.posted.v1",
+  "description": "Published when a journal entry is posted: by a finance event (invoice approved, payment recorded, expense approved and so on), by the approval of a manual journal, or as a reversal. Delivered at least once; consumers de-duplicate on `id`. Carries identifiers, the entry number, the currency, the total in minor units and the entry date only: no account names, memo, party, bank or personal data (fetch the entry through the API if the token allows).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "journal.posted.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "finance"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_id",
+        "number",
+        "source",
+        "currency",
+        "total_minor",
+        "entry_date",
+        "posted_at"
+      ],
+      "properties": {
+        "entry_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "number": {
+          "type": "string",
+          "pattern": "^JE-[0-9]{5,}$"
+        },
+        "source": {
+          "enum": [
+            "manual",
+            "payroll",
+            "invoice",
+            "credit_note",
+            "invoice_void",
+            "payment",
+            "expense",
+            "expense_reimbursed",
+            "reversal"
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "total_minor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "entry_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "posted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

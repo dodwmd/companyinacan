@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Bank reconciliation - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/ledger/accounts">Accounting</a></li>
+<li><a href="/bank/reconciliation" aria-current="page">Bank</a></li>
+
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Bank reconciliation</h1>
+
+<nav aria-label="Bank accounts">
+<ul>
+<li><a href="/bank/reconciliation?account=1" aria-current="page">Operating (USD, ****3000)</a></li>
+
+</ul>
+</nav>
+<p class="muted">Account number ****3000</p>
+<section aria-labelledby="h-periods">
+<h2 id="h-periods">Months of the bank account</h2>
+
+<div class="scroll">
+<table>
+<caption>Months of the bank account</caption>
+<thead><tr><th scope="col">Month</th><th scope="col">Transactions</th><th scope="col">Matched</th><th scope="col">Ignored</th><th scope="col">Unmatched</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><th scope="row">2026-06</th><td class="num">3</td><td class="num">0</td><td class="num">0</td><td class="num">3</td><td>Open</td></tr>
+
+</tbody>
+</table>
+</div>
+
+</section>
+<section aria-labelledby="h-queue">
+<h2 id="h-queue">Unmatched transactions</h2>
+<p class="hint">Suggestions are advice. Nothing is recorded until you confirm, and confirming records a payment on the invoice.</p>
+
+<div class="scroll">
+<table>
+<caption>Unmatched bank transactions, oldest first</caption>
+<thead><tr><th scope="col">Booked</th><th scope="col">Amount</th><th scope="col">Reference</th><th scope="col">Counterparty</th><th scope="col">Suggested invoice</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row">2026-06-10</th>
+<td class="num">150.00 USD</td>
+<td>INV-00001</td>
+<td>&lt;script&gt;alert(1)&lt;/script&gt; Mallory</td>
+<td><span>INV-00001 (150.00 USD, amount and reference)</span> </td>
+
+</tr>
+<tr>
+<th scope="row">2026-06-11</th>
+<td class="num">-12.50 USD</td>
+<td>Bank fee</td>
+<td>Bank</td>
+<td>No suggestion</td>
+
+</tr>
+<tr>
+<th scope="row">2026-06-12</th>
+<td class="num">3.00 USD</td>
+<td>=HYPERLINK(&#34;http://x&#34;)</td>
+<td>Eve</td>
+<td>No suggestion</td>
+
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

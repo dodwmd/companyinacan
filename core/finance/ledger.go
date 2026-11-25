@@ -9,8 +9,8 @@ package finance
 
 import (
 	"context"
-	_ "embed"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"

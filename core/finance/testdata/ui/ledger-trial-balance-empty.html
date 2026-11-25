@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Trial balance - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/ledger/accounts" aria-current="page">Accounting</a></li>
+<li><a href="/bank/reconciliation">Bank</a></li>
+
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Trial balance</h1>
+<p class="actions"><a href="/ledger/accounts">Chart of accounts</a> <a href="/ledger/journals">Journal</a> <a href="/ledger/trial-balance">Trial balance</a></p>
+<form method="get" action="/ledger/trial-balance" class="inline filter">
+<label for="tb-as-of">As of</label>
+<input id="tb-as-of" name="as_of" type="date" value="2020-01-01">
+<button type="submit">Filter</button>
+</form>
+<p class="hint">Each currency is reported on its own and never converted. This is a tool, not accounting advice.</p>
+
+<p class="muted">Nothing is posted up to this date.</p>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

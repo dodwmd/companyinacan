@@ -409,15 +409,41 @@ type Suggestion struct {
 // exact balance, or the invoice number named in the reference (a partial payment). Suggestions only;
 // at most five, best first.
 func (s *Store) SuggestMatches(ctx context.Context, a *Principal, txnID int64) ([]Suggestion, error) {
-	if err := s.auditRead(ctx, a, "bank.suggestions.read", fmt.Sprint(txnID), map[string]any{}); err != nil {
+	m, err := s.SuggestMatchesFor(ctx, a, []int64{txnID})
+	if err != nil {
+		return nil, err
+	}
+	return m[txnID], nil
+}
+
+// maxSuggestBatch bounds one SuggestMatchesFor call.
+const maxSuggestBatch = 100
+
+// SuggestMatchesFor suggests for several transactions with one audit entry (a page of the queue is one
+// read). A transaction that does not exist is ErrNotFound.
+func (s *Store) SuggestMatchesFor(ctx context.Context, a *Principal, txnIDs []int64) (map[int64][]Suggestion, error) {
+	if len(txnIDs) == 0 || len(txnIDs) > maxSuggestBatch {
+		return nil, invalid("transactions", "give between 1 and %d", maxSuggestBatch)
+	}
+	if err := s.auditRead(ctx, a, "bank.suggestions.read", fmt.Sprint(txnIDs[0]), map[string]any{"transactions": len(txnIDs)}); err != nil {
 		return nil, err
 	}
 	cancel, rctx := readCtx(ctx)
 	defer cancel()
-	t, err := s.loadTxn(rctx, s.rdb, txnID)
-	if err != nil {
-		return nil, err
+	out := map[int64][]Suggestion{}
+	for _, id := range txnIDs {
+		t, err := s.loadTxn(rctx, s.rdb, id)
+		if err != nil {
+			return nil, err
+		}
+		if out[id], err = s.suggestFor(rctx, a, t); err != nil {
+			return nil, err
+		}
 	}
+	return out, nil
+}
+
+func (s *Store) suggestFor(ctx context.Context, a *Principal, t *BankTxn) ([]Suggestion, error) {
 	out := []Suggestion{}
 	if t.Status != "unmatched" || t.AmountMinor <= 0 {
 		return out, nil
@@ -426,7 +452,7 @@ func (s *Store) SuggestMatches(ctx context.Context, a *Principal, txnID int64) (
 	scopeWhere(a, &w, "party_id", "project")
 	w.and("(kind = 'invoice' AND status IN ('approved', 'sent', 'partially_paid') AND currency = ? AND total_minor - paid_minor - credited_minor > 0)", t.Currency)
 	w.and("(total_minor - paid_minor - credited_minor = ? OR instr(upper(?), number_text) > 0)", t.AmountMinor, t.Reference)
-	rows, err := s.rdb.QueryContext(rctx, `SELECT id, number_text, total_minor - paid_minor - credited_minor FROM invoices WHERE `+w.sql()+` LIMIT 50`, w.args...)
+	rows, err := s.rdb.QueryContext(ctx, `SELECT id, number_text, total_minor - paid_minor - credited_minor FROM invoices WHERE `+w.sql()+` LIMIT 50`, w.args...)
 	if err != nil {
 		return nil, err
 	}
