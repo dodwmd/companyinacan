@@ -18,7 +18,8 @@ const MarkerFile = ".can-site"
 
 // WriteOptions control Write.
 type WriteOptions struct {
-	// Force allows writing into a non-empty directory that was not produced by this tool.
+	// Force allows writing into a non-empty directory that was not produced by this tool. Generated
+	// paths are overwritten, but nothing else in the directory is ever deleted.
 	Force bool
 	// Compress also writes <file>.gz next to text files for servers that serve precompressed content.
 	Compress bool
@@ -60,8 +61,15 @@ func (o *Output) Write(dir string, opts WriteOptions) error {
 	if err != nil {
 		return err
 	}
+	_, markerErr := root.Lstat(MarkerFile)
+	hadMarker := markerErr == nil
+	if !hadMarker {
+		if _, err := root.Lstat("company.yaml"); err == nil {
+			return fmt.Errorf("%s contains company.yaml: refusing to use a company directory as the output directory", dir)
+		}
+	}
 	if len(entries) > 0 && !opts.Force {
-		if _, err := root.Lstat(MarkerFile); err != nil {
+		if !hadMarker {
 			return fmt.Errorf("%s is not empty and not a site output directory (no %s marker); choose another --out or pass --force", dir, MarkerFile)
 		}
 	}
@@ -103,6 +111,11 @@ func (o *Output) Write(dir string, opts WriteOptions) error {
 		if err := writeAtomic(root, p, files[p]); err != nil {
 			return err
 		}
+	}
+	if !hadMarker {
+		// Never delete anything from a directory we did not create, even with Force:
+		// only the generated paths are overwritten.
+		return nil
 	}
 	return removeStale(root, files)
 }

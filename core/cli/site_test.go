@@ -266,3 +266,96 @@ func TestServePrebuiltDirectory(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestSiteBuildRefusesOutOverlappingSource(t *testing.T) {
+	dir := writeCompany(t, siteCompany)
+	for _, out := range []string{dir, filepath.Dir(dir), filepath.Join(dir, "..", filepath.Base(dir))} {
+		for _, force := range []bool{false, true} {
+			args := []string{"site", "build", dir, "--out", out}
+			if force {
+				args = append(args, "--force")
+			}
+			code, _, stderr := run(t, args...)
+			if code != ExitFailure || !strings.Contains(stderr, "contains the company directory") {
+				t.Errorf("out=%s force=%v: code=%d err=%q", out, force, code, stderr)
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "company.yaml")); err != nil {
+		t.Fatalf("company.yaml was lost: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "index.html")); err == nil {
+		t.Error("nothing may be written into the source directory")
+	}
+}
+
+func TestSiteBuildForceKeepsForeignFiles(t *testing.T) {
+	dir := writeCompany(t, siteCompany)
+	out := t.TempDir()
+	keep := filepath.Join(out, "keep.txt")
+	if err := os.WriteFile(keep, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, e := run(t, "site", "build", dir, "--out", out, "--force"); code != ExitOK {
+		t.Fatalf("%s", e)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Error("--force deleted a foreign file")
+	}
+}
+
+func TestServeWarnsOnNonLoopback(t *testing.T) {
+	dir := writeCompany(t, siteCompany)
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan string, 1)
+	done := make(chan error, 1)
+	var out bytes.Buffer
+	go func() {
+		done <- serveSite(ctx, serveOptions{Dir: dir, Addr: "0.0.0.0:0"}, &out, func(a string) { ready <- a })
+	}()
+	<-ready
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "not loopback") {
+		t.Errorf("no warning: %q", out.String())
+	}
+}
+
+func TestServeRebuildsWhenLogoChanges(t *testing.T) {
+	dir := writeCompany(t, siteCompany+"  brand: {logo: logo.svg}\n")
+	logo := filepath.Join(dir, "logo.svg")
+	if err := os.WriteFile(logo, []byte("<svg>one</svg>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan string, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- serveSite(ctx, serveOptions{Dir: dir, Addr: "127.0.0.1:0"}, io.Discard, func(a string) { ready <- a })
+	}()
+	addr := <-ready
+	body := func() string {
+		resp, err := http.Get("http://" + addr + "/assets/logo.svg") //nolint:noctx // test
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	if !strings.Contains(body(), "one") {
+		t.Fatal("precondition")
+	}
+	if err := os.WriteFile(logo, []byte("<svg>two!</svg>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body(), "two") {
+		t.Error("logo edit was not picked up")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Error(err)
+	}
+}

@@ -11,7 +11,8 @@ import (
 )
 
 // Every valid company fixture and the shipped example must render: a schema-valid site: section
-// can never make the renderer fail.
+// can never make the renderer fail (the schema/renderer agreement is table-tested in core/site; only
+// logo files, whose existence is not a schema matter, can still fail a build).
 func TestValidCompaniesRender(t *testing.T) {
 	files, _ := filepath.Glob(filepath.Join(root, "testdata", "valid", "company-*.yaml"))
 	files = append(files, filepath.Join(root, "examples", "acme-co", "company.yaml"))

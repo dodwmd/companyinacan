@@ -99,7 +99,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rec := &recorder{ResponseWriter: w}
 		start := time.Now()
 		defer func() {
-			fmt.Fprintf(s.log, "%s %s %d %d %s\n", r.Method, r.URL.Path, rec.status, rec.bytes, time.Since(start).Round(time.Microsecond))
+			fmt.Fprintf(s.log, "%s %q %d %d %s\n", r.Method, r.URL.EscapedPath(), rec.status, rec.bytes, time.Since(start).Round(time.Microsecond))
 		}()
 		w = rec
 	}
@@ -143,7 +143,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	target, ok := s.lookup(root, rel, strings.HasSuffix(r.URL.Path, "/"))
 	switch {
 	case target == redirectToDir:
-		u := url.URL{Path: r.URL.Path + "/", RawQuery: r.URL.RawQuery}
+		// Built from the cleaned path, so "//host" can never become a protocol-relative Location.
+		u := url.URL{Path: "/" + rel + "/", RawQuery: r.URL.RawQuery}
 		http.Redirect(w, r, u.String(), http.StatusMovedPermanently)
 		return
 	case !ok:
@@ -173,7 +174,8 @@ func (s *server) lookup(root *os.Root, rel string, slash bool) (string, bool) {
 		idx := rel + "/index.html"
 		return idx, isFile(idx)
 	case err == nil && st.Mode().IsRegular():
-		return rel, true
+		// A file is not a directory: "/index.html/" is a 404, not a second URL for the page.
+		return rel, !slash
 	}
 	if !slash && path.Ext(rel) == "" && isFile(rel+".html") {
 		return rel + ".html", true

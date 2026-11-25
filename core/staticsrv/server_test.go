@@ -365,7 +365,7 @@ func TestAccessLog(t *testing.T) {
 	var buf bytes.Buffer
 	h := New(Config{Dir: fixture(t), AccessLog: &buf})
 	get(h, "GET", "/nope")
-	if !strings.Contains(buf.String(), "GET /nope 404") {
+	if !strings.Contains(buf.String(), `GET "/nope" 404`) {
 		t.Errorf("access log: %q", buf.String())
 	}
 	buf.Reset()
@@ -393,5 +393,42 @@ func TestSiteSwapIsPickedUp(t *testing.T) {
 	}
 	if !strings.Contains(get(h, "GET", "/").Body.String(), "new") {
 		t.Error("server kept serving a stale directory handle")
+	}
+}
+
+func TestRedirectNeverProtocolRelative(t *testing.T) {
+	h := New(Config{Dir: fixture(t)})
+	for _, p := range []string{"//docs", "///docs", "/./docs"} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.URL.Path = p
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusMovedPermanently {
+			t.Errorf("%q: code %d", p, w.Code)
+			continue
+		}
+		if loc := w.Header().Get("Location"); loc != "/docs/" {
+			t.Errorf("%q: Location %q", p, loc)
+		}
+	}
+}
+
+func TestFileWithTrailingSlashIs404(t *testing.T) {
+	h := New(Config{Dir: fixture(t)})
+	for _, p := range []string{"/index.html/", "/about.html/", "/assets/logo.svg/", "/robots.txt/"} {
+		if w := get(h, "GET", p); w.Code != 404 {
+			t.Errorf("%s: code %d", p, w.Code)
+		}
+	}
+}
+
+func TestAccessLogCannotBeInjected(t *testing.T) {
+	var buf bytes.Buffer
+	h := New(Config{Dir: fixture(t), AccessLog: &buf})
+	r := httptest.NewRequest("GET", "/", nil)
+	r.URL.Path = "/x\n200 forged \"line\""
+	h.ServeHTTP(httptest.NewRecorder(), r)
+	if n := strings.Count(buf.String(), "\n"); n != 1 {
+		t.Errorf("want one log line, got %d: %q", n, buf.String())
 	}
 }

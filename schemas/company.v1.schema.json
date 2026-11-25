@@ -45,7 +45,7 @@
       "additionalProperties": false,
       "properties": {
         "tagline": { "type": "string", "maxLength": 200 },
-        "template": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "template": { "enum": ["classic"], "description": "Built-in template; classic is the only one." },
         "brand": {
           "type": "object",
           "additionalProperties": false,
@@ -66,7 +66,7 @@
         },
         "og_image": {
           "type": "string",
-          "pattern": "^(https://[^\\s]+|/[^\\s]*)$",
+          "pattern": "^(https://[^\\s/?#][^\\s]*|/|/[^\\s/\\\\][^\\s]*)$",
           "maxLength": 500,
           "description": "Open Graph image: https URL or site-relative path."
         },
@@ -79,7 +79,7 @@
           "maxItems": 10,
           "items": {
             "type": "string",
-            "pattern": "^https://[^\\s]+$"
+            "pattern": "^https://[^\\s/?#][^\\s]*$"
           },
           "description": "Profile URLs for the JSON-LD Organization (sameAs)."
         },
@@ -316,7 +316,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 500,
-      "pattern": "^(https?://[^\\s]+|mailto:[^\\s]+|/[^\\s]*|#[^\\s]*)$",
+      "pattern": "^(https?://[^\\s/?#][^\\s]*|mailto:[^\\s]+|/|/[^\\s/\\\\][^\\s]*|#[^\\s]*)$",
       "description": "http(s) URL, mailto: link, site-relative path or fragment."
     },
     "button": {

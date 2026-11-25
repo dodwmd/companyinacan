@@ -150,3 +150,48 @@ func TestWriteRemovesStaleCompressed(t *testing.T) {
 		t.Error("stale .gz would be served with outdated content")
 	}
 }
+
+func TestForceNeverDeletesForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"keep.txt", "sub/also.txt"} {
+		p := filepath.Join(dir, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("mine"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := render(t, minimal).Write(dir, WriteOptions{Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"keep.txt", "sub/also.txt", "index.html"} {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil {
+			t.Errorf("%s: %v", f, err)
+		}
+	}
+	// Once the marker exists, the directory is ours and stale generated files are removed.
+	if err := render(t, minimal).Write(dir, WriteOptions{Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "keep.txt")); !os.IsNotExist(err) {
+		t.Error("with the marker present, stale files are cleaned")
+	}
+}
+
+func TestWriteRefusesCompanyDirectory(t *testing.T) {
+	dir := t.TempDir()
+	cy := filepath.Join(dir, "company.yaml")
+	if err := os.WriteFile(cy, []byte("schema: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, force := range []bool{false, true} {
+		err := render(t, minimal).Write(dir, WriteOptions{Force: force})
+		if err == nil || !strings.Contains(err.Error(), "company.yaml") {
+			t.Fatalf("force=%v: want refusal, got %v", force, err)
+		}
+	}
+	if b, _ := os.ReadFile(cy); string(b) != "schema: 1\n" {
+		t.Error("company.yaml was modified")
+	}
+}

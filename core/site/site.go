@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
-	"math"
 	"net/url"
 	"path"
 	"regexp"
@@ -93,7 +92,7 @@ type page struct {
 	Footer                config.SiteFooter
 }
 
-type cssData struct{ Accent, AccentText, Accent2, Accent2Text string }
+type cssData struct{ Accent, AccentText, Accent2, Accent2Text, Link, LinkDark string }
 
 type orgLD struct {
 	Context     string   `json:"@context"`
@@ -145,25 +144,6 @@ func safeHref(h string) bool {
 		return err == nil && u.Host != ""
 	}
 	return false
-}
-
-// contrastText picks black or white text for a solid background colour (#rrggbb).
-func contrastText(hex6 string) string {
-	var r, g, b uint8
-	if _, err := fmt.Sscanf(strings.ToLower(hex6), "#%02x%02x%02x", &r, &g, &b); err != nil {
-		return "#ffffff"
-	}
-	lin := func(c uint8) float64 {
-		v := float64(c) / 255
-		if v <= 0.03928 {
-			return v / 12.92
-		}
-		return math.Pow((v+0.055)/1.055, 2.4)
-	}
-	if 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b) > 0.179 {
-		return "#000000"
-	}
-	return "#ffffff"
 }
 
 type validator struct{ problems []string }
@@ -220,7 +200,7 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 			v.add("site.same_as[%d]: %q is not an https URL", i, u)
 		}
 	}
-	if og := s.OGImage; og != "" && ((!strings.HasPrefix(og, "https://") && !strings.HasPrefix(og, "/")) || strings.HasPrefix(og, "//")) {
+	if og := s.OGImage; og != "" && (!safeHref(og) || (!strings.HasPrefix(og, "https://") && !strings.HasPrefix(og, "/"))) {
 		v.add("site.og_image: %q must be an https URL or a site-relative path", s.OGImage)
 	}
 	if s.Hero != nil {
@@ -259,7 +239,8 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 	}
 
 	var css bytes.Buffer
-	if err := cssTemplate.Execute(&css, cssData{Accent: accent, AccentText: contrastText(accent), Accent2: accent2, Accent2Text: contrastText(accent2)}); err != nil {
+	if err := cssTemplate.Execute(&css, cssData{Accent: accent, AccentText: contrastText(accent), Accent2: accent2, Accent2Text: contrastText(accent2),
+		Link: readable(accent, lightBG), LinkDark: readable(accent, darkBG)}); err != nil {
 		return nil, err
 	}
 	sum := sha256.Sum256(css.Bytes())

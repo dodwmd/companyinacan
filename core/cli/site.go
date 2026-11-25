@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -78,6 +79,9 @@ func newSiteBuildCmd(g *globalOpts) *cobra.Command {
 			if out == "" {
 				out = filepath.Join(dir, "public")
 			}
+			if overlaps(out, dir) {
+				return failure("--out %s contains the company directory %s; choose a separate output directory", out, dir)
+			}
 			res, ps, err := renderSite(dir, baseURL)
 			if err != nil {
 				return failure("%s", err)
@@ -109,7 +113,7 @@ func newSiteBuildCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&out, "out", "", "output directory (default <dir>/public)")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "public origin for canonical/sitemap URLs (default https://<domain>)")
 	cmd.Flags().BoolVar(&noCompress, "no-compress", false, "do not write precompressed .gz files")
-	cmd.Flags().BoolVar(&force, "force", false, "write into a non-empty directory that is not a previous site output")
+	cmd.Flags().BoolVar(&force, "force", false, "write into a non-empty directory that is not a previous site output (only generated paths are overwritten; nothing is deleted)")
 	return cmd
 }
 
@@ -152,18 +156,35 @@ type previewHandler struct {
 	baseURL string
 	out     io.Writer
 
-	mu      sync.Mutex
-	lastMod time.Time
+	mu    sync.Mutex
+	stamp string // modification stamp of company.yaml and the logo at the last build
+}
+
+// sourceStamp changes whenever company.yaml or the logo file it references changes.
+func sourceStamp(dir string) string {
+	files := []string{filepath.Join(dir, "company.yaml")}
+	if doc, _ := config.Load(files[0]); doc != nil {
+		if c, err := config.DecodeCompany(doc); err == nil && c.Site.Brand.Logo != "" {
+			files = append(files, filepath.Join(dir, filepath.FromSlash(c.Site.Brand.Logo)))
+		}
+	}
+	var b strings.Builder
+	for _, f := range files {
+		if st, err := os.Stat(f); err == nil {
+			fmt.Fprintf(&b, "%s:%d:%d;", f, st.ModTime().UnixNano(), st.Size())
+		}
+	}
+	return b.String()
 }
 
 func (p *previewHandler) rebuild() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	st, err := os.Stat(filepath.Join(p.dir, "company.yaml"))
-	if err != nil || st.ModTime().Equal(p.lastMod) {
+	s := sourceStamp(p.dir)
+	if s == "" || s == p.stamp {
 		return
 	}
-	p.lastMod = st.ModTime()
+	p.stamp = s
 	res, ps, err := renderSite(p.dir, p.baseURL)
 	if err == nil && res != nil {
 		err = res.Write(p.site, site.WriteOptions{})
@@ -194,6 +215,9 @@ func serveSite(ctx context.Context, o serveOptions, out io.Writer, ready func(ad
 		return err
 	}
 	addr := ln.Addr().String()
+	if ta, ok := ln.Addr().(*net.TCPAddr); ok && !ta.IP.IsLoopback() {
+		fmt.Fprintf(out, "warning: listening on %s, which is not loopback; the preview has no authentication and is reachable from the network\n", addr)
+	}
 	var handler http.Handler
 	if o.Public != "" {
 		handler = staticsrv.New(staticsrv.Config{Dir: o.Public, AccessLog: out})
@@ -220,9 +244,7 @@ func serveSite(ctx context.Context, o serveOptions, out io.Writer, ready func(ad
 			return err
 		}
 		ph := &previewHandler{dir: o.Dir, site: tmp, baseURL: base, out: out}
-		if st, err := os.Stat(filepath.Join(o.Dir, "company.yaml")); err == nil {
-			ph.lastMod = st.ModTime()
-		}
+		ph.stamp = sourceStamp(o.Dir)
 		ph.next = staticsrv.New(staticsrv.Config{Dir: tmp, AccessLog: out})
 		handler = ph
 	}
@@ -247,4 +269,21 @@ func serveSite(ctx context.Context, o serveOptions, out io.Writer, ready func(ad
 		return err
 	}
 	return nil
+}
+
+// overlaps reports whether out is dir itself or one of its ancestors.
+func overlaps(out, dir string) bool {
+	abs := func(p string) string {
+		a, err := filepath.Abs(p)
+		if err != nil {
+			a = p
+		}
+		if r, err := filepath.EvalSymlinks(a); err == nil {
+			return r
+		}
+		return a
+	}
+	o, d := abs(out), abs(dir)
+	rel, err := filepath.Rel(o, d)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

@@ -42,7 +42,7 @@ Visitors on any device, in light or dark mode, with a keyboard or screen reader,
 2. **Given** content containing HTML or script markup in any field, **When** rendered, **Then** it is HTML-escaped everywhere, including the JSON-LD block, and the page contains no inline event handlers or `style` attributes (a strict CSP stays possible).
 3. **Given** link targets, **When** they are not `http(s)`, `mailto:`, site-relative or a fragment (for example `javascript:` or `//host`), **Then** validation rejects them.
 4. **Given** the site is indexable, **When** rendered, **Then** the title, meta description, canonical URL, Open Graph and Twitter tags, a JSON-LD `Organization`, `sitemap.xml` and `robots.txt` are present; **given** `noindex: true`, **then** robots meta, a disallow-all `robots.txt` and no sitemap are produced.
-5. **Given** brand colours, **When** rendered, **Then** text on accent backgrounds is black or white, whichever contrasts better.
+5. **Given** brand colours, **When** rendered, **Then** text on accent backgrounds is black or white (at least 4.5:1), and link colours are adjusted until they reach 4.5:1 on the light and dark page backgrounds. (Structural accessibility and these contrast rules are tested; a full WCAG audit is not claimed.)
 
 ---
 
@@ -93,7 +93,7 @@ The site pod in `can-system` runs `can-static`, which serves the PVC read-only, 
 - **FR-004**: All user content MUST pass through `html/template` contextual escaping; JSON-LD MUST be produced by `encoding/json` (HTML-escaped).
 - **FR-005**: Links MUST be restricted to `http(s)`, `mailto:`, site-relative paths and fragments, in the schema and in the renderer.
 - **FR-006**: The page MUST NOT require JavaScript and MUST NOT use inline styles or event handlers.
-- **FR-007**: The writer MUST replace files atomically, remove stale files only in marked directories, never follow symlinks, and optionally write deterministic gzip siblings.
+- **FR-007**: The writer MUST replace files atomically, remove stale files only in directories that already carry the marker (never with `--force` alone), refuse a directory containing `company.yaml` and any `--out` that contains the source directory, never follow symlinks, and optionally write deterministic gzip siblings.
 - **FR-008**: `can site build [dir] --out <dir>` and `can site serve [dir]` MUST exist, support `--output json` for build, and use the existing exit codes.
 - **FR-009**: `cmd/can-static` MUST be stdlib-only (plus the repository's own `core/staticsrv`), never write to disk, and provide `/healthz` and a `-healthcheck` flag for distroless exec probes.
 - **FR-010**: The server MUST resolve paths through `os.Root`, refuse dotfiles and traversal, serve precompressed files, set cache and security headers, and bound its timeouts and header size.

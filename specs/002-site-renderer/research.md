@@ -20,6 +20,7 @@
   by WCAG relative luminance.
 - **Rationale**: allows `style-src 'self'` with no `unsafe-inline`; the content hash makes the file
   immutably cacheable and busts caches on change; validation closes CSS injection.
+- **Contrast**: the accent is used as a fill (buttons, skip link) with black or white text, which always reaches at least 4.5:1. Links and the secondary button use a separate `--link` colour: the accent moved towards black (light scheme) or white (dark scheme) in 5% steps until it reaches 4.5:1 against the page background (`core/site/colour.go`), so a pale accent cannot produce unreadable links. The CTA band uses the second brand colour with a black/white text colour chosen the same way. The accessibility claims are limited to these checks and the structural ones; no full WCAG audit has been done.
 - **Alternatives**: inlining the CSS (needs `unsafe-inline` or a nonce, which a static host cannot provide).
 
 ## R4. JSON-LD
@@ -34,7 +35,8 @@
   no whitespace or control characters; checked by a schema pattern and again in Go (`safeHref`).
 - **Rationale**: `html/template` already neutralises `javascript:` in URL attributes, but rejecting
   at validation gives the author an error instead of a silently dead link, and protects any future
-  consumer that bypasses the template.
+  consumer that bypasses the template. The schema patterns (host required, no `//`, no `/\`) and
+  `og_image`/`same_as`/`template` rules are kept equivalent to the renderer by `TestSchemaAndRendererAgree`.
 
 ## R6. Writing output safely and atomically
 - **Decision**: `Output.Write` opens the directory as an `os.Root`; each file is written to
@@ -79,7 +81,7 @@
 - **Decision**: `can site serve` builds into a temp directory, serves it with the production handler,
   and re-renders when the mtime of `company.yaml` changes (checked per request, so no watcher goroutine
   and no inotify dependency). A failed rebuild keeps the last good output.
-- **Limitation**: edits to the logo file alone do not trigger a rebuild; touch `company.yaml`.
+- Both `company.yaml` and the logo file are watched (modification time and size). A non-loopback `--addr` prints a warning, since the preview has no authentication.
 
 ## R11. Compression
 - **Decision**: `can site build` writes `.gz` siblings (deterministic: zero header, best compression)

@@ -69,4 +69,4 @@ docker buildx imagetools inspect gcr.io/distroless/static-debian12:nonroot --for
 ```
 
 Pass them with `--build-arg GO_IMAGE=golang:1.27@sha256:... --build-arg RUNTIME_IMAGE=...@sha256:...`.
-The release pipeline (E06/E08) must refuse to build while a `REPLACE_WITH_` placeholder is present.
+`make release-check` (`scripts/check-image-pins.sh`) fails while a `REPLACE_WITH_` placeholder is present; the release pipeline (E06/E08) must run it before building.
