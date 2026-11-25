@@ -37,13 +37,14 @@ var _ io.Reader = (*strings.Reader)(nil)
 
 func newDumper(t *testing.T, mods []string, hooks *fakeHooks) (*Dumper, *store.DB) {
 	t.Helper()
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "state.db"))
+	path := filepath.Join(t.TempDir(), "state.db")
+	db, err := store.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	d := &Dumper{
-		Store: &Store{Dir: filepath.Join(t.TempDir(), "dumps")}, DB: db.DB, Hooks: hooks,
+		Store: &Store{Dir: filepath.Join(t.TempDir(), "dumps")}, DBPath: path, Hooks: hooks,
 		Modules: func(context.Context) ([]string, error) { return mods, nil },
 		Now:     func() time.Time { return time.Unix(1_700_000_000, 0) },
 	}

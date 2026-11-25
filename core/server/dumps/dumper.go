@@ -28,8 +28,10 @@ type HookRunner interface {
 // Dumper produces one consistent set of dumps per run and then, last, the completion marker.
 type Dumper struct {
 	Store *Store
-	DB    *sql.DB // can-core's own state, dumped with VACUUM INTO
-	Hooks HookRunner
+	// DBPath is can-core's state database, copied with VACUUM INTO over a read-only connection of
+	// its own: the application's pool has a single connection, which a copy must not occupy.
+	DBPath string
+	Hooks  HookRunner
 	// Modules lists the enabled modules that have a backup hook.
 	Modules func(ctx context.Context) ([]string, error)
 	// CompanyFile is the applied company.yaml, copied into every run ("" skips).
@@ -204,7 +206,13 @@ func (d *Dumper) dumpState(ctx context.Context) error {
 	}
 	tmp := filepath.Join(dir, ".state.db.tmp")
 	_ = os.Remove(tmp)
-	if _, err := d.DB.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
+	src, err := sql.Open("sqlite", "file:"+d.DBPath+"?mode=ro&_pragma=busy_timeout(30000)")
+	if err != nil {
+		return err
+	}
+	_, err = src.ExecContext(ctx, `VACUUM INTO ?`, tmp)
+	_ = src.Close()
+	if err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0o600); err != nil {

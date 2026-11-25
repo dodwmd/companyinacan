@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type hookFunc func(ctx context.Context, module string) error
@@ -234,5 +235,21 @@ func TestEverythingIsSyncedBeforeTheMarker(t *testing.T) {
 	d.syncPath = func(string) error { return errors.New("disk gone") }
 	if _, err := d.Run(context.Background()); err == nil || exists(filepath.Join(d.Store.Dir, COMPLETE)) {
 		t.Fatalf("marker despite a failed sync: %v", err)
+	}
+}
+
+// QA 10: the state copy uses its own read connection, so it never holds can-core's single
+// database connection (requests would queue behind a large copy).
+func TestStateCopyDoesNotNeedTheApplicationsConnection(t *testing.T) {
+	d, db := newDumper(t, nil, &fakeHooks{})
+	tx, err := db.BeginTx(context.Background(), nil) // takes the pool's only connection
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := d.Run(ctx); err != nil {
+		t.Fatalf("the run waited for the application's connection: %v", err)
 	}
 }
