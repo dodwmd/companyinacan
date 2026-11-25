@@ -1,0 +1,1 @@
+{"id":"evt_0123456789abcdef01234567","type":"lead.created.v1","time":"2026-11-25T01:02:04Z","source":"forms","data":{"lead_id":"ld_0123456789abcdef01234567","form_id":"contact","submitted_at":"2026-11-25T01:02:03Z","fields":{"Bad-Name":"x"}}}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/lead.created.v1.json",
+  "title": "lead.created.v1",
+  "description": "Published by the forms gateway for every stored submission (SPEC.md section 4.3). Delivered at least once; consumers de-duplicate on `id`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "time", "source", "data"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^evt_[0-9a-f]{24}$", "description": "Unique event id, stable across redeliveries." },
+    "type": { "const": "lead.created.v1" },
+    "time": { "type": "string", "format": "date-time", "description": "When the event was produced (UTC)." },
+    "source": { "const": "forms" },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lead_id", "form_id", "submitted_at", "fields"],
+      "properties": {
+        "lead_id": { "type": "string", "pattern": "^ld_[0-9a-f]{24}$" },
+        "form_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" },
+        "submitted_at": { "type": "string", "format": "date-time" },
+        "email": { "type": "string", "maxLength": 254, "description": "First email-typed field, when the form has one." },
+        "name": { "type": "string", "maxLength": 10000 },
+        "party_id": { "type": "string", "minLength": 1, "description": "Set once a directory party exists for this person; the forms gateway does not set it." },
+        "fields": {
+          "type": "object",
+          "maxProperties": 30,
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,40}$" },
+          "additionalProperties": { "type": "string", "maxLength": 10000 },
+          "description": "Validated submitted values keyed by field name."
+        }
+      }
+    }
+  }
+}
