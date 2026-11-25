@@ -13,6 +13,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/approvals"
+	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/identity"
@@ -48,6 +49,8 @@ type Server struct {
 	Identity *identity.Service
 	// Tickets redeems the launch tickets of single sign-on into module UIs (E11c); nil answers 503.
 	Tickets *ticket.Service
+	// Email is the email.send capability (E03d, email.go); nil answers 503.
+	Email *email.Service
 }
 
 type route struct {
@@ -71,6 +74,8 @@ func (s *Server) routes() []route {
 		{"POST /v1/tickets/peek", s.authed(s.peekTicket)},
 		{"POST /v1/tickets/redeem", s.authed(s.redeemTicket)},
 		{"POST /v1/tickets/revalidate", s.authed(s.revalidateSession)},
+		{"POST /v1/email", s.authed(s.sendEmail)},
+		{"GET /v1/email/{id}", s.authed(s.getEmail)},
 	}
 }
 

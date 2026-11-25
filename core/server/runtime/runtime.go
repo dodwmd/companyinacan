@@ -27,6 +27,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
+	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/identity"
 	"github.com/dodwmd/companyinacan/core/server/kube"
@@ -246,7 +247,15 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 
 	// Shared platform services (epic E11a).
 	rb := rbac.New(db, al, rbac.Options{})
-	ntf := notify.New(db, notify.Options{Bus: bus, Roles: rb, Log: log, Webhook: notify.HTTPWebhook{}, VAPIDKeyFile: cfg.VAPIDKeyFile, PushEndpointAllow: cfg.PushEndpointAllow, PushContact: pushContact(cfg.CompanyDomain)})
+	// email.send (epic E03d): also the e-mail channel of notifications.
+	mail, err := cfg.emailService(db, al, log)
+	if err != nil {
+		return err
+	}
+	if err := cfg.devModules(ctx, db, rev, log); err != nil {
+		return err
+	}
+	ntf := notify.New(db, notify.Options{Bus: bus, Roles: rb, Log: log, Mailer: email.NotifyMailer{S: mail}, Webhook: notify.HTTPWebhook{}, VAPIDKeyFile: cfg.VAPIDKeyFile, PushEndpointAllow: cfg.PushEndpointAllow, PushContact: pushContact(cfg.CompanyDomain)})
 	bus.SubscribeAll(ntf.HandleEvent)
 	lines := &approvals.DirectoryReportingLine{Resolver: reg, Token: adminui.FileToken(cfg.DirectoryTokenFile)}
 	eng := approvals.New(db, al, approvals.Deps{Roles: rb, Perms: rb, Lines: lines, Notifier: ntf, Bus: bus, Log: log})
@@ -296,7 +305,8 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		log.Warn("identity: reconciling offboarding facts failed", "error", err)
 	}
 	bus.Subscribe("person.offboarded.v1", idSvc.HandleOffboarded)
-	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc, Tickets: tickets}
+	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc, Tickets: tickets, Email: mail}
+	uiSrv.Email = mail
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
 	if err != nil {
@@ -324,6 +334,8 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { defer wg.Done(); disp.Run(workCtx, bus.Wake(), 30*time.Second) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); mail.Run(workCtx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); housekeeping(workCtx, db, log) }()
 	wg.Add(1)
