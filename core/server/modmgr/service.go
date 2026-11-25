@@ -91,14 +91,16 @@ type Service struct {
 	Company    CompanyStore
 	Runner     Reconciling
 	Purger     Purger
-	Secrets    SecretWriter
-	Ingress    IngressStatus
-	Disk       DiskReader
-	Probe      ReadyProbe
-	Net        NetInfo
-	Instant    InstantProbe
-	Bundles    []Bundle
-	Now        func() time.Time
+	// OnPurged removes what else holds a purged module's data (its backup dumps); optional.
+	OnPurged func(id string) error
+	Secrets  SecretWriter
+	Ingress  IngressStatus
+	Disk     DiskReader
+	Probe    ReadyProbe
+	Net      NetInfo
+	Instant  InstantProbe
+	Bundles  []Bundle
+	Now      func() time.Time
 	// Async starts the reconcile of an apply; it defaults to `go f()`. Tests run it inline.
 	Async func(func())
 }
@@ -715,6 +717,12 @@ func (s *Service) Purge(ctx context.Context, actor, id, confirm string) error {
 	}
 	if err := s.DB.DeleteDisabledModule(ctx, id); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
+	}
+	if s.OnPurged != nil {
+		if err := s.OnPurged(id); err != nil {
+			_, _ = s.audit(ctx, actor, "module.purge.failed", id, map[string]any{"error": Sanitise(err.Error())})
+			return fmt.Errorf("the module was purged but its backup dumps were not removed: %s", Sanitise(err.Error()))
+		}
 	}
 	_, err = s.audit(ctx, actor, "module.purge.done", id, nil)
 	return err

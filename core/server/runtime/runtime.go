@@ -353,6 +353,9 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			return fmt.Errorf("module management: %w", merr)
 		}
 		uiSrv.Mod, adminSrv.Mod = svc, svc
+		if dumper != nil {
+			svc.OnPurged = dumper.Forget
+		}
 		if rerr := svc.Recover(workCtx); rerr != nil {
 			log.Error("could not close interrupted applies", "error", rerr)
 		}

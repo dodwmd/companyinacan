@@ -191,3 +191,20 @@ func TestRunStartRemovesLeftovers(t *testing.T) {
 		}
 	}
 }
+
+// QA 8: purging a module deletes its dumps at once, not at the next run.
+func TestForgetRemovesAModulesDumps(t *testing.T) {
+	d, err := runWith(t, []string{"wiki"}, func(d *Dumper, m string) error { return upload(d, m, "a", "v") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Forget("wiki"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(filepath.Join(d.Store.Dir, "modules", "wiki")) {
+		t.Fatal("dumps kept after purge")
+	}
+	if err := d.Forget("../x"); !errors.Is(err, ErrBadName) {
+		t.Fatalf("%v", err)
+	}
+}

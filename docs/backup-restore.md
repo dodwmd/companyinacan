@@ -72,6 +72,15 @@ when the unit fails. The unit runs with `ProtectSystem=strict` and a short `Read
 `/etc/can/backup.d/webhook.url` (0600); the script POSTs `{"text": "can-backup failed: (code) message"}` (JSON-escaped); the URL is given to curl on stdin, never on a command line.
 `restic.env` values are single-quoted so any character in a secret survives sourcing.
 
+## Retention and erasure of dumps
+
+The dumps directory holds one set: each successful run replaces all module dumps with the ones it just made, so a
+module that was purged (or no longer has a record) drops out. Leftovers of interrupted runs are removed when the
+next run starts, and a purge through can-core deletes that module's dumps at once. A failed run keeps the previous
+set on disk (without a marker, so it is not backed up). Older data stays in restic snapshots until the 35-day
+retention expires them; erasure requests are re-applied at restore from the erasure ledger, not by rewriting dumps
+or snapshots.
+
 ## Commands
 
 | Command | Use |

@@ -370,7 +370,12 @@ func TestPurgeNeedsDisabledModuleAndTypedConfirmation(t *testing.T) {
 	if len(r.purge.calls) != 0 {
 		t.Fatal("purger called without confirmation")
 	}
+	var forgotten []string
+	r.svc.OnPurged = func(id string) error { forgotten = append(forgotten, id); return nil }
 	must(t, r.svc.Purge(ctx, "root", "web", "purge web"))
+	if strings.Join(forgotten, ",") != "web" {
+		t.Fatalf("a purged module's backup dumps must be deleted: %v", forgotten)
+	}
 	if strings.Join(r.purge.calls, ",") != "web" {
 		t.Fatalf("%v", r.purge.calls)
 	}

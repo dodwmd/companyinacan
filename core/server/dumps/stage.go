@@ -152,3 +152,22 @@ func (d *Dumper) closeRun() {
 		}
 	}
 }
+
+// Forget deletes a purged module's dumps, published and staged. Older restic snapshots keep them
+// until retention expires them.
+func (d *Dumper) Forget(module string) error {
+	if !moduleRe.MatchString(module) {
+		return ErrBadName
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	dirs := []string{filepath.Join(d.Store.Dir, "modules", module)}
+	if d.cur != nil {
+		dirs = append(dirs, filepath.Join(d.cur.dir, "modules", module), filepath.Join(d.cur.dir, "old", module))
+	}
+	var errs []error
+	for _, p := range dirs {
+		errs = append(errs, os.RemoveAll(p))
+	}
+	return errors.Join(errs...)
+}
