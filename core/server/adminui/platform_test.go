@@ -22,6 +22,7 @@ type pui struct {
 	eng     *approvals.Engine
 	ntf     *notify.Service
 	secrets map[string]string
+	push    *uiPushOK
 }
 
 func newPUI(t *testing.T) *pui {
@@ -38,7 +39,8 @@ func newPUI(t *testing.T) *pui {
 	}
 	clock := func() time.Time { return *h.now }
 	p.rb = rbac.New(h.db, h.audit, rbac.Options{Now: clock})
-	p.ntf = notify.New(h.db, notify.Options{Now: clock, Mailer: &notify.FakeMailer{}, Roles: p.rb})
+	p.push = &uiPushOK{}
+	p.ntf = notify.New(h.db, notify.Options{Now: clock, Mailer: &notify.FakeMailer{}, Roles: p.rb, PushSender: p.push})
 	p.eng = approvals.New(h.db, h.audit, approvals.Deps{Roles: p.rb, Perms: p.rb, Notifier: p.ntf, Now: clock})
 	m := store.Module{ID: "expenses", Version: "1", Namespace: "mod-expenses", ServiceAccount: "expenses", State: store.StateEnabled, HMACSecret: "s", Manifest: config.Module{ID: "expenses", Permissions: []string{"expenses.approve", "expenses.pay"}}}
 	if err := h.db.UpsertModule(ctx, m, nil, nil); err != nil {

@@ -59,7 +59,7 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...)
+	return append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.pushRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {

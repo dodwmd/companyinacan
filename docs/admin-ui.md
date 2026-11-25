@@ -111,7 +111,10 @@ certificate/ingress reader (the status page says "not available"), pod readiness
   for signed-in pages; a double-submit cookie for the login form). Requests the browser marks
   `Sec-Fetch-Site: cross-site` or `same-site` are refused.
 - Content-Security-Policy `default-src 'none'; script-src 'none'; style-src 'self'; ...; frame-ancestors 'none'`.
-  There is no script on any page, so a template injection bug cannot run code. Everything that comes from
+  There is no script on any page except Notifications, so a template injection bug cannot run code there.
+  Notifications alone allows `'self'` scripts, workers and connections (`script-src 'self'; worker-src 'self';
+  connect-src 'self'`) to load `/static/push.js`, which only enables push on the current device; the page works
+  without it. No inline script, no nonce, no `unsafe-*`. Everything that comes from
   modules, audit entries or leads is HTML-escaped by `html/template` (tested with hostile data).
 - Changing the password or the authentication secret needs the current password **and** a fresh authentication
   code (5 wrong attempts lock account changes for 15 minutes; each attempt is counted before it is checked)
@@ -120,14 +123,17 @@ certificate/ingress reader (the status page says "not available"), pod readiness
 - The login CSRF cookie is `__Host-` prefixed when cookies are Secure (plain-HTTP development uses a plain name).
 - **HSTS is not sent by can-core.** The ingress (Traefik) must send `Strict-Transport-Security` for the admin host;
   without it a browser's first request can still be downgraded.
-- Authenticated pages are `Cache-Control: no-store`. There is no service worker, so nothing authenticated
-  is ever cached by the app.
+- Authenticated pages are `Cache-Control: no-store`. The only service worker (`/sw.js`) handles push
+  notifications and nothing else: no request interception and no cache, so nothing authenticated is ever
+  cached by the app (a test fails if it grows a `fetch` listener or touches the Cache API).
+- Static files are linked with a content hash (`?v=...`) and cached immutably for that hash.
 
 ## Installing on Android (PWA)
 
 Open `https://admin.<domain>/` in Chrome on Android, sign in, then use the menu entry "Install app" (or
 "Add to Home screen"). The manifest (`/manifest.webmanifest`) gives it a name, icons and standalone
-display. It opens the live site; there is no offline mode by design.
+display, adaptive icons and shortcuts to Approvals and Notifications. It opens the live site; there is no
+offline mode by design. Push alerts and the phone layout are described in [pwa.md](pwa.md).
 
 ## Accessibility
 

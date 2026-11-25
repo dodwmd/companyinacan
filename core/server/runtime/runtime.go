@@ -56,6 +56,8 @@ type Config struct {
 	LogLevel           string        // CAN_LOG_LEVEL
 	CompanyName        string        // CAN_COMPANY_NAME: shown on the admin dashboard
 	CompanyDomain      string        // CAN_COMPANY_DOMAIN: shown on the admin dashboard
+	PushEndpointAllow  []string      // CAN_PUSH_ENDPOINT_ALLOW: comma-separated host suffixes Web Push endpoints must match; empty = any public https host
+	VAPIDKeyFile       string        // CAN_VAPID_KEY_FILE: Web Push application server key from a mounted Secret; unset = generated on first use and kept in the state database
 	DirectoryTokenFile string        // CAN_DIRECTORY_TOKEN_FILE: bearer credential for the `directory` capability (reporting-line approval chains); unset = manager steps use their fallback
 	LeadsTokenFile     string        // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
 	Installer          string        // CAN_INSTALLER: kubernetes (deploy modules) or none (default; no deploys)
@@ -112,7 +114,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		SAToken:     str("CAN_SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		SACA:        str("CAN_SA_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
 		LogLevel:    str("CAN_LOG_LEVEL", "info"), ShutdownTimeout: 15 * time.Second,
-		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"),
+		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"), VAPIDKeyFile: getenv("CAN_VAPID_KEY_FILE"), PushEndpointAllow: splitList(getenv("CAN_PUSH_ENDPOINT_ALLOW")),
 		Installer: str("CAN_INSTALLER", "none"), CompanyFile: str("CAN_COMPANY_FILE", "/etc/can/company/company.yaml"), ModulesDir: str("CAN_MODULES_DIR", "/modules"),
 		NodeIP: getenv("CAN_NODE_IP"), PostgresAdminURL: getenv("CAN_POSTGRES_ADMIN_URL"), PostgresHost: str("CAN_POSTGRES_HOST", "postgres.can-data.svc.cluster.local"),
 		ReconcileInterval: 30 * time.Second, SSOSecretDir: str("CAN_SSO_SECRET_DIR", "/etc/can/sso"),
@@ -218,7 +220,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 
 	// Shared platform services (epic E11a).
 	rb := rbac.New(db, al, rbac.Options{})
-	ntf := notify.New(db, notify.Options{Bus: bus, Roles: rb, Log: log, Webhook: notify.HTTPWebhook{}})
+	ntf := notify.New(db, notify.Options{Bus: bus, Roles: rb, Log: log, Webhook: notify.HTTPWebhook{}, VAPIDKeyFile: cfg.VAPIDKeyFile, PushEndpointAllow: cfg.PushEndpointAllow, PushContact: pushContact(cfg.CompanyDomain)})
 	bus.SubscribeAll(ntf.HandleEvent)
 	lines := &approvals.DirectoryReportingLine{Resolver: reg, Token: adminui.FileToken(cfg.DirectoryTokenFile)}
 	eng := approvals.New(db, al, approvals.Deps{Roles: rb, Perms: rb, Lines: lines, Notifier: ntf, Bus: bus, Log: log})
@@ -414,4 +416,24 @@ func loginPolicy(cfg Config) auth.Policy {
 	p := auth.DefaultPolicy
 	p.HardLock = cfg.TrustProxy
 	return p
+}
+
+// pushContact is the VAPID `sub` claim: an https URL on the company's own domain when it is known
+// (so a push service operator can reach whoever runs this server), otherwise the project's URL.
+func pushContact(domain string) string {
+	if domain != "" && !strings.ContainsAny(domain, " /\\:@?#") {
+		return "https://" + domain
+	}
+	return ""
+}
+
+// splitList splits a comma-separated setting, dropping blanks.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

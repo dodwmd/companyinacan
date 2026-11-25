@@ -7,9 +7,11 @@ package adminui
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"html/template"
 	"io/fs"
@@ -114,6 +116,7 @@ func (s *Server) coreRoutes() []route {
 		{"POST /settings/sessions/{sid}/revoke", s.authed(s.revokeSession)},
 		{"GET /static/{file}", s.static},
 		{"GET /manifest.webmanifest", s.manifest},
+		{"GET /sw.js", s.serviceWorker},
 	}
 }
 
@@ -158,9 +161,10 @@ func (s *Server) init() {
 		s.Log = slog.Default()
 	}
 	funcs := template.FuncMap{
-		"t":   s.msg,
-		"ts":  func(t time.Time) string { return t.UTC().Format("2006-01-02 15:04:05") },
-		"iso": func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
+		"t":         s.msg,
+		"ts":        func(t time.Time) string { return t.UTC().Format("2006-01-02 15:04:05") },
+		"iso":       func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
+		"staticURL": assetURL,
 	}
 	s.tpl = map[string]*template.Template{}
 	entries, err := fs.ReadDir(assets, "templates")
@@ -362,12 +366,13 @@ func equalTokens(a, b string) bool {
 
 var contentTypes = map[string]string{
 	".css":         "text/css; charset=utf-8",
+	".js":          "text/javascript; charset=utf-8",
 	".png":         "image/png",
 	".svg":         "image/svg+xml",
 	".webmanifest": "application/manifest+json",
 }
 
-func (s *Server) serveAsset(w http.ResponseWriter, name string) {
+func (s *Server) serveAsset(w http.ResponseWriter, name, cache string) {
 	b, err := fs.ReadFile(assets, "static/"+name)
 	ct := contentTypes[path.Ext(name)]
 	if err != nil || ct == "" {
@@ -375,13 +380,54 @@ func (s *Server) serveAsset(w http.ResponseWriter, name string) {
 		return
 	}
 	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", cache)
+	_, _ = w.Write(b)
+}
+
+const shortCache = "public, max-age=3600"
+
+// assetHashes maps an embedded static file to the first 10 hex digits of its SHA-256. Templates link
+// assets as /static/<file>?v=<hash>; a request carrying the current hash is cacheable forever
+// (the URL changes when the content does), anything else keeps the one-hour revalidating policy.
+var assetHashes = sync.OnceValue(func() map[string]string {
+	out := map[string]string{}
+	entries, _ := fs.ReadDir(assets, "static")
+	for _, e := range entries {
+		if b, err := fs.ReadFile(assets, "static/"+e.Name()); err == nil {
+			sum := sha256.Sum256(b)
+			out[e.Name()] = hex.EncodeToString(sum[:])[:10]
+		}
+	}
+	return out
+})
+
+func assetURL(name string) string {
+	if h, ok := assetHashes()[name]; ok {
+		return "/static/" + name + "?v=" + h
+	}
+	return "/static/" + name
+}
+
+// serviceWorker serves the push-only worker (static/sw.js) from the site root so its scope is the
+// whole site. It has its own response headers: revalidated on every update check, allowed scope "/",
+// and a CSP that lets the worker do nothing but run (no network).
+func (s *Server) serviceWorker(w http.ResponseWriter, _ *http.Request) {
+	b, err := fs.ReadFile(assets, "static/sw.js")
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/javascript; charset=utf-8")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Service-Worker-Allowed", "/")
+	h.Set("Content-Security-Policy", "default-src 'none'")
 	_, _ = w.Write(b)
 }
 
 func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
-	if name == "" || strings.HasPrefix(name, ".") || !strings.Contains(name, ".") {
+	if name == "" || name == "sw.js" || strings.HasPrefix(name, ".") || !strings.Contains(name, ".") {
 		s.notFound(w, r)
 		return
 	}
@@ -389,9 +435,13 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	s.serveAsset(w, name)
+	cache := shortCache
+	if v := r.URL.Query().Get("v"); v != "" && v == assetHashes()[name] {
+		cache = "public, max-age=31536000, immutable"
+	}
+	s.serveAsset(w, name, cache)
 }
 
 func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
-	s.serveAsset(w, "manifest.webmanifest")
+	s.serveAsset(w, "manifest.webmanifest", shortCache)
 }

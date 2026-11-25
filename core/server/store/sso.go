@@ -194,7 +194,11 @@ func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit fun
 // user is derived from (issuer, subject), so the same person signing in again gets the same name: without
 // this their old tokens would come back to life with the new account.
 func revokeSubjectTokens(ctx context.Context, tx *sql.Tx, subject string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE subject=? AND revoked_at=0`, now.Unix(), subject)
+	if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE subject=? AND revoked_at=0`, now.Unix(), subject); err != nil {
+		return err
+	}
+	// The same applies to Web Push devices (E19a): they belong to the account being deleted.
+	_, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE subject=?`, subject)
 	return err
 }
 

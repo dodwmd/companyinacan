@@ -1,3 +1,5 @@
+{{define "head"}}
+<script src="{{staticURL "push.js"}}" defer></script>{{end}}
 {{define "prefTable"}}<div class="table-wrap" role="region" aria-labelledby="cap-{{.ID}}" tabindex="0">
 <table>
 <caption id="cap-{{.ID}}" class="sr">{{.Caption}}</caption>
@@ -21,13 +23,13 @@
 <p><button type="submit">{{t "nt.mark_all"}}</button></p>
 </form>
 <div class="table-wrap" role="region" aria-labelledby="cap-inbox" tabindex="0">
-<table>
+<table class="rows">
 <caption id="cap-inbox" class="sr">{{t "nt.title"}}</caption>
 <thead><tr><th scope="col">{{t "audit.time"}}</th><th scope="col">{{t "nt.title"}}</th><th scope="col"><span class="sr">{{t "nt.mark"}}</span></th></tr></thead>
 <tbody>
 {{range .Data.Items}}<tr>
 <th scope="row"><time datetime="{{iso .Created}}">{{ts .Created}}</time></th>
-<td>{{if not .Read}}<span class="badge warn">{{t "nt.unread"}}</span> {{end}}{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}{{if .Body}}<br><span class="hint">{{.Body}}</span>{{end}}</td>
+<td data-label="{{t "nt.title"}}">{{if not .Read}}<span class="badge warn">{{t "nt.unread"}}</span> {{end}}{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}{{if .Body}}<br><span class="hint">{{.Body}}</span>{{end}}</td>
 <td>{{if not .Read}}<form method="post" action="/notifications/{{.ID}}/read"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">{{t "nt.mark"}}</button></form>{{end}}</td>
 </tr>
 {{end}}</tbody>
@@ -65,5 +67,38 @@
 {{template "prefTable" .Data.EmailT}}
 <h3 id="h-pi">{{t "nt.channel_inapp"}}</h3>
 {{template "prefTable" .Data.InAppT}}
+<h3 id="h-pw">{{t "nt.channel_push"}}</h3>
+{{template "prefTable" .Data.PushT}}
+</section>
+
+<section aria-labelledby="h-push">
+<h2 id="h-push">{{t "pw.title"}}</h2>
+<p class="hint">{{t "pw.help"}}</p>
+<div id="push" data-csrf="{{.CSRF}}" data-key-url="/api/v1/push/vapid-public-key" data-sub-url="/api/v1/push/subscriptions" data-msg-denied="{{t "pw.denied"}}" data-msg-failed="{{t "pw.failed"}}" data-msg-on="{{t "pw.on"}}">
+<p class="hint">{{t "pw.needs_js"}}</p>
+<p class="actions"><button type="button" id="push-enable" hidden>{{t "pw.enable"}}</button><button type="button" id="push-disable" hidden>{{t "pw.disable"}}</button></p>
+<p id="push-status" role="status" hidden></p>
+</div>
+<h3 id="h-devices">{{t "pw.devices"}}</h3>
+{{if .Data.Devices}}<div class="table-wrap" role="region" aria-labelledby="cap-devices" tabindex="0">
+<table class="rows">
+<caption id="cap-devices" class="sr">{{t "pw.devices"}}</caption>
+<thead><tr><th scope="col">{{t "pw.col_device"}}</th><th scope="col">{{t "pw.col_service"}}</th><th scope="col">{{t "pw.col_added"}}</th><th scope="col">{{t "pw.col_last"}}</th><th scope="col"><span class="sr">{{t "pw.remove"}}</span></th></tr></thead>
+<tbody>
+{{range .Data.Devices}}<tr>
+<th scope="row">{{.Label}}</th>
+<td data-label="{{t "pw.col_service"}}">{{.Service}}</td>
+<td data-label="{{t "pw.col_added"}}"><time datetime="{{iso .Added}}">{{ts .Added}}</time></td>
+<td data-label="{{t "pw.col_last"}}">{{if .HasLast}}<time datetime="{{iso .Last}}">{{ts .Last}}</time>{{else}}{{t "pw.never"}}{{end}}</td>
+<td><form method="post" action="/notifications/push/{{.ID}}/remove"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit"><span class="sr">{{t "pw.remove_named" .Label}}</span><span aria-hidden="true">{{t "pw.remove"}}</span></button></form></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+<form method="post" action="/notifications/push/test" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><button type="submit" aria-describedby="push-test-hint">{{t "pw.test"}}</button> <span id="push-test-hint" class="hint">{{t "pw.test_hint"}}</span></p>
+</form>
+{{else}}<p class="empty">{{t "pw.no_devices"}}</p>{{end}}
 </section>
 {{end}}

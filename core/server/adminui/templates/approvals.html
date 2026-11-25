@@ -1,13 +1,13 @@
 {{define "approvalTable"}}{{if .Rows}}<div class="table-wrap" role="region" aria-labelledby="cap-{{.ID}}" tabindex="0">
-<table>
+<table class="rows">
 <caption id="cap-{{.ID}}" class="sr">{{.Caption}}</caption>
 <thead><tr><th scope="col">{{t "ap.col_request"}}</th><th scope="col">{{t "ap.col_type"}}</th><th scope="col">{{t "ap.col_requester"}}</th><th scope="col">{{t "ap.col_amount"}}</th><th scope="col">{{t "ap.col_status"}}</th><th scope="col">{{t "ap.col_created"}}</th></tr></thead>
 <tbody>
 {{range .Rows}}<tr>
 <th scope="row"><a href="/approvals/{{.ID}}">{{.Title}}</a></th>
-<td>{{.Type}}</td><td>{{.Requester}}</td><td>{{.Amount}}</td>
-<td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
-<td><time datetime="{{iso .Created}}">{{ts .Created}}</time></td>
+<td data-label="{{t "ap.col_type"}}">{{.Type}}</td><td data-label="{{t "ap.col_requester"}}">{{.Requester}}</td><td data-label="{{t "ap.col_amount"}}">{{.Amount}}</td>
+<td data-label="{{t "ap.col_status"}}"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+<td data-label="{{t "ap.col_created"}}"><time datetime="{{iso .Created}}">{{ts .Created}}</time></td>
 </tr>
 {{end}}</tbody>
 </table>

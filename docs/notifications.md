@@ -62,7 +62,14 @@ id, so a redelivered event cannot notify twice.
   ```
 
   `can apply` stores them; they are used by `channel:<name>` recipients.
-- Fakes (`notify.FakeMailer`, `notify.FakeWebhook`) are what the tests use; no test touches a network.
+- Web Push (`webpush`, epic E19a; see [pwa.md](pwa.md)): one message per subscribed device of the
+  recipient, encrypted (RFC 8291) and VAPID-signed (RFC 8292), through the push service the browser named.
+  The payload is a generic title by type, a fixed line and a site path, never the notification's data.
+  Per-type preference (default on), quiet hours hold ordinary notices (urgent bypass), digests do not
+  apply, the same hourly limit, three attempts with `Retry-After`, 404/410 deletes the device. Urgent
+  notices go with `Urgency: high` and a day's TTL, others `normal` and an hour.
+- Fakes (`notify.FakeMailer`, `notify.FakeWebhook`, a fake `PushSender`, an `httptest` push service) are
+  what the tests use; no test touches a network.
 
 ## Delivery log and events
 
@@ -75,5 +82,6 @@ title or body). Notifications are pruned after 180 days.
 
 - No `email.send` provider: the wired mailer fails every send visibly (log shows `failed`, the inbox
   still works). Sends run in the request that caused them with a 10 s timeout.
-- No push (Android) channel; the interface is the same as the other channels.
+- Push is Web Push only (no FCM or UnifiedPush native channel; that is the native app's job, if it is
+  ever built).
 - The delivery log has no UI page, only the API.

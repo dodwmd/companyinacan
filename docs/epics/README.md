@@ -39,7 +39,7 @@ Backlog (broken down into epics when the previous phase is done):
 | E17 | `equity`, `board`, `entity`; investor and other portals; search, reporting, import | 3b |
 | E17a | first slice of E17: in-house `equity` (entities, share classes, plans and pools, stakeholders, option grants with vesting, exercises, share ledger, cap table, valuations, illustrative round modelling) | 3b — built offline, experimental: `specs/018-equity/` |
 | E18 | Registry, more providers, hibernation, multi-company on one server | 3c |
-| E19 | Android companion app (approvals, notifications, timesheets, 1:1s, work items) on the public API; PWA hardening for the web UI | 3a |
+| E19 | Android companion app (approvals, notifications, timesheets, 1:1s, work items) on the public API; PWA hardening for the web UI | 3a — **E19a (PWA hardening and Web Push: installable manifest with maskable icons and shortcuts, phone layouts, hashed static assets, a push-only service worker, a `webpush` notification channel with VAPID/RFC 8291 implemented on the standard library, device management with a test button) is built offline against fakes; nothing verified on a real browser, push service or Android device**: `specs/025-pwa-webpush/`, `docs/pwa.md`. Decision: PWA first; the native Kotlin app (E19b, timesheets, 1:1s, work items) starts only if PWA limits are proven |
 
 ---
 

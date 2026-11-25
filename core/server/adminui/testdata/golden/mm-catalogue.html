@@ -2,14 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b5cad">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#11151a">
 <title>Module catalogue - Company in a Can</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
-<link rel="stylesheet" href="/static/admin.css">
+<link rel="stylesheet" href="/static/admin.css?v=8aebf846ac">
 </head>
 <body>
 <a class="skip" href="#main">Skip to main content</a>
@@ -63,7 +64,7 @@
 <input type="hidden" name="csrf" value="CSRF">
 <input type="hidden" name="version" value="sha:5d61fb89a3020d8f">
 <div class="table-wrap" role="region" aria-labelledby="cap-cat" tabindex="0">
-<table>
+<table class="rows">
 <caption id="cap-cat" class="sr">Modules</caption>
 <thead><tr><th scope="col">Module</th><th scope="col">Licence</th><th scope="col">Declared RAM</th><th scope="col">Requires and provides</th><th scope="col">Enable</th></tr></thead>
 <tbody>
@@ -71,11 +72,11 @@
 <th scope="row"><a href="/catalogue/alt">Alt forms</a>
 <span class="badge ok">Ready</span>
 <span class="hint">alt module</span></th>
-<td></td>
-<td>10 MB <span class="muted">(limit 15 MB)</span></td>
-<td><p class="graph">Provides</p><ul><li><code>leads</code></li>
+<td data-label="Licence"></td>
+<td data-label="Declared RAM">10 MB <span class="muted">(limit 15 MB)</span></td>
+<td data-label="Requires and provides"><p class="graph">Provides</p><ul><li><code>leads</code></li>
 </ul><p class="errtext">Would conflict on leads: web</p></td>
-<td><input type="checkbox" id="en-alt" name="enable" value="alt"> <label class="check" for="en-alt">Enable Alt forms</label>
+<td data-label="Enable"><input type="checkbox" id="en-alt" name="enable" value="alt"> <label class="check" for="en-alt">Enable Alt forms</label>
 
 
 
@@ -85,12 +86,12 @@
 <th scope="row"><a href="/catalogue/crm">CRM</a>
 <span class="badge warn">Experimental</span>
 <span class="hint">crm module</span></th>
-<td>BUSL-1.1 <span class="badge warn">Source-available</span></td>
-<td>300 MB <span class="muted">(limit 450 MB)</span></td>
-<td><p class="graph">Requires</p><ul><li><code>leads</code> <span class="badge ok">provided</span> <span class="muted">web</span></li>
+<td data-label="Licence">BUSL-1.1 <span class="badge warn">Source-available</span></td>
+<td data-label="Declared RAM">300 MB <span class="muted">(limit 450 MB)</span></td>
+<td data-label="Requires and provides"><p class="graph">Requires</p><ul><li><code>leads</code> <span class="badge ok">provided</span> <span class="muted">web</span></li>
 </ul><p class="graph">Provides</p><ul><li><code>contacts</code></li>
 </ul></td>
-<td><input type="checkbox" id="en-crm" name="enable" value="crm"> <label class="check" for="en-crm">Enable CRM</label>
+<td data-label="Enable"><input type="checkbox" id="en-crm" name="enable" value="crm"> <label class="check" for="en-crm">Enable CRM</label>
 <br><input type="checkbox" id="al-crm" name="ack" value="licence:crm"> <label class="check" for="al-crm">I accept the source-available licence of CRM</label>
 <br><input type="checkbox" id="ae-crm" name="ack" value="experimental:crm"> <label class="check" for="ae-crm">I understand CRM is experimental</label>
 
@@ -100,22 +101,22 @@
 <th scope="row"><a href="/catalogue/desk">Help desk</a>
 <span class="badge err">Not deployable</span>
 <span class="hint">desk module</span></th>
-<td></td>
-<td>250 MB <span class="muted">(limit 375 MB)</span></td>
-<td><p class="graph">Requires</p><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
+<td data-label="Licence"></td>
+<td data-label="Declared RAM">250 MB <span class="muted">(limit 375 MB)</span></td>
+<td data-label="Requires and provides"><p class="graph">Requires</p><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
 </ul><p class="graph">Provides</p><ul><li><code>tickets</code></li>
 </ul></td>
-<td><span class="muted">Not deployable yet</span>
+<td data-label="Enable"><span class="muted">Not deployable yet</span>
 </td>
 </tr>
 <tr>
 <th scope="row"><a href="/catalogue/evil">&lt;script&gt;alert(1)&lt;/script&gt;</a>
 <span class="badge ok">Ready</span>
 <span class="hint">evil module</span></th>
-<td></td>
-<td>5 MB <span class="muted">(limit 7 MB)</span></td>
-<td></td>
-<td><input type="checkbox" id="en-evil" name="enable" value="evil"> <label class="check" for="en-evil">Enable &lt;script&gt;alert(1)&lt;/script&gt;</label>
+<td data-label="Licence"></td>
+<td data-label="Declared RAM">5 MB <span class="muted">(limit 7 MB)</span></td>
+<td data-label="Requires and provides"></td>
+<td data-label="Enable"><input type="checkbox" id="en-evil" name="enable" value="evil"> <label class="check" for="en-evil">Enable &lt;script&gt;alert(1)&lt;/script&gt;</label>
 
 
 
@@ -125,12 +126,12 @@
 <th scope="row"><a href="/catalogue/plan">Planner</a>
 <span class="badge warn">Experimental</span>
 <span class="hint">plan module</span></th>
-<td></td>
-<td>10 MB <span class="muted">(limit 15 MB)</span></td>
-<td><p class="graph">Requires</p><ul><li><code>invoices</code> <span class="badge warn">not yet served</span></li>
+<td data-label="Licence"></td>
+<td data-label="Declared RAM">10 MB <span class="muted">(limit 15 MB)</span></td>
+<td data-label="Requires and provides"><p class="graph">Requires</p><ul><li><code>invoices</code> <span class="badge warn">not yet served</span></li>
 </ul><p class="graph">Provides</p><ul><li><code>invoices</code> <span class="badge warn">not yet served</span></li>
 </ul></td>
-<td><input type="checkbox" id="en-plan" name="enable" value="plan"> <label class="check" for="en-plan">Enable Planner</label>
+<td data-label="Enable"><input type="checkbox" id="en-plan" name="enable" value="plan"> <label class="check" for="en-plan">Enable Planner</label>
 
 <br><input type="checkbox" id="ae-plan" name="ack" value="experimental:plan"> <label class="check" for="ae-plan">I understand Planner is experimental</label>
 
@@ -140,10 +141,10 @@
 <th scope="row"><a href="/catalogue/solo">Solo</a>
 <span class="badge ok">Ready</span>
 <span class="hint">solo module</span></th>
-<td></td>
-<td>10 MB <span class="muted">(limit 15 MB)</span></td>
-<td></td>
-<td><input type="checkbox" id="en-solo" name="enable" value="solo"> <label class="check" for="en-solo">Enable Solo</label>
+<td data-label="Licence"></td>
+<td data-label="Declared RAM">10 MB <span class="muted">(limit 15 MB)</span></td>
+<td data-label="Requires and provides"></td>
+<td data-label="Enable"><input type="checkbox" id="en-solo" name="enable" value="solo"> <label class="check" for="en-solo">Enable Solo</label>
 
 
 
@@ -153,12 +154,12 @@
 <th scope="row"><a href="/catalogue/web">Web forms</a>
 <span class="badge ok">Ready</span> <span class="badge ok">Enabled</span>
 <span class="hint">web module</span></th>
-<td></td>
-<td>20 MB <span class="muted">(limit 40 MB)</span></td>
-<td><p class="graph">Requires</p><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
+<td data-label="Licence"></td>
+<td data-label="Declared RAM">20 MB <span class="muted">(limit 40 MB)</span></td>
+<td data-label="Requires and provides"><p class="graph">Requires</p><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
 </ul><p class="graph">Provides</p><ul><li><code>leads</code></li>
 </ul></td>
-<td><input type="checkbox" id="en-web" name="enable" value="web" checked> <label class="check" for="en-web">Enable Web forms</label>
+<td data-label="Enable"><input type="checkbox" id="en-web" name="enable" value="web" checked> <label class="check" for="en-web">Enable Web forms</label>
 
 
 

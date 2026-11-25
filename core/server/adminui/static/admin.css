@@ -218,3 +218,45 @@ pre.diff, pre.pre { background: var(--surface); border: 1px solid var(--border);
 .diff span.skip { display: block; color: var(--muted); }
 .steps { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; padding-left: 1.25rem; }
 p.graph { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.8125rem; }
+
+/* --- E19a: installed-app and phone layout ---------------------------------------------------- */
+
+[hidden] { display: none !important; }
+
+/* Notches and rounded corners of a full-screen installed app (viewport-fit=cover in the layout). */
+header.top { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); padding-top: max(0.5rem, env(safe-area-inset-top)); }
+main { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+/* Touch targets of at least 44 CSS pixels (2.75rem) wherever the primary pointer is a finger. */
+@media (pointer: coarse) {
+  td button, th button { min-height: 2.75rem; padding: 0.5rem 1rem; }
+  td a, th a { display: inline-block; min-height: 2.75rem; line-height: 2.75rem; }
+  input[type="checkbox"], input[type="radio"] { width: 1.75rem; height: 1.75rem; }
+  header nav a { min-height: 2.75rem; }
+}
+
+input[type="email"], input[type="time"] {
+  width: 100%; max-width: 28rem; min-height: 2.75rem; padding: 0.5rem 0.625rem; font: inherit;
+  color: var(--text); background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius);
+}
+
+/* Phones: the inbox, approval, device and catalogue tables become one card per row. Cells carry
+   data-label; the header row stays in the accessibility tree and is hidden visually only. */
+@media (max-width: 40rem) {
+  header.top { gap: 0.25rem 1rem; }
+  header nav ul { gap: 0.125rem; }
+  .table-wrap:has(table.rows) { border: 0; background: none; overflow: visible; }
+  table.rows, table.rows tbody, table.rows tr, table.rows th, table.rows td { display: block; width: 100%; }
+  table.rows thead {
+    position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  table.rows tr {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    margin: 0 0 0.75rem; padding: 0.5rem 0.75rem;
+  }
+  table.rows th, table.rows td { border: 0; padding: 0.25rem 0; }
+  table.rows tbody th { font-weight: 600; }
+  table.rows td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 600; }
+  table.rows td form button { width: 100%; }
+}
