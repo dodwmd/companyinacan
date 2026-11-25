@@ -45,6 +45,11 @@ Strict: any failed hook means no marker. The alternative (marker with a partial 
 exclusion of SQLite files drop a module silently. Cost: one broken module stops all backups; visible in
 `can backup status`. The erasure ledger sync still runs first.
 
+A hook that exits 0 without uploading also fails the run, and each run's uploads are staged and swapped in as a
+whole, so an earlier file never stands in for a missing one. Disabled and failed modules are dumped too (their
+upload is admitted only during their own hook). The raw-copy exclusions are decided by the script at run time from
+`DUMPED`, so a module added or removed after the install cannot be excluded without a dump.
+
 ## R6. restic provisioning
 
 Distribution packages are older than 0.17 (needed for exit code 10). The upstream release binary is downloaded and

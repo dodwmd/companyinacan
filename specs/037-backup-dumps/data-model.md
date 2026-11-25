@@ -7,8 +7,13 @@ Host `/var/lib/can/dumps` is the `can-dumps` volume, which can-core sees as `/va
 |---|---|
 | `can-core/state.db` | `VACUUM INTO` copy of can-core's database, integrity-checked |
 | `company.yaml` | the applied company file |
-| `modules/<id>/<name>` | uploads of the module's backup hook, 0600 |
+| `modules/<id>/<name>` | the uploads of the last successful run, 0600 |
+| `DUMPED` | `<id> <database>` per module dumped in that run |
+| `LAST-RUN` | JSON: run id, time, ok, error |
 | `COMPLETE` | `run_id=` and `finished_at=` lines (specs/008 format), present only after a fully successful run |
+| `.run-<id>/` | staging of the run in progress (`tmp/`, `modules/`); never backed up |
 
-Run states: idle (marker present or not) -> running (marker removed, uploads accepted) -> idle with marker
-(success) or without (any failure). Dumps of a disabled module stay until removed by hand.
+Run states: idle -> running (marker and `DUMPED` removed; one module's hook window open at a time; uploads staged)
+-> published (staged `modules/` swapped in, `DUMPED`, `LAST-RUN`, fsync, marker) or failed (staging discarded,
+previous `modules/` kept without a marker, `LAST-RUN` records why). Modules without a record (purged) are removed
+from the directory at the next run; a purge through can-core removes them at once.

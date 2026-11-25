@@ -80,6 +80,12 @@ func TestBackupHookJobOnK3d(t *testing.T) {
 		t.Fatalf("marker: %q", marker)
 	}
 	onNode(t, "test -s /var/lib/can/dumps/can-core/state.db")
+	if got := onNode(t, "cat /var/lib/can/dumps/DUMPED"); !strings.Contains(got, "stub none") {
+		t.Errorf("DUMPED: %q", got)
+	}
+	if got := onNode(t, "cat /var/lib/can/dumps/LAST-RUN"); !strings.Contains(got, `"ok":true`) {
+		t.Errorf("LAST-RUN: %q", got)
+	}
 	// the Job is cleaned up
 	if out := mustKubectl(t, "-n", "mod-stub", "get", "jobs", "-o", "name"); out != "" {
 		t.Errorf("hook Jobs left behind: %s", out)

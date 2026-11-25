@@ -253,7 +253,9 @@ Do not run this from CI. With a fresh Hetzner account:
 
 - **Backups** work as described in [backup-restore.md](backup-restore.md) and are verified on k3d with a local
   restic repository only. Not verified: a real S3 bucket, a real server (systemd timer, k3s paths) and a restore
-  onto a blank host (`can restore` is not functional yet). `--allow-broken-backup` is a deprecated no-op.
+  onto a blank host (`can restore` is not functional yet). Wrapped modules with a backup hook (wiki, support,
+  newsletter, analytics, crm, status) stop every backup while enabled, because the `can-hooks` image is not
+  published. `--allow-broken-backup` is a deprecated no-op.
 - Uploading images through `k3s ctr images import`, and the host tool installation (pinned restic, `sqlite3`
   from apt), are not yet exercised on a real server (CI uses k3d's importer and runs the install script on the
   CI runner).

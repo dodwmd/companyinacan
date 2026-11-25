@@ -19,13 +19,21 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    bootstrap and `can backup install` set that). A run happens nightly at 02:30 UTC (`CAN_DUMP_AT`), about 10
    minutes after start when no marker younger than 20 h exists, and on request:
    `sudo k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m` (on the server). It:
-   - deletes `COMPLETE`;
-   - writes `can-core/state.db` (`VACUUM INTO`, then `integrity_check`) and a copy of the applied `company.yaml`;
-   - runs each enabled module's `backup` hook as a Job in `mod-<id>` (restricted pod, projected audience-`can`
-     token, the module's data volume), which uploads with `PUT /v1/dumps/<module>/<name>`. A module can only
-     reach its own dumps, and uploads are refused outside a run;
-   - writes `COMPLETE` (run id, finish time) **only if every hook succeeded**. One failing hook therefore stops
-     backups until it is fixed; the can-core log names it and `can backup status` reports the missing marker.
+   - deletes `COMPLETE` and removes what an earlier run left behind;
+   - writes `can-core/state.db` (`VACUUM INTO` over a read-only connection of its own, then `integrity_check`) and
+     a copy of the applied `company.yaml`;
+   - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
+     data is still there), as a Job in `mod-<id>`: restricted pod, projected audience-`can` token, the module's
+     volume at `/data`, `/storage` and `/app/data` (read-only unless SQLite; none for MariaDB/PostgreSQL modules).
+     A module with neither a volume nor a database is skipped. A hook pod that cannot start (image pull, config)
+     is given up after 2 minutes, a hook after 15;
+   - accepts `PUT /v1/dumps/<module>/<name>` only from the module whose hook is running right now (at most 16
+     files and 8 GiB per module and run, 4 GiB per file), into a staging directory. A hook that succeeds without
+     uploading anything counts as failed;
+   - when every hook succeeded: swaps the staged set in, writes `DUMPED` (which modules, and their database kind),
+     flushes everything to disk, then writes `COMPLETE` (run id, finish time). One failing hook therefore stops
+     backups until it is fixed: `can backup status` and the admin status page show the last failure
+     (`LAST-RUN`). Downloads (`GET /v1/dumps/...`) are refused: there is no restore mode yet.
 2. The host timer `can-backup.timer` (default 03:30 plus up to 15 min) starts `can-backup.service`, which runs
    `/usr/local/sbin/can-backup`. The script, in order:
    - syncs the erasure ledger (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
@@ -37,8 +45,9 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      group- or other-writable) and never follows links that can-core controls, but it cannot make a check-then-use race impossible;
    - copies the marker it is about to back up, the k3s SQLite datastore (`sqlite3 .backup`), the node token and the
      secrets-encryption key, and writes `MANIFEST.sha256`, all into `/var/lib/can/host-state` (root-owned, outside the dumps dir);
-   - runs `restic backup` over the dumps, the PVC root (SQLite files of modules covered by a dump are excluded) and the
-     host-state directory, tagged `can`, `run-<id>`, `attempt-<id>`;
+   - runs `restic backup` over the dumps (staging and temporary dot files left out), the PVC root (raw SQLite files
+     are excluded only for the SQLite modules that `DUMPED` says were dumped in this run) and the host-state
+     directory, tagged `can`, `run-<id>`, `attempt-<id>`;
    - re-reads the marker: if can-core started a new dump run meanwhile, the snapshot is tagged `inconsistent` (restore never
      picks it), forget is skipped and the run exits 11;
    - `restic forget --group-by '' --keep-within 35d --prune --tag can`. Grouping is disabled so snapshots from a previous
@@ -186,7 +195,7 @@ measured by a person:
 ## What is and is not in a snapshot
 
 - In: `can-core/state.db`, `company.yaml`, each module hook's dump, the local-path volumes (except can-core's
-  live database and the SQLite files of modules that have a backup hook), a copy of the k3s datastore, node
+  live database and the SQLite files of the modules dumped in that run), a copy of the k3s datastore, node
   token and encryption key, the erasure ledger copy.
 - Modules without a backup hook (forms, work, people, jobs, finance, files and the other in-house modules) are covered
   only by the raw volume copy of live SQLite files, which may be inconsistent. `can backup install` warns.
@@ -204,6 +213,8 @@ a module backup hook Job. The numbers are in
 
 - A real S3-compatible bucket (R2, B2, S3). CI uses a filesystem repository: the script's repository line is the
   one thing changed. The SigV4 ledger client has only met an `httptest` server.
+- Hook file permissions against the real module images (the hook runs as uid 1000; files another user wrote with
+  mode 0600 would be unreadable).
 - A real server: the systemd unit and timer (`ProtectSystem=strict`, `ReadWritePaths`), bootstrap's directory
   ownership, `apt` installing `sqlite3`, and the script reading the live k3s paths. CI runs the script on the
   runner against copies of the k3d node's directories.
@@ -214,8 +225,8 @@ a module backup hook Job. The numbers are in
   image is not built or published, so these modules' dump runs fail (and no marker is written) until it is. The
   hook Job mechanism was run with a test module and a public curl image.
 - `can-hooks` Jobs against a database module (DB credentials come from the `can-database` Secret).
-- Disk use: one upload is capped at 4 GiB, but there is no total quota on the dumps directory, so a compromised
-  module pod could fill the server's disk during a dump run. Hooks retry with `--retry` only, which does not cover
+- Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
+  directory and a run holds the old and the new set at once. Hooks retry with `--retry` only, which does not cover
   a connection refused while a new pod's network rules are still being programmed.
 - The erasure ledger upload (can-core does not write the ledger yet; `can backup ledger-add` does by hand).
 - The restore-time target (15 minutes) and the effect of data size on dump and backup time.

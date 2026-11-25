@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
@@ -692,6 +693,19 @@ func TestStatusReportsUnavailableSourcesHonestly(t *testing.T) {
 	s := m.loginAs("viewer")
 	r := m.do("GET", "/status", nil, s.with()...)
 	if r.StatusCode != 200 || strings.Count(r.body, "not available in this installation") != 2 {
+		t.Fatalf("%d\n%s", r.StatusCode, r.body)
+	}
+}
+
+// E08b QA 6: a failed dump run is shown on the status page.
+func TestStatusShowsAFailedDumpRun(t *testing.T) {
+	m := newMM(t)
+	m.svc.LastDump = func() (backup.DumpRun, error) {
+		return backup.DumpRun{RunID: "r", At: time.Unix(1_700_000_000, 0), Error: "module wiki: ImagePullBackOff"}, nil
+	}
+	s := m.loginAs("viewer")
+	r := m.do("GET", "/status", nil, s.with()...)
+	if r.StatusCode != 200 || !strings.Contains(r.body, "last dump run FAILED at 2023-11-14 22:13 UTC") || !strings.Contains(r.body, "module wiki: ImagePullBackOff") {
 		t.Fatalf("%d\n%s", r.StatusCode, r.body)
 	}
 }
