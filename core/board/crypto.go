@@ -90,7 +90,7 @@ func (k *Keyring) Seal(plain, aad string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	nonce := make([]byte, aead.NonceSize(), aead.NonceSize()+len(plain)+aead.Overhead())
+	nonce := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
