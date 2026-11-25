@@ -174,7 +174,7 @@ measured by a person:
 - In: `can-core/state.db`, `company.yaml`, each module hook's dump, the local-path volumes (except can-core's
   live database and the SQLite files of modules that have a backup hook), a copy of the k3s datastore, node
   token and encryption key, the erasure ledger copy.
-- Modules without a backup hook (forms, work, people, jobs, finance and the other in-house modules) are covered
+- Modules without a backup hook (forms, work, people, jobs, finance, files and the other in-house modules) are covered
   only by the raw volume copy of live SQLite files, which may be inconsistent. `can backup install` warns.
 - Not there: a separate export of Kubernetes Secrets (SPEC 6.5). Module keys exist only inside the k3s datastore
   copy, so recovering them needs a raw datastore restore.
