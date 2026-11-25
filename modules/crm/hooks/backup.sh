@@ -29,6 +29,6 @@ gzip -t "$tmp/dump.sql.gz"
 
 curl --fail --silent --show-error --retry 3 \
 	-X PUT -H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
-	--data-binary @"$tmp/dump.sql.gz" \
+	-T "$tmp/dump.sql.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/database.sql.gz"
 echo "backup: $CAN_MODULE database dumped"

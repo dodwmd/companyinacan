@@ -29,6 +29,6 @@ tar -tzf "$tmp/storage.tar.gz" >/dev/null
 
 curl --fail --silent --show-error --retry 3 \
 	-X PUT -H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
-	--data-binary @"$tmp/storage.tar.gz" \
+	-T "$tmp/storage.tar.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/storage.tar.gz"
 echo "backup: $CAN_MODULE storage archived"

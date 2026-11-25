@@ -15,5 +15,5 @@ tar -C /data -czf "$tmp/probe.tar.gz" probe
 # A new pod's NetworkPolicy rules are programmed a moment after it starts: retry refused connections.
 curl --fail --silent --show-error --retry 10 --retry-delay 2 --retry-all-errors \
 	--connect-timeout 5 --max-time 60 -X PUT -H @"$tmp/auth" \
-	--data-binary @"$tmp/probe.tar.gz" "$CAN_API_URL/v1/dumps/$CAN_MODULE/probe.tar.gz"
+	-T "$tmp/probe.tar.gz" "$CAN_API_URL/v1/dumps/$CAN_MODULE/probe.tar.gz"
 echo "stub dumped"

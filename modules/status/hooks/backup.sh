@@ -27,6 +27,6 @@ gzip -c "$tmp/kuma.db" >"$tmp/dump.sqlite3.gz"
 
 curl --fail --silent --show-error --retry 3 \
 	-X PUT -H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
-	--data-binary @"$tmp/dump.sqlite3.gz" \
+	-T "$tmp/dump.sqlite3.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/kuma.db.gz"
 echo "backup: $CAN_MODULE database dumped"

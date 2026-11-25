@@ -48,6 +48,8 @@ same restricted security context as the module's pods.
    (Postgres) or over a dump with `DROP TABLE IF EXISTS` (MariaDB); SQLite replaces the file by an
    atomic rename after the integrity check and removes stale `-wal` and `-shm`.
 6. Secrets only through environment variables (`MYSQL_PWD`, `PGPASSWORD`), never on a command line.
+7. Uploads stream with `curl -T file`; never `--data-binary @file`, which loads the whole dump into the Job's
+   64 MiB of memory (E08b, enforced by `test/contract/backup_hooks_test.go`).
 
 ## Per module
 
