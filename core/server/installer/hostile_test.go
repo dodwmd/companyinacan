@@ -284,7 +284,7 @@ func TestEnableRefusedWithoutAdmissionPolicies(t *testing.T) {
 }
 
 func TestStarterModuleChartsStillInstall(t *testing.T) {
-	for _, id := range []string{"support", "newsletter", "analytics"} {
+	for _, id := range []string{"support", "newsletter", "analytics", "wiki", "crm", "status"} {
 		t.Run(id, func(t *testing.T) {
 			in, _, _, spec := fixture(t, nil)
 			in.cfg.ModulesDir = "../../../modules"

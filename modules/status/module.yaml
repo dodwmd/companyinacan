@@ -1,0 +1,53 @@
+# Status page and uptime monitoring: Uptime Kuma (Node.js, MIT) wrapped behind the `status` capability.
+schema: 1
+id: status
+name: Status page
+description: Public status page and uptime monitors with alerting. Wraps Uptime Kuma on SQLite (chosen over Gatus, Cachet and Statping, specs/019-wiki-crm-status/research.md). Only the public status pages are routed on status.<domain> by default; the admin dashboard is not exposed. An adapter exposes the status capability.
+category: operations
+# Experimental: nothing here has run on a cluster. The rootless image tag was seen on Docker Hub but
+# not pulled; its digest is a placeholder; the list of public paths and the data file name are from
+# upstream's layout as remembered and unverified; the first admin account is created by hand through a
+# port-forward; the `status` capability is planned (adapter not built).
+status: experimental
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: Uptime Kuma
+  # MIT: GitHub reports the repository licence as MIT (fetched 2026-11-25).
+  licence: MIT
+  licence_class: osi
+  upstream: https://github.com/louislam/uptime-kuma
+  upstream_version: "2.x"
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  subdomain: status
+  ui: { service: status, port: 3001 }
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Estimate from SPEC.md section 6.1 (~100 MB, Node.js on SQLite) plus the adapter; not measured
+  # (research.md R-footprint). App 112 + adapter 16 = 128 MB of requests.
+  ram_mb: 128
+  ram_limit_mb: 320
+  disk_mb: 1024
+# status: planned = the adapter that serves the capability is not built yet (T032); ignored by the registry.
+provides:
+  - { capability: status, schema: status.v1, service: status-adapter, port: 8081, status: planned }
+permissions: [status.read, status.write, status.admin]
+roles:
+  viewer: [status.read]
+  ops: [status.read, status.write]
+  admin: [status.read, status.write, status.admin]
+data_classes:
+  # Heartbeats (up/down, latency) of the company's own endpoints: no personal data. Bounded so the
+  # SQLite file stays small.
+  - { class: monitor-heartbeat, retention: 180d, sensitivity: standard }
+  - { class: incident-history, retention: 3y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+hooks:
+  image: ghcr.io/dodwmd/can-hooks:0.1.0
+  backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
+healthcheck: /

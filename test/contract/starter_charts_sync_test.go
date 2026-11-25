@@ -16,6 +16,9 @@ func TestSharedChartTemplatesIdentical(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, s := range starters[1:] {
+			if s.id == "status" && f == "ingressroute.yaml" {
+				continue // routes only the public status paths (specs/019-wiki-crm-status, TestStatusRoutesPublicPathsOnly)
+			}
 			got, err := os.ReadFile(filepath.Join(root, "modules", s.id, "chart", "templates", f))
 			if err != nil {
 				t.Fatal(err)

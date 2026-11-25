@@ -1,0 +1,58 @@
+# Wiki and help centre: DokuWiki (PHP, flat files, GPL-2.0) wrapped behind the `wiki` capability.
+schema: 1
+id: wiki
+name: Wiki
+description: Internal wiki and optional public help centre. Wraps DokuWiki, which keeps pages as plain files (no database), chosen over BookStack, Wiki.js, Docmost and Outline for footprint (specs/019-wiki-crm-status/research.md). An adapter exposes the wiki capability.
+category: knowledge
+# Experimental: nothing here has run on a cluster. The image tag floats (`stable`) and its digest is a
+# placeholder, the non-root, read-write-root-filesystem and probe assumptions are taken from the upstream
+# README and are unverified, the first admin account is created by hand at /install.php, and the
+# `wiki` capability is planned (adapter not built).
+status: experimental
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: DokuWiki
+  # GPL-2.0: GitHub reports the repository licence as GPL-2.0 (fetched 2026-11-25). Whether upstream
+  # means "only" or "or later" is NOT verified; the stricter -only is recorded. Not network copyleft.
+  licence: GPL-2.0-only
+  licence_class: osi
+  upstream: https://github.com/dokuwiki/dokuwiki
+  upstream_version: "stable"
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  subdomain: wiki
+  ui: { service: wiki, port: 8080 }
+requires:
+  database: none
+  sso: none
+resources:
+  # Estimate: PHP-Apache with a small page set, no database. Against SPEC.md section 6.1's ~200 MB for
+  # BookStack/Wiki.js (which need MariaDB or Postgres on top). NOT measured (research.md R-footprint).
+  # The adapter (8 MB request) is inside this figure.
+  ram_mb: 64
+  ram_limit_mb: 160
+  disk_mb: 2048
+# status: planned = the adapter that serves the capability is not built yet (T030); the registry,
+# provider resolution and event routing ignore planned entries. Keep in step with chart adapter.enabled.
+provides:
+  - { capability: wiki, schema: wiki.v1, service: wiki-adapter, port: 8081, status: planned }
+permissions: [wiki.read, wiki.write, wiki.admin]
+roles:
+  reader: [wiki.read]
+  editor: [wiki.read, wiki.write]
+  admin: [wiki.read, wiki.write, wiki.admin]
+data_classes:
+  # Page text and uploaded media. Written by staff and may mention people, so standard (not a store of
+  # personal records). Never put sensitive HR or finance records in a third-party wiki.
+  - { class: wiki-page, retention: 10y, sensitivity: standard }
+  # Old revisions (DokuWiki "attic"): bounded so a deleted paragraph does not live forever.
+  - { class: wiki-revision, retention: 2y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+hooks:
+  # The upstream image has neither curl nor a guaranteed tar; see deploy/hooks/.
+  image: ghcr.io/dodwmd/can-hooks:0.1.0
+  backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
+healthcheck: /doku.php

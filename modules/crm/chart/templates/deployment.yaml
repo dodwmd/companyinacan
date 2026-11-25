@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # ReadWriteOnce volume shared by the web and daemon containers: one pod only
+  selector:
+    matchLabels:
+      {{- include "mod.selector" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        {{- include "mod.labels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: app
+          image: {{ include "mod.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: {{ .Values.service.port }}}
+          env:
+            {{- include "crm.env" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: false   # the image installs EspoCRM into the web root on first start
+          startupProbe:
+            httpGet: {path: {{ .Values.probes.startup.path }}, port: {{ .Values.probes.startup.port }}}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+          readinessProbe:
+            httpGet: {path: {{ .Values.probes.readiness.path }}, port: {{ .Values.probes.readiness.port }}}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: {{ .Values.probes.liveness.path }}, port: {{ .Values.probes.liveness.port }}}
+            periodSeconds: 30
+            failureThreshold: 4
+          volumeMounts:
+            {{- include "crm.mounts" . | nindent 12 }}
+        {{- if .Values.daemon.enabled }}
+        - name: daemon
+          image: {{ include "mod.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [docker-daemon.sh]
+          env:
+            {{- include "crm.env" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.daemon.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: false
+          # No HTTP port: ready once the web container has written the installed configuration.
+          readinessProbe:
+            exec: {command: [sh, -c, "test -f /var/www/html/data/config-internal.php || test -f /var/www/html/data/config.php"]}
+            periodSeconds: 15
+          livenessProbe:
+            exec: {command: [sh, -c, "test -d /var/www/html/data"]}
+            periodSeconds: 60
+          volumeMounts:
+            {{- include "crm.mounts" . | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ .Chart.Name }}-data}

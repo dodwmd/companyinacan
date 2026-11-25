@@ -1,0 +1,12 @@
+{
+  "deals": [
+    {
+      "id": "dl_9",
+      "name": "Website",
+      "stage": "proposal",
+      "contact_id": "ct_5f3a",
+      "amount_minor": 150000,
+      "currency": "AUD"
+    }
+  ]
+}

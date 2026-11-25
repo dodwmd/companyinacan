@@ -24,7 +24,7 @@ Backlog (broken down into epics when the previous phase is done):
 
 | # | Epic | Phase |
 |---|---|---|
-| E10 | CRM, wiki, status page, simple tasks | 2 |
+| E10 | CRM, wiki, status page, simple tasks | 2 — **E10a (wrapped `wiki` DokuWiki, `crm` EspoCRM, `status` Uptime Kuma; chart, hooks, capability contracts, lead-to-CRM adapter design, `docs/modules-catalogue.md`) is built offline**: wiki and status experimental, crm not deployable; adapters, simple tasks (Vikunja) and all cluster verification pending: `specs/019-wiki-crm-status/` |
 | E11 | SSO, RBAC, approval engine, notifications, webhooks, retention engine | 2 — **E11a (approvals, notifications, module-namespaced RBAC inside can-core) is built**; SSO, retention engine and role-override UI pending: `specs/015-approvals-notifications/` |
 | E12 | Admin dashboard and onboarding wizard; DigitalOcean provider; Cloudflare DNS | 2 — **E12a (server-rendered admin UI: login, dashboard, modules, audit, deliveries, leads, settings, PWA manifest) is built**; onboarding wizard, module enable/disable, DigitalOcean, Cloudflare pending: `specs/010-admin-ui/` |
 | E13 | `files`, `directory`/`people`, `identity.provision`, hire/leave workflows | 3a |

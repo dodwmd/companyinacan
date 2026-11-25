@@ -1,4 +1,4 @@
-{{/* Shared by the starter module charts (support, newsletter, analytics): keep identical. */}}
+{{/* Shared by the starter module charts (support, newsletter, analytics, wiki, crm, status): keep identical. */}}
 {{- define "mod.selector" -}}
 app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}

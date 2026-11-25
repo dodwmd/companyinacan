@@ -1,0 +1,6 @@
+apiVersion: v2
+name: status
+description: Status page and uptime monitoring (Uptime Kuma) for companyinacan
+type: application
+version: 0.1.0
+appVersion: "2.x"

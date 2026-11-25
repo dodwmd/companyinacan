@@ -22,6 +22,9 @@ capabilities:
   - { name: content }
   - { name: newsletter }
   - { name: analytics }
+  - { name: wiki }
+  - { name: crm }
+  - { name: status }
   - { name: auth.oidc }
   - { name: identity.provision }
   - { name: reports, aggregate: true }

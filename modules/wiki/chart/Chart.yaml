@@ -1,0 +1,6 @@
+apiVersion: v2
+name: wiki
+description: Flat-file wiki and help centre (DokuWiki) for companyinacan
+type: application
+version: 0.1.0
+appVersion: "stable"

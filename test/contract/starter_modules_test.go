@@ -44,7 +44,14 @@ var starters = []starter{
 	{"support", "AGPL-3.0-only", "mariadb", "support", "tickets", "tickets.v1", 8080, "ticket.created.v1", 250, 512, "not-deployable"},
 	{"newsletter", "AGPL-3.0-only", "postgres", "newsletter", "newsletter", "newsletter.v1", 9000, "subscriber.added.v1", 50, 128, "experimental"},
 	{"analytics", "EUPL-1.2", "sqlite", "stats", "analytics", "analytics.v1", 8080, "", 20, 96, "experimental"},
+	// Epic E10a: wrapped wiki, CRM and status page (specs/019-wiki-crm-status).
+	{"wiki", "GPL-2.0-only", "none", "wiki", "wiki", "wiki.v1", 8080, "", 64, 160, "experimental"},
+	{"crm", "AGPL-3.0-only", "mariadb", "crm", "crm", "crm.v1", 80, "", 350, 640, "not-deployable"},
+	{"status", "MIT", "sqlite", "status", "status", "status.v1", 3001, "", 128, 320, "experimental"},
 }
+
+// noEmail lists starters that do not consume email.send.
+var noEmail = map[string]bool{"analytics": true, "wiki": true, "status": true}
 
 func readYAML(t *testing.T, rel string) map[string]any {
 	t.Helper()
@@ -188,7 +195,7 @@ func TestStarterManifests(t *testing.T) {
 					t.Errorf("modules/%s/events/%s.json differs from schemas/events/%s.json", s.id, s.event, s.event)
 				}
 			}
-			if s.id != "analytics" {
+			if !noEmail[s.id] {
 				if !containsAny(asList(asMap(m["requires"])["capabilities"]), "email.send") {
 					t.Error("requires.capabilities must contain email.send (relay credentials injection, SPEC 4.3)")
 				}
@@ -289,7 +296,7 @@ func TestAcceptedLicencesHaveStarterLicences(t *testing.T) {
 }
 
 func TestNetworkCopyleftDocumented(t *testing.T) {
-	for _, f := range []string{"modules/README.md", "modules/support/README.md", "modules/newsletter/README.md", "modules/analytics/README.md"} {
+	for _, f := range []string{"modules/README.md", "modules/support/README.md", "modules/newsletter/README.md", "modules/analytics/README.md", "modules/wiki/README.md", "modules/crm/README.md", "modules/status/README.md"} {
 		b, err := os.ReadFile(filepath.Join(root, f))
 		if err != nil {
 			t.Fatal(err)
@@ -570,7 +577,7 @@ func checkRendered(t *testing.T, s starter, docs []obj, host string, adapter boo
 	if adapter && s.id == "support" && !strings.Contains(flat, "PathPrefix(`/inbound`)") {
 		t.Errorf("support must route the inbound-parse webhook to the adapter: %s", flat)
 	}
-	if !adapter && strings.Contains(flat, "PathPrefix") {
+	if !adapter && strings.Contains(flat, "PathPrefix") && s.id != "status" { // status routes only its public paths
 		t.Errorf("no extra public route without the adapter: %s", flat)
 	}
 
@@ -655,7 +662,7 @@ func TestStarterEventFixtures(t *testing.T) {
 // Fixture names are <valid|invalid>-<Definition>-<case>.json and are checked against
 // #/$defs/<Definition> of the capability schema.
 func TestCapabilityFixtures(t *testing.T) {
-	for name, raw := range map[string][]byte{"tickets.v1": capabilities.TicketsV1, "newsletter.v1": capabilities.NewsletterV1, "analytics.v1": capabilities.AnalyticsV1, "work.v1": capabilities.WorkV1, "projects.v1": capabilities.ProjectsV1} {
+	for name, raw := range map[string][]byte{"tickets.v1": capabilities.TicketsV1, "newsletter.v1": capabilities.NewsletterV1, "analytics.v1": capabilities.AnalyticsV1, "wiki.v1": capabilities.WikiV1, "crm.v1": capabilities.CrmV1, "status.v1": capabilities.StatusV1, "work.v1": capabilities.WorkV1, "projects.v1": capabilities.ProjectsV1} {
 		t.Run(name, func(t *testing.T) {
 			compileSchema(t, name+".json", raw, "")
 			var top map[string]any
@@ -732,7 +739,7 @@ func TestNamesKnowStarterCapabilities(t *testing.T) {
 	for _, c := range names.Capabilities {
 		have[c.Name] = true
 	}
-	for _, n := range []string{"tickets", "newsletter", "analytics"} {
+	for _, n := range []string{"tickets", "newsletter", "analytics", "wiki", "crm", "status"} {
 		if !have[n] {
 			t.Errorf("schemas/names.yaml lacks %s", n)
 		}

@@ -1,0 +1,16 @@
+{
+  "pages": [
+    {
+      "id": "start",
+      "title": "Start",
+      "public": true,
+      "modified_at": "2026-11-25T01:02:03Z"
+    },
+    {
+      "id": "handbook:onboarding",
+      "title": "Onboarding",
+      "public": false
+    }
+  ],
+  "next_cursor": "abc"
+}
