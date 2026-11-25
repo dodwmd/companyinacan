@@ -26,7 +26,7 @@ authorisation layer or a second invoice renderer.
 4. **Immutability.** An issued invoice has no edit form, no delete button, and its edit routes answer 409;
    the page offers send, payment, void, credit note, link and print only.
 5. **Idempotent create forms.** A random key per render; a double submit creates one record. Edit forms carry
-   the record version (stale: 412).
+   the record version (missing: 400, stale: 409).
 6. **Public signed links**: created from an issued invoice, shown once in the create response, never stored by
    the UI, never in a redirect, query string or log (the access log now redacts the path); revocable.
 7. **CSV export** goes through the Store's exporters (scoped, formula-injection protected, capped, audited).
