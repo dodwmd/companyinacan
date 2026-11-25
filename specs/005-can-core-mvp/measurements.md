@@ -26,4 +26,4 @@ Notes:
 
 ## Test and CI results
 
-`make test` (lint, unit, contract, licence check) is green locally. CI results are appended below after the PR run.
+`make test` (lint, unit, contract, licence check) is green locally. CI on PR #9 (commit 9da6930): `lint`, `unit`, `contract`, `licences`, `dco` all green.
