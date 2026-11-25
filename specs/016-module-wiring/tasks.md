@@ -8,7 +8,7 @@ written first and the tests after; those tests then failed on first run in four 
 replay-window clock, the 422 status, a test that misread the work event payload, a never-queued event)
 and led to fixes in the tests or code. T15 passed on its first complete run.
 
-- [x] T01 Migration 0003 and store: tokens, publish de-duplication, rotation requests (`store/wiring_test.go`)
+- [x] T01 Migration 0004 and store: tokens, publish de-duplication, rotation requests (`store/wiring_test.go`)
 - [x] T02 `pat` service: issue, introspect, revoke, scope, caps, expiry, hashing at rest, audit without the token (`pat/*_test.go`)
 - [x] T03 Module API: introspection of tokens with audience binding, no leaks, never throttled; `source_id` (`moduleapi/introspect_pat_test.go`, `publish_once_test.go`)
 - [x] T04 Admin API and UI: issue, list, revoke, issuer-holds rule, own-only, CSRF (`adminapi/tokens_test.go`, `adminui/tokens_test.go`); contracts updated

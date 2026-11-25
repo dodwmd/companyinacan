@@ -1,6 +1,6 @@
 # Data model (E03c)
 
-## can-core state (migration `0003_module_wiring.sql`)
+## can-core state (migration `0004_module_wiring.sql`)
 
 | Table | Columns | Notes |
 |---|---|---|
