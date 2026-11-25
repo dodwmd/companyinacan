@@ -94,6 +94,9 @@ solution: system pods reach the API via `10.43.0.1:443` DNAT'd to node:6443 with
 Kubernetes API server") was wrong. How to isolate is an open design decision (SPEC section 11);
 until then RBAC, no token mount and authentication on 6443/10250 are the barrier.
 
+*Update (epic E06b):* decided and built as host nftables rules ([node-isolation.md](../node-isolation.md),
+`specs/038-node-isolation/`). The table above still describes k3s without them.
+
 **Second finding: policy enforcement lags.** In a new default-deny namespace a pod could still
 reach another pod at +0 s and was blocked by +20 s (kube-router programs policies asynchronously;
 the real delay is unknown, at most 20 s was observed). A freshly started module pod may have a short

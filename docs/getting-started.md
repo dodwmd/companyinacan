@@ -78,6 +78,7 @@ Read these caveats first; they are the honest state of this path:
 - SPEC.md section 6.1 sketches `make init`, `make enable <module>`, `make backup` and `make email`; those are
   not Makefile targets today. Edit `company.yaml` (or use the admin UI wizard once can-core is installed on a
   cluster) and run `can apply`.
-- NetworkPolicy does not isolate pods from the node on k3s ([security-model.md](security-model.md)).
+- NetworkPolicy does not isolate pods from the node on k3s. The server bootstrap adds host rules that do
+  ([node-isolation.md](node-isolation.md)), unverified on a real server; `make dev` clusters do not have them.
 
 Provider options and what each needs: [providers.md](providers.md). A guide to every document: [index.md](index.md).

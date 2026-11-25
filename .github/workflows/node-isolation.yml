@@ -1,0 +1,108 @@
+name: node-isolation
+
+# Pod-to-node isolation (specs/038-node-isolation, issues #13 and #16), on throw-away runners
+# only. Every denial in both jobs is first observed reachable. Not a required check.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "core/provider/**"
+      - "deploy/**"
+      - "test/hostfw/**"
+      - "test/integration/**"
+      - ".github/workflows/node-isolation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  netns:
+    name: netns-and-systemd
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install nftables and socat
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nftables socat shellcheck
+      - name: shellcheck
+        run: shellcheck core/provider/hostfw/can-firewall.sh test/hostfw/netns.sh
+      - name: Rules, sync loop, rollback and check in network namespaces
+        run: sudo CAN_HOSTFW_THROWAWAY=1 bash test/hostfw/netns.sh
+      - name: Install with the runner's real systemd, then lose the ruleset and restart the unit
+        # The runner is discarded after the job. It has no cni0, so a dummy one stands in and the
+        # rules match no traffic; what is tested is the units: they are accepted, enabled, and
+        # loading them again restores the table, as at boot. This is not a reboot.
+        run: |
+          set -euxo pipefail
+          sudo ip link add cni0 type dummy
+          sudo ip link set cni0 up
+          cat >/tmp/stub-kubectl <<'STUB'
+          #!/usr/bin/env bash
+          case "$*" in *"-n kube-system"*) echo 'false|10.42.0.10' ;; esac
+          STUB
+          sudo install -m 0755 /tmp/stub-kubectl /usr/local/bin/stub-kubectl
+          sudo install -m 0755 core/provider/hostfw/can-firewall.sh /usr/local/sbin/can-firewall
+          sudo CAN_FW_KUBECTL=stub-kubectl /usr/local/sbin/can-firewall install
+          systemd-analyze verify /etc/systemd/system/can-firewall.service /etc/systemd/system/can-firewall-sync.service
+          systemctl is-enabled can-firewall.service can-firewall-sync.service
+          systemctl is-active can-firewall.service can-firewall-sync.service
+          sudo nft list table inet can_isolation
+          sudo nft delete table inet can_isolation
+          sudo systemctl restart can-firewall.service
+          sudo nft list chain inet can_isolation input | grep -q drop
+          sudo /usr/local/sbin/can-firewall disable
+          if sudo nft list table inet can_isolation; then echo "table still loaded"; exit 1; fi
+          if systemctl is-enabled can-firewall.service; then echo "unit still enabled"; exit 1; fi
+          sudo /usr/local/sbin/can-firewall uninstall
+
+  k3d:
+    name: k3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Build the sidecar image
+        run: docker build -t can-hostfw-test test/hostfw
+      - name: Node isolation against k3s (controls, enforcement, restarts, removal)
+        env:
+          CAN_IT_HOSTFW: "1"
+          CAN_IT_HOSTFW_IMAGE: can-hostfw-test
+        run: go test -tags integration -count=1 -v -timeout 20m -run 'TestNodeIsolationOnK3d' ./test/integration/
+      - name: Leave the rules loaded and run the other cluster tests against the isolated node
+        env:
+          CAN_IT_HOSTFW: "1"
+          CAN_IT_HOSTFW_IMAGE: can-hostfw-test
+          CAN_IT_HOSTFW_KEEP: "1"
+        run: go test -tags integration -count=1 -v -timeout 20m -run 'TestNodeIsolationOnK3d' ./test/integration/
+      - name: Cluster and Phase 0 proofs with isolation on (pod-to-node must now be denied)
+        env:
+          CAN_PHASE0_PROOFS: "1"
+          CAN_HOSTFW_INSTALLED: "1"
+        run: go test -tags integration -count=1 -v -timeout 20m ./test/integration/
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,networkpolicy -A -o wide || true
+          docker exec can-hostfw-sidecar cat /tmp/can-firewall.log || true
+          docker exec can-hostfw-sidecar nft list table inet can_isolation || true
+      - name: Delete the cluster
+        if: always()
+        run: |
+          docker rm -f can-hostfw-sidecar can-hostfw-fakemeta || true
+          go run ./cmd/can dev down

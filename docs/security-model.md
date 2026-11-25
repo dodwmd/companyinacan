@@ -34,7 +34,7 @@ flowchart TB
   T --> M3
   M1 & M2 & M3 -->|"projected ServiceAccount token (TokenReview)"| C
   C --> K
-  M2 -. "pod-to-node reachability is NOT blocked by NetworkPolicy on k3s (#13, #16)" .-> K
+  M2 -. "blocked by host nftables rules, not by NetworkPolicy (docs/node-isolation.md)" .-x K
 ```
 
 1. **Internet to edge.** Only public paths are meant to be routed: the site, the same-origin `/_forms` path,
@@ -42,6 +42,10 @@ flowchart TB
    staff; see "Exposure" below. The compose edge answers an unknown `Host` header with 421.
 2. **Edge to services.** Plain HTTP inside the cluster or compose network. Modules sit in separate namespaces under
    default-deny NetworkPolicy; only can-core's module-API port is open to them.
+   **Pod to node:** NetworkPolicy does not cover it on k3s. Host nftables rules installed by the server bootstrap
+   drop pod traffic to the node and to cloud metadata; only system pods reach the API server
+   ([node-isolation.md](node-isolation.md), [threat model](../specs/038-node-isolation/spec.md)). Tested in
+   network namespaces and k3d, **not on a real server**; `make dev` clusters do not have these rules.
 3. **Module to can-core.** A module proves who it is with its projected ServiceAccount token, checked by
    `TokenReview` with a dedicated audience; can-core then authorises what that module may publish, subscribe to,
    and ask. In compose a fake reviewer accepts anything, so this boundary is **not** tested there.
@@ -99,7 +103,8 @@ the production ingress must send it.
 
 | Risk | Status | Where it is tracked |
 |---|---|---|
-| **Pod-to-node reachability.** Kubernetes NetworkPolicy does not stop a pod reaching the node's API server (6443) and kubelet (10250) on k3s; the pod and service CIDRs must be allowed in for system pods. Reachability is not exploitability (the ports need credentials; the intended barrier is RBAC, no ServiceAccount token mounted into modules and no anonymous API access), but the isolation design is **undecided** (Cilium or Calico host policy, a maintained host ipset, or accept and rely on RBAC) | open; tested on k3d only | [#13](https://github.com/dodwmd/companyinacan/issues/13), [#16](https://github.com/dodwmd/companyinacan/issues/16), [measurements](measurements/phase0-ci.md), [providers.md](providers.md) |
+| **Node isolation is unproven on a real server.** The host rules that keep pods off the node (issues #13, #16) have run in network namespaces, on a CI runner's systemd and in k3d only: not with `ufw` on Ubuntu or Debian, not across a reboot, not against a real cloud metadata service. Servers bootstrapped earlier do not have them until installed by hand | open; check with `can doctor --server` | [node-isolation.md](node-isolation.md), [spec](../specs/038-node-isolation/spec.md) |
+| **What node isolation leaves open.** `kube-system` pods (Traefik is internet-facing) and can-core still reach the API server; module egress to private networks outside the cluster is not filtered; a trusted address stays trusted for a few seconds after its pod goes; if the rules fail to load at boot, k3s starts without them until the sync service loads them | by design | [spec](../specs/038-node-isolation/spec.md) |
 | **Policy lag.** In a new default-deny namespace a pod could reach others for up to 20 s while kube-router programmed the policy | observed on k3d | [measurements](measurements/phase0-ci.md) |
 | **NodePort exposure.** The bootstrap sets `ufw default allow routed`; a NodePort or LoadBalancer Service created later on a bring-your-own host may be internet-reachable despite ufw listing 22, 80, 443 | open on `ssh`; not on `hetzner`'s cloud firewall | [providers.md](providers.md) |
 | **Equity quantities in plaintext.** Grant quantity, strike, schedule and ledger quantities are plain columns in SQLite (pool and dilution maths and the immutability triggers need them); only identity, notes, payment references, valuations and convertibles are sealed. Run on an encrypted volume with encrypted backups | by design, documented | [equity.md](equity.md) |

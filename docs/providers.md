@@ -29,8 +29,9 @@ in `company.yaml`: use a reference, `env:NAME` or `file:/path`.
    - swap file on hosts under 4 GB (and `kubelet fail-swap-on=false`, which k3s then needs);
    - host firewall with `ufw`: default deny incoming; allow 22 (or only `operator_ip`), 80, 443,
      the pod CIDR 10.42.0.0/16, the service CIDR 10.43.0.0/16 and the `cni0` / `flannel.1`
-     interfaces; port 6443 is never opened to the internet (pods can still reach it and the other node
-     ports, see below); enabled last so there is no lockout window;
+     interfaces; port 6443 is never opened to the internet; enabled last so there is no lockout window;
+   - after k3s is up, **node isolation**: an nftables table that keeps pods off the server's own ports and
+     cloud metadata (installs `nftables` if absent; [node-isolation.md](node-isolation.md));
    - k3s at a pinned version, configured through `/etc/rancher/k3s/config.yaml`: metrics-server and
      the cloud controller disabled, secrets encryption on, Traefik, CoreDNS and local-path kept;
    - optional image pre-seeding: tarballs from `image_tarballs` are downloaded in parallel with the
@@ -77,11 +78,12 @@ confirming the rebuild is yours, run `ssh-keygen -R <host>`. For `hetzner`, `can
 `.can/known_hosts`, because cloud IPs are recycled between customers: delete that file after
 rebuilding a server on the same address.
 
-**Pod-to-node reachability.** Because the pod and service CIDRs and the CNI interfaces are allowed
-in, workloads (module pods included) can connect to the node's own ports, the k3s API server on 6443
-and the kubelet on 10250, and Kubernetes NetworkPolicy does not prevent it on k3s (Phase 0, issue
-#13, tested on k3d only). The barrier is RBAC, authentication on those ports and not mounting
-ServiceAccount tokens. The isolation design is an open decision (follow-up issue).
+**Pod-to-node isolation.** `ufw` allows the pod and service CIDRs in, and Kubernetes NetworkPolicy does
+not cover pod-to-node traffic on k3s (issue #13), so the bootstrap adds its own nftables rules: module pods
+cannot reach the node or cloud metadata, system pods reach only the API server and DNS, and traffic from
+outside (your SSH) is never matched. Check with `can doctor --server`. A server bootstrapped before this
+existed needs a manual install. Details, the escape hatch and what is unverified:
+[node-isolation.md](node-isolation.md). `can down` removes these rules.
 
 **NodePort exposure.** The bootstrap runs `ufw default allow routed`, so forwarded traffic to pods
 is not filtered by ufw. A Service of type NodePort or LoadBalancer you create later on a

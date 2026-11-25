@@ -21,6 +21,7 @@ and the code is the truth.
 |---|---|
 | [local-compose.md](local-compose.md) | The Docker Compose stack: URLs, dev credentials, what is not covered, the end-to-end suite |
 | [dev-cluster.md](dev-cluster.md) | `make dev`: the local k3d cluster |
+| [node-isolation.md](node-isolation.md) | Keeping pods away from the server: the host firewall rules, checking them, what is unverified |
 | [make-up.md](make-up.md), [providers.md](providers.md) | `make up` on a server; the ssh, Hetzner and DigitalOcean providers; Cloudflare DNS |
 | [backup-restore.md](backup-restore.md) | Backups, the recovery kit, `can restore` (not functional yet) |
 | [observability.md](observability.md) | Metrics, `/readyz`, request ids, log redaction, alert rules, `can diagnose` support bundles, measured cost |
