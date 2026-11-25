@@ -18,6 +18,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/server/audit"
+	"github.com/dodwmd/companyinacan/core/server/modsecrets"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/validate"
@@ -36,6 +37,10 @@ type Spec struct {
 	HMACSecret string
 	// Domain is the company domain from company.yaml (a module's public host is <subdomain>.<domain>).
 	Domain string
+	// Rotate lists the keys of the module's `can-module` Secret to regenerate in this run (operator
+	// requests, see store.RequestRotation). CAN_WEBHOOK_SECRET is rotated by the reconciler itself
+	// through HMACSecret; the installer only validates the name.
+	Rotate []string
 }
 
 // ModuleInstaller applies and removes module workloads. Implementations must be idempotent.
@@ -225,6 +230,14 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			enables = append(enables, Action{Upgrade, id, fmt.Sprintf("version %s -> %s", rec.Version, man.Version)})
 		case rec.SettingsHash != hash:
 			enables = append(enables, Action{Upgrade, id, "settings changed"})
+		default:
+			pend, err := r.db.PendingRotations(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			if len(pend) > 0 {
+				enables = append(enables, Action{Upgrade, id, "secret rotation requested"})
+			}
 		}
 	}
 	return append(disables, enables...), nil
@@ -319,12 +332,21 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	if perr != nil || secret == "" {
 		secret = newSecret()
 	}
+	rotate, err := r.db.PendingRotations(ctx, a.Module)
+	if err != nil {
+		return err
+	}
+	for _, k := range rotate {
+		if k == modsecrets.WebhookKey {
+			secret = newSecret() // takes effect only if the install succeeds (the recorded one is kept otherwise)
+		}
+	}
 	settings := d.Company.Modules[a.Module].Settings
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
 		State: store.StateEnabled, SettingsHash: settingsHash(man, settings), HMACSecret: secret, Manifest: *man,
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Rotate: rotate})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.
@@ -342,6 +364,9 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	if ierr != nil {
 		r.log(ctx, "module.failed", a, map[string]any{"error": ierr.Error()})
 		return ierr
+	}
+	if err := r.db.ClearRotations(ctx, a.Module, rotate); err != nil {
+		return err
 	}
 	r.log(ctx, "module."+string(a.Kind), a, map[string]any{"version": man.Version})
 	return nil

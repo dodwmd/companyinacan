@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/modclient"
+
 	"github.com/dodwmd/companyinacan/core/forms"
 )
 
@@ -21,12 +23,14 @@ type Secrets struct {
 	WebhookSecret string // HMAC secret for webhook signatures (CAN_JOBS_WEBHOOK_SECRET)
 	FormSecret    string // signs the apply form's timing tokens (CAN_JOBS_FORM_SECRET); random per start when empty
 	CaptchaSecret string // CAN_JOBS_CAPTCHA_SECRET, when apply.captcha_provider is set
+	// CanSecret verifies the webhooks can-core delivers to this module (CAN_WEBHOOK_SECRET).
+	CanSecret string
 }
 
 // SecretsFromEnv loads and sanity-checks the secrets.
 func SecretsFromEnv(getenv func(string) string) (Secrets, error) {
 	s := Secrets{AdminToken: getenv("CAN_JOBS_ADMIN_TOKEN"), HashKey: getenv("CAN_JOBS_HASH_KEY"), WebhookSecret: getenv("CAN_JOBS_WEBHOOK_SECRET"),
-		FormSecret: getenv("CAN_JOBS_FORM_SECRET"), CaptchaSecret: getenv("CAN_JOBS_CAPTCHA_SECRET")}
+		FormSecret: getenv("CAN_JOBS_FORM_SECRET"), CaptchaSecret: getenv("CAN_JOBS_CAPTCHA_SECRET"), CanSecret: getenv("CAN_WEBHOOK_SECRET")}
 	var errs []error
 	if len(s.AdminToken) < 32 || distinctBytes(s.AdminToken) < 10 {
 		errs = append(errs, errors.New("CAN_JOBS_ADMIN_TOKEN is required, at least 32 characters with at least 10 different ones (for example `openssl rand -base64 32`)"))
@@ -45,6 +49,9 @@ func SecretsFromEnv(getenv func(string) string) (Secrets, error) {
 
 // Options override collaborators; tests and later modules use them to inject implementations.
 type Options struct {
+	// Can is the can-core client of an installed module (CAN_API_URL): personal access tokens are
+	// introspected through it and events are published through it instead of a webhook URL.
+	Can         *modclient.Client
 	Auth        Authenticator // replaces the built-in token authenticators (introspection seam)
 	Logger      *slog.Logger
 	Now         func() time.Time
@@ -98,8 +105,12 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 			return nil, err
 		}
 	}
+	approver := opt.Approver
+	if approver == nil && opt.Can != nil {
+		approver = CoreApprover{Client: opt.Can} // requisitions are approved by can-core's engine
+	}
 	store, err := OpenStore(cfg.DBPath, StoreOptions{Keyring: kr, HashKey: []byte(sec.HashKey), Config: cfg, Now: now, Syndicate: opt.Syndicators,
-		Approver: opt.Approver, Resumes: res, Scanner: opt.Scanner, EventsOn: cfg.Webhook.URL != ""})
+		Approver: approver, Resumes: res, Scanner: opt.Scanner, EventsOn: cfg.Webhook.URL != "" || opt.Can != nil})
 	if err != nil {
 		return nil, err
 	}
@@ -108,10 +119,13 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		st := &StaticTokens{}
 		st.Add(sec.AdminToken, Principal{Subject: bootstrapSubject, Kind: "static", Role: RoleAdmin})
 		auth = Chain{st, TokenAuth{Store: store}}
+		if opt.Can != nil {
+			auth = append(auth.(Chain), &CanAuth{In: &modclient.Introspector{API: opt.Can}})
+		}
 	}
 	app := &App{cfg: cfg, store: store, log: log, now: now}
 	if store.events {
-		app.dispatcher = &Dispatcher{store: store, URL: cfg.Webhook.URL, Secret: []byte(sec.WebhookSecret), Client: opt.Client, Log: log, Now: now}
+		app.dispatcher = &Dispatcher{store: store, URL: cfg.Webhook.URL, Secret: []byte(sec.WebhookSecret), Client: opt.Client, Log: log, Now: now, Can: opt.Can}
 	}
 	timeout := time.Duration(cfg.DBTimeoutSeconds) * time.Second
 	a := &api{
@@ -145,6 +159,10 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	})
 	a.routes(mux)
 	pub.routes(mux)
+	if opt.Can != nil {
+		// can-core's signed webhooks (approval decisions). Authenticated by the HMAC signature, not by a token.
+		mux.Handle("POST /v1/can/events", &modclient.Receiver{Secret: sec.CanSecret, Handle: store.CanEventHandler(), Now: now})
+	}
 	app.handler = withMiddleware(log, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/") {
 			setSecurityHeaders(w)

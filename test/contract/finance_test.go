@@ -127,18 +127,18 @@ func TestFinanceChartAndImage(t *testing.T) {
 	if asMap(v["config"])["trust_proxy"] != false {
 		t.Error("trust_proxy must default to false")
 	}
-	if n := len(asList(asMap(v["env"])["secretKeys"])); n != 4 {
-		t.Errorf("secret keys %d", n)
+	if _, ok := v["env"]; ok {
+		t.Error("secrets are not chart values: can-core injects the can-module Secret")
 	}
 	sc := asMap(v["securityContext"])
 	if sc["runAsNonRoot"] != true || sc["readOnlyRootFilesystem"] != true || sc["allowPrivilegeEscalation"] != false {
 		t.Errorf("securityContext %v", sc)
 	}
-	if asStr(asMap(v["image"])["digest"]) != "" {
-		t.Error("image digest must be filled in at release time, not committed as a guess")
+	if !chartDigestOK(asStr(asMap(v["image"])["digest"])) {
+		t.Error("image digest must be a sha256 or the REPLACE_WITH_ placeholder (`make release-check` rejects it), never a guess")
 	}
-	if asMap(v["publicLink"])["pathPrefix"] != "/public/invoices/" {
-		t.Error("only the signed invoice link may be public")
+	if got := asList(asMap(v["ingress"])["pathPrefixes"]); len(got) != 1 || got[0] != "/public/invoices/" || len(asList(asMap(v["ingress"])["paths"])) != 0 {
+		t.Errorf("only the signed invoice link may be public, got %v", got)
 	}
 	df, err := os.ReadFile(filepath.Join(root, "deploy", "finance", "Dockerfile"))
 	if err != nil {

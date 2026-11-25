@@ -59,6 +59,9 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `GET /setup` | yes (`platform.setup`) | 303 to `/setup/company` |
 | `GET /setup/{step}` | yes (`platform.setup`) | Wizard step: `company`, `template`, `modules`, `email`, `dns`, `account`, `review`. 404 otherwise |
 | `POST /setup/{step}` | yes (`platform.setup`) | Steps `company` (`name`, `domain`, `server_ram_mb`), `template` (`template`), `modules` (`enable`, `ack`), `email` (`host`, `port`, `username`, `password`, `from`: the password goes to a Secret and is never echoed), `account` (`kit`), plus `apply` (applies the saved answers; idempotent) and `dismiss`. 303 back to the step; 400 re-renders it |
+| `GET /tokens` | yes | Your personal access tokens (all with `rbac.manage`) and the issue form; 503 without the service |
+| `POST /tokens` | yes | Fields `module`, `name`, `permissions` (repeated), `ttl_hours`; shows the token once; 403 for a permission you do not hold |
+| `POST /tokens/{id}/revoke` | yes | Revoke; 404 for someone else's token unless `rbac.manage` |
 | `GET /static/{file}` | no | Embedded stylesheet and icons (immutable cache) |
 | `GET /manifest.webmanifest` | no | Web app manifest |
 

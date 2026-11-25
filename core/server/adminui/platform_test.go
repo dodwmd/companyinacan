@@ -40,7 +40,7 @@ func newPUI(t *testing.T) *pui {
 	p.rb = rbac.New(h.db, h.audit, rbac.Options{Now: clock})
 	p.ntf = notify.New(h.db, notify.Options{Now: clock, Mailer: &notify.FakeMailer{}, Roles: p.rb})
 	p.eng = approvals.New(h.db, h.audit, approvals.Deps{Roles: p.rb, Perms: p.rb, Notifier: p.ntf, Now: clock})
-	m := store.Module{ID: "expenses", Version: "1", Namespace: "mod-expenses", ServiceAccount: "expenses", State: store.StateEnabled, HMACSecret: "s", Manifest: config.Module{ID: "expenses"}}
+	m := store.Module{ID: "expenses", Version: "1", Namespace: "mod-expenses", ServiceAccount: "expenses", State: store.StateEnabled, HMACSecret: "s", Manifest: config.Module{ID: "expenses", Permissions: []string{"expenses.approve", "expenses.pay"}}}
 	if err := h.db.UpsertModule(ctx, m, nil, nil); err != nil {
 		t.Fatal(err)
 	}

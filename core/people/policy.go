@@ -80,6 +80,34 @@ type Actor struct {
 	PersonID  string
 	HasPerson bool
 	Status    Status
+	// Restricted marks a caller whose token carries explicit permissions (a personal access token
+	// from can-core): the role says what kind of caller it is, Perms says what it may do. Static
+	// service tokens are not restricted.
+	Restricted bool
+	Perms      []string
+}
+
+// permits reports whether a restricted actor holds the permission; an unrestricted one always does.
+func (a Actor) permits(perm string) bool {
+	if !a.Restricted {
+		return true
+	}
+	for _, p := range a.Perms {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
+// actionPerm is the permission a restricted caller needs for an action, whatever its role.
+var actionPerm = map[Action]string{
+	ActDirCreate: "people.write", ActDirUpdate: "people.write", ActDirOrg: "people.write", ActDirStatus: "people.write",
+	ActTemplateManage: "people.write",
+	ActLegalHold:      "people.admin", ActErasure: "people.admin", ActRetention: "people.admin",
+	ActOneOnOneRead: "performance.read", ActGoalRead: "performance.read",
+	ActOneOnOneCreate: "performance.write", ActOneOnOneWrite: "performance.write", ActOneOnOnePrivate: "performance.write",
+	ActGoalCreate: "performance.write", ActGoalWrite: "performance.write",
 }
 
 func (a Actor) has(role string) bool {
@@ -139,6 +167,9 @@ func visibleStatus(s Status) bool { return s == StActive || s == StLeave || s ==
 // Decide answers whether the actor may perform the action given the facts.
 func Decide(a Actor, act Action, f Fact) bool {
 	if a.blocked() {
+		return false
+	}
+	if need, ok := actionPerm[act]; ok && !a.permits(need) {
 		return false
 	}
 	switch act {
@@ -234,6 +265,13 @@ func IsSensitiveField(name string) bool {
 // Write: hr and admin; the person themself only for contact data (address, phone).
 func FieldAccess(a Actor, write bool, field string, f Fact) bool {
 	if a.blocked() || !IsSensitiveField(field) {
+		return false
+	}
+	need := "people.sensitive-read"
+	if write {
+		need = "people.sensitive-write"
+	}
+	if !a.permits(need) {
 		return false
 	}
 	if a.hrAdmin() {

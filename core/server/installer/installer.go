@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/dbprov"
 	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/modsecrets"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/deploy"
 )
@@ -66,6 +68,9 @@ type Config struct {
 	RequireAdmission bool
 	DB               dbprov.Provisioner
 	Log              *slog.Logger
+	// SecretsFor lists the secrets can-core generates into a module's `can-module` Secret
+	// (default modsecrets.For). Values are generated once and kept; see ensureSecrets.
+	SecretsFor func(module string) []modsecrets.Spec
 
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
@@ -90,6 +95,9 @@ func New(cfg Config) *Installer {
 	}
 	if cfg.RBACWait == 0 {
 		cfg.RBACWait = 30 * time.Second
+	}
+	if cfg.SecretsFor == nil {
+		cfg.SecretsFor = modsecrets.For
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -119,6 +127,9 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if s.Manifest == nil {
 		return errors.New("no manifest")
 	}
+	if err := in.checkRotations(s); err != nil {
+		return err
+	}
 	// 1. Render and validate before touching the cluster.
 	objs, err := in.renderBounded(ctx, s)
 	if err != nil {
@@ -132,9 +143,11 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 		return err
 	}
 	// 3. Database and Secrets.
-	if err := in.ensureSecrets(ctx, s); err != nil {
+	version, err := in.ensureSecrets(ctx, s)
+	if err != nil {
 		return err
 	}
+	stampSecretVersion(objs, version)
 	// 4. The module's workloads, atomically.
 	return in.rollout(ctx, s, objs)
 }
@@ -328,49 +341,163 @@ func secret(ns, name, module string, data map[string]string) kube.Object {
 	return o
 }
 
-// existingSecretKey reads one key of a Secret as the API returns it (base64 under data).
-func (in *Installer) existingSecretKey(ctx context.Context, ns, name, key string) string {
+// secretKey reads one key of a Secret as the API returns it (base64 under data). A Secret or a key
+// that does not exist is ("", nil); any other failure (5xx, timeout, forbidden, a value that is not
+// base64) is an error, so that a failed read is never mistaken for "not there yet": generating a
+// new value over an existing one would make sealed data undecryptable.
+func (in *Installer) secretKey(ctx context.Context, ns, name, key string) (string, error) {
 	o, err := in.cfg.API.Get(ctx, "Secret", ns, name)
+	if kube.IsNotFound(err) {
+		return "", nil
+	}
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("reading Secret %s/%s: %w", ns, name, err)
 	}
 	d, _ := o["data"].(map[string]any)
 	enc, _ := d[key].(string)
+	if enc == "" {
+		return "", nil
+	}
 	b, err := base64.StdEncoding.DecodeString(enc)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("secret %s/%s key %s is not valid base64", ns, name, key)
 	}
-	return string(b)
+	return string(b), nil
 }
 
-func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) error {
+// secretVersionAnnotation on a pod template changes whenever the module's Secrets change, which
+// rolls the pods: environment variables are read once at start, so without it a rotated secret
+// would sit unused in the Secret until the pod happened to restart.
+const secretVersionAnnotation = "can.dev/secret-version"
+
+// secretVersion is a short digest of the Secret data (never the data itself).
+func secretVersion(maps ...map[string]string) string {
+	h := sha256.New()
+	for _, m := range maps {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(h, "%d:%s=%d:%s;", len(k), k, len(m[k]), m[k])
+		}
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// stampSecretVersion records the Secret version on the pod templates of Deployments and
+// StatefulSets. Jobs and CronJobs are left alone: a Job's template cannot be changed in place.
+func stampSecretVersion(objs []kube.Object, version string) {
+	for _, o := range objs {
+		if k := o["kind"]; k != "Deployment" && k != "StatefulSet" {
+			continue
+		}
+		spec := asMap(o["spec"])
+		tpl := asMap(spec["template"])
+		if tpl == nil {
+			continue
+		}
+		md := asMap(tpl["metadata"])
+		if md == nil {
+			md = map[string]any{}
+			tpl["metadata"] = md
+		}
+		ann := asMap(md["annotations"])
+		if ann == nil {
+			ann = map[string]any{}
+			md["annotations"] = ann
+		}
+		ann[secretVersionAnnotation] = version
+	}
+}
+
+func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (string, error) {
 	mod := map[string]string{
 		"CAN_API_URL": in.cfg.PlatformURL, "CAN_MODULE_ID": s.ID, "CAN_WEBHOOK_SECRET": s.HMACSecret,
 		"CAN_TOKEN_FILE": TokenDir + "/token", "CAN_TOKEN_AUDIENCE": "can",
 	}
+	if err := in.generatedSecrets(ctx, s, mod); err != nil {
+		return "", err
+	}
+	var db map[string]string
 	kind := s.Manifest.Requires.Database
 	if kind == "postgres" || kind == "mariadb" {
 		prov := in.cfg.DB
 		if prov == nil {
 			prov = dbprov.Unconfigured{}
 		}
-		pw := in.existingSecretKey(ctx, s.Namespace, secretDB, "DB_PASSWORD")
+		pw, err := in.secretKey(ctx, s.Namespace, secretDB, "DB_PASSWORD")
+		if err != nil {
+			return "", err
+		}
 		if pw == "" {
 			pw = randomPassword()
 		}
 		c, err := prov.Ensure(ctx, kind, s.ID, pw)
 		if err != nil {
-			return fmt.Errorf("creating %s database: %w", kind, err)
+			return "", fmt.Errorf("creating %s database: %w", kind, err)
 		}
-		db := map[string]string{
+		db = map[string]string{
 			"DB_KIND": c.Kind, "DB_HOST": c.Host, "DB_PORT": fmt.Sprint(c.Port), "DB_NAME": c.Database,
 			"DB_USER": c.User, "DB_PASSWORD": c.Password, "DATABASE_URL": c.URL(),
 		}
 		if err := in.cfg.API.Apply(ctx, secret(s.Namespace, secretDB, s.ID, db)); err != nil {
-			return fmt.Errorf("writing database Secret: %w", err)
+			return "", fmt.Errorf("writing database Secret: %w", err)
 		}
 	}
-	return in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod))
+	if err := in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod)); err != nil {
+		return "", err
+	}
+	return secretVersion(mod, db), nil
+}
+
+// checkRotations refuses a rotation request that names a key the module has no rotatable secret
+// for, before anything in the cluster is touched.
+func (in *Installer) checkRotations(s reconcile.Spec) error {
+	for _, k := range s.Rotate {
+		if k == modsecrets.WebhookKey {
+			continue
+		}
+		ok := false
+		for _, sp := range in.cfg.SecretsFor(s.ID) {
+			ok = ok || (sp.Key == k && !sp.NoRotate)
+		}
+		if !ok {
+			return fmt.Errorf("secret %q of module %s cannot be rotated (unknown, or rotating it would damage data)", k, s.ID)
+		}
+	}
+	return nil
+}
+
+// generatedSecrets adds the module's generated secrets to the can-module Secret data. A value that
+// already exists is kept, so enabling twice, upgrading or disabling and re-enabling never changes
+// a credential; only a requested rotation does. Values are never logged.
+func (in *Installer) generatedSecrets(ctx context.Context, s reconcile.Spec, data map[string]string) error {
+	rotate := map[string]bool{}
+	for _, k := range s.Rotate {
+		rotate[k] = true
+	}
+	for _, sp := range in.cfg.SecretsFor(s.ID) {
+		cur, err := in.secretKey(ctx, s.Namespace, secretModule, sp.Key)
+		if err != nil {
+			return err
+		}
+		switch {
+		case cur != "" && rotate[sp.Key] && sp.Kind == modsecrets.Keyring:
+			next, err := modsecrets.RotateKeyring(cur)
+			if err != nil {
+				return fmt.Errorf("rotating %s of module %s: %w", sp.Key, s.ID, err)
+			}
+			data[sp.Key] = next
+		case cur != "" && !rotate[sp.Key]:
+			data[sp.Key] = cur
+		default:
+			data[sp.Key] = modsecrets.Generate(sp.Kind)
+		}
+	}
+	return nil
 }
 
 // ---- rendering ---------------------------------------------------------------------------------
@@ -635,7 +762,10 @@ func (in *Installer) saveReleaseObjects(ctx context.Context, s reconcile.Spec, o
 }
 
 func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.Object, error) {
-	enc := in.existingSecretKey(ctx, s.Namespace, secretRelease, "objects")
+	enc, err := in.secretKey(ctx, s.Namespace, secretRelease, "objects")
+	if err != nil {
+		return nil, err
+	}
 	if enc == "" {
 		return nil, nil
 	}
@@ -655,7 +785,11 @@ func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.
 	if err != nil {
 		return nil, err
 	}
-	if have := in.existingSecretKey(ctx, s.Namespace, secretRelease, "hmac"); !hmac.Equal([]byte(have), []byte(want)) {
+	have, herr := in.secretKey(ctx, s.Namespace, secretRelease, "hmac")
+	if herr != nil {
+		return nil, herr
+	}
+	if !hmac.Equal([]byte(have), []byte(want)) {
 		return nil, errors.New("HMAC does not match (the record was not written by this can-core for this module)")
 	}
 	var objs []kube.Object

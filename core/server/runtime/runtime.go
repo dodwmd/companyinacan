@@ -30,6 +30,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/moduleapi"
 	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
@@ -220,19 +221,25 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	lines := &approvals.DirectoryReportingLine{Resolver: reg, Token: adminui.FileToken(cfg.DirectoryTokenFile)}
 	eng := approvals.New(db, al, approvals.Deps{Roles: rb, Perms: rb, Lines: lines, Notifier: ntf, Bus: bus, Log: log})
 
+	pats := pat.New(db, al)
+	if d, err := strconv.Atoi(os.Getenv("CAN_PAT_MAX_TTL_DAYS")); err == nil && d >= 1 && d <= 365 {
+		pats.MaxTTL = time.Duration(d) * 24 * time.Hour // default 90 days
+	}
+	pats.Holds = func(ctx context.Context, subject, perm string) (bool, error) { return rb.Check(ctx, subject, perm, "") }
+
 	adminSrv := &adminapi.Server{
-		RBAC: rb, Approvals: eng, Notify: ntf,
+		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats,
 		Auth: auth.NewService(db, al, auth.Options{Log: log, Policy: loginPolicy(cfg)}), DB: db, Audit: al, Registry: reg,
 		Log: log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
 	uiSrv := &adminui.Server{
-		RBAC: rb, Approvals: eng, Notify: ntf,
+		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats,
 		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
 		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: adminui.FileToken(cfg.LeadsTokenFile)},
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
 		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
-	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf}
+	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats}
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
 	if err != nil {
@@ -376,6 +383,12 @@ func housekeeping(ctx context.Context, db *store.DB, log *slog.Logger) {
 			}
 			if _, err := db.PruneEvents(ctx, time.Now().Add(-30*24*time.Hour)); err != nil {
 				log.Error("outbox pruning failed", "error", err)
+			}
+			if _, err := db.PruneEventDedupe(ctx, time.Now().Add(-7*24*time.Hour)); err != nil {
+				log.Error("publish de-duplication pruning failed", "error", err)
+			}
+			if _, err := db.PruneAPITokens(ctx, time.Now().Add(-30*24*time.Hour)); err != nil {
+				log.Error("token pruning failed", "error", err)
 			}
 		}
 	}

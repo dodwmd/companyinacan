@@ -60,6 +60,7 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("GET /v1/invoices/{id}", a.guard(read, biz, a.getInvoice))
 	mux.HandleFunc("PATCH /v1/invoices/{id}", a.guard(write, biz, a.patchInvoice))
 	mux.HandleFunc("DELETE /v1/invoices/{id}", a.guard(write, biz, a.deleteInvoice))
+	mux.HandleFunc("POST /v1/invoices/{id}/request-approval", a.guard(write, biz, a.requestInvoiceApproval))
 	mux.HandleFunc("POST /v1/invoices/{id}/approve", a.guard(approve, biz, a.approveInvoice))
 	mux.HandleFunc("POST /v1/invoices/{id}/send", a.guard(write, biz, a.sendInvoice))
 	mux.HandleFunc("POST /v1/invoices/{id}/void", a.guard(approve, biz, a.voidInvoice))

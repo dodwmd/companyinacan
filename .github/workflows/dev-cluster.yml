@@ -4,6 +4,9 @@ name: dev-cluster
 # the E02 platform tests, and (epic E03 part 2) can-core built from this checkout, deployed into the
 # cluster, driving a stub module through enable -> upgrade -> disable -> re-enable with a real
 # projected ServiceAccount token, plus the admission policy and database provisioner tests.
+# Epic E03c adds the in-house `work` module: its image is built here, imported into the cluster and
+# installed through can-core; a personal access token issued by the admin API creates an issue; the
+# module is then disabled with its volume kept. forms, people, jobs and finance are NOT run here.
 # Kept out of ci.yml so it cannot affect the required job names.
 on:
   workflow_dispatch:
@@ -52,6 +55,21 @@ jobs:
           docker build -f test/integration/testdata/Dockerfile.can-core-test \
             --build-arg BASE=can-core:base -t can-core:dev test/integration/testdata
           k3d image import can-core:dev -c companyinacan-dev
+      - name: Build the can-work image and import it into the cluster
+        # deploy/work/Dockerfile pins its base images by digest (placeholders until a release). Resolve
+        # the digests of the current tags for this throwaway cluster; the image is tagged as the chart
+        # expects (values.yaml image.repository:tag, no digest while the placeholder remains).
+        run: |
+          docker pull -q golang:1.27 >/dev/null
+          docker pull -q gcr.io/distroless/static-debian12:nonroot >/dev/null
+          GO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' golang:1.27 | cut -d@ -f2)
+          DL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot | cut -d@ -f2)
+          docker build -f deploy/work/Dockerfile \
+            --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
+            --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
+            --build-arg VERSION=ci \
+            -t ghcr.io/dodwmd/can-work:0.1.0 .
+          k3d image import ghcr.io/dodwmd/can-work:0.1.0 -c companyinacan-dev
       - name: Deploy can-core
         run: |
           kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
@@ -59,6 +77,7 @@ jobs:
       - name: Integration tests
         env:
           CAN_IT_CANCORE: "1"
+          CAN_IT_WORK: "1"
         run: go test -tags integration -count=1 -v -timeout 25m ./test/integration/...
       - name: Measure can-core memory in the cluster
         if: always()
@@ -76,6 +95,16 @@ jobs:
           kubectl --context k3d-companyinacan-dev get ns,validatingadmissionpolicy,validatingadmissionpolicybinding || true
           kubectl --context k3d-companyinacan-dev -n mod-stub get all,netpol,quota -o wide || true
           kubectl --context k3d-companyinacan-dev -n mod-stub logs deploy/stub --tail=40 || true
+          kubectl --context k3d-companyinacan-dev -n mod-work get all,pvc,cm,networkpolicy -o wide || true
+          kubectl --context k3d-companyinacan-dev -n mod-work logs deploy/work --tail=60 || true
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### dev-cluster (advisory)"
+            echo "This job exercises, on a k3d cluster: platform tests, the can-core stub lifecycle, and (E03c) the in-house work module installed through can-core, used with a personal access token and disabled with its volume kept. It is advisory: the step results above, not this text, say what passed."
+            echo "Not run here: forms, people, jobs and finance modules, event delivery between modules, approvals. See the step results above for what actually passed."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Delete the cluster
         if: always()
         run: go run ./cmd/can dev down

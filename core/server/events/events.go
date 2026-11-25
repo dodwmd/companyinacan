@@ -145,25 +145,43 @@ const allEvents = "*"
 // onlyModule delivers to every subscriber. Approval decisions use it so a module only ever
 // receives the decisions of its own requests. In-process handlers still see the event.
 func (b *Bus) PublishTo(ctx context.Context, source, eventType string, data json.RawMessage, onlyModule string) (Envelope, error) {
+	env, _, err := b.publish(ctx, source, eventType, data, onlyModule, "")
+	return env, err
+}
+
+// SourceIDRe is the shape of a publisher's own event id (PublishOnce).
+var SourceIDRe = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)
+
+// PublishOnce is Publish for a publisher that retries: sourceID is the publisher's own id of the
+// event. Publishing the same (source, sourceID) again stores and delivers nothing new and returns
+// the first envelope's id (dup is true; only ID, Type and Source are filled in then).
+func (b *Bus) PublishOnce(ctx context.Context, source, eventType string, data json.RawMessage, sourceID string) (Envelope, bool, error) {
+	if sourceID != "" && !SourceIDRe.MatchString(sourceID) {
+		return Envelope{}, false, errors.New("invalid source id")
+	}
+	return b.publish(ctx, source, eventType, data, "", sourceID)
+}
+
+func (b *Bus) publish(ctx context.Context, source, eventType string, data json.RawMessage, onlyModule, sourceID string) (Envelope, bool, error) {
 	if source == "" {
-		return Envelope{}, errors.New("event source is required")
+		return Envelope{}, false, errors.New("event source is required")
 	}
 	if !ValidType(eventType) {
-		return Envelope{}, fmt.Errorf("invalid event type %q: want <noun>.<verb>.v<N>", eventType)
+		return Envelope{}, false, fmt.Errorf("invalid event type %q: want <noun>.<verb>.v<N>", eventType)
 	}
 	if len(data) == 0 {
 		data = json.RawMessage(`{}`)
 	}
 	if len(data) > MaxDataBytes {
-		return Envelope{}, fmt.Errorf("event data exceeds %d bytes", MaxDataBytes)
+		return Envelope{}, false, fmt.Errorf("event data exceeds %d bytes", MaxDataBytes)
 	}
 	t := bytes.TrimSpace(data)
 	if !json.Valid(t) || len(t) == 0 || t[0] != '{' {
-		return Envelope{}, errors.New("event data must be a JSON object")
+		return Envelope{}, false, errors.New("event data must be a JSON object")
 	}
 	subs, err := b.db.Subscribers(ctx, eventType)
 	if err != nil {
-		return Envelope{}, err
+		return Envelope{}, false, err
 	}
 	env := Envelope{ID: b.newID(), Type: eventType, Time: b.db.Now().Truncate(time.Second), Source: source, Data: json.RawMessage(t)}
 	targets := make([]store.DeliveryTarget, 0, len(subs))
@@ -178,8 +196,12 @@ func (b *Bus) PublishTo(ctx context.Context, source, eventType string, data json
 		}
 		targets = append(targets, store.DeliveryTarget{ModuleID: s.ModuleID, URL: u + s.Webhook})
 	}
-	if err := b.db.InsertEvent(ctx, store.Event{ID: env.ID, Type: env.Type, Time: env.Time, Source: source, DataJSON: string(env.Data)}, targets); err != nil {
-		return Envelope{}, err
+	id, dup, err := b.db.InsertEventOnce(ctx, store.Event{ID: env.ID, Type: env.Type, Time: env.Time, Source: source, DataJSON: string(env.Data)}, sourceID, targets)
+	if err != nil {
+		return Envelope{}, false, err
+	}
+	if dup {
+		return Envelope{ID: id, Type: eventType, Source: source}, true, nil
 	}
 	b.runHandlers(ctx, env)
 	if len(targets) > 0 {
@@ -188,7 +210,7 @@ func (b *Bus) PublishTo(ctx context.Context, source, eventType string, data json
 		default:
 		}
 	}
-	return env, nil
+	return env, false, nil
 }
 
 func (b *Bus) runHandlers(ctx context.Context, env Envelope) {

@@ -1,41 +1,67 @@
-# Default values for the finance module chart. The chart templates are delivered with the module
-# deployment work (E03/E07 pattern); this file fixes the contract the service expects.
+# Values for the finance module chart (in-house can-finance, SQLite). Rendered by can-core's
+# installer. Secrets are not values: can-core puts CAN_FINANCE_ADMIN_TOKEN and
+# CAN_FINANCE_LINK_SECRET (generated once) and the can-core API settings into the can-module Secret,
+# which every container receives as environment.
 image:
   repository: ghcr.io/dodwmd/can-finance
-  # Pinned by digest at release time; see deploy/finance/README.md.
-  digest: ""
-service:
-  api: { name: finance, port: 8080 }   # ClusterIP only; the `invoices`, `contracts` and `timesheets` capabilities
+  tag: 0.1.0
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+ports:
+  - { name: http, port: 8080 }
+services:                  # ClusterIP only; the `invoices`, `contracts` and `timesheets` capabilities
+  - { name: finance, portName: http, port: 8080 }
+ingress:
+  # The signed, expiring invoice view (/public/invoices/) could be routed from the internet, but
+  # finance declares no runtime.subdomain, so can-core supplies no host and nothing is routed.
+  enabled: false
+  host: ""
+  tls: true
+  certResolver: letsencrypt
+  service: finance
+  port: 8080
+  pathPrefixes: [/public/invoices/]
+  paths: []
 persistence:
+  enabled: true
   size: 500Mi
-  mountPath: /data
+  storageClass: ""
+  mountPath: /data         # finance.db
+configMountPath: /etc/can-finance-config
+# Written verbatim to finance.yaml; only keys core/finance Config accepts. No webhook.url: events
+# reach other modules through can-core (POST /v1/events on the module API).
+config:
+  listen: ":8080"
+  db_path: /data/finance.db
+  trust_proxy: false       # turn on only behind a proxy that appends the client address
+  rate_limit:
+    per_minute: 600
+    auth_failures_per_minute: 30
+    max_tracked: 10000
+  base_currency: USD
+  payment_provider: none
+  esign_provider: none
+  retention_years: 7
+  audit_retention_days: 2555
+keyring:
+  enabled: false
 resources:
   requests: { memory: 20Mi, cpu: 5m }
   limits: { memory: 48Mi }
-config:
-  # Mounted at /etc/can-finance/finance.yaml (see modules/finance/settings.schema.json).
-  # Off by default: turn on only when a proxy that appends the client address fronts it.
-  trust_proxy: false
-  rate_limit_per_minute: 600
-  base_currency: USD
-  retention_years: 7
-  payment_provider: none
-  esign_provider: none
-publicLink:
-  # Only this path prefix may be routed from the internet (the signed, expiring invoice view).
-  # Everything else stays cluster-internal.
-  pathPrefix: /public/invoices/
-env:
-  # Names only; values come from the module Secret created by can-core.
-  secretKeys:
-    - CAN_FINANCE_ADMIN_TOKEN        # bootstrap token with every scope; mint day-to-day tokens with it
-    - CAN_FINANCE_LINK_SECRET        # signs public invoice links (32+ characters)
-    - CAN_FINANCE_WEBHOOK_SECRET     # only when webhook_url is set
-    - CAN_FINANCE_PROVIDER_SECRET    # only with the fake providers (development)
-probes:
-  readiness: { path: /healthz, port: 8080 }
-  liveness: { exec: [/can-finance, healthcheck, -addr, "127.0.0.1:8080"] }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
 securityContext:
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /healthz, port: http }
+  liveness: { exec: [/can-finance, healthcheck, -addr, "127.0.0.1:8080"] }
+networkPolicy:
+  intraNamespace: false

@@ -11,9 +11,11 @@ name: Jobs and recruiting
 description: Job requisitions and postings, public careers pages with Google for Jobs data, XML and JSON feeds, application intake with spam controls and resume upload, an ATS pipeline with scorecards and blind feedback, talent pool, duplicate detection, consent and retention, erasure with tombstones, and the hire hand-off event. Partner API connectors for LinkedIn, Indeed and Glassdoor are documented stubs.
 category: people
 version: 0.1.0
-# experimental: unit-, contract- and race-tested offline; the image has not been built or run on
-# a cluster, there are no Helm templates yet (values only, like people), no web UI for recruiters,
-# no real virus scanner or board connector, and can-core does not yet inject the keyring Secret.
+# experimental: unit-, contract- and race-tested offline, and the chart installs through can-core's
+# installer in unit tests (specs/016-module-wiring); the image has not been built or run on a
+# cluster, there is no web UI for recruiters and no real virus scanner or board connector.
+# can-core generates the secrets and keyring, introspects personal access tokens, routes events
+# and decides requisition approvals (tested with fakes, not on a cluster).
 status: experimental
 provider:
   type: inhouse
@@ -21,6 +23,8 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
+  # The careers pages and feeds are the only public routes (see chart/templates/ingressroute.yaml).
+  subdomain: careers
 requires:
   database: sqlite
   sso: none
@@ -40,6 +44,11 @@ publishes:
   - { event: application.stage_changed.v1, schema: ./events/application.stage_changed.v1.json }
   # the hand-off the people module consumes to start onboarding
   - { event: candidate.hired.v1, schema: ./events/candidate.hired.v1.json }
+# can-core's approvals engine decides requisitions (approval.decided.v1 comes back signed).
+approvals:
+  - { type: requisition, default_chain: [admin] }
+subscribes:
+  - { event: approval.decided.v1, service: jobs, port: 8080, webhook: /v1/can/events }
 # Coarse permissions gate the capability verbs; the finer rules (job scope, hiring manager of the
 # job, assigned interviewer, per field) are enforced inside the service (core/jobs/scope.go).
 permissions: [jobs.read, jobs.write, ats.read, ats.write, ats.hire, ats.interview, jobs.admin]

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/modclient"
+
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
 )
 
@@ -39,6 +41,8 @@ type Store struct {
 	base     string
 	payInstr string
 	approver Approver
+	// core is can-core's approvals engine when the module runs installed (nil standalone).
+	core modclient.Approvals
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.

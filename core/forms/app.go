@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Secrets are read from the environment, never from the config file.
@@ -53,6 +55,9 @@ type Options struct {
 	Logger  *slog.Logger
 	Now     func() time.Time
 	Client  *http.Client
+	// Can is the can-core client of an installed module (CAN_API_URL): personal access tokens are
+	// introspected through it and lead.created.v1 is published through it.
+	Can *modclient.Client
 }
 
 // App wires the store, spam guards, notifier and the two HTTP surfaces.
@@ -120,6 +125,9 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		st.Add(sec.APIToken, Principal{Subject: "static-admin", Permissions: []string{PermLeadsRead, PermLeadsWrite}})
 		st.Add(sec.APIReadToken, Principal{Subject: "static-reader", Permissions: []string{PermLeadsRead}})
 		auth = st
+		if opt.Can != nil {
+			auth = chainAuth{st, &CanAuth{In: &modclient.Introspector{API: opt.Can}}}
+		}
 	}
 
 	store, err := OpenStore(cfg.DBPath)
@@ -129,6 +137,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	store.now = now
 
 	d := NewDispatcher(store, mailer, hook, log)
+	d.can = opt.Can
 	d.now = now
 	d.Start(2)
 

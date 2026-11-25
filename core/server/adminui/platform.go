@@ -104,6 +104,9 @@ func (s *Server) platformNav(r *http.Request, sc *sessionCtx, active string) []n
 		}
 		out = append(out, it)
 	}
+	if s.PATs != nil {
+		out = append(out, navItem{Href: "/tokens", Label: s.msg("nav.tokens"), Current: active == "tokens"})
+	}
 	if s.RBAC != nil {
 		if ok, err := s.allowed(r, sc, rbac.PermManage); err == nil && ok {
 			out = append(out, navItem{Href: "/access", Label: s.msg("nav.access"), Current: active == "access"})

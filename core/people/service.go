@@ -58,6 +58,9 @@ func conflict(format string, a ...any) error { return &ConflictError{Msg: fmt.Sp
 type Principal struct {
 	Subject string // SSO subject; links to people.sso_subject
 	Roles   []string
+	// Perms are the manifest permissions of a personal access token. Nil for a static service
+	// token, which is not restricted; non-nil restricts what the roles can do (see Actor).
+	Perms []string
 }
 
 // Options configure a Service.
@@ -282,7 +285,7 @@ func (s *Service) scrub(ctx context.Context, vacuum bool) error {
 // ResolveActor links a Principal to their person record. A subject with a person record that is
 // erased resolves as a blocked actor (status former).
 func (s *Service) ResolveActor(ctx context.Context, p *Principal) (Actor, error) {
-	a := Actor{Subject: p.Subject, Roles: p.Roles}
+	a := Actor{Subject: p.Subject, Roles: p.Roles, Perms: p.Perms, Restricted: p.Perms != nil}
 	if p.Subject == "" {
 		return a, nil
 	}

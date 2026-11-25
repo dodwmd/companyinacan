@@ -297,6 +297,20 @@ func (a *api) approveInvoice(w http.ResponseWriter, r *http.Request, p *Principa
 	a.respondInvoice(w, v, err)
 }
 
+// requestInvoiceApproval opens the can-core approval request of a draft invoice.
+func (a *api) requestInvoiceApproval(w http.ResponseWriter, r *http.Request, p *Principal) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	ap, err := a.store.RequestInvoiceApproval(r.Context(), p, id)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ap)
+}
+
 func (a *api) sendInvoice(w http.ResponseWriter, r *http.Request, p *Principal) {
 	id, ok := pathID(w, r, "id")
 	if !ok {

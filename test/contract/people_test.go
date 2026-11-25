@@ -425,8 +425,11 @@ func TestPeopleChartValues(t *testing.T) {
 	if mi(t, asStr(asMap(res["requests"])["memory"])) != 30 || mi(t, asStr(asMap(res["limits"])["memory"])) != 64 {
 		t.Errorf("resources = %v do not match the manifest", res)
 	}
-	if asStr(asMap(v["image"])["digest"]) != "" && !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(asStr(asMap(v["image"])["digest"])) {
-		t.Error("image digest must be empty (pinned at release) or a sha256")
+	if !chartDigestOK(asStr(asMap(v["image"])["digest"])) {
+		t.Error("image digest must be a sha256 or the REPLACE_WITH_ placeholder, never a guess")
+	}
+	if asMap(v["ingress"])["enabled"] != false {
+		t.Error("people data is never routed from the internet")
 	}
 	b, _ := os.ReadFile(filepath.Join(root, "modules/people/chart/values.yaml"))
 	if regexp.MustCompile(`(?i)(password|token):\s*["']?[A-Za-z0-9]{12,}`).Match(b) {

@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Version is set at build time with -ldflags "-X .../core/forms.Version=...".
@@ -61,7 +63,12 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	log := slog.New(slog.NewJSONHandler(stderr, nil)).With("service", "can-forms", "version", Version)
-	app, err := NewApp(cfg, sec, Options{Logger: log})
+	can, err := modclient.FromEnv(getenv)
+	if err != nil {
+		fmt.Fprintf(stderr, "can-core: %v\n", err)
+		return 2
+	}
+	app, err := NewApp(cfg, sec, Options{Logger: log, Can: can})
 	if err != nil {
 		fmt.Fprintf(stderr, "start: %v\n", err)
 		return 2

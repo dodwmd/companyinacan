@@ -1,0 +1,41 @@
+{{- /*
+Rendered only when ingress.enabled AND can-core supplies ingress.host, which it does only for a
+module whose manifest declares runtime.subdomain (host = <subdomain>.<domain>). One route per public
+path: the installer accepts a single `&&` chain with exactly one Host and no `||`, so each path is
+its own route. Anything not listed (the /v1 API) stays cluster-internal.
+*/ -}}
+{{- if and .Values.ingress.enabled .Values.ingress.host }}
+{{- $host := .Values.ingress.host }}
+{{- if not (or .Values.ingress.pathPrefixes .Values.ingress.paths) }}
+{{- fail "ingress.enabled needs ingress.pathPrefixes or ingress.paths: the whole service is never routed" }}
+{{- end }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - {{ ternary "websecure" "web" .Values.ingress.tls }}
+  routes:
+    {{- range .Values.ingress.pathPrefixes }}
+    - match: Host(`{{ $host }}`) && PathPrefix(`{{ . }}`)
+      kind: Rule
+      services:
+        - name: {{ $.Values.ingress.service }}
+          port: {{ $.Values.ingress.port }}
+    {{- end }}
+    {{- range .Values.ingress.paths }}
+    - match: Host(`{{ $host }}`) && Path(`{{ . }}`)
+      kind: Rule
+      services:
+        - name: {{ $.Values.ingress.service }}
+          port: {{ $.Values.ingress.port }}
+    {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    certResolver: {{ .Values.ingress.certResolver }}
+  {{- end }}
+{{- end }}

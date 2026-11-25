@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 var errEOF = io.EOF
@@ -39,6 +41,9 @@ type Options struct {
 	Logger *slog.Logger
 	Now    func() time.Time
 	Client *http.Client
+	// Can is the can-core client of an installed module (CAN_API_URL): personal access tokens are
+	// introspected through it and events are published through it instead of a webhook URL.
+	Can *modclient.Client
 }
 
 // App wires the store, the webhook dispatcher and the HTTP API.
@@ -71,17 +76,20 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		return nil, err
 	}
 	store.now = now
-	store.events = cfg.Webhook.URL != ""
+	store.events = cfg.Webhook.URL != "" || opt.Can != nil
 
 	auth := opt.Auth
 	if auth == nil {
 		st := &StaticTokens{}
 		st.Add(sec.AdminToken, Principal{Subject: bootstrapSubject, Kind: "static", Permissions: []string{PermAdmin}})
 		auth = Chain{st, TokenAuth{Store: store}}
+		if opt.Can != nil {
+			auth = append(auth.(Chain), &CanAuth{In: &modclient.Introspector{API: opt.Can}})
+		}
 	}
 	app := &App{cfg: cfg, store: store, log: log, now: now}
 	if store.events {
-		app.dispatcher = &Dispatcher{store: store, URL: cfg.Webhook.URL, Secret: []byte(sec.WebhookSecret), Client: opt.Client, Log: log, Now: now}
+		app.dispatcher = &Dispatcher{store: store, URL: cfg.Webhook.URL, Secret: []byte(sec.WebhookSecret), Client: opt.Client, Log: log, Now: now, Can: opt.Can}
 	}
 	a := &api{
 		store: store, auth: auth, log: log, maxBody: cfg.MaxBodyBytes, trustProxy: cfg.TrustProxy,

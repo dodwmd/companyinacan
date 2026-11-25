@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Email is a message handed to the email.send capability.
@@ -238,8 +240,11 @@ type Dispatcher struct {
 	store   *Store
 	mailer  Mailer
 	webhook *WebhookSender
-	log     *slog.Logger
-	now     func() time.Time
+	// can publishes lead.created.v1 through can-core when the module is installed.
+	can   *modclient.Client
+	sleep func(context.Context, time.Duration) error
+	log   *slog.Logger
+	now   func() time.Time
 
 	queue   chan job
 	pending sync.WaitGroup
@@ -321,6 +326,14 @@ func (d *Dispatcher) run(j job) {
 		n, err := d.webhook.Send(ctx, NewLeadCreated(j.lead, d.now()))
 		d.record(ctx, j.lead.ID, "webhook", n, err)
 	}
+	if d.can != nil {
+		sleep := d.sleep
+		if sleep == nil {
+			sleep = sleepCtx
+		}
+		n, err := publishCan(ctx, d.can, NewLeadCreated(j.lead, d.now()), sleep)
+		d.record(ctx, j.lead.ID, "webhook", n, err) // the event channel; the delivery log has two kinds
+	}
 }
 
 func (d *Dispatcher) record(ctx context.Context, leadID, kind string, attempts int, err error) {
@@ -331,5 +344,16 @@ func (d *Dispatcher) record(ctx context.Context, leadID, kind string, attempts i
 	}
 	if rerr := d.store.RecordDelivery(ctx, leadID, kind, err == nil, attempts, msg); rerr != nil {
 		d.log.Error("record delivery", "error", rerr)
+	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
 }

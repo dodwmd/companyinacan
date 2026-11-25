@@ -69,8 +69,8 @@ func LoadKeyring(path string) (*Keyring, error) {
 	if err := checkOwner(path, st); err != nil {
 		return nil, err
 	}
-	if st.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("keyring: %s must not be accessible by group or others (mode %o)", path, st.Mode().Perm())
+	if p := st.Mode().Perm(); p&^0o440 != 0 && p != 0o600 {
+		return nil, fmt.Errorf("keyring: %s must be mode 0400, 0440 (group read, for a mounted Secret with fsGroup) or 0600, not %o", path, st.Mode().Perm())
 	}
 	b, err := os.ReadFile(path) //nolint:gosec // operator-configured secret path
 	if err != nil {

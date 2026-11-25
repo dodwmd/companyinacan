@@ -129,11 +129,17 @@ func TestJobsChartAndImage(t *testing.T) {
 	if sc["runAsNonRoot"] != true || sc["readOnlyRootFilesystem"] != true || sc["allowPrivilegeEscalation"] != false {
 		t.Errorf("securityContext %v", sc)
 	}
-	if asStr(asMap(v["image"])["digest"]) != "" {
-		t.Error("image digest must be filled in at release time, not committed as a guess")
+	if !chartDigestOK(asStr(asMap(v["image"])["digest"])) {
+		t.Error("image digest must be a sha256 or the REPLACE_WITH_ placeholder (`make release-check` rejects it), never a guess")
 	}
-	if asMap(asMap(v["secrets"])["keyring"])["subPath"] != "keyring" {
+	if kr := asMap(v["keyring"]); kr["enabled"] != true || kr["mountPath"] != "/etc/can-jobs/keyring" {
+		t.Errorf("keyring %v", kr)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "modules/jobs/chart/templates/deployment.yaml")); !strings.Contains(string(b), "subPath: keyring") {
 		t.Error("the keyring must be mounted with subPath (the loader refuses symlinks)")
+	}
+	if got := asList(asMap(v["ingress"])["pathPrefixes"]); len(got) != 2 || got[0] != "/careers" || got[1] != "/feeds" {
+		t.Errorf("only the public careers paths may be routed, got %v", got)
 	}
 	df, err := os.ReadFile(filepath.Join(root, "deploy", "jobs", "Dockerfile"))
 	if err != nil {

@@ -52,19 +52,21 @@ type Attempt struct {
 
 // InsertEvent stores the event and one pending delivery per target in a single transaction.
 func (db *DB) InsertEvent(ctx context.Context, e Event, targets []DeliveryTarget) error {
-	return db.InTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO events(id,type,time,source,data_json) VALUES (?,?,?,?,?)`,
-			e.ID, e.Type, e.Time.Unix(), e.Source, e.DataJSON); err != nil {
+	return db.InTx(ctx, func(tx *sql.Tx) error { return insertEventTx(ctx, tx, e, targets) })
+}
+
+func insertEventTx(ctx context.Context, tx *sql.Tx, e Event, targets []DeliveryTarget) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events(id,type,time,source,data_json) VALUES (?,?,?,?,?)`,
+		e.ID, e.Type, e.Time.Unix(), e.Source, e.DataJSON); err != nil {
+		return err
+	}
+	for _, t := range targets {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO deliveries(event_id,module_id,url,status,attempts,next_attempt_at) VALUES (?,?,?,?,0,?)`,
+			e.ID, t.ModuleID, t.URL, StatusPending, e.Time.Unix()); err != nil {
 			return err
 		}
-		for _, t := range targets {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO deliveries(event_id,module_id,url,status,attempts,next_attempt_at) VALUES (?,?,?,?,0,?)`,
-				e.ID, t.ModuleID, t.URL, StatusPending, e.Time.Unix()); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	}
+	return nil
 }
 
 // DueDeliveries returns pending deliveries whose next attempt time has arrived, oldest first.
