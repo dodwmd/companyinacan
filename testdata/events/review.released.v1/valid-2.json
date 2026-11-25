@@ -1,0 +1,12 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "review.released.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "cycle_id": "cyc_fedcba98765432100123abcd",
+    "review_id": "rev_fedcba98765432100123abcd",
+    "person_id": "pers_fedcba98765432100123abcd",
+    "released_on": "2027-02-02"
+  }
+}

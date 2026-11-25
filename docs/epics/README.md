@@ -31,6 +31,7 @@ Backlog (broken down into epics when the previous phase is done):
 | E13 | `files`, `directory`/`people`, `identity.provision`, hire/leave workflows | 3a |
 | E14 | `work` tracker (API-first) and `performance` (1:1s, goals, reviews); timesheets. **E14a (in-house `work` service, API, CLI, contracts) is built offline**: web UI, image and cluster checks, `performance` and timesheets pending, see `specs/011-work-tracker/` | 3a |
 | E13a | first slice of E13/E14: in-house `people` (directory, org, lifecycle, checklists) and `performance` (1:1s, goals), retention/erasure | 3a — built offline, experimental: `specs/012-people-directory/` |
+| E14b | reviews and time off in the in-house `people` module: review cycles (self, manager, 360 feedback with anonymity thresholds, calibration, approved release), leave types and accruals as data, balances ledger, requests approved by the manager, holiday calendars, team calendar | 3a — built offline, experimental: `specs/022-reviews-timeoff/` |
 | E15 | `invoices`, `contracts`, expenses, vendors, accounting/payroll adapters | 3b |
 | E15a | first slice of E15: in-house `finance` (parties, invoices and credit notes, payments, contracts, timesheets, expenses, purchase orders) | 3b — built offline, experimental: `specs/014-finance-basics/` |
 | E16 | `jobs` (careers page, feeds, ATS, board connectors) | 3b |

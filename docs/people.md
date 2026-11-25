@@ -1,8 +1,8 @@
 # People and performance (`can-people`)
 
 The in-house `people` module holds the company's **directory** (people records, org structure,
-employment lifecycle, onboarding and offboarding checklists) and **performance** data (1:1s and
-goals). It provides the `directory` and `performance` capabilities and is the first module that stores
+employment lifecycle, onboarding and offboarding checklists), **performance** data (1:1s, goals and
+review cycles with 360 feedback) and **time off** (leave types, balances, requests, calendars). It provides the `directory` and `performance` capabilities and is the first module that stores
 the most sensitive data classes in the platform.
 
 > **This is a tool, not legal, HR or payroll advice.** It records and protects data; it does not
@@ -11,7 +11,8 @@ the most sensitive data classes in the platform.
 > and should take advice from a qualified professional.
 
 Status: **experimental**. Unit-, contract- and race-tested offline; not yet exercised on a cluster
-(see [Gaps](#gaps)). Epic E13a, spec in `specs/012-people-directory/`.
+(see [Gaps](#gaps)). Epic E13a, spec in `specs/012-people-directory/`; reviews and time off are epic
+E14b, spec in `specs/022-reviews-timeoff/`.
 
 ## What it does
 
@@ -22,11 +23,13 @@ Status: **experimental**. Unit-, contract- and race-tested offline; not yet exer
 | 1:1s | A series between a manager and one direct report, meetings, agenda items either side can add, shared notes, **manager-private notes**, action items that can link to a `work` issue, follow-ups from earlier meetings, history |
 | Goals | Personal, team and company goals with key results, progress updates, alignment to a manager's, team's or company goal, and four visibility levels (private, manager, team, company) |
 | Checklists | Onboarding and offboarding templates (assignee role, due date relative to an anchor, optional machine `action`), instantiated manually or automatically when a person enters a status; completion emits an event for later identity provisioning |
+| Reviews | Templates (rating and text questions), cycles `draft -> open -> calibration -> closed`, self-assessment, manager review, peer and upward feedback with manager-approved nominations and per-cycle anonymity (never fewer than 3 answers shown), calibration notes and rating (HR only), release approved by a different HR person, acknowledgement, history, read-only links to the subject's goals. See [Reviews](#reviews) |
+| Time off | Leave types with accrual policy as data (annual grant, monthly accrual, carry-over cap, negative balance allowance), an append-only balances ledger with as-of dates, requests approved by the manager (half days, blackouts, overlap checks), public holiday calendars per location, a team calendar showing only "out", cancellation with reversal entries, long leave moving the employment status. See [Time off](#time-off) |
 | Retention | Per data class retention, legal hold, erasure requests that tombstone and purge, an erasure ledger feed |
 | API | REST JSON, OpenAPI 3.1 at `specs/012-people-directory/contracts/people-api.yaml`, bearer tokens, one policy layer |
 
-Not included in this slice: time off, payroll (never built, see SPEC.md), reviews/360 cycles,
-feedback and praise, the admin and portal UI, search and reporting.
+Not included: payroll (never built, see SPEC.md), pay or tax computation, statutory leave rules, praise,
+the admin and portal UI, search and reporting.
 
 ## Roles and who can see what
 
@@ -77,6 +80,85 @@ Rules worth knowing:
 - **Operators and database administrators can still read the database file.** Sensitive fields and
   all 1:1 notes are encrypted at the application level, so a copy of the file without the keyring is
   not enough, but whoever holds both the file and the keyring can read everything.
+
+## Reviews
+
+Permissions `people.reviews.read|write|admin`; the policy layer (`Decide`) decides everything, so a
+role is necessary and the relationship, the cycle state and the review state are checked on every call.
+
+| Part | Subject | Direct manager | Skip-level | HR / admin (not the subject) | Anyone else |
+|---|---|---|---|---|---|
+| The review exists, its status | yes | yes | released only | yes | 404 |
+| Self-assessment | yes | once submitted | no | yes | no |
+| Manager review | after release (answers only; not the proposed rating) | yes | no | yes | no |
+| Calibration rating and notes | never | no | no | yes | no |
+| Final outcome (rating, summary) | after release | after release | after release (summary only) | yes | no |
+| Peer and upward feedback | aggregates after release | yes, past the threshold | no | past the threshold | no |
+| Feedback comments | never | past the threshold | no | past the threshold | no |
+
+HR and admin have no review power over their **own** review (they are treated as the subject), and a manager
+on leave or terminated has none at all. Ratings, answers, summaries, calibration, feedback and
+acknowledgement comments are sealed per part with an AAD binding them to their row. Every read is audited
+before it is returned (fail closed); `touched_by` and release history are SHA-256 hashes, never names.
+
+**Release.** HR freezes the outcome (the calibrated rating, else the manager's) and requests release; a
+different HR person approves. The approver cannot be the subject, the manager who wrote the review, whoever
+calibrated it, or anyone who ever requested its release; rejecting and re-requesting does not clear that.
+Subjects are compared after NFKC normalisation, removal of invisible characters and case folding, on SSO
+subject and person id alike, by one function. With an approval engine configured (type `review-release`)
+the engine must have approved and its decider is held to the same rule. Approving publishes
+`review.released.v1` (ids only); the subject then reads the outcome and acknowledges once.
+
+**Feedback and anonymity.** The employee proposes peers, the manager approves or declines (or adds
+directly); upward feedback comes only from direct reports and is added by the manager or HR. Reviewers see
+the subject and the questions, never who nominated them. The employee sees only the nominations they made.
+In an **anonymous** cycle a stored answer has no reviewer and no timestamp and a random id; comments are
+returned in an order derived from a hash of answer and question, different per question; no ETag or
+`Last-Modified` is sent; nothing reveals who has not answered. Nothing about a person's feedback is shown to
+anyone, HR included, until the cycle's `min_responses` answers exist (default 3, never lower). After
+release the employee sees aggregates, never comments. In an **attributed** cycle the manager and HR also see
+who wrote each comment. Limits: anonymity holds against API users, not against someone who can read the
+database file or the audit table (which records that a reviewer answered a request, not what), and free text
+can identify its author by style or content; a threshold of 3 is weak for small teams, so raise it.
+Anonymous feedback is not linked to its author, so erasing the author cannot remove it (it names nobody).
+
+## Time off
+
+Permissions `people.timeoff.read|write|approve|admin`. **Entitlements and statutory rules vary by
+jurisdiction: leave types, accruals, holidays and blackouts are data the operator enters, with no legal
+rule engine; this is not legal advice.** Units are half days (`halves`; 2 = one day).
+
+- **Leave types** (`POST /v1/leave-types`): `key` (vacation, sick, parental, unpaid or any custom), `accrual_mode` (`none` = untracked, no
+  balance; `annual`; `monthly`), `grant_halves`, `carryover_cap_halves` (omit = unlimited), `allow_negative` with
+  `negative_floor_halves`, `ignores_blackouts` (sick leave), `sensitive`, `sets_leave_status` with
+  `leave_status_min_halves`. Manually granted leave is `annual` with a grant of 0 and adjustments.
+- **Ledger.** Append-only (database triggers): `grant`, `accrual`, `expire`, `use`, `reversal`, `adjust`; balance as of a date =
+  sum of entries dated on or before it. Accruals run hourly and on demand (`POST /v1/timeoff/accruals/run`) for
+  the current year, keyed by person, type, kind and period, so a rerun writes nothing; a balance above the cap
+  expires at the turn of the year, before the new grant. No proration: HR adjusts (`POST /v1/people/{id}/leave-adjustments`,
+  never for one's own record; the reason is sealed). `use` is dated at the request's start date.
+- **Requests.** `draft -> pending -> approved | rejected | cancelled`. Submitting computes working days from
+  the person's location calendar (`POST /v1/holiday-calendars`: location matched case-folded, work week and
+  holidays are data) and refuses, in one transaction, an overlap with another pending or approved request
+  (half-day exact), a blackout period (company or team; not for types that ignore them), no working days, or
+  an insufficient balance (pending requests reserve it). The check repeats on approval. Because the service
+  holds one database connection, concurrent submissions and approvals serialise (tested with goroutines).
+- **Approval.** The live direct manager decides; HR when the person has no manager or HR steps in; nobody
+  decides their own request, with the same single separation function as reviews. With an approval engine
+  (type `timeoff`, default chain `manager`) the engine must have approved and its decider is held to the rule.
+  A rejected request is final. A manager's own request goes to their manager.
+- **Cancellation.** The person until the leave starts, HR afterwards; an approved cancellation appends a
+  `reversal` for the days not yet taken. Both publish events.
+- **Privacy.** The leave type and note (sealed) are visible to the person, their direct manager and HR only;
+  skip-level managers and colleagues get 404. The **calendar** (`GET /v1/timeoff/calendar`, at most 92 days)
+  shows colleagues only `out`: no type, reason, request id, status, and no pending requests. Long leave of a
+  type with `sets_leave_status` moves the person to the `leave` status while it runs (and back), through the
+  normal status machinery: colleagues see `active` and an unchanged `updated_at`, `person.status_changed.v1`
+  is not published for it, the status history has no note, and a leave status that HR set is never reverted
+  by the reconciler. On the calendar such leave looks like any other absence.
+- **Events.** `timeoff.approved.v1` and `timeoff.cancelled.v1` carry ids, dates and a half-day count, never
+  the type. **Dates reveal absence**: subscribe only the modules that need them (timesheets, to mark
+  non-working days); do not fan them out. The finance module's side is not built.
 
 ## Encryption at rest
 
@@ -143,6 +225,8 @@ also expire by age). Defaults (override in `people.yaml` under `retention:` or i
 | `people-checklists` | standard | 2y |
 | `performance-oneonone` | sensitive | 2y |
 | `performance-goals` | sensitive | 2y |
+| `performance-reviews` | sensitive | 2y (closed cycles also expire by age) |
+| `people-timeoff` | sensitive | 7y (review against local payroll and leave record rules) |
 
 Syntax is `30d`, `12m`, `7y`, `0` (purge as soon as the person leaves) or `legal` (never purged
 automatically). The sweep runs hourly and on demand (`POST /v1/retention/run`, `can-people retention`).
@@ -189,7 +273,9 @@ gateway), de-duplicate on `id`. Payloads carry ids and machine values only. Sche
 `person.created.v1`, `person.status_changed.v1` (when a change takes effect, with `effective_date`),
 `person.offboarded.v1`, `person.erased.v1`, `oneonone.scheduled.v1`, `goal.updated.v1` (never for a
 `private` goal: even an id-only event would reveal that it exists), `checklist.task_completed.v1`
-(carries the task's `action`, for example `identity.provision`, so a provisioning integration can react).
+(carries the task's `action`, for example `identity.provision`, so a provisioning integration can react),
+`review.cycle.opened.v1`, `review.released.v1` (ids only: never a rating or text), `timeoff.approved.v1` and
+`timeoff.cancelled.v1` (ids, dates and a half-day count, never the leave type; dates reveal absence, see Time off).
 
 A consumer that wants "hired" subscribes to `person.status_changed.v1` and filters on `to: active`
 (`from: onboarding` for a first start; `from: offboarding` is a rescinded notice; leave never appears, it is masked as `active`, see Roles above). The `from` and `to`
@@ -214,6 +300,7 @@ keyring_file: /etc/can-people/keys/keyring
 introspect: { url: "" }      # can-core token introspection; empty = service account only
 webhook: { url: "" }         # event delivery target; empty = events wait in the outbox
 retention: {}                # per class overrides
+reviews: { min_responses: 3 } # default anonymity threshold for new cycles (3..50)
 ```
 
 Environment: `CAN_PEOPLE_API_TOKEN` (required, 24+ characters; the can-core service account, roles hr + admin),
@@ -235,7 +322,8 @@ answers cached 30 s, every error denies). A user's `subject` is linked to a pers
 ## Footprint
 
 Idle RAM was measured locally: **13.8 MiB RSS idle, 22.3 MiB after 100 creates and 300 list requests**
-(Linux, static binary, pure-Go SQLite). The manifest declares 30 MB requested and 64 MB limit.
+(Linux, static binary, pure-Go SQLite) before reviews and time off; with them, **14.9 MiB idle and 22.3 MiB after
+load** (`specs/022-reviews-timeoff/measurements.md`). The manifest declares 30 MB requested and 64 MB limit.
 Details and method: `specs/012-people-directory/measurements.md`. Not measured on k3d.
 
 ## Reporting-line approvals seam
@@ -264,6 +352,14 @@ one-directional. Everything below is read from the code, not run on a cluster.
   tombstones to the E08 ledger (this module exposes the feed and the purge hook).
 - Reporting-line approval chains (SPEC.md section 3.7) are only half wired, see "Reporting-line approvals
   seam" below: the directory side exists, the identity mapping and multi-level chains do not.
-- No UI, no portal, no time off, no reviews/360, no feedback, no `identity.provision` consumer, no
-  `work` issue creation from action items (the link field exists).
+- No UI, no portal, no `identity.provision` consumer, no `work` issue creation from action items (the link
+  field exists).
+- Reviews and time off (E14b): the can-core approval client is not wired into `cmd/can-people` (the
+  `ApprovalEngine` seam and a fake exist, as for equity), so the service decides itself and the `timeoff` and
+  `review-release` approval types are declared but unused until then; accruals do not prorate (use
+  adjustments); `use` entries are dated at the request's start, not per day; an HR-scheduled status change on a
+  person with approved long leave can be dropped as stale; leave-status changes depend on the hourly and
+  per-minute tick; calendars and holidays ship empty (the operator enters them); no notifications are sent
+  (the E11a engine can notify on the events); anonymity is not proof against someone with database access;
+  the finance module does not consume `timeoff.*` yet; no cluster verification.
 - Write auditing is after the commit (see Audit); search indexing of sensitive classes is out by design.

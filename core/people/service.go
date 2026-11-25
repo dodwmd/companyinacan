@@ -69,6 +69,11 @@ type Options struct {
 	Auditor   Auditor
 	Retention map[string]RetentionRule
 	Now       func() time.Time
+	// Approvals is optional: when set, leave requests and review releases are also decided through
+	// can-core's approval engine (see ApprovalEngine). Without it the service decides itself.
+	Approvals ApprovalEngine
+	// MinResponses is the default anonymity threshold for new review cycles (at least 3).
+	MinResponses int
 }
 
 // Service is the application layer: authorisation, storage, audit and events.
@@ -80,6 +85,9 @@ type Service struct {
 	rotateHook func() // tests: runs between reading a value and its compare-and-swap
 	retention  map[string]RetentionRule
 	now        func() time.Time
+
+	approvals    ApprovalEngine
+	minResponses int
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -98,7 +106,7 @@ func Open(path string, opt Options) (*Service, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // serialises writes (cycle checks rely on it) and keeps idle RAM low
-	s := &Service{db: db, keys: opt.Keyring, audit: opt.Auditor, retention: opt.Retention, now: opt.Now}
+	s := &Service{db: db, keys: opt.Keyring, audit: opt.Auditor, retention: opt.Retention, now: opt.Now, approvals: opt.Approvals, minResponses: opt.MinResponses}
 	if s.now == nil {
 		s.now = time.Now
 	}

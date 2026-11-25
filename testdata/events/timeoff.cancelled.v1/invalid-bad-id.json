@@ -1,0 +1,12 @@
+{
+  "id": "evt_xyz",
+  "type": "timeoff.cancelled.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "request_id": "lvr_0123456789abcdef01234567",
+    "person_id": "pers_0123456789abcdef01234567",
+    "start_date": "2027-04-05",
+    "end_date": "2027-04-09"
+  }
+}

@@ -26,6 +26,10 @@ const (
 	EventOneOnOneScheduled    = "oneonone.scheduled.v1"
 	EventGoalUpdated          = "goal.updated.v1"
 	EventChecklistTaskDone    = "checklist.task_completed.v1"
+	EventReviewCycleOpened    = "review.cycle.opened.v1"
+	EventReviewReleased       = "review.released.v1"
+	EventTimeOffApproved      = "timeoff.approved.v1"
+	EventTimeOffCancelled     = "timeoff.cancelled.v1"
 	eventSource               = "people"
 	maxDeliveryAttempts       = 8
 	outboxDeliveredRetention  = 7 * 24 * time.Hour

@@ -82,7 +82,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "secrets: %v\n", err)
 		return 2
 	}
-	svc, err := Open(cfg.DBPath, Options{Keyring: kr, Retention: rules})
+	svc, err := Open(cfg.DBPath, Options{Keyring: kr, Retention: rules, MinResponses: cfg.Reviews.MinResponses})
 	if err != nil {
 		fmt.Fprintf(stderr, "start: %v\n", err)
 		return 2
@@ -159,6 +159,11 @@ func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logg
 	}
 	maint := func() {
 		due()
+		if n, err := svc.AccrueDue(ctx); err != nil && ctx.Err() == nil {
+			log.Error("leave accruals", "error", err)
+		} else if n > 0 {
+			log.Info("leave accruals", "entries", n)
+		}
 		if rep, err := svc.RunRetention(ctx); err != nil && ctx.Err() == nil {
 			log.Error("retention sweep", "error", err)
 		} else if rep != nil && len(rep.Purged) > 0 {

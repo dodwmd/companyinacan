@@ -1010,7 +1010,9 @@ func (s *Service) ApplyDue(ctx context.Context) (int, error) {
 			n++
 		}
 	}
-	return n, nil
+	// Approved long leave moves people to (and back from) the leave status (timeoff.go).
+	k, err := s.ReconcileLeaveStatus(ctx)
+	return n + k, err
 }
 
 // History returns the status history. The person themself and hr/admin only.

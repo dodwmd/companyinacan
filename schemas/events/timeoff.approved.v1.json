@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/timeoff.approved.v1.json",
+  "title": "timeoff.approved.v1",
+  "description": "Published when a leave request is approved. SENSITIVE BY NATURE: the dates reveal that a person is absent. It carries ids and dates only: never the leave type or the reason (a sick or parental leave looks like any other). Publish it only to modules that need it (for example timesheets, to mark non-working days): subscribe deliberately, do not fan it out to every module. `halves` is the number of working half days. Delivered at least once; consumers de-duplicate on `id`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "timeoff.approved.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "people"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "person_id",
+        "start_date",
+        "end_date",
+        "start_part",
+        "end_part",
+        "halves"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "pattern": "^lvr_[0-9a-f]{24}$"
+        },
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "start_part": {
+          "enum": [
+            "full",
+            "pm"
+          ]
+        },
+        "end_part": {
+          "enum": [
+            "full",
+            "am"
+          ]
+        },
+        "halves": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

@@ -152,3 +152,23 @@ var EquityGrantVestedV1 []byte
 //
 //go:embed equity.exercise.recorded.v1.json
 var EquityExerciseRecordedV1 []byte
+
+// ReviewCycleOpenedV1 is the JSON Schema of the review.cycle.opened.v1 event.
+//
+//go:embed review.cycle.opened.v1.json
+var ReviewCycleOpenedV1 []byte
+
+// ReviewReleasedV1 is the JSON Schema of the review.released.v1 event.
+//
+//go:embed review.released.v1.json
+var ReviewReleasedV1 []byte
+
+// TimeOffApprovedV1 is the JSON Schema of the timeoff.approved.v1 event.
+//
+//go:embed timeoff.approved.v1.json
+var TimeOffApprovedV1 []byte
+
+// TimeOffCancelledV1 is the JSON Schema of the timeoff.cancelled.v1 event.
+//
+//go:embed timeoff.cancelled.v1.json
+var TimeOffCancelledV1 []byte

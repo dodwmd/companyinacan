@@ -816,12 +816,12 @@ func TestErasureLegalHoldAndTombstones(t *testing.T) {
 
 	er, err := e.s.RequestErasure(e.ctx, e.hr, p.ID)
 	e.must(err)
-	if er.Subject != p.ID || len(er.Classes) != 5 {
+	if er.Subject != p.ID || len(er.Classes) != 7 {
 		t.Fatalf("erasure = %+v", er)
 	}
 	ents, err := e.s.ListErasures(e.ctx, e.hr, 0)
 	e.must(err)
-	if len(ents) != 5 {
+	if len(ents) != 7 {
 		t.Fatalf("tombstones = %+v", ents)
 	}
 	for _, en := range ents {
@@ -839,7 +839,7 @@ func TestErasureLegalHoldAndTombstones(t *testing.T) {
 	if _, err := e.s.RequestErasure(e.ctx, e.hr, p.ID); err != nil {
 		t.Errorf("second erasure: %v", err)
 	}
-	if n, _ := e.s.ListErasures(e.ctx, e.hr, 0); len(n) != 5 {
+	if n, _ := e.s.ListErasures(e.ctx, e.hr, 0); len(n) != 7 {
 		t.Error("duplicate tombstones")
 	}
 	// Everything is gone.
