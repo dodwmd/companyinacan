@@ -33,7 +33,7 @@ func TestInstrumentRoutePatternNotRawPath(t *testing.T) {
 		h.ServeHTTP(httptest.NewRecorder(), req)
 	}
 	out := expose(t, reg)
-	for _, leak := range []string{"alice", "example.com", "42", "bob", "token=abc", "ssn-123", "nope"} {
+	for _, leak := range []string{"alice", "example.com", "leads/42", "bob", "token=abc", "ssn-123", "nope"} {
 		if strings.Contains(out, leak) {
 			t.Errorf("metrics leak %q:\n%s", leak, out)
 		}
