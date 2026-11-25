@@ -39,8 +39,14 @@ block or a route yet (follow-up).
 3. You get a session: a random id in an `HttpOnly`, `SameSite=Strict` cookie (`Secure`, with a
    `__Host-` name, over TLS), scoped to the people origin. The server stores only its SHA-256.
    Idle sessions end after 30 minutes, any session after 8 hours; **Log out** deletes it on the
-   server. Every request re-checks that the person is still active staff, and every five minutes the
-   token is checked again, so revoking the token or offboarding the person ends the session.
+   server. Every request re-checks that the person is still active staff (offboarding takes effect
+   at once). The token is checked again every five minutes, **every minute for a session holding
+   the hr or admin role**. So revoking a token or demoting someone takes effect **up to five
+   minutes later (one minute for HR and admin sessions)**: a demoted HR user can keep revealing
+   sensitive fields for that long. The check fails closed: if the token cannot be verified (for
+   example the introspection endpoint is down) the session ends, and when the endpoint is down
+   every session ends at its next check. Reveals of other people's sensitive data are further
+   limited to 10 per minute per user.
 4. The token is held in server memory only (to re-check it) and is never sent back to the browser.
    A restart signs everyone out. The admin UI's session cookie is not used here.
 
@@ -73,7 +79,13 @@ Single-sign-on login without pasting a token is a follow-up.
 - Every response is `Cache-Control: no-store` without `ETag` or `Last-Modified`.
 - All text is escaped; the content security policy forbids scripts, inline styles and other origins.
 - Forms carry a CSRF token; the browser's `Sec-Fetch-Site` must be same-origin when sent.
-- Failed sign-ins are rate-limited per address; a valid token is never throttled.
+- Authentication always runs first, so a flood of bad tokens still costs one check each. After ten
+  failures from one address, further failures get a 429 page instead of 401 (the failure message
+  changes; it does not stop the check). A valid token is never refused because of failures.
+- The directory search reads at most 500 people (five pages of 100) and shows at most 50 matches;
+  in a larger company people beyond the first 500 in directory order are not found by search, and
+  the page says to narrow the search. Use the API for bulk lookups.
+- When the database is busy or a read times out, pages answer 503 with `Retry-After`.
 
 ## Accessibility and phones
 

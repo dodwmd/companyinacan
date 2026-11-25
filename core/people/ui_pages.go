@@ -334,6 +334,11 @@ func (u *UI) sensitiveReveal(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
+	if id != c.a.PersonID && !u.reveals.allow(c.ss.subject) {
+		c.w.Header().Set("Retry-After", "30")
+		u.renderError(c.w, c.r, c.ss, c.a, http.StatusTooManyRequests, "err.busy_title", "err.busy")
+		return nil
+	}
 	vals, err := u.Svc.GetSensitive(c.r.Context(), c.a, id, nil)
 	if err != nil {
 		return err

@@ -74,7 +74,11 @@ func halfText(halves int) string {
 	return d
 }
 
-func (u *UI) leaveRow(r LeaveRequest, person string) uiLeaveRow {
+func (u *UI) leaveRow(r LeaveRequest, person string, names map[string]string) uiLeaveRow {
+	typeName := r.Type
+	if n, ok := names[r.Type]; ok {
+		typeName = n
+	}
 	start, end := fmtDate(r.StartDate), fmtDate(r.EndDate)
 	if p := u.partLabel(r.StartPart); p != "" {
 		start += " (" + p + ")"
@@ -82,7 +86,7 @@ func (u *UI) leaveRow(r LeaveRequest, person string) uiLeaveRow {
 	if p := u.partLabel(r.EndPart); p != "" {
 		end += " (" + p + ")"
 	}
-	return uiLeaveRow{ID: r.ID, Person: person, Type: r.Type, Status: u.msg("lstatus." + r.Status), StatusKey: r.Status, Start: start, End: end, Days: halfText(r.Halves)}
+	return uiLeaveRow{ID: r.ID, Person: person, Type: typeName, Status: u.msg("lstatus." + r.Status), StatusKey: r.Status, Start: start, End: end, Days: halfText(r.Halves)}
 }
 
 func (u *UI) timeoff(c *uiCtx) error {
@@ -113,7 +117,7 @@ func (u *UI) timeoff(c *uiCtx) error {
 		if i == maxListRows {
 			break
 		}
-		d.Mine = append(d.Mine, u.leaveRow(r, ""))
+		d.Mine = append(d.Mine, u.leaveRow(r, "", u.typeNames(c)))
 	}
 	u.render(c.w, c.r, c, http.StatusOK, "timeoff.html", "nav.timeoff", d)
 	return nil
@@ -150,7 +154,7 @@ func (u *UI) timeoffDetail(c *uiCtx) error {
 	n := u.namer(c)
 	self := lr.PersonID == c.a.PersonID
 	d := leaveDetail{R: *lr, Person: n.name(lr.PersonID), Self: self}
-	d.Row = u.leaveRow(*lr, d.Person)
+	d.Row = u.leaveRow(*lr, d.Person, u.typeNames(c))
 	d.CanSubmit = self && lr.Status == "draft"
 	d.CanCancel = lr.Status == "draft" || lr.Status == "pending" || lr.Status == "approved"
 	d.CanDecide = !self && lr.Status == "pending" // the Service still decides who may
@@ -192,12 +196,13 @@ func (u *UI) timeoffQueue(c *uiCtx) error {
 		return err
 	}
 	n := u.namer(c)
+	names := u.typeNames(c)
 	var rows []uiLeaveRow
 	for _, r := range all {
 		if r.PersonID == c.a.PersonID || len(rows) == maxListRows {
 			continue // one's own requests are decided by someone else
 		}
-		rows = append(rows, u.leaveRow(r, n.name(r.PersonID)))
+		rows = append(rows, u.leaveRow(r, n.name(r.PersonID), names))
 	}
 	u.render(c.w, c.r, c, http.StatusOK, "queue.html", "timeoff.queue", rows)
 	return nil
@@ -660,4 +665,15 @@ func (u *UI) feedbackSubmit(c *uiCtx) error {
 		return err
 	}
 	return c.redirect(withOK("/feedback", "sent"))
+}
+
+// typeNames maps leave type keys to their display names; the service reports the key.
+func (u *UI) typeNames(c *uiCtx) map[string]string {
+	out := map[string]string{}
+	if ts, err := u.Svc.ListLeaveTypes(c.r.Context(), c.a); err == nil {
+		for _, t := range ts {
+			out[t.Key] = t.Name
+		}
+	}
+	return out
 }

@@ -166,26 +166,29 @@ func (u *UI) current(w http.ResponseWriter, r *http.Request) (*uiSession, Actor,
 		u.setCookie(w, u.sessionCookieName(), "", -1)
 		return nil, Actor{}, false
 	}
-	if now.Sub(ss.last) > u.IdleTimeout || now.Sub(ss.created) > u.AbsoluteTimeout {
+	// Snapshot the mutable fields under the lock: concurrent requests of one session write them.
+	u.sessions.mu.Lock()
+	last, created, checked, princ, token := ss.last, ss.created, ss.checked, ss.princ, ss.token
+	u.sessions.mu.Unlock()
+	if now.Sub(last) > u.IdleTimeout || now.Sub(created) > u.AbsoluteTimeout {
 		return kill()
 	}
-	princ := ss.princ
-	if now.Sub(ss.checked) > u.RecheckEvery {
+	recheck := now.Sub(checked) > u.recheckFor(princ)
+	if recheck {
 		// Periodic re-authentication: a revoked token ends the session; roles are refreshed.
-		p, err := u.authenticateToken(r, ss.token)
+		p, err := u.authenticateToken(r, token)
 		if err != nil || p.Subject != ss.subject {
 			return kill()
 		}
 		princ = *p
 	}
-	p := &princ
-	a, err := u.Svc.ResolveActor(r.Context(), p)
+	a, err := u.Svc.ResolveActor(r.Context(), &princ)
 	if err != nil || !a.HasPerson || !a.Active() {
 		return kill()
 	}
 	u.sessions.mu.Lock()
 	ss.last = now
-	if now.Sub(ss.checked) > u.RecheckEvery {
+	if recheck {
 		ss.checked, ss.princ = now, princ
 	}
 	u.sessions.mu.Unlock()
@@ -194,4 +197,16 @@ func (u *UI) current(w http.ResponseWriter, r *http.Request) (*uiSession, Actor,
 
 func constEq(a, b string) bool {
 	return a != "" && len(a) == len(b) && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// recheckFor is how often a session re-authenticates: every minute for a session holding hr or
+// admin (a demoted or revoked HR user must not keep revealing other people's data for long),
+// RecheckEvery for everyone else. This only picks an interval; it grants nothing.
+func (u *UI) recheckFor(p Principal) time.Duration {
+	for _, r := range p.Roles {
+		if r == RoleHR || r == RoleAdmin {
+			return min(u.RecheckEvery, time.Minute)
+		}
+	}
+	return u.RecheckEvery
 }

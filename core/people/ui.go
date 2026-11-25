@@ -62,6 +62,7 @@ type UI struct {
 	tpl      map[string]*template.Template
 	failIP   *rateLimiter
 	perUser  *rateLimiter
+	reveals  *rateLimiter // reveals of other people's sensitive data, per subject
 }
 
 type route struct {
@@ -155,6 +156,7 @@ func (u *UI) init() {
 	}
 	u.failIP = newRateLimiter(failedLoginBurst, 0.2, 10000, nil)
 	u.perUser = newRateLimiter(300, 30, 10000, nil)
+	u.reveals = newRateLimiter(10, 10.0/60, 10000, nil)
 	funcs := template.FuncMap{
 		"t":    u.msg,
 		"date": func(s string) string { return fmtDate(s) },
@@ -275,6 +277,9 @@ func (u *UI) fail(w http.ResponseWriter, r *http.Request, ss *uiSession, a Actor
 		u.renderError(w, r, ss, a, http.StatusNotFound, "err.not_found_title", "err.not_found")
 	case errors.Is(err, ErrForbidden):
 		u.renderError(w, r, ss, a, http.StatusForbidden, "err.forbidden_title", "err.forbidden")
+	case errors.Is(err, context.DeadlineExceeded), strings.Contains(err.Error(), "database is locked"):
+		w.Header().Set("Retry-After", "5")
+		u.renderError(w, r, ss, a, http.StatusServiceUnavailable, "err.unavailable_title", "err.unavailable")
 	case errors.Is(err, ErrConflict):
 		u.renderMsg(w, r, ss, a, http.StatusConflict, "err.conflict_title", err.Error())
 	default:
