@@ -301,7 +301,7 @@ func (s *Store) priceLines(ctx context.Context, q dbq, currency, field string, i
 	for i, li := range in {
 		f := fmt.Sprintf("%s[%d]", field, i)
 		l := Line{Position: i + 1, Description: li.Description, SKU: li.SKU, QuantityMilli: li.QuantityMilli, DiscountBP: li.DiscountBP}
-		var unit *int64 = li.UnitPriceMinor
+		unit := li.UnitPriceMinor
 		taxCode := ""
 		if li.TaxCode != nil {
 			taxCode = *li.TaxCode

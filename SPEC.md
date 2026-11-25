@@ -316,6 +316,7 @@ Modules must not call each other's internals. They talk through **capabilities**
 | `contracts` | Contract registry: parties, terms, dates, renewals, obligations, linked signed documents | in-house → other CLM |
 | `invoices` | Issue and track receivable invoices and payable bills, payments, credit notes | Invoice Ninja/Akaunting → in-house |
 | `time` | Time entries and timesheets per person/project/client, with approval and billable flags | Kimai/Solidtime → in-house |
+| `timesheets` | Weekly timesheets, approval, locked periods and billable time to draft invoice lines; the in-house finance module's name for the timesheet half of `time` (E15a, `specs/014-finance-basics/`) | in-house `finance` → Kimai/Solidtime |
 | `approvals` | Request/approve/reject with configurable chains (provided by can-core) | in-house engine → any |
 | `notify` | Schedule reminders and per-user attention items (provided by can-core) | any |
 | `search` | Query across modules, permission-filtered. Provided by can-core; modules **push** records to it (sensitive classes excluded by default) | FTS → dedicated search |

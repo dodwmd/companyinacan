@@ -79,7 +79,6 @@ var (
 	varRE      = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
 	sha256RE   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	filenameRE = regexp.MustCompile(`^[^/\\\x00-\x1f]{1,255}$`)
-	ctypeRE    = regexp.MustCompile(`^[a-z0-9][a-z0-9!#$&^_.+-]{0,60}/[a-z0-9][a-z0-9!#$&^_.+-]{0,100}$`)
 )
 
 type scanner interface{ Scan(...any) error }
