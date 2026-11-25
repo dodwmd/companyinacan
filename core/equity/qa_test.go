@@ -252,3 +252,45 @@ func TestExportFailsInsteadOfTruncating(t *testing.T) {
 	var buf bytes.Buffer
 	e.must(e.s.ExportCSV(e.ctx, e.fin, e.ent.ID, "ledger", "", &buf))
 }
+
+func TestStakeholderCreatorAndOriginalSubmitterStayInTheChain(t *testing.T) {
+	e := newEnv(t).base()
+	// a person holding finance and board creates an external holder; a second person attests it
+	fb := Actor{Subject: "fin-board-fred", Roles: []string{RoleFinance, RoleBoard}}
+	st := m(e.s.CreateStakeholder(e.ctx, fb, e.ent.ID, StakeholderInput{Kind: "investor", Identity: Identity{Name: "Ivy Investor"}}))
+	m(e.s.AttestExternal(e.ctx, e.admin, st.ID))
+	id := e.draft(e.hr, st.ID, q(10))
+	m(e.s.SubmitGrant(e.ctx, e.hr, id))
+	if _, err := e.s.ApproveGrant(e.ctx, fb, id); !isErr(err, ErrSeparation) {
+		t.Fatalf("the creator of the stakeholder approving a grant for it: %v", err)
+	}
+	// a board member cannot register themself as a holder
+	self := Actor{Subject: "sso-bob", Roles: []string{RoleBoard}, PersonID: personBob}
+	if _, err := e.s.CreateStakeholder(e.ctx, self, e.ent.ID, StakeholderInput{Kind: "advisor", PersonID: personBob, Identity: Identity{Name: "Bob"}}); !isErr(err, ErrSeparation) {
+		t.Fatalf("board member registering themself: %v", err)
+	}
+	// reject and resubmit by someone else does not launder the first submitter
+	id2 := e.draft(e.hr2, e.eveStk.ID, q(10))
+	m(e.s.SubmitGrant(e.ctx, e.hr, id2))
+	m(e.s.RejectGrant(e.ctx, e.board, id2, "again"))
+	m(e.s.SubmitGrant(e.ctx, Actor{Subject: "hr-third", Roles: []string{RoleHR}}, id2))
+	firstSubmitter := Actor{Subject: "HR-Alice", Roles: []string{RoleBoard}}
+	if _, err := e.s.ApproveGrant(e.ctx, firstSubmitter, id2); !isErr(err, ErrSeparation) {
+		t.Fatalf("the first submitter approving after a resubmission: %v", err)
+	}
+	if _, err := e.s.ApproveGrant(e.ctx, e.board, id2); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTerminationBackdatingIsBounded(t *testing.T) {
+	e := newEnv(t).base()
+	id := e.active(e.eveStk.ID, q(4800))
+	e.advance("2026-09-01")
+	if _, err := e.s.TerminateGrant(e.ctx, e.hr2, id, "2026-03-11", false); err == nil {
+		t.Fatal("a termination dated months back was accepted")
+	}
+	if _, err := e.s.TerminateGrant(e.ctx, e.hr2, id, "2026-06-15", false); err != nil {
+		t.Fatalf("a termination inside the window: %v", err)
+	}
+}

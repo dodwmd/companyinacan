@@ -319,6 +319,27 @@ The table stores resource ids only, so a replay re-reads the record under the ca
   which needs the `board` role. The service policy (`core/equity/policy.go`) is the authority.
 - Exports fail with 409 beyond 50,000 rows instead of truncating; narrow them with `as_of` or page the ledger.
 
+## Residual separation-of-duties limits
+
+- **Identity contract.** The grantee checks compare the caller's directory person id with the holder's.
+  Human `hr`, `board` and `admin` tokens must therefore carry a `person_id` claim from the identity
+  provider (the introspection answer). The service does not require it, because the can-core service
+  account legitimately has none and fails closed would break it; a human token without `person_id` is
+  checked by subject only. This is an explicit IdP contract: issue `person_id` to every human who also
+  holds equity.
+- **One human, two subjects.** Subjects are compared after folding, but two different subjects for the
+  same human (a personal and an admin account) are two people to the service unless both carry the same
+  `person_id`.
+- **Attestation is not re-validated.** An external-holder attestation stays in force when the identity is
+  later replaced with `PUT /identity`; it attests a stakeholder record, not a name.
+- **Triggers are not access control.** The database triggers repeat the rules for bugs in the service, not
+  for someone with write access to the SQLite file, who can drop them. Keep the file out of reach and keep
+  a copy of the audit chain head elsewhere.
+- **Chain history.** The grantor chain is the creator, every editor, every submitter (a rejection and
+  resubmission by someone else does not remove the first submitter), the stakeholder's creator, the
+  external-holder attester and the grantee. Terminations are accepted at most 90 days back, like
+  milestones; an older correction is a cancel and a new grant.
+
 ## Not implemented, limits and gaps
 
 - **Not implemented, by design:** 409A or any valuation methodology and the rule that a strike must be at

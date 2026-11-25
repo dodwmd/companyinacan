@@ -549,6 +549,11 @@ func (s *Service) SubmitGrant(ctx context.Context, a Actor, id string) (*Grant, 
 		if _, err := s.holderLink(ctx, tx, g.StakeholderID); err != nil {
 			return err
 		}
+		history := g.editedBy
+		if c := canonSubject(a.Subject); !slices.Contains(history, c) {
+			history = append(history, c) // every submitter stays in the chain, even after a rejection
+		}
+		hb, _ := json.Marshal(history)
 		avail, err := s.poolAvailable(ctx, tx, g.PlanID, s.today(), g.SupersedesID)
 		if err != nil {
 			return err
@@ -561,7 +566,7 @@ func (s *Service) SubmitGrant(ctx context.Context, a Actor, id string) (*Grant, 
 				return err
 			}
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE grants SET status=?, submitted_by=?, approval_ref=?, terminal_reason='', updated_at=? WHERE id=?`, GrantPending, canonSubject(a.Subject), ref, s.now().Unix(), id)
+		_, err = tx.ExecContext(ctx, `UPDATE grants SET status=?, submitted_by=?, approval_ref=?, terminal_reason='', edited_by=?, updated_at=? WHERE id=?`, GrantPending, canonSubject(a.Subject), ref, string(hb), s.now().Unix(), id)
 		return err
 	})
 	if err != nil {
@@ -633,7 +638,7 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 		if err != nil {
 			return err
 		}
-		chain := append([]string{g.createdBy, g.submittedBy, link.person, link.attester}, g.editedBy...)
+		chain := append([]string{g.createdBy, g.submittedBy, link.person, link.attester, link.createdBy}, g.editedBy...)
 		if !sodOK(Actor{Subject: approver}, chain...) || !sodOK(a, chain...) {
 			return ErrSeparation
 		}
@@ -823,6 +828,9 @@ func (s *Service) TerminateGrant(ctx context.Context, a Actor, id, on string, fo
 		}
 		if on < g.VestStart {
 			return invalid("termination_date cannot be before the vesting start")
+		}
+		if d.Before(s.now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -maxBackdateDays)) {
+			return invalid("termination_date cannot be more than %d days in the past: a termination recorded later than that changes what vested and needs a corrected grant (cancel and re-grant)", maxBackdateDays)
 		}
 		if forCause {
 			if d.After(s.now().UTC()) {
@@ -1128,13 +1136,13 @@ func (s *Service) secondActor(a Actor, g *grantRow) error {
 	return nil
 }
 
-type holderLinkInfo struct{ person, attester string }
+type holderLinkInfo struct{ person, attester, createdBy string }
 
 // holderLink requires the stakeholder to be tied to a directory person, or to an external-holder
 // attestation made by a second actor. It returns whichever is recorded.
 func (s *Service) holderLink(ctx context.Context, q querier, stakeholderID string) (holderLinkInfo, error) {
 	var l holderLinkInfo
-	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), IFNULL(external_attested_by, '') FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&l.person, &l.attester); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), IFNULL(external_attested_by, ''), created_by FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&l.person, &l.attester, &l.createdBy); err != nil {
 		return l, err
 	}
 	if l.person == "" && l.attester == "" {

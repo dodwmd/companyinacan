@@ -441,6 +441,9 @@ func (s *Service) CreateStakeholder(ctx context.Context, a Actor, entityID strin
 	if in.PersonID != "" && !personIDRe.MatchString(in.PersonID) {
 		return nil, invalid("person_id must be a directory person id")
 	}
+	if in.PersonID != "" && in.PersonID == a.PersonID && a.has(RoleBoard) {
+		return nil, ErrSeparation // a board member cannot register themself as a holder
+	}
 	if err := validIdentity(in.Identity); err != nil {
 		return nil, err
 	}
