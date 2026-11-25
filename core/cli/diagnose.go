@@ -33,7 +33,8 @@ const (
 )
 
 func newDiagnoseCmd(g *globalOpts) *cobra.Command {
-	var out, companyDir, metricsURL, composeProject string
+	var out, companyDir, metricsURL, composeProject, modulesDir string
+	var server bool
 	var logFiles []string
 	var lines int
 	cmd := &cobra.Command{
@@ -90,6 +91,9 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 				note("config", b.AddText("config.yaml", raw))
 			}
 			res := append(doctor.Check(lookPath), doctor.Reach(ctx, lookPath, reachRunner)...)
+			if server {
+				res = append(res, serverCheck(ctx, cmd, g, companyDir, modulesDir))
+			}
 			note("doctor", b.AddJSON("doctor.json", res))
 			if logs := collectLogs(ctx, logFiles, composeProject, lines); logs != "" {
 				note("logs", b.AddText("logs.txt", logs))
@@ -132,6 +136,8 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&composeProject, "compose-project", "", "include `docker compose -p <name> logs` (for example companyinacan)")
 	cmd.Flags().StringVar(&metricsURL, "metrics-url", "", "scrape this /metrics URL (token from $CAN_METRICS_TOKEN)")
 	cmd.Flags().IntVar(&lines, "lines", 200, "log lines to keep per source")
+	cmd.Flags().BoolVar(&server, "server", false, "also check, over ssh, the server's pod-to-node isolation (into doctor.json)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "with --server: modules directory (default: ./modules)")
 	return cmd
 }
 

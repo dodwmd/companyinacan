@@ -1,0 +1,351 @@
+#!/usr/bin/env bash
+# can-firewall: pod-to-node isolation for a single-node k3s server (specs/038-node-isolation).
+# Installed by the server bootstrap as /usr/local/sbin/can-firewall; edit it in
+# core/provider/hostfw/can-firewall.sh.
+#
+# It owns ONE nftables table, inet can_isolation, and never flushes anything else. Each chain
+# first accepts whatever did not arrive on a pod interface, so traffic from outside (the
+# operator's SSH included) is never matched. A drop in this table is final whatever ufw,
+# kube-proxy, flannel or kube-router accept in their own chains.
+#
+#   apply     load the rules (atomic; seeds the trusted pod set when the API answers)
+#   sync      refresh the trusted pod set once
+#   run       keep the rules loaded and the set current (can-firewall-sync.service)
+#   install   apply, verify, write and enable the systemd units; roll back on failure
+#   check     print key=value status; exit 0 only when enforcing
+#   disable   stop enforcing and do not start again at boot (the escape hatch)
+#   uninstall disable and remove the units and this script
+#   rules     print the ruleset
+set -uo pipefail
+
+TABLE_FAMILY=inet
+TABLE_NAME=can_isolation
+# Interfaces pod traffic arrives on (k3s flannel). Nothing else is ever filtered.
+IFACES=${CAN_FW_IFACES:-'"cni0", "flannel.1"'}
+POD_BRIDGE=${CAN_FW_POD_BRIDGE:-cni0}
+CONF_DIR=${CAN_FW_CONF_DIR:-/etc/can/firewall}
+CNI_STATE=${CAN_FW_CNI_STATE:-/var/lib/cni/networks/cbr0}
+INTERVAL=${CAN_FW_INTERVAL:-15}
+WAIT=${CAN_FW_WAIT:-180}
+UNIT_DIR=${CAN_FW_UNIT_DIR:-/etc/systemd/system}
+SELF=${CAN_FW_SELF:-/usr/local/sbin/can-firewall}
+SYSTEMCTL=${CAN_FW_SYSTEMCTL:-systemctl}
+read -r -a KC <<<"${CAN_FW_KUBECTL:-k3s kubectl}"
+UNITS=(can-firewall.service can-firewall-sync.service)
+
+log() { echo "can-firewall: $*"; }
+err() { echo "CAN_ERROR: can-firewall: $*" >&2; }
+
+# The ruleset. "add" keeps an existing set (and its elements); the chains are flushed and
+# refilled, so loading it again converges. nft -f applies a file as one transaction.
+rules() {
+  local t="$TABLE_FAMILY $TABLE_NAME"
+  cat <<RULES
+add table $t
+add set $t trusted4 { type ipv4_addr; }
+add chain $t input { type filter hook input priority -10; policy accept; }
+add chain $t forward { type filter hook forward priority -10; policy accept; }
+flush chain $t input
+flush chain $t forward
+add rule $t input iifname != { $IFACES } accept
+add rule $t input ct state established,related ct direction reply accept
+add rule $t input icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit } accept
+add rule $t input ip saddr @trusted4 tcp dport { 53, 6443 } accept
+add rule $t input ip saddr @trusted4 udp dport 53 accept
+add rule $t input counter drop
+add rule $t forward iifname != { $IFACES } accept
+add rule $t forward ip daddr 169.254.0.0/16 counter drop
+add rule $t forward ip6 daddr { fd00:ec2::254, fe80::a9fe:a9fe } counter drop
+RULES
+}
+
+# Namespaces besides kube-system whose pods may reach the API server, one per line in
+# $CONF_DIR/trusted-namespaces. Module namespaces are ignored.
+extra_namespaces() {
+  [ -f "$CONF_DIR/trusted-namespaces" ] || return 0
+  grep -E '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' "$CONF_DIR/trusted-namespaces" | grep -v '^mod-' || true
+}
+
+pod_ips() { # namespace [selector flags]
+  local ns=$1
+  shift
+  # Finished pods keep their podIP in status although the address is free again: exclude them.
+  "${KC[@]}" --request-timeout=5s get pods -n "$ns" "$@" \
+    --field-selector=status.phase!=Succeeded,status.phase!=Failed \
+    -o 'jsonpath={range .items[*]}{.spec.hostNetwork}{"|"}{.status.podIP}{"\n"}{end}' 2>/dev/null
+}
+
+# Prints the trusted pod addresses, one per line; fails if any query fails.
+trusted_ips() {
+  local all out ns
+  all=$(pod_ips kube-system) || return 1
+  out=$(pod_ips can-system -l app.kubernetes.io/name=can-core) || return 1
+  all+=$'\n'$out
+  for ns in $(extra_namespaces); do
+    out=$(pod_ips "$ns") || return 1
+    all+=$'\n'$out
+  done
+  printf '%s\n' "$all" | awk -F'|' '$1 != "true" && $2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {print $2}' | sort -u
+}
+
+set_commands() { # newline separated addresses
+  local list
+  echo "flush set $TABLE_FAMILY $TABLE_NAME trusted4"
+  list=$(printf '%s\n' "$1" | grep . | paste -sd, -)
+  if [ -n "$list" ]; then
+    echo "add element $TABLE_FAMILY $TABLE_NAME trusted4 { $list }"
+  fi
+}
+
+load() { # nft commands: checked, then applied as one transaction
+  printf '%s\n' "$1" | nft -c -f - && printf '%s\n' "$1" | nft -f -
+}
+
+apply() {
+  local tx ips
+  tx=$(rules)
+  if ips=$(trusted_ips); then
+    tx+=$'\n'$(set_commands "$ips")
+  fi
+  if ! load "$tx"; then
+    err "the rules did not load; whatever was loaded before is unchanged"
+    return 1
+  fi
+}
+
+sync_set() {
+  local ips
+  ips=$(trusted_ips) || return 1
+  load "$(set_commands "$ips")"
+}
+
+chain_listing() { nft list chain "$TABLE_FAMILY" "$TABLE_NAME" "$1" 2>/dev/null; }
+
+# True when both chains hold what rules() loads, and nothing more.
+rules_intact() {
+  local in fwd
+  in=$(chain_listing input) || return 1
+  fwd=$(chain_listing forward) || return 1
+  grep -q 'hook input priority' <<<"$in" &&
+    grep -q 'iifname != .*"cni0".* accept' <<<"$in" &&
+    grep -q '@trusted4 tcp dport' <<<"$in" &&
+    grep -Eq '^[[:space:]]*counter packets [0-9]+ bytes [0-9]+ drop' <<<"$in" &&
+    [ "$(grep -cE '(accept|drop)$' <<<"$(grep -v 'hook ' <<<"$in")")" -eq 6 ] &&
+    grep -q 'hook forward priority' <<<"$fwd" &&
+    grep -q 'ip daddr 169.254.0.0/16 .*drop' <<<"$fwd" &&
+    [ "$(grep -cE '(accept|drop)$' <<<"$(grep -v 'hook ' <<<"$fwd")")" -eq 3 ]
+}
+
+set_elements() {
+  nft list set "$TABLE_FAMILY" "$TABLE_NAME" trusted4 2>/dev/null | tr -d '\n' |
+    sed -n 's/.*elements = {\([^}]*\)}.*/\1/p' | tr ', \t' '\n\n\n' | grep . | sort -u
+}
+
+run() {
+  local sig last='' next=0 burst=0 tick=0 failed=0
+  while true; do
+    if [ $((tick % 5)) -eq 0 ] && ! rules_intact; then
+      log "rules missing or changed: loading them"
+      apply || true
+    fi
+    tick=$((tick + 1))
+    # The CNI keeps one file per allocated pod address: a change means pods came or went, so
+    # refresh at once (and for a few seconds more, while the API catches up).
+    # shellcheck disable=SC2012
+    sig=$(ls "$CNI_STATE" 2>/dev/null | tr '\n' ' ')
+    if [ "$sig" != "$last" ]; then
+      burst=8
+      last=$sig
+    fi
+    if [ "$burst" -gt 0 ] || [ "$SECONDS" -ge "$next" ]; then
+      if sync_set; then
+        [ "$failed" -eq 0 ] || log "pod list available again"
+        failed=0
+      else
+        [ "$failed" -eq 1 ] || log "cannot list pods: keeping the current trusted set"
+        failed=1
+      fi
+      next=$((SECONDS + INTERVAL))
+      [ "$burst" -eq 0 ] || burst=$((burst - 1))
+    fi
+    sleep 1
+  done
+}
+
+check() {
+  local bad=0 want have missing stale
+  problem() {
+    echo "problem=$*"
+    bad=1
+  }
+  if rules_intact; then
+    echo "rules=ok"
+  else
+    echo "rules=missing"
+    problem "the isolation rules are not loaded"
+  fi
+  if ip link show dev "$POD_BRIDGE" >/dev/null 2>&1; then
+    echo "bridge=present"
+  else
+    echo "bridge=missing"
+    problem "interface $POD_BRIDGE not found: the rules match nothing"
+  fi
+  if command -v "$SYSTEMCTL" >/dev/null 2>&1; then
+    if "$SYSTEMCTL" is-active --quiet can-firewall-sync.service &&
+      "$SYSTEMCTL" is-enabled --quiet can-firewall.service; then
+      echo "service=active"
+    else
+      echo "service=inactive"
+      problem "can-firewall services are not enabled and running"
+    fi
+  else
+    echo "service=n/a"
+  fi
+  if want=$(trusted_ips); then
+    have=$(set_elements)
+    missing=$(comm -23 <(printf '%s\n' "$want" | grep .) <(printf '%s\n' "$have" | grep .) | grep -c .)
+    stale=$(comm -13 <(printf '%s\n' "$want" | grep .) <(printf '%s\n' "$have" | grep .) | grep -c .)
+    echo "trusted=$(printf '%s\n' "$have" | grep -c .)"
+    echo "missing=$missing"
+    echo "stale=$stale"
+    [ "$missing" -eq 0 ] || problem "$missing system pod address(es) are not trusted yet"
+    [ "$stale" -eq 0 ] || problem "$stale trusted address(es) belong to no system pod"
+  else
+    problem "cannot list pods"
+  fi
+  if [ "$bad" -eq 0 ]; then
+    echo "status=ok"
+  else
+    echo "status=fail"
+  fi
+  return "$bad"
+}
+
+write_units() {
+  install -d -m 0755 "$UNIT_DIR"
+  cat >"$UNIT_DIR/can-firewall.service" <<UNIT
+[Unit]
+Description=Company in a Can: pod-to-node isolation rules
+# After anything that may flush the ruleset at boot, before the pods start.
+After=local-fs.target nftables.service ufw.service
+Before=k3s.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=$SELF apply
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  cat >"$UNIT_DIR/can-firewall-sync.service" <<UNIT
+[Unit]
+Description=Company in a Can: trusted system pod addresses for the isolation rules
+After=can-firewall.service k3s.service
+Wants=can-firewall.service
+
+[Service]
+ExecStart=$SELF run
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+
+# Waits for the pod bridge and the system pods, so the rules are never loaded with an empty
+# trusted set on a running cluster (CoreDNS and Traefik would lose the API).
+wait_for_cluster() {
+  local deadline=$((SECONDS + WAIT))
+  while true; do
+    if ip link show dev "$POD_BRIDGE" >/dev/null 2>&1 && [ -n "$(trusted_ips)" ]; then
+      return 0
+    fi
+    [ "$SECONDS" -lt "$deadline" ] || return 1
+    sleep 2
+  done
+}
+
+verify() {
+  local want
+  rules_intact || {
+    err "verify: the rules are not loaded"
+    return 1
+  }
+  # Several attempts: a system pod may be replaced between listing and comparing.
+  for _ in 1 2 3; do
+    if sync_set && want=$(trusted_ips) && [ -n "$want" ] &&
+      [ -z "$(comm -23 <(printf '%s\n' "$want") <(set_elements))" ] &&
+      "${KC[@]}" --request-timeout=5s get --raw=/readyz >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  err "verify: the API server or the system pod addresses could not be confirmed"
+  return 1
+}
+
+restore() { # previous "nft list table" output, possibly empty
+  local t="$TABLE_FAMILY $TABLE_NAME"
+  load "add table $t
+delete table $t
+$1" || nft delete table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null || true
+}
+
+install_all() {
+  local previous
+  if ! wait_for_cluster; then
+    err "no pod bridge ($POD_BRIDGE) or no system pods after ${WAIT}s: nothing was changed"
+    return 1
+  fi
+  previous=$(nft list table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null || true)
+  apply || return 1
+  if ! verify; then
+    restore "$previous"
+    err "rolled back"
+    return 1
+  fi
+  write_units
+  if ! { "$SYSTEMCTL" daemon-reload && "$SYSTEMCTL" enable "${UNITS[@]}" && "$SYSTEMCTL" restart "${UNITS[@]}"; }; then
+    "$SYSTEMCTL" disable --now "${UNITS[@]}" >/dev/null 2>&1 || true
+    restore "$previous"
+    err "systemd refused the units; rolled back"
+    return 1
+  fi
+  log "installed: pods can no longer reach node services (system pods: API server and DNS only)"
+}
+
+disable_all() {
+  "$SYSTEMCTL" disable --now "${UNITS[@]}" >/dev/null 2>&1 || true
+  nft delete table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null || true
+  if nft list table "$TABLE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1; then
+    err "could not delete the table"
+    return 1
+  fi
+}
+
+uninstall_all() {
+  disable_all || return 1
+  rm -f "$UNIT_DIR/can-firewall.service" "$UNIT_DIR/can-firewall-sync.service" "$SELF"
+  "$SYSTEMCTL" daemon-reload >/dev/null 2>&1 || true
+}
+
+main() {
+  case "${1:-}" in
+    rules) rules ;;
+    apply) apply ;;
+    sync) sync_set ;;
+    run) run ;;
+    install) install_all ;;
+    check) check ;;
+    disable) disable_all ;;
+    uninstall) uninstall_all ;;
+    *)
+      echo "usage: can-firewall rules|apply|sync|run|install|check|disable|uninstall" >&2
+      return 2
+      ;;
+  esac
+}
+
+main "$@"
