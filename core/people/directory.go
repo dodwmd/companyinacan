@@ -266,11 +266,24 @@ func (s *Service) GetPerson(ctx context.Context, a Actor, id string) (*Person, e
 	return &v, nil
 }
 
+func maskedLeave(st Status) Status {
+	if st == StLeave {
+		return StActive
+	}
+	return st
+}
+
 // maskLeave presents "leave" as "active" to colleagues: that someone is on leave can reveal
 // health or family circumstances. The person, their manager chain and hr/admin see the truth.
+//
+// updated_at is masked the same way (colleagues see created_at): a record that changed around the
+// time leave began would otherwise give it away.
 func (p *Person) maskLeave(a Actor, f Fact) {
-	if p.Status == StLeave && !f.Self && !f.Chain && !a.hrAdmin() {
-		p.Status = StActive
+	if !f.Self && !f.Chain && !a.hrAdmin() {
+		p.UpdatedAt = p.CreatedAt
+		if p.Status == StLeave {
+			p.Status = StActive
+		}
 	}
 }
 
@@ -870,7 +883,7 @@ func (s *Service) applyStatus(ctx context.Context, tx *sqlTx, id string, from, t
 			id, string(from), string(to), date, now, by, note); err != nil {
 			return err
 		}
-	} else if _, err := tx.ExecContext(ctx, `UPDATE status_history SET applied = 1 WHERE seq = ?`, histID); err != nil {
+	} else if _, err := tx.ExecContext(ctx, `UPDATE status_history SET applied = 1 WHERE seq = ? AND applied = 0`, histID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE people SET status = ?, updated_at = ? WHERE id = ?`, string(to), now, id); err != nil {
@@ -901,8 +914,14 @@ func (s *Service) applyStatus(ctx context.Context, tx *sqlTx, id string, from, t
 			return err
 		}
 	}
-	if err := s.enqueue(ctx, tx, EventPersonStatusChanged, map[string]any{"party_id": id, "kind": kind, "from": string(from), "to": string(to), "effective_date": date}); err != nil {
-		return err
+	// Leave can reveal health or family circumstances and event subscribers are not all HR, so
+	// the event masks it exactly like the directory does for colleagues: leave is published as
+	// active, and a change between active and leave publishes nothing.
+	pf, pt := maskedLeave(from), maskedLeave(to)
+	if pf != pt {
+		if err := s.enqueue(ctx, tx, EventPersonStatusChanged, map[string]any{"party_id": id, "kind": kind, "from": string(pf), "to": string(pt), "effective_date": date}); err != nil {
+			return err
+		}
 	}
 	if to == StFormer {
 		if err := s.enqueue(ctx, tx, EventPersonOffboarded, map[string]any{"party_id": id, "kind": kind, "effective_date": date}); err != nil {
@@ -955,21 +974,36 @@ func (s *Service) ApplyDue(ctx context.Context) (int, error) {
 	_ = rows.Close()
 	n := 0
 	for _, d := range ds {
+		applied := false
 		err := s.tx(ctx, func(tx *sqlTx) error {
+			// Re-read inside the transaction: with one connection a concurrent caller (the lazy
+			// check at authentication and the background tick) has either finished or not
+			// started, so a row that is no longer pending is simply skipped.
+			var pending int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM status_history WHERE seq = ? AND applied = 0`, d.seq).Scan(&pending); err != nil {
+				return err
+			}
+			if pending == 0 {
+				return nil
+			}
 			var cur string
 			if err := tx.QueryRowContext(ctx, `SELECT status FROM people WHERE id = ?`, d.id).Scan(&cur); err != nil {
 				return err
 			}
 			if cur != d.from || !slices.Contains(transitions[Status(cur)], Status(d.to)) {
-				_, err := tx.ExecContext(ctx, `DELETE FROM status_history WHERE seq = ?`, d.seq) // stale: drop rather than apply blindly
+				// stale: drop the pending row rather than apply it blindly; never an applied one
+				_, err := tx.ExecContext(ctx, `DELETE FROM status_history WHERE seq = ? AND applied = 0`, d.seq)
 				return err
 			}
+			applied = true
 			return s.applyStatus(ctx, tx, d.id, Status(d.from), Status(d.to), d.date, d.by, d.note, d.seq)
 		})
 		if err != nil {
 			return n, err
 		}
-		n++
+		if applied {
+			n++
+		}
 	}
 	return n, nil
 }

@@ -50,6 +50,11 @@ dated at the start date, blocking an immediate onboarding transition; one wrong 
       status application; F10 SPEC flows and events catalogue; F11 scrubbed attribution, `person.erased.v1`,
       documented residue; F12 proper cycle detection
 
+## Phase 7c: QA round 2 fixes
+- [x] ApplyDue re-reads inside the transaction and never deletes an applied row (concurrent test); valid
+      credentials are never rate limited by bad ones; leave masked in `person.status_changed.v1` and
+      `updated_at`; erasure audited before the scrub; docs for UTC dates and limiter reset
+
 ## Phase 8: Open (needs a cluster or other epics)
 - [ ] Helm templates; render tests; k3d integration tests (NetworkPolicy, restricted PSA, PVC ownership)
 - [ ] CI footprint check on k3d; image build, digest pins

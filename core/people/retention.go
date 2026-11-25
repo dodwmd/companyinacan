@@ -163,11 +163,12 @@ func (s *Service) RequestErasure(ctx context.Context, a Actor, id string) (*Eras
 	if err != nil {
 		return nil, err
 	}
-	if err := s.scrub(ctx, true); err != nil {
-		return nil, err
-	}
+	// Audit first: the erasure has committed, so it must be on record even if the scrub fails.
 	if err := s.auditWrite(ctx, a, "erase", "person:"+id, nil); err != nil {
 		return nil, err
+	}
+	if err := s.scrub(ctx, true); err != nil {
+		return nil, fmt.Errorf("the person is erased and audited, but scrubbing the database files failed (repeat the request: it is idempotent and retries the scrub): %w", err)
 	}
 	return &Erasure{Subject: id, Classes: Classes, Date: date}, nil
 }

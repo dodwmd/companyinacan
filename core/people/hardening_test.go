@@ -2,6 +2,7 @@ package people
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -291,8 +293,8 @@ func TestRateLimitsDenialAuditCapAndGoalListing(t *testing.T) {
 	if code, _, _ := e.do("bad-token", "GET", "/v1/people", nil); code != 429 {
 		t.Errorf("credential guessing is not throttled: %d", code)
 	}
-	if code, _, _ := e.do(hrTok, "GET", "/v1/people", nil); code != 429 {
-		t.Errorf("a throttled address can still call: %d", code) // same IP in tests
+	if code, _, _ := e.do(hrTok, "GET", "/v1/people", nil); code != 200 {
+		t.Errorf("a flood of bad tokens locked out a valid credential: %d", code) // same address in tests
 	}
 
 	e2 := newEnv(t)
@@ -472,5 +474,127 @@ func TestAPIDoesNotLeakInternalsOnLargeInput(t *testing.T) {
 	e := newAPIEnv(t)
 	if code, _, b := e.do(hrTok, "POST", "/v1/people", map[string]any{"kind": "employee", "given_name": strings.Repeat("a", 5000), "family_name": "B"}); code != 400 || strings.Contains(b, "sqlite") {
 		t.Errorf("%d %s", code, b)
+	}
+}
+
+// Round 2: concurrent ApplyDue (lazy check at authentication plus the background tick).
+func TestApplyDueIsSafeUnderConcurrency(t *testing.T) {
+	e := newEnv(t)
+	p, _ := e.person("Rae", "", RoleEmployee)
+	_, err := e.s.ChangeStatus(e.ctx, e.hr, p.ID, StOffboarding, "2026-03-12", "")
+	e.must(err)
+	*e.clock = e.clock.AddDate(0, 0, 3)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := e.s.ApplyDue(e.ctx); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	var applied, total int
+	e.must(e.s.db.QueryRow(`SELECT COALESCE(SUM(applied),0), COUNT(*) FROM status_history WHERE person_id = ? AND to_status = 'offboarding'`, p.ID).Scan(&applied, &total))
+	if applied != 1 || total != 1 {
+		t.Fatalf("history rows for the change: %d applied of %d (want exactly one applied row)", applied, total)
+	}
+	n := 0
+	evs, _ := e.s.AllEvents(e.ctx)
+	for _, ev := range evs {
+		if ev.Type == EventPersonStatusChanged && ev.Data["to"] == "offboarding" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("status_changed events = %d, want 1", n)
+	}
+	if got, _ := e.s.GetPerson(e.ctx, e.hr, p.ID); got.Status != StOffboarding {
+		t.Errorf("status = %s", got.Status)
+	}
+	// a stale pending row is dropped, an applied one never is
+	var seq int64
+	e.must(e.s.db.QueryRow(`SELECT seq FROM status_history WHERE person_id = ? AND to_status = 'offboarding'`, p.ID).Scan(&seq))
+	if _, err := e.s.ApplyDue(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	var still int
+	e.must(e.s.db.QueryRow(`SELECT COUNT(*) FROM status_history WHERE seq = ?`, seq).Scan(&still))
+	if still != 1 {
+		t.Error("an applied history row was deleted")
+	}
+}
+
+// Round 2: leave must not leak through events or timestamps.
+func TestLeaveDoesNotLeakThroughEventsOrUpdatedAt(t *testing.T) {
+	e := newEnv(t)
+	boss, bossA := e.person("Boss", "", RoleEmployee, RoleManager)
+	p, _ := e.person("Rae", boss.ID, RoleEmployee)
+	_, peerA := e.person("Pat", "", RoleEmployee)
+	before := countEvents(t, e, EventPersonStatusChanged)
+	*e.clock = e.clock.Add(48 * time.Hour)
+	_, err := e.s.ChangeStatus(e.ctx, e.hr, p.ID, StLeave, "", "")
+	e.must(err)
+	if countEvents(t, e, EventPersonStatusChanged) != before {
+		t.Error("an active->leave change published an event")
+	}
+	cp, err := e.s.GetPerson(e.ctx, peerA, p.ID)
+	e.must(err)
+	if cp.UpdatedAt != cp.CreatedAt || cp.Status != StActive {
+		t.Error("a colleague can see leave or when the record last changed")
+	}
+	*e.clock = e.clock.Add(48 * time.Hour)
+	_, err = e.s.ChangeStatus(e.ctx, e.hr, p.ID, StOffboarding, "", "")
+	e.must(err)
+	evs, _ := e.s.AllEvents(e.ctx)
+	last := evs[len(evs)-1]
+	if last.Type != EventPersonStatusChanged || last.Data["from"] != "active" || last.Data["to"] != "offboarding" {
+		t.Errorf("leave not masked in %+v", last)
+	}
+	for _, ev := range evs {
+		if ev.Data["from"] == "leave" || ev.Data["to"] == "leave" {
+			t.Errorf("event reveals leave: %+v", ev)
+		}
+	}
+	// updated_at: colleagues see created_at, the manager chain and hr see the real value
+	if hp, _ := e.s.GetPerson(e.ctx, e.hr, p.ID); hp.UpdatedAt == hp.CreatedAt {
+		t.Error("hr lost the real updated_at")
+	}
+	if mp, _ := e.s.GetPerson(e.ctx, bossA, p.ID); mp.UpdatedAt == mp.CreatedAt {
+		t.Error("the manager lost the real updated_at")
+	}
+}
+
+// Round 2: the erasure is audited before the scrub, so a scrub failure leaves a record.
+func TestErasureAuditedEvenWhenScrubFails(t *testing.T) {
+	e := newEnv(t)
+	p, _ := e.person("Rae", "", RoleEmployee)
+	for _, st := range []Status{StOffboarding, StFormer} {
+		_, err := e.s.ChangeStatus(e.ctx, e.hr, p.ID, st, "", "")
+		e.must(err)
+	}
+	// hold the database busy for the checkpoint with a second connection holding a read snapshot
+	hold, err := sql.Open("sqlite", "file:"+e.path+"?_pragma=busy_timeout(1)")
+	e.must(err)
+	defer func() { _ = hold.Close() }()
+	tx, err := hold.Begin()
+	e.must(err)
+	var n int
+	e.must(tx.QueryRow(`SELECT COUNT(*) FROM people`).Scan(&n))
+	_, err = e.s.RequestErasure(e.ctx, e.hr, p.ID)
+	_ = tx.Rollback()
+	if err == nil {
+		t.Skip("the checkpoint was not blocked on this platform")
+	}
+	if e.aud.find("erase", "person:"+p.ID, "ok") == nil {
+		t.Fatalf("erasure not audited although it committed: %v", err)
+	}
+	if !strings.Contains(err.Error(), "erased and audited") {
+		t.Errorf("error does not say what happened: %v", err)
+	}
+	// retry succeeds and reports accurately
+	if _, err := e.s.RequestErasure(e.ctx, e.hr, p.ID); err != nil {
+		t.Errorf("retry: %v", err)
 	}
 }

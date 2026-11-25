@@ -59,16 +59,6 @@ func (r *rateLimiter) allow(key string) bool {
 	return true
 }
 
-// available reports whether a token is available without consuming it.
-func (r *rateLimiter) available(key string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.refill(key).tokens >= 1
-}
-
-// take consumes one token if there is one (used to charge failures).
-func (r *rateLimiter) take(key string) { r.allow(key) }
-
 // denyLimiter caps how many denial audit records one actor can generate per minute, so a
 // misbehaving client cannot fill the audit log. The first suppressed denial in a window is
 // itself recorded ("deny-throttled").

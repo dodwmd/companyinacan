@@ -57,10 +57,15 @@ Rules worth knowing:
   person record) is exempt from this because it has no employment status; it never gets manager powers.
 - **Leave is masked.** Colleagues see someone on leave as `active` (it can reveal health or family
   circumstances); the person, their manager chain and hr/admin see `leave`. The `status=leave` list
-  filter is applied after masking.
+  filter is applied after masking, colleagues see `created_at` in place of `updated_at`, and
+  `person.status_changed.v1` masks it the same way: `leave` is published as `active` and a change between
+  `active` and `leave` publishes nothing. A consumer that needs to know about leave (payroll, say) must read
+  the directory as hr.
 - **identity.\* checklist actions** (for example `identity.provision`) cannot be assigned to the person
   themself and nobody can complete one about themself. A `manager`-role task always resolves to the
   person's *current* manager when read or completed.
+- **Effective dates are UTC calendar dates** (`YYYY-MM-DD`): a change dated today takes effect at once, a
+  future one at 00:00 UTC on its date, whatever the operator's or the person's local time zone.
 - **Access ends on the effective date.** A due, future-dated status change is applied when the affected
   person next authenticates and by a one-minute background tick, not an hour later.
 - **404, not 403,** when the caller may not see the record at all, so ids cannot be probed.
@@ -157,6 +162,9 @@ automatically). The sweep runs hourly and on demand (`POST /v1/retention/run`, `
 - **No data left behind in the files.** Every erasure and every retention sweep that purged something then
   runs `VACUUM` and `PRAGMA wal_checkpoint(TRUNCATE)`, because `secure_delete` alone does not scrub the
   write-ahead log; a test greps `people.db` and `people.db-wal` for the erased name, email and note.
+  The erasure is written to the audit log before the scrub; if the scrub fails (for example a long-lived
+  reader blocks the checkpoint) the request returns an error saying the person is erased and audited, and
+  repeating it is idempotent and retries the scrub.
   **Backups and snapshots taken earlier still contain the data** until they expire (default horizon 35
   days, SPEC.md section 3.7). The erasure ledger (E08, `core/backup/ledger.go`) is how a restore re-applies
   the erasure: `purge` is replayed before workloads start.
@@ -211,8 +219,11 @@ retention: {}                # per class overrides
 Environment: `CAN_PEOPLE_API_TOKEN` (required, 24+ characters; the can-core service account, roles hr + admin),
 `CAN_PEOPLE_WEBHOOK_SECRET` (required when a webhook is set), `CAN_PEOPLE_INTROSPECT_TOKEN`.
 
-Requests are rate limited (per address before authentication, per subject after, and a stricter bucket
-for failed authentications: 429 with `Retry-After`). `introspect.url` must be https or loopback unless
+Requests are rate limited per subject, and requests whose credentials **fail** are limited per address
+(429 with `Retry-After` once the bucket is empty). Authentication always runs first, so a flood of bad
+tokens from an address never blocks a request that presents a valid credential. The limiter tables are
+bounded: when a table is full it is cleared, which forgives every tracked address at once, so this slows
+guessing and scraping but is not a substitute for network policy. `introspect.url` must be https or loopback unless
 `introspect.allow_insecure_http` is set for a protected in-cluster Service; the endpoint receives every
 user's bearer token. Introspection answers are cached in a bounded LRU, refusals for 5 s.
 
