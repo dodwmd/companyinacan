@@ -330,7 +330,7 @@
       "minProperties": 1,
       "maxProperties": 1,
       "properties": {
-        "role": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "role": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)?$", "description": "A role of the module the request belongs to, or module:role for another module's role; built-in roles (owner, operator, auditor) as they are." },
         "user": { "type": "string", "pattern": "^(user|party):[A-Za-z0-9_.@-]{1,64}$" },
         "manager_of_requester": { "const": true }
       }

@@ -78,7 +78,7 @@ func newEnv(t *testing.T) *env {
 	mk(exp, map[string][]string{"finance": {"expenses.approve"}, "legal": {"legal.review"}, "director": {"expenses.director"}},
 		store.Subscription{ModuleID: exp, Event: "approval.decided.v1", Service: exp, Port: 80, Webhook: "/hook"})
 	mk("vendors", nil, store.Subscription{ModuleID: "vendors", Event: "approval.decided.v1", Service: "vendors", Port: 80, Webhook: "/hook"})
-	for _, g := range []struct{ s, r string }{{"user:fin1", "finance"}, {"user:fin2", "finance"}, {"user:fin3", "finance"}, {"user:lawyer", "legal"}, {"user:dir", "director"}} {
+	for _, g := range []struct{ s, r string }{{"user:fin1", "expenses:finance"}, {"user:fin2", "expenses:finance"}, {"user:fin3", "expenses:finance"}, {"user:lawyer", "expenses:legal"}, {"user:dir", "expenses:director"}} {
 		if err := x.rb.Grant(ctx, "test", g.s, g.r, ""); err != nil {
 			t.Fatal(err)
 		}

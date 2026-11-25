@@ -18,6 +18,7 @@ import (
 
 var (
 	nameRe     = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+	roleNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}(:[a-z][a-z0-9-]{0,39})?$`)
 	durationRe = regexp.MustCompile(`^([1-9][0-9]{0,3})([hd])$`)
 )
 
@@ -38,7 +39,7 @@ func validApprover(a config.Approver) error {
 	set := 0
 	if a.Role != "" {
 		set++
-		if !nameRe.MatchString(a.Role) {
+		if !roleNameRe.MatchString(a.Role) {
 			return fmt.Errorf("role %q is not a valid role name", a.Role)
 		}
 	}

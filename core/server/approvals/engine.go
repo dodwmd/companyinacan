@@ -128,15 +128,18 @@ func contains(l []string, s string) bool {
 
 // resolve turns approver specs into a set and reports whether enough people could act: at least
 // quorum distinct approvers other than the requester.
-func (e *Engine) resolve(ctx context.Context, specs []config.Approver, requester string, quorum int) (approverSet, bool, error) {
+func (e *Engine) resolve(ctx context.Context, module string, specs []config.Approver, requester string, quorum int) (approverSet, bool, error) {
 	var set approverSet
 	people := map[string]bool{}
 	big := false
 	for _, a := range specs {
 		switch {
 		case a.Role != "":
-			set.merge(approverSet{Roles: []string{a.Role}})
-			holders, err := e.d.Roles.SubjectsWithRole(ctx, a.Role, 51)
+			// A bare role name in a policy means the role of the module the request belongs to;
+			// other modules' roles are written "module:role".
+			role := rbac.QualifyRole(module, a.Role)
+			set.merge(approverSet{Roles: []string{role}})
+			holders, err := e.d.Roles.SubjectsWithRole(ctx, role, 51)
 			if err != nil {
 				return set, false, err
 			}
@@ -166,12 +169,12 @@ func (e *Engine) resolve(ctx context.Context, specs []config.Approver, requester
 	return set, big || len(people) >= quorum, nil
 }
 
-func (e *Engine) resolveStep(ctx context.Context, s config.ApprovalStep, requester string) (approverSet, error) {
+func (e *Engine) resolveStep(ctx context.Context, module string, s config.ApprovalStep, requester string) (approverSet, error) {
 	q := s.Quorum
 	if q < 1 {
 		q = 1
 	}
-	set, ok, err := e.resolve(ctx, s.Approvers, requester, q)
+	set, ok, err := e.resolve(ctx, module, s.Approvers, requester, q)
 	if err != nil {
 		return set, err
 	}
@@ -179,7 +182,7 @@ func (e *Engine) resolveStep(ctx context.Context, s config.ApprovalStep, request
 		return set, nil
 	}
 	if len(s.Fallback) > 0 {
-		set, ok, err = e.resolve(ctx, s.Fallback, requester, q)
+		set, ok, err = e.resolve(ctx, module, s.Fallback, requester, q)
 		if err != nil {
 			return set, err
 		}
@@ -288,7 +291,7 @@ func (e *Engine) Create(ctx context.Context, cr CreateRequest) (Request, bool, e
 	}
 	for i := range rows {
 		if rows[i].stage == first && rows[i].status == "waiting" {
-			set, err := e.resolveStep(ctx, pol.Steps[i], cr.Requester)
+			set, err := e.resolveStep(ctx, cr.ModuleID, pol.Steps[i], cr.Requester)
 			if err != nil {
 				return Request{}, false, err
 			}
@@ -558,7 +561,7 @@ func (e *Engine) Decide(ctx context.Context, id, actor, decision, comment string
 						if s.Stage != next || s.Status != "waiting" {
 							continue
 						}
-						set, err := e.resolveStep(ctx, pol.Steps[i], req.Requester)
+						set, err := e.resolveStep(ctx, req.ModuleID, pol.Steps[i], req.Requester)
 						if errors.Is(err, ErrNoApprover) {
 							final, reason, activate = "rejected", "no_approver", nil
 							break
@@ -838,7 +841,7 @@ func (e *Engine) escalate(ctx context.Context, id string) error {
 	if err := json.Unmarshal([]byte(d.policyJSON), &pol); err != nil {
 		return err
 	}
-	extra, _, err := e.resolve(ctx, pol.EscalateTo, d.Request.Requester, 1)
+	extra, _, err := e.resolve(ctx, d.Request.ModuleID, pol.EscalateTo, d.Request.Requester, 1)
 	if err != nil {
 		return err
 	}

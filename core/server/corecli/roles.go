@@ -31,11 +31,11 @@ func rolesCmd(getenv func(string) string) *cobra.Command {
 			if _, err := d.AdminByUsername(c.Context(), args[0]); err != nil {
 				return fail("no admin %q", args[0])
 			}
-			s := rbac.New(d, audit.New(d), rbac.Options{})
+			s := rbac.New(d, audit.New(d), rbac.Options{BreakGlass: true})
 			if grant {
-				err = s.Grant(c.Context(), "cli", "user:"+args[0], args[1], *scope)
+				err = s.Grant(c.Context(), rbac.CLIActor, "user:"+args[0], args[1], *scope)
 			} else {
-				err = s.Revoke(c.Context(), "cli", "user:"+args[0], args[1], *scope)
+				err = s.Revoke(c.Context(), rbac.CLIActor, "user:"+args[0], args[1], *scope)
 			}
 			switch {
 			case errors.Is(err, rbac.ErrLastOwner):

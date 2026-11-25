@@ -377,7 +377,7 @@ func TestWebhookChannel(t *testing.T) {
 func TestSubscriptionRulesFromManifests(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	e.roles["sales"] = []string{"user:sam", "user:sue"}
+	e.roles["forms:sales"] = []string{"user:sam", "user:sue"}
 	m := store.Module{ID: "forms", Version: "1", Namespace: "mod-forms", ServiceAccount: "forms", State: store.StateEnabled, HMACSecret: "s",
 		Manifest: config.Module{ID: "forms", Notifications: []config.NotifyRule{
 			{Event: "lead.created.v1", Recipients: []string{"role:sales", "field:owner", "user:user:boss"}},
@@ -435,7 +435,7 @@ func TestRecipientsPerRuleAreBounded(t *testing.T) {
 	for i := 0; i < 500; i++ {
 		many = append(many, "user:u"+strings.Repeat("x", i%5)+string(rune('a'+i%26))+string(rune('a'+(i/26)%26))+string(rune('a'+(i/676)%26)))
 	}
-	e.roles["everyone"] = many
+	e.roles["m:everyone"] = many
 	m := store.Module{ID: "m", Version: "1", Namespace: "mod-m", ServiceAccount: "m", State: store.StateEnabled, HMACSecret: "s",
 		Manifest: config.Module{ID: "m", Notifications: []config.NotifyRule{{Event: "lead.created.v1", Recipients: []string{"role:everyone"}}}}}
 	_ = e.db.UpsertModule(ctx, m, nil, nil)

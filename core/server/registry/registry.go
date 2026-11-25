@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sync"
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -45,6 +46,7 @@ type Resolution struct {
 type Registry struct {
 	db          *store.DB
 	platformURL string
+	mu          sync.Mutex
 }
 
 // New returns a registry. platformURL is where can-core's own module API is reachable from modules.
@@ -134,10 +136,9 @@ func Declares(m *config.Module, capability string) bool {
 // Register records the module with its provisions and subscriptions derived from its manifest,
 // replacing any earlier registration of the same module.
 func (r *Registry) Register(ctx context.Context, m store.Module) error {
-	if vs := config.PlatformViolations(&m.Manifest); len(vs) > 0 {
-		return fmt.Errorf("%w: %s: %s", ErrReservedName, vs[0].Path, vs[0].Message)
-	}
-	if err := r.checkApprovalTypes(ctx, m); err != nil {
+	r.mu.Lock() // check and write as one step, so two registrations cannot both pass the check
+	defer r.mu.Unlock()
+	if err := r.precheck(ctx, m); err != nil {
 		return err
 	}
 	ps, ss, err := FromManifest(&m.Manifest)
@@ -145,6 +146,24 @@ func (r *Registry) Register(ctx context.Context, m store.Module) error {
 		return err
 	}
 	return r.db.UpsertModule(ctx, m, ps, ss)
+}
+
+// PreCheck runs the checks Register will run, without writing, so a caller can refuse a module
+// before it installs anything (reconcile calls it before the Helm release).
+func (r *Registry) PreCheck(ctx context.Context, m store.Module) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.precheck(ctx, m)
+}
+
+func (r *Registry) precheck(ctx context.Context, m store.Module) error {
+	if vs := config.PlatformViolations(&m.Manifest); len(vs) > 0 {
+		return fmt.Errorf("%w: %s: %s", ErrReservedName, vs[0].Path, vs[0].Message)
+	}
+	if m.State != store.StateEnabled {
+		return nil // a disabled or failed module claims no names
+	}
+	return r.checkNames(ctx, m)
 }
 
 // SetPrimaries stores the operator's `primary:` choices.
@@ -231,6 +250,34 @@ var ErrReservedName = errors.New("manifest uses a name reserved for can-core")
 // ErrApprovalTypeTaken is returned when another enabled module already declares an approval type:
 // policies are keyed by type, so two modules sharing one would share (and could spoof) a policy.
 var ErrApprovalTypeTaken = errors.New("approval type is already declared by another module")
+
+// ErrNameTaken is returned when another enabled module already declares a permission. Permissions
+// belong to the first enabled module that declares them (roles do not collide: they are namespaced
+// by module, "work:viewer"); a module that is disabled gives its permissions up, and re-enabling it is refused while another enabled module holds one. That is
+// deliberate: ownership is never inherited silently by whichever module registered later.
+var ErrNameTaken = errors.New("permission is already declared by another enabled module")
+
+func (r *Registry) checkNames(ctx context.Context, m store.Module) error {
+	others, err := r.db.ListModules(ctx)
+	if err != nil {
+		return err
+	}
+	for _, o := range others {
+		if o.ID == m.ID || o.State != store.StateEnabled {
+			continue
+		}
+		theirs := map[string]bool{}
+		for _, p := range o.Manifest.Permissions {
+			theirs["permission "+p] = true
+		}
+		for _, p := range m.Manifest.Permissions {
+			if theirs["permission "+p] {
+				return fmt.Errorf("%w: permission %q is declared by %q", ErrNameTaken, p, o.ID)
+			}
+		}
+	}
+	return r.checkApprovalTypes(ctx, m)
+}
 
 func (r *Registry) checkApprovalTypes(ctx context.Context, m store.Module) error {
 	if len(m.Manifest.Approvals) == 0 {

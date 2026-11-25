@@ -76,11 +76,15 @@ var (
 
 // CLIActor is the audit actor of `can-core admin roles`, the break-glass path inside the pod: it
 // may do what owners do, because it exists for installations that have no working owner.
-const CLIActor = "cli"
+//
+// The value is not a possible admin username (usernames cannot contain ':'), and the privilege only
+// exists on a Service built with Options.BreakGlass, which only the CLI does: an admin user who
+// happens to carry any name never gets it.
+const CLIActor = "can-core:cli"
 
 var (
 	subjectRe = regexp.MustCompile(`^(user|party):[A-Za-z0-9_.@-]{1,64}$`)
-	roleRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+	roleRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}(:[a-z][a-z0-9-]{0,39})?$`)
 	scopeRe   = regexp.MustCompile(`^[A-Za-z0-9_./:-]{1,128}(/\*)?$`)
 	permRe    = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$`)
 )
@@ -97,6 +101,9 @@ type Appender interface {
 type Options struct {
 	Now func() time.Time
 	TTL time.Duration
+	// BreakGlass lets the CLIActor change owners and assign roles without being an owner. Only the
+	// `can-core admin roles` command sets it.
+	BreakGlass bool
 }
 
 // Assignment is one role held by a subject.
@@ -106,6 +113,16 @@ type Assignment struct {
 	Scope     string    `json:"scope,omitempty"`
 	GrantedBy string    `json:"granted_by"`
 	GrantedAt time.Time `json:"granted_at"`
+}
+
+// QualifyRole names a module's role: roles are namespaced by the declaring module ("work:viewer"),
+// so two modules that both define "viewer" define two roles. Built-in roles stay unqualified. A role
+// that already carries a module prefix is returned as it is.
+func QualifyRole(module, role string) string {
+	if role == "" || strings.Contains(role, ":") || config.IsBuiltinRole(role) {
+		return role
+	}
+	return module + ":" + role
 }
 
 // Role is a role with its effective permissions.
@@ -122,6 +139,7 @@ type Service struct {
 	audit Appender
 	now   func() time.Time
 	ttl   time.Duration
+	opt   Options
 
 	mu     sync.Mutex
 	dataV  int64                      // PRAGMA data_version when the caches were filled
@@ -144,7 +162,7 @@ func New(db *store.DB, a Appender, opt Options) *Service {
 	if opt.TTL == 0 {
 		opt.TTL = DefaultTTL
 	}
-	return &Service{db: db, audit: a, now: opt.Now, ttl: opt.TTL, subj: map[string]subjEntry{}}
+	return &Service{db: db, audit: a, now: opt.Now, ttl: opt.TTL, opt: opt, subj: map[string]subjEntry{}}
 }
 
 // Invalidate drops every cached answer.
@@ -180,6 +198,18 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 	if err != nil {
 		return nil, nil, err
 	}
+	// A permission declared by two enabled modules belongs to neither: the registry
+	// refuses such a pair, and if one exists anyway (rows written around it) the contested name
+	// grants nothing rather than letting one module hand out another's permission.
+	permOwners := map[string]int{}
+	for _, m := range mods {
+		if m.State != store.StateEnabled {
+			continue
+		}
+		for _, p := range m.Manifest.Permissions {
+			permOwners[p]++
+		}
+	}
 	for _, m := range mods {
 		if m.State != store.StateEnabled {
 			continue
@@ -190,8 +220,9 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 		}
 		for r, ps := range m.Manifest.Roles {
 			if config.IsBuiltinRole(r) {
-				continue // module roles never merge into built-in roles (owner, operator, auditor)
+				continue // module roles never merge into built-in roles
 			}
+			r = QualifyRole(m.ID, r) // and never into another module's role of the same name
 			if roles[r] == nil {
 				roles[r] = map[string]bool{}
 				sources[r] = append(sources[r], m.ID)
@@ -199,7 +230,7 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 			for _, p := range ps {
 				// Defence in depth behind validate and the registry: a role grants only
 				// permissions its own manifest declares, never platform ones.
-				if declared[p] && !config.IsReservedPermission(p) {
+				if declared[p] && !config.IsReservedPermission(p) && permOwners[p] == 1 {
 					add(r, p, m.ID)
 				}
 			}
@@ -245,6 +276,9 @@ func (s *Service) sync(ctx context.Context) error {
 }
 
 func (s *Service) roleTable(ctx context.Context) (map[string]map[string]bool, map[string][]string, error) {
+	if err := s.sync(ctx); err != nil {
+		return nil, nil, err
+	}
 	s.mu.Lock()
 	if s.roles != nil && s.now().Sub(s.rolesT) < s.ttl {
 		r, src := s.roles, s.rolesS
@@ -451,7 +485,7 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 		return err
 	}
 	err := s.db.InTx(ctx, func(tx *sql.Tx) error {
-		if actor != CLIActor && subject == "user:"+actor {
+		if !s.breakGlass(actor) && subject == "user:"+actor {
 			return fmt.Errorf("%w: nobody assigns roles to themselves", ErrForbidden)
 		}
 		if role == Owner {
@@ -474,11 +508,13 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 	return err
 }
 
+func (s *Service) breakGlass(actor string) bool { return s.opt.BreakGlass && actor == CLIActor }
+
 // requireOwner fails unless the actor is an unscoped owner (read inside the transaction, so
 // concurrent changes cannot slip between the check and the write). The CLI actor passes: it is the
 // recovery path for installations without a working owner.
 func (s *Service) requireOwner(ctx context.Context, tx *sql.Tx, actor string) error {
-	if actor == CLIActor {
+	if s.breakGlass(actor) {
 		return nil
 	}
 	var n int

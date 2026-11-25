@@ -193,10 +193,10 @@ func TestRoleAssignmentTakesEffectAtOnceAndIsAudited(t *testing.T) {
 func TestRoleOverrideEndpoint(t *testing.T) {
 	h := newPHarness(t)
 	alice, root := h.login("alice"), h.login("root")
-	if code, _ := h.call(alice, "POST", "/api/v1/roles/finance/overrides", map[string]string{"permission": "expenses.pay", "effect": "grant"}); code != 403 {
+	if code, _ := h.call(alice, "POST", "/api/v1/roles/expenses:finance/overrides", map[string]string{"permission": "expenses.pay", "effect": "grant"}); code != 403 {
 		t.Fatal("rbac.manage required")
 	}
-	if code, body := h.call(root, "POST", "/api/v1/roles/finance/overrides", map[string]string{"permission": "expenses.pay", "effect": "grant"}); code != 204 {
+	if code, body := h.call(root, "POST", "/api/v1/roles/expenses:finance/overrides", map[string]string{"permission": "expenses.pay", "effect": "grant"}); code != 204 {
 		t.Fatalf("override = %d %s", code, body)
 	}
 	if _, body := h.call(root, "GET", "/api/v1/roles", nil); !strings.Contains(body, "expenses.pay") {

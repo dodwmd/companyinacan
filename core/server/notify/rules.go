@@ -113,7 +113,7 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 			if s.opt.Roles == nil {
 				continue
 			}
-			ss, err := s.opt.Roles.SubjectsWithRole(ctx, val, MaxRecipientsPerRule)
+			ss, err := s.opt.Roles.SubjectsWithRole(ctx, rbac.QualifyRole(mr.module, val), MaxRecipientsPerRule)
 			if err != nil {
 				s.opt.Log.Error("resolving notification role failed", "role", val, "error", err)
 				continue

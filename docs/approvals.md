@@ -48,10 +48,20 @@ POST /v1/approvals            Idempotency-Key: <your key>
 Manifests (`can validate` and the registry both enforce it) may not declare permissions starting with
 `platform.`, `rbac.`, `approvals.`, `notifications.` or `*`; may not define the roles `owner`, `operator`
 or `auditor` (module roles never merge into built-in ones); may grant in a role only permissions the
-same manifest declares; may not publish `approval.*` or `notification.*` events; and may set a
+same manifest declares (and so only ones it owns, see below); may not publish `approval.*` or `notification.*` events; and may set a
 notification rule `type` only inside their own `<module-id>.` namespace. An approval type can be
 declared by one enabled module only (policies are keyed by type), so a second module declaring
-`expense` is refused at registration. Permission names are not forced to start with the module id,
+`expense` is refused at registration. The same holds for **permissions**: a permission belongs to the
+first enabled module that declares it, and a second enabled module declaring it is refused. A module
+that is disabled gives its permissions and approval types up; enabling it again is refused while
+another enabled module holds one (ownership is never inherited, nor taken back, silently), and `can
+apply` checks this before installing anything. Which module "wins" therefore depends on enable order:
+an operator who enables a module first holds the names, so enable the modules you trust first.
+**Roles are namespaced by module** (`work:viewer`, `forms:viewer` are different roles); built-in roles
+stay `owner`, `operator`, `auditor`. A policy's bare role name means the role of the module the request
+belongs to (`finance` for an `expenses` request is `expenses:finance`); write `hr:manager` for another
+module's role. A permission declared by two enabled modules (only possible if rows bypassed the
+registry) grants nothing through any module role. Permission names are not forced to start with the module id,
 because the existing manifests use capability-style names (`leads.read`); the reserved list is what
 keeps platform permissions out of reach.
 
@@ -112,10 +122,14 @@ under. Rules that cannot be configured away:
   `can.check` for resources under the scope and nothing else.
 - Only an owner may assign or remove `owner` or edit a role's grants (overrides); nobody can assign a
   role to themselves; the last owner cannot be removed, also under concurrent requests. The CLI actor
-  (`can-core admin roles ...`, run inside the pod) is the exception, as the recovery path.
+  (`can-core admin roles ...`, run inside the pod; audit actor `can-core:cli`, which no admin username can
+  equal) is the exception, as the recovery path. An admin who happens to be named `cli` has no special
+  rights.
 - Built-in roles: `owner` (everything, break-glass, cannot be edited, never left empty), `operator`,
   `auditor`; module manifests add theirs. `/access` (needs `rbac.manage`) assigns roles, optionally
-  scoped to a resource prefix such as `dept/sales/*`. Overrides of a role's grants (owner only, existing roles only): `POST
+  scoped to a resource prefix such as `dept/sales/*`. Scopes and the `resource` argument of
+  `can.check` are compared as exact strings: modules must canonicalise them (one spelling per
+  resource, no trailing slashes or case variants) before asking or storing. Overrides of a role's grants (owner only, existing roles only): `POST
   /api/v1/roles/{role}/overrides` (API only for now).
 - Recovery without the UI: `can-core admin roles grant <user> owner --db <path>` (also `revoke`,
   `list`), audited as actor `cli`. The first admin created, and every admin that existed before this

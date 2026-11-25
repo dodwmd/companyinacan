@@ -276,6 +276,12 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
 		return err
 	}
+	// Refuse a manifest the registry would refuse (reserved or already-owned names) before anything
+	// is installed: a failing Register after the Helm release would leave it running unrecorded.
+	if err := r.reg.PreCheck(ctx, store.Module{ID: a.Module, Version: man.Version, State: store.StateEnabled, Manifest: *man}); err != nil {
+		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
+		return err
+	}
 	prev, perr := r.db.GetModule(ctx, a.Module)
 	secret := prev.HMACSecret
 	if perr != nil || secret == "" {

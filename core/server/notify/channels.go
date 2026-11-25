@@ -155,9 +155,35 @@ func denyPrivate(_, address string, _ syscall.RawConn) error {
 	if err != nil {
 		return err
 	}
-	ip = ip.Unmap()
-	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+	if !publicAddr(ip) {
 		return errors.New("webhook destination is not a public address")
 	}
 	return nil
+}
+
+var nonPublic = func() []netip.Prefix {
+	var out []netip.Prefix
+	for _, p := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4", "2002::/16", "2001:db8::/32", "100::/64"} {
+		out = append(out, netip.MustParsePrefix(p))
+	}
+	return out
+}()
+
+// publicAddr reports whether ip is a routable public address. IPv4-mapped and NAT64 (64:ff9b::/96)
+// addresses are judged by the IPv4 address they embed; 6to4 (2002::/16) is refused outright.
+func publicAddr(ip netip.Addr) bool {
+	ip = ip.Unmap()
+	if ip.Is6() && netip.MustParsePrefix("64:ff9b::/96").Contains(ip) {
+		b := ip.As16()
+		return publicAddr(netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}))
+	}
+	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return false
+	}
+	for _, p := range nonPublic {
+		if p.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }

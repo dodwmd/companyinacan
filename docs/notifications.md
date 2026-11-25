@@ -26,7 +26,7 @@ offline (epic E11a). No email provider exists yet, see "Gaps". Spec: `specs/015-
      - { event: issue.priority_changed.v1, type: work.p0, recipients: ["field:manager"], urgent: true }
    ```
 
-   Recipients: `role:<name>` (up to 50 holders), `user:<subject>`, `field:<key>` (a top-level event
+   Recipients: `role:<name>` (a role of the declaring module, or `module:role`; up to 50 unscoped holders), `user:<subject>`, `field:<key>` (a top-level event
    data member holding a subject such as `user:alice`), `channel:<name>` (an outbound webhook channel).
    At most 50 recipients per rule. Only enabled modules' rules apply (cached 30 s).
 3. **Modules directly**: `POST /v1/notifications` (module API; the module lists `notify` under
@@ -52,7 +52,7 @@ id, so a redelivered event cannot notify twice.
   escaped in HTML, stripped of control characters in the subject and text.
 - Webhook (Slack-style `{"text": ...}`): named channels in company.yaml, https only, no redirects,
   errors never contain the URL, and the connection is refused at dial time for private, loopback,
-  link-local and multicast addresses (the URL is operator-trusted; this limits a typo or a poisoned
+  link-local, multicast, carrier-grade NAT (100.64.0.0/10), 6to4, NAT64 (judged by the embedded IPv4), benchmark and reserved ranges (the URL is operator-trusted; this limits a typo or a poisoned
   file probing the cluster):
 
   ```yaml

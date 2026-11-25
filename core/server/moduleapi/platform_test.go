@@ -77,7 +77,7 @@ func newPlatform(t *testing.T, wire bool) *pf {
 		}
 		tr.Add("tok-"+m.ID, "mod-"+m.ID, m.ID)
 	}
-	if err := rb.Grant(ctx, "t", "user:fin", "finance", ""); err != nil {
+	if err := rb.Grant(ctx, "t", "user:fin", "expenses:finance", ""); err != nil {
 		t.Fatal(err)
 	}
 	return &pf{t: t, srv: srv, rb: rb, eng: eng, ntf: ntf, db: db}

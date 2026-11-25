@@ -20,7 +20,7 @@ func TestHostileManifestCannotEscalate(t *testing.T) {
 	e.module("evil", []string{"rbac.manage", "platform.view", "evil.read"},
 		map[string][]string{"auditor": {"rbac.manage"}, "owner": {"evil.read"}, "operator": {"rbac.manage"}, "helper": {"rbac.manage", "evil.read", "undeclared.perm"}}, store.StateEnabled)
 	for _, r := range []string{"auditor", "operator", "helper"} {
-		if err := e.s.Grant(ctx, CLIActor, "user:"+r, r, ""); err != nil {
+		if err := e.s.Grant(ctx, CLIActor, "user:"+r, QualifyRole("evil", r), ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -55,7 +55,7 @@ func TestOnlyOwnersChangeOwnersAndNobodySelfGrants(t *testing.T) {
 	if err := e.s.Grant(ctx, "mgr", "user:mgr", Owner, ""); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("self-grant of owner: %v", err)
 	}
-	if err := e.s.Grant(ctx, "mgr", "user:mgr", "viewer", ""); !errors.Is(err, ErrForbidden) {
+	if err := e.s.Grant(ctx, "mgr", "user:mgr", "expenses:viewer", ""); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("self-grant of any role: %v", err)
 	}
 	if err := e.s.Grant(ctx, "mgr", "user:other", Owner, ""); !errors.Is(err, ErrForbidden) {
@@ -64,10 +64,10 @@ func TestOnlyOwnersChangeOwnersAndNobodySelfGrants(t *testing.T) {
 	if err := e.s.Revoke(ctx, "mgr", "user:boss", Owner, ""); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("non-owner revoking owner: %v", err)
 	}
-	if err := e.s.Override(ctx, "mgr", "viewer", "expenses.write", EffectGrant); !errors.Is(err, ErrForbidden) {
+	if err := e.s.Override(ctx, "mgr", "expenses:viewer", "expenses.write", EffectGrant); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("non-owner overriding a role: %v", err)
 	}
-	if err := e.s.Grant(ctx, "mgr", "user:other", "viewer", ""); err != nil {
+	if err := e.s.Grant(ctx, "mgr", "user:other", "expenses:viewer", ""); err != nil {
 		t.Fatalf("a non-owner may assign ordinary roles to others: %v", err)
 	}
 	if err := e.s.Grant(ctx, "boss", "user:two", Owner, ""); err != nil {
@@ -123,12 +123,12 @@ func TestChangesFromAnotherProcessAreSeenAtOnce(t *testing.T) {
 	if err := db1.UpsertModule(ctx, m, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	_ = s1.Grant(ctx, CLIActor, "user:a", "viewer", "")
+	_ = s1.Grant(ctx, CLIActor, "user:a", "x:viewer", "")
 	if ok, _ := s1.Check(ctx, "user:a", "x.read", ""); !ok {
 		t.Fatal("setup")
 	}
 	// The CLI (a second connection) revokes: no TTL wait, no Invalidate on s1.
-	if err := s2.Revoke(ctx, CLIActor, "user:a", "viewer", ""); err != nil {
+	if err := s2.Revoke(ctx, CLIActor, "user:a", "x:viewer", ""); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := s1.Check(ctx, "user:a", "x.read", ""); ok {
@@ -140,15 +140,15 @@ func TestScopedAssignmentIsNotRoleMembership(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.module("x", []string{"x.read"}, map[string][]string{"viewer": {"x.read"}}, store.StateEnabled)
-	_ = e.s.Grant(ctx, CLIActor, "user:scoped", "viewer", "dept/a/*")
-	_ = e.s.Grant(ctx, CLIActor, "user:global", "viewer", "")
-	if ok, _ := e.s.HasRole(ctx, "user:scoped", "viewer"); ok {
+	_ = e.s.Grant(ctx, CLIActor, "user:scoped", "x:viewer", "dept/a/*")
+	_ = e.s.Grant(ctx, CLIActor, "user:global", "x:viewer", "")
+	if ok, _ := e.s.HasRole(ctx, "user:scoped", "x:viewer"); ok {
 		t.Fatal("a scoped assignment must not count as membership for approver resolution")
 	}
-	if ok, _ := e.s.HasRole(ctx, "user:global", "viewer"); !ok {
+	if ok, _ := e.s.HasRole(ctx, "user:global", "x:viewer"); !ok {
 		t.Fatal("unscoped membership")
 	}
-	got, _ := e.s.SubjectsWithRole(ctx, "viewer", 10)
+	got, _ := e.s.SubjectsWithRole(ctx, "x:viewer", 10)
 	if len(got) != 1 || got[0] != "user:global" {
 		t.Fatalf("role fan-out = %v, want only the unscoped holder", got)
 	}

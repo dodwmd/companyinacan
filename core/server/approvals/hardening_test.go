@@ -74,7 +74,7 @@ func TestTickContinuesPastAFailingRow(t *testing.T) {
 func TestScopedRoleAssignmentDoesNotMakeAnApprover(t *testing.T) {
 	x := newEnv(t)
 	ctx := context.Background()
-	if err := x.rb.Grant(ctx, rbac.CLIActor, "user:scoped", "finance", "dept/a/*"); err != nil {
+	if err := x.rb.Grant(ctx, rbac.CLIActor, "user:scoped", "expenses:finance", "dept/a/*"); err != nil {
 		t.Fatal(err)
 	}
 	x.policy(config.ApprovalPolicy{Steps: []config.ApprovalStep{{Name: "fin", Approvers: []config.Approver{{Role: "finance"}}}}})
