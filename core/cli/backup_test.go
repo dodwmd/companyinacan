@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -169,7 +170,7 @@ func TestBackupVerifyWithFakeRestic(t *testing.T) {
 	fr := &backup.FakeRunner{Handle: func(c backup.Cmd) ([]byte, error) {
 		switch c.Args[0] {
 		case "snapshots":
-			return []byte(`[{"id":"s1","time":"2026-11-25T03:30:00Z"}]`), nil
+			return []byte(`[{"id":"s1","time":"2026-11-25T03:30:00Z","tags":["can"]}]`), nil
 		case "restore":
 			var target string
 			var incs []string
@@ -301,7 +302,7 @@ func TestBackupKitRefusesWhenRepositoryExists(t *testing.T) {
 }
 
 func TestBackupKitReusesExistingPassword(t *testing.T) {
-	fr := &backup.FakeRunner{}
+	fr := noRepoRunner()
 	seams(t, fr)
 	pw := filepath.Join(t.TempDir(), "restic.password")
 	_ = os.WriteFile(pw, []byte("the-existing-restic-password-0123\n"), 0o600)
@@ -309,8 +310,40 @@ func TestBackupKitReusesExistingPassword(t *testing.T) {
 	if code != ExitOK || !strings.Contains(out, "the-existing-restic-password-0123") || !strings.Contains(errs, "reusing") {
 		t.Fatalf("code=%d out=%s err=%s", code, out, errs)
 	}
-	if len(fr.Calls) != 0 {
-		t.Errorf("repo probe ran although the password already exists: %v", fr.Calls)
+}
+
+func TestBackupKitReusedPasswordMustOpenExistingRepo(t *testing.T) {
+	pw := filepath.Join(t.TempDir(), "restic.password")
+	_ = os.WriteFile(pw, []byte("the-existing-restic-password-0123\n"), 0o600)
+	// Repository exists and the password opens it: fine.
+	seams(t, &backup.FakeRunner{})
+	if code, _, errs := runIn(t, "show\nsaved\n", kitArgs(t, "--password-file", pw)...); code != ExitOK {
+		t.Fatalf("code=%d %s", code, errs)
+	}
+	// Repository exists and restic says wrong password (exit 12): refuse.
+	seams(t, &backup.FakeRunner{Handle: func(backup.Cmd) ([]byte, error) { return nil, &backup.CmdError{Code: 12, Stderr: "wrong password"} }})
+	code, out, errs := runIn(t, "show\nsaved\n", kitArgs(t, "--password-file", pw)...)
+	if code != ExitFailure || !strings.Contains(errs, "does not open") || strings.Contains(out, "Restic password") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
+	}
+}
+
+func TestBackupKitFailsClosedWhenResticCannotRun(t *testing.T) {
+	seams(t, &backup.FakeRunner{Handle: func(backup.Cmd) ([]byte, error) {
+		return nil, errors.New(`exec: "restic": executable file not found in $PATH`)
+	}})
+	for _, args := range [][]string{
+		kitArgs(t, "--password-file", filepath.Join(t.TempDir(), "none")),
+		kitArgs(t, "--password-file", func() string {
+			p := filepath.Join(t.TempDir(), "pw")
+			_ = os.WriteFile(p, []byte("existing-password-0123456789"), 0o600)
+			return p
+		}()),
+	} {
+		code, out, errs := runIn(t, "show\nsaved\n", args...)
+		if code != ExitFailure || !strings.Contains(errs, "0.17") || strings.Contains(out, "Restic password") {
+			t.Errorf("code=%d out=%q err=%q", code, out, errs)
+		}
 	}
 }
 

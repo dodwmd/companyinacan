@@ -38,7 +38,7 @@ var scriptTmpl = template.Must(template.New("backup.sh").Funcs(template.FuncMap{
 #
 # Runs restic over the dumps can-core produced. Exit codes:
 #   0 ok  10 marker missing  11 marker stale or changed during the backup  12 lock held
-#   13 unsafe dumps directory (symlink or world-writable)
+#   13 unsafe dumps/state directory or ledger (symlink, wrong owner, world-writable)
 #   20 restic backup failed  21 forget/prune failed  22 erasure ledger upload failed
 # If both a backup failure and a ledger failure happen, the backup code wins; the ledger is
 # always synced first and independently, so erasures are uploaded even when the backup fails.
@@ -92,8 +92,20 @@ fail() {
 }
 trap 'fail 1 "unexpected error near line $LINENO"' ERR
 
+# A directory we write as root must be owned by us and not group/other-writable. These checks
+# are not atomic: a path can change between check and use, which is why the directories are
+# private to root and nothing here follows links that can-core controls.
+safe_dir() {
+  if [ -e "$1" ] || [ -L "$1" ]; then
+    [ -d "$1" ] && [ ! -L "$1" ] || fail 13 "$1 is not a plain directory"
+    [ "$(stat -c %u "$1")" = "$(id -u)" ] || fail 13 "$1 is not owned by uid $(id -u)"
+    [ -z "$(find "$1" -maxdepth 0 -perm /022)" ] || fail 13 "$1 is group- or other-writable"
+  fi
+  if [ "$(id -u)" -eq 0 ]; then install -d -o root -g root -m 0700 "$1"; else install -d -m 0700 "$1"; fi
+}
+
 # State dir and lock: one run at a time.
-install -d -m 0700 "$STATE"
+safe_dir "$STATE"
 exec 9>"$STATE/backup.lock"
 flock -n 9 || fail 12 "another backup run holds the lock"
 
@@ -110,16 +122,24 @@ export RESTIC_CACHE_DIR="${CACHE_DIRECTORY:-$STATE/restic-cache}"
 [ -r "$RESTIC_PASSWORD_FILE" ] || fail 1 "missing $RESTIC_PASSWORD_FILE"
 
 # Host state lives in a root-owned directory outside the dumps dir that can-core can write to.
-[ ! -L "$HOSTSTATE" ] || fail 13 "$HOSTSTATE is a symlink"
-install -d -m 0700 "$HOSTSTATE"
+safe_dir "$HOSTSTATE"
 
 # Erasure ledger first and independently of the backup: a failed backup must not hold back erasures.
-if [ -f "$LEDGER" ] && [ ! -L "$LEDGER" ]; then
+if [ -L "$LEDGER" ]; then
+  fail 13 "erasure ledger $LEDGER is a symlink"
+elif [ -f "$LEDGER" ]; then
   cp -f -- "$LEDGER" "$HOSTSTATE/{{.LedgerCopy}}"
   if [ -s "$LEDGER" ] && ! {{q .CanBin}} backup ledger-sync --ledger "$LEDGER" --repo "$RESTIC_REPOSITORY" --password-file "$RESTIC_PASSWORD_FILE" --env-file "$ENVFILE"; then
     ledger_rc=22
     report 22 "erasure ledger upload failed"
   fi
+elif [ -e "$LEDGER" ]; then
+  ledger_rc=22
+  report 22 "erasure ledger $LEDGER is not a regular file"
+elif [ -s "$HOSTSTATE/{{.LedgerCopy}}" ]; then
+  # We saw a ledger on an earlier run and it is gone: erasures must not silently disappear.
+  ledger_rc=22
+  report 22 "erasure ledger $LEDGER vanished (a copy from an earlier run is kept in $HOSTSTATE)"
 fi
 
 # The dumps dir is writable by can-core; refuse anything a root script could be tricked by.

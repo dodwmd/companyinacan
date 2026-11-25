@@ -12,10 +12,24 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 )
+
+// UsableSnapshots keeps the snapshots a backup produced and considers good:
+// tagged "can" and not tagged "inconsistent". Status, verify and restore all
+// use the same rule.
+func UsableSnapshots(in []Snapshot) []Snapshot {
+	var out []Snapshot
+	for _, s := range in {
+		if slices.Contains(s.Tags, "can") && !slices.Contains(s.Tags, "inconsistent") {
+			out = append(out, s)
+		}
+	}
+	return out
+}
 
 func parseSnapshots(b []byte) ([]Snapshot, error) {
 	var s []Snapshot
@@ -82,8 +96,8 @@ func Verify(ctx context.Context, r ResticAPI, o VerifyOptions) (*VerifyReport, e
 	if err != nil {
 		return rep, err
 	}
-	if len(snaps) == 0 {
-		return rep, errors.New("repository has no snapshots")
+	if snaps = UsableSnapshots(snaps); len(snaps) == 0 {
+		return rep, errors.New("repository has no usable snapshots (tagged can and not inconsistent)")
 	}
 	rep.Snapshot = snaps[0].ID
 	tmp, err := os.MkdirTemp(o.TempDir, "can-verify-")
@@ -186,11 +200,11 @@ func Status(ctx context.Context, r ResticAPI, dumpsDir string, now time.Time, ma
 		rep.Problems = append(rep.Problems, "cannot list snapshots: "+err.Error())
 		return rep
 	}
-	rep.Snapshots = len(snaps)
-	if len(snaps) == 0 {
-		rep.Problems = append(rep.Problems, "repository has no snapshots")
+	if snaps = UsableSnapshots(snaps); len(snaps) == 0 {
+		rep.Problems = append(rep.Problems, "repository has no usable snapshots (tagged can and not inconsistent)")
 		return rep
 	}
+	rep.Snapshots = len(snaps)
 	rep.Latest, rep.LatestAt = snaps[0].ID, snaps[0].Time
 	if age := now.Sub(snaps[0].Time); age > maxAge+2*time.Hour {
 		rep.Problems = append(rep.Problems, fmt.Sprintf("latest snapshot is %s old", age.Round(time.Minute)))

@@ -347,12 +347,10 @@ func okFiles(e *restoreEnv, run string) map[string][]byte {
 	return m
 }
 
-func TestRestorePinPrefersConsistentSnapshot(t *testing.T) {
-	e := newRestoreEnv(t)
+func pinFixture(e *restoreEnv) {
 	good := okFiles(e, "good")
 	bad := okFiles(e, "new")
 	bad["/var/lib/can/host-state/"+MarkerCopy] = []byte("run_id=old\nfinished_at=1800000000\n") // marker changed during backup
-	delete(bad, "/var/lib/can/dumps/"+MarkerName+"x")
 	noMarker := okFiles(e, "x")
 	delete(noMarker, "/var/lib/can/dumps/"+MarkerName)
 	e.rs.Snaps = []Snapshot{
@@ -363,12 +361,68 @@ func TestRestorePinPrefersConsistentSnapshot(t *testing.T) {
 		{ID: "snapForeign", Time: time.Unix(500, 0), Tags: []string{"other"}},
 	}
 	e.rs.SnapFiles = map[string]map[string][]byte{"snapBad": bad, "snapNoMarker": noMarker, "snapFlagged": good, "snapGood": good, "snapForeign": good}
+}
+
+func TestRestorePinPrefersConsistentSnapshot(t *testing.T) {
+	e := newRestoreEnv(t)
+	pinFixture(e)
+	e.o.ForceOlder = true
 	if err := e.o.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range e.realRestores() {
 		if c.Snapshot != "snapGood" {
 			t.Errorf("restored from %s, want the older good snapshot", c.Snapshot)
+		}
+	}
+	out := e.out.String()
+	for _, want := range []string{
+		"ignoring snapshot snapForeign",
+		"WARNING: --force-older: skipping snapshot snapBad",
+		"WARNING: --force-older: skipping snapshot snapNoMarker",
+		"skipping snapshot snapFlagged",
+		"using snapshot snapGood (1970-01-01T00:03:20Z)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRestorePinDoesNotFallBackSilently(t *testing.T) {
+	e := newRestoreEnv(t)
+	pinFixture(e)
+	err := e.o.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "snapBad") || !strings.Contains(err.Error(), "--force-older") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(e.realRestores()) != 0 || e.r.count("import-state") != 0 {
+		t.Error("restored from some snapshot although the newest failed its check")
+	}
+	// Naming one explicitly is the other way out.
+	e2 := newRestoreEnv(t)
+	pinFixture(e2)
+	e2.o.Snapshot = "snapGood"
+	if err := e2.o.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(e2.out.String(), "using snapshot snapGood") {
+		t.Errorf("chosen snapshot not reported:\n%s", e2.out.String())
+	}
+}
+
+func TestRestorePinTransientErrorDoesNotSkip(t *testing.T) {
+	e := newRestoreEnv(t)
+	pinFixture(e)
+	e.o.ForceOlder = true // even with permission to skip, a read failure is not an inconsistency
+	e.rs.RestoreErr = errors.New("connection reset by peer")
+	err := e.o.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "could not read snapshot snapBad") || !strings.Contains(err.Error(), "connection reset") {
+		t.Fatalf("err = %v", err)
+	}
+	for _, c := range e.rs.Restores {
+		if c.Snapshot != "snapBad" {
+			t.Errorf("went on to probe %s after a transient error", c.Snapshot)
 		}
 	}
 }
@@ -402,9 +456,9 @@ func TestRestoreRefusesNonBlankHost(t *testing.T) {
 	if len(e.realRestores()) != 0 {
 		t.Error("restic restore ran over existing data")
 	}
-	e.o.Force = true
+	e.o.ForceHost = true
 	if err := e.o.Run(context.Background()); err != nil {
-		t.Fatalf("--force: %v", err)
+		t.Fatalf("--force-host: %v", err)
 	}
 }
 
@@ -467,7 +521,7 @@ func TestRestoreRefusesToOverwriteExistingVolume(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(vol, "live.db")); string(b) != "live data" {
 		t.Error("existing volume data touched")
 	}
-	e.o.Force = true
+	e.o.ForceVolumes = true
 	if err := e.o.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -532,5 +586,22 @@ func TestRestoreLedgerAppliedKeyedBySubjectAndClass(t *testing.T) {
 	_ = e.o.Run(context.Background())
 	if e.r.count("purge s1/a") != 1 || e.r.count("purge s1/b") != 2 {
 		t.Errorf("events = %v", e.r.events)
+	}
+}
+
+func TestRestoreAcceptLedgerBehindWarnsLoudly(t *testing.T) {
+	e := newRestoreEnv(t)
+	snapLedger := MergeLedgers(nil, []Entry{{Subject: "s9", Class: "c", Date: "2026-11-05"}})
+	j, _ := json.Marshal(snapLedger[0])
+	e.rs.Files["/var/lib/can/host-state/"+LedgerCopy] = append(j, '\n')
+	if err := e.o.Run(context.Background()); err == nil {
+		t.Fatal("expected refusal")
+	}
+	e.o.AcceptLedgerBehind = true
+	if err := e.o.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(e.out.String(), "WARNING: --accept-ledger-behind") {
+		t.Errorf("no warning:\n%s", e.out.String())
 	}
 }

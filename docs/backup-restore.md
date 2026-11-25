@@ -14,10 +14,13 @@ compliance advice; the 35-day horizon below is a default you must review against
    `COMPLETE` at the start of the run and writes it (run id, finish time) at the end.
 2. The host timer `can-backup.timer` (default 03:30 plus up to 15 min) starts `can-backup.service`, which runs
    `/usr/local/sbin/can-backup`. The script, in order:
-   - syncs the erasure ledger (first and independently, so a failing backup never holds back erasures) and copies it
+   - syncs the erasure ledger (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
+     regular file, is reported and exits 22 rather than being skipped; first and independently, so a failing backup never holds back erasures) and copies it
      into the root-owned host-state directory so every snapshot carries a copy;
    - refuses a dumps directory that is world-writable or contains a symlink (can-core can write there, the script is root),
-     and a marker that is missing or older than 24 h;
+     and a marker that is missing or older than 24 h. These checks are not atomic: a path could change between the check and
+     its use. The script therefore keeps everything it writes in root-private directories (it checks owner and that they are not
+     group- or other-writable) and never follows links that can-core controls, but it cannot make a check-then-use race impossible;
    - copies the marker it is about to back up, the k3s SQLite datastore (`sqlite3 .backup`), the node token and the
      secrets-encryption key, and writes `MANIFEST.sha256`, all into `/var/lib/can/host-state` (root-owned, outside the dumps dir);
    - runs `restic backup` over the dumps, the PVC root (SQLite files of modules covered by a dump are excluded) and the
@@ -41,10 +44,10 @@ files and initialises the repository if none exists). `can backup install --plan
 | 10 | completion marker missing (can-core has not finished a dump run) |
 | 11 | marker older than 24 h, future-dated, malformed, or changed while the backup ran (snapshot tagged `inconsistent`) |
 | 12 | another run holds the lock |
-| 13 | unsafe dumps directory (symlink inside, or world-writable) or host-state directory is a symlink |
+| 13 | unsafe dumps directory (symlink inside, or world-writable), state or host-state directory not a root-owned private directory, or a symlinked ledger |
 | 20 | `restic backup` failed (forget/prune is skipped) |
 | 21 | forget/prune failed |
-| 22 | erasure ledger upload failed (the backup still ran). If a backup code and 22 both occur, the backup code is returned |
+| 22 | erasure ledger upload failed, or the ledger vanished or is not a regular file (the backup still ran). If a backup code and 22 both occur, the backup code is returned |
 
 Failures go to the journal (`journalctl -t can-backup`) and, through `OnFailure=can-backup-failure.service`, a critical journal line
 when the unit fails. The unit runs with `ProtectSystem=strict` and a short `ReadWritePaths=` list. To also get a webhook, put its URL in
@@ -55,7 +58,7 @@ when the unit fails. The unit runs with `ProtectSystem=strict` and a short `Read
 
 | Command | Use |
 |---|---|
-| `can backup status` | marker age, latest snapshot, problems; exit 1 on any problem |
+| `can backup status` | marker age, latest usable snapshot (tagged `can`, not `inconsistent`), problems; exit 1 on any problem |
 | `can backup run` | run the script now |
 | `can backup verify` | `restic check`, restore a sample of dump files into a temp dir, compare SHA-256 with the manifest |
 | `can backup kit` | generate the recovery kit (see below) |
@@ -71,8 +74,10 @@ non-secret options. Nothing else is needed; everything else is in the snapshot.
 - `--out kit.enc` writes a passphrase-encrypted file (argon2id + XChaCha20-Poly1305; at least 12 characters). A typed
   passphrase must be entered twice; the file is read back and decrypted before the command reports success. The tool refuses
   to write inside a git working tree (symlinks are resolved) and never overwrites a file.
-- If `/etc/can/backup.d/restic.password` exists, its password is reused; if no such file exists, the command checks that no
-  restic repository is already at the target and refuses otherwise (a fresh password would not open it).
+- If `/etc/can/backup.d/restic.password` exists, its password is reused, and if a repository exists the command checks that the
+  password opens it (refusing otherwise). If no such file exists, the command checks that no repository is already at the target
+  and refuses otherwise (a fresh password would not open it). If restic cannot be run or the bucket cannot be reached, the command
+  fails closed instead of guessing. Requires restic 0.17 or newer (its "no repository" exit code 10 is what the check relies on).
 - Only an allow-list of provider options (host, port, user, location, server type, image, region, datacenter) goes into the kit.
 - The kit must never be committed. Losing it makes the backups unreadable; there is no recovery.
 
@@ -82,23 +87,26 @@ The six steps of SPEC.md section 6.5; progress is saved in `<dir>/.can/restore.j
 cause and run the same command again. `--plan` shows the steps and which are done without touching anything.
 
 1. Provision, k3s, can-core in restore mode.
-2. The host must be blank: the dumps and host-state directories must be absent or empty (else refuse; `--force` overrides).
-   The snapshot is chosen as the newest one tagged `can`, not `inconsistent`, whose restored `COMPLETE` marker is present and
-   equals the marker copy the backup ran under; older good snapshots are the fallback. Dumps and host state are restored, every
+2. The host must be blank: the dumps and host-state directories must be absent or empty (else refuse; `--force-host` overrides).
+   Snapshots are walked newest first and every decision is printed. A snapshot tagged `inconsistent` is skipped (the backup flagged
+   it); one not tagged `can` is ignored. For a newer `can` snapshot that fails its check (marker missing or different from the copy the
+   backup ran under) the restore stops and asks for `--snapshot ID` or `--force-older`; it never falls back to an older snapshot silently. A
+   transient restic error while checking a snapshot also stops the restore (retry); it is never treated as "inconsistent". The chosen
+   snapshot id and time are printed. Dumps and host state are restored, every
    restored dump is hashed against the manifest, then can-core imports its state and re-creates the exported Secrets.
 3. `company.yaml` is written back into `--dir` (an existing different file is never overwritten) and a restore
    apply runs.
 4. Module `restore` hooks (replace-all) load the database dumps; modules stay scaled to 0.
 5. PVC data is restored to a staging directory (absolute, at least 3 path components, empty or created by `can restore`; it
    is never deleted otherwise) and copied into the new volumes matched on `<namespace>_<claim>` (ownership and modes
-   preserved). A volume that already holds data is not overwritten without `--force`. A backed-up volume with no matching claim
+   preserved). A volume that already holds data is not overwritten without `--force-volumes`. A backed-up volume with no matching claim
    fails the step.
 6. The erasure ledger is fetched and decrypted and united with the copy stored inside the snapshot; `purge(subject, class)`
    hooks re-run (progress is tracked per subject and class), tombstones are re-applied to can-core's state, and only then
    workloads scale up. No ledger in the bucket blocks going live unless you pass `--allow-no-ledger` (only appropriate if no
    erasure was ever requested, and never enough when the snapshot holds a ledger copy). A ledger that cannot be fetched always
-   blocks, and a bucket ledger that lacks entries the snapshot's copy has (rollback or truncation) blocks too (`--force` applies
-   the union anyway).
+   blocks, and a bucket ledger that lacks entries the snapshot's copy has (rollback or truncation) blocks too
+   (`--accept-ledger-behind` applies the union anyway and prints a warning; erasures newer than the snapshot are then not applied).
 
 The snapshot is pinned on the first run (`--snapshot` to choose one) so a resume never mixes snapshots.
 
@@ -121,6 +129,12 @@ the server: if the server is lost before the next sync, that erasure is lost and
 The ledger is synced at the start of every backup run (and can be run by hand with `can backup ledger-sync`), so the exposure
 is one backup interval at most.
 
+**Residual risk (stale-snapshot rollback).** An attacker with write access to the bucket could delete the newest snapshots and
+replay an older sealed ledger object together with them. Every check above compares the bucket with a copy that lives in the same
+bucket, so a consistent older state is indistinguishable from the real one. Mitigations are outside this tool: bucket versioning
+or object lock with a retention period, separate credentials for the backup writer that cannot delete, and noting the latest
+snapshot id and ledger length somewhere else (for example when you print the kit) to compare at restore time.
+
 ## Measuring restore time (human-gated)
 
 SPEC.md targets a restore onto a blank server in 15 minutes or less. This repository does not claim that number; it is
@@ -141,6 +155,7 @@ measured by a person:
 
 Everything below has not been run against a real system; the offline tests cover the logic through fakes.
 
+- Minimum restic version: 0.17 (exit code 10 for "no repository"); older versions return other codes and `can backup kit` would then refuse.
 - Real restic and a real S3-compatible bucket (R2, B2, S3): command lines and exit-code handling are tested against a fake;
   `restic cat config` exit code 10 for "no repository" is taken from restic's documentation, not observed.
 - The SigV4 client against a real endpoint (it is tested against an `httptest` server that checks the header shape, not the

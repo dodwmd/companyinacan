@@ -127,7 +127,7 @@ func TestExecRunnerError(t *testing.T) {
 func hashOf(b []byte) string { return fmt.Sprintf("%x", sha256.Sum256(b)) }
 
 func fakeRepo(files map[string]string) *FakeRestic {
-	f := &FakeRestic{Snaps: []Snapshot{{ID: "snap1", Time: time.Unix(1_800_000_000, 0)}}, Files: map[string][]byte{}}
+	f := &FakeRestic{Snaps: []Snapshot{{ID: "snap1", Time: time.Unix(1_800_000_000, 0), Tags: []string{"can"}}}, Files: map[string][]byte{}}
 	var man strings.Builder
 	for p, c := range files {
 		f.Files["/var/lib/can/dumps/"+p] = []byte(c)
@@ -200,12 +200,12 @@ func TestStatus(t *testing.T) {
 		t.Errorf("no restic must report backups off: %+v", rep)
 	}
 	_ = WriteMarker(filepath.Join(dir, MarkerName), Marker{RunID: "r", FinishedAt: now.Add(-time.Hour)})
-	f := &FakeRestic{Snaps: []Snapshot{{ID: "s", Time: now.Add(-time.Hour)}}}
+	f := &FakeRestic{Snaps: []Snapshot{{ID: "s", Time: now.Add(-time.Hour), Tags: []string{"can"}}}}
 	rep = Status(context.Background(), f, dir, now, 24*time.Hour)
 	if !rep.Enabled || len(rep.Problems) != 0 || rep.Snapshots != 1 {
 		t.Errorf("%+v", rep)
 	}
-	old := &FakeRestic{Snaps: []Snapshot{{ID: "s", Time: now.Add(-72 * time.Hour)}}}
+	old := &FakeRestic{Snaps: []Snapshot{{ID: "s", Time: now.Add(-72 * time.Hour), Tags: []string{"can"}}}}
 	rep = Status(context.Background(), old, dir, now, 24*time.Hour)
 	if len(rep.Problems) == 0 {
 		t.Error("stale snapshot not flagged")
@@ -226,5 +226,26 @@ func TestEnvFileQuotingRoundTrip(t *testing.T) {
 	out, err := exec.Command("bash", "-c", `set -a; . "$1"; printf %s "$AWS_SECRET_ACCESS_KEY"`, "x", p).Output()
 	if err != nil || string(out) != strings.TrimPrefix(in[1], "AWS_SECRET_ACCESS_KEY=") {
 		t.Fatalf("bash parse: %v %q", err, out)
+	}
+}
+
+func TestStatusAndVerifyIgnoreInconsistentSnapshots(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	dir := t.TempDir()
+	_ = WriteMarker(filepath.Join(dir, MarkerName), Marker{RunID: "r", FinishedAt: now})
+	f := &FakeRestic{Snaps: []Snapshot{
+		{ID: "flagged", Time: now, Tags: []string{"can", "inconsistent"}},
+		{ID: "foreign", Time: now, Tags: []string{"other"}},
+	}}
+	rep := Status(context.Background(), f, dir, now, 24*time.Hour)
+	if rep.Snapshots != 0 || len(rep.Problems) == 0 {
+		t.Errorf("status counted unusable snapshots: %+v", rep)
+	}
+	if _, err := Verify(context.Background(), f, VerifyOptions{DumpsDir: "/d", TempDir: t.TempDir()}); err == nil {
+		t.Error("verify accepted only unusable snapshots")
+	}
+	f.Snaps = append(f.Snaps, Snapshot{ID: "old-good", Time: now.Add(-time.Hour), Tags: []string{"can"}})
+	if rep := Status(context.Background(), f, dir, now, 24*time.Hour); rep.Latest != "old-good" {
+		t.Errorf("latest = %q, want the newest usable snapshot", rep.Latest)
 	}
 }

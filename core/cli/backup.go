@@ -281,10 +281,8 @@ working tree. The kit is never written to the company repository.`,
 			if err != nil {
 				return failure("%v", err)
 			}
-			if existing == "" {
-				if err := ensureNoRepo(cmd, kit); err != nil {
-					return err
-				}
+			if err := checkRepo(cmd, kit, existing != ""); err != nil {
+				return err
 			}
 			if out != "" {
 				ask := newPassphraseSource(passFile)
@@ -327,9 +325,11 @@ working tree. The kit is never written to the company repository.`,
 	return cmd
 }
 
-// ensureNoRepo refuses to create a kit with a fresh password when a restic
-// repository already exists at the target: that password would not open it.
-func ensureNoRepo(cmd *cobra.Command, kit *backup.Kit) error {
+// checkRepo probes the repository with the kit's password and fails closed.
+// With a freshly generated password a repository must NOT exist (the password
+// would not open it); with a reused password, an existing repository must open.
+// Anything else, including restic not being runnable, refuses.
+func checkRepo(cmd *cobra.Command, kit *backup.Kit, reused bool) error {
 	pw, cleanup, err := kit.PasswordFile(os.TempDir())
 	if err != nil {
 		return failure("%v", err)
@@ -339,13 +339,19 @@ func ensureNoRepo(cmd *cobra.Command, kit *backup.Kit) error {
 	_, err = r.EnsureNoRepo(cmd.Context())
 	var ce *backup.CmdError
 	switch {
-	case err == nil:
+	case err == nil: // no repository yet
 		return nil
+	case errors.As(err, &ce) && ce.Code == 0: // a repository exists and the password opens it
+		if reused {
+			return nil
+		}
+		return failure("a restic repository already exists at %s; reuse its password via --password-file", kit.Restic.Repository)
+	case errors.As(err, &ce) && reused:
+		return failure("the existing restic password does not open the repository at %s (%v); refusing to produce a kit that cannot restore it", kit.Restic.Repository, ce)
 	case errors.As(err, &ce):
 		return failure("a restic repository may already exist at %s (%v); refusing to generate a new password for it. Reuse the existing password via --password-file, or choose another bucket/prefix", kit.Restic.Repository, ce)
 	default:
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not check for an existing repository (%v)\n", err)
-		return nil
+		return failure("cannot check the repository (is restic 0.17 or newer installed and the bucket reachable?): %v", err)
 	}
 }
 
@@ -572,7 +578,7 @@ func (f *repoFlags) store(insecure bool) (backup.ObjectStore, string, error) {
 
 func newRestoreCmd(g *globalOpts) *cobra.Command {
 	var kitPath, passFile, dir, snapshot string
-	var plan, allowNoLedger, force bool
+	var plan, allowNoLedger, forceHost, forceVolumes, acceptBehind, forceOlder bool
 	d := backup.DefaultSettings()
 	var root, dumps, hostState, pvcRoot, staging, statePath string
 	cmd := &cobra.Command{
@@ -610,7 +616,7 @@ Use --plan to print the steps without touching anything.`,
 			o := &backup.Restore{
 				Kit: kit, Provisioner: prov, Restic: rs, Cluster: cl,
 				Ledger: backup.BucketLedger{Store: backupSeams.store(kit), Password: kit.Restic.Password},
-				Root:   root, DumpsDir: dumps, HostStateDir: hostState, Force: force, PVCRoot: pvcRoot, StagingDir: staging, CompanyDir: dir,
+				Root:   root, DumpsDir: dumps, HostStateDir: hostState, ForceHost: forceHost, ForceVolumes: forceVolumes, AcceptLedgerBehind: acceptBehind, ForceOlder: forceOlder, PVCRoot: pvcRoot, StagingDir: staging, CompanyDir: dir,
 				StatePath: statePath, Snapshot: snapshot, AllowNoLedger: allowNoLedger, Out: cmd.ErrOrStderr(),
 			}
 			if plan {
@@ -645,7 +651,10 @@ Use --plan to print the steps without touching anything.`,
 	cmd.Flags().StringVar(&root, "root", "/", "host root dumps are restored under")
 	cmd.Flags().StringVar(&dumps, "dumps-dir", d.DumpsDir, "dumps directory")
 	cmd.Flags().StringVar(&hostState, "host-state-dir", d.HostStateDir, "host state directory")
-	cmd.Flags().BoolVar(&force, "force", false, "restore over a non-blank host and accept a ledger behind the snapshot's copy (overwrites data)")
+	cmd.Flags().BoolVar(&forceHost, "force-host", false, "restore over a non-blank host (overwrites existing files)")
+	cmd.Flags().BoolVar(&forceVolumes, "force-volumes", false, "copy into volumes that already hold data (overwrites it)")
+	cmd.Flags().BoolVar(&acceptBehind, "accept-ledger-behind", false, "apply the snapshot's ledger copy although the bucket ledger lacks entries it has (erasures may be lost)")
+	cmd.Flags().BoolVar(&forceOlder, "force-older", false, "skip a newer snapshot that fails its consistency check and use an older one")
 	cmd.Flags().StringVar(&pvcRoot, "pvc-root", d.PVCRoot, "k3s local-path storage directory")
 	cmd.Flags().StringVar(&staging, "staging", "/var/lib/can/restore-staging", "scratch directory for the PVC restore (must be absolute, at least 3 levels deep, empty or created by can restore)")
 	cmd.Flags().StringVar(&statePath, "state", "", "restore progress file (default <dir>/.can/restore.json)")

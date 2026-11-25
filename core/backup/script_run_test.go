@@ -311,3 +311,61 @@ func TestScriptStateDirCreatedBeforeLock(t *testing.T) {
 		t.Fatalf("code %d %s", code, out)
 	}
 }
+
+func TestScriptRunSymlinkedLedgerIsRefused(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	_ = os.WriteFile(e.dir+"/elsewhere", []byte("{}\n"), 0o600)
+	_ = os.Symlink(e.dir+"/elsewhere", e.s.LedgerSource)
+	code, out := e.run(t)
+	if code != ExitUnsafeDumps || !strings.Contains(out, "symlink") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+}
+
+func TestScriptRunVanishedLedgerIsReported(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	_ = os.WriteFile(e.s.LedgerSource, []byte("{}\n"), 0o600)
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("first run: %d\n%s", code, out)
+	}
+	_ = os.Remove(e.s.LedgerSource)
+	e.fresh(t)
+	code, out := e.run(t)
+	if code != ExitLedgerFailed || !strings.Contains(out, "vanished") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if !strings.Contains(e.calledRestic(), "restic forget") {
+		t.Error("the backup itself must still complete")
+	}
+}
+
+func TestScriptRunNeverHadALedgerIsFine(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+}
+
+func TestScriptRunRefusesGroupWritableHostState(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	_ = os.MkdirAll(e.s.HostStateDir, 0o755)
+	_ = os.Chmod(e.s.HostStateDir, 0o775)
+	if code, out := e.run(t); code != ExitUnsafeDumps || !strings.Contains(out, "writable") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+}
+
+func TestScriptRunRefusesSymlinkedStateDir(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	_ = os.RemoveAll(e.s.HostStateDir)
+	_ = os.MkdirAll(e.dir+"/elsewhere", 0o700)
+	_ = os.Symlink(e.dir+"/elsewhere", e.s.HostStateDir)
+	if code, _ := e.run(t); code != ExitUnsafeDumps {
+		t.Fatalf("code %d", code)
+	}
+}

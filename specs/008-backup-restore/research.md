@@ -58,3 +58,8 @@ Owner/mode of can-core's files are not otherwise verified; a hostile can-core ca
 
 **R14. Blank-host guard.** `can restore` refuses non-empty dumps/host-state directories and never deletes a staging directory it did not
 create (marker file, depth check) nor overwrites a volume that already holds data; `--force` overrides the first and the last.
+
+**R15. Snapshot selection is never silent.** `pin` prints every snapshot it ignores or skips and the one it chooses. A restic failure while
+probing is returned as an error (transient: retry), not treated as inconsistency. A genuine inconsistency in a newer `can` snapshot stops the
+restore unless `--force-older` or `--snapshot` is given. `--force` was split into `--force-host`, `--force-volumes`, `--accept-ledger-behind` and
+`--force-older`, so overriding one safety does not silently override another. Status and verify use the same `UsableSnapshots` rule.

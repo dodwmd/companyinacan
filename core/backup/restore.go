@@ -86,10 +86,12 @@ type Restore struct {
 	Snapshot     string // "" = latest, pinned on first run
 
 	AllowNoLedger bool // proceed when the bucket has no ledger at all
-	// Force skips the blank-host guard (dumps dir, volumes) and accepts a bucket
-	// ledger that is behind the snapshot's copy. Dangerous: overwrites data.
-	Force bool
-	Out   io.Writer
+	// Each override is separate and dangerous in its own way.
+	ForceHost          bool // restore over a non-blank host (overwrites existing files)
+	ForceVolumes       bool // copy into volumes that already hold data
+	AcceptLedgerBehind bool // apply the union although the bucket ledger lacks snapshot entries
+	ForceOlder         bool // skip a newer `can` snapshot that fails its consistency check
+	Out                io.Writer
 }
 
 // Restore step ids, in order.
@@ -273,6 +275,14 @@ func (o *Restore) hostState() string {
 // markersAt reads the dumps marker and the copy the backup took under, both
 // below root, and requires them to agree (same run id and finish time).
 func (o *Restore) markersAt(root string) (Marker, error) {
+	m, err := o.markersAtRaw(root)
+	if err != nil {
+		return m, errInconsistent{err}
+	}
+	return m, nil
+}
+
+func (o *Restore) markersAtRaw(root string) (Marker, error) {
 	under := func(p string) string { return filepath.Join(root, filepath.FromSlash(p)) }
 	m, err := ReadMarker(filepath.Join(under(o.DumpsDir), MarkerName))
 	if err != nil {
@@ -288,10 +298,23 @@ func (o *Restore) markersAt(root string) (Marker, error) {
 	return m, nil
 }
 
+// errInconsistent marks a snapshot whose own contents fail the consistency
+// check (as opposed to a transient failure to read it).
+type errInconsistent struct{ err error }
+
+func (e errInconsistent) Error() string { return e.err.Error() }
+func (e errInconsistent) Unwrap() error { return e.err }
+
 // pin resolves and records the snapshot once, so a resume never mixes
-// snapshots. Without --snapshot it picks the newest snapshot that is tagged
-// "can", not tagged "inconsistent", and whose completion marker is present
-// and consistent; older good snapshots are the fallback.
+// snapshots. Without --snapshot it walks the snapshots newest first, never
+// silently:
+//   - tagged "inconsistent" (the backup itself flagged it): skipped, reported;
+//   - not tagged "can": ignored, reported;
+//   - a transient restic failure while checking it: the restore fails (retry);
+//   - a genuine inconsistency (marker missing or mismatching) in a newer "can"
+//     snapshot: the restore fails unless ForceOlder is set or --snapshot names one.
+//
+// The chosen snapshot id and time are always reported.
 func (o *Restore) pin(ctx context.Context, st *restoreState) (string, error) {
 	if st.Snapshot != "" {
 		if o.Snapshot != "" && o.Snapshot != st.Snapshot {
@@ -301,39 +324,48 @@ func (o *Restore) pin(ctx context.Context, st *restoreState) (string, error) {
 	}
 	if o.Snapshot != "" {
 		st.Snapshot = o.Snapshot
+		o.say("using snapshot %s (chosen with --snapshot)", o.Snapshot)
 		return st.Snapshot, o.save(st)
 	}
 	snaps, err := o.Restic.Snapshots(ctx)
 	if err != nil {
 		return "", err
 	}
-	var rejected []string
 	tried := 0
 	for _, sn := range snaps {
-		if !slices.Contains(sn.Tags, "can") || slices.Contains(sn.Tags, "inconsistent") {
+		when := sn.Time.UTC().Format(time.RFC3339)
+		if !slices.Contains(sn.Tags, "can") {
+			o.say("ignoring snapshot %s (%s): not tagged can", sn.ID, when)
+			continue
+		}
+		if slices.Contains(sn.Tags, "inconsistent") {
+			o.say("skipping snapshot %s (%s): tagged inconsistent by the backup (the dump marker changed while it ran)", sn.ID, when)
 			continue
 		}
 		if tried++; tried > 10 {
-			break
+			return "", errors.New("no usable snapshot among the newest 10; use --snapshot to choose one")
 		}
 		tmp, err := os.MkdirTemp("", "can-probe-")
 		if err != nil {
 			return "", err
 		}
 		err = o.Restic.Restore(ctx, sn.ID, tmp, []string{path.Join(o.DumpsDir, MarkerName), path.Join(o.hostState(), MarkerCopy)})
-		if err == nil {
-			_, err = o.markersAt(tmp)
+		if err != nil {
+			_ = os.RemoveAll(tmp)
+			return "", fmt.Errorf("could not read snapshot %s (%s) to check it (not skipping it; fix the cause and re-run, or choose with --snapshot): %w", sn.ID, when, err)
 		}
+		_, err = o.markersAt(tmp)
 		_ = os.RemoveAll(tmp)
 		if err != nil {
-			rejected = append(rejected, sn.ID+": "+err.Error())
+			if !o.ForceOlder {
+				return "", fmt.Errorf("the newest usable-looking snapshot %s (%s) fails its consistency check: %v; refusing to fall back to an older one silently (use --force-older to skip it, or --snapshot ID)", sn.ID, when, err)
+			}
+			o.say("WARNING: --force-older: skipping snapshot %s (%s): %v", sn.ID, when, err)
 			continue
 		}
+		o.say("using snapshot %s (%s)", sn.ID, when)
 		st.Snapshot = sn.ID
 		return sn.ID, o.save(st)
-	}
-	if len(rejected) > 0 {
-		return "", fmt.Errorf("no usable snapshot; rejected: %s", strings.Join(rejected, "; "))
 	}
 	return "", errors.New("repository has no usable snapshot (tagged can and not inconsistent)")
 }
@@ -355,8 +387,8 @@ func (o *Restore) blankHost() error {
 		if err != nil {
 			return err
 		}
-		if len(ents) > 0 && !o.Force {
-			return fmt.Errorf("%s is not empty: this does not look like a blank host (use --force to restore over it; existing files will be overwritten)", d)
+		if len(ents) > 0 && !o.ForceHost {
+			return fmt.Errorf("%s is not empty: this does not look like a blank host (use --force-host to restore over it; existing files will be overwritten)", d)
 		}
 	}
 	return nil
@@ -495,7 +527,7 @@ func checkStaging(p string) error {
 
 // copyVolume copies one staged volume into the new one. A destination that
 // already holds data is refused unless it carries our in-progress marker (an
-// earlier interrupted copy) or Force is set.
+// earlier interrupted copy) or ForceVolumes is set.
 func (o *Restore) copyVolume(src, dst string) error {
 	guard := filepath.Join(dst, copyMarker)
 	if _, err := os.Stat(guard); err != nil {
@@ -503,8 +535,8 @@ func (o *Restore) copyVolume(src, dst string) error {
 		if rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
 			return rerr
 		}
-		if len(ents) > 0 && !o.Force {
-			return fmt.Errorf("volume %s already holds data; refusing to overwrite it (use --force)", dst)
+		if len(ents) > 0 && !o.ForceVolumes {
+			return fmt.Errorf("volume %s already holds data; refusing to overwrite it (use --force-volumes)", dst)
 		}
 	}
 	if err := os.MkdirAll(dst, 0o755); err != nil { //nolint:gosec // CopyTree sets modes
@@ -588,8 +620,8 @@ func (o *Restore) stepErasure(ctx context.Context, st *restoreState) error {
 	es, err := o.Ledger.Fetch(ctx)
 	switch {
 	case errors.Is(err, ErrNoLedger):
-		if len(snapEntries) > 0 && !o.Force {
-			return fmt.Errorf("%w, but the snapshot's copy holds %d entries: the bucket object was deleted or rolled back; refusing to go live (--force to apply the snapshot's copy only)", err, len(snapEntries))
+		if len(snapEntries) > 0 && !o.AcceptLedgerBehind {
+			return fmt.Errorf("%w, but the snapshot's copy holds %d entries: the bucket object was deleted or rolled back; refusing to go live (--accept-ledger-behind to apply the snapshot's copy only)", err, len(snapEntries))
 		}
 		if len(snapEntries) == 0 && !o.AllowNoLedger {
 			return fmt.Errorf("%w: refusing to go live without applying erasures (re-run with --allow-no-ledger if no erasure was ever requested)", err)
@@ -598,11 +630,15 @@ func (o *Restore) stepErasure(ctx context.Context, st *restoreState) error {
 	case err != nil:
 		return fmt.Errorf("fetching the erasure ledger: %w", err)
 	}
+	if errors.Is(err, ErrNoLedger) && len(snapEntries) > 0 {
+		o.say("WARNING: --accept-ledger-behind: the bucket has no ledger; applying only the snapshot's %d entries (erasures made after that backup are NOT applied)", len(snapEntries))
+	}
 	merged, err := CheckNotBehind(es, snapEntries)
 	if err != nil {
-		if !o.Force {
+		if !o.AcceptLedgerBehind {
 			return err
 		}
+		o.say("WARNING: --accept-ledger-behind: %v", err)
 		merged = MergeLedgers(es, snapEntries)
 	}
 	applied := map[string]bool{}

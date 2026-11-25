@@ -53,6 +53,13 @@ bucket, host or cluster and is **not** done (see docs/backup-restore.md).
 - [x] T026 Blank-host guard, staging validation, volume overwrite guard; kit passphrase confirmation and read-back, existing password and repository checks, option allow-list
 - [x] T027 Webhook URL off argv, JSON escaping, quoted env file, S3 https/NoSuchKey/path prefix, torn ledger line, restore state fsync and snapshot pin rules
 
+## QA round 2 (PR #12)
+
+- [x] T028 Snapshot pin reports every decision, stops on transient errors, requires `--force-older`/`--snapshot` to skip a newer failing snapshot
+- [x] T029 Split `--force`; warnings on ledger override; status/verify use `UsableSnapshots`
+- [x] T030 Script: symlinked or vanished ledger, root-owned private state dirs with owner and mode checks
+- [x] T031 Kit: fail closed when restic cannot run, verify a reused password opens an existing repository; docs for stale-snapshot rollback and restic 0.17
+
 ## Not done
 
 - [ ] T018 [V] Real can-core `Cluster` and `Provisioner` adapters (E03, E06 follow-up)
