@@ -1,0 +1,5 @@
+# DEV ONLY: Prometheus with the example scrape config and alert rules baked in (no bind mounts, so
+# rootless podman needs no SELinux relabelling). Context is the repository root.
+FROM docker.io/prom/prometheus:v2.55.1
+COPY deploy/monitoring/prometheus.yml /etc/prometheus/prometheus.yml
+COPY deploy/monitoring/alerts.yml /etc/prometheus/alerts.yml

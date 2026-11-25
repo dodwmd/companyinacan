@@ -19,6 +19,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/obs"
+	obslog "github.com/dodwmd/companyinacan/core/obs/log"
+	"github.com/dodwmd/companyinacan/core/obs/obssql"
 	"github.com/dodwmd/companyinacan/core/server/adminapi"
 	"github.com/dodwmd/companyinacan/core/server/adminui"
 	"github.com/dodwmd/companyinacan/core/server/approvals"
@@ -70,6 +73,10 @@ type Config struct {
 	ShutdownTimeout    time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
 	PublicIPs          []string      // CAN_PUBLIC_IPS: the server's public addresses, listed in the setup wizard's DNS step
 	SSOSecretDir       string        // CAN_SSO_SECRET_DIR: directory with the SSO client secret as <name>/<key> files, a mounted Secret (default /etc/can/sso)
+
+	Version, Commit string // build identity for can_build_info
+	// Env reads settings Run needs after FromEnv (CAN_METRICS_*, CAN_RAM_DECLARED_*); nil means os.Getenv.
+	Env func(string) string
 
 	// OnListen is called once both listeners are bound (tests use it to learn ports).
 	OnListen func(admin, module net.Addr)
@@ -161,16 +168,21 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	if c.AdminAddr == c.ModuleAddr {
 		return c, errors.New("CAN_ADMIN_ADDR and CAN_MODULE_ADDR must differ: the admin and module APIs are separate listeners")
 	}
+	c.Env = getenv
 	return c, nil
 }
 
 // Logger builds the structured JSON logger for the configured level.
+// Secret-bearing keys and values are redacted and records carry request_id (core/obs/log).
 func (c Config) Logger(w *os.File) *slog.Logger {
-	var lv slog.Level
-	if err := lv.UnmarshalText([]byte(c.LogLevel)); err != nil {
-		lv = slog.LevelInfo
+	return obslog.New(w, obslog.Options{Service: "can-core", Version: c.Version, Level: c.LogLevel, Format: c.env("CAN_LOG_FORMAT")})
+}
+
+func (c Config) env(k string) string {
+	if c.Env != nil {
+		return c.Env(k)
 	}
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lv}))
+	return os.Getenv(k)
 }
 
 func (c Config) reviewer(log *slog.Logger) (tokenreview.Reviewer, error) {
@@ -206,6 +218,16 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return fmt.Errorf("opening state database: %w", err)
 	}
 	defer func() { _ = db.Close() }()
+	// Observability (epic E22): process and footprint metrics, the optional token-protected metrics
+	// listener (never the admin or module port), readiness checks and statement timings.
+	store.SetObserver(obs.NewDBObserver(obs.Default))
+	defer store.SetObserver(nil)
+	if err := obs.Setup(ctx, cfg.env, obs.BuildInfo{Version: cfg.Version, Commit: cfg.Commit}, log); err != nil {
+		return fmt.Errorf("metrics: %w", err)
+	}
+	obssql.WatchDefault(db.DB)
+	rm := newReconcileMetrics(obs.Default, obs.DefaultHealth)
+	pm := newPlatformMetrics(obs.Default)
 	rev, err := cfg.reviewer(log)
 	if err != nil {
 		return err
@@ -276,6 +298,8 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	go func() { defer wg.Done(); disp.Run(workCtx, bus.Wake(), 30*time.Second) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); housekeeping(workCtx, db, log) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); pm.run(workCtx, db, al, log) }()
 	inst, err := cfg.newInstaller(log)
 	if err != nil {
 		stopWork()
@@ -299,7 +323,11 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			loopEvery(workCtx, cfg, log, func(ctx context.Context) error { return reconcileStored(ctx, cfg, cs, run, svc, log) })
+			loopEvery(workCtx, cfg, log, func(ctx context.Context) error {
+				err := reconcileStored(ctx, cfg, cs, run, svc, log)
+				rm.observe(err, time.Now())
+				return err
+			})
 		}()
 	}
 	wg.Add(1)

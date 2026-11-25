@@ -76,6 +76,11 @@ spec:
             - {name: CAN_TRUST_PROXY, value: "true"}
             - {name: CAN_COOKIE_SECURE, value: "true"}
             - {name: CAN_MEMLIMIT_MB, value: "64"}
+            # The declared RAM request in bytes: exported as can_ram_declared_bytes next to can_ram_rss_bytes
+            # (the Constitution II footprint self-check). Metrics themselves stay off until CAN_METRICS_ADDR
+            # is set; see docs/observability.md.
+            - name: CAN_RAM_DECLARED_BYTES
+              valueFrom: {resourceFieldRef: {containerName: can-core, resource: requests.memory, divisor: "1"}}
             - {name: CAN_INSTALLER, value: kubernetes}
             - {name: CAN_COMPANY_FILE, value: /etc/can/company/company.yaml}
             - {name: CAN_MODULES_DIR, value: /modules}
@@ -94,7 +99,9 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           readinessProbe:
-            httpGet: {path: /healthz, port: admin}
+            # /readyz: database reachable and migrations applied (503 otherwise). A failing reconcile only
+            # reports "degraded" (200), so a cluster problem never takes the admin UI out of rotation.
+            httpGet: {path: /readyz, port: admin}
             periodSeconds: 5
             failureThreshold: 6
           livenessProbe:

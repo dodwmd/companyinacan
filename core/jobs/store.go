@@ -18,6 +18,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
+
+	"github.com/dodwmd/companyinacan/core/obs/obssql"
 )
 
 //go:embed migrations/*.sql
@@ -107,6 +109,7 @@ func OpenStore(path string, o StoreOptions) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	obssql.WatchDefault(s.db)
 	if err := s.seedStages(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err

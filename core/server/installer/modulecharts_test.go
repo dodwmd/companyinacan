@@ -103,8 +103,11 @@ func TestInhouseModuleChartsInstall(t *testing.T) {
 			if lv != want {
 				t.Errorf("liveness %s, want the binary's own healthcheck %s", lv, want)
 			}
-			if p := dig(c, "readinessProbe", "httpGet", "path"); p != "/healthz" {
-				t.Errorf("readiness path %v", p)
+			if p := dig(c, "readinessProbe", "httpGet", "path"); p != "/readyz" {
+				t.Errorf("readiness path %v, want /readyz (liveness stays the binary's own /healthz check)", p)
+			}
+			if !strings.Contains(toJSON(c["env"]), fmt.Sprintf(`{"name":"CAN_RAM_DECLARED_MB","value":"%d"}`, m.ramMB)) && m.id != "equity" {
+				t.Errorf("declared RAM env missing or not the manifest's ram_mb %d: %s", m.ramMB, toJSON(c["env"]))
 			}
 			res := c["resources"].(map[string]any)
 			if got := toJSON(dig(res, "limits", "memory")); got != fmt.Sprintf(`"%dMi"`, m.limitMB) {

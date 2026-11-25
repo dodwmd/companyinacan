@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/obs"
 )
 
 // setSecurityHeaders applies the headers every response carries. The gateway serves JSON
@@ -97,6 +99,12 @@ func (s *statusRecorder) WriteHeader(code int) {
 // withMiddleware adds panic recovery and structured access logging. The access log omits
 // the query string, client address and any submitted data on purpose.
 func withMiddleware(log *slog.Logger, name string, next http.Handler) http.Handler {
+	return obs.Instrument(accessLog(log, name, next))
+}
+
+// accessLog recovers panics and writes one structured line per request: method, matched route
+// pattern, status and duration. Never the query string, the raw path or any body.
+func accessLog(log *slog.Logger, name string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
@@ -108,7 +116,7 @@ func withMiddleware(log *slog.Logger, name string, next http.Handler) http.Handl
 					writeError(rec, http.StatusInternalServerError, "internal", "internal error")
 				}
 			}
-			log.Info("request", "server", name, "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", time.Since(start).Milliseconds())
+			log.InfoContext(r.Context(), "request", "server", name, "method", r.Method, "route", r.Pattern, "status", rec.status, "ms", time.Since(start).Milliseconds())
 		}()
 		next.ServeHTTP(rec, r)
 	})

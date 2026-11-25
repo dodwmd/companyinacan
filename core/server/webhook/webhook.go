@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/obs"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
@@ -171,6 +172,10 @@ func (d *Dispatcher) send(ctx context.Context, del store.Delivery, n int, start 
 	return resp.StatusCode, ""
 }
 
+// deliveries counts delivery attempts by outcome (delivered, retry, dead). The label set is fixed;
+// event ids, module ids and URLs never reach a metric.
+var deliveries = obs.Default.Counter("can_webhook_deliveries_total", "Webhook delivery attempts by result.", "result")
+
 func (d *Dispatcher) attempt(ctx context.Context, del store.Delivery) error {
 	start := d.Now()
 	n := del.Attempts + 1
@@ -178,14 +183,21 @@ func (d *Dispatcher) attempt(ctx context.Context, del store.Delivery) error {
 	rec.StatusCode, rec.Error = d.send(ctx, del, n, start)
 	rec.Duration = d.Now().Sub(start)
 	status, next := store.StatusDelivered, start
+	result := "delivered"
 	if rec.Error != "" {
 		status, next = store.StatusPending, start.Add(d.Backoff(n))
+		result = "retry"
 		if n >= d.MaxAttempts {
 			status = store.StatusDead
+			result = "dead"
 			d.Log.Warn("webhook delivery gave up", "module", del.ModuleID, "event", del.Event.ID, "attempts", n)
 		}
 	}
-	return d.db.RecordAttempt(ctx, del.ID, rec, status, next)
+	err := d.db.RecordAttempt(ctx, del.ID, rec, status, next)
+	if err == nil {
+		deliveries.With(result).Inc()
+	}
+	return err
 }
 
 // Run processes deliveries until ctx ends: on every wake signal and at least every interval (to

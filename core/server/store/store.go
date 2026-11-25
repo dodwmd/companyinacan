@@ -110,12 +110,14 @@ func (db *DB) migrate(ctx context.Context) error {
 }
 
 // InTx runs fn in a transaction, committing on nil and rolling back otherwise.
-func (db *DB) InTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
+func (db *DB) InTx(ctx context.Context, fn func(tx *sql.Tx) error) (err error) {
+	start := time.Now()
+	defer func() { observe("tx", start, err) }()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if err := fn(tx); err != nil {
+	if err = fn(tx); err != nil {
 		_ = tx.Rollback()
 		return err
 	}

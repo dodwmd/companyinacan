@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -100,5 +101,99 @@ func TestRunFailsFastOnBadDatabasePath(t *testing.T) {
 	cfg := Config{AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: "/nonexistent-dir/x/state.db", TokenReview: "fake"}
 	if err := Run(context.Background(), cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	return ln.Addr().String()
+}
+
+func body(t *testing.T, req *http.Request) (int, string) {
+	t.Helper()
+	resp, err := noKeepAlive.Do(req) //nolint:gosec // local test listener
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+func TestRunObservability(t *testing.T) {
+	metrics := freeAddr(t)
+	env := map[string]string{"CAN_METRICS_ADDR": metrics, "CAN_METRICS_TOKEN": "tok-123", "CAN_RAM_DECLARED_MB": "48"}
+	cfg := Config{
+		AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "state.db"),
+		TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 20 * time.Second, Version: "v9.9.9", Commit: "c0ffee",
+		Env: func(k string) string { return env[k] },
+	}
+	addrs := make(chan [2]net.Addr, 1)
+	cfg.OnListen = func(a, m net.Addr) { addrs <- [2]net.Addr{a, m} }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
+	var a [2]net.Addr
+	select {
+	case a = <-addrs:
+	case err := <-done:
+		t.Fatalf("exited early: %v", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("no listeners")
+	}
+	admin, mod := "http://"+a[0].String(), "http://"+a[1].String()
+	for _, base := range []string{admin, mod} {
+		req, _ := http.NewRequest("GET", base+"/readyz", nil)
+		code, b := body(t, req)
+		if code != 200 || !strings.Contains(b, `"database"`) || !strings.Contains(b, `"migrations"`) {
+			t.Fatalf("%s/readyz: %d %s", base, code, b)
+		}
+	}
+	// /metrics must never be on the public/ingress-facing listeners
+	for _, base := range []string{admin, mod} {
+		req, _ := http.NewRequest("GET", base+"/metrics", nil)
+		req.Header.Set("Authorization", "Bearer tok-123")
+		if code, b := body(t, req); code == 200 || strings.Contains(b, "can_ram_rss_bytes") {
+			t.Fatalf("%s serves metrics", base)
+		}
+	}
+	req, _ := http.NewRequest("GET", "http://"+metrics+"/metrics", nil)
+	if code, _ := body(t, req); code != 401 {
+		t.Fatalf("unauthenticated scrape: %d", code)
+	}
+	req.Header.Set("Authorization", "Bearer tok-123")
+	code, b := body(t, req)
+	if code != 200 {
+		t.Fatalf("scrape: %d", code)
+	}
+	for _, want := range []string{
+		`can_build_info{version="v9.9.9",commit="c0ffee"`, "can_ram_declared_bytes 50331648", "can_ram_rss_bytes ",
+		"can_http_requests_total{", "can_db_connections_open", "can_approvals_pending", "can_audit_verify_ok",
+	} {
+		if !strings.Contains(b, want) {
+			t.Errorf("metrics lack %q", want)
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("shutdown: %v", err)
+		}
+	case <-time.After(45 * time.Second):
+		t.Fatal("no graceful shutdown")
+	}
+}
+
+func TestRunRefusesOpenMetricsListenerWithoutToken(t *testing.T) {
+	env := map[string]string{"CAN_METRICS_ADDR": "0.0.0.0:0"}
+	cfg := Config{AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "state.db"), TokenReview: "fake", Env: func(k string) string { return env[k] }}
+	if err := Run(context.Background(), cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))); err == nil {
+		t.Fatal("started with an unauthenticated non-loopback metrics listener")
 	}
 }

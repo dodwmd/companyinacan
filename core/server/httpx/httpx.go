@@ -5,8 +5,6 @@ package httpx
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,6 +14,9 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/obs"
+	obslog "github.com/dodwmd/companyinacan/core/obs/log"
 )
 
 // MaxBodyBytes bounds every request body.
@@ -80,12 +81,8 @@ func DecodeJSONMax(w http.ResponseWriter, r *http.Request, v any, limit int64) b
 	return true
 }
 
-type ctxKey int
-
-const requestIDKey ctxKey = 1
-
 // RequestID returns the id attached by the Middleware.
-func RequestID(ctx context.Context) string { s, _ := ctx.Value(requestIDKey).(string); return s }
+func RequestID(ctx context.Context) string { return obslog.RequestID(ctx) }
 
 // ClientIP returns the caller's address. With trustProxy it uses the last X-Forwarded-For entry,
 // which is the one appended by the trusted ingress (Traefik); never the first, which the client controls.
@@ -122,19 +119,20 @@ func (r *recorder) Write(b []byte) (int, error) {
 }
 
 // Middleware wraps h with request ids, panic recovery, security headers and structured logging.
-// Authorization and Cookie headers are never logged.
+// Authorization and Cookie headers, query strings and bodies are never logged. The request id is the
+// client's X-Request-Id only when it is short and plain (obslog.NewRequestID), otherwise a fresh
+// one. Request counts, durations and /readyz come from core/obs, inside the id and logging layer.
 func Middleware(log *slog.Logger, api string, h http.Handler) http.Handler {
+	h = obs.Instrument(h)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		var b [8]byte
-		_, _ = rand.Read(b[:])
-		id := hex.EncodeToString(b[:])
+		id := obslog.NewRequestID(r.Header.Get("X-Request-Id"))
 		w.Header().Set("X-Request-Id", id)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 		rec := &recorder{ResponseWriter: w}
-		r = r.WithContext(context.WithValue(r.Context(), requestIDKey, id))
+		r = r.WithContext(obslog.WithRequestID(r.Context(), id))
 		defer func() {
 			if p := recover(); p != nil {
 				log.Error("panic in handler", "api", api, "request_id", id, "panic", p, "stack", string(bytes.TrimSpace(debug.Stack())))

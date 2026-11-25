@@ -1,0 +1,5 @@
+# DEV ONLY: Grafana OSS with the datasource and the overview dashboard provisioned. Context is the
+# repository root.
+FROM docker.io/grafana/grafana-oss:11.3.1
+COPY deploy/monitoring/grafana/provisioning /etc/grafana/provisioning
+COPY deploy/monitoring/grafana/dashboards /var/lib/grafana/dashboards

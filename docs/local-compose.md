@@ -95,6 +95,24 @@ SQLite data lives in named volumes (`companyinacan_core-data`, `forms-data`, `wo
 (`docker compose -p companyinacan up -d --build --force-recreate <service>`). podman-compose does not
 always notice an `env_file` change on its own.
 
+## Metrics and the optional monitoring profile
+
+Every service starts a token-protected metrics listener on port 9190 of the private compose network
+(`CAN_METRICS_ADDR`, `CAN_METRICS_TOKEN` in `docker-compose.yml`; the token is a public dev value like the
+others). No metrics port is published to the host. `CAN_RAM_DECLARED_MB` carries each module's declared RAM so
+`can_ram_rss_bytes` can be compared with `can_ram_declared_bytes`.
+
+Prometheus and Grafana are not part of the default `up`:
+
+```sh
+docker compose -p companyinacan --profile monitoring up -d --build prometheus grafana
+# Prometheus http://127.0.0.1:9090 (targets and alerts)   Grafana http://127.0.0.1:3000 (admin / dev-only-grafana-password)
+```
+
+Both bind to `127.0.0.1`, use pinned tags (`prom/prometheus:v2.55.1`, `grafana/grafana-oss:11.3.1`) and bake
+their configuration into the image from `deploy/monitoring/`. See [observability.md](observability.md) for the
+metric catalogue, alerts and the support bundle (`can diagnose --compose-project companyinacan`).
+
 ## What is NOT covered
 
 - **No Kubernetes.** No k3s/k3d, no NetworkPolicies, no admission policy, no Helm, no `TokenReview`

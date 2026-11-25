@@ -1,0 +1,52 @@
+# Prometheus scrape configuration example for Company in a Can (epic E22). See docs/observability.md.
+#
+# Every service exposes /metrics only on a dedicated listener that is OFF unless CAN_METRICS_ADDR is
+# set, and that requires `Authorization: Bearer $CAN_METRICS_TOKEN` unless it is loopback-only. The
+# metrics port is never on a public or ingress route.
+#
+# This file is the one the `monitoring` compose profile bakes in (dev tokens). For a cluster, mount the
+# token from a Secret and use the Kubernetes discovery example at the bottom.
+global:
+  scrape_interval: 30s      # cheap: each scrape is a few KiB and no database query
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # ---- docker compose (docs/local-compose.md): service names on the private compose network ----
+  - job_name: can-core
+    authorization: {type: Bearer, credentials: dev-only-metrics-token-0123456789abcdef}
+    static_configs: [{targets: ["core:9190"]}]
+  - job_name: can-forms
+    authorization: {type: Bearer, credentials: dev-only-metrics-token-0123456789abcdef}
+    static_configs: [{targets: ["forms:9190"]}]
+  - job_name: can-work
+    authorization: {type: Bearer, credentials: dev-only-metrics-token-0123456789abcdef}
+    static_configs: [{targets: ["work:9190"]}]
+  - job_name: can-people
+    authorization: {type: Bearer, credentials: dev-only-metrics-token-0123456789abcdef}
+    static_configs: [{targets: ["people:9190"]}]
+  - job_name: can-jobs
+    authorization: {type: Bearer, credentials: dev-only-metrics-token-0123456789abcdef}
+    static_configs: [{targets: ["jobs:9190"]}]
+  - job_name: can-finance
+    authorization: {type: Bearer, credentials: dev-only-metrics-token-0123456789abcdef}
+    static_configs: [{targets: ["finance:9190"]}]
+  - job_name: can-static
+    authorization: {type: Bearer, credentials: dev-only-metrics-token-0123456789abcdef}
+    static_configs: [{targets: ["site:9190"]}]
+
+  # ---- Kubernetes (a Prometheus in its own namespace; see networkpolicy-metrics.example.yaml) ----
+  # Uncomment and adapt. Modules and can-core opt in by setting CAN_METRICS_ADDR=:9190 and mounting
+  # CAN_METRICS_TOKEN_FILE from a Secret; the default-deny NetworkPolicies keep the port closed until
+  # the allow policy from the monitoring namespace is applied.
+  #
+  # - job_name: can-pods
+  #   authorization: {type: Bearer, credentials_file: /etc/prometheus/secrets/can-metrics-token}
+  #   kubernetes_sd_configs: [{role: pod}]
+  #   relabel_configs:
+  #     - {source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name], regex: "can-.*|site", action: keep}
+  #     - {source_labels: [__meta_kubernetes_pod_ip], target_label: __address__, replacement: "$1:9190"}
+  #     - {source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name], target_label: job}

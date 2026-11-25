@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/obs/obssql"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
 )
@@ -65,6 +66,7 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	obssql.WatchDefault(s.db)
 	rq := url.Values{}
 	rq.Add("_pragma", "busy_timeout(5000)")
 	rq.Add("_pragma", "query_only(1)")

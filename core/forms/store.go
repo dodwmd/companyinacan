@@ -16,6 +16,9 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
+
+	"github.com/dodwmd/companyinacan/core/obs"
+	"github.com/dodwmd/companyinacan/core/obs/obssql"
 )
 
 //go:embed migrations/*.sql
@@ -98,6 +101,7 @@ func OpenStore(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	obssql.WatchDefault(s.db)
 	return s, nil
 }
 
@@ -204,8 +208,15 @@ func (s *Store) Insert(ctx context.Context, l *Lead) error {
 		return err
 	}
 	l.Seq, err = res.LastInsertId()
+	if err == nil {
+		leadsCreated.With().Inc()
+	}
 	return err
 }
+
+// leadsCreated counts stored leads. It has no labels: form ids come from operator config but a
+// lead's content is personal data and never reaches a metric.
+var leadsCreated = obs.Default.Counter("can_forms_leads_created_total", "Leads stored.")
 
 const leadCols = `seq, id, form_id, status, email, name, fields, note, created_at, updated_at, retention_until`
 

@@ -97,6 +97,7 @@ func serveCmd(getenv func(string) string) *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+			cfg.Version, cfg.Commit = version, commit
 			return runtime.Run(ctx, cfg, cfg.Logger(os.Stderr))
 		},
 	}
@@ -303,7 +304,7 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		}
 		return nil
 	}
-	cmd.AddCommand(boot, unlock, reset, rolesCmd(getenv), secretsCmd(getenv))
+	cmd.AddCommand(boot, unlock, reset, rolesCmd(getenv), secretsCmd(getenv), diagnoseCmd(getenv))
 	return cmd
 }
 
