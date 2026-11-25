@@ -245,7 +245,7 @@ func (s *Service) ListNominations(ctx context.Context, a Actor, reviewID string)
 // MyFeedbackRequests lists the open requests addressed to the caller: who to review and the
 // questions. It says nothing about who nominated the caller.
 func (s *Service) MyFeedbackRequests(ctx context.Context, a Actor) ([]FeedbackRequest, error) {
-	if !a.staff() {
+	if !a.staff() || !a.permits("people.reviews.read") {
 		return []FeedbackRequest{}, nil
 	}
 	ctx, cancel := readCtx(ctx)

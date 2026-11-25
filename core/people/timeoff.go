@@ -848,7 +848,7 @@ type LeaveFilter struct {
 // (live reporting line, drafts excluded) and, for hr, everyone's. Reads are audited per record
 // that is not the caller's own; notes are not part of a list.
 func (s *Service) ListLeaveRequests(ctx context.Context, a Actor, flt LeaveFilter) ([]LeaveRequest, error) {
-	if a.blocked() {
+	if a.blocked() || !a.permits("people.timeoff.read") {
 		return []LeaveRequest{}, nil
 	}
 	ctx, cancel := readCtx(ctx)

@@ -330,6 +330,9 @@ func (s *Service) CreateCycle(ctx context.Context, a Actor, in CycleIn) (*Cycle,
 // cycleVisible reports whether the actor may know the cycle exists: hr, or someone who
 // participates in it (as subject, as a manager of a participant, or as a chosen reviewer).
 func (s *Service) cycleVisible(ctx context.Context, a Actor, cycleID string) (bool, error) {
+	if !a.permits("people.reviews.read") {
+		return false, nil
+	}
 	if a.hrAdmin() {
 		return true, nil
 	}
@@ -800,7 +803,7 @@ func (s *Service) GetReview(ctx context.Context, a Actor, id string) (*Review, e
 // ListReviews lists the reviews the caller may know about: their own, their direct reports'
 // (live reporting line), released ones further down their chain, and for hr every one.
 func (s *Service) ListReviews(ctx context.Context, a Actor, cycleID string) ([]ReviewSummary, error) {
-	if a.blocked() {
+	if a.blocked() || !a.permits("people.reviews.read") {
 		return []ReviewSummary{}, nil
 	}
 	ctx, cancel := readCtx(ctx)

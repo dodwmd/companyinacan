@@ -96,6 +96,11 @@ role is necessary and the relationship, the cycle state and the review state are
 | Peer and upward feedback | aggregates after release | yes, past the threshold | no | past the threshold | no |
 | Feedback comments | never | past the threshold | no | past the threshold | no |
 
+A personal access token from can-core (a *restricted* actor) additionally needs the matching permission for
+each action, on top of its role: `people.reviews.read|write|admin`, `people.timeoff.read|write|approve|admin`
+(`actionPerm` in `policy.go`; a test checks that every new action is mapped and that a token with only the
+older people and performance permissions gets none of them).
+
 HR and admin have no review power over their **own** review (they are treated as the subject), and a manager
 on leave or terminated has none at all. Ratings, answers, summaries, calibration, feedback and
 acknowledgement comments are sealed per part with an AAD binding them to their row. Every read is audited

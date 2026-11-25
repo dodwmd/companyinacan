@@ -148,6 +148,18 @@ var actionPerm = map[Action]string{
 	ActOneOnOneRead: "performance.read", ActGoalRead: "performance.read",
 	ActOneOnOneCreate: "performance.write", ActOneOnOneWrite: "performance.write", ActOneOnOnePrivate: "performance.write",
 	ActGoalCreate: "performance.write", ActGoalWrite: "performance.write",
+
+	// E14b. A restricted token needs the matching reviews or time-off permission on top of its role.
+	ActRevManage: "people.reviews.admin", ActRevCalibRead: "people.reviews.admin", ActRevCalibWrite: "people.reviews.admin",
+	ActRevRelease: "people.reviews.admin", ActRevReleaseDecide: "people.reviews.admin",
+	ActRevMeta: "people.reviews.read", ActRevSelfRead: "people.reviews.read", ActRevMgrRead: "people.reviews.read",
+	ActRevOutcomeRead: "people.reviews.read", ActRevPeerRead: "people.reviews.read", ActRevPeerRaw: "people.reviews.read",
+	ActRevSelfWrite: "people.reviews.write", ActRevMgrWrite: "people.reviews.write", ActRevNominate: "people.reviews.write",
+	ActRevNominationDecide: "people.reviews.write", ActRevFeedbackGive: "people.reviews.write", ActRevAck: "people.reviews.write",
+	ActLeaveConfig: "people.timeoff.admin", ActLeaveAdjust: "people.timeoff.admin",
+	ActLeaveWrite: "people.timeoff.write", ActLeaveCancel: "people.timeoff.write",
+	ActLeaveRead: "people.timeoff.read", ActLeaveBalance: "people.timeoff.read", ActLeaveCalendar: "people.timeoff.read",
+	ActLeaveDecide: "people.timeoff.approve",
 }
 
 func (a Actor) has(role string) bool {
