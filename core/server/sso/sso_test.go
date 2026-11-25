@@ -949,37 +949,6 @@ func TestLinkIsExplicitOwnerOnlyAndAudited(t *testing.T) {
 	}
 }
 
-// --- module introspection --------------------------------------------------------------------
-
-func TestIntrospectSession(t *testing.T) {
-	ctx := context.Background()
-	e := newEnv(t, nil)
-	u := alice()
-	u.AMR = []string{"pwd", "mfa"}
-	u.Groups = []string{"ops", "fin", "extra"}
-	r := e.mustLogin(u)
-	ui, err := e.svc.IntrospectSession(ctx, r.Login.Token)
-	if err != nil || !ui.Active || ui.Kind != "user" || !strings.HasPrefix(ui.Sub, "oidc:") || !strings.HasSuffix(ui.Sub, ":u-123") ||
-		ui.Email != "alice@acme.example" || !has(ui.Roles, "operator") || !has(ui.Roles, "finance:approver") || !has(ui.Groups, "extra") || !has(ui.AMR, "mfa") {
-		t.Fatalf("%+v %v", ui, err)
-	}
-	// Local sessions, garbage and revoked sessions are inactive.
-	l, err := e.au.CreateSSOSession(ctx, 1, "1.1.1.1", 0) // a session of root, source sso, but root has no identity
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ui, _ := e.svc.IntrospectSession(ctx, l.Token); ui.Active {
-		t.Fatal("a session of a user without an SSO identity is inactive")
-	}
-	if ui, _ := e.svc.IntrospectSession(ctx, "garbage"); ui.Active {
-		t.Fatal("garbage")
-	}
-	_ = e.au.Logout(ctx, r.Login.Token)
-	if ui, _ := e.svc.IntrospectSession(ctx, r.Login.Token); ui.Active {
-		t.Fatal("revoked")
-	}
-}
-
 func TestLogoutURL(t *testing.T) {
 	e := newEnv(t, func(c *config.SSO) { c.RPLogout = true })
 	r := e.mustLogin(alice())
@@ -1113,5 +1082,67 @@ func TestLocalLoginDisabledFallsBackToOwnerOnlyWhenSSOIsFailing(t *testing.T) {
 	op, _ := e.db.CreateAdmin(ctx, "ops", hash, auth.NewTOTPSecret())
 	if e.svc.AllowLocalLogin(ctx, op) {
 		t.Fatal("a non-owner is not let in by the fallback")
+	}
+}
+
+func TestRemovingASSOUserRevokesItsPersonalAccessTokens(t *testing.T) {
+	ctx := context.Background()
+	for _, how := range []string{"unlink", "link"} {
+		e := newEnv(t, nil)
+		r := e.mustLogin(alice())
+		_, user, _ := e.au.Authenticate(ctx, r.Login.Token)
+		ident, _ := e.db.SSOIdentityByUser(ctx, user.ID)
+		ins := func(id, subject string) {
+			if _, err := e.db.ExecContext(ctx, `INSERT INTO api_tokens(id,name,module_id,subject,permissions,token_hash,created_by,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+				id, "t", "work", subject, "[]", "hash-"+id, "x", e.now.Unix(), e.now.Add(time.Hour).Unix()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ins("t1", "user:"+user.Username)
+		ins("t2", "user:root") // somebody else's: untouched
+		if how == "unlink" {
+			if err := e.svc.Unlink(ctx, "root", ident.ID); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			hash, _ := auth.HashPassword(ownerPW)
+			if _, err := e.db.CreateAdmin(ctx, "carol", hash, auth.NewTOTPSecret()); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.svc.Link(ctx, "root", ident.ID, "carol"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		revoked := func(id string) int64 {
+			var n int64
+			_ = e.db.QueryRowContext(ctx, `SELECT revoked_at FROM api_tokens WHERE id=?`, id).Scan(&n)
+			return n
+		}
+		if revoked("t1") == 0 {
+			t.Fatalf("%s: the deleted user's token must be revoked", how)
+		}
+		if revoked("t2") != 0 {
+			t.Fatalf("%s: other tokens are untouched", how)
+		}
+		// The same person signs in again: the username is the same, the old token stays dead.
+		r2 := e.mustLogin(alice())
+		if how == "unlink" {
+			_, again, _ := e.au.Authenticate(ctx, r2.Login.Token)
+			if again.Username != user.Username || revoked("t1") == 0 {
+				t.Fatalf("%s: %q vs %q", how, again.Username, user.Username)
+			}
+		}
+	}
+}
+
+func TestLocalAccountsCannotTakeTheSSOPrefix(t *testing.T) {
+	e := newEnv(t, nil)
+	for _, n := range []string{"sso-abcd1234-0123456789abcdef", "SSO-x", "sso-"} {
+		if _, err := e.db.CreateAdmin(context.Background(), n, "h", "t"); !errors.Is(err, store.ErrReservedName) {
+			t.Errorf("%q: %v", n, err)
+		}
+	}
+	if _, err := e.db.CreateAdmin(context.Background(), "ssoteam", "h", "t"); err != nil {
+		t.Fatal(err)
 	}
 }

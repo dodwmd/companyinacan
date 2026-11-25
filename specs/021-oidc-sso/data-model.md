@@ -23,7 +23,7 @@ Migration `core/server/store/migrations/0005_oidc_sso.sql`.
 | `issuer_hash`, `subject` | the key: first 16 hex characters of sha256(issuer), and the subject claim. Unique together |
 | `user_id` | the admin user; unique (one identity per user), cascade delete |
 | `email`, `name` | display only, last values seen; never used to find a user |
-| `groups_json`, `amr_json` | groups and authentication methods at the last sign-in (for module introspection) |
+| `groups_json`, `amr_json` | groups and authentication methods at the last sign-in (shown on the admin page) |
 | `created_at`, `last_login` | Unix seconds |
 | `linked_by` | admin username when an owner bound the identity to a pre-existing local account; empty for provisioned users |
 

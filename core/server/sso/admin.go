@@ -284,54 +284,6 @@ func (s *Service) Unlink(ctx context.Context, actor string, identityID int64) er
 	return err
 }
 
-// UserInfo is the answer for an end-user session token on the module API.
-type UserInfo struct {
-	Active  bool     `json:"active"`
-	Kind    string   `json:"kind,omitempty"`
-	Sub     string   `json:"sub,omitempty"`
-	Subject string   `json:"subject,omitempty"` // the RBAC subject, user:<name>
-	Email   string   `json:"email,omitempty"`
-	Name    string   `json:"name,omitempty"`
-	Groups  []string `json:"groups,omitempty"`
-	Roles   []string `json:"roles,omitempty"`
-	AMR     []string `json:"amr,omitempty"`
-}
-
-// IntrospectSession resolves an end-user session token to the identity behind it. Only sessions
-// created by single sign-on are described; anything else, an expired session or a revoked one is
-// simply inactive.
-func (s *Service) IntrospectSession(ctx context.Context, token string) (UserInfo, error) {
-	sess, user, err := s.Auth.Authenticate(ctx, token)
-	if err != nil {
-		return UserInfo{}, nil //nolint:nilerr // inactive, not an error
-	}
-	if sess.Source != store.SourceSSO {
-		return UserInfo{}, nil
-	}
-	ident, err := s.DB.SSOIdentityByUser(ctx, user.ID)
-	if err != nil {
-		return UserInfo{}, nil //nolint:nilerr
-	}
-	ui := UserInfo{Active: true, Kind: "user", Sub: "oidc:" + ident.IssuerHash + ":" + ident.Subject, Subject: "user:" + user.Username, Email: ident.Email, Name: ident.Name, Groups: []string{}, Roles: []string{}, AMR: []string{}}
-	_ = json.Unmarshal([]byte(ident.GroupsJSON), &ui.Groups)
-	_ = json.Unmarshal([]byte(ident.AMRJSON), &ui.AMR)
-	if s.RBAC != nil {
-		as, err := s.RBAC.SubjectAssignments(ctx, ui.Subject)
-		if err != nil {
-			return UserInfo{}, err
-		}
-		seen := map[string]bool{}
-		for _, a := range as {
-			if a.Scope == "" && !seen[a.Role] {
-				seen[a.Role] = true
-				ui.Roles = append(ui.Roles, a.Role)
-			}
-		}
-		sort.Strings(ui.Roles)
-	}
-	return ui, nil
-}
-
 // --- client secret readers ---------------------------------------------------------------------
 
 // SecretReader resolves client_secret_ref ("name" or "name/key") to the secret value.

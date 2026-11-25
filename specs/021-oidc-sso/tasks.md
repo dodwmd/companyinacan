@@ -27,14 +27,14 @@ description: "Task list for Epic E11b: OpenID Connect single sign-on"
 - [x] T008 SSRF-guarded client (connect-time check, no redirects, no proxy, caps, timeouts)
 - [x] T009 Provider: discovery validation, auth URL (PKCE S256), code exchange, ID token validation, userinfo fill-in
 - [x] T010 Signed single-use transaction cookie, `SafeNext`
-- [x] T011 Service: begin/complete, policy, provisioning, role sync, session, audit (fail closed), logout URL, local policy, status, test discovery, link/unlink, introspection
+- [x] T011 Service: begin/complete, policy, provisioning, role sync, session, audit (fail closed), logout URL, local policy, status, test discovery, link/unlink
 - [x] T012 `ssotest` fake provider and the security test suite (replay, state, nonce, aud/iss/azp, none, HS256 confusion, crit, foreign key, expiry/nbf/iat, rotation, JWKS failure, unverified email takeover, group removal, fixation, throttling, SSRF, redirects, size caps, PII in logs)
 
 ## Phase 4: Surfaces
 
 - [x] T013 Admin UI: routes, login button, interstitial, settings note, SSO page, link/unlink, messages; `ui-routes.md`; handler tests (flow, open redirect, fixation, logout CSRF, pages)
 - [x] T014 Admin API `/api/v1/sso*`, session `source`; OpenAPI; contract tests
-- [x] T015 Module API introspection of session tokens; OpenAPI; tests
+- [x] T015 Module API: introspection of the UI session value was built, then removed (QA: it made the session cookie a module credential); SSO users use PATs; tests that a live session value is inactive; PATs revoked when an SSO user is deleted; `sso-` username prefix reserved
 - [x] T016 Runtime wiring, `CAN_SSO_SECRET_DIR`, optional Secret volume in `deploy/can-core`
 
 ## Phase 5: Docs and verification

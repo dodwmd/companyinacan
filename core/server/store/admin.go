@@ -22,8 +22,18 @@ type AdminUser struct {
 	AuthSource string
 }
 
-// CreateAdmin inserts an admin user.
+// SSOUsernamePrefix is reserved for users provisioned by single sign-on: a local account may not take
+// a name that a future sign-in could be provisioned under.
+const SSOUsernamePrefix = "sso-"
+
+// ErrReservedName is returned when a local account is created with a reserved name.
+var ErrReservedName = errors.New("the user name prefix sso- is reserved for single sign-on users")
+
+// CreateAdmin inserts a local admin user.
 func (db *DB) CreateAdmin(ctx context.Context, username, passwordHash, totpSecret string) (AdminUser, error) {
+	if strings.HasPrefix(strings.ToLower(username), SSOUsernamePrefix) {
+		return AdminUser{}, ErrReservedName
+	}
 	now := db.Now()
 	var id int64
 	// The first admin of an installation is its owner (break-glass role, specs/015); later admins

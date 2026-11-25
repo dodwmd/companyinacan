@@ -7,8 +7,7 @@
 
 Staff sign in to the admin UI with the company's OpenID Connect provider. First sign-in creates a user
 with no role; the provider's groups are mapped to roles (built-in and module-namespaced) on every
-sign-in. The local password + TOTP login remains as the break-glass path. Modules can introspect an
-end-user session and receive the person's subject, email, groups and roles.
+sign-in. The local password + TOTP login remains as the break-glass path. Staff reach modules with personal access tokens.
 
 Out of scope (documented, not built): back-channel logout, `id_token_hint` logout, SCIM and
 `identity.provision` (E13), refresh tokens, several providers per installation, editing `sso:` from the UI.
@@ -43,9 +42,11 @@ Out of scope (documented, not built): back-channel logout, `id_token_hint` logou
 - An admin page shows SSO status without secrets and a **Test discovery** button that fetches discovery and keys with the production restrictions; identities are listed with link/unlink.
 - Logout is a CSRF-protected POST; with `rp_logout` it continues to the provider's end-session endpoint.
 
-### US6. Modules know the person (P2)
+### US6. Modules (P2)
 
-- `POST /v1/tokens/introspect` answers for a live SSO session token with `kind`, `subject`, `email`, `groups` and the caller's role names.
+- SSO users use modules with personal access tokens (E03c); nothing SSO-specific reaches the modules.
+- The admin UI session value is never accepted by `POST /v1/tokens/introspect` (it would let a module act as the user in the admin UI).
+- Removing an SSO user revokes the personal access tokens they issued.
 
 ## Requirements
 
@@ -60,7 +61,7 @@ Out of scope (documented, not built): back-channel logout, `id_token_hint` logou
 - **FR-009** CSRF and same-site checks on every state-changing route (existing `authed`); `next` only local paths.
 - **FR-010** No personal data (email, name, subject) in logs or audit entries; the audit log carries reason codes, hashes and role names.
 - **FR-011** `company.yaml` `sso:` has a JSON Schema, semantic validation (`can validate`) and fixtures; secrets in values are rejected as unknown fields.
-- **FR-012** Contracts: admin OpenAPI, module OpenAPI (introspection), `ui-routes.md`; contract tests green.
+- **FR-012** Contracts: admin OpenAPI, `ui-routes.md`; contract tests green.
 
 ## Success criteria
 

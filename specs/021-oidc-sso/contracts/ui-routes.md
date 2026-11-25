@@ -3,7 +3,7 @@
 The normative route table is `specs/010-admin-ui/contracts/ui-routes.md` (extended by this epic; the test
 `TestRoutesMatchContract` compares it with the served routes). The admin JSON API is in
 `specs/005-can-core-mvp/contracts/admin-api.yaml` (`/api/v1/sso*`), the module API in `module-api.yaml`
-(`/v1/tokens/introspect`); `test/contract` compares both with the handlers.
+(unchanged by this epic); `test/contract` compares both with the handlers.
 
 ## Flow
 

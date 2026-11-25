@@ -144,6 +144,9 @@ func (db *DB) LinkSSOIdentity(ctx context.Context, identityID, targetUserID int6
 			return err
 		}
 		if from.UserSource == SourceSSO {
+			if err := revokeSubjectTokens(ctx, tx, "user:"+from.Username, db.Now()); err != nil {
+				return err
+			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM rbac_assignments WHERE subject=?`, "user:"+from.Username); err != nil {
 				return err
 			}
@@ -175,6 +178,9 @@ func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit fun
 			return err
 		}
 		if id.UserSource == SourceSSO {
+			if err := revokeSubjectTokens(ctx, tx, "user:"+id.Username, db.Now()); err != nil {
+				return err
+			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM rbac_assignments WHERE subject=?`, "user:"+id.Username); err != nil {
 				return err
 			}
@@ -182,6 +188,14 @@ func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit fun
 		}
 		return err
 	})
+}
+
+// revokeSubjectTokens revokes the personal access tokens a user issued. The username of a provisioned
+// user is derived from (issuer, subject), so the same person signing in again gets the same name: without
+// this their old tokens would come back to life with the new account.
+func revokeSubjectTokens(ctx context.Context, tx *sql.Tx, subject string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE subject=? AND revoked_at=0`, now.Unix(), subject)
+	return err
 }
 
 // SSOOwnerCount counts SSO-provisioned or linked users who hold an unscoped owner role.

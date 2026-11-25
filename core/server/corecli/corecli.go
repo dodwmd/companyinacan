@@ -218,6 +218,9 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 			if errors.Is(err, store.ErrExists) {
 				return fail("admin %q already exists", *user)
 			}
+			if errors.Is(err, store.ErrReservedName) {
+				return fail("username %q: names starting sso- are reserved for single sign-on users", *user)
+			}
 			return fail("%v", err)
 		}
 		if _, err := audit.New(d).Append(c.Context(), audit.Entry{Actor: "cli", Action: "admin.bootstrap", Target: "admin"}); err != nil {

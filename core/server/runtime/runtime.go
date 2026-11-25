@@ -244,7 +244,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
 		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
-	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Users: ssoSvc}
+	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats}
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
 	if err != nil {

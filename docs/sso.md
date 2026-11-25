@@ -79,7 +79,7 @@ changes need no restart. A secret change is picked up the same way. It is **not*
 `GET /auth/oidc/login` creates `state`, `nonce` and a PKCE verifier (S256), stores them in a signed,
 HttpOnly, Secure, **SameSite=Lax** cookie `can_oidc_<flow id>` (10 minutes, path `/auth/oidc`; the flow id is
 the first 8 characters of the state, so two tabs signing in at once do not overwrite each other, and a browser
-holds at most four: starting another expires the older ones) and redirects to the IdP. The cookie is signed
+holds at most four: a fifth login in the same browser expires the older ones: a tab still waiting at the IdP then fails its callback with the generic refusal and the user starts again) and redirects to the IdP. The cookie is signed
 (HMAC), not encrypted: it holds the PKCE verifier and nonce, which are only secret from other people's
 browsers, not from the user's own. The signing key is **per process**: restarting can-core (or running a second
 replica) invalidates logins that are in flight; the user simply starts again. The callback `GET /auth/oidc/callback`:
@@ -148,26 +148,25 @@ and `post_logout_redirect_uri`; no `id_token_hint`, which would mean storing the
 
 ## For modules
 
-`POST /v1/tokens/introspect` on the module API distinguishes three token kinds by shape: a projected
-ServiceAccount token (a dotted JWT, TokenReview), a **personal access token** (`canpat_...`, `specs/016-module-wiring`),
-and an end-user **session token** (the value of the `can_session` cookie: exactly 43 base64url characters, no
-dots, never `canpat_`). For a live session created by SSO the answer is `active: true`, `kind: "user"` and the
-same shape a PAT gets: `subject` = `user:sso-...` (the can-core RBAC subject, which the modules' `user:` subject
-check accepts) and `permissions` = the caller module's permissions the person holds right now, plus `sub`
-(`oidc:<issuer-hash>:<sub>`, the stable external identity), `email`, `name`, `groups`, `amr`, `roles` (the
-**caller's own** role names: `people:hr` is `hr` for the people module, plus built-ins) and `all_roles` (full
-names). Local-password sessions and expired, revoked or unknown tokens answer `{"active": false}`.
+People who sign in through SSO use modules with **personal access tokens** (`/tokens` in the admin UI,
+`specs/016-module-wiring`): an SSO user is an ordinary `user:sso-...` subject, so the PAT machinery (issue only
+permissions you hold, introspection bound to one module, expiry, revocation, revocation when the issuer loses
+the permission) applies unchanged. Modules need no SSO-specific code.
 
-- **PATs and SSO users.** SSO users have ordinary `user:sso-...` subjects, so they can issue and use personal access
-  tokens exactly like local admins (`/tokens`); PAT introspection is unchanged and stays a separate path.
-  The external `oidc:` identity is not a PAT subject; it is only reported as `sub`. Nothing in the modules
-  needs to change.
-- **Bare-name ambiguity.** `roles` strips the caller's own module prefix, so a module role `hr` and a built-in
-  role of the same bare name would look alike to the module. Built-in names (`owner`, `operator`, `auditor`) are
-  reserved by can-core and modules may not define them, so no collision arises today; `all_roles` always has the
-  unambiguous names.
-- **Trust.** Every enabled module may call introspection, and sees `email`, `name`, `groups` and roles for any
-  session token it is shown. A session token is the user's session: only hand it to modules you trust with that.
+**The admin UI session is never a module credential.** `POST /v1/tokens/introspect` does not recognise the
+value of the `can_session` cookie (an earlier draft did; it was removed): a module that was handed it could replay
+it as a cookie and act as the user in the admin UI, and a token given to one module would work at all of
+them. A session value presented there is just an unknown token and answers `{"active": false}` (tested with a
+live session). The identity data (`email`, `groups`) that a session-token introspection would have carried is
+therefore not offered to modules; a module that needs the person's email gets it from its own directory
+(`people`), not from the login.
+
+- The `oidc:<issuer-hash>:<sub>` identity stays inside can-core (audit, status page).
+- Removing an SSO user (*Unlink*, or *Link* which replaces the provisioned stand-in) **revokes the personal
+  access tokens that user issued** in the same transaction. Usernames of provisioned users are derived from
+  (issuer, subject), so without this a person who signed in again would have got their old tokens back.
+- Local accounts cannot be created with a name starting `sso-` (`can-core admin bootstrap`, store level):
+  that prefix belongs to provisioned users, so a local account can never collide with, or be mistaken for, one.
 
 ## Security properties (tested)
 
