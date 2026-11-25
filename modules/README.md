@@ -17,6 +17,7 @@ Directories starting with `_` are examples and are not enabled or listed in THIR
 | `finance` | in-house | Apache-2.0 | 20 MB (16 MB measured idle) | SQLite | `invoices`, `contracts`, `timesheets` |
 | `people` | in-house | Apache-2.0 | 30 MB (14 MB measured idle) | SQLite | `directory`, `performance` |
 | `jobs` | in-house | Apache-2.0 | 30 MB (16 MB measured idle) | SQLite | `jobs`, `ats` |
+| `equity` | in-house | Apache-2.0 | 16 MB (15.8 MiB measured idle) | SQLite | `equity` |
 
 ## Licences and network copyleft
 

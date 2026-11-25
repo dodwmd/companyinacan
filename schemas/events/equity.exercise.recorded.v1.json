@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/equity.exercise.recorded.v1.json",
+  "title": "equity.exercise.recorded.v1",
+  "description": "Published when an exercise is completed: the payment was recorded and the shares were issued into the ledger. Quantities and amounts are not in the payload. Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids and dates only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "equity.exercise.recorded.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "equity"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exercise_id",
+        "grant_id",
+        "stakeholder_id",
+        "entity_id",
+        "recorded_on"
+      ],
+      "properties": {
+        "exercise_id": {
+          "type": "string",
+          "pattern": "^exr_[0-9a-f]{24}$"
+        },
+        "grant_id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "recorded_on": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}

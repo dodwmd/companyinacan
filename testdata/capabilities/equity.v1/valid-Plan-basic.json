@@ -1,0 +1,9 @@
+{
+  "id": "pln_0123456789abcdef01234567",
+  "entity_id": "ent_0123456789abcdef01234567",
+  "class_id": "cls_0123456789abcdef01234567",
+  "name": "2026 Plan",
+  "authorised": "1000000",
+  "adopted_on": "2026-01-01",
+  "status": "active"
+}

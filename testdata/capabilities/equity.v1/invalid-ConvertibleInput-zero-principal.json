@@ -1,0 +1,8 @@
+{
+  "stakeholder_id": "stk_0123456789abcdef01234567",
+  "kind": "safe_post_money",
+  "issued_on": "2026-02-01",
+  "principal_minor": 0,
+  "currency": "USD",
+  "cap_minor": 100000000
+}

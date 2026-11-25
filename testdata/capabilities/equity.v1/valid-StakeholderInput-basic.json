@@ -1,0 +1,6 @@
+{
+  "kind": "employee",
+  "person_id": "pers_0123456789abcdef01234567",
+  "name": "Eve Example",
+  "email": "eve@example.test"
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/equity.grant.approved.v1.json",
+  "title": "equity.grant.approved.v1",
+  "description": "Published when the board step approves a grant (status approved). Consumers (documents, notify, finance) react to the ids. Amounts, quantities, prices and names are never in the payload: read them from the equity capability with the consumer's own rights. Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids and dates only (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "equity.grant.approved.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "equity"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grant_id",
+        "stakeholder_id",
+        "entity_id",
+        "plan_id",
+        "approved_on"
+      ],
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "plan_id": {
+          "type": "string",
+          "pattern": "^pln_[0-9a-f]{24}$"
+        },
+        "approved_on": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}

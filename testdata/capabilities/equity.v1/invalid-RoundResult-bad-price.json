@@ -1,0 +1,25 @@
+{
+  "illustrative": true,
+  "notice": "n",
+  "currency": "USD",
+  "price_per_share": "0.8",
+  "pre_round_shares": "10000000",
+  "pool_top_up": "0",
+  "conversions": [
+    {
+      "kind": "safe_pre_money",
+      "converting_minor": 50000000,
+      "method": "cap",
+      "conversion_price": "0.500000",
+      "shares": "1000000"
+    }
+  ],
+  "converted_shares": "1000000",
+  "new_investor_shares": "2500000",
+  "post_round_shares": "13500000",
+  "existing_holders_ownership_ppm": 740741,
+  "converted_instruments_ownership_ppm": 74074,
+  "new_investor_ownership_ppm": 185185,
+  "pool_top_up_ownership_ppm": 0,
+  "post_money_minor": 1080000000
+}

@@ -1,0 +1,2774 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/equity.v1.json",
+  "title": "equity.v1",
+  "description": "Capability `equity` (SPEC.md section 4.3): legal entities, share classes, plans and pools, stakeholders, option grants with vesting, exercises, an append-only share ledger, cap-table views as of any date, valuation records and illustrative round modelling. Provided by the in-house equity module. THIS IS A TOOL, NOT LEGAL, TAX OR SECURITIES ADVICE: 409A, ISO/NSO limits, tax treatment, 83(b) and ESOP scheme rules are not implemented; they are data fields and documented limits. Equity is a sensitive data class: bodies are JSON over HTTP with a bearer token; authorisation is enforced by the provider per caller, per record and per field (roles employee, manager, hr, finance, board, admin): a caller who may not see a record gets 404, a caller who may see it but not a field or action gets 403. Managers never see the equity of their reports. Quantities are exact decimal strings; prices are integer minor units. Consumers must not depend on anything not in this file.",
+  "x-capability": "equity",
+  "x-verbs": [
+    {
+      "verb": "create_entity",
+      "method": "POST",
+      "path": "/v1/entities",
+      "request": "EntityInput",
+      "response": "Entity",
+      "write": true,
+      "permission": "equity.admin",
+      "description": "board or admin."
+    },
+    {
+      "verb": "list_entities",
+      "method": "GET",
+      "path": "/v1/entities",
+      "response": "EntityList",
+      "permission": "equity.read",
+      "description": "hr, finance, board, admin."
+    },
+    {
+      "verb": "get_entity",
+      "method": "GET",
+      "path": "/v1/entities/{id}",
+      "response": "Entity",
+      "permission": "equity.read"
+    },
+    {
+      "verb": "create_share_class",
+      "method": "POST",
+      "path": "/v1/entities/{id}/share-classes",
+      "request": "ShareClassInput",
+      "response": "ShareClass",
+      "write": true,
+      "permission": "equity.admin",
+      "description": "board or admin."
+    },
+    {
+      "verb": "list_share_classes",
+      "method": "GET",
+      "path": "/v1/entities/{id}/share-classes",
+      "response": "ShareClassList",
+      "permission": "equity.read",
+      "description": "With issued counts."
+    },
+    {
+      "verb": "raise_authorised",
+      "method": "PATCH",
+      "path": "/v1/share-classes/{id}",
+      "request": "RaiseAuthorisedRequest",
+      "response": "ShareClass",
+      "write": true,
+      "permission": "equity.admin",
+      "description": "board or admin. Authorised shares can only go up."
+    },
+    {
+      "verb": "create_plan",
+      "method": "POST",
+      "path": "/v1/entities/{id}/plans",
+      "request": "PlanInput",
+      "response": "Plan",
+      "write": true,
+      "permission": "equity.admin",
+      "description": "board or admin. The plans of a class cannot reserve more than the class authorises."
+    },
+    {
+      "verb": "list_plans",
+      "method": "GET",
+      "path": "/v1/entities/{id}/plans",
+      "response": "PlanList",
+      "permission": "equity.read"
+    },
+    {
+      "verb": "get_pool",
+      "method": "GET",
+      "path": "/v1/plans/{id}/pool",
+      "response": "PoolStatus",
+      "permission": "equity.read",
+      "description": "Query: as_of (YYYY-MM-DD, default today). Holds no holder identity."
+    },
+    {
+      "verb": "create_stakeholder",
+      "method": "POST",
+      "path": "/v1/entities/{id}/stakeholders",
+      "request": "StakeholderInput",
+      "response": "Stakeholder",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr, finance, board or admin."
+    },
+    {
+      "verb": "list_stakeholders",
+      "method": "GET",
+      "path": "/v1/entities/{id}/stakeholders",
+      "response": "StakeholderList",
+      "permission": "equity.read",
+      "description": "No identities."
+    },
+    {
+      "verb": "get_stakeholder",
+      "method": "GET",
+      "path": "/v1/stakeholders/{id}",
+      "response": "Stakeholder",
+      "permission": "equity.self-read",
+      "description": "The holder themself and hr, finance, board, admin; anyone else gets 404."
+    },
+    {
+      "verb": "get_identity",
+      "method": "GET",
+      "path": "/v1/stakeholders/{id}/identity",
+      "response": "Identity",
+      "permission": "equity.self-read",
+      "description": "Sealed fields. Audited before it is returned. The holder themself and hr, finance, board, admin; anyone else gets 404."
+    },
+    {
+      "verb": "set_identity",
+      "method": "PUT",
+      "path": "/v1/stakeholders/{id}/identity",
+      "request": "Identity",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr, finance, board or admin; never the holder."
+    },
+    {
+      "verb": "set_legal_hold",
+      "method": "PUT",
+      "path": "/v1/stakeholders/{id}/legal-hold",
+      "request": "LegalHoldRequest",
+      "write": true,
+      "permission": "equity.admin",
+      "description": "admin. A hold blocks erasure and retention purges."
+    },
+    {
+      "verb": "erase_stakeholder",
+      "method": "POST",
+      "path": "/v1/stakeholders/{id}/erasure",
+      "response": "Erasure",
+      "write": true,
+      "permission": "equity.admin",
+      "description": "admin. Pseudonymises the identity and clears free text; issued share records stay under legal retention."
+    },
+    {
+      "verb": "create_grant",
+      "method": "POST",
+      "path": "/v1/plans/{id}/grants",
+      "request": "GrantInput",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Creates a draft. Honours Idempotency-Key (a replay answers 200)."
+    },
+    {
+      "verb": "list_grants",
+      "method": "GET",
+      "path": "/v1/entities/{id}/grants",
+      "response": "GrantPage",
+      "permission": "equity.sensitive-read",
+      "description": "hr, finance, board, admin. Query: status, stakeholder_id, cursor, limit (max 100). Each returned grant is audited."
+    },
+    {
+      "verb": "get_grant",
+      "method": "GET",
+      "path": "/v1/grants/{id}",
+      "response": "Grant",
+      "permission": "equity.self-read",
+      "description": "The holder (once approved) and hr, finance, board, admin. Managers get 404 for their reports."
+    },
+    {
+      "verb": "update_grant",
+      "method": "PATCH",
+      "path": "/v1/grants/{id}",
+      "request": "GrantPatch",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin; drafts only."
+    },
+    {
+      "verb": "delete_grant",
+      "method": "DELETE",
+      "path": "/v1/grants/{id}",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin; drafts only."
+    },
+    {
+      "verb": "submit_grant",
+      "method": "POST",
+      "path": "/v1/grants/{id}/submit",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Terms freeze; the pool is checked."
+    },
+    {
+      "verb": "approve_grant",
+      "method": "POST",
+      "path": "/v1/grants/{id}/approve",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.approve",
+      "description": "The board step. Board role only; the creator, editors, submitter and the grantee are refused (403 separation_of_duties)."
+    },
+    {
+      "verb": "reject_grant",
+      "method": "POST",
+      "path": "/v1/grants/{id}/reject",
+      "request": "ReasonRequest",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.approve",
+      "description": "Board role. Sends a pending grant back to draft."
+    },
+    {
+      "verb": "amend_grant",
+      "method": "POST",
+      "path": "/v1/grants/{id}/amend",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Creates a new draft version; the old grant is cancelled when the new one is approved."
+    },
+    {
+      "verb": "activate_grant",
+      "method": "POST",
+      "path": "/v1/grants/{id}/activate",
+      "request": "ActivateRequest",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Exercises need an active grant."
+    },
+    {
+      "verb": "cancel_grant",
+      "method": "POST",
+      "path": "/v1/grants/{id}/cancel",
+      "request": "ReasonRequest",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Issued shares stay issued."
+    },
+    {
+      "verb": "terminate_grant",
+      "method": "POST",
+      "path": "/v1/grants/{id}/terminate",
+      "request": "TerminateRequest",
+      "response": "Grant",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Vesting stops on the date; for_cause forfeits at once."
+    },
+    {
+      "verb": "record_milestone",
+      "method": "POST",
+      "path": "/v1/grants/{id}/milestones",
+      "request": "MilestoneRequest",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Append-only."
+    },
+    {
+      "verb": "record_acceleration",
+      "method": "POST",
+      "path": "/v1/grants/{id}/acceleration",
+      "request": "AccelerationRequest",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr or admin. Append-only record that a trigger happened."
+    },
+    {
+      "verb": "get_vesting",
+      "method": "GET",
+      "path": "/v1/grants/{id}/vesting",
+      "response": "VestingView",
+      "permission": "equity.self-read",
+      "description": "Query: as_of. Audited. Illustrative: computed from the recorded data."
+    },
+    {
+      "verb": "request_exercise",
+      "method": "POST",
+      "path": "/v1/grants/{id}/exercises",
+      "request": "ExerciseRequest",
+      "response": "Exercise",
+      "write": true,
+      "permission": "equity.self-read",
+      "description": "The holder for their own grant; hr and finance on behalf. Honours Idempotency-Key."
+    },
+    {
+      "verb": "get_exercise",
+      "method": "GET",
+      "path": "/v1/exercises/{id}",
+      "response": "Exercise",
+      "permission": "equity.self-read",
+      "description": "The holder and hr, finance, board, admin."
+    },
+    {
+      "verb": "list_exercises",
+      "method": "GET",
+      "path": "/v1/entities/{id}/exercises",
+      "response": "ExerciseList",
+      "permission": "equity.read",
+      "description": "Query: status."
+    },
+    {
+      "verb": "approve_exercise",
+      "method": "POST",
+      "path": "/v1/exercises/{id}/approve",
+      "response": "Exercise",
+      "write": true,
+      "permission": "equity.approve",
+      "description": "finance, board or admin; never the requester or the holder."
+    },
+    {
+      "verb": "reject_exercise",
+      "method": "POST",
+      "path": "/v1/exercises/{id}/reject",
+      "response": "Exercise",
+      "write": true,
+      "permission": "equity.approve"
+    },
+    {
+      "verb": "cancel_exercise",
+      "method": "POST",
+      "path": "/v1/exercises/{id}/cancel",
+      "response": "Exercise",
+      "write": true,
+      "permission": "equity.self-read",
+      "description": "The requester, hr, finance or admin, before payment."
+    },
+    {
+      "verb": "record_payment",
+      "method": "POST",
+      "path": "/v1/exercises/{id}/payment",
+      "request": "PaymentInput",
+      "response": "Exercise",
+      "write": true,
+      "permission": "equity.write",
+      "description": "finance or admin, not the requester."
+    },
+    {
+      "verb": "issue_shares",
+      "method": "POST",
+      "path": "/v1/exercises/{id}/issue",
+      "response": "Exercise",
+      "write": true,
+      "permission": "equity.write",
+      "description": "finance, admin or hr; not the requester or the person who recorded the payment. Writes the ledger."
+    },
+    {
+      "verb": "issue_new_shares",
+      "method": "POST",
+      "path": "/v1/entities/{id}/ledger/issuances",
+      "request": "LedgerInput",
+      "response": "LedgerEntry",
+      "write": true,
+      "permission": "equity.write",
+      "description": "finance or admin. Honours Idempotency-Key."
+    },
+    {
+      "verb": "transfer_shares",
+      "method": "POST",
+      "path": "/v1/entities/{id}/ledger/transfers",
+      "request": "LedgerInput",
+      "response": "LedgerEntry",
+      "write": true,
+      "permission": "equity.write",
+      "description": "finance or admin. Needs to_stakeholder_id. Returns the outgoing leg."
+    },
+    {
+      "verb": "cancel_shares",
+      "method": "POST",
+      "path": "/v1/entities/{id}/ledger/cancellations",
+      "request": "LedgerInput",
+      "response": "LedgerEntry",
+      "write": true,
+      "permission": "equity.write",
+      "description": "finance or admin. Cancellation or repurchase."
+    },
+    {
+      "verb": "list_ledger",
+      "method": "GET",
+      "path": "/v1/entities/{id}/ledger",
+      "response": "LedgerPage",
+      "permission": "equity.sensitive-read",
+      "description": "Query: as_of, cursor, limit (max 500). Each entry audited."
+    },
+    {
+      "verb": "get_captable",
+      "method": "GET",
+      "path": "/v1/entities/{id}/captable",
+      "response": "CapTable",
+      "permission": "equity.sensitive-read",
+      "description": "Query: as_of, view (basic|fully-diluted), names (true needs identity access). Audited per holder."
+    },
+    {
+      "verb": "model_round",
+      "method": "POST",
+      "path": "/v1/entities/{id}/whatif",
+      "request": "WhatIfRequest",
+      "response": "RoundResult",
+      "permission": "equity.sensitive-read",
+      "description": "finance, board or admin. ILLUSTRATIVE; read-only, stores nothing."
+    },
+    {
+      "verb": "create_convertible",
+      "method": "POST",
+      "path": "/v1/entities/{id}/convertibles",
+      "request": "ConvertibleInput",
+      "response": "Convertible",
+      "write": true,
+      "permission": "equity.write",
+      "description": "finance, board or admin. Recorded as data only; never converted by the service."
+    },
+    {
+      "verb": "list_convertibles",
+      "method": "GET",
+      "path": "/v1/entities/{id}/convertibles",
+      "response": "ConvertibleList",
+      "permission": "equity.sensitive-read",
+      "description": "Terms are sealed; audited."
+    },
+    {
+      "verb": "create_valuation",
+      "method": "POST",
+      "path": "/v1/entities/{id}/valuations",
+      "request": "ValuationInput",
+      "response": "Valuation",
+      "write": true,
+      "permission": "equity.write",
+      "description": "finance, board or admin. 409A and other valuations as data."
+    },
+    {
+      "verb": "list_valuations",
+      "method": "GET",
+      "path": "/v1/entities/{id}/valuations",
+      "response": "ValuationList",
+      "permission": "equity.sensitive-read",
+      "description": "Audited."
+    },
+    {
+      "verb": "export_csv",
+      "method": "GET",
+      "path": "/v1/entities/{id}/exports/{name}",
+      "permission": "equity.sensitive-read",
+      "description": "name is captable, grants or ledger; query as_of. CSV with formula-injection protection; audited per record before any byte is written."
+    },
+    {
+      "verb": "list_my_grants",
+      "method": "GET",
+      "path": "/v1/me/grants",
+      "response": "GrantPage",
+      "permission": "equity.self-read",
+      "description": "The caller's own approved or later grants. Needs a linked person id."
+    },
+    {
+      "verb": "list_my_exercises",
+      "method": "GET",
+      "path": "/v1/me/exercises",
+      "response": "ExerciseList",
+      "permission": "equity.self-read",
+      "description": "The caller's own exercise requests."
+    },
+    {
+      "verb": "run_retention",
+      "method": "POST",
+      "path": "/v1/retention/run",
+      "response": "RetentionReport",
+      "write": true,
+      "permission": "equity.admin",
+      "description": "admin."
+    },
+    {
+      "verb": "list_erasures",
+      "method": "GET",
+      "path": "/v1/erasures",
+      "response": "ErasureList",
+      "permission": "equity.admin",
+      "description": "Query: after. Tombstones for the erasure ledger."
+    }
+  ],
+  "$defs": {
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "Entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "jurisdiction": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "currency"
+      ]
+    },
+    "EntityInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "jurisdiction": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "name",
+        "currency"
+      ]
+    },
+    "EntityList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Entity"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "ShareClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "common",
+            "preferred"
+          ]
+        },
+        "par_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "authorised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "issued": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        }
+      },
+      "required": [
+        "id",
+        "entity_id",
+        "name",
+        "kind",
+        "par_minor",
+        "currency",
+        "authorised",
+        "issued"
+      ]
+    },
+    "ShareClassInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "kind": {
+          "enum": [
+            "common",
+            "preferred"
+          ]
+        },
+        "par_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "authorised": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "par_minor",
+        "currency",
+        "authorised"
+      ]
+    },
+    "ShareClassList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShareClass"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "RaiseAuthorisedRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authorised": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        }
+      },
+      "required": [
+        "authorised"
+      ],
+      "description": "Authorised shares can be raised, never lowered."
+    },
+    "Plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^pln_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "class_id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "authorised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "adopted_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "closed"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "entity_id",
+        "class_id",
+        "name",
+        "authorised",
+        "adopted_on",
+        "status"
+      ]
+    },
+    "PlanInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "class_id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "authorised": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        },
+        "adopted_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "required": [
+        "name",
+        "class_id",
+        "authorised",
+        "adopted_on"
+      ]
+    },
+    "PlanList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Plan"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "PoolStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "pattern": "^pln_[0-9a-f]{24}$"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "authorised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "granted_outstanding": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "exercised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "available": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "pending_approval": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        }
+      },
+      "required": [
+        "plan_id",
+        "as_of",
+        "authorised",
+        "granted_outstanding",
+        "exercised",
+        "available",
+        "pending_approval"
+      ]
+    },
+    "Stakeholder": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "founder",
+            "employee",
+            "investor",
+            "advisor"
+          ]
+        },
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "legal_hold": {
+          "type": "boolean"
+        },
+        "erased": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "entity_id",
+        "kind",
+        "legal_hold",
+        "erased"
+      ],
+      "description": "No personal data: the identity is a separate sealed, audited read."
+    },
+    "StakeholderInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "founder",
+            "employee",
+            "investor",
+            "advisor"
+          ]
+        },
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "tax_id": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "description": "An employee stakeholder needs the directory person_id."
+    },
+    "StakeholderList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Stakeholder"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "Identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "tax_id": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "LegalHoldRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hold": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "hold"
+      ]
+    },
+    "Erasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "retained": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "class": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "class",
+              "count",
+              "reason"
+            ]
+          }
+        }
+      },
+      "required": [
+        "subject",
+        "classes",
+        "date",
+        "retained"
+      ]
+    },
+    "Schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "periodic",
+            "tranches"
+          ]
+        },
+        "months": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "cliff_months": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600
+        },
+        "interval": {
+          "enum": [
+            "monthly",
+            "quarterly"
+          ]
+        },
+        "tranches": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "basis_points": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "date": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              },
+              "milestone": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "label",
+              "basis_points"
+            ],
+            "description": "Give either a date or milestone=true."
+          }
+        },
+        "rounding": {
+          "enum": [
+            "floor",
+            "nearest",
+            "fractional"
+          ]
+        },
+        "acceleration": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "type": {
+                "enum": [
+                  "single",
+                  "double"
+                ]
+              },
+              "triggers": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,39}$"
+                }
+              },
+              "percent_bp": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "applies_after_termination": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "type",
+              "triggers",
+              "percent_bp"
+            ],
+            "description": "Data only: single needs one trigger, double needs two."
+          }
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "Grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "plan_id": {
+          "type": "string",
+          "pattern": "^pln_[0-9a-f]{24}$"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "type": {
+          "enum": [
+            "ISO",
+            "NSO",
+            "RSU",
+            "SAR"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "pending_approval",
+            "approved",
+            "active",
+            "cancelled",
+            "forfeited",
+            "expired"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "supersedes_id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "quantity": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "strike_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "grant_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "vesting_start": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "schedule": {
+          "$ref": "#/$defs/Schedule"
+        },
+        "expiry_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "post_termination_exercise_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650
+        },
+        "approved_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "activated_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "termination_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "for_cause": {
+          "type": "boolean"
+        },
+        "terminal_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "terminal_reason": {
+          "type": "string"
+        },
+        "exercised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "approval_ref": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Internal free text; only hr, board and admin ever receive it."
+        }
+      },
+      "required": [
+        "id",
+        "entity_id",
+        "plan_id",
+        "stakeholder_id",
+        "type",
+        "status",
+        "version",
+        "quantity",
+        "currency",
+        "strike_minor",
+        "grant_date",
+        "vesting_start",
+        "schedule",
+        "expiry_date",
+        "post_termination_exercise_days",
+        "exercised"
+      ]
+    },
+    "GrantInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "type": {
+          "enum": [
+            "ISO",
+            "NSO",
+            "RSU",
+            "SAR"
+          ]
+        },
+        "quantity": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        },
+        "strike_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "grant_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "vesting_start": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "schedule": {
+          "$ref": "#/$defs/Schedule"
+        },
+        "expiry_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "post_termination_exercise_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "stakeholder_id",
+        "type",
+        "quantity",
+        "strike_minor",
+        "currency",
+        "grant_date",
+        "vesting_start",
+        "schedule",
+        "expiry_date",
+        "post_termination_exercise_days"
+      ]
+    },
+    "GrantPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "ISO",
+            "NSO",
+            "RSU",
+            "SAR"
+          ]
+        },
+        "quantity": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        },
+        "strike_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "grant_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "vesting_start": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "schedule": {
+          "$ref": "#/$defs/Schedule"
+        },
+        "expiry_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "post_termination_exercise_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "description": "Draft grants only; absent fields are kept. Terms are frozen after submission."
+    },
+    "GrantPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Grant"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "ReasonRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "ActivateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "activated_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      }
+    },
+    "TerminateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "termination_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "for_cause": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "termination_date"
+      ]
+    },
+    "MilestoneRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tranche_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 49
+        },
+        "achieved_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "required": [
+        "tranche_index",
+        "achieved_on"
+      ]
+    },
+    "AccelerationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trigger": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,39}$"
+        },
+        "occurred_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "required": [
+        "trigger",
+        "occurred_on"
+      ]
+    },
+    "VestPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "cumulative": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "reason": {
+          "enum": [
+            "cliff",
+            "instalment",
+            "tranche",
+            "milestone",
+            "acceleration"
+          ]
+        }
+      },
+      "required": [
+        "date",
+        "cumulative",
+        "reason"
+      ]
+    },
+    "VestingView": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "pending_approval",
+            "approved",
+            "active",
+            "cancelled",
+            "forfeited",
+            "expired"
+          ]
+        },
+        "type": {
+          "enum": [
+            "ISO",
+            "NSO",
+            "RSU",
+            "SAR"
+          ]
+        },
+        "quantity": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "vested": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "unvested": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "exercised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "exercisable": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "strike_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "exercise_window_end": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VestPoint"
+          }
+        },
+        "illustrative": {
+          "type": "boolean"
+        },
+        "notice": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "grant_id",
+        "as_of",
+        "status",
+        "type",
+        "quantity",
+        "vested",
+        "unvested",
+        "exercised",
+        "exercisable",
+        "strike_minor",
+        "currency",
+        "exercise_window_end",
+        "timeline",
+        "illustrative",
+        "notice"
+      ]
+    },
+    "ExerciseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "quantity": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        }
+      },
+      "required": [
+        "quantity"
+      ]
+    },
+    "Exercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^exr_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "grant_id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "quantity": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "due_minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "enum": [
+            "requested",
+            "approved",
+            "payment_recorded",
+            "issued",
+            "rejected",
+            "cancelled"
+          ]
+        },
+        "paid_minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "paid_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "issued_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "ledger_id": {
+          "type": "string",
+          "pattern": "^led_[0-9a-f]{24}$"
+        },
+        "approval_ref": {
+          "type": "string"
+        },
+        "payment_reference": {
+          "type": "string",
+          "description": "Sealed field: present only for finance and admin."
+        }
+      },
+      "required": [
+        "id",
+        "entity_id",
+        "grant_id",
+        "stakeholder_id",
+        "quantity",
+        "currency",
+        "due_minor",
+        "status"
+      ]
+    },
+    "ExerciseList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Exercise"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "PaymentInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "amount_minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "paid_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "reference": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "amount_minor",
+        "paid_on"
+      ],
+      "description": "The amount must equal the amount due; partial and net exercises are not modelled."
+    },
+    "LedgerInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "class_id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "to_stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "quantity": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "price_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "kind": {
+          "enum": [
+            "cancellation",
+            "repurchase"
+          ]
+        }
+      },
+      "required": [
+        "class_id",
+        "stakeholder_id",
+        "quantity",
+        "effective_date"
+      ],
+      "description": "to_stakeholder_id is for transfers, kind for cancellations."
+    },
+    "LedgerEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^led_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "class_id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "issuance",
+            "exercise",
+            "transfer_out",
+            "transfer_in",
+            "cancellation",
+            "repurchase"
+          ]
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "quantity": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "price_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "group_id": {
+          "type": "string",
+          "pattern": "^led_[0-9a-f]{24}$"
+        },
+        "grant_id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "exercise_id": {
+          "type": "string",
+          "pattern": "^exr_[0-9a-f]{24}$"
+        }
+      },
+      "required": [
+        "seq",
+        "id",
+        "entity_id",
+        "class_id",
+        "stakeholder_id",
+        "kind",
+        "effective_date",
+        "quantity",
+        "group_id"
+      ]
+    },
+    "LedgerPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LedgerEntry"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "ClassLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "class_id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "common",
+            "preferred"
+          ]
+        },
+        "authorised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "issued": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        }
+      },
+      "required": [
+        "class_id",
+        "name",
+        "kind",
+        "authorised",
+        "issued"
+      ]
+    },
+    "HolderLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "founder",
+            "employee",
+            "investor",
+            "advisor"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "shares": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "class_id": {
+                "type": "string",
+                "pattern": "^cls_[0-9a-f]{24}$"
+              },
+              "shares": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+                "description": "Exact decimal, at most 4 decimal places, as a string."
+              }
+            },
+            "required": [
+              "class_id",
+              "shares"
+            ]
+          }
+        },
+        "basic_shares": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "basic_ownership_ppm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "options_outstanding": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "options_vested": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "fully_diluted_shares": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "fully_diluted_ownership_ppm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "stakeholder_id",
+        "kind",
+        "shares",
+        "basic_shares",
+        "basic_ownership_ppm"
+      ]
+    },
+    "PoolLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "pattern": "^pln_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "authorised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "granted_outstanding": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "exercised": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "available": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "fully_diluted_ownership_ppm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "plan_id",
+        "name",
+        "authorised",
+        "granted_outstanding",
+        "exercised",
+        "available",
+        "fully_diluted_ownership_ppm"
+      ]
+    },
+    "CapTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "view": {
+          "enum": [
+            "basic",
+            "fully-diluted"
+          ]
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClassLine"
+          }
+        },
+        "holders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HolderLine"
+          }
+        },
+        "pool": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PoolLine"
+          }
+        },
+        "totals": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "basic_shares": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+            },
+            "options_outstanding": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+            },
+            "pool_available": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+            },
+            "fully_diluted_shares": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+            }
+          },
+          "required": [
+            "basic_shares"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notice": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_id",
+        "as_of",
+        "view",
+        "classes",
+        "holders",
+        "totals",
+        "warnings",
+        "notice"
+      ]
+    },
+    "WhatIfRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "as_of": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "pre_money_minor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "investment_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "pool_top_up": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        },
+        "conversion_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "use_recorded_convertibles": {
+          "type": "boolean"
+        },
+        "extra_instruments": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "stakeholder_id": {
+                "type": "string",
+                "pattern": "^stk_[0-9a-f]{24}$"
+              },
+              "kind": {
+                "enum": [
+                  "safe_pre_money",
+                  "safe_post_money",
+                  "convertible_note"
+                ]
+              },
+              "principal_minor": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "cap_minor": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1125899906842624,
+                "description": "Integer minor units of the currency."
+              },
+              "discount_bp": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999
+              },
+              "interest_bp": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "issued_on": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              }
+            },
+            "required": [
+              "kind",
+              "principal_minor",
+              "currency"
+            ]
+          }
+        }
+      },
+      "required": [
+        "pre_money_minor"
+      ],
+      "description": "ILLUSTRATIVE modelling over the current fully diluted cap table. Nothing is stored or written to the ledger."
+    },
+    "Conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "converting_minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "method": {
+          "enum": [
+            "cap",
+            "discount",
+            "round_price"
+          ]
+        },
+        "conversion_price": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]{6}$"
+        },
+        "shares": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        }
+      },
+      "required": [
+        "kind",
+        "converting_minor",
+        "method",
+        "conversion_price",
+        "shares"
+      ]
+    },
+    "RoundResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "illustrative": {
+          "const": true
+        },
+        "notice": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "price_per_share": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]{6}$"
+        },
+        "pre_round_shares": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "pool_top_up": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "conversions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Conversion"
+          }
+        },
+        "converted_shares": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "new_investor_shares": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "post_round_shares": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$",
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        },
+        "existing_holders_ownership_ppm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "converted_instruments_ownership_ppm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "new_investor_ownership_ppm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pool_top_up_ownership_ppm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "post_money_minor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "illustrative",
+        "notice",
+        "currency",
+        "price_per_share",
+        "pre_round_shares",
+        "pool_top_up",
+        "conversions",
+        "converted_shares",
+        "new_investor_shares",
+        "post_round_shares",
+        "existing_holders_ownership_ppm",
+        "converted_instruments_ownership_ppm",
+        "new_investor_ownership_ppm",
+        "pool_top_up_ownership_ppm",
+        "post_money_minor"
+      ]
+    },
+    "ConvertibleInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "safe_pre_money",
+            "safe_post_money",
+            "convertible_note"
+          ]
+        },
+        "issued_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "principal_minor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "cap_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "discount_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999
+        },
+        "interest_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        }
+      },
+      "required": [
+        "stakeholder_id",
+        "kind",
+        "issued_on",
+        "principal_minor",
+        "currency"
+      ]
+    },
+    "Convertible": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "safe_pre_money",
+            "safe_post_money",
+            "convertible_note"
+          ]
+        },
+        "issued_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "principal_minor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "cap_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "discount_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999
+        },
+        "interest_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^cvt_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "status": {
+          "enum": [
+            "outstanding",
+            "converted",
+            "cancelled"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "entity_id",
+        "status",
+        "stakeholder_id",
+        "kind",
+        "issued_on",
+        "principal_minor",
+        "currency"
+      ]
+    },
+    "ConvertibleList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Convertible"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "ValuationInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "class_id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "409a",
+            "independent",
+            "board",
+            "other"
+          ]
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "expires_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "price_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "kind",
+        "effective_date",
+        "price_minor",
+        "currency"
+      ],
+      "description": "A valuation record kept as data. The service computes no valuation and enforces no 409A rule."
+    },
+    "Valuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "class_id": {
+          "type": "string",
+          "pattern": "^cls_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "409a",
+            "independent",
+            "board",
+            "other"
+          ]
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "expires_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "price_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624,
+          "description": "Integer minor units of the currency."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^val_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        }
+      },
+      "required": [
+        "id",
+        "entity_id",
+        "kind",
+        "effective_date",
+        "price_minor",
+        "currency"
+      ]
+    },
+    "ValuationList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Valuation"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "RetentionReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "purged": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "skipped_legal_hold": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "purged",
+        "skipped_legal_hold"
+      ]
+    },
+    "ErasureList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ErasureEntry"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "ErasureEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "seq": {
+          "type": "integer"
+        },
+        "subject": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "class": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "required": [
+        "seq",
+        "subject",
+        "class",
+        "date"
+      ]
+    }
+  }
+}

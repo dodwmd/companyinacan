@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/equity.grant.vested.v1.json",
+  "title": "equity.grant.vested.v1",
+  "description": "Published by the periodic sweep when more of an active grant has vested than was last announced. It says THAT vesting progressed through `vested_through`, never how much (the quantity is a sensitive field). Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids and dates only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "equity.grant.vested.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "equity"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grant_id",
+        "stakeholder_id",
+        "entity_id",
+        "vested_through"
+      ],
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "pattern": "^grt_[0-9a-f]{24}$"
+        },
+        "stakeholder_id": {
+          "type": "string",
+          "pattern": "^stk_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ent_[0-9a-f]{24}$"
+        },
+        "vested_through": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}

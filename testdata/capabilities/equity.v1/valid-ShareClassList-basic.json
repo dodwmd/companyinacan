@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "id": "cls_0123456789abcdef01234567",
+      "entity_id": "ent_0123456789abcdef01234567",
+      "name": "Common",
+      "kind": "common",
+      "par_minor": 1,
+      "currency": "USD",
+      "authorised": "10000000",
+      "issued": "1000"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "grant_id": "grt_0123456789abcdef01234567",
+  "as_of": "2027-01-15",
+  "status": "active",
+  "type": "NSO",
+  "quantity": "4800",
+  "vested": "1200",
+  "unvested": "3600",
+  "exercised": "0",
+  "exercisable": "1200",
+  "strike_minor": 125,
+  "currency": "USD",
+  "exercise_window_end": "2036-01-15",
+  "timeline": [
+    {
+      "date": "2027-01-15",
+      "cumulative": "1200",
+      "reason": "cliff"
+    }
+  ],
+  "illustrative": true,
+  "notice": "n"
+}

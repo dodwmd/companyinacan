@@ -1,0 +1,10 @@
+{
+  "id": "exr_0123456789abcdef01234567",
+  "entity_id": "ent_0123456789abcdef01234567",
+  "grant_id": "grt_0123456789abcdef01234567",
+  "stakeholder_id": "stk_0123456789abcdef01234567",
+  "quantity": "100",
+  "currency": "USD",
+  "due_minor": 12500,
+  "status": "requested"
+}

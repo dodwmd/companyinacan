@@ -1,0 +1,8 @@
+{
+  "id": "stk_0123456789abcdef01234567",
+  "entity_id": "ent_0123456789abcdef01234567",
+  "kind": "customer",
+  "person_id": "pers_0123456789abcdef01234567",
+  "legal_hold": false,
+  "erased": false
+}

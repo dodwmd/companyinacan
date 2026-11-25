@@ -1,0 +1,15 @@
+{
+  "subject": "stk_0123456789abcdef01234567",
+  "classes": [
+    "equity-stakeholder",
+    "equity-grants"
+  ],
+  "date": "2027-03-01",
+  "retained": [
+    {
+      "class": "equity-ledger",
+      "count": 1,
+      "reason": "legal retention"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "entity_id": "ent_0123456789abcdef01234567",
+  "as_of": "2026-06-01",
+  "view": "fully-diluted",
+  "classes": [
+    {
+      "class_id": "cls_0123456789abcdef01234567",
+      "name": "Common",
+      "kind": "common",
+      "authorised": "10000000",
+      "issued": "1000"
+    }
+  ],
+  "holders": [
+    {
+      "stakeholder_id": "stk_0123456789abcdef01234567",
+      "kind": "founder",
+      "shares": [
+        {
+          "class_id": "cls_0123456789abcdef01234567",
+          "shares": "1000"
+        }
+      ],
+      "basic_shares": "1000",
+      "basic_ownership_ppm": 1000000,
+      "options_outstanding": "0",
+      "options_vested": "0",
+      "fully_diluted_shares": "1000",
+      "fully_diluted_ownership_ppm": 1000000
+    }
+  ],
+  "totals": {
+    "basic_shares": "1000",
+    "options_outstanding": "0",
+    "pool_available": "0",
+    "fully_diluted_shares": "1000"
+  },
+  "warnings": [],
+  "notice": "illustrative"
+}

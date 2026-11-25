@@ -1,0 +1,26 @@
+{
+  "id": "grt_0123456789abcdef01234567",
+  "entity_id": "ent_0123456789abcdef01234567",
+  "plan_id": "pln_0123456789abcdef01234567",
+  "stakeholder_id": "stk_0123456789abcdef01234567",
+  "type": "NSO",
+  "status": "vested",
+  "version": 1,
+  "quantity": "4800",
+  "currency": "USD",
+  "strike_minor": 125,
+  "grant_date": "2026-01-15",
+  "vesting_start": "2026-01-15",
+  "schedule": {
+    "kind": "periodic",
+    "months": 48,
+    "cliff_months": 12,
+    "interval": "monthly",
+    "rounding": "floor"
+  },
+  "expiry_date": "2036-01-15",
+  "post_termination_exercise_days": 90,
+  "approved_on": "2026-03-10",
+  "activated_on": "2026-03-10",
+  "exercised": "0"
+}

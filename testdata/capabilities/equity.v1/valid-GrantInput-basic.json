@@ -1,0 +1,19 @@
+{
+  "stakeholder_id": "stk_0123456789abcdef01234567",
+  "type": "NSO",
+  "quantity": "4800",
+  "strike_minor": 125,
+  "currency": "USD",
+  "grant_date": "2026-01-15",
+  "vesting_start": "2026-01-15",
+  "schedule": {
+    "kind": "periodic",
+    "months": 48,
+    "cliff_months": 12,
+    "interval": "monthly",
+    "rounding": "floor"
+  },
+  "expiry_date": "2036-01-15",
+  "post_termination_exercise_days": 90,
+  "notes": "board minute 14"
+}
