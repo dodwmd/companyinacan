@@ -44,4 +44,4 @@ jobs:
           kubectl --context k3d-companyinacan-dev -n kube-system logs deployment/coredns --tail=50 || true
       - name: Delete the cluster
         if: always()
-        run: make down
+        run: go run ./cmd/can dev down
