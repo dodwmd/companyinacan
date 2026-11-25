@@ -14,4 +14,4 @@ data:
   localtest.override: |
     rewrite stop name exact admin.localtest.me admin.localtest.me
     rewrite stop name exact can-api.localtest.me can-core-api.can-system.svc.cluster.local answer auto
-    rewrite stop name regex (.*)\.localtest\.me traefik.kube-system.svc.cluster.local answer auto
+    rewrite stop name regex ^(.*)\.localtest\.me\.$ traefik.kube-system.svc.cluster.local answer auto

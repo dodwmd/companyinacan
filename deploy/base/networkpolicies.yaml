@@ -90,7 +90,11 @@ spec:
       ports:
         - {protocol: TCP, port: 5432}
         - {protocol: TCP, port: 3306}
-    # Kubernetes API server (node IP after Service DNAT).
+    # Kubernetes API server. Deliberately 0.0.0.0/0 on 6443/443 only: the API server address is
+    # the node IP (unknown when this file is written, differs in k3d and production) and can-core
+    # also calls out over 443 (ACME, chart sources, webhooks). Residual risk: a compromised
+    # can-core can reach any HTTPS endpoint. E06 should narrow this to the node IP for 6443 once
+    # the bootstrap can template it; SMTP egress for email.send is added with E03.
     - to:
         - ipBlock: {cidr: 0.0.0.0/0}
       ports:

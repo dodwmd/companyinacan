@@ -249,9 +249,21 @@ func TestModuleNamespaceTemplate(t *testing.T) {
 	if ns.str("metadata", "labels", "pod-security.kubernetes.io/enforce") == "" {
 		t.Error("module namespace needs a pod-security enforce label")
 	}
-	var deny, egress bool
+	var deny, egress, ingressTraefik, ingressCore bool
 	for _, p := range ofKind(docs, "NetworkPolicy") {
 		f := mustJSON(p)
+		switch p.name() {
+		case "allow-ingress-from-traefik":
+			if !strings.Contains(f, "Ingress") || !strings.Contains(f, "kube-system") || !strings.Contains(f, "traefik") {
+				t.Errorf("allow-ingress-from-traefik must admit Traefik in kube-system: %s", f)
+			}
+			ingressTraefik = true
+		case "allow-ingress-from-can-core":
+			if !strings.Contains(f, "Ingress") || !strings.Contains(f, "can-system") || !strings.Contains(f, "can-core") {
+				t.Errorf("allow-ingress-from-can-core must admit can-core pods in can-system: %s", f)
+			}
+			ingressCore = true
+		}
 		if p.name() == "default-deny" {
 			deny = true
 		}
@@ -263,6 +275,9 @@ func TestModuleNamespaceTemplate(t *testing.T) {
 				}
 			}
 		}
+	}
+	if !ingressTraefik || !ingressCore {
+		t.Errorf("template needs ingress allows from Traefik (%v) and can-core (%v): default-deny would otherwise block module UIs and webhooks", ingressTraefik, ingressCore)
 	}
 	if !deny || !egress {
 		t.Errorf("template needs default-deny (%v) and module-egress (%v)", deny, egress)
@@ -362,11 +377,31 @@ func TestCoreDNSCustom(t *testing.T) {
 	}
 }
 
+// rulesOf returns the rules of a Role or ClusterRole as maps.
+func rulesOf(o obj) []map[string]any {
+	var out []map[string]any
+	for _, r := range o.get("rules").([]any) {
+		out = append(out, r.(map[string]any))
+	}
+	return out
+}
+
+func clusterRole(t *testing.T, docs []obj, name string) obj {
+	t.Helper()
+	for _, r := range ofKind(docs, "ClusterRole") {
+		if r.name() == name {
+			return r
+		}
+	}
+	t.Fatalf("ClusterRole %s not found", name)
+	return nil
+}
+
+var workloadResources = map[string]bool{"pods": true, "deployments": true, "statefulsets": true, "daemonsets": true,
+	"replicasets": true, "jobs": true, "cronjobs": true}
+
 func TestRBACLeastPrivilege(t *testing.T) {
 	docs := baseDocs(t)
-	if len(ofKind(docs, "ServiceAccount")) == 0 {
-		t.Fatal("no ServiceAccount")
-	}
 	var sa obj
 	for _, d := range ofKind(docs, "ServiceAccount") {
 		if d.name() == "can-core" && d.ns() == "can-system" {
@@ -382,9 +417,8 @@ func TestRBACLeastPrivilege(t *testing.T) {
 	rules := 0
 	for _, kind := range []string{"ClusterRole", "Role"} {
 		for _, r := range ofKind(docs, kind) {
-			for _, rule := range r.get("rules").([]any) {
+			for _, rm := range rulesOf(r) {
 				rules++
-				rm := rule.(map[string]any)
 				for _, field := range []string{"apiGroups", "resources", "verbs", "resourceNames"} {
 					for _, x := range asStrings(rm[field]) {
 						if x == "*" {
@@ -393,8 +427,12 @@ func TestRBACLeastPrivilege(t *testing.T) {
 					}
 				}
 				for _, v := range asStrings(rm["verbs"]) {
-					if v == "escalate" || v == "bind" || v == "impersonate" {
+					if v == "escalate" || v == "impersonate" {
 						t.Errorf("%s %s grants %q", kind, r.name(), v)
+					}
+					// `bind` is only acceptable when pinned to named roles.
+					if v == "bind" && len(asStrings(rm["resourceNames"])) == 0 {
+						t.Errorf("%s %s grants unrestricted bind", kind, r.name())
 					}
 				}
 			}
@@ -403,20 +441,80 @@ func TestRBACLeastPrivilege(t *testing.T) {
 	if rules == 0 {
 		t.Fatal("no RBAC rules found")
 	}
-	var needs = map[string]bool{"tokenreviews": false, "namespaces": false, "networkpolicies": false}
-	for _, r := range ofKind(docs, "ClusterRole") {
-		f := mustJSON(r)
-		for k := range needs {
-			if strings.Contains(f, k) {
-				needs[k] = true
+
+	// Cluster scope: every role reachable through a ClusterRoleBinding must be tiny. No
+	// secrets, no pods/exec, no workload writes, no namespace mutation beyond create.
+	cluster := map[string]bool{}
+	for _, b := range ofKind(docs, "ClusterRoleBinding") {
+		if b.str("roleRef", "kind") != "ClusterRole" {
+			t.Errorf("ClusterRoleBinding %s must reference a ClusterRole", b.name())
+		}
+		cluster[b.str("roleRef", "name")] = true
+	}
+	if len(cluster) == 0 {
+		t.Fatal("no ClusterRoleBinding found")
+	}
+	seen := map[string]bool{}
+	for name := range cluster {
+		for _, rm := range rulesOf(clusterRole(t, docs, name)) {
+			for _, res := range asStrings(rm["resources"]) {
+				verbs := asStrings(rm["verbs"])
+				switch {
+				case res == "secrets" || strings.HasPrefix(res, "secrets/"):
+					t.Errorf("cluster-scope role %s grants secrets", name)
+				case res == "pods/exec" || res == "pods/attach" || res == "pods/portforward":
+					t.Errorf("cluster-scope role %s grants %s", name, res)
+				case workloadResources[res]:
+					t.Errorf("cluster-scope role %s grants workload resource %s (%v)", name, res, verbs)
+				case res == "namespaces":
+					for _, v := range verbs {
+						if v == "update" || v == "patch" || v == "delete" || v == "deletecollection" {
+							t.Errorf("cluster-scope role %s may %s namespaces (would relax pod-security labels)", name, v)
+						}
+					}
+				case res == "clusterroles" || res == "clusterrolebindings":
+					for _, v := range verbs {
+						if v != "bind" || len(asStrings(rm["resourceNames"])) == 0 {
+							t.Errorf("cluster-scope role %s: %s on %s must be bind on named roles only", name, v, res)
+						}
+					}
+				}
+				seen[res] = true
 			}
 		}
 	}
-	for k, ok := range needs {
-		if !ok {
-			t.Errorf("can-core ClusterRole lacks %s (SPEC 3.1)", k)
+	for _, want := range []string{"tokenreviews", "namespaces", "rolebindings"} {
+		if !seen[want] {
+			t.Errorf("can-core cluster role lacks %s (SPEC 3.1)", want)
 		}
 	}
+
+	// The per-namespace role exists, is bound only by RoleBindings, and carries the workload
+	// permissions that used to be cluster-wide.
+	mod := clusterRole(t, docs, "can-core-module")
+	if cluster["can-core-module"] {
+		t.Error("can-core-module must never be bound with a ClusterRoleBinding")
+	}
+	if f := mustJSON(mod); !strings.Contains(f, "networkpolicies") || !strings.Contains(f, "deployments") || !strings.Contains(f, "secrets") {
+		t.Errorf("can-core-module should hold the namespaced permissions: %s", f)
+	}
+	for _, rm := range rulesOf(mod) {
+		if strings.Contains(mustJSON(rm["resources"]), "roles") {
+			t.Error("can-core-module must not manage RBAC (no escalation inside module namespaces)")
+		}
+	}
+	bound := map[string]bool{}
+	for _, b := range ofKind(docs, "RoleBinding") {
+		if b.ns() != "kube-system" && b.str("roleRef", "name") == "can-core-module" {
+			bound[b.ns()] = true
+		}
+	}
+	for _, ns := range []string{"can-system", "can-data"} {
+		if !bound[ns] {
+			t.Errorf("can-core-module is not bound in %s", ns)
+		}
+	}
+
 	// Every binding must point at can-core, never cluster-admin.
 	for _, kind := range []string{"ClusterRoleBinding", "RoleBinding"} {
 		for _, b := range ofKind(docs, kind) {
@@ -430,6 +528,21 @@ func TestRBACLeastPrivilege(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestModuleRBACTemplate(t *testing.T) {
+	docs := loadDocs(t, "deploy/templates/module-rbac.yaml")
+	bs := ofKind(docs, "RoleBinding")
+	if len(bs) != 1 || len(docs) != 1 {
+		t.Fatalf("template must be exactly one RoleBinding, got %d docs", len(docs))
+	}
+	b := bs[0]
+	if b.ns() != "${MODULE_NAMESPACE}" || b.str("roleRef", "kind") != "ClusterRole" || b.str("roleRef", "name") != "can-core-module" {
+		t.Errorf("RoleBinding must bind ClusterRole can-core-module in ${MODULE_NAMESPACE}: %s", mustJSON(b))
+	}
+	if f := mustJSON(b.get("subjects")); !strings.Contains(f, "can-core") || !strings.Contains(f, "can-system") {
+		t.Errorf("subject must be can-system/can-core: %s", f)
 	}
 }
 

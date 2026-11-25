@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-25
 
-**Status**: Implemented offline; cluster behaviour unverified (no k3d in the authoring environment)
+**Status**: Implemented. Authored without a cluster; the non-required `dev-cluster` CI job later brought a real k3d cluster up and passed the integration tests (see Success Criteria)
 
 **Input**: Epic E02 in `docs/epics/README.md`: "`make dev` gives a working local k3s (k3d) company with the same charts as production." Scope: base manifests in `deploy/`, k3d cluster config, `can dev up|down|status|doctor`, `make dev|down|doctor`, `*.localtest.me` hostnames. SPEC.md §3.1, §3.6.
 
@@ -25,7 +25,7 @@ invariants (see contracts/manifests.md).
 2. **Given** the policies, **When** inspected, **Then** DNS, ingress from Traefik, the can-core module API (module namespaces only), databases and can-core egress are explicitly allowed, and no policy outside can-core's API-server egress opens `0.0.0.0/0`.
 3. **Given** the Traefik `HelmChartConfig`, **Then** ACME storage lives under a persistent volume path and `externalTrafficPolicy` is `Local`.
 4. **Given** `coredns-custom`, **Then** `*.localtest.me` rewrites to the Traefik Service, `admin.localtest.me` is pinned (never rewritten), and a module API alias exists.
-5. **Given** the RBAC, **Then** can-core's ClusterRole has no wildcard and no `escalate`/`bind`/`impersonate`, nothing binds `cluster-admin`, and kube-system access is limited to two named objects.
+5. **Given** the RBAC, **Then** can-core's cluster-wide role is limited to creating/reading namespaces, TokenReviews, RoleBindings and `bind` on one named ClusterRole (no secrets, workloads or pods/exec at cluster scope); the namespaced permissions live in ClusterRole `can-core-module` bound per namespace by RoleBinding (base: can-system, can-data; module namespaces: `deploy/templates/module-rbac.yaml`); no wildcards, no `escalate`/`impersonate`, nothing binds `cluster-admin`; kube-system access is limited to two named objects.
 6. **Given** every platform namespace and the module-namespace template, **Then** each has a ResourceQuota and a LimitRange with default requests and limits.
 
 ### User Story 2 - `make dev` creates and removes a local cluster (Priority: P1)
@@ -57,7 +57,7 @@ prints the plan without running anything.
 - **FR-002**: Every platform namespace MUST have default-deny ingress+egress and explicit allows only.
 - **FR-003**: The Traefik ACME store MUST be persistent; Traefik's Service MUST use `externalTrafficPolicy: Local`.
 - **FR-004**: CoreDNS customisation MUST go through `coredns-custom` (`*.override`), never by editing `coredns`; `admin.*` MUST NOT be rewritten.
-- **FR-005**: can-core RBAC MUST be least privilege (no wildcards, no escalation verbs, no cluster-admin).
+- **FR-005**: can-core RBAC MUST be least privilege: the cluster-scope grant excludes secrets, workload writes and pods/exec and cannot update or delete namespaces; namespaced powers come only from per-namespace RoleBindings to `can-core-module`; no wildcards, no `escalate`/`impersonate`, `bind` only on a named role, no cluster-admin.
 - **FR-006**: Every namespace MUST have a ResourceQuota and LimitRange.
 - **FR-007**: `dev/k3d.yaml` MUST pin the k3s image tag, map 80/443, keep Traefik, disable metrics-server and enable secrets encryption.
 - **FR-008**: `can dev up|down|status|doctor` MUST follow the exit codes 0/1/2/3 (contracts/cli.md); `make dev|down|doctor` wrap them.
@@ -67,7 +67,7 @@ prints the plan without running anything.
 ## Success Criteria
 
 - **SC-001**: `make test` passes with no cluster, Docker or network (beyond the optional lint download).
-- **SC-002**: On a machine with docker, k3d and kubectl, `make dev` yields a cluster on which `go test -tags integration ./test/integration/...` passes. **Not verified in this epic's authoring environment.**
+- **SC-002**: On a machine with docker, k3d and kubectl, `make dev` yields a cluster on which `go test -tags integration ./test/integration/...` passes. **Evidence**: the GitHub `dev-cluster` job (k3d v5.8.3, ubuntu runner) created the cluster and passed all integration tests. **Still unverified**: ACME issuance, `externalTrafficPolicy: Local` end to end, can-core RBAC and the module-namespace templates (no can-core yet), local-machine runs, Podman.
 
 ## Assumptions
 

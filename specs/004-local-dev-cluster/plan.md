@@ -22,11 +22,11 @@ tests; cluster-backed assertions are written under the `integration` build tag a
 |---|---|---|
 | I. Spec-first | PASS | Traces to SPEC.md §3.1, §3.6; conventions it introduces (ports, labels, Service names) are recorded in spec Assumptions |
 | II. Footprint | PASS | metrics-server disabled; quotas and LimitRange defaults cap every namespace; Traefik requests 48Mi; no new resident components |
-| III. Test-first | PASS with a stated gap | Unit and contract tests written before implementation; cluster behaviour (policy enforcement, DNS) has tests but they could not be run here |
+| III. Test-first | PASS | Unit and contract tests written before implementation; cluster tests written without a cluster and later confirmed by the `dev-cluster` CI job |
 | IV. Module contracts | PASS | Module namespace template fixes the label, egress and quota contract can-core instantiates |
 | V. Secure/private | PASS | Default-deny everywhere, least-privilege RBAC, secrets encryption on, no secrets in manifests; metadata endpoint, node and cluster CIDRs denied to modules |
 | VI. OSS hygiene | PASS | No new dependencies; workflow actions pinned by SHA |
-| VII. Simplicity/measured | PASS with a stated gap | Plain YAML + kubectl `-k`, no Helm/Terraform; k3s image tag and CoreDNS regex behaviour are unverified claims, flagged in research.md |
+| VII. Simplicity/measured | PASS | Plain YAML + kubectl `-k`, no Helm/Terraform; remaining unverified claims are listed in research.md |
 
 ## Project Structure
 

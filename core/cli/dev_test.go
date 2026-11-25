@@ -68,7 +68,7 @@ func TestDevUpFailsWithoutPrerequisites(t *testing.T) {
 }
 
 func TestDevUpRunsPlanFromRepoRoot(t *testing.T) {
-	f := &fakeExec{err: map[string]error{listKey: errors.New("absent")}}
+	f := &fakeExec{err: map[string]error{listKey: errors.New("No nodes found for given cluster")}}
 	stubDev(t, true, f)
 	t.Chdir("../..")
 	code, out, errs := run(t, "dev", "up")
@@ -91,7 +91,7 @@ func TestDevUpFailsOutsideRepoRoot(t *testing.T) {
 }
 
 func TestDevUpPropagatesCommandFailure(t *testing.T) {
-	f := &fakeExec{err: map[string]error{listKey: errors.New("absent"),
+	f := &fakeExec{err: map[string]error{listKey: errors.New("No nodes found"),
 		"k3d cluster create companyinacan-dev --config dev/k3d.yaml": errors.New("docker daemon not running")}}
 	stubDev(t, true, f)
 	t.Chdir("../..")
@@ -110,10 +110,10 @@ func TestDevBadNameIsUsageError(t *testing.T) {
 }
 
 func TestDevDown(t *testing.T) {
-	f := &fakeExec{}
+	f := &fakeExec{out: map[string]string{listKey: `[{"name":"companyinacan-dev","serversCount":1,"serversRunning":1}]`}}
 	stubDev(t, true, f)
 	code, _, _ := run(t, "dev", "down")
-	if code != ExitOK || len(f.calls) != 1 || f.calls[0] != "k3d cluster delete companyinacan-dev" {
+	if code != ExitOK || len(f.calls) != 2 || f.calls[1] != "k3d cluster delete companyinacan-dev" {
 		t.Fatalf("code=%d calls=%v", code, f.calls)
 	}
 	f.calls = nil

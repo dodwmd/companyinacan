@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fake records every command and answers from canned responses keyed by the command line.
@@ -38,6 +39,7 @@ func TestCreatePlanIsExact(t *testing.T) {
 	want := strings.Join([]string{
 		"k3d cluster create companyinacan-dev --config dev/k3d.yaml",
 		"kubectl --context k3d-companyinacan-dev wait --for=condition=Ready node --all --timeout=180s",
+		"kubectl --context k3d-companyinacan-dev get crd/helmchartconfigs.helm.cattle.io",
 		"kubectl --context k3d-companyinacan-dev wait --for=condition=Established crd/helmchartconfigs.helm.cattle.io --timeout=180s",
 		"kubectl --context k3d-companyinacan-dev apply -k deploy/base",
 		"kubectl --context k3d-companyinacan-dev -n kube-system rollout restart deployment/coredns",
@@ -92,7 +94,8 @@ func TestStatus(t *testing.T) {
 		{"running", listRunning, nil, true, true, false},
 		{"stopped", `[{"name":"companyinacan-dev","serversCount":1,"serversRunning":0}]`, nil, true, false, false},
 		{"absent-empty-list", `[]`, nil, false, false, false},
-		{"absent-error", "", errors.New("exit 1: no nodes found for given cluster"), false, false, false},
+		{"absent-error", "", errors.New("exit status 1: FATA No nodes found for given cluster"), false, false, false},
+		{"docker-down", "", errors.New("exit status 1: Cannot connect to the Docker daemon"), false, false, true},
 		{"garbage", "not json", nil, false, false, true},
 	}
 	for _, tc := range cases {
@@ -108,7 +111,7 @@ func TestStatus(t *testing.T) {
 }
 
 func TestUpCreatesWhenAbsentAndSkipsWhenPresent(t *testing.T) {
-	f := &fake{err: map[string]error{listKey: errors.New("none")}}
+	f := &fake{err: map[string]error{listKey: errors.New("No nodes found for given cluster")}}
 	if err := New(cfg(), f).Up(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +135,7 @@ func TestUpCreatesWhenAbsentAndSkipsWhenPresent(t *testing.T) {
 func TestUpStopsAtFirstFailure(t *testing.T) {
 	boom := errors.New("boom")
 	f := &fake{err: map[string]error{
-		listKey: errors.New("none"),
+		listKey: errors.New("No nodes found"),
 		"k3d cluster create companyinacan-dev --config dev/k3d.yaml": boom,
 	}}
 	err := New(cfg(), f).Up(context.Background())
@@ -141,12 +144,75 @@ func TestUpStopsAtFirstFailure(t *testing.T) {
 	}
 }
 
+func TestUpStartsAStoppedCluster(t *testing.T) {
+	stopped := `[{"name":"companyinacan-dev","serversCount":1,"serversRunning":0}]`
+	f := &fake{out: map[string]string{listKey: stopped}}
+	if err := New(cfg(), f).Up(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.lines()[1]; got != "k3d cluster start companyinacan-dev" {
+		t.Fatalf("calls=%v", f.lines())
+	}
+}
+
+func TestUpSurfacesStatusErrors(t *testing.T) {
+	f := &fake{err: map[string]error{listKey: errors.New("Cannot connect to the Docker daemon")}}
+	if err := New(cfg(), f).Up(context.Background()); err == nil || len(f.calls) != 1 {
+		t.Fatalf("err=%v calls=%v", err, f.lines())
+	}
+}
+
+func TestRetriesUntilTheCRDExists(t *testing.T) {
+	crd := "kubectl --context k3d-companyinacan-dev get crd/helmchartconfigs.helm.cattle.io"
+	n := 0
+	f := &countingFake{fake: fake{out: map[string]string{listKey: listRunning}}, failFirst: map[string]int{crd: 3}, n: &n}
+	m := New(cfg(), f)
+	var slept int
+	m.sleep = func(time.Duration) { slept++ }
+	if err := m.Up(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if slept != 3 {
+		t.Fatalf("slept %d times, want 3", slept)
+	}
+	// Non-retried commands fail immediately.
+	f = &countingFake{fake: fake{out: map[string]string{listKey: listRunning}}, failFirst: map[string]int{"kubectl --context k3d-companyinacan-dev apply -k deploy/base": 1}, n: &n}
+	m = New(cfg(), f)
+	m.sleep = func(time.Duration) { t.Fatal("must not retry apply") }
+	if err := m.Up(context.Background()); err == nil {
+		t.Fatal("expected apply failure")
+	}
+}
+
+// countingFake fails the first N runs of selected commands.
+type countingFake struct {
+	fake
+	failFirst map[string]int
+	n         *int
+}
+
+func (f *countingFake) Run(ctx context.Context, c Cmd) (string, error) {
+	out, err := f.fake.Run(ctx, c)
+	if f.failFirst[c.String()] > 0 {
+		f.failFirst[c.String()]--
+		return "", errors.New("not yet")
+	}
+	return out, err
+}
+
 func TestDown(t *testing.T) {
-	f := &fake{}
+	f := &fake{out: map[string]string{listKey: listRunning}}
 	if err := New(cfg(), f).Down(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(f.lines(), []string{"k3d cluster delete companyinacan-dev"}) {
+	if !reflect.DeepEqual(f.lines(), []string{listKey, "k3d cluster delete companyinacan-dev"}) {
 		t.Fatal(f.lines())
+	}
+}
+
+func TestDownOfAbsentClusterIsANoOp(t *testing.T) {
+	f := &fake{err: map[string]error{listKey: errors.New("No nodes found for given cluster")}}
+	if err := New(cfg(), f).Down(context.Background()); err != nil || len(f.calls) != 1 {
+		t.Fatalf("err=%v calls=%v", err, f.lines())
 	}
 }

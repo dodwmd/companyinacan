@@ -1,7 +1,8 @@
 name: dev-cluster
 
-# UNVERIFIED: written without access to Docker/k3d (epic E02). Not a required check; the first
-# run is the verification. Kept out of ci.yml so it cannot affect the required job names.
+# Not a required check (continue-on-error). Written without local Docker/k3d; its first run on
+# GitHub brought the cluster up and passed the integration tests, which is the only cluster
+# evidence so far. Kept out of ci.yml so it cannot affect the required job names.
 on:
   workflow_dispatch:
   pull_request:
@@ -27,7 +28,11 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install k3d
-        run: curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/v5.8.3/install.sh | TAG=v5.8.3 bash
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
       - name: Create the cluster
         run: make dev
       - name: Integration tests

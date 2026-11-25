@@ -1,6 +1,20 @@
-# can-core is highly privileged by design (SPEC 3.1) but gets the narrowest ClusterRole that
-# works: no wildcards, no escalate/bind/impersonate, never cluster-admin. Because `escalate`
-# and `bind` are withheld, can-core cannot grant permissions it does not itself hold.
+# can-core is highly privileged by design (SPEC 3.1), but its cluster-wide grant is kept tiny:
+#
+#   ClusterRole can-core         (ClusterRoleBinding, whole cluster)
+#     create/get/list/watch namespaces, create TokenReviews, create RoleBindings and `bind`
+#     restricted to the one ClusterRole below. No secrets, no workloads, no pods/exec.
+#   ClusterRole can-core-module  (only ever bound with RoleBindings, per namespace)
+#     secrets, workloads, NetworkPolicies, quotas, ... inside ONE namespace.
+#
+# Flow when enabling a module: can-core creates namespace mod-<id>, then the RoleBinding from
+# deploy/templates/module-rbac.yaml, and from then on can manage that namespace only. Base binds
+# can-core-module in can-system and can-data. No wildcards, no escalate/impersonate, never
+# cluster-admin.
+#
+# Residual risks (cannot be expressed in RBAC; to be closed by a ValidatingAdmissionPolicy in
+# E03): (1) creating RoleBindings cluster-wide lets can-core bind can-core-module into any
+# namespace, including kube-system; (2) it can create namespaces with relaxed pod-security
+# labels. Both need a compromised can-core to exploit.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -12,10 +26,43 @@ kind: ClusterRole
 metadata:
   name: can-core
 rules:
-  # Module namespaces (mod-<id>) and their guard rails.
+  # Module namespaces (mod-<id>). No update/patch (cannot relax pod-security labels later) and
+  # no delete: removal of a module namespace needs an E03 decision (see research R6).
   - apiGroups: [""]
     resources: [namespaces]
-    verbs: [get, list, watch, create, update, patch, delete]
+    verbs: [get, list, watch, create]
+  # Module identity: validate projected ServiceAccount tokens.
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+  # Grant itself the per-namespace role in namespaces it creates, and nothing else.
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [get, list, watch, create]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    resourceNames: [can-core-module]
+    verbs: [bind]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: can-core
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: can-core
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system
+---
+# Permissions inside a single namespace. Bind ONLY with a RoleBinding, never a ClusterRoleBinding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: can-core-module
+rules:
   - apiGroups: [""]
     resources: [resourcequotas, limitranges, serviceaccounts, services, configmaps, persistentvolumeclaims, secrets]
     verbs: [get, list, watch, create, update, patch, delete]
@@ -37,23 +84,31 @@ rules:
   - apiGroups: [batch]
     resources: [jobs, cronjobs]
     verbs: [get, list, watch, create, update, patch, delete]
-  # Helm releases install namespaced RBAC for module charts.
-  - apiGroups: [rbac.authorization.k8s.io]
-    resources: [roles, rolebindings]
-    verbs: [get, list, watch, create, update, patch, delete]
-  # Module identity: validate projected ServiceAccount tokens.
-  - apiGroups: [authentication.k8s.io]
-    resources: [tokenreviews]
-    verbs: [create]
 ---
+# can-system (can-core state, the site) and can-data (databases) exist from the start.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: can-core
+  name: can-core-module
+  namespace: can-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: can-core
+  name: can-core-module
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: can-core-module
+  namespace: can-data
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: can-core-module
 subjects:
   - kind: ServiceAccount
     name: can-core

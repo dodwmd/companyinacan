@@ -1,8 +1,9 @@
 # Local dev cluster (`make dev`)
 
 A single-node k3s cluster in Docker (via [k3d](https://k3d.io)) with the same base manifests
-production uses. Status: the planner, CLI and manifests are tested offline; behaviour on a real
-cluster is **not yet verified** (see "Verification status").
+production uses. Status: the planner, CLI and manifests are tested offline, and the GitHub
+`dev-cluster` job has created the cluster and passed the integration tests (see "Verification
+status").
 
 ## Prerequisites
 
@@ -36,7 +37,7 @@ Flags: `--name` (default `companyinacan-dev`), `--k3d-config`, `--manifests`. Ex
   `can-portal`; default-deny NetworkPolicies plus explicit allows; ResourceQuota and LimitRange
   per namespace; can-core RBAC; Traefik `HelmChartConfig` (persistent `acme.json`,
   `externalTrafficPolicy: Local`); `coredns-custom`.
-- `deploy/templates/module-namespace.yaml`: what can-core (E03) instantiates per module.
+- `deploy/templates/module-namespace.yaml` and `module-rbac.yaml`: what can-core (E03) instantiates per module (namespace, default-deny, ingress/egress allows, quota, and the RoleBinding that gives can-core powers in that namespace only). can-core's cluster-wide role is deliberately tiny; see `deploy/base/rbac.yaml`.
 
 Contracts and the invariants the tests enforce: `specs/004-local-dev-cluster/contracts/`.
 
@@ -64,11 +65,22 @@ with k3d.
 
 ## Verification status
 
-Written in an environment without Docker, k3d or kubectl, so nothing below has been run:
-the `rancher/k3s` tag and the k3d `v1alpha5` schema; the Traefik chart value names; the CoreDNS
-rewrite syntax and whether the restart is needed; policy enforcement (including egress to the
-API server on 6443); the integration tests and the workflow. The first real run is the
-verification (task T013 in `specs/004-local-dev-cluster/tasks.md`).
+Written without local Docker, k3d or kubectl. Evidence since: the non-required `dev-cluster`
+workflow (k3d v5.8.3 on a GitHub runner) ran `make dev` and the integration tests, and they
+passed: namespaces and default-deny, the Traefik PVC and `externalTrafficPolicy: Local`,
+`*.localtest.me` resolving to Traefik from a pod, and default-deny blocking pod traffic.
+
+Still unverified: certificate issuance (ACME) and `acme.json` persistence; the effect of
+`externalTrafficPolicy: Local` on client IPs; can-core's RBAC (there is no can-core yet) and the
+module-namespace and RBAC templates; whether the CoreDNS restart is needed; egress denial to the
+node IP; the later-added positive-control and cross-namespace default-deny probes and the anchored
+CoreDNS regex until CI runs them; runs on a developer machine or with Podman. The workflow is
+`continue-on-error`, so read its log rather than the green tick.
+
+Known limits (details in `specs/004-local-dev-cluster/research.md`): can-core's egress allows
+`0.0.0.0/0` on ports 443 and 6443; a module pod can still send `Host: admin.<domain>` to Traefik,
+so the admin router needs the pod-CIDR-rejecting middleware (E03/E06); `can dev down` on a
+missing cluster does nothing and succeeds; `can dev up` on a stopped cluster starts it.
 
 ## Troubleshooting
 

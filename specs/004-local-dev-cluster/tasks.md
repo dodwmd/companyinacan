@@ -27,5 +27,7 @@ description: "Task list for Epic E02: Local dev cluster"
 - [x] T010 Integration tests under `//go:build integration` in `test/integration/cluster_test.go`
 - [x] T011 Non-required workflow `.github/workflows/dev-cluster.yml` (unverified)
 - [x] T012 `docs/dev-cluster.md`; update README, `deploy/README.md`, `dev/README.md`, 001 contract note, epics table
-- [ ] T013 Run `make dev` and `go test -tags integration ./test/integration/...` on a machine with docker, k3d, kubectl; fix findings (image tag, Traefik values, CoreDNS regex, policy enforcement)
+- [x] T013a CI evidence: `dev-cluster` job (k3d v5.8.3) created the cluster and passed all integration tests on PR #5
+- [x] T015 QA follow-ups: module ingress allows, RBAC split (`can-core` / `can-core-module` + `deploy/templates/module-rbac.yaml`), Status/Up/Down semantics, CRD retry, anchored CoreDNS regex, stronger default-deny tests, checksummed k3d download
+- [ ] T013 Run `make dev` and the integration tests on a local machine (not only CI), including Podman; confirm the new positive-control and cross-namespace tests and the anchored CoreDNS regex pass
 - [ ] T014 Confirm the `dev-cluster` workflow passes on GitHub; then consider making it required
