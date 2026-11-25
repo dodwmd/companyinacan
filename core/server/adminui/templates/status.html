@@ -1,0 +1,49 @@
+{{define "content"}}
+<h1>{{t "hs.title"}}</h1>
+
+<section aria-labelledby="h-rec">
+<h2 id="h-rec">{{t "hs.reconcile"}}</h2>
+{{if .Data.Reconcile}}<p><span class="badge {{if .Data.ReconcileOK}}ok{{else}}err{{end}}">{{if .Data.ReconcileOK}}{{t "hs.rec_ok"}}{{else}}{{t "hs.rec_failed"}}{{end}}</span>
+<time datetime="{{iso .Data.Reconcile.At}}">{{ts .Data.Reconcile.At}}</time>: {{t "hs.rec_counts" .Data.Reconcile.Actions .Data.Reconcile.Failed}}</p>
+{{if .Data.Reconcile.Error}}<p class="alert err" role="alert"><strong>{{t "mod.last_error"}}:</strong> {{.Data.Reconcile.Error}}</p>{{end}}
+{{else}}<p class="muted">{{t "hs.rec_none"}}</p>{{end}}
+{{if .Data.LatestRun}}<p><a href="/runs/{{.Data.LatestRun}}">{{t "hs.latest_run"}}</a></p>{{end}}
+</section>
+
+<section aria-labelledby="h-mods">
+<h2 id="h-mods">{{t "hs.modules"}}</h2>
+{{if .Data.Modules}}<div class="table-wrap" role="region" aria-labelledby="cap-hm" tabindex="0">
+<table>
+<caption id="cap-hm" class="sr">{{t "hs.modules"}}</caption>
+<thead><tr><th scope="col">{{t "mod.module"}}</th><th scope="col">{{t "mod.state"}}</th><th scope="col">{{t "hs.ready"}}</th><th scope="col">{{t "mod.version"}}</th><th scope="col">{{t "mod.last_error"}}</th></tr></thead>
+<tbody>
+{{range .Data.Modules}}<tr><th scope="row"><a href="/catalogue/{{.ID}}">{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</a></th><td>{{.State}}</td><td><span class="badge {{.ReadyClass}}">{{.ReadyLabel}}</span></td><td>{{.Version}}</td><td>{{.LastError}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "mod.empty"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-cert">
+<h2 id="h-cert">{{t "hs.certs"}}</h2>
+{{if .Data.CertsNote}}<p class="alert warn">{{t "hs.unavailable"}}</p>
+{{else if .Data.Certs}}<div class="table-wrap" role="region" aria-labelledby="cap-cert" tabindex="0">
+<table>
+<caption id="cap-cert" class="sr">{{t "hs.certs"}}</caption>
+<thead><tr><th scope="col">{{t "hs.host"}}</th><th scope="col">{{t "mod.state"}}</th><th scope="col">{{t "hs.days_left"}}</th></tr></thead>
+<tbody>
+{{range .Data.Certs}}<tr><th scope="row"><code>{{.Host}}</code></th><td><span class="badge {{.StateClass}}">{{.StateLabel}}</span></td><td>{{.DaysLeft}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "hs.no_certs"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-disk">
+<h2 id="h-disk">{{t "hs.disk"}}</h2>
+{{if .Data.DiskNote}}<p class="alert warn">{{t "hs.unavailable"}}</p>
+{{else if .Data.Disk}}<ul>{{range .Data.Disk}}<li><strong>{{.Name}}</strong>: <meter min="0" max="100" value="{{.UsedPercent}}" aria-label="{{.Name}}">{{.UsedPercent}}%</meter> {{t "hs.disk_used" .UsedPercent}}</li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "hs.no_disk"}}</p>{{end}}
+</section>
+{{end}}

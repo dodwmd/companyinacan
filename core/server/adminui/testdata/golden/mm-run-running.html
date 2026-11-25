@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Apply progress - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css"><meta http-equiv="refresh" content="3">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+<li><a href="/access">Access</a></li>
+<li><a href="/catalogue" aria-current="page">Catalogue</a></li>
+<li><a href="/status">Status</a></li>
+<li><a href="/setup">Setup</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<p><a href="/catalogue">Back to the catalogue</a></p>
+<h1>Apply progress</h1>
+<p><span class="badge warn">Running</span> started by root at <time datetime="2023-11-14T22:13:51Z">2023-11-14 22:13:51</time></p>
+<p class="alert warn" role="status">can-core is applying the change. This page reloads every few seconds. <a href="/runs/ID?refresh=0">Stop reloading</a></p>
+
+
+<section aria-labelledby="h-mods">
+<h2 id="h-mods">Modules</h2>
+<p class="muted">No module needed any work.</p>
+</section>
+<p><a href="/status">Go to the status page</a></p>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

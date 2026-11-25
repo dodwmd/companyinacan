@@ -63,6 +63,9 @@ type Module struct {
 		Import  string `yaml:"import"`
 	} `yaml:"hooks"`
 	Permissions []string `yaml:"permissions"`
+	// SettingsSchema is the relative path of the module's settings JSON Schema (rendered by the
+	// admin UI, epic E12b).
+	SettingsSchema string `yaml:"settings_schema"`
 	// Approvals and Notifications are the approval types and notification rules (epic E11a).
 	Approvals     []ManifestApproval  `yaml:"approvals"`
 	Notifications []NotifyRule        `yaml:"notifications"`

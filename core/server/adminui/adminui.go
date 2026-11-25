@@ -24,6 +24,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
+	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
@@ -54,6 +55,9 @@ type Server struct {
 	RBAC      *rbac.Service
 	Approvals *approvals.Engine
 	Notify    *notify.Service
+	// Mod is module management (catalogue, changes, wizard, status; epic E12b). Nil answers 503 on
+	// its pages and shows none of its navigation.
+	Mod *modmgr.Service
 	// Leads reads leads through the `leads` capability; nil means "not configured".
 	Leads   LeadsClient
 	Company Company
@@ -77,7 +81,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(s.coreRoutes(), s.platformRoutes()...)
+	return append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {
@@ -85,7 +89,7 @@ func (s *Server) coreRoutes() []route {
 		{"GET /login", s.loginPage},
 		{"POST /login", s.loginPost},
 		{"POST /logout", s.authed(s.logout)},
-		{"GET /{$}", s.authed(s.homeGate(s.dashboard))},
+		{"GET /{$}", s.authed(s.homeGate(s.wizardGate(s.dashboard)))},
 		{"GET /modules", s.authedPerm(rbac.PermView, s.modules)},
 		{"GET /modules/{id}", s.authedPerm(rbac.PermView, s.module)},
 		{"GET /audit", s.authedPerm(rbac.PermAudit, s.auditPage)},
@@ -161,7 +165,10 @@ func (s *Server) init() {
 		if e.Name() == "layout.html" {
 			continue
 		}
-		t, err := template.New(e.Name()).Funcs(funcs).ParseFS(assets, "templates/layout.html", "templates/"+e.Name())
+		if e.Name() == "partials.html" {
+			continue
+		}
+		t, err := template.New(e.Name()).Funcs(funcs).ParseFS(assets, "templates/layout.html", "templates/partials.html", "templates/"+e.Name())
 		if err != nil {
 			panic("adminui: " + err.Error())
 		}
@@ -223,6 +230,7 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 			p.Nav = append(p.Nav, navItem{Href: n.href, Label: s.msg(n.label), Current: n.key == active})
 		}
 		p.Nav = append(p.Nav, s.platformNav(r, sc, active)...)
+		p.Nav = append(p.Nav, s.modNav(r, sc, active)...)
 	}
 	return p
 }

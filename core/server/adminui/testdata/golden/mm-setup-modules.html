@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Modules - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+<li><a href="/access">Access</a></li>
+<li><a href="/catalogue">Catalogue</a></li>
+<li><a href="/status">Status</a></li>
+<li><a href="/setup" aria-current="page">Setup</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Set up your company</h1>
+<p class="hint">Answer these steps in any order. Your answers are saved as you go, so you can leave and come back. Nothing changes until you review and apply.</p>
+<nav aria-label="Setup steps">
+<ol class="steps">
+<li><a href="/setup/company">Company</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/template">Template</a> <span class="badge neutral">To do</span></li>
+<li><a href="/setup/modules" aria-current="step">Modules</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/email">Email</a> <span class="badge neutral">To do</span></li>
+<li><a href="/setup/dns">DNS</a></li>
+<li><a href="/setup/account">Your account</a> <span class="badge neutral">To do</span></li>
+<li><a href="/setup/review">Review and apply</a></li>
+</ol>
+</nav>
+
+<h2>Modules</h2>
+
+
+
+<p>Choose modules. The meter shows whether your selection fits the server size you declared.</p>
+<h3>Does it fit in your server?</h3>
+<dl>
+<dt>Platform (k3s, ingress, can-core)</dt><dd>650 MB</dd>
+<dt>Enabled modules (requested)</dt><dd>20 MB</dd>
+<dt>Total</dt><dd>670 MB <span class="badge ok">Fits</span></dd>
+<dt>Declared server size</dt><dd>2048 MB</dd>
+<dt>Sum of module limits</dt><dd>40 MB</dd>
+</dl>
+<p><meter min="0" max="2048" value="670" aria-label="Memory used as a share of the declared server size">32%</meter> 32% of the server</p>
+
+
+<form method="post" action="/setup/modules" class="stack">
+<input type="hidden" name="csrf" value="CSRF">
+<div class="table-wrap" role="region" aria-labelledby="cap-wm" tabindex="0">
+<table>
+<caption id="cap-wm" class="sr">Modules</caption>
+<thead><tr><th scope="col">Module</th><th scope="col">Licence</th><th scope="col">Declared RAM</th><th scope="col">Requires and provides</th><th scope="col">Enable</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row">Alt forms <span class="badge ok">Ready</span><span class="hint">alt module</span></th>
+<td></td>
+<td>10 MB</td>
+<td><ul><li><code>leads</code></li>
+</ul><p class="errtext">Would conflict on leads: web</p></td>
+<td><input type="checkbox" id="en-alt" name="enable" value="alt"> <label class="check" for="en-alt">Enable Alt forms</label>
+
+
+</td>
+</tr>
+<tr>
+<th scope="row">CRM <span class="badge warn">Experimental</span><span class="hint">crm module</span></th>
+<td>BUSL-1.1 <span class="badge warn">Source-available</span></td>
+<td>300 MB</td>
+<td><ul><li><code>leads</code> <span class="badge ok">provided</span> <span class="muted">web</span></li>
+</ul><ul><li><code>contacts</code></li>
+</ul></td>
+<td><input type="checkbox" id="en-crm" name="enable" value="crm"> <label class="check" for="en-crm">Enable CRM</label>
+<br><input type="checkbox" id="al-crm" name="ack" value="licence:crm"> <label class="check" for="al-crm">I accept the source-available licence of CRM</label>
+<br><input type="checkbox" id="ae-crm" name="ack" value="experimental:crm"> <label class="check" for="ae-crm">I understand CRM is experimental</label>
+</td>
+</tr>
+<tr>
+<th scope="row">Help desk <span class="badge err">Not deployable</span><span class="hint">desk module</span></th>
+<td></td>
+<td>250 MB</td>
+<td><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
+</ul><ul><li><code>tickets</code></li>
+</ul></td>
+<td><span class="muted">Not deployable yet</span></td>
+</tr>
+<tr>
+<th scope="row">&lt;script&gt;alert(1)&lt;/script&gt; <span class="badge ok">Ready</span><span class="hint">evil module</span></th>
+<td></td>
+<td>5 MB</td>
+<td></td>
+<td><input type="checkbox" id="en-evil" name="enable" value="evil"> <label class="check" for="en-evil">Enable &lt;script&gt;alert(1)&lt;/script&gt;</label>
+
+
+</td>
+</tr>
+<tr>
+<th scope="row">Planner <span class="badge warn">Experimental</span><span class="hint">plan module</span></th>
+<td></td>
+<td>10 MB</td>
+<td><ul><li><code>invoices</code> <span class="badge warn">not yet served</span></li>
+</ul><ul><li><code>invoices</code> <span class="badge warn">not yet served</span></li>
+</ul></td>
+<td><input type="checkbox" id="en-plan" name="enable" value="plan"> <label class="check" for="en-plan">Enable Planner</label>
+
+<br><input type="checkbox" id="ae-plan" name="ack" value="experimental:plan"> <label class="check" for="ae-plan">I understand Planner is experimental</label>
+</td>
+</tr>
+<tr>
+<th scope="row">Solo <span class="badge ok">Ready</span><span class="hint">solo module</span></th>
+<td></td>
+<td>10 MB</td>
+<td></td>
+<td><input type="checkbox" id="en-solo" name="enable" value="solo"> <label class="check" for="en-solo">Enable Solo</label>
+
+
+</td>
+</tr>
+<tr>
+<th scope="row">Web forms <span class="badge ok">Ready</span><span class="hint">web module</span></th>
+<td></td>
+<td>20 MB</td>
+<td><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
+</ul><ul><li><code>leads</code></li>
+</ul></td>
+<td><input type="checkbox" id="en-web" name="enable" value="web" checked> <label class="check" for="en-web">Enable Web forms</label>
+
+
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><button type="submit">Save</button></p>
+</form>
+
+
+
+<p class="actions">
+<a href="/setup/template">Previous step</a>
+<a href="/setup/email">Next step</a>
+</p>
+<form method="post" action="/setup/dismiss" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Close setup without finishing</button>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

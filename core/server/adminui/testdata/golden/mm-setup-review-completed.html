@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Review and apply - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+<li><a href="/access">Access</a></li>
+<li><a href="/catalogue">Catalogue</a></li>
+<li><a href="/status">Status</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Set up your company</h1>
+<p class="alert ok">Setup is finished.</p>
+<nav aria-label="Setup steps">
+<ol class="steps">
+<li><a href="/setup/company">Company</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/template">Template</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/modules">Modules</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/email">Email</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/dns">DNS</a></li>
+<li><a href="/setup/account">Your account</a> <span class="badge neutral">To do</span></li>
+<li><a href="/setup/review" aria-current="step">Review and apply</a></li>
+</ol>
+</nav>
+
+<h2>Review and apply</h2>
+
+
+
+<p class="muted">Nothing differs from the stored configuration. Applying only closes the wizard.</p>
+
+<p><a href="/runs/ID">See the apply progress</a></p>
+
+
+
+<p class="actions">
+<a href="/setup/account">Previous step</a>
+
+</p>
+
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

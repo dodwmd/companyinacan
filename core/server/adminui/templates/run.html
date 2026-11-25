@@ -1,0 +1,23 @@
+{{define "head"}}{{if .Data.Refresh}}<meta http-equiv="refresh" content="3">{{end}}{{end}}
+{{define "content"}}
+<p><a href="/catalogue">{{t "cg.back"}}</a></p>
+<h1>{{t "rn.title"}}</h1>
+<p><span class="badge {{.Data.StateClass}}">{{.Data.StateLabel}}</span> {{t "rn.started" .Data.Actor}} <time datetime="{{iso .Data.Started}}">{{ts .Data.Started}}</time>{{if .Data.Finished}}, {{t "rn.finished"}} <time datetime="{{iso .Data.Finished}}">{{ts .Data.Finished}}</time>{{end}}</p>
+{{if .Data.Running}}<p class="alert warn" role="status">{{t "rn.working"}} {{if .Data.Refresh}}{{t "rn.auto"}} <a href="/runs/{{.Data.ID}}?refresh=0">{{t "rn.pause"}}</a>{{else}}<a href="/runs/{{.Data.ID}}">{{t "rn.refresh"}}</a>{{end}}</p>{{end}}
+{{if .Data.Error}}<p class="alert err" role="alert"><strong>{{t "mod.last_error"}}:</strong> {{.Data.Error}}</p>{{end}}
+
+<section aria-labelledby="h-mods">
+<h2 id="h-mods">{{t "rn.modules"}}</h2>
+{{if .Data.Modules}}<div class="table-wrap" role="region" aria-labelledby="cap-run" tabindex="0">
+<table>
+<caption id="cap-run" class="sr">{{t "rn.modules"}}</caption>
+<thead><tr><th scope="col">{{t "mod.module"}}</th><th scope="col">{{t "ch.action"}}</th><th scope="col">{{t "mod.state"}}</th><th scope="col">{{t "mod.last_error"}}</th></tr></thead>
+<tbody>
+{{range .Data.Modules}}<tr><th scope="row"><code>{{.ID}}</code></th><td>{{.ActionLabel}}</td><td><span class="badge {{.StateClass}}">{{.StateLabel}}</span></td><td>{{.LastError}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "rn.no_modules"}}</p>{{end}}
+</section>
+<p><a href="/status">{{t "rn.to_status"}}</a></p>
+{{end}}

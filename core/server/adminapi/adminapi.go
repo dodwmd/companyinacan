@@ -15,6 +15,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
+	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
@@ -29,9 +30,11 @@ type Server struct {
 	Registry *registry.Registry
 	// Shared platform services (epic E11a, platform.go). When RBAC is nil no permission is
 	// enforced (single-admin behaviour of earlier versions); the other two may be nil in tests.
-	RBAC       *rbac.Service
-	Approvals  *approvals.Engine
-	Notify     *notify.Service
+	RBAC      *rbac.Service
+	Approvals *approvals.Engine
+	Notify    *notify.Service
+	// Mod is module management (epic E12b); nil answers 503 on its endpoints.
+	Mod        *modmgr.Service
 	Log        *slog.Logger
 	Secure     bool // set the Secure cookie attribute (false only for plain-HTTP local dev)
 	TrustProxy bool // take the client address from the ingress's X-Forwarded-For
@@ -50,7 +53,7 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
-	return append(s.coreRoutes(), s.platformRoutes()...)
+	return append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {

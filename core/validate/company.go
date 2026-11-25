@@ -30,6 +30,22 @@ func CompanyFile(file, modulesDir string) []problem.Problem {
 	if doc == nil {
 		return ps
 	}
+	return append(ps, CompanyDoc(doc, modulesDir)...)
+}
+
+// CompanyBytes validates company.yaml content that is not (yet) a file, such as an edit made in the
+// admin UI, with exactly the checks of CompanyFile.
+func CompanyBytes(name string, data []byte, modulesDir string) []problem.Problem {
+	doc, ps := config.LoadBytes(name, data)
+	if doc == nil {
+		return ps
+	}
+	return append(ps, CompanyDoc(doc, modulesDir)...)
+}
+
+// CompanyDoc validates a loaded company document (see CompanyFile).
+func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
+	var ps []problem.Problem
 	ps = append(ps, schema.Validate(schema.Company, doc)...)
 	c, err := config.DecodeCompany(doc)
 	if err != nil {

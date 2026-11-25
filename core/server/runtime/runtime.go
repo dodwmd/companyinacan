@@ -25,7 +25,9 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/events"
+	"github.com/dodwmd/companyinacan/core/server/kube"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
+	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/moduleapi"
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
@@ -62,6 +64,7 @@ type Config struct {
 	PostgresAdminURL   string        // CAN_POSTGRES_ADMIN_URL: admin connection used to create module databases
 	PostgresHost       string        // CAN_POSTGRES_HOST: Postgres Service as seen by modules
 	ShutdownTimeout    time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
+	PublicIPs          []string      // CAN_PUBLIC_IPS: the server's public addresses, listed in the setup wizard's DNS step
 
 	// OnListen is called once both listeners are bound (tests use it to learn ports).
 	OnListen func(admin, module net.Addr)
@@ -69,6 +72,9 @@ type Config struct {
 	Reviewer tokenreview.Reviewer
 	// ModuleInstaller overrides the installer (tests).
 	ModuleInstaller reconcile.ModuleInstaller
+	// CompanyStore overrides where the admin UI stores company.yaml (tests); by default the ConfigMap
+	// can-system/company with CAN_INSTALLER=kubernetes, otherwise the file CAN_COMPANY_FILE.
+	CompanyStore modmgr.CompanyStore
 }
 
 // DefaultMemLimitMB is the soft memory limit applied when GOMEMLIMIT and CAN_MEMLIMIT_MB are unset.
@@ -138,6 +144,14 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 	if c.TokenReview != "kubernetes" && c.TokenReview != "fake" {
 		return c, fmt.Errorf("CAN_TOKEN_REVIEW: %q must be kubernetes or fake", c.TokenReview)
+	}
+	for _, ip := range strings.Split(getenv("CAN_PUBLIC_IPS"), ",") {
+		if ip = strings.TrimSpace(ip); ip != "" {
+			if net.ParseIP(ip) == nil {
+				return c, fmt.Errorf("CAN_PUBLIC_IPS: %q is not an IP address", ip)
+			}
+			c.PublicIPs = append(c.PublicIPs, ip)
+		}
 	}
 	if c.AdminAddr == c.ModuleAddr {
 		return c, errors.New("CAN_ADMIN_ADDR and CAN_MODULE_ADDR must differ: the admin and module APIs are separate listeners")
@@ -259,8 +273,20 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			return errors.New("CAN_NODE_IP is required with CAN_INSTALLER=kubernetes")
 		}
 		rec := newReconciler(db, reg, al, inst)
+		svc, cs, run, merr := cfg.moduleManagement(db, al, rec, log)
+		if merr != nil {
+			stopWork()
+			return fmt.Errorf("module management: %w", merr)
+		}
+		uiSrv.Mod, adminSrv.Mod = svc, svc
+		if rerr := svc.Recover(workCtx); rerr != nil {
+			log.Error("could not close interrupted applies", "error", rerr)
+		}
 		wg.Add(1)
-		go func() { defer wg.Done(); reconcileLoop(workCtx, cfg, rec, log) }()
+		go func() {
+			defer wg.Done()
+			loopEvery(workCtx, cfg, log, func(ctx context.Context) error { return reconcileStored(ctx, cfg, cs, run, svc, log) })
+		}()
 	}
 	wg.Add(1)
 	go func() { defer wg.Done(); platformTimers(workCtx, eng, ntf, log) }()
@@ -290,6 +316,47 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	stopWork()
 	wg.Wait()
 	return runErr
+}
+
+// moduleManagement builds the module-management service (admin UI catalogue, changes, wizard,
+// status) and the company store and runner the periodic reconcile shares with it.
+func (c Config) moduleManagement(db *store.DB, al *audit.Log, rec *reconcile.Reconciler, log *slog.Logger) (*modmgr.Service, modmgr.CompanyStore, *modmgr.Runner, error) {
+	run := modmgr.NewRunner(rec)
+	svc := &modmgr.Service{DB: db, Audit: al, ModulesDir: c.ModulesDir, Runner: run, Disk: modmgr.DirDisk{Name: "can-core data", Path: dirOf(c.DBPath)}}
+	if len(c.PublicIPs) > 0 {
+		var v4, v6 []string
+		for _, ip := range c.PublicIPs {
+			if p := net.ParseIP(ip); p != nil && p.To4() != nil {
+				v4 = append(v4, ip)
+			} else {
+				v6 = append(v6, ip)
+			}
+		}
+		svc.Net = modmgr.StaticNet{V4: v4, V6: v6}
+	}
+	var cs modmgr.CompanyStore = &modmgr.FileStore{Path: c.CompanyFile}
+	if c.CompanyStore != nil {
+		cs = c.CompanyStore
+	} else if c.Installer == "kubernetes" && c.ModuleInstaller == nil {
+		api, err := kube.NewInCluster(c.KubeAPI, c.SAToken, c.SACA)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		cs = &modmgr.KubeStore{API: api}
+		svc.Secrets = modmgr.KubeSecrets{API: api}
+	}
+	svc.Company = cs
+	if svc.Secrets == nil {
+		log.Warn("module management: no Secret writer in this mode; the setup wizard cannot store email relay credentials")
+	}
+	return svc, cs, run, nil
+}
+
+func dirOf(p string) string {
+	if i := strings.LastIndex(p, "/"); i > 0 {
+		return p[:i]
+	}
+	return "."
 }
 
 // housekeeping prunes expired sessions and old finished outbox rows (30-day TTL, SPEC §3.7).

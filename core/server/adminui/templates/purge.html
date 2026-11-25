@@ -1,0 +1,22 @@
+{{define "content"}}
+<p><a href="/catalogue">{{t "cg.back"}}</a></p>
+<h1>{{t "pg.title"}}: {{.Data.Name}}</h1>
+<p class="alert err" role="alert">{{t "pg.warning" .Data.ID}}</p>
+<p>{{t "pg.destroys"}}</p>
+<ul>
+<li>{{t "pg.d_namespace" .Data.ID}}</li>
+<li>{{t "pg.d_pvc"}}</li>
+<li>{{t "pg.d_secrets"}}</li>
+<li>{{t "pg.d_database"}}</li>
+</ul>
+<p>{{t "pg.backup_first"}}</p>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+{{if .Data.HasPurger}}<form method="post" action="/catalogue/{{.Data.ID}}/purge" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="pg-confirm">{{t "pg.type" .Data.Expect}}</label>
+<input id="pg-confirm" name="confirm" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></p>
+<p><label for="pg-pw">{{t "settings.current"}}</label>
+<input id="pg-pw" name="password" type="password" autocomplete="current-password" required></p>
+<p><button type="submit">{{t "pg.submit"}}</button></p>
+</form>{{else}}<p class="alert warn">{{t "pg.unavailable"}}</p>{{end}}
+{{end}}

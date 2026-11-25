@@ -1,0 +1,53 @@
+{{define "content"}}
+<p><a href="/catalogue">{{t "cg.back"}}</a></p>
+<h1>{{.Data.Row.Name}}</h1>
+<p><span class="badge {{.Data.Row.StatusClass}}">{{.Data.Row.StatusLabel}}</span>{{if .Data.Row.RecordedLabel}} <span class="badge {{.Data.Row.RecordedClass}}">{{.Data.Row.RecordedLabel}}</span>{{end}}{{if .Data.Row.SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</p>
+{{if .Data.Row.Description}}<p>{{.Data.Row.Description}}</p>{{end}}
+{{if .Data.Row.SourceAvailable}}<p class="alert warn">{{t "mod.source_available_note"}}</p>{{end}}
+{{if .Data.Row.Invalid}}<p class="alert err" role="alert">{{t "cg.invalid" .Data.Row.Invalid}}</p>{{end}}
+
+<section aria-labelledby="h-sum">
+<h2 id="h-sum">{{t "mod.summary"}}</h2>
+<dl>
+<dt>{{t "mod.id"}}</dt><dd><code>{{.Data.Row.ID}}</code></dd>
+<dt>{{t "mod.version"}}</dt><dd>{{.Data.Row.Version}}</dd>
+<dt>{{t "mod.licence"}}</dt><dd>{{.Data.Row.Licence}}</dd>
+<dt>{{t "mod.ram"}}</dt><dd>{{t "mod.mb" .Data.Row.RAMMB}} <span class="muted">({{t "mod.limit"}} {{t "mod.mb" .Data.Row.LimitMB}})</span></dd>
+<dt>{{t "mod.disk"}}</dt><dd>{{t "mod.mb" .Data.Row.DiskMB}}</dd>
+</dl>
+</section>
+
+<section aria-labelledby="h-graph">
+<h2 id="h-graph">{{t "cg.graph"}}</h2>
+<h3>{{t "mod.requires"}}</h3>
+{{if .Data.Row.Requires}}<ul>{{template "needs" .Data.Row.Requires}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+<h3>{{t "mod.provides"}}</h3>
+{{if .Data.Row.Provides}}<ul>{{template "provides" .Data.Row.Provides}}</ul>{{else}}<p class="muted">{{t "mod.none"}}</p>{{end}}
+{{range .Data.Row.ConflictNote}}<p class="errtext">{{t "cg.conflicts_with" .}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-set">
+<h2 id="h-set">{{t "cg.settings"}}</h2>
+{{if .Data.SchemaNote}}<p class="alert warn">{{.Data.SchemaNote}}</p>{{end}}
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+{{if .Data.Fields}}{{if .Data.CanOperate}}<form method="post" action="/catalogue/{{.Data.Row.ID}}/settings" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{range $i, $f := .Data.Fields}}<p>
+{{if eq $f.Kind "bool"}}<input type="checkbox" id="f-{{$i}}" name="s.{{$f.Name}}" value="on"{{if $f.Checked}} checked{{end}}> <label class="check" for="f-{{$i}}">{{$f.Name}}</label>
+{{else if eq $f.Kind "enum"}}<label for="f-{{$i}}">{{$f.Name}}</label>
+<select id="f-{{$i}}" name="s.{{$f.Name}}">{{range $f.Options}}<option value="{{.}}"{{if eq . $f.Value}} selected{{end}}>{{.}}</option>{{end}}</select>
+{{else if eq $f.Kind "int"}}<label for="f-{{$i}}">{{$f.Name}}</label>
+<input type="number" id="f-{{$i}}" name="s.{{$f.Name}}" value="{{$f.Value}}"{{if $f.Min}} min="{{$f.Min}}"{{end}}{{if $f.Max}} max="{{$f.Max}}"{{end}}{{if $f.Required}} required{{end}}>
+{{else}}<label for="f-{{$i}}">{{$f.Name}}</label>
+<input type="text" id="f-{{$i}}" name="s.{{$f.Name}}" value="{{$f.Value}}"{{if $f.MaxLen}} maxlength="{{$f.MaxLen}}"{{end}}{{if $f.Required}} required{{end}} autocomplete="off">
+{{if eq $f.Kind "secret-ref"}}<span class="hint">{{t "cg.secret_ref_hint"}}</span>{{end}}
+{{end}}{{if $f.Description}}<span class="hint">{{$f.Description}}</span>{{end}}
+{{if $f.ErrLabel}}<span class="errtext" role="alert">{{$f.ErrLabel}}</span>{{end}}</p>
+{{end}}
+{{if .Data.Unsupported}}<p class="hint">{{t "cg.unsupported"}} {{range $i, $u := .Data.Unsupported}}{{if $i}}, {{end}}<code>{{$u}}</code>{{end}}</p>{{end}}
+<p><button type="submit">{{t "cg.settings_preview"}}</button></p>
+</form>{{else}}<p class="hint">{{t "cg.read_only"}}</p>{{end}}
+{{else if .Data.HasSchema}}<p class="muted">{{t "cg.no_settings"}}</p>{{else}}<p class="muted">{{t "cg.no_schema"}}</p>{{end}}
+</section>
+{{if .Data.CanPurge}}<p><a href="/catalogue/{{.Data.Row.ID}}/purge">{{t "cg.purge_link"}}</a></p>{{end}}
+{{end}}
