@@ -1,7 +1,7 @@
 # Notifications (can-core)
 
 A per-person inbox plus optional email and team webhook channels. Status: implemented and tested
-offline (epic E11a). No email provider exists yet, see "Gaps". Spec: `specs/015-approvals-notifications/`.
+offline (epic E11a). Email goes through the `email.send` outbox of [email.md](email.md) (E03d). Spec: `specs/015-approvals-notifications/`.
 
 ## What people get
 
@@ -48,7 +48,9 @@ id, so a redelivered event cannot notify twice.
 
 ## Channels
 
-- Email: the `Mailer` interface (the platform's `email.send`). Templates are project-owned; values are
+- Email: the `Mailer` interface, wired to the platform's `email.send` outbox ([email.md](email.md)): plain text
+  only is sent. A delivery logged as `sent` means "handed to the outbox"; what the relay did is in Admin UI,
+  Email. Templates are project-owned; values are
   escaped in HTML, stripped of control characters in the subject and text.
 - Webhook (Slack-style `{"text": ...}`): named channels in company.yaml, https only, no redirects,
   errors never contain the URL, and the connection is refused at dial time for private, loopback,
@@ -80,8 +82,9 @@ title or body). Notifications are pruned after 180 days.
 
 ## Gaps
 
-- No `email.send` provider: the wired mailer fails every send visibly (log shows `failed`, the inbox
-  still works). Sends run in the request that caused them with a 10 s timeout.
+- Without a configured relay every email send fails visibly (the log shows `failed`, the inbox
+  still works). Queuing is local, so sends no longer wait for the relay; the per-recipient hourly limit
+  counts messages handed to the outbox.
 - Push is Web Push only (no FCM or UnifiedPush native channel; that is the native app's job, if it is
   ever built).
 - The delivery log has no UI page, only the API.

@@ -43,6 +43,7 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://jobs.localhost:8080> | recruiting web UI (sign in with a jobs access token, [recruiting-ui.md](recruiting-ui.md)); public careers pages at `/careers`; API under `/v1` (bearer token) |
 | <http://finance.localhost:8080> | finance web UI (sign in with a finance token, see `docs/finance-ui.md`) and API (`/v1/...`, bearer token) |
 | <http://forms.localhost:8080> | leads API of the forms gateway (`/v1/leads`, bearer token) |
+| <http://mail.localhost:8080/messages> | the mail the stack "sent": a development-only SMTP sink that delivers nothing ([email.md](email.md)) |
 | (not in the stack) | the `board` and `entity` modules (`cmd/can-board`) are not part of this compose stack yet; see `docs/board.md` |
 | <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) |
 | <http://files.localhost:8080> | files API (`/v1/...`, bearer token) and the public share-link route `/s/{token}`; no virus scanner runs here, so `scanner.required` is off and files are stored labelled `skipped` ([files.md](files.md)) |
@@ -54,7 +55,7 @@ paste-a-token sign-in above (`ui.token_login` stays `true`).
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
 resolvers, older macOS tooling), use `curl --resolve admin.localhost:8080:127.0.0.1 ...`, add the names to
 `/etc/hosts` (`127.0.0.1 admin.localhost work.localhost people.localhost jobs.localhost finance.localhost
-forms.localhost equity.localhost files.localhost`), or use a resolver such as dnsmasq with `address=/localhost/127.0.0.1`.
+forms.localhost equity.localhost files.localhost mail.localhost`), or use a resolver such as dnsmasq with `address=/localhost/127.0.0.1`.
 
 ### Dev credentials (all fake, all public)
 
@@ -169,14 +170,15 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
     [#43](https://github.com/dodwmd/companyinacan/issues/43));
   - the admin UI shows no installed modules and its leads view says leads are not available (no `leads`
     provider is registered, no leads token file is configured);
-  - forms does not send email (`email.url` unset) and posts no webhook; work, people, jobs and finance post no
+  - forms sends its lead notification through can-core's `email.send` with a fixed development identity, to an SMTP sink
+    that keeps the mail (http://mail.localhost:8080/messages, [email.md](email.md)); it posts no webhook, and work, people, jobs and finance post no
     events to can-core (`webhook.url` unset); can-core does not forward module events either;
   - people does not use can-core token introspection in the base stack (only its static service token works; the
     e2e overlay points it at a fake, see above); finance, jobs and
     people do not look each other up (hire hand-off from jobs to people, approvals through can-core, expense
     and timesheet links to work are stubs here: call the APIs directly);
   - finance uses the **fake** payment and e-sign providers; jobs has no virus scanner (`scanner_required:
-    false`) and no job-board connectors; no real captcha, email, Postgres or backup hooks.
+    false`) and no job-board connectors; no real captcha, email relay, Postgres or backup hooks.
 - No `can up`, DNS, ACME, provider provisioning or backups. `can-hooks` is not built.
 
 ### Finance invoice flow needs two subjects

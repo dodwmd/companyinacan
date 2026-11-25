@@ -54,6 +54,11 @@ http://files.localhost:8080 {
 	reverse_proxy files:8095
 }
 
+# DEV ONLY: the mail the stack "sent", kept by the in-repo SMTP sink (GET /messages).
+http://mail.localhost:8080 {
+	reverse_proxy smtpsink:8025
+}
+
 # The leads capability API of the forms gateway (bearer token), used by the smoke test.
 http://forms.localhost:8080 {
 	reverse_proxy forms:8081

@@ -1,0 +1,9 @@
+# DEV ONLY: the company.yaml of the Docker Compose stack, baked into the can-core image. can-core uses
+# it for email.send (the relay is the in-repo SMTP sink, which keeps mail instead of delivering it).
+schema: 1
+name: Acme Co
+domain: acme.example
+provider: { type: local }
+email:
+  # tls: none is accepted only because the compose stack sets CAN_SMTP_ALLOW_INSECURE=true.
+  relay: { host: smtpsink, port: 1025, tls: none, from: no-reply@acme.example }

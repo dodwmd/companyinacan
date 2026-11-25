@@ -258,4 +258,4 @@ Do not run this from CI. With a fresh Hetzner account:
 - **The five-minute budget is not verified on real hardware.** Only the in-cluster part is measured, on k3d.
 - The default bundle (forms) is enabled in the cluster only unless you pass `--write-bundle`, which rewrites
   `company.yaml` (comments may be reformatted); otherwise add `forms: {}` yourself.
-- Email: connect a relay after `make up`; it is outside the budget (SPEC.md section 3.4).
+- Email: set `email.relay` in `company.yaml` and pass `SMTP_CREDENTIALS=file` to `make up` (or add the Secret later), see [email.md](email.md); it is outside the budget (SPEC.md section 3.4). Never run against a real relay or cluster.
