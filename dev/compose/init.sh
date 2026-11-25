@@ -1,6 +1,6 @@
 #!/bin/sh
 # DEV ONLY. One-shot init for docker-compose.yml (runs as root in the `init` image).
-#  1. generates random dev keyrings for can-people and can-jobs into the dev-secrets volume
+#  1. generates random dev keyrings for can-people, can-jobs and can-equity into the dev-secrets volume
 #     (only if absent, so data stays readable across restarts);
 #  2. bootstraps the can-core admin account once and prints its TOTP secret.
 # Idempotent: safe to run on every `compose up`.
@@ -8,7 +8,7 @@ set -eu
 
 umask 077
 SECRETS=/secrets
-for svc in people jobs; do
+for svc in people jobs equity; do
   f="$SECRETS/$svc-keyring"
   if [ ! -s "$f" ]; then
     echo "init: generating dev keyring $f"

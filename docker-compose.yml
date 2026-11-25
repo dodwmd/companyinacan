@@ -155,12 +155,29 @@ services:
       retries: 5
     restart: unless-stopped
 
+  equity:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: equity, args: *build-args }
+    container_name: can-equity
+    env_file: [dev/compose/secrets/equity.env]
+    volumes:
+      - equity-data:/data
+      - dev-secrets:/secrets:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/can-equity", "healthcheck", "-addr", "127.0.0.1:8081"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   edge:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: edge, args: *build-args }
     container_name: can-edge
     ports:
       - "127.0.0.1:8080:8080"
-    depends_on: [site, forms, core, work, people, jobs, finance]
+    depends_on: [site, forms, core, work, people, jobs, finance, equity]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/_edge/healthz"]
       interval: 15s
@@ -213,3 +230,4 @@ volumes:
   jobs-data:
   finance-data:
   prometheus-data:
+  equity-data:

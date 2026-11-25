@@ -1,0 +1,86 @@
+name: e2e
+
+# Not a required check (continue-on-error, and absent from scripts/gh-protect-main.sh). Builds the docker
+# compose stack of this checkout with the real Docker Compose v2 that ships on ubuntu-latest, runs the
+# end-to-end suite (test/e2e, build tag e2e) through the Caddy edge, and uploads the service logs when
+# anything fails. It is also the place where docker-compose.yml is verified against real Compose v2
+# (healthchecks, depends_on conditions); locally it was only run with podman-compose.
+#
+# What it covers: site and lead capture, admin login with TOTP, work, people, jobs, finance and equity
+# flows, cross-module negative checks, and data surviving `compose down` / `up`. What it cannot cover (no
+# Kubernetes in compose): personal access tokens verified by modules, NetworkPolicy, TLS, backups. See
+# docs/getting-started.md and specs/032-e2e-docs. Kept out of ci.yml so it cannot affect the required job names.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "docker-compose.yml"
+      - "dev/**"
+      - "core/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - "test/e2e/**"
+      - "Makefile"
+      - ".github/workflows/e2e.yml"
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Tool versions
+        run: |
+          docker version
+          docker compose version
+      - name: Build and start the stack
+        # The same command `make e2e-up` prints for local use: project can-e2e, the e2e overlay.
+        run: make e2e-up
+      - name: Container state
+        run: docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml ps -a
+      - name: End-to-end suite
+        run: make e2e
+      - name: Collect logs
+        if: failure()
+        run: |
+          mkdir -p e2e-logs
+          docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml ps -a > e2e-logs/ps.txt 2>&1 || true
+          for s in init site forms core work people jobs finance equity introstub edge; do
+            docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml logs --no-color --timestamps "$s" > "e2e-logs/$s.log" 2>&1 || true
+          done
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-logs
+          path: e2e-logs
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### e2e (advisory)"
+            echo "Builds docker-compose.yml with the real Docker Compose v2 and runs test/e2e through the Caddy edge. The step results above, not this text, say what passed."
+            echo "Not covered: Kubernetes (TokenReview, NetworkPolicy, admission), TLS, backups, personal access tokens verified by modules. Identities for people and equity come from a fake introspection service (dev/compose/introstub)."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Tear down
+        if: always()
+        run: make e2e-down

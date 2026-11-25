@@ -1,0 +1,37 @@
+# E2E ONLY overlay for docker-compose.yml:  docker compose -f docker-compose.yml -f dev/compose/e2e.yml up
+# (make e2e-up does this). Adds the introstub service (fake token introspection) and points people
+# and equity at it, because can-core cannot verify module tokens in compose (no Kubernetes
+# TokenReview), so without it those two services only accept their single static token.
+services:
+  introstub:
+    build:
+      context: .
+      dockerfile: dev/compose/Dockerfile
+      target: introstub
+      args:
+        GO_IMAGE: ${GO_IMAGE:-docker.io/library/golang:1.27}
+        RUNTIME_IMAGE: ${RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+        EDGE_IMAGE: ${EDGE_IMAGE:-docker.io/library/caddy:2.8-alpine}
+    container_name: can-introstub
+    healthcheck:
+      test: ["CMD", "/introstub", "-healthcheck", "127.0.0.1:8099"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  people:
+    command: ["serve", "-config", "/etc/can-people/people.e2e.yaml"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      introstub:
+        condition: service_healthy
+
+  equity:
+    command: ["serve", "-config", "/etc/can-equity/equity.e2e.yaml"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      introstub:
+        condition: service_healthy
