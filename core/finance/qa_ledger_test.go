@@ -641,3 +641,61 @@ func TestQA2OnlyCamt053StatementsAreRead(t *testing.T) {
 		t.Errorf("camt.053: %v", err)
 	}
 }
+
+// QA round 2, 6: one AcctSvcrRef for a payment and its fee, in one file or two.
+func TestQA2ReusedServicerReference(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	entry := func(amt, ind, info string) string {
+		return `<Ntry><Amt Ccy="USD">` + amt + `</Amt><CdtDtInd>` + ind + `</CdtDtInd><BookgDt><Dt>2026-06-01</Dt></BookgDt><AcctSvcrRef>OP1</AcctSvcrRef><AddtlNtryInf>` + info + `</AddtlNtryInf></Ntry>`
+	}
+	send := func(entries ...string) StatementResult {
+		var r StatementResult
+		code := e.do(admin, "POST", "/v1/bank/accounts/"+id(b.ID)+"/statements?format=camt053", "<Document><BkToCstmrStmt><Stmt>"+strings.Join(entries, "")+"</Stmt></BkToCstmrStmt></Document>", &r)
+		if code != 201 && code != 200 {
+			t.Fatalf("import = %d", code)
+		}
+		return r
+	}
+	if r := send(entry("100.00", "CRDT", "payment")); r.NewCount != 1 {
+		t.Fatalf("payment %+v", r)
+	}
+	if r := send(entry("1.50", "DBIT", "fee")); r.NewCount != 1 {
+		t.Fatalf("the fee in another file %+v", r)
+	}
+	if r := send(entry("100.00", "CRDT", "payment, reworded"), entry("1.50", "DBIT", "fee")); r.NewCount != 0 || len(r.Skipped) != 2 {
+		t.Errorf("cumulative %+v", r)
+	}
+	if r := send(entry("200.00", "CRDT", "p2"), entry("2.00", "DBIT", "f2"), entry("2.00", "DBIT", "f2 again")); r.NewCount != 3 {
+		t.Errorf("one file, shared reference %+v", r)
+	}
+}
+
+// QA round 2, 6: a statement with no transactions is kept until its own age passes retention.
+func TestQA2RecentEmptyStatementSurvivesThePurge(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	e.importCSV(admin, b.ID, false, "2026-06-10,10.00,coffee\n")
+	e.importCSV(admin, b.ID, false, "2026-06-10,10.00,coffee\n\n") // another file, nothing new
+	statements := func() int {
+		var n int
+		_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM bank_statements`).Scan(&n)
+		return n
+	}
+	purge := func() {
+		if _, err := e.app.Purge(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	purge()
+	if n := statements(); n != 2 {
+		t.Fatalf("%d statements after a purge the same day, want 2", n)
+	}
+	e.advance(8 * 365 * 24 * time.Hour)
+	purge()
+	if n := statements(); n != 1 { // the one whose unmatched row is kept
+		t.Errorf("%d statements after the retention period, want 1", n)
+	}
+}

@@ -62,7 +62,7 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			if err := exec(&rep.BankTransactions, `DELETE FROM bank_transactions WHERE status <> 'unmatched' AND booked_on < ?`, cutoff); err != nil {
 				return err
 			}
-			if err := exec(&ignore, `DELETE FROM bank_statements WHERE NOT EXISTS (SELECT 1 FROM bank_transactions t WHERE t.statement_id = bank_statements.id)`); err != nil {
+			if err := exec(&ignore, `DELETE FROM bank_statements WHERE date(imported_at, 'unixepoch') < ? AND NOT EXISTS (SELECT 1 FROM bank_transactions t WHERE t.statement_id = bank_statements.id)`, cutoff); err != nil {
 				return err
 			}
 			if err := exec(&ignore, `DELETE FROM bank_reconciliations WHERE period < ?`, cutoff[:7]); err != nil {

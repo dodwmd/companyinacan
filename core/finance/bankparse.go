@@ -76,6 +76,7 @@ func setOnce(dst *string, v, what string) error {
 // ParsedTxn is one transaction read from a statement.
 type ParsedTxn struct {
 	Key          string // the bank's transaction id; empty means "derive it from the row"
+	ServicerRef  string // CAMT AcctSvcrRef: part of the key, not an id on its own (servicerKeys)
 	Date         string // YYYY-MM-DD
 	AmountMinor  int64  // signed, money in positive
 	Currency     string
@@ -240,7 +241,10 @@ func finishStatement(ps *ParsedStatement, accountCurrency string) error {
 		if t.Key, err = cleanText(t.Key, 200); err != nil {
 			return err
 		}
-		if strings.HasPrefix(t.Key, derivedKeyPrefix) {
+		if t.ServicerRef, err = cleanText(t.ServicerRef, 200); err != nil {
+			return err
+		}
+		if strings.HasPrefix(t.Key, derivedKeyPrefix) || strings.HasPrefix(t.Key, servicerKeyPrefix) {
 			t.Key = "id:" + t.Key
 		}
 		if t.Key != "" {
@@ -782,10 +786,9 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 				if !*credit {
 					cur.AmountMinor = -cur.AmountMinor
 				}
-				// Only the account servicer's reference identifies an entry across files. NtryRef is unique at
-				// best inside one message (banks number entries 1, 2, 3 in every statement), so without
-				// AcctSvcrRef the key is a hash of the content, booking date included (deriveKeys).
-				cur.Key = acctSvcrRef
+				// NtryRef is unique at best inside one message (banks number entries 1, 2, 3 in every
+				// statement) and is not used. AcctSvcrRef is kept, but see servicerKeys.
+				cur.ServicerRef = acctSvcrRef
 				ps.Txns = append(ps.Txns, *cur)
 				cur = nil
 			}
@@ -806,6 +809,26 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 	if err := finishStatement(ps, currency); err != nil {
 		return nil, err
 	}
+	servicerKeys(ps.Txns)
 	deriveKeys(ps.Txns)
 	return ps, nil
+}
+
+// servicerKeys keys the entries that carry the account servicer's reference. Banks reuse one reference for the
+// entries of one operation (a payment and its fee, in one file or in different ones), so the reference alone is
+// not an identity: the key is the reference with the booking date, signed amount and currency, plus the
+// occurrence number among entries of the file that share all four. Descriptive text is left out, so the same
+// entry worded differently in a later statement is still recognised.
+func servicerKeys(txns []ParsedTxn) {
+	count := map[string]int{}
+	for i := range txns {
+		t := &txns[i]
+		if t.ServicerRef == "" {
+			continue
+		}
+		base := strings.Join([]string{t.ServicerRef, t.Date, fmt.Sprint(t.AmountMinor), t.Currency}, "\x1f")
+		count[base]++
+		sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x1e%d", base, count[base])))
+		t.Key = servicerKeyPrefix + hex.EncodeToString(sum[:16])
+	}
 }

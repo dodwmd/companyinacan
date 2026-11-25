@@ -356,7 +356,7 @@ const camtSample = `<?xml version="1.0" encoding="UTF-8"?>
 func TestCAMT053ParserRefusesXXEAndBillionLaughs(t *testing.T) {
 	ps, err := ParseCAMT053(strings.NewReader(camtSample), "USD")
 	if err != nil || len(ps.Txns) != 2 || ps.AccountID != "DE89370400440532013000" || ps.Txns[0].AmountMinor != 15000 || ps.Txns[1].AmountMinor != -1250 ||
-		ps.Txns[0].Key != "S1" || ps.Txns[0].Counterparty != "Pay Co" || !strings.Contains(ps.Txns[0].Reference, "INV-00001") {
+		!strings.HasPrefix(ps.Txns[0].Key, servicerKeyPrefix) || ps.Txns[0].Counterparty != "Pay Co" || !strings.Contains(ps.Txns[0].Reference, "INV-00001") {
 		t.Fatalf("%+v %v", ps, err)
 	}
 	xxe := `<?xml version="1.0"?><!DOCTYPE d [<!ENTITY x SYSTEM "file:///etc/passwd">]>` + strings.Replace(camtSample, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>", "", 1)

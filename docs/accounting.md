@@ -117,8 +117,9 @@ over 64 bytes.
   notifications, and entries outside a `Stmt`, are refused.
 - **MT940** is not supported.
 
-**Deduplication.** A transaction is unique per bank account by the bank's own id (`FITID`, `AcctSvcrRef`, the CSV
-`id_col`; CAMT `NtryRef` is not used because banks restart it in every message) or, when the file has none, by a hash of its content plus its occurrence number in the file. The same
+**Deduplication.** A transaction is unique per bank account by the bank's own id (OFX `FITID`, the CSV `id_col`; for CAMT,
+`AcctSvcrRef` together with booking date, signed amount and currency, because banks reuse one reference for a payment and
+its fee; `NtryRef` is not used because banks restart it in every message) or, when the file has none, by a hash of its content plus its occurrence number in the file. The same
 file twice is recognised by its SHA-256 and changes nothing; an overlapping file adds only the new transactions.
 The response lists the skipped rows (`skipped`: row, date, amount, `already_imported` or `id_reused` for a bank id that
 arrived with other details, and whether it is `forceable`). Without a bank id, two different payments with the same date,
@@ -178,7 +179,7 @@ separate decision for you and your accountant). A bank transaction keeps the cou
 reported: erasure does not remove them, and the erasure report lists the rows matched to the party's invoices under
 `finance-bank` with the date until which they are kept. Unmatched and ignored rows naming that person cannot be attributed
 automatically; review them if you answer a data subject request. Data classes in the manifest: `finance-ledger` (7 years, standard) and
-`finance-bank` (7 years, sensitive). Decided bank transactions (matched or ignored) are purged with the invoices once their booking date is past
+`finance-bank` (7 years, sensitive). A statement record with no transactions left goes once its import date is past the same period. Decided bank transactions (matched or ignored) are purged with the invoices once their booking date is past
 `retention_years`; unmatched transactions are open work and are never purged. Export batches and the close history are kept. The audit log follows
 `audit_retention_days`. This is not legal advice: set `retention_years` for your jurisdiction.
 
