@@ -11,6 +11,10 @@ import (
 	"github.com/dodwmd/companyinacan/core/provider"
 )
 
+// BackupInstallVersion is the generation of what the backup step installs on the host (script,
+// units, tools). Raise it whenever an existing install must be redone by the next `can up`.
+const BackupInstallVersion = 2
+
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // backup installs the backup script, unit and timer on the server (the same files `can backup
@@ -31,7 +35,8 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		return false, "", err
 	}
 	s := b.Settings
-	if st.Launch != nil && st.Launch.BackupInstalled {
+	shown := st.Launch != nil && st.Launch.KitShown
+	if st.Launch != nil && st.Launch.BackupInstalled && st.Launch.BackupVersion >= BackupInstallVersion {
 		if st.Launch.KitShown {
 			return true, "timer installed and the kit was already shown", nil
 		}
@@ -63,7 +68,11 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
+	// Redoing an older install must not hand out the (already shown) kit a second time.
 	r.noteKit(kit)
+	if shown {
+		r.res.Kit = nil
+	}
 	s.Repository = kit.Restic.Repository
 	plan, err := backup.BuildPlan(r.o.Company, b.Mods, s)
 	if err != nil {
@@ -107,7 +116,10 @@ echo CAN_BACKUP_OK
 	if err != nil || !strings.Contains(out, "CAN_BACKUP_OK") {
 		return false, "", fmt.Errorf("enable the backup timer: %v: %s", err, strings.TrimSpace(out))
 	}
-	if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).BackupInstalled = true; return nil }); err != nil {
+	if err := r.d.Store.Mutate(func(s *provider.State) error {
+		launchOf(s).BackupInstalled, launchOf(s).BackupVersion = true, BackupInstallVersion
+		return nil
+	}); err != nil {
 		return false, "", err
 	}
 	return false, "", nil

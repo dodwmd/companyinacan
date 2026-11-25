@@ -138,7 +138,7 @@ var hints = map[string]string{
 	PhaseAdmin:   "kubectl -n can-system logs deploy/can-core; the admin is created with `can-core admin bootstrap` inside the pod",
 	PhaseSite:    "kubectl -n can-system describe pod -l app.kubernetes.io/name=site; kubectl -n can-system logs deploy/site -c extract",
 	PhaseRoutes:  "kubectl -n can-system logs deploy/can-core (can-core installs the forms module); kubectl -n mod-forms get pods",
-	PhaseBackup:  "install restic 0.17 or newer on the server (apt install restic), check the bucket endpoint and credentials; journalctl -u can-backup on the server",
+	PhaseBackup:  "check that the server can reach github.com (pinned restic download) and apt (sqlite3), and the bucket endpoint and credentials; journalctl -u can-backup on the server",
 	PhaseReady:   "kubectl -n can-system get pods; kubectl -n mod-forms get pods",
 }
 
@@ -429,7 +429,31 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 	return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
 }
 
+// hostDumpsDir makes the host directory behind the can-dumps volume belong to can-core's user.
+// It runs on every `can up`, with or without backups: can-core writes its dumps there anyway,
+// and servers bootstrapped by an older `can` have it root-owned.
+func (r *runner) hostDumpsDir(ctx context.Context) error {
+	if r.d.Host == nil {
+		return nil
+	}
+	dir := backup.DefaultSettings().DumpsDir
+	if _, err := r.d.Host.Run(ctx, "install -d -o 65532 -g 65532 -m 0700 "+shq(dir)+"\n"); err != nil {
+		return fmt.Errorf("prepare %s on the server: %w", dir, err)
+	}
+	st, err := r.d.Store.Load()
+	if err != nil {
+		return err
+	}
+	if r.o.Backup == nil && st.Launch != nil && st.Launch.BackupInstalled && st.Launch.BackupVersion < BackupInstallVersion {
+		r.res.Warnings = append(r.res.Warnings, "the backup script on the server was installed by an older version: run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file to update it")
+	}
+	return nil
+}
+
 func (r *runner) core(ctx context.Context, c CoreOptions) error {
+	if err := r.hostDumpsDir(ctx); err != nil {
+		return err
+	}
 	m, err := CoreManifests(c)
 	if err != nil {
 		return err

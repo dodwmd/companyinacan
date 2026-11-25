@@ -594,7 +594,7 @@ func TestBackupResumeRebuildsKitFromHostWhenNotShown(t *testing.T) {
 	d.Host = h
 	o.Backup = backupInstall(t, o)
 	_ = d.Store.Mutate(func(s *provider.State) error {
-		s.Launch = &provider.LaunchState{BackupInstalled: true}
+		s.Launch = &provider.LaunchState{BackupInstalled: true, BackupVersion: BackupInstallVersion}
 		return nil
 	})
 	res, err := Run(context.Background(), o, d)
