@@ -187,6 +187,7 @@ CREATE TABLE contracts (
     reminded_for     TEXT    NOT NULL DEFAULT '',        -- the renewal date a reminder was already raised for
     esign_provider   TEXT    NOT NULL DEFAULT '',
     esign_id         TEXT    NOT NULL DEFAULT '',
+    sent_once        INTEGER NOT NULL DEFAULT 0,          -- ever sent: its versions are a legal record even if a new draft version follows
     signed_at        INTEGER,
     signed_sha256    TEXT    NOT NULL DEFAULT '',
     terminated_at    INTEGER,

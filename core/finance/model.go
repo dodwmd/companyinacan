@@ -9,8 +9,10 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -101,7 +103,18 @@ type scanner interface{ Scan(...any) error }
 
 // canonSubject folds a subject for comparison: Unicode compatibility normalisation, trimmed,
 // case-folded, so "Alice", "alice" and "ALICE " are one person for separation of duties.
-func canonSubject(s string) string { return strings.ToLower(strings.TrimSpace(norm.NFKC.String(s))) }
+func canonSubject(s string) string {
+	s = norm.NFKC.String(s)
+	// Invisible format characters (zero-width space and joiners, bidi marks, soft hyphen) make
+	// two subjects look identical to a person and different to a comparison.
+	s = strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+	return cases.Fold().String(strings.TrimSpace(s))
+}
 
 func sameSubject(a, b string) bool { return canonSubject(a) == canonSubject(b) }
 

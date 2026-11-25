@@ -198,14 +198,16 @@ names or addresses.
 
 **Legal retention overrides erasure** for issued invoices. `POST /v1/parties/{id}/erase` (admin):
 
-* deletes the party's drafts (invoices, **draft contracts and their versions**, purchase orders) and
-  recurring schedules;
+* deletes the party's drafts (invoices, **contracts that were never sent, with their versions**,
+  purchase orders), recurring schedules and the cached idempotent responses that name the party. A
+  contract that was sent and then given a new version keeps the versions it was sent with;
 * pseudonymises the party record: the name becomes `Erased party #<id>`; contact name, email,
   phone, address, tax id and notes are emptied; the party can no longer be used;
 * **keeps** issued invoices and credit notes, their payments and the frozen snapshot of name,
   address and tax id they were issued with, and sent or signed contracts and approved purchase
   orders, until the retention period ends;
-* returns a report listing what was erased, what was kept, how many records and until when
+* returns a report listing what was erased, what was kept (unpaid invoices separately as
+  `finance-invoice-unpaid`, since their retention clock starts when they are settled), how many records and until when
   (`retained[].until`), so the data subject can be told;
 * truncates the SQLite write-ahead log so the erased values do not linger in it
   (`secure_delete` already zeroes freed pages).

@@ -780,6 +780,11 @@ func (s *Store) ApproveInvoice(ctx context.Context, a *Principal, id int64, ifMa
 		if err := s.authorizeApproval(ctx, a, ApprovalRequest{Kind: "invoice"}, v.CreatedBy, v.updatedBy); err != nil {
 			return err
 		}
+		if v.Kind == KindInvoice {
+			if err := validInvoiceSeries(v.Series); err != nil {
+				return err
+			}
+		}
 		party, err := s.loadPartyRow(ctx, tx, nil, v.PartyID)
 		if err != nil {
 			return err

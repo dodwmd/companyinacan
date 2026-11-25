@@ -335,16 +335,17 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 		if _, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 1, audit_before = 0`); err != nil {
 			return err
 		}
-		for _, q := range []string{`DELETE FROM contract_versions WHERE contract_id IN (SELECT id FROM contracts WHERE party_id = ? AND status = 'draft')`, `DELETE FROM contracts WHERE party_id = ? AND status = 'draft'`} {
-			res, err := tx.ExecContext(ctx, q, id)
-			if err != nil {
-				return err
-			}
-			if strings.Contains(q, "FROM contracts") {
-				n, _ := res.RowsAffected()
-				rep.DeletedDrafts += int(n)
-			}
+		// Only contracts that were never sent: a contract that was sent and then given a new version is
+		// a draft again, but the versions it was sent with are a legal record and stay (sent_once).
+		if _, err := tx.ExecContext(ctx, `DELETE FROM contract_versions WHERE contract_id IN (SELECT id FROM contracts WHERE party_id = ? AND status = 'draft' AND sent_once = 0)`, id); err != nil {
+			return err
 		}
+		res, err = tx.ExecContext(ctx, `DELETE FROM contracts WHERE party_id = ? AND status = 'draft' AND sent_once = 0`, id)
+		if err != nil {
+			return err
+		}
+		n, _ = res.RowsAffected()
+		rep.DeletedDrafts += int(n)
 		if _, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 0, audit_before = 0`); err != nil {
 			return err
 		}
@@ -356,6 +357,12 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 			n, _ := res.RowsAffected()
 			rep.DeletedDrafts += int(n)
 		}
+		// Cached idempotent responses hold copies of drafts (notes, party ids); drop the ones that
+		// name this party so a replay cannot resurrect what was just erased.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM idempotency WHERE response LIKE ? OR response LIKE ?`,
+			fmt.Sprintf(`%%"party_id":%d,%%`, id), fmt.Sprintf(`%%"vendor_id":%d,%%`, id)); err != nil {
+			return err
+		}
 		if !cur.Erased {
 			if _, err := tx.ExecContext(ctx, `UPDATE parties SET name = ?, contact_name = '', email = '', phone = '', address = '', tax_id = '', notes = '', erased_at = ?, version = version + 1, updated_at = ? WHERE id = ?`,
 				fmt.Sprintf("Erased party #%d", id), ts(s.now()), ts(s.now()), id); err != nil {
@@ -365,7 +372,15 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 		rep.ErasedFields = []string{"name", "contact_name", "email", "phone", "address", "tax_id", "notes"}
 		var cnt int
 		var last sql.NullString
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), MAX(issue_date) FROM invoices WHERE party_id = ? AND status <> 'draft'`, id).Scan(&cnt, &last); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM invoices WHERE party_id = ? AND kind = 'invoice' AND status IN ('approved', 'sent', 'partially_paid')`, id).Scan(&cnt); err != nil {
+			return err
+		}
+		if cnt > 0 {
+			rep.Retained = append(rep.Retained, Retained{Class: "finance-invoice-unpaid", Count: cnt, Until: "",
+				Reason: "unpaid invoices are never purged: the retention period starts when they are paid or voided"})
+		}
+		cnt, last = 0, sql.NullString{}
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), MAX(issue_date) FROM invoices WHERE party_id = ? AND status <> 'draft' AND NOT (kind = 'invoice' AND status IN ('approved', 'sent', 'partially_paid'))`, id).Scan(&cnt, &last); err != nil {
 			return err
 		}
 		if cnt > 0 {
@@ -373,7 +388,7 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 				Reason: "issued invoices and credit notes must be kept for the legal retention period; they keep the name, address and tax id they were issued with"})
 		}
 		cnt, last = 0, sql.NullString{}
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), MAX(COALESCE(end_date, start_date, date(created_at, 'unixepoch'))) FROM contracts WHERE party_id = ? AND status <> 'draft'`, id).Scan(&cnt, &last); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), MAX(COALESCE(end_date, start_date, date(created_at, 'unixepoch'))) FROM contracts WHERE party_id = ? AND (status <> 'draft' OR sent_once = 1)`, id).Scan(&cnt, &last); err != nil {
 			return err
 		}
 		if cnt > 0 {

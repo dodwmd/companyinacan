@@ -534,8 +534,7 @@ func (a *api) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 		// for a person to reconcile instead of dropping it.
 		var ie *InvalidError
 		if errors.As(err, &ie) || errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) {
-			if aerr := a.store.auditRead(r.Context(), &Principal{Subject: "provider:" + a.payments.Name()}, "payment.unmatched", n.EventID,
-				map[string]any{"invoice_id": n.InvoiceID, "amount_minor": n.AmountMinor, "currency": n.Currency, "reason": err.Error()}); aerr != nil {
+			if aerr := a.store.recordUnmatched(r.Context(), a.payments.Name(), n, err); aerr != nil {
 				a.fail(w, aerr)
 				return
 			}

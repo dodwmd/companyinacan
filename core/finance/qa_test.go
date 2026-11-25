@@ -173,7 +173,7 @@ func TestErasureRemovesDraftContractsAndReportsKeptRecords(t *testing.T) {
 	for _, r := range rep.Retained {
 		classes[r.Class] = r.Count
 	}
-	if classes["finance-contract"] != 1 || classes["finance-invoice"] != 1 || rep.DeletedDrafts < 1 {
+	if classes["finance-contract"] != 1 || classes["finance-invoice-unpaid"] != 1 || classes["finance-invoice"] != 0 || rep.DeletedDrafts != 1 {
 		t.Fatalf("report %+v", rep)
 	}
 	var n int
@@ -293,5 +293,99 @@ func TestDocumentTotalsAreSumsOfLines(t *testing.T) {
 	}
 	if inv.SubtotalMinor != gross || inv.DiscountMinor != disc || inv.TaxMinor != tax || inv.TotalMinor != total || inv.SubtotalMinor-inv.DiscountMinor+inv.TaxMinor != inv.TotalMinor {
 		t.Fatalf("totals %d/%d/%d/%d vs lines %d/%d/%d/%d", inv.SubtotalMinor, inv.DiscountMinor, inv.TaxMinor, inv.TotalMinor, gross, disc, tax, total)
+	}
+}
+
+// QA round 2 regressions.
+
+func TestErasureCountsAndKeepsEverSentContracts(t *testing.T) {
+	e := newEnv(t)
+	maker := e.token("maker", rw, nil, nil, false)
+	p := e.party(maker, "Gone Fake Person", "customer")
+	var never, resent Contract
+	e.must(201, maker, "POST", "/v1/contracts", obj{"party_id": p, "title": "Never sent", "body": "Plain text NEVER-SENT-MARKER."}, &never)
+	e.must(201, maker, "POST", "/v1/contracts", obj{"party_id": p, "title": "Resent", "body": "Plain text SENT-ONCE-MARKER."}, &resent)
+	e.must(200, maker, "POST", "/v1/contracts/"+id(resent.ID)+"/send", obj{"manual": true}, nil)
+	e.must(200, maker, "POST", "/v1/contracts/"+id(resent.ID)+"/versions", obj{"body": "Plain text, second version."}, &resent) // back to draft
+	if resent.Status != "draft" {
+		t.Fatalf("status %s", resent.Status)
+	}
+	var rep ErasureReport
+	e.must(200, adminTok, "POST", "/v1/parties/"+id(p)+"/erase", nil, &rep)
+	if rep.DeletedDrafts != 1 { // exactly the never-sent contract: versions are not counted as drafts
+		t.Fatalf("deleted drafts %d, want 1: %+v", rep.DeletedDrafts, rep)
+	}
+	e.must(404, maker, "GET", "/v1/contracts/"+id(never.ID), nil, nil)
+	var v1 ContractVersion
+	e.must(200, maker, "GET", "/v1/contracts/"+id(resent.ID)+"/versions/1", nil, &v1) // the version that was sent stays
+	if !strings.Contains(v1.Body, "SENT-ONCE-MARKER") {
+		t.Fatal("the sent version was erased")
+	}
+	if len(rep.Retained) != 1 || rep.Retained[0].Class != "finance-contract" || rep.Retained[0].Count != 1 {
+		t.Fatalf("retained %+v", rep.Retained)
+	}
+}
+
+func TestErasureDropsCachedIdempotentResponses(t *testing.T) {
+	e := newEnv(t)
+	maker := e.token("maker", rw, nil, nil, false)
+	p := e.party(maker, "Gone Fake Person", "customer")
+	other := e.party(maker, "Other Fake Person", "customer")
+	body := func(party int64, note string) obj {
+		return obj{"party_id": party, "notes": note, "lines": []obj{line("x", 1000, 100)}}
+	}
+	e.must(201, maker, "POST", "/v1/invoices", body(p, "CACHED-MARKER-QQ7"), nil, "Idempotency-Key", "erase-key-0001")
+	e.must(201, maker, "POST", "/v1/invoices", body(other, "other note"), nil, "Idempotency-Key", "other-key-0001")
+	e.must(200, adminTok, "POST", "/v1/parties/"+id(p)+"/erase", nil, nil)
+	for _, f := range []string{"f.db", "f.db-wal"} {
+		if b, err := os.ReadFile(e.dir + "/" + f); err == nil && strings.Contains(string(b), "CACHED-MARKER-QQ7") {
+			t.Errorf("%s still holds the cached response", f)
+		}
+	}
+	var n int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM idempotency`).Scan(&n)
+	if n < 1 { // the other party's key is untouched
+		t.Fatal("unrelated idempotency keys were dropped")
+	}
+}
+
+func TestUnmatchedPaymentRecordedOncePerEvent(t *testing.T) {
+	e := newEnv(t)
+	body := `{"id":"evt_same","type":"payment.succeeded","invoice_id":4242,"amount_minor":100,"currency":"USD"}`
+	for i := 0; i < 5; i++ {
+		e.must(200, "", "POST", "/v1/webhooks/payments", body, nil, "X-Fake-Signature", SignFake([]byte(provSec), e.now, []byte(body)))
+	}
+	var n int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action = 'payment.unmatched'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("%d audit rows after 5 deliveries, want 1", n)
+	}
+}
+
+func TestSubjectComparisonIgnoresInvisibleCharactersAndFoldsCase(t *testing.T) {
+	for _, c := range [][2]string{{"ali\u200bce", "alice"}, {"al\u00adice", "alice"}, {"\u202ealice", "alice"}, {"Stra\u00dfe", "STRASSE"}, {"alice\ufeff", "alice"}} {
+		if !sameSubject(c[0], c[1]) {
+			t.Errorf("%q and %q must be the same subject", c[0], c[1])
+		}
+	}
+	e := newEnv(t)
+	e.must(201, adminTok, "POST", "/v1/tokens", obj{"kind": "service", "subject": "alice", "scopes": []string{"finance.read"}}, nil)
+	e.must(422, adminTok, "POST", "/v1/tokens", obj{"kind": "service", "subject": "ali\u200bce", "scopes": []string{"finance.approve"}}, nil)
+}
+
+func TestApprovalRechecksReservedSeries(t *testing.T) {
+	e := newEnv(t)
+	maker := e.token("maker", rw, nil, nil, false)
+	boss := e.token("boss", app, nil, nil, false)
+	cust := e.party(maker, "Acme Fake Ltd", "customer")
+	inv := e.invoice(maker, cust, nil, line("x", 1000, 100))
+	if _, err := e.app.store.db.Exec(`UPDATE invoices SET series = 'PO' WHERE id = ?`, inv.ID); err != nil { // a draft that got around the API
+		t.Fatal(err)
+	}
+	e.must(422, boss, "POST", "/v1/invoices/"+id(inv.ID)+"/approve", nil, nil)
+	var n int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM series WHERE code = 'PO'`).Scan(&n)
+	if n != 0 {
+		t.Fatal("the PO counter was touched")
 	}
 }

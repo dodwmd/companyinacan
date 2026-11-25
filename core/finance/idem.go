@@ -62,6 +62,23 @@ func readCtx(ctx context.Context) (context.CancelFunc, context.Context) {
 	return cancel, c
 }
 
+// recordUnmatched keeps a verified provider payment that could not be applied, once per event
+// id: the provider redelivers until it gets a 200, and each delivery must not add a row.
+func (s *Store) recordUnmatched(ctx context.Context, provider string, n *PaymentNotice, cause error) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		var one int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM audit_log WHERE action = 'payment.unmatched' AND target = ? LIMIT 1`, n.EventID).Scan(&one)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		return s.audit(ctx, tx, "provider:"+provider, "payment.unmatched", n.EventID,
+			map[string]any{"invoice_id": n.InvoiceID, "amount_minor": n.AmountMinor, "currency": n.Currency, "reason": cause.Error()})
+	})
+}
+
 // auditRead records a read of personal data or an export (SPEC.md section 5: audited
 // sensitive reads). It uses the writer connection, and callers return the error, so a read
 // that must be audited fails closed when the audit cannot be written.

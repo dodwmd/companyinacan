@@ -491,7 +491,7 @@ func (s *Store) SendContract(ctx context.Context, a *Principal, es ESigner, id i
 			}
 			prov = es.Name()
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE contracts SET status = 'sent', esign_provider = ?, esign_id = ?, version = version + 1, updated_by = ?, updated_at = ? WHERE id = ?`, prov, ext, a.Subject, ts(s.now()), id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE contracts SET status = 'sent', sent_once = 1, esign_provider = ?, esign_id = ?, version = version + 1, updated_by = ?, updated_at = ? WHERE id = ?`, prov, ext, a.Subject, ts(s.now()), id); err != nil {
 			return err
 		}
 		if err := s.audit(ctx, tx, a.Subject, "contract.send", fmt.Sprint(id), map[string]any{"provider": prov, "sha256": c.SHA256, "signers": len(in.Signers)}); err != nil {

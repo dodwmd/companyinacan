@@ -318,6 +318,7 @@ func TestErasureLegalRetentionAndWALScrub(t *testing.T) {
 	p := e.party(maker, "Erase Me Fake", "customer")
 	issued := e.invoice(maker, p, nil, line("x", 1000, 100))
 	e.must(200, boss, "POST", "/v1/invoices/"+id(issued.ID)+"/approve", nil, nil)
+	e.must(201, maker, "POST", "/v1/invoices/"+id(issued.ID)+"/payments", obj{"amount_minor": 100}, nil)
 	draft := e.invoice(maker, p, nil, line("d", 1000, 100))
 
 	var rep ErasureReport
@@ -348,13 +349,12 @@ func TestErasureLegalRetentionAndWALScrub(t *testing.T) {
 	// The issued invoice keeps its legal snapshot (name and address, not email or phone) and cannot be edited.
 	var inv Invoice
 	e.must(200, maker, "GET", "/v1/invoices/"+id(issued.ID), nil, &inv)
-	if inv.PartySnapshot == nil || inv.PartySnapshot.Name != "Erase Me Fake" || inv.Status != "approved" {
+	if inv.PartySnapshot == nil || inv.PartySnapshot.Name != "Erase Me Fake" || inv.Status != "paid" {
 		t.Fatalf("invoice after erasure %+v", inv)
 	}
 	e.must(409, maker, "PATCH", "/v1/parties/"+id(p), obj{"name": "back"}, nil)
 	e.must(422, maker, "POST", "/v1/invoices", obj{"party_id": p, "lines": []obj{line("x", 1000, 1)}}, nil)
 	// After the retention period the purge deletes the invoice and then the erased party.
-	e.must(201, maker, "POST", "/v1/invoices/"+id(issued.ID)+"/payments", obj{"amount_minor": 100}, nil)
 	e.advance(7*365*24*time.Hour + 10*24*time.Hour)
 	r1, err := e.app.store.Purge(t.Context(), 7, 2555)
 	if err != nil {
