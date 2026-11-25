@@ -394,18 +394,7 @@ func (f *Fake) Apply(_ context.Context, obj Object) error {
 	if err := f.FailApply[kind+"/"+name]; err != nil {
 		return err
 	}
-	o := clone(obj)
-	if sd, ok := o["stringData"].(map[string]any); ok { // the API server folds stringData into data
-		data, _ := o["data"].(map[string]any)
-		if data == nil {
-			data = map[string]any{}
-		}
-		for k, v := range sd {
-			data[k] = base64.StdEncoding.EncodeToString([]byte(fmt.Sprint(v)))
-		}
-		o["data"] = data
-		delete(o, "stringData")
-	}
+	o := foldStringData(clone(obj))
 	if kind == "Deployment" || kind == "StatefulSet" {
 		spec, _ := o["spec"].(map[string]any)
 		rep := 1.0
@@ -424,6 +413,22 @@ func (f *Fake) Apply(_ context.Context, obj Object) error {
 	return nil
 }
 
+// foldStringData does what the API server does with a Secret's stringData: it becomes data.
+func foldStringData(o Object) Object {
+	if sd, ok := o["stringData"].(map[string]any); ok {
+		data, _ := o["data"].(map[string]any)
+		if data == nil {
+			data = map[string]any{}
+		}
+		for k, v := range sd {
+			data[k] = base64.StdEncoding.EncodeToString([]byte(fmt.Sprint(v)))
+		}
+		o["data"] = data
+		delete(o, "stringData")
+	}
+	return o
+}
+
 // Create implements API.
 func (f *Fake) Create(_ context.Context, obj Object) (bool, error) {
 	f.mu.Lock()
@@ -434,7 +439,7 @@ func (f *Fake) Create(_ context.Context, obj Object) (bool, error) {
 	if _, ok := f.Objects[k]; ok {
 		return false, nil
 	}
-	f.Objects[k] = clone(obj)
+	f.Objects[k] = foldStringData(clone(obj))
 	f.Log = append(f.Log, "create "+kind+" "+ns+"/"+name)
 	return true, nil
 }

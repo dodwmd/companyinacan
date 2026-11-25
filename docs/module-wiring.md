@@ -48,6 +48,11 @@ never replaces them afterwards (enabling again, upgrading, disabling and enablin
 | jobs | `CAN_JOBS_ADMIN_TOKEN`, `CAN_JOBS_HASH_KEY`, `CAN_JOBS_FORM_SECRET`, `keyring` |
 | people | `CAN_PEOPLE_API_TOKEN`, `keyring` |
 
+Generated values are written with create-if-absent (an HTTP create, not a forced apply): if a second
+can-core creates the Secret first, this one adopts its values instead of overwriting them. The
+generated database password follows the same rule. The webhook signing secret is only regenerated
+when the module has no record; any other store error fails the enable.
+
 Alongside them, for every module: `CAN_API_URL`, `CAN_MODULE_ID`, `CAN_WEBHOOK_SECRET` (the HMAC secret
 that signs can-core's webhooks to the module), `CAN_TOKEN_FILE`. The values are 256-bit random hex (a
 keyring is `k1 <64 hex>` lines). They are not written to logs, command output or events, and the audit
@@ -94,7 +99,28 @@ A token's permissions also restrict what the module lets its role do: in people 
 home address, personal phone or salary, `people.admin` alone cannot create or edit people, and
 erasure, legal hold and retention need `people.admin`; performance data needs `performance.read` /
 `.write`. A role is never granted to a token that holds less than the role (jobs: `jobs.admin` alone
-is refused; admin is the whole set).
+is refused; admin is the whole set; recruiter and admin need `ats.interview` as well, because they
+score applications). In people the hr and admin paths of creating a checklist and completing someone
+else's task need `people.write`. Self-service writes are deliberately not gated by `people.write`: a
+person's own `preferred_name` / `work_phone` and completing a task assigned to them are open to any
+token that maps to the employee role (`people.read`), because the manifest's employee role does not
+carry `people.write` and gating would lock every employee out of their own entry.
+
+**What an issuer holds.** In finance and work `*.admin` implies every permission of the module (and
+`write`/`approve` imply `read` in finance). Issue and introspection expand that the same way: an
+issuer whose role has only `work.admin` may issue a token with `work.read`, and the token stays
+active exactly as long as the issuer holds `work.admin` or the permission itself. jobs and people
+admin permissions imply nothing and are never expanded.
+
+**Lifetime.** Lowering `CAN_PAT_MAX_TTL_DAYS` only limits tokens issued afterwards; tokens already
+issued keep their expiry. To end them early, revoke them (or remove the issuer's role or account).
+
+**Subjects.** Personal access tokens can only be issued by a `user:` subject, the local administrator
+accounts. An `oidc:` subject (single sign-on, E11b) cannot issue a PAT, and a PAT's subject is always
+`user:<username>`. Note for the E11b OIDC change: if OIDC administrators are to issue tokens, the
+issuer check in `core/server/pat` (`Issue`, and the `AdminByUsername` existence check at
+introspection) must be extended to the new subject form together with a matching `Holds` lookup;
+until then OIDC sessions use the admin UI but not the token page.
 
 Behaviour to rely on: revocation, a removed role and a deleted user reach a module within 30 seconds (its cache; the RBAC answer behind it is invalidated at once); an expired token stops
 at expiry even inside that window; when can-core cannot be reached a personal token is refused (the

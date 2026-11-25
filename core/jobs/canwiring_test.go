@@ -24,6 +24,9 @@ func TestRoleFromPermissions(t *testing.T) {
 		{[]string{"jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire", "ats.interview", "jobs.admin"}, RoleAdmin},
 		{[]string{"jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire", "ats.interview"}, RoleRecruiter},
 		{[]string{"jobs.read", "ats.read", "ats.write", "ats.interview"}, RoleHiringManager},
+		// recruiter and admin both score applications (ActScore), so both need ats.interview
+		{[]string{"jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire"}, ""},
+		{[]string{"jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire", "jobs.admin"}, ""},
 		{[]string{"ats.interview"}, RoleInterviewer},
 		{[]string{"jobs.read"}, ""},                  // reading jobs alone is not a role
 		{[]string{"jobs.write", "ats.hire"}, ""},     // part of recruiter is not recruiter

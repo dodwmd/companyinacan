@@ -418,8 +418,29 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 		"CAN_API_URL": in.cfg.PlatformURL, "CAN_MODULE_ID": s.ID, "CAN_WEBHOOK_SECRET": s.HMACSecret,
 		"CAN_TOKEN_FILE": TokenDir + "/token", "CAN_TOKEN_AUDIENCE": "can",
 	}
-	if err := in.generatedSecrets(ctx, s, mod); err != nil {
+	fresh, err := in.generatedSecrets(ctx, s, mod)
+	if err != nil {
 		return "", err
+	}
+	if len(fresh) > 0 {
+		// Create-if-absent: two can-core processes enabling the same module at once must not
+		// overwrite each other's freshly generated values (a keyring replaced after data was sealed
+		// loses that data). The loser of the create adopts what the winner wrote.
+		created, err := in.cfg.API.Create(ctx, secret(s.Namespace, secretModule, s.ID, mod))
+		if err != nil {
+			return "", fmt.Errorf("creating the module Secret: %w", err)
+		}
+		if !created {
+			for _, k := range fresh {
+				v, err := in.secretKey(ctx, s.Namespace, secretModule, k)
+				if err != nil {
+					return "", err
+				}
+				if v != "" {
+					mod[k] = v
+				}
+			}
+		}
 	}
 	var db map[string]string
 	kind := s.Manifest.Requires.Database
@@ -433,7 +454,22 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 			return "", err
 		}
 		if pw == "" {
+			// Create-if-absent before the database user is set to it: a concurrent can-core that
+			// won the create has its password adopted, so the Secret and the database agree.
 			pw = randomPassword()
+			created, err := in.cfg.API.Create(ctx, secret(s.Namespace, secretDB, s.ID, map[string]string{"DB_PASSWORD": pw}))
+			if err != nil {
+				return "", fmt.Errorf("creating the database Secret: %w", err)
+			}
+			if !created {
+				won, err := in.secretKey(ctx, s.Namespace, secretDB, "DB_PASSWORD")
+				if err != nil {
+					return "", err
+				}
+				if won != "" {
+					pw = won
+				}
+			}
 		}
 		c, err := prov.Ensure(ctx, kind, s.ID, pw)
 		if err != nil {
@@ -474,7 +510,9 @@ func (in *Installer) checkRotations(s reconcile.Spec) error {
 // generatedSecrets adds the module's generated secrets to the can-module Secret data. A value that
 // already exists is kept, so enabling twice, upgrading or disabling and re-enabling never changes
 // a credential; only a requested rotation does. Values are never logged.
-func (in *Installer) generatedSecrets(ctx context.Context, s reconcile.Spec, data map[string]string) error {
+// It returns the keys that did not exist and were generated fresh (not rotations).
+func (in *Installer) generatedSecrets(ctx context.Context, s reconcile.Spec, data map[string]string) ([]string, error) {
+	var fresh []string
 	rotate := map[string]bool{}
 	for _, k := range s.Rotate {
 		rotate[k] = true
@@ -482,22 +520,25 @@ func (in *Installer) generatedSecrets(ctx context.Context, s reconcile.Spec, dat
 	for _, sp := range in.cfg.SecretsFor(s.ID) {
 		cur, err := in.secretKey(ctx, s.Namespace, secretModule, sp.Key)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		switch {
 		case cur != "" && rotate[sp.Key] && sp.Kind == modsecrets.Keyring:
 			next, err := modsecrets.RotateKeyring(cur)
 			if err != nil {
-				return fmt.Errorf("rotating %s of module %s: %w", sp.Key, s.ID, err)
+				return nil, fmt.Errorf("rotating %s of module %s: %w", sp.Key, s.ID, err)
 			}
 			data[sp.Key] = next
 		case cur != "" && !rotate[sp.Key]:
 			data[sp.Key] = cur
 		default:
 			data[sp.Key] = modsecrets.Generate(sp.Kind)
+			if cur == "" {
+				fresh = append(fresh, sp.Key)
+			}
 		}
 	}
-	return nil
+	return fresh, nil
 }
 
 // ---- rendering ---------------------------------------------------------------------------------

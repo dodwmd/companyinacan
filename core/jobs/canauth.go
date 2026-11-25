@@ -13,7 +13,8 @@ var canSubjectRe = regexp.MustCompile(`^user:[A-Za-z0-9_.@-]{1,64}$`)
 // roleFromPermissions maps the manifest permissions of a personal access token to the one role
 // Jobs gives a token, the strongest the permissions fully cover (modules/jobs/module.yaml roles).
 // The admin role is every permission, so jobs.admin alone is not admin: a role is never granted
-// to a token that holds less than the role. A token whose permissions cover no role is refused.
+// to a token that holds less than the role: recruiter and admin can both score applications
+// (ActScore), so both need ats.interview as the manifest roles have it. A token whose permissions cover no role is refused.
 func roleFromPermissions(perms []string) string {
 	has := func(p ...string) bool {
 		for _, x := range p {
@@ -26,7 +27,7 @@ func roleFromPermissions(perms []string) string {
 	switch {
 	case has("jobs.admin", "jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire", "ats.interview"):
 		return RoleAdmin
-	case has("jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire"):
+	case has("jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire", "ats.interview"):
 		return RoleRecruiter
 	case has("jobs.read", "ats.read", "ats.write", "ats.interview"):
 		return RoleHiringManager
