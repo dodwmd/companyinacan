@@ -505,7 +505,7 @@ func withMiddleware(log *slog.Logger, next http.Handler) http.Handler {
 					writeJSON(rec, http.StatusInternalServerError, apiError{"internal", "internal error"})
 				}
 			}
-			log.Info("request", "method", r.Method, "route", r.Pattern, "status", rec.status, "ms", time.Since(start).Milliseconds())
+			log.InfoContext(r.Context(), "request", "method", r.Method, "route", r.Pattern, "status", rec.status, "ms", time.Since(start).Milliseconds())
 		}()
 		next.ServeHTTP(rec, r)
 	})

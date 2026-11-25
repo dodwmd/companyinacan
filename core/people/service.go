@@ -27,6 +27,8 @@ import (
 	"unicode/utf8"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
+
+	"github.com/dodwmd/companyinacan/core/obs/obssql"
 )
 
 //go:embed migrations/*.sql
@@ -120,6 +122,7 @@ func Open(path string, opt Options) (*Service, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	obssql.WatchDefault(s.db)
 	return s, nil
 }
 

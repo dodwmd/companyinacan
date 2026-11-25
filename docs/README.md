@@ -10,4 +10,5 @@ Project documentation. `epics/` holds the epic breakdown; measurements recorded 
 - [maintainers.md](maintainers.md): required checks, branch protection, why the footprint check is advisory.
 - [work-ui.md](work-ui.md): the work tracker web UI (sign-in with a token, backlog, board, sprints, epics, dashboard; security model, accessibility).
 - [equity.md](equity.md): the in-house equity service (cap table and employee stock options; access matrix, vesting rules, retention and erasure, limits). A tool, not legal, tax or securities advice.
+- [observability.md](observability.md): metrics, `/readyz`, request ids and log redaction, alert rules and dashboard, `can diagnose` support bundles, the measured footprint cost (epic E22).
 - [module-wiring.md](module-wiring.md): installing the in-house modules through can-core: secrets, personal access tokens, events, approvals, what ran where.

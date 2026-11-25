@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os/signal"
@@ -13,6 +12,8 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/obs"
+	obslog "github.com/dodwmd/companyinacan/core/obs/log"
 )
 
 // Version is set at build time with -ldflags "-X .../core/work.Version=...".
@@ -69,7 +70,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stdout, "config ok")
 		return 0
 	}
-	log := slog.New(slog.NewJSONHandler(stderr, nil)).With("service", "can-work", "version", Version)
+	log := obslog.New(stderr, obslog.Options{Service: "can-work", Version: Version, Level: getenv("CAN_LOG_LEVEL"), Format: getenv("CAN_LOG_FORMAT")})
 	can, err := modclient.FromEnv(getenv)
 	if err != nil {
 		fmt.Fprintf(stderr, "can-core: %v\n", err)
@@ -93,6 +94,10 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if err := obs.Setup(ctx, getenv, obs.BuildInfo{Version: Version}, log); err != nil {
+		fmt.Fprintf(stderr, "metrics: %v\n", err)
+		return 2
+	}
 	if err := app.Serve(ctx, ln); err != nil {
 		log.Error("exit", "error", err)
 		return 1

@@ -33,7 +33,7 @@ secrets:
     mountPath: /etc/can-equity/keys
     subPath: keyring                # mount the single key with subPath: the loader refuses symlinks (Secret volumes use ..data links)
 probes:
-  readiness: { path: /healthz, port: 8081 }
+  readiness: { path: /readyz, port: 8081 }
   liveness: { exec: [/can-equity, healthcheck, -addr, "127.0.0.1:8081"] }
 podSecurityContext:
   runAsNonRoot: true

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/obs"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
@@ -266,5 +267,40 @@ func TestRunLoopProcessesOnWake(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("dispatcher did not run after wake")
+	}
+}
+
+func TestDeliveryResultsAreCounted(t *testing.T) {
+	read := func() string {
+		var b strings.Builder
+		_, _ = obs.Default.WriteTo(&b)
+		return b.String()
+	}
+	count := func(result string) float64 {
+		for _, l := range strings.Split(read(), "\n") {
+			if strings.HasPrefix(l, `can_webhook_deliveries_total{result="`+result+`"} `) {
+				v, _ := strconv.ParseFloat(strings.Fields(l)[1], 64)
+				return v
+			}
+		}
+		return 0
+	}
+	delivered, retry, dead := count("delivered"), count("retry"), count("dead")
+	ok := setup(t, func(*fixture, *http.Request) (*http.Response, error) { return resp(200), nil })
+	ok.publish(t)
+	_, _ = ok.d.RunOnce(context.Background())
+	bad := setup(t, func(*fixture, *http.Request) (*http.Response, error) { return resp(500), nil })
+	bad.d.MaxAttempts = 2
+	bad.publish(t)
+	for i := 0; i < 2; i++ {
+		_, _ = bad.d.RunOnce(context.Background())
+		*bad.now = bad.now.Add(2 * time.Hour)
+	}
+	// The counters are process-wide and other tests deliver in parallel, so assert at least our own.
+	if count("delivered") < delivered+1 || count("retry") < retry+1 || count("dead") < dead+1 {
+		t.Fatalf("delivered %v->%v retry %v->%v dead %v->%v\n%s", delivered, count("delivered"), retry, count("retry"), dead, count("dead"), read())
+	}
+	if strings.Contains(read(), "evt_") || strings.Contains(read(), "http://") {
+		t.Fatal("per-event or URL data leaked into metrics")
 	}
 }

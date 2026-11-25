@@ -1,0 +1,43 @@
+# EXAMPLE, not applied by default. The base policies in deploy/base are default-deny, so the metrics port
+# (9190) of a pod is unreachable until you allow your Prometheus to reach it. Apply one of these per
+# namespace whose pods you scrape, after setting CAN_METRICS_ADDR and the token on those pods.
+#
+# Label your Prometheus namespace first:  kubectl label ns monitoring can.dev/namespace-kind=monitoring
+#
+# The allow is narrow on purpose: only pods in the monitoring namespace carrying the prometheus label,
+# only TCP 9190. Ingress (Traefik) is NOT allowed to that port, and the listener also refuses to start
+# off-loopback without a bearer token, so a mistake in one layer is covered by the other.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-from-monitoring
+  namespace: can-system          # repeat for each module namespace, for example can-forms
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {can.dev/namespace-kind: monitoring}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: prometheus}
+      ports:
+        - {protocol: TCP, port: 9190}
+---
+# Prometheus's own egress (in its namespace) to the scraped pods, if you default-deny there too.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape-egress
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: prometheus}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: kubernetes.io/metadata.name, operator: In, values: [can-system]}
+      ports:
+        - {protocol: TCP, port: 9190}

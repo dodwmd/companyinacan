@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/obs"
 )
 
 type scanner interface{ Scan(...any) error }
@@ -349,8 +351,15 @@ func (s *Store) CreateIssue(ctx context.Context, a *Principal, project string, i
 		})
 		return err
 	})
+	if err == nil && !replayed {
+		issuesCreated.With().Inc()
+	}
 	return out, replayed, err
 }
+
+// issuesCreated counts issues created (a replayed idempotent request is not a new issue). No
+// project key, title or user is ever a label.
+var issuesCreated = obs.Default.Counter("can_work_issues_created_total", "Issues created.")
 
 var batchRefRE = regexp.MustCompile(`^\$([0-9]{1,3})$`)
 
@@ -429,6 +438,9 @@ func (s *Store) BulkCreate(ctx context.Context, a *Principal, project string, it
 		})
 		return err
 	})
+	if err == nil && !replayed {
+		issuesCreated.With().Add(float64(len(out)))
+	}
 	return out, replayed, err
 }
 

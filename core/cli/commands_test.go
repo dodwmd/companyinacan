@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -70,8 +71,9 @@ func TestVersion(t *testing.T) {
 }
 
 func TestDoctorExitCodes(t *testing.T) {
-	old := lookPath
-	defer func() { lookPath = old }()
+	old, oldRun := lookPath, reachRunner
+	defer func() { lookPath, reachRunner = old, oldRun }()
+	reachRunner = func(context.Context, string, ...string) (string, error) { return "", nil }
 	lookPath = func(n string) (string, error) {
 		if n == "go" || n == "git" || n == "make" {
 			return "/bin/" + n, nil

@@ -1,0 +1,131 @@
+# Alert rules for Company in a Can (epic E22). Metric names come from core/obs; see docs/observability.md.
+# Check them with: promtool check rules deploy/monitoring/alerts.yml
+#
+# Thresholds are starting points for a 2 GB single-node company, not laws. The RAM rule is the one
+# that mirrors a constitutional gate: Constitution II fails a component above 120% of its declared RAM.
+groups:
+  - name: can-availability
+    rules:
+      - alert: CanServiceDown
+        expr: up{job=~"can-.*"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $labels.job }} on {{ $labels.instance }} is not answering scrapes"
+          description: "The metrics listener did not answer for 2 minutes. Check the pod or container, then `can diagnose`."
+
+      - alert: CanHighServerErrorRatio
+        # More than 20% of requests fail with 5xx, but only when there is real traffic: at least 0.1
+        # requests per second (30 in 5 minutes), so a single 5xx at low traffic cannot fire it.
+        # (Readiness itself is /readyz, which Kubernetes acts on; this is the metric-side view.)
+        expr: |
+          (sum by (job, instance) (rate(can_http_requests_total{class="5xx"}[5m]))
+            / clamp_min(sum by (job, instance) (rate(can_http_requests_total[5m])), 0.001) > 0.2)
+          and sum by (job, instance) (rate(can_http_requests_total[5m])) > 0.1
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $labels.job }}: more than 20% of requests fail with 5xx"
+
+  - name: can-footprint
+    rules:
+      - alert: CanRamOverDeclared
+        # Constitution II: more than 120% of the declared RAM is a failure, not a warning.
+        expr: can_ram_rss_bytes / on (instance, job) can_ram_declared_bytes > 1.2
+        for: 10m
+        labels: {severity: warn}
+        annotations:
+          summary: "{{ $labels.job }} uses {{ $value | humanizePercentage }} of its declared RAM (limit is 120%)"
+          description: "Compare can_ram_rss_bytes with can_ram_declared_bytes. Either find the regression or amend the manifest's ram_mb with a footprint justification."
+
+  - name: can-platform
+    rules:
+      - alert: CanReconcileFailing
+        expr: can_reconcile_consecutive_failures >= 3
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "can-core has failed to reconcile {{ $value }} times in a row"
+          description: "Modules are not converging to company.yaml. See the admin UI status page, or `can-core admin diagnose` inside the pod."
+
+      - alert: CanReconcileStale
+        expr: |
+          (time() - can_reconcile_last_success_timestamp_seconds) > 1800
+            and can_reconcile_last_success_timestamp_seconds > 0
+        for: 5m
+        labels: {severity: warn}
+        annotations:
+          summary: "No successful reconcile for more than 30 minutes"
+
+      - alert: CanAuditChainVerifyFailing
+        # Hourly full verification of the hash chain. 0 means a record was modified, reordered or removed.
+        expr: can_audit_verify_ok == 0 and can_audit_verify_last_run_timestamp_seconds > 0
+        for: 1m
+        labels: {severity: page}
+        annotations:
+          summary: "The audit log hash chain failed verification"
+          description: "Treat as an integrity incident. Run `can-core audit verify --output json` and compare with the head you recorded."
+
+      - alert: CanAuditVerifyStale
+        expr: (time() - can_audit_verify_last_run_timestamp_seconds) > 4 * 3600 and can_audit_verify_last_run_timestamp_seconds > 0
+        for: 10m
+        labels: {severity: warn}
+        annotations:
+          summary: "The audit chain has not been verified for more than 4 hours"
+
+      - alert: CanWebhookDeadLettersGrowing
+        expr: |
+          can_webhook_dead_letters > 0 and delta(can_webhook_dead_letters[1h]) > 0
+        for: 5m
+        labels: {severity: warn}
+        annotations:
+          summary: "{{ $value }} webhook deliveries are dead and the number is growing"
+          description: "A module stopped accepting events. Requeue from the admin UI deliveries page once it is healthy."
+
+      - alert: CanDatabaseBusy
+        expr: increase(can_db_busy_total[10m]) > 5
+        for: 10m
+        labels: {severity: warn}
+        annotations:
+          summary: "{{ $labels.job }}: SQLite reported busy or locked more than 5 times in 10 minutes"
+
+  - name: can-host
+    rules:
+      # Needs node_exporter on the host (not part of Company in a Can; most k3s hosts already run one).
+      - alert: CanDiskOver85Percent
+        expr: |
+          (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"}) > 0.85
+        for: 15m
+        labels: {severity: warn}
+        annotations:
+          summary: "{{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full"
+          description: "SQLite databases, backups staging and logs live here; at 100% services fail to write."
+
+      - alert: CanBackupMissing
+        # The textfile script keeps the last good timestamp when a run fails, so the series only
+        # disappears when there has never been a snapshot (or the collector or script is broken):
+        # exactly the cases CanBackupStale cannot see. `for: 1h` spares a fresh install.
+        expr: absent(can_backup_last_success_timestamp_seconds)
+        for: 1h
+        labels: {severity: page}
+        annotations:
+          summary: "No backup snapshot timestamp is being reported"
+          description: "Either no backup has ever completed, or deploy/monitoring/backup-textfile.sh is not running or not readable by node_exporter."
+
+      - alert: CanBackupLastRunFailed
+        expr: can_backup_last_run_ok == 0
+        for: 1h
+        labels: {severity: warn}
+        annotations:
+          summary: "The last backup status check could not read a snapshot"
+
+      - alert: CanBackupStale
+        # The host backup timer is not a can-core process, so this series comes from the node_exporter
+        # textfile collector: deploy/monitoring/backup-textfile.sh writes it from `can backup status`.
+        expr: (time() - can_backup_last_success_timestamp_seconds) > 36 * 3600
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "The last backup snapshot is older than 36 hours"
+          description: "Run `can backup status`. A backup that cannot be restored is not a backup: see docs/backup-restore.md."

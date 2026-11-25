@@ -18,7 +18,7 @@ func newDoctorCmd(g *globalOpts) *cobra.Command {
 		Short: "Check local prerequisites",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			res := doctor.Check(lookPath)
+			res := append(doctor.Check(lookPath), doctor.Reach(cmd.Context(), lookPath, reachRunner)...)
 			w := cmd.OutOrStdout()
 			if g.json() {
 				if err := json.NewEncoder(w).Encode(res); err != nil {
