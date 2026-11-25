@@ -661,10 +661,12 @@ func (s *Store) Reconciliation(ctx context.Context, a *Principal, accountID int6
 	}
 	for i := range out {
 		var by string
-		err := s.rdb.QueryRowContext(rctx, `SELECT reconciled_by FROM bank_reconciliations WHERE bank_account_id = ? AND period = ?`, accountID, out[i].Period).Scan(&by)
+		var signed int
+		err := s.rdb.QueryRowContext(rctx, `SELECT reconciled_by, txn_count FROM bank_reconciliations WHERE bank_account_id = ? AND period = ? ORDER BY id DESC LIMIT 1`, accountID, out[i].Period).Scan(&by, &signed)
 		if err == nil {
-			// A statement imported after the sign-off can bring new unmatched rows: the month is open again.
-			if out[i].Unmatched == 0 {
+			// A statement imported after the sign-off can bring new rows: the sign-off no longer covers the month
+			// until it is made again.
+			if out[i].Unmatched == 0 && signed == out[i].Transactions {
 				out[i].Status = "reconciled"
 			}
 			out[i].ReconciledBy = by
@@ -696,11 +698,16 @@ func (s *Store) SignOffReconciliation(ctx context.Context, a *Principal, account
 		case unmatched > 0:
 			return fmt.Errorf("%w: %d transactions in %s are still unmatched", ErrConflict, unmatched, period)
 		}
+		var signed int
+		err := tx.QueryRowContext(ctx, `SELECT txn_count FROM bank_reconciliations WHERE bank_account_id = ? AND period = ? ORDER BY id DESC LIMIT 1`, accountID, period).Scan(&signed)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && signed == n {
+			return fmt.Errorf("%w: %s is already reconciled", ErrConflict, period)
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO bank_reconciliations (bank_account_id, period, txn_count, matched_count, ignored_count, reconciled_by, reconciled_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			accountID, period, n, matched, ignored, a.Subject, ts(s.now())); err != nil {
-			if strings.Contains(err.Error(), "UNIQUE") {
-				return fmt.Errorf("%w: %s is already reconciled", ErrConflict, period)
-			}
 			return err
 		}
 		return s.audit(ctx, tx, a.Subject, "bank.reconciliation.signoff", fmt.Sprint(accountID), map[string]any{"period": period, "transactions": n})

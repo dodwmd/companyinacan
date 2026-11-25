@@ -131,7 +131,7 @@ until a person confirms. Confirming records a payment through the same code path
 the no-overpayment rule, the invoice status, its event and its journal entry all apply) and the payment's debit goes to
 the ledger account of the bank account the money arrived in. Money out cannot be matched to an invoice; ignore it
 with a reason. A decided transaction cannot be changed. A reconciliation month can be signed off only when nothing
-in it is unmatched; a later import that brings new unmatched rows shows the month open again.
+in it is unmatched; a later import that brings new rows makes the month unsigned again, and once nothing is unmatched it can be signed off anew.
 
 **Reads of bank data are audited before they are returned**, and fail closed: if the audit entry cannot be
 written, the request fails and nothing is shown.

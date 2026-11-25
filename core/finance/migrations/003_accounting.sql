@@ -212,7 +212,8 @@ BEGIN
     SELECT RAISE(ABORT, 'bank transactions cannot be deleted before their retention period ends');
 END;
 
--- A sign-off that a month of a bank account is reconciled: nothing in it is still unmatched.
+-- A sign-off that a month of a bank account is reconciled: nothing in it is still unmatched. Append-only: when a
+-- later import adds rows to the month it is signed off again, and the latest row is the one in force.
 CREATE TABLE bank_reconciliations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     bank_account_id INTEGER NOT NULL REFERENCES bank_accounts (id),
@@ -221,9 +222,9 @@ CREATE TABLE bank_reconciliations (
     matched_count   INTEGER NOT NULL,
     ignored_count   INTEGER NOT NULL,
     reconciled_by   TEXT    NOT NULL,
-    reconciled_at   INTEGER NOT NULL,
-    UNIQUE (bank_account_id, period)
+    reconciled_at   INTEGER NOT NULL
 );
+CREATE INDEX bank_reconciliations_period ON bank_reconciliations (bank_account_id, period);
 
 -- Export batches: the cursor is the last posting number (journal_entries.number, assigned when an entry
 -- posts, gap-free) handed to an adapter. Entry ids would not do: a draft posted after later entries were

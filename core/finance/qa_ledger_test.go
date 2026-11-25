@@ -363,3 +363,36 @@ func TestQAThousandsGroupsAreChecked(t *testing.T) {
 		}
 	}
 }
+
+// QA 13: a month that gained rows after its sign-off can be signed off again.
+func TestQAMonthCanBeSignedOffAgain(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	approver := e.token("alex", ledApp, nil, nil, false)
+	b := e.bankAccount(admin)
+	base := "/v1/bank/accounts/" + id(b.ID)
+	settle := func(rows string) {
+		e.must(201, admin, "POST", base+"/statements"+csvQuery, "d,a,r,n,i\n"+rows, nil)
+		var all struct{ Items []BankTxn }
+		e.must(200, admin, "GET", "/v1/bank/transactions?status=unmatched", nil, &all)
+		for _, x := range all.Items {
+			e.must(200, admin, "POST", "/v1/bank/transactions/"+id(x.ID)+"/ignore", obj{"reason": "r"}, nil)
+		}
+	}
+	status := func() string {
+		var rec struct{ Items []ReconPeriod }
+		e.must(200, admin, "GET", base+"/reconciliation", nil, &rec)
+		return rec.Items[0].Status
+	}
+	settle("2026-06-01,1.00,r,n,A\n")
+	e.must(201, approver, "POST", base+"/reconciliation", obj{"period": "2026-06"}, nil)
+	settle("2026-06-02,2.00,r,n,B\n")
+	if s := status(); s != "ready" {
+		t.Errorf("after new rows: %s, want ready", s)
+	}
+	e.must(201, approver, "POST", base+"/reconciliation", obj{"period": "2026-06"}, nil)
+	if s := status(); s != "reconciled" {
+		t.Errorf("after signing again: %s", s)
+	}
+	e.must(409, approver, "POST", base+"/reconciliation", obj{"period": "2026-06"}, nil)
+}
