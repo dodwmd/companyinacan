@@ -34,7 +34,9 @@ var (
 // plus enough provider information to recreate it. It is never written into
 // the company repository.
 type Kit struct {
-	Version int       `json:"version"`
+	Version int `json:"version"`
+	// Note is a caveat printed in the header and carried in the kit (for example: the repository holds no data yet).
+	Note    string    `json:"note,omitempty"`
 	Created time.Time `json:"created"`
 	Company struct {
 		Name   string `json:"name"`
@@ -137,7 +139,11 @@ func (k *Kit) Text() string {
 		opts = append(opts, key+"="+v)
 	}
 	sort.Strings(opts)
-	return fmt.Sprintf(`COMPANY IN A CAN - RECOVERY KIT
+	head := "COMPANY IN A CAN - RECOVERY KIT"
+	if k.Note != "" {
+		head += "\nCAVEAT: " + k.Note
+	}
+	return fmt.Sprintf(`%s
 Company:          %s (%s)
 Created:          %s
 Provider:         %s %s
@@ -152,7 +158,7 @@ read, and it is not stored anywhere else. Restore: can restore --kit <file>
 %s
 %s
 %s
-`, k.Company.Name, k.Company.Domain, k.Created.Format(time.RFC3339), k.Provider.Type, strings.Join(opts, " "),
+`, head, k.Company.Name, k.Company.Domain, k.Created.Format(time.RFC3339), k.Provider.Type, strings.Join(opts, " "),
 		k.Restic.Repository, k.Restic.Password, k.Bucket.AccessKeyID, k.Bucket.SecretAccessKey,
 		beginPlain, j, endPlain)
 }

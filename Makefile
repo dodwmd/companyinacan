@@ -9,7 +9,7 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check lint-scripts scan-secrets release-build compose-up compose-down compose-logs compose-test e2e e2e-up e2e-down docs-check
+.PHONY: help build test unit contract lint licences dev doctor images up down status server-down release-check lint-scripts scan-secrets release-build compose-up compose-down compose-logs compose-test e2e e2e-up e2e-down docs-check
 
 help: ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -49,8 +49,15 @@ doctor: ## check the prerequisites for `make dev`
 # Extra flags for the lifecycle targets, e.g. `make up ARGS=--plan` or `make down ARGS=--yes`.
 ARGS ?=
 
-up: ## provision a server, bootstrap k3s, print URL and DNS records (ARGS=--plan to preview)
-	@$(GO) run ./cmd/can up $(ARGS)
+# Where `make images` writes the tarballs and where `make up` reads them from (IMAGES_FROM).
+IMAGES_DIR ?= build/images
+IMAGES_FROM ?=
+
+images: ## build the can-core, can-static and can-forms images locally (podman or docker) into build/images
+	sh scripts/build-images.sh $(IMAGES_DIR)
+
+up: ## make a live company: provision, k3s, can-core, site, forms, backup, DNS (IMAGES_FROM=build/images, ARGS=--plan to preview)
+	@$(GO) run ./cmd/can up $(if $(IMAGES_FROM),--images-from $(IMAGES_FROM)) $(ARGS)
 
 server-down: down ## alias of down, kept for scripts that used the E06 name
 

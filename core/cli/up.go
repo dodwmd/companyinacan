@@ -16,6 +16,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/cluster"
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/launch"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/validate"
@@ -27,10 +28,24 @@ var lifecycle = struct {
 	deps     func() provider.Deps
 	resolver provider.Resolver
 	now      func() time.Time
+	// The in-cluster half (epic E24): the phase machine, the SSH tunnel to the API, kubectl, the
+	// post-deploy reachability probe, terminal detection and the kubectl lookup.
+	stack    func(context.Context, launch.Options, launch.Deps) (*launch.Result, error)
+	access   func(context.Context, provider.Target) (func(), error)
+	kube     func(kubeconfig, context string) launch.Kube
+	probe    func(ctx context.Context, url string) error
+	isTTY    func() bool
+	lookPath func(string) (string, error)
 }{
 	deps:     func() provider.Deps { return provider.Deps{} },
 	resolver: net.DefaultResolver,
 	now:      time.Now,
+	stack:    launch.Run,
+	access:   defaultAccess,
+	kube:     defaultKube,
+	probe:    defaultProbe,
+	isTTY:    defaultIsTTY,
+	lookPath: defaultLookPath,
 }
 
 // instantSubdomains are served on the instant sslip.io URL (SPEC.md section 3.4).
@@ -126,20 +141,40 @@ type upResult struct {
 	Kubeconfig string                `json:"kubeconfig,omitempty"`
 	Next       []string              `json:"next,omitempty"`
 	Planned    bool                  `json:"planned"`
+
+	// Set when the company stack was deployed (everything but --plan and --provision-only).
+	Phases        []phaseJSON `json:"phases,omitempty"`
+	SiteURLs      []string    `json:"site_urls,omitempty"`
+	AdminURLs     []string    `json:"admin_urls,omitempty"`
+	SiteReachable bool        `json:"site_reachable,omitempty"`
+	AdminUser     string      `json:"admin_user,omitempty"`
+	// Admin and Kit are present only with --print-secrets (or never, without a terminal).
+	Admin        *credsJSON `json:"admin,omitempty"`
+	Kit          string     `json:"recovery_kit,omitempty"`
+	KitFile      string     `json:"recovery_kit_file,omitempty"`
+	Warnings     []string   `json:"warnings,omitempty"`
+	TotalSeconds float64    `json:"total_seconds,omitempty"`
 }
 
 func newUpCmd(g *globalOpts) *cobra.Command {
 	var plan bool
 	var modulesDir, dnsName string
+	var sf stackFlags
 	cmd := &cobra.Command{
 		Use:   "up [dir]",
-		Short: "Provision a server and bootstrap k3s (ssh, hetzner, digitalocean)",
-		Long: `Provision the server named by company.yaml (provider.type), install k3s,
-fetch the kubeconfig, and print the instant URL and the DNS records to add
-(or create them, with dns.provider: cloudflare).
+		Short: "Make a live company: provision, bootstrap k3s, deploy can-core, the site and forms",
+		Long: `Provision the server named by company.yaml (provider.type: ssh, hetzner, digitalocean),
+install k3s, then deploy the company: platform base, container images, can-core, the admin account,
+company.yaml, the site, the routes, the backup timer (with --backup-*), DNS, and wait until it is ready.
+It ends with the URLs, the one-time admin password and TOTP secret and the recovery kit.
 
-Use --plan to print the planned actions without changing anything.
-Exit codes: 0 ok, 1 failure, 2 usage, 3 not implemented (local, static).`,
+Phases are checkpointed in .can/state.json: after an interruption at any point run the same command
+again and it resumes. Nothing is ever wiped by running it again.
+
+Use --plan to print the planned actions without changing anything, --provision-only to stop after
+k3s. Without a terminal, secrets are printed only with --print-secrets.
+Exit codes: 0 ok, 1 failure (the message names the phase and how to resume), 2 usage, 3 not implemented (local, static).
+See docs/make-up.md.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -156,16 +191,18 @@ Exit codes: 0 ok, 1 failure, 2 usage, 3 not implemented (local, static).`,
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop()
-			return t.up(ctx, cmd, g, plan, dns)
+			sf.modulesDir = modulesDir
+			return t.up(ctx, cmd, g, plan, dns, &sf)
 		},
 	}
+	sf.register(cmd)
 	cmd.Flags().BoolVar(&plan, "plan", false, "print the planned actions and change nothing")
 	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
 	cmd.Flags().StringVar(&dnsName, "dns", "", "DNS plugin: manual or cloudflare (default: dns.provider in company.yaml, else manual)")
 	return cmd
 }
 
-func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, planOnly bool, dns provider.DNS) error {
+func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, planOnly bool, dns provider.DNS, sf *stackFlags) error {
 	out, flush := t.writers(cmd, g)
 	defer flush()
 	res := upResult{Provider: t.prov.Name(), Planned: planOnly}
@@ -196,6 +233,9 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	} else {
 		acts = append(acts, provider.Action{ID: "dns", Description: "print DNS records for " + t.company.Domain + " (" + dns.Name() + " plugin)"})
 	}
+	if !sf.provisionOnly {
+		acts = append(acts, stackPlanActions(sf)...)
+	}
 	res.Actions = acts
 	if planOnly {
 		if g.json() {
@@ -215,6 +255,16 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	// Fail on a bad DNS token or missing zone before any server is paid for.
 	if ck, ok := dns.(provider.DNSChecker); ok {
 		if err := ck.Preflight(ctx, t.company.Domain); err != nil {
+			return t.fail(err)
+		}
+	}
+	var prep *stackPrep
+	if !sf.provisionOnly && sf.backupWanted() && !sf.allowBrokenBackup {
+		return usage("--backup-* is refused for now: it would install a timer and hand out a recovery kit for a repository that will never hold data, because the can-core pod cannot yet mount the host's dump directory (the can-system namespace's Pod Security level forbids hostPath), so every backup run exits 10. Pass --allow-broken-backup to proceed anyway; the kit then carries that caveat. See docs/make-up.md, Known gaps")
+	}
+	if !sf.provisionOnly {
+		// Everything that can be checked offline is checked before a server exists or is paid for.
+		if prep, err = t.stackPreflight(sf); err != nil {
 			return t.fail(err)
 		}
 	}
@@ -268,13 +318,18 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		fmt.Fprintf(out, "  instant URL: %s (plain HTTP fallback, public site only)\n  reason:      %s\n  admin UI:    reachable only through the SSH tunnel until DNS/TLS is set\n", instant.URLs[0], instant.Reason)
 	}
 	fmt.Fprintln(out)
+	if !sf.provisionOnly {
+		// DNS is applied inside finishStack, after the stack is up, so a Cloudflare record never
+		// points at a server that cannot answer yet.
+		return t.finishStack(ctx, cmd, g, out, &res, prep, sf, dns, tgt, instant, addr)
+	}
 	if len(recs) > 0 {
 		if err := dns.Apply(ctx, t.company.Domain, recs, out); err != nil {
 			return t.fail(err)
 		}
 	}
-	res.Next = []string{"can-core install and `can apply` land in epic E03; until then the server runs bare k3s"}
-	fmt.Fprintln(out, "\nNext: can-core install and `can apply` arrive in epic E03; until then the server runs bare k3s.")
+	res.Next = []string{"--provision-only: nothing is deployed on the server; run `can up` without it to deploy can-core, the site and forms"}
+	fmt.Fprintln(out, "\nNext: --provision-only stopped after k3s; run `can up` without it to deploy can-core, the site and forms.")
 	if g.json() {
 		return t.emitJSON(cmd, res)
 	}
@@ -377,6 +432,14 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 				// Destroying would wipe the state that remembers these records.
 				return t.fail(fmt.Errorf("%s lists %d DNS record(s) that can created, but company.yaml no longer has dns.provider: cloudflare, so they cannot be removed; restore the dns block and run `can down` again, or delete the records in Cloudflare and then the dns_records entries from .can/state.json", provider.StatePath(t.dir), len(st.DNSRecords)))
 			}
+			// The ssh provider leaves the machine behind, so the backup timer and the restic
+			// credentials the recovery kit stands for must not stay on it. (The cloud providers
+			// delete the machine.) Fail closed: a half-removed timer keeps running.
+			if t.prov.Name() == "ssh" {
+				if err := t.removeBackupTimer(ctx, out); err != nil {
+					return t.fail(err)
+				}
+			}
 			if err := t.prov.Destroy(ctx, t.spec, t.store, out); err != nil {
 				return t.fail(err)
 			}
@@ -437,6 +500,17 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 				return t.fail(err)
 			}
 			res := statusResult{Provider: t.prov.Name(), Phase: st.Phase, Checks: st.Checks}
+			if st.Phase == provider.PhaseReady {
+				// A company deployed by `can up` also has to be up inside the cluster.
+				if ls, lerr := t.store.Load(); lerr == nil && ls.Launch != nil {
+					checks, ok := t.stackChecks(ctx)
+					res.Checks = append(res.Checks, checks...)
+					if !ok {
+						res.Phase = provider.PhaseDegraded
+						st.Phase = provider.PhaseDegraded
+					}
+				}
+			}
 			if a, err := t.prov.Address(t.store); err == nil {
 				res.Address = a
 			}

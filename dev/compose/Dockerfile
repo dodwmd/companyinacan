@@ -17,6 +17,11 @@ COPY cmd ./cmd
 COPY core ./core
 COPY deploy/embed.go ./deploy/embed.go
 COPY deploy/templates ./deploy/templates
+# `can` embeds the manifests it applies (deploy/stack.go, epic E24).
+COPY deploy/stack.go ./deploy/stack.go
+COPY deploy/base ./deploy/base
+COPY deploy/can-core ./deploy/can-core
+COPY deploy/site ./deploy/site
 COPY schemas ./schemas
 COPY modules ./modules
 COPY examples ./examples

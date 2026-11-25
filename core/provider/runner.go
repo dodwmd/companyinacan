@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -102,13 +103,13 @@ func (r *SSHRunner) bash() string {
 	return "sudo -n bash -s"
 }
 
-func (r *SSHRunner) exec(ctx context.Context, remote string, stdin []byte) (string, error) {
+func (r *SSHRunner) exec(ctx context.Context, remote string, stdin io.Reader) (string, error) {
 	args, err := SSHArgs(r.T, nil, remote)
 	if err != nil {
 		return "", err
 	}
 	cmd := r.Command(ctx, "ssh", args...)
-	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Stdin = stdin
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -120,11 +121,22 @@ func (r *SSHRunner) exec(ctx context.Context, remote string, stdin []byte) (stri
 
 // Run implements Runner.
 func (r *SSHRunner) Run(ctx context.Context, script string) (string, error) {
-	return r.exec(ctx, r.bash(), []byte(script))
+	return r.exec(ctx, r.bash(), strings.NewReader(script))
 }
 
 // Copy implements Runner.
 func (r *SSHRunner) Copy(ctx context.Context, remotePath string, data []byte, mode string) error {
+	return r.CopyFrom(ctx, remotePath, bytes.NewReader(data), mode)
+}
+
+// StreamCopier is implemented by runners that can copy from a reader without holding the whole
+// file in memory (container image tarballs are tens of MiB).
+type StreamCopier interface {
+	CopyFrom(ctx context.Context, remotePath string, r io.Reader, mode string) error
+}
+
+// CopyFrom implements StreamCopier.
+func (r *SSHRunner) CopyFrom(ctx context.Context, remotePath string, data io.Reader, mode string) error {
 	if !rePath.MatchString(remotePath) || strings.Contains(remotePath, "..") {
 		return fmt.Errorf("invalid remote path %q", remotePath)
 	}
