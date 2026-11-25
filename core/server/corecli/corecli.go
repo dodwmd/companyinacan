@@ -56,7 +56,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv fu
 	root.SetErr(stderr)
 	root.SetIn(stdin)
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return &exitError{exitUsage, err.Error()} })
-	root.AddCommand(serveCmd(getenv), auditCmd(getenv), adminCmd(stdin, getenv), renderChartCmd(stdin, stdout), &cobra.Command{
+	root.AddCommand(serveCmd(getenv), auditCmd(getenv), adminCmd(stdin, getenv), renderChartCmd(stdin, stdout), dumpRequestCmd(getenv), &cobra.Command{
 		Use: "version", Short: "Print the version", Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			fmt.Fprintf(cmd.OutOrStdout(), "can-core %s (%s)\n", version, commit)

@@ -6,7 +6,8 @@ metadata:
   name: can-system
   labels:
     can.dev/namespace-kind: system
-    # can-core mounts a hostPath (backup dumps), so this namespace cannot be `restricted`.
+    # Nothing here mounts a hostPath any more (backup dumps live on the can-dumps volume, E08b);
+    # `baseline` is kept until every can-system workload is verified against `restricted`.
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/warn: restricted
 ---

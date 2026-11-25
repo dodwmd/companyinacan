@@ -20,6 +20,22 @@ spec:
     requests:
       storage: 256Mi
 ---
+# Backup dumps (epic E08b, specs/037-backup-dumps): can-core writes consistent dumps and the
+# completion marker here; the host backup timer reads this volume's local-path directory
+# (/var/lib/rancher/k3s/storage/pvc-<uid>_can-system_can-dumps). No pod needs a hostPath. The
+# size is not enforced by local-path.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: can-dumps
+  namespace: can-system
+  labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -69,6 +85,8 @@ spec:
             - {name: CAN_ADMIN_ADDR, value: ":8080"}
             - {name: CAN_MODULE_ADDR, value: ":8090"}
             - {name: CAN_DB_PATH, value: /var/lib/can/state.db}
+            # Nightly dumps at 02:30 UTC (CAN_DUMP_AT), before the host timer's 03:30.
+            - {name: CAN_DUMPS_DIR, value: /var/lib/can-dumps/dumps}
             - {name: CAN_TOKEN_REVIEW, value: kubernetes}
             - {name: CAN_PLATFORM_URL, value: "http://can-core.can-system.svc.cluster.local:8090"}
             # Behind Traefik (the only route to the admin port, externalTrafficPolicy: Local): see
@@ -110,6 +128,7 @@ spec:
             failureThreshold: 3
           volumeMounts:
             - {name: data, mountPath: /var/lib/can}
+            - {name: dumps, mountPath: /var/lib/can-dumps}
             - {name: tmp, mountPath: /tmp}
             # The applied company.yaml, written by `can apply`. Optional: can-core starts without it.
             - {name: company, mountPath: /etc/can/company, readOnly: true}
@@ -119,6 +138,8 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: can-core-data}
+        - name: dumps
+          persistentVolumeClaim: {claimName: can-dumps}
         - name: tmp
           emptyDir: {sizeLimit: 16Mi}
         - name: company

@@ -33,7 +33,9 @@ func (s *Server) putDump(w http.ResponseWriter, r *http.Request, m store.Module)
 		return
 	}
 	rc := http.NewResponseController(w)
-	_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute)) // the server-wide 30 s is for small JSON bodies
+	// The server-wide 30 s deadlines are for small JSON bodies.
+	_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
+	_ = rc.SetWriteDeadline(time.Now().Add(16 * time.Minute))
 	err := s.Dumps.Accept(m.ID, r.PathValue("name"), r.Body)
 	switch {
 	case err == nil:
