@@ -157,9 +157,10 @@ type HServer struct {
 
 // HSSHKey is an uploaded SSH key.
 type HSSHKey struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Fingerprint string `json:"fingerprint"`
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	Fingerprint string            `json:"fingerprint"`
+	Labels      map[string]string `json:"labels"`
 }
 
 // HFirewall is a cloud firewall.

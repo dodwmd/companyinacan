@@ -21,6 +21,9 @@ implemented.
 
 ## `can down [dir] [--plan] [--yes]`
 
+Dispatches on `provider.type`: `local` delegates to `can dev down` (`--plan` = `--dry-run`, no
+`--yes` needed); `ssh` and `hetzner` as below.
+
 Prints the provider-specific warning first (`ssh`: uninstall k3s and can-core, server left as is;
 `hetzner`: delete server, firewall and uploaded key, data lost). Without `--yes` (and without
 `--plan`) exits 2 and does nothing. Removes `.can/kubeconfig` and state on success. Idempotent.
@@ -32,5 +35,5 @@ Exit 0 only for phase `ready`.
 
 ## Make targets
 
-`make up`, `make server-down` and `make status` run `go run ./cmd/can up|down|status $(ARGS)` (`make down` stays the local-cluster teardown from E02); e.g. `make up ARGS=--plan`,
-`make server-down ARGS=--yes`. 
+`make up`, `make down` and `make status` run `go run ./cmd/can up|down|status $(ARGS)`; `make server-down` is an alias of `make down`. `make dev` and `make doctor` are E02 (`can dev up|doctor`).
+E.g. `make up ARGS=--plan`, `make down ARGS=--yes`.

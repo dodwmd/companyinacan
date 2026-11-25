@@ -181,6 +181,10 @@ POD_CIDR='{{.PodCIDR}}'
 SERVICE_CIDR='{{.ServiceCIDR}}'
 SWAP_MB='{{.SwapMB}}'
 
+config_new=''
+installer=''
+trap 'rm -f "$config_new" "$installer"' EXIT
+
 step() { echo "CAN_STEP: $1"; }
 warn() { echo "CAN_WARN: $1"; }
 
@@ -234,6 +238,7 @@ fi
 
 step k3s-config
 install -d -m 0755 /etc/rancher/k3s
+rm -f /etc/rancher/k3s/config.yaml.??????   # leftovers of an interrupted earlier run
 config_new=$(mktemp /etc/rancher/k3s/config.yaml.XXXXXX)
 cat > "$config_new" <<'CAN_K3S_CONFIG'
 node-name: {{.NodeName}}
@@ -247,14 +252,12 @@ service-cidr: {{.ServiceCIDR}}
 kubelet-arg:
   - fail-swap-on=false
 CAN_K3S_CONFIG
-config_changed=0
-if ! cmp -s "$config_new" /etc/rancher/k3s/config.yaml; then
-  config_changed=1
-  chmod 0644 "$config_new"
-  mv "$config_new" /etc/rancher/k3s/config.yaml
-else
-  rm -f "$config_new"
-fi
+chmod 0644 "$config_new"
+mv "$config_new" /etc/rancher/k3s/config.yaml
+config_new=''
+install -d -m 0700 /var/lib/can
+want_config=$(sha256sum /etc/rancher/k3s/config.yaml | awk '{print $1}')
+applied_config=$(cat /var/lib/can/k3s-config.applied 2>/dev/null || true)
 {{if .ImageTarballs}}
 step images
 install -d -m 0755 /var/lib/rancher/k3s/agent/images
@@ -289,8 +292,10 @@ if [ "$current" != "$K3S_VERSION" ]; then
   curl -fsSL --retry 5 -o "$installer" https://get.k3s.io
   INSTALL_K3S_VERSION="$K3S_VERSION" sh "$installer"
   rm -f "$installer"
-elif [ "$config_changed" -eq 1 ]; then
-  # same version, changed config.yaml: restart so it takes effect
+  installer=''
+elif [ "$applied_config" != "$want_config" ]; then
+  # Same version but config.yaml differs from what k3s last started with (or a
+  # previous run died before recording it): restart so it takes effect.
   systemctl restart k3s
 fi
 
@@ -310,6 +315,8 @@ case "$(k3s kubectl get nodes --no-headers 2>/dev/null || true)" in
   *" Ready"*) ;;
   *) echo "CAN_ERROR: node did not become Ready" >&2; exit 1 ;;
 esac
+
+echo "$want_config" > /var/lib/can/k3s-config.applied
 
 step backup-placeholder
 install -d -m 0700 /var/lib/can/dumps /etc/can/backup.d

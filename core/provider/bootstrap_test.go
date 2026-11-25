@@ -99,6 +99,8 @@ func TestBootstrapStructure(t *testing.T) {
 		"CAN_BOOTSTRAP_DONE",
 		"mktemp",                // no predictable /tmp names
 		"systemctl restart k3s", // changed config.yaml is re-applied
+		"k3s-config.applied",
+		"trap 'rm -f",
 	}
 	for _, m := range must {
 		if !strings.Contains(s, m) {

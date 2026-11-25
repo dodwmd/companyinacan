@@ -29,6 +29,26 @@ func (o opts) str(key, def string) string {
 	return def
 }
 
+// integerE is integer that rejects a present value that is not a whole number
+// (a quoted "22", 22.5, a list), instead of silently using the default.
+func (o opts) integerE(key string, def int) (int, error) {
+	v, ok := o[key]
+	if !ok || v == nil {
+		return def, nil
+	}
+	switch n := v.(type) {
+	case int:
+		return n, nil
+	case int64:
+		return int(n), nil
+	case float64:
+		if n == float64(int(n)) {
+			return int(n), nil
+		}
+	}
+	return 0, fmt.Errorf("provider.options.%s must be a whole number, got %v", key, v)
+}
+
 func (o opts) integer(key string, def int) int {
 	switch v := o[key].(type) {
 	case int:

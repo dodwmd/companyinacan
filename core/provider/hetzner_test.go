@@ -43,6 +43,7 @@ type fakeHetzner struct {
 	authSeen []string
 
 	haveKey, haveFW, haveServer bool
+	keyOwned                    bool // key list shows can labels
 	foreignFW, foreignServer    bool // same-named resource not created by can
 	pollsUntilRunning           int
 	status                      map[string]int // "METHOD /path" -> forced status
@@ -99,13 +100,15 @@ func (f *fakeHetzner) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch key {
 	case "GET /ssh_keys":
-		if f.haveKey {
+		if f.haveKey && f.keyOwned {
+			f.write(w, 200, "ssh_key_list_owned")
+		} else if f.haveKey {
 			f.write(w, 200, "ssh_key_list_one")
 		} else {
 			f.write(w, 200, "ssh_key_list_empty")
 		}
 	case "POST /ssh_keys":
-		f.haveKey = true
+		f.haveKey, f.keyOwned = true, true
 		f.write(w, 201, "ssh_key_created")
 	case "DELETE /ssh_keys/1011":
 		f.haveKey = false
@@ -315,13 +318,12 @@ func TestHetznerDestroyDeletesEverythingAndIsIdempotent(t *testing.T) {
 	if _, err := os.Stat(st.Path); !os.IsNotExist(err) {
 		t.Fatal("state file not removed")
 	}
-	before := len(f.calls)
 	out.Reset()
 	if err := p.Destroy(context.Background(), hetznerSpec(), st, &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.calls) != before || !strings.Contains(out.String(), "nothing to do") {
-		t.Fatalf("second destroy must be a no-op: %q", out.String())
+	if f.count("DELETE") != 3 || !strings.Contains(out.String(), "nothing to do") {
+		t.Fatalf("second destroy must be a no-op: %q %v", out.String(), f.calls)
 	}
 }
 
@@ -689,5 +691,87 @@ func TestHetznerDestroyWaitsForServerBeforeFirewall(t *testing.T) {
 	// a GET poll sits between them
 	if f.calls[di+1] != "GET /servers/3033" {
 		t.Fatalf("server deletion not polled: %v", f.calls[di:])
+	}
+}
+
+func TestHetznerDestroyWithEmptyStateFindsOwnedResources(t *testing.T) {
+	f := newFakeHetzner(t)
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	if err := p.Create(context.Background(), hetznerSpec(), st, &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Remove(); err != nil { // crash after create, state never saved
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := p.Destroy(context.Background(), hetznerSpec(), st, &out); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if f.haveServer || f.haveFW || f.haveKey {
+		t.Fatalf("leaked: server=%v fw=%v key=%v\n%s", f.haveServer, f.haveFW, f.haveKey, out.String())
+	}
+}
+
+func TestHetznerDestroyWithEmptyStateLeavesForeignResources(t *testing.T) {
+	f := newFakeHetzner(t)
+	f.haveServer, f.foreignServer = true, true
+	f.haveFW, f.foreignFW = true, true
+	f.haveKey = true // unlabelled key: someone else's
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	var out strings.Builder
+	if err := p.Destroy(context.Background(), hetznerSpec(), st, &out); err != nil {
+		t.Fatal(err)
+	}
+	if f.count("DELETE") != 0 || !strings.Contains(out.String(), "leaving it alone") {
+		t.Fatalf("calls=%v out=%s", f.calls, out.String())
+	}
+}
+
+func TestHetznerAdoptedKeyIsOwnedOnlyWithLabels(t *testing.T) {
+	for _, owned := range []bool{false, true} {
+		f := newFakeHetzner(t)
+		f.haveKey, f.keyOwned = true, owned
+		p, st, _ := hetznerFixture(t, f, readyRunner())
+		if err := p.Create(context.Background(), hetznerSpec(), st, &strings.Builder{}); err != nil {
+			t.Fatal(err)
+		}
+		if s, _ := st.Load(); s.SSHKeyOwned != owned {
+			t.Errorf("labelled=%v: SSHKeyOwned=%v", owned, s.SSHKeyOwned)
+		}
+	}
+}
+
+func TestOptionsRejectNonIntegerPorts(t *testing.T) {
+	for _, v := range []any{"22", 22.5, []any{22}, true} {
+		spec := sshSpec()
+		spec.Options["port"] = v
+		if _, err := newSSH(newFakeRunner()).Plan(context.Background(), spec, NewStore(t.TempDir())); err == nil {
+			t.Errorf("ssh port %#v accepted", v)
+		}
+		hs := hetznerSpec()
+		hs.Options["port"] = v
+		h := &Hetzner{deps: testDeps(nil)}
+		if _, err := h.Plan(context.Background(), hs, NewStore(t.TempDir())); err == nil {
+			t.Errorf("hetzner port %#v accepted", v)
+		}
+	}
+	spec := sshSpec()
+	spec.Options["swap_mb"] = "lots"
+	if _, err := BootstrapOptionsFrom(spec); err == nil {
+		t.Error("swap_mb string accepted")
+	}
+	spec = sshSpec()
+	spec.Options["port"] = 2222.0 // yaml/json float with no fraction is fine
+	if _, err := BootstrapOptionsFrom(spec); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestOnlyLeadingTildeSlashIsExpanded(t *testing.T) {
+	t.Setenv("HOME", "/home/tester")
+	for _, in := range []string{"~bob/x", "$HOME/x", "${HOME}/x"} {
+		if expandHome(in) != in {
+			t.Errorf("%q must not be expanded", in)
+		}
 	}
 }

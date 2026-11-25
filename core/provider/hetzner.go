@@ -68,15 +68,23 @@ func (p *Hetzner) conf(spec Spec) (hetznerConf, error) {
 		location:   o.str("location", defaultHetznerLocation),
 		keyFile:    expandHome(o.str("ssh_public_key_file", "")),
 		operator:   o.str("operator_ip", ""),
-		wait:       time.Duration(o.integer("wait_seconds", defaultWaitSeconds)) * time.Second,
 		target:     Target{User: "root", Port: 22, KeyFile: expandHome(o.str("ssh_private_key_file", "")), KnownHosts: knownHostsPath(spec.Dir)},
 		slug:       s,
 	}
 	// The cloud firewall opens only 22 and the target above is fixed to 22, so a
 	// different ssh port (which the host firewall would then enforce) would lock us out.
-	if _, set := o["port"]; set && o.integer("port", 22) != 22 {
+	port, err := o.integerE("port", 22)
+	if err != nil {
+		return c, err
+	}
+	if port != 22 {
 		return c, fmt.Errorf("provider.options.port is not supported for hetzner (SSH stays on 22)")
 	}
+	wait, err := o.integerE("wait_seconds", defaultWaitSeconds)
+	if err != nil {
+		return c, err
+	}
+	c.wait = time.Duration(wait) * time.Second
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`).MatchString(c.serverName) {
 		return c, fmt.Errorf("provider.options.server_name %q is not a valid hostname label", c.serverName)
 	}
@@ -198,7 +206,7 @@ func (p *Hetzner) Create(ctx context.Context, spec Spec, st *Store, out io.Write
 		if err != nil {
 			return err
 		}
-		owned := false
+		owned := found && OwnedBy(key.Labels, c.slug)
 		if !found {
 			if key, err = api.UploadSSHKey(ctx, c.keyName, pub, labels); err != nil {
 				return err
@@ -343,13 +351,21 @@ func (p *Hetzner) Destroy(ctx context.Context, spec Spec, st *Store, out io.Writ
 	if err != nil {
 		return err
 	}
-	if state.Server == nil && state.FirewallID == 0 && state.SSHKeyID == 0 {
-		fmt.Fprintln(out, "nothing to do: no hetzner resources recorded in state")
-		return nil
-	}
 	api, err := p.client(c)
 	if err != nil {
 		return err
+	}
+	if state.Server == nil && state.FirewallID == 0 && state.SSHKeyID == 0 {
+		// State is empty: a crash after create (before state was saved) must
+		// not leak resources, so look for ours by name and labels. Anything
+		// without our labels is left alone.
+		if state, err = p.discover(ctx, api, c, out); err != nil {
+			return err
+		}
+		if state.Server == nil && state.FirewallID == 0 && state.SSHKeyID == 0 {
+			fmt.Fprintln(out, "nothing to do: no hetzner resources of this company found")
+			return nil
+		}
 	}
 	if state.Server != nil && state.Server.ID != 0 {
 		// Re-check ownership right before deleting: a server whose id is in
@@ -471,4 +487,46 @@ func (p *Hetzner) waitServerGone(ctx context.Context, api *HetznerClient, id int
 		}
 	}
 	return fmt.Errorf("server %d still exists after deletion was requested", id)
+}
+
+// discover finds can-owned resources by name and labels when state has none.
+// Resources that exist under our names but lack our labels are reported and
+// skipped.
+func (p *Hetzner) discover(ctx context.Context, api *HetznerClient, c hetznerConf, out io.Writer) (*State, error) {
+	st := &State{Version: StateVersion, Provider: "hetzner"}
+	srv, found, err := api.FindServer(ctx, c.serverName)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case found && OwnedBy(srv.Labels, c.slug):
+		st.Server = &ServerState{ID: srv.ID, Name: srv.Name, IP: srv.PublicNet.IPv4.IP, User: "root", Port: 22}
+		fmt.Fprintf(out, "found server %d by name and labels\n", srv.ID)
+	case found:
+		fmt.Fprintf(out, "server %q exists but is not labelled as created by can; leaving it alone\n", c.serverName)
+	}
+	fw, found, err := api.FindFirewall(ctx, c.fwName)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case found && OwnedBy(fw.Labels, c.slug):
+		st.FirewallID = fw.ID
+		fmt.Fprintf(out, "found firewall %d by name and labels\n", fw.ID)
+	case found:
+		fmt.Fprintf(out, "firewall %q exists but is not labelled as created by can; leaving it alone\n", c.fwName)
+	}
+	if pub, err := p.publicKey(c); err == nil {
+		if fp, err := SSHFingerprint(pub); err == nil {
+			key, found, err := api.FindSSHKey(ctx, fp)
+			if err != nil {
+				return nil, err
+			}
+			if found && OwnedBy(key.Labels, c.slug) {
+				st.SSHKeyID, st.SSHKeyOwned = key.ID, true
+				fmt.Fprintf(out, "found ssh key %d by fingerprint and labels\n", key.ID)
+			}
+		}
+	}
+	return st, nil
 }

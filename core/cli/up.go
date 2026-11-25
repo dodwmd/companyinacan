@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dodwmd/companyinacan/core/cluster"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/provider"
@@ -199,13 +200,6 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	if err != nil {
 		return t.fail(err)
 	}
-	if t.spec.Options != nil {
-		if tgt.KeyFile == "" {
-			if k, ok := t.spec.Options["ssh_private_key_file"].(string); ok {
-				tgt.KeyFile = k
-			}
-		}
-	}
 	runner := t.deps.Runner
 	if runner == nil {
 		runner = func(tg provider.Target) provider.Runner { return provider.NewSSHRunner(tg) }
@@ -294,7 +288,8 @@ func newDownCmd(g *globalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "down [dir]",
 		Short: "Tear down what `can up` created",
-		Long: `For the ssh provider this uninstalls k3s and can-core and leaves the server alone.
+		Long: `For the local provider this is ` + "`can dev down`" + ` (deletes the k3d cluster; --yes is not needed).
+For the ssh provider this uninstalls k3s and can-core and leaves the server alone.
 For hetzner it deletes the server, firewall and (if can uploaded it) the SSH key: all data on the server is lost.
 
 Destructive: requires --yes. Use --plan to see what would happen.`,
@@ -307,6 +302,10 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 			t, err := load(cmd, g, dir, modulesDir)
 			if err != nil {
 				return err
+			}
+			if t.company.Provider.Type == "local" {
+				// the local provider is the k3d cluster: same as `can dev down`
+				return runDevDown(cmd, plan)
 			}
 			out, flush := t.writers(cmd, g)
 			defer flush()
@@ -333,6 +332,7 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 				return t.fail(err)
 			}
 			_ = os.Remove(provider.KubeconfigPath(dir))
+			_ = os.Remove(filepath.Join(dir, ".can", "known_hosts"))
 			fmt.Fprintln(out, "done")
 			if g.json() {
 				return t.emitJSON(cmd, map[string]any{"provider": t.prov.Name(), "destroyed": true})
@@ -416,4 +416,15 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
 	return cmd
+}
+
+// runDevDown delegates to `can dev down` (epic E02) for provider type local.
+func runDevDown(cmd *cobra.Command, dryRun bool) error {
+	o := &devOpts{cfg: cluster.DefaultConfig()}
+	d := newDevDownCmd(o)
+	o.dryRun = dryRun // after construction: registering the --dry-run flag resets it
+	d.SetContext(cmd.Context())
+	d.SetOut(cmd.OutOrStdout())
+	d.SetErr(cmd.ErrOrStderr())
+	return d.RunE(d, nil)
 }

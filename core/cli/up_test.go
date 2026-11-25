@@ -385,3 +385,28 @@ func TestConcurrentUpIsRefused(t *testing.T) {
 		t.Fatal("ran despite the lock")
 	}
 }
+
+func TestDownLocalDelegatesToDevDown(t *testing.T) {
+	dir := writeCompany(t, "schema: 1\nname: A\ndomain: a.example\nprovider: {type: local}\n")
+	code, out, errs := run(t, "down", dir, "--plan", "--modules-dir", "../../modules")
+	if code != ExitOK || !strings.Contains(out, "k3d") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
+	}
+}
+
+func TestDownRemovesKnownHosts(t *testing.T) {
+	dir := sshCompany(t)
+	r := newRunner()
+	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
+	_, _, _ = run(t, "up", dir, "--modules-dir", "../../modules")
+	kh := filepath.Join(dir, ".can", "known_hosts")
+	if err := os.WriteFile(kh, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := run(t, "down", dir, "--yes", "--modules-dir", "../../modules"); code != ExitOK {
+		t.Fatal(code)
+	}
+	if _, err := os.Stat(kh); !os.IsNotExist(err) {
+		t.Fatal("known_hosts left behind")
+	}
+}

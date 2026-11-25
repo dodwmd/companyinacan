@@ -19,7 +19,7 @@ Run from the repository root.
 
 ```sh
 make dev           # can dev up: create the cluster if absent, apply deploy/base, reload CoreDNS
-make down          # can dev down: delete the cluster
+make down          # can down (provider local) = can dev down: delete the cluster; needs company.yaml, or run `can dev down`
 bin/can dev status # exit 0 only if running; --output json available
 bin/can dev up --dry-run   # print the exact k3d/kubectl commands without running them
 ```

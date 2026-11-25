@@ -22,7 +22,11 @@ func (p *SSH) target(spec Spec) (Target, error) {
 	if host == "" {
 		return Target{}, fmt.Errorf("provider.options.host is required for the ssh provider")
 	}
-	t := Target{Host: host, User: o.str("user", "root"), Port: o.integer("port", 22), KeyFile: expandHome(o.str("key_file", ""))}
+	port, err := o.integerE("port", 22)
+	if err != nil {
+		return Target{}, err
+	}
+	t := Target{Host: host, User: o.str("user", "root"), Port: port, KeyFile: expandHome(o.str("key_file", ""))}
 	if _, err := SSHArgs(t, nil, ""); err != nil {
 		return Target{}, err
 	}
@@ -33,12 +37,20 @@ func (p *SSH) target(spec Spec) (Target, error) {
 // the ssh and hetzner providers.
 func BootstrapOptionsFrom(spec Spec) (BootstrapOptions, error) {
 	o := opts(spec.Options)
+	port, err := o.integerE("port", 22)
+	if err != nil {
+		return BootstrapOptions{}, err
+	}
+	swap, err := o.integerE("swap_mb", 0)
+	if err != nil {
+		return BootstrapOptions{}, err
+	}
 	bo := BootstrapOptions{
 		K3sVersion:   o.str("k3s_version", ""),
 		NodeName:     o.str("node_name", ""),
-		SSHPort:      o.integer("port", 22),
+		SSHPort:      port,
 		OperatorCIDR: o.str("operator_ip", ""),
-		SwapMB:       o.integer("swap_mb", 0),
+		SwapMB:       swap,
 	}
 	if l, ok := spec.Options["image_tarballs"].([]any); ok {
 		for i, e := range l {

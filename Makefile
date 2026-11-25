@@ -39,20 +39,19 @@ test: lint unit contract ## full local check suite
 dev: ## create the local k3d cluster and apply the base manifests (epic E02)
 	@$(GO) run ./cmd/can dev up
 
-down: ## delete the local k3d cluster
-	@$(GO) run ./cmd/can dev down
+down: ## tear down: the local k3d cluster (provider local) or the server (ssh, hetzner; needs ARGS=--yes)
+	@$(GO) run ./cmd/can down $(ARGS)
 
 doctor: ## check the prerequisites for `make dev`
 	@$(GO) run ./cmd/can dev doctor
 
-# Extra flags for the lifecycle targets, e.g. `make up ARGS=--plan` or `make server-down ARGS=--yes`.
+# Extra flags for the lifecycle targets, e.g. `make up ARGS=--plan` or `make down ARGS=--yes`.
 ARGS ?=
 
 up: ## provision a server, bootstrap k3s, print URL and DNS records (ARGS=--plan to preview)
 	@$(GO) run ./cmd/can up $(ARGS)
 
-server-down: ## tear down what `make up` created on a server (needs ARGS=--yes; ARGS=--plan to preview)
-	@$(GO) run ./cmd/can down $(ARGS)
+server-down: down ## alias of down, kept for scripts that used the E06 name
 
 status: ## show the server state; exit 0 only when ready
 	@$(GO) run ./cmd/can status $(ARGS)

@@ -109,14 +109,35 @@ firewall, and the SSH key only if `can` uploaded it. **Deleting the server delet
 The defaults for `server_type`, `image` and `location` have not been checked against the live API
 yet (epic E00). Override them if Hetzner has renamed a type.
 
+## Option values
+
+`port` and the other numeric options must be whole numbers: a quoted `"22"` or `22.5` is an error,
+not silently replaced by the default. Only a leading `~/` is expanded in file paths; `~user/...`,
+`$HOME` and `${HOME}` are not.
+
+## Resuming and changed options
+
+A resumed `can up` reuses the firewall it already created and does **not** reconcile it: changing
+`operator_ip` after the first run does not change the cloud firewall rules (the host firewall is
+re-applied by the bootstrap only if it re-runs). To apply a new `operator_ip` on Hetzner, run
+`can down --yes` and `can up` again, or edit the firewall in the Hetzner console.
+
+If `can down` finds an empty state (for example a crash between creating a resource and saving
+its id), it looks for the server, firewall and SSH key by name and labels and removes only those
+labelled `managed-by=can, company=<slug>`; a same-named resource without the labels is reported and
+left alone. An SSH key adopted by fingerprint is treated as can's only if it carries those labels.
+`can down` also deletes `.can/known_hosts` and `.can/kubeconfig`.
+
 ## Bootstrap caveats
 
 - The k3s installer (`get.k3s.io`) is downloaded over TLS but **not hash-verified**; the k3s
   version is pinned, the installer script is not.
 - Image tarballs are checksum-verified and placed in `agent/images` in parallel with the install.
   That k3s imports them after it starts (rather than pulling) is **unverified** until E00.
-- Re-running `can up` with the same pinned version re-applies a changed `config.yaml` by restarting
-  k3s; a version change re-runs the installer.
+- Re-running `can up` with the same pinned version restarts k3s when `config.yaml` differs from the
+  hash recorded in `/var/lib/can/k3s-config.applied`. The hash is written only after k3s is Ready,
+  so a run that crashed before restarting is retried next time. A version change re-runs the
+  installer. Temp files from interrupted runs are removed.
 - A crash between creating a cloud resource and saving its id in state is recovered by name and
   labels on the next `can up`. A crash during the bootstrap script leaves a partial host; re-running
   converges because every step is guarded.
