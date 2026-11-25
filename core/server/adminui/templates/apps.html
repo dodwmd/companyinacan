@@ -1,0 +1,14 @@
+{{define "content"}}
+<h1>{{t "apps.title"}}</h1>
+<p class="hint">{{t "apps.help"}}</p>
+{{if .Data.Apps}}<ul class="apps">
+{{range .Data.Apps}}<li>
+<form method="post" action="/apps/{{.ID}}/launch" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<strong>{{.Name}}</strong> <code>{{.ID}}</code>
+<button type="submit" aria-label="{{t "apps.open_label" .Name}}">{{t "apps.open"}}</button>
+</form>
+</li>
+{{end}}</ul>
+{{else}}<p class="empty">{{t "apps.none"}}</p>{{end}}
+{{end}}

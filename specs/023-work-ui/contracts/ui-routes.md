@@ -19,6 +19,8 @@ local `/ui/` path, otherwise to the default noted below, with `ok=<name>` for a 
 |---|---|---|---|
 | `GET /ui/login` | no | none | Sign-in form; sets the login CSRF cookie. Query `next` (local `/ui/` path) |
 | `POST /ui/login` | no | none | Fields `token` (a personal access token), `csrf`, `next`. 303 on success with a new session; 401 or 429 re-render the form; 403 for a missing or wrong login CSRF token |
+| `GET /ui/login/ticket` | no | none | Single sign-on landing (E11c, `specs/036-module-ui-sso`): query `t` (a launch ticket). Shows a Continue form only; it never consumes the ticket, so a link scanner or prefetch cannot spend it. Sets the login CSRF cookie. 400 for a malformed ticket, 404 when not installed under can-core |
+| `POST /ui/login/ticket` | no | none | Fields `ticket`, `csrf` (double-submit). Redeems the ticket at can-core (this module is the audience), then 303 to a clean URL (`/ui/` or the checked landing path) with a new session. 401 for every refusal (unknown, used, expired, foreign ticket: one message), 403 stale form or cross-site, 429 after repeated failures (a valid ticket is never throttled), 503 when can-core cannot answer. 403 for the form when `ui.token_login` is off applies to `POST /ui/login` only |
 | `POST /ui/logout` | yes | work.read | Ends the session; 303 `/ui/login` |
 | `GET /ui/{$}` | yes | work.read | Project list (only projects the token can see) |
 | `GET /ui/dashboard` | yes | work.read | Manager dashboard. Query `assignees` (comma separated, at most 20): open P0 and P1 issues per person |

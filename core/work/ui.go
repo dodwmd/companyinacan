@@ -77,6 +77,8 @@ func (u *webUI) routes() []uiRoute {
 	return []uiRoute{
 		{UIRoute{"GET", "/ui/login", false, none}, u.loginPage},
 		{UIRoute{"POST", "/ui/login", false, none}, u.loginPost},
+		{UIRoute{"GET", "/ui/login/ticket", false, none}, u.ticketPage},
+		{UIRoute{"POST", "/ui/login/ticket", false, none}, u.ticketPost},
 		{UIRoute{"POST", "/ui/logout", true, r}, u.logout},
 		{UIRoute{"GET", "/ui/{$}", true, r}, u.projects},
 		{UIRoute{"GET", "/ui/dashboard", true, r}, u.dashboard},
@@ -207,6 +209,14 @@ func (u *webUI) authenticate(r *http.Request) (*Principal, *uiSession, string, b
 	if !ok {
 		return nil, nil, "", false
 	}
+	if sess.sso != nil {
+		p, ok := u.ssoPrincipal(r, sess)
+		if !ok || !p.Can(PermRead) {
+			u.sessions.delete(c.Value)
+			return nil, nil, "", false
+		}
+		return p, sess, c.Value, true
+	}
 	p, err := u.principalFor(r, sess.token)
 	if err != nil || !p.Can(PermRead) {
 		u.sessions.delete(c.Value)
@@ -222,7 +232,9 @@ func (u *webUI) principalFor(r *http.Request, token string) (*Principal, error) 
 }
 
 // sameSite refuses cross-site posts: Sec-Fetch-Site must be same-origin (or none), and an Origin
-// header, when present, must name this host.
+// header, when present, must name this host. "Origin: null" is what a browser sends for a form
+// posted from a page with Referrer-Policy: no-referrer (all of these pages), so it is accepted when,
+// and only when, the browser-controlled Sec-Fetch-Site says the post is same-origin.
 func sameSite(r *http.Request) bool {
 	if s := r.Header.Get("Sec-Fetch-Site"); s != "" && s != "same-origin" && s != "none" {
 		return false
@@ -232,7 +244,7 @@ func sameSite(r *http.Request) bool {
 		if err != nil || !strings.EqualFold(ou.Host, r.Host) {
 			return false
 		}
-	} else if o == "null" {
+	} else if o == "null" && r.Header.Get("Sec-Fetch-Site") != "same-origin" {
 		return false
 	}
 	return true
@@ -417,6 +429,11 @@ func (c *uiCtx) base(title, current string) *uiBase {
 	b := &uiBase{Lang: "en", Title: title, Current: current}
 	if c.p != nil {
 		b.User, b.CSRF, b.CanWrite = c.p.Subject, c.sess.csrf, c.p.Can(PermWrite)
+		if c.sess.sso != nil { // a launch-ticket session shows the person's name, not their account id
+			if n := c.u.sessions.ssoSnapshot(c.sess).name; n != "" {
+				b.User = n
+			}
+		}
 		b.Nav = []uiNav{
 			{"/ui/", msg("nav.projects"), current == "projects"},
 			{"/ui/dashboard", msg("nav.dashboard"), current == "dashboard"},

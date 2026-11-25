@@ -1,11 +1,12 @@
 {{define "content"}}
 <h1>{{t "login.title"}}</h1>
 {{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-<form method="post" action="/login" class="card">
+{{if .Data.TokenLogin}}<form method="post" action="/login" class="card">
 <input type="hidden" name="csrf" value="{{.Data.CSRF}}">
 <p><label for="token">{{t "login.token"}}</label>
 <input id="token" name="token" type="password" autocomplete="off" required aria-describedby="token-hint" maxlength="4096"></p>
 <p id="token-hint" class="hint">{{t "login.hint"}}</p>
 <p><button type="submit">{{t "login.submit"}}</button></p>
 </form>
-{{end}}
+{{else}}<p>{{t "login.sso_only"}}</p>
+{{end}}{{end}}

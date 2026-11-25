@@ -86,8 +86,16 @@ var impliedBy = map[string]map[string][]string{
 // holds reports whether subject holds perm of the module, directly or through a permission that
 // implies it inside the module.
 func (s *Service) holds(ctx context.Context, subject, module, perm string) (bool, error) {
+	return HeldBy(ctx, s.Holds, subject, module, perm)
+}
+
+// HeldBy reports whether subject holds perm of module, directly or through a permission that
+// implies it inside the module, using holds (an RBAC lookup) for each candidate. The launch
+// tickets (specs/036-module-ui-sso) compute what a person may do in a module with the same rule
+// personal access tokens use.
+func HeldBy(ctx context.Context, holds func(ctx context.Context, subject, permission string) (bool, error), subject, module, perm string) (bool, error) {
 	for _, p := range append([]string{perm}, impliedBy[module][perm]...) {
-		ok, err := s.Holds(ctx, subject, p)
+		ok, err := holds(ctx, subject, p)
 		if err != nil {
 			return false, err
 		}

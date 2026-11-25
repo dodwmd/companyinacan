@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 //go:embed ui/templates ui/static
@@ -36,8 +38,13 @@ const listLimit = 50
 type UI struct {
 	Store *Store
 	Auth  Authenticator // the same chain the API uses; it validates the token presented at login
-	Log   *slog.Logger
-	Site  SiteInfo
+	// Sessions is can-core's launch-ticket API (specs/036-module-ui-sso); nil when the module is not
+	// installed under can-core, which turns /login/ticket off (404).
+	Sessions modclient.SessionAPI
+	// NoTokenLogin turns the pasted-token sign-in off (ui.token_login: false).
+	NoTokenLogin bool
+	Log          *slog.Logger
+	Site         SiteInfo
 	// Secure sets the Secure attribute (and the __Host- cookie prefix). False only for plain-HTTP
 	// local development.
 	Secure     bool
@@ -67,6 +74,8 @@ func (u *UI) routes() []route {
 	return []route{
 		{"GET /login", u.loginPage},
 		{"POST /login", u.loginPost},
+		{"GET /login/ticket", u.ticketPage},
+		{"POST /login/ticket", u.ticketPost},
 		{"POST /logout", u.authed(u.logout)},
 		{"GET /{$}", u.authed(u.home)},
 		{"GET /jobs", u.authed(u.jobList)},
@@ -322,6 +331,11 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, c *uiCtx, status int
 		pg.Authed, pg.CSRF = true, c.ss.csrf
 		pg.Caps = c.p.Caps()
 		pg.Subject, pg.Role = c.p.Subject, c.p.Role
+		if c.ss.ssoHandle != "" { // a launch-ticket session shows the person's name, not the account id
+			if n := u.sessions.displayName(c.ss); n != "" {
+				pg.Subject = n
+			}
+		}
 		if status < 400 {
 			pg.Nav = u.nav(r.URL.Path, pg.Caps)
 		} else {
@@ -372,9 +386,10 @@ func (u *UI) renderMsg(w http.ResponseWriter, r *http.Request, ss *uiSession, p 
 
 type loginData struct{ Error string }
 
-func (u *UI) loginForm(w http.ResponseWriter, r *http.Request, status int, errMsg string) {
-	// The double-submit token is kept while it is valid, so a failed attempt does not invalidate
-	// the form the user is looking at.
+// loginCSRF sets (or keeps) the double-submit cookie of the login forms and returns its value. The
+// token is kept while it is valid, so a failed attempt does not invalidate the form the user is
+// looking at.
+func (u *UI) loginCSRF(w http.ResponseWriter, r *http.Request) string {
 	tok := ""
 	if ck, err := r.Cookie(u.loginCSRFName()); err == nil && len(ck.Value) == 43 {
 		tok = ck.Value
@@ -383,10 +398,16 @@ func (u *UI) loginForm(w http.ResponseWriter, r *http.Request, status int, errMs
 		tok = newToken()
 	}
 	u.setCookie(w, u.loginCSRFName(), tok, loginCSRFMaxAge)
+	return tok
+}
+
+func (u *UI) loginForm(w http.ResponseWriter, r *http.Request, status int, errMsg string) {
+	tok := u.loginCSRF(w, r)
 	u.render(w, r, nil, status, "login.html", "login.title", struct {
 		loginData
-		CSRF string
-	}{loginData{errMsg}, tok})
+		CSRF       string
+		TokenLogin bool
+	}{loginData{errMsg}, tok, !u.NoTokenLogin})
 }
 
 func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -398,6 +419,10 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
+	if u.NoTokenLogin { // ui.token_login is false: launch tickets only; nothing is checked or counted
+		u.loginForm(w, r, http.StatusForbidden, u.msg("login.token_off"))
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		u.renderError(w, r, nil, nil, http.StatusBadRequest, "err.invalid_title", "err.bad_form")
 		return

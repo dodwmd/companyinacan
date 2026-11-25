@@ -104,6 +104,10 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		a.penalty = cfg.authPenalty
 	}
 	a.forceSecure = cfg.forceSecure(opt.PublicURL)
+	a.tokenLogin = cfg.tokenLogin()
+	if opt.Can != nil {
+		a.sso = opt.Can
+	}
 	if a.ui, err = newWebUI(a, now); err != nil {
 		_ = store.Close()
 		return nil, err

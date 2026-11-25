@@ -49,12 +49,26 @@ func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
 		return nil, ErrUnauthenticated
 	}
 	id, err := a.In.Lookup(r.Context(), tok)
-	if err != nil || !id.Active || id.Kind != "user" || !canSubjectRe.MatchString(id.Subject) {
+	if err != nil || !id.Active || id.Kind != "user" {
 		return nil, ErrUnauthenticated
 	}
-	role := roleFromPermissions(id.Permissions)
+	p := personalPrincipal(id.Subject, id.Permissions)
+	if p == nil {
+		return nil, ErrUnauthenticated
+	}
+	return p, nil
+}
+
+// personalPrincipal is the one mapping from a person's can-core permissions to a Principal, used
+// by personal access tokens and launch-ticket sessions alike. nil means the subject is not a user
+// account or the permissions cover no role of this module.
+func personalPrincipal(subject string, perms []string) *Principal {
+	if !canSubjectRe.MatchString(subject) {
+		return nil
+	}
+	role := roleFromPermissions(perms)
 	if role == "" {
-		return nil, ErrUnauthenticated
+		return nil
 	}
-	return &Principal{Subject: id.Subject, Kind: "personal", Role: role}, nil
+	return &Principal{Subject: subject, Kind: "personal", Role: role}
 }

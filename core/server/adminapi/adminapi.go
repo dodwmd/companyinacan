@@ -23,6 +23,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/ticket"
 )
 
 // Server holds the admin API's dependencies.
@@ -43,7 +44,9 @@ type Server struct {
 	// SSO is OpenID Connect sign-in (epic E11b); nil answers 503 on its endpoints.
 	SSO *sso.Service
 	// Identity ends the access of someone who left at once (E13d); nil answers 503.
-	Identity   *identity.Service
+	Identity *identity.Service
+	// Tickets mints the launch tickets of single sign-on into module UIs (E11c); nil answers 503.
+	Tickets    *ticket.Service
 	Log        *slog.Logger
 	Secure     bool // set the Secure cookie attribute (false only for plain-HTTP local dev)
 	TrustProxy bool // take the client address from the ingress's X-Forwarded-For
@@ -62,7 +65,7 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.pushRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), s.identityRoutes()...)
+	return append(append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.pushRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), s.identityRoutes()...), s.appRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {

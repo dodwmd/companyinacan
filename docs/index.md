@@ -32,7 +32,7 @@ and the code is the truth.
 | Read | For |
 |---|---|
 | [admin-ui.md](admin-ui.md) | The admin web UI, module catalogue and wizard, security model, installing on Android |
-| [sso.md](sso.md) | OpenID Connect sign-in for the admin UI |
+| [sso.md](sso.md) | OpenID Connect sign-in for the admin UI, and one-click sign-in into module web pages (Apps, launch tickets) |
 | [approvals.md](approvals.md), [notifications.md](notifications.md) | The approval engine, RBAC names, inbox, email and Web Push |
 | [pwa.md](pwa.md) | Installing the admin UI on a phone, Web Push, limits |
 | [email-policy.md](email-policy.md) | How outbound and inbound email are meant to work |

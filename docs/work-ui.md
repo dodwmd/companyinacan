@@ -54,10 +54,21 @@ Wrong tokens are throttled per client address (the same limit as the API's faile
 authentications, `rate_limit.auth_failures_per_minute`). A valid token is never throttled, so
 somebody guessing from your office address cannot lock you out.
 
-Single sign-on to the module UI is **not** available yet; it is a follow-up. The company's OpenID
-Connect sign-in (E11b) covers the admin UI only; staff use a personal access token for modules, as
-here. When module-level SSO exists the login page will gain a button, and the token paste stays as
-the fallback.
+### Single sign-on from the admin UI
+
+When the tracker is installed under can-core and its address is configured
+([`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c), for example
+`CAN_MODULE_UI_URLS=work=https://work.acme.example/ui`), people press **Open** on the admin UI's **Apps** page
+instead of pasting a token. The link (`/ui/login/ticket`, valid only in the browser that clicked Open) names the account and shows a **Continue** button; pressing it signs in
+with the permissions the person holds in `work` at that moment. The session asks can-core again at most every
+30 seconds, so a removed role or a disabled account takes effect that fast. Logging out ends this session only.
+
+```yaml
+ui:
+  token_login: false   # default true. false: no paste-a-token form; sign-in only from Apps
+```
+
+Not verified in a browser or on a cluster.
 
 ## Pages
 
@@ -188,7 +199,7 @@ needs a decision about exposing a login form on the public internet.
 
 ## Known gaps
 
-SSO sign-in; a public route; creating projects, editing workflows and managing tokens from the UI
+Direct OpenID Connect sign-in at the module (sign-on is by launch ticket); a public route; creating projects, editing workflows and managing tokens from the UI
 (use the admin UI or the API); uploading attachments; bulk edit; keyboard shortcuts; saved named
 filters; a people picker; burn-down charts; other languages (the catalogue is ready: one map per
 language). See `specs/023-work-ui/tasks.md`.

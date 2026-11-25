@@ -293,6 +293,8 @@ func (u *UI) party(c *uiCtx) error {
 }
 
 type eraseForm struct {
+	// SSO is a launch-ticket session: no token field, the launch itself is the step-up.
+	SSO            bool
 	P              Party
 	RetentionYears int
 }
@@ -306,7 +308,7 @@ func (u *UI) partyEraseForm(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "party_erase.html", "erase.title", eraseForm{P: *p, RetentionYears: u.Cfg.RetentionYears})
+	u.render(c.w, c.r, c, http.StatusOK, "party_erase.html", "erase.title", eraseForm{P: *p, RetentionYears: u.Cfg.RetentionYears, SSO: c.ss.ssoHandle != ""})
 	return nil
 }
 
@@ -324,9 +326,14 @@ func (u *UI) partyErase(c *uiCtx) error {
 	if c.form("confirm") != "ERASE" {
 		return invalid("confirm", "type ERASE to confirm")
 	}
-	// Step-up: erasing is irreversible, so a session left open on an unlocked screen is not enough;
-	// the sign-in token is asked for again and compared with the one the session was made from.
-	if !constEq(strings.TrimSpace(c.r.PostForm.Get("token")), c.ss.token) {
+	// Step-up: erasing is irreversible, so a session left open on an unlocked screen is not enough.
+	// A token session is asked for its sign-in token again, compared with the one it was made from;
+	// a launch-ticket session must be freshly launched and confirmed by can-core (stepUpSSO).
+	if c.ss.ssoHandle != "" {
+		if err := u.stepUpSSO(c); err != nil {
+			return err
+		}
+	} else if !constEq(strings.TrimSpace(c.r.PostForm.Get("token")), c.ss.token) {
 		return invalid("token", "re-enter your sign-in token to confirm the erasure")
 	}
 	rep, err := u.Store.ErasePartyData(c.ctx(), c.p, id, u.Cfg.RetentionYears)

@@ -22,6 +22,10 @@ type Module struct {
 		Chart     string `yaml:"chart"`
 		Values    string `yaml:"values"`
 		Subdomain string `yaml:"subdomain"`
+		// WebLogin declares that the module's web UI accepts can-core launch tickets at
+		// <UI base>/login/ticket (specs/036-module-ui-sso); nil means it does not and it is never
+		// offered in the Apps launcher.
+		WebLogin *WebLogin `yaml:"web_login"`
 	} `yaml:"runtime"`
 	Requires struct {
 		Database     string   `yaml:"database"`
@@ -75,6 +79,15 @@ type Module struct {
 		Retention   string `yaml:"retention"`
 		Sensitivity string `yaml:"sensitivity"`
 	} `yaml:"data_classes"`
+}
+
+// WebLogin is module.yaml `runtime.web_login`.
+type WebLogin struct {
+	// BasePath is where the UI lives on its host ("" for the root, "/ui" for work).
+	BasePath string `yaml:"base_path"`
+	// ViaSubdomain says that https://<runtime.subdomain>.<company domain> serves the UI. Without it
+	// the operator has to give the address (CAN_MODULE_UI_URLS).
+	ViaSubdomain bool `yaml:"via_subdomain"`
 }
 
 // DecodeModule decodes a loaded document into the typed struct.

@@ -50,7 +50,14 @@ block or a route yet (follow-up).
 4. The token is held in server memory only (to re-check it) and is never sent back to the browser.
    A restart signs everyone out. The admin UI's session cookie is not used here.
 
-Single-sign-on login without pasting a token is a follow-up.
+### Single sign-on from the admin UI
+
+With the module installed under can-core and its address configured
+([`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c)), **Open** on the admin UI's **Apps** page
+signs a person in without a token (`/login/ticket`, valid only in the browser that clicked **Open**; check the account, then **Continue**). The same rule as above applies: an
+active person record with `sso_subject` set to `user:<username>` is needed. The session is re-checked with
+can-core every minute for hr and admin, every five minutes otherwise. `ui.token_login: false` (default `true`)
+removes the paste-a-token form. Not verified in a browser or on a cluster.
 
 ## What each page shows
 
@@ -105,6 +112,6 @@ the redirect, a refused wrong token and that the API still answers.
 
 ## Not done
 
-SSO-integrated login; HR administration screens (review cycles, templates, calibration, release,
+Direct OpenID Connect login at the module (sign-on is by launch ticket); HR administration screens (review cycles, templates, calibration, release,
 leave types, holidays, blackouts: use the JSON API); chart values for the `ui` block and a route;
 sessions that survive a restart; a browser and screen-reader pass.

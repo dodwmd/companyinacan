@@ -42,6 +42,11 @@ type uiSession struct {
 	created time.Time
 	last    time.Time
 	checked time.Time
+	// ssoHandle is set for a session that began with a launch ticket (specs/036-module-ui-sso):
+	// there is no token, only the opaque handle can-core answers revalidation for. It never changes
+	// after creation. name (a display name) and princ/checked are guarded by the store's mutex.
+	ssoHandle string
+	name      string
 }
 
 type sessionStore struct {
@@ -60,13 +65,23 @@ func sidKey(id string) [sha256.Size]byte { return sha256.Sum256([]byte(id)) }
 // create stores a new session and returns its identifier. The oldest sessions of the subject, and
 // the oldest overall, are dropped when the bounds are exceeded.
 func (s *sessionStore) create(p Principal, token string, now time.Time) (string, *uiSession) {
+	return s.createWith(p, now, func(v *uiSession) { v.token = token })
+}
+
+// createSSO is create for a launch-ticket session: no token, the can-core session handle instead.
+func (s *sessionStore) createSSO(p Principal, handle, name string, now time.Time) (string, *uiSession) {
+	return s.createWith(p, now, func(v *uiSession) { v.ssoHandle, v.name = handle, name })
+}
+
+func (s *sessionStore) createWith(p Principal, now time.Time, init func(*uiSession)) (string, *uiSession) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.m == nil {
 		s.m = map[[sha256.Size]byte]*uiSession{}
 	}
 	id := newToken()
-	ss := &uiSession{subject: p.Subject, princ: p, token: token, csrf: newToken(), created: now, last: now, checked: now}
+	ss := &uiSession{subject: p.Subject, princ: p, csrf: newToken(), created: now, last: now, checked: now}
+	init(ss)
 	s.m[sidKey(id)] = ss
 	var own [][sha256.Size]byte
 	for k, v := range s.m {
@@ -167,7 +182,7 @@ func (u *UI) current(w http.ResponseWriter, r *http.Request) (*uiSession, *Princ
 	}
 	// Snapshot the mutable fields under the lock: concurrent requests of one session write them.
 	u.sessions.mu.Lock()
-	last, created, checked, princ, token := ss.last, ss.created, ss.checked, ss.princ, ss.token
+	last, created, checked, princ, token, name := ss.last, ss.created, ss.checked, ss.princ, ss.token, ss.name
 	u.sessions.mu.Unlock()
 	if now.Sub(last) > u.IdleTimeout || now.Sub(created) > u.AbsoluteTimeout {
 		return kill()
@@ -176,16 +191,24 @@ func (u *UI) current(w http.ResponseWriter, r *http.Request) (*uiSession, *Princ
 	if recheck {
 		// Periodic re-authentication: a revoked token ends the session; the role is refreshed. It
 		// fails closed: a token that cannot be verified ends the session.
-		p, err := u.authenticateToken(r, token)
-		if err != nil || p.Subject != ss.subject {
-			return kill()
+		var p *Principal
+		if ss.ssoHandle != "" {
+			// A launch-ticket session has no token: ask can-core about its handle instead.
+			if p, name = u.revalidateSSO(r, ss, name); p == nil {
+				return kill()
+			}
+		} else {
+			var err error
+			if p, err = u.authenticateToken(r, token); err != nil || p.Subject != ss.subject {
+				return kill()
+			}
 		}
 		princ = *p
 	}
 	u.sessions.mu.Lock()
 	ss.last = now
 	if recheck {
-		ss.checked, ss.princ = now, princ
+		ss.checked, ss.princ, ss.name = now, princ, name
 	}
 	u.sessions.mu.Unlock()
 	return ss, &princ, true
