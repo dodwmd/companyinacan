@@ -814,6 +814,16 @@ func (s *Service) CastVote(ctx context.Context, a Actor, id string, in VoteInput
 		}
 		return nil, err
 	}
+	if r.Secret {
+		// No read-audit on the cast response: an audit row per voter written right after the cast would carry the
+		// cast order. The view has no sensitive field, so there is nothing to audit.
+		r2, f2, err := s.seeResolution(ctx, a, id)
+		if err != nil {
+			return nil, err
+		}
+		v, _, err := s.viewResolution(ctx, a, r2, f2, false)
+		return v, err
+	}
 	return s.GetResolution(ctx, a, id)
 }
 
@@ -1216,6 +1226,9 @@ type ResolutionRequest struct {
 	Subjects  []string `json:"subjects"` // person ids the decision is about (a grantee who is a director is recused)
 }
 
+// maxOpenRequests caps the unfinished drafts one integration subject can create.
+const maxOpenRequests = 600
+
 var extTypeRe = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$`)
 
 // RequestResolution creates (or returns the existing) draft resolution for an external request. The
@@ -1242,6 +1255,13 @@ func (s *Service) RequestResolution(ctx context.Context, a Actor, in ResolutionR
 	}
 	if ex, err := s.outcomeBy(ctx, a, in.Type, in.Ref); err == nil && ex.Outcome != "cancelled" {
 		return ex, nil
+	}
+	var open int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM resolutions WHERE created_by = ? AND external_type != '' AND status IN ('draft','proposed')`, canonSubject(a.Subject)).Scan(&open); err != nil {
+		return nil, err
+	}
+	if open >= maxOpenRequests {
+		return nil, conflict("too many unfinished requested resolutions: the board must act on them first")
 	}
 	text := fmt.Sprintf("To be completed by the company secretary. Requested by another module: %s %s.", in.Type, in.Ref)
 	if _, _, err := s.createResolution(ctx, a, b, ResolutionInput{Kind: "meeting", Title: in.Title, Text: text, Subjects: in.Subjects}, canonSubject(in.Requester), "", in.Type, in.Ref, "", nil); err != nil {

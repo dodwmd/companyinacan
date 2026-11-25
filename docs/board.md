@@ -276,3 +276,7 @@ the text.
   requests return the same one. The requester has no access to the board: only the secretary (or the proposer
   director) amends or withdraws a draft, and the outcome verb returns only requests created by the same
   service-account subject.
+- The `integration` role is exempt from the per-subject limiter, so each requested reference creates a draft
+  resolution; the number of unfinished requested drafts per integration subject is capped at 600 (409 beyond it).
+  `integration` and `admin` come only from the static service-account tokens: an SSO introspection answer
+  that lists them is ignored.

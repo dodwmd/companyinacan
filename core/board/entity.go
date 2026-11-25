@@ -160,7 +160,7 @@ func (s *Service) ListLegalEntities(ctx context.Context, a Actor) ([]*LegalEntit
 		s.auditDeny(ctx, a, "read", "legal-entities", nil)
 		return nil, ErrForbidden
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, jurisdiction, entity_type, status, incorporated_on, fiscal_year_end, equity_entity_ref FROM legal_entities ORDER BY name LIMIT 1000`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, jurisdiction, entity_type, status, incorporated_on, fiscal_year_end, equity_entity_ref FROM legal_entities ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -182,6 +182,9 @@ func (s *Service) ListLegalEntities(ctx context.Context, a Actor) ([]*LegalEntit
 		}
 		if Decide(a, ActEntityRead, f) {
 			out = append(out, e)
+			if len(out) >= 1000 {
+				break
+			}
 		}
 	}
 	if err := s.auditRead(ctx, a, "legal-entities", nil); err != nil {

@@ -1,9 +1,17 @@
 package board
 
 import (
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
+
+func httptestRequest(tok string) *http.Request {
+	r, _ := http.NewRequest("GET", "http://x/", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	return r
+}
 
 func TestSecretaryCannotReadLiveVotesAndWithdrawKeepsThem(t *testing.T) {
 	e := newEnv(t).base()
@@ -180,5 +188,54 @@ func TestIntegrationAccountIsNotRateLimitedPerSubject(t *testing.T) {
 	}
 	if !limited {
 		t.Error("an ordinary subject was never limited")
+	}
+}
+
+func TestSecretCastWritesNoPerVoterAuditRow(t *testing.T) {
+	e := newEnv(t).base()
+	mt := e.meeting(pD1, pD2, pD3)
+	id, _, err := e.s.CreateResolution(e.ctx, e.sec, e.body.ID, ResolutionInput{MeetingID: mt.ID, SecretBallot: true, Title: "t", Text: "x"}, "", nil)
+	e.must(err)
+	m(e.s.ProposeResolution(e.ctx, e.sec, id))
+	m(e.s.OpenVote(e.ctx, e.sec, id))
+	before := e.count(`SELECT COUNT(*) FROM audit_log`)
+	for _, a := range []Actor{e.d3, e.d1, e.d2} {
+		e.clock = e.clock.Add(time.Minute)
+		if v := m(e.s.CastVote(e.ctx, a, id, VoteInput{Choice: "for"})); !v.Voted {
+			t.Error("the cast response does not confirm the vote")
+		}
+	}
+	if n := e.count(`SELECT COUNT(*) FROM audit_log`); n != before {
+		t.Errorf("%d audit rows were written by secret casts (cast-ordered timestamps)", n-before)
+	}
+	m(e.s.CloseVote(e.ctx, e.sec, id))
+	if e.count(`SELECT COUNT(DISTINCT at) FROM audit_log WHERE action = 'voted' AND resource = ?`, "resolution:"+id) != 1 {
+		t.Error("the voted markers carry distinct (cast-ordered) timestamps")
+	}
+}
+
+func TestSSOCannotGrantServiceRoles(t *testing.T) {
+	got := knownRoles([]string{RoleDirector, RoleAdmin, RoleIntegration, RoleSecretary, "owner"})
+	if strings.Join(got, ",") != "director,secretary" {
+		t.Errorf("%v", got)
+	}
+	st := &StaticTokens{}
+	st.Add("tok-static-000000000000000000", Principal{Subject: "svc", Roles: []string{RoleAdmin, RoleIntegration}})
+	p, err := st.Authenticate(httptestRequest("tok-static-000000000000000000"))
+	if err != nil || len(p.Roles) != 2 {
+		t.Errorf("%v %v", p, err)
+	}
+}
+
+func TestRequestsCapUnfinishedDrafts(t *testing.T) {
+	e := newEnv(t).base()
+	for i := 0; i < maxOpenRequests; i++ {
+		_, err := e.s.db.Exec(`INSERT INTO resolutions (id, body_id, kind, status, proposer_ref, pass_num, pass_den, pass_inclusive, external_type, external_ref, created_by, created_at, updated_at) VALUES (?,?,'meeting','draft','x',1,2,0,'equity.grant',?,?,1,1)`,
+			newID("res"), e.body.ID, "ref-"+time.Duration(i).String(), canonSubject(e.integ.Subject))
+		e.must(err)
+	}
+	_, err := e.s.RequestResolution(e.ctx, e.integ, ResolutionRequest{Type: "equity.grant", Ref: "grt_0123456789abcdef01234567", BodyID: e.body.ID, Requester: "hr-alice"})
+	if !isErr(err, ErrConflict) {
+		t.Errorf("%v", err)
 	}
 }

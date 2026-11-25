@@ -34,15 +34,27 @@ func bearer(r *http.Request) (string, bool) {
 	return tok, true
 }
 
+// knownRoles filters the roles an SSO introspection answer may grant: `integration` and `admin` are service
+// roles and come from the static service-account tokens only.
 func knownRoles(in []string) []string {
 	var out []string
 	for _, r := range in {
 		switch r {
-		case RoleDirector, RoleOfficer, RoleSecretary, RoleObserver, RoleAuditViewer, RoleEmployee, RoleAdmin, RoleIntegration:
+		case RoleDirector, RoleOfficer, RoleSecretary, RoleObserver, RoleAuditViewer, RoleEmployee:
 			out = append(out, r)
 		}
 	}
 	return out
+}
+
+func staticRoles(in []string) []string {
+	var out []string
+	for _, r := range in {
+		if r == RoleAdmin || r == RoleIntegration {
+			out = append(out, r)
+		}
+	}
+	return append(knownRoles(in), out...)
 }
 
 type tokenEntry struct {
@@ -58,7 +70,7 @@ func (s *StaticTokens) Add(token string, p Principal) {
 	if token == "" {
 		return
 	}
-	p.Roles = knownRoles(p.Roles)
+	p.Roles = staticRoles(p.Roles)
 	s.entries = append(s.entries, tokenEntry{hash: sha256.Sum256([]byte(token)), p: p})
 }
 
