@@ -3,6 +3,8 @@ package launch
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -63,9 +65,11 @@ type Options struct {
 	AdminUser   string // default admin
 	// DefaultBundle adds the forms module to the pushed company when company.yaml does not mention it.
 	DefaultBundle bool
-	SiteBaseURL   string // canonical origin baked into the site (sitemap, canonical links)
-	Backup        *BackupInstall
-	Timeouts      Timeouts
+	// ForceCompany overwrites a company.yaml in the cluster that changed since `can up` last pushed it.
+	ForceCompany bool
+	SiteBaseURL  string // canonical origin baked into the site (sitemap, canonical links)
+	Backup       *BackupInstall
+	Timeouts     Timeouts
 }
 
 // Deps are the seams.
@@ -106,6 +110,9 @@ type Result struct {
 	BundleAdded bool
 	SiteSHA256  string
 	FormsRouted bool
+	// CompanyYAML is the document pushed to the cluster (with the default bundle, if it was added).
+	CompanyYAML []byte
+	Warnings    []string
 	Total       time.Duration
 }
 
@@ -381,14 +388,40 @@ func (r *runner) images(ctx context.Context) (bool, string, error) {
 }
 
 func (r *runner) company(ctx context.Context, body []byte) error {
+	r.res.CompanyYAML = body
+	sum := sha256.Sum256(body)
+	want := hex.EncodeToString(sum[:])
+	st, err := r.d.Store.Load()
+	if err != nil {
+		return err
+	}
+	last := ""
+	if st.Launch != nil {
+		last = st.Launch.CompanySHA256
+	}
+	// What is in the cluster now? Changes made there (the admin UI, `can apply`) must not be
+	// silently overwritten by a re-run of `can up`.
+	cur, gerr := r.kube(ctx, nil, "-n", SystemNS, "get", "configmap", "company", "-o", `jsonpath={.data.company\.yaml}`)
+	if gerr == nil && strings.TrimSpace(cur) != "" {
+		cs := sha256.Sum256([]byte(cur))
+		have := hex.EncodeToString(cs[:])
+		switch {
+		case have == want:
+			return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
+		case have != last && !r.o.ForceCompany:
+			return errors.New("the company.yaml in the cluster differs from the one `can up` last pushed (it was changed through the admin UI or `can apply`); applying this directory's company.yaml would discard those changes. Review them (kubectl -n can-system get configmap company -o yaml), then run `can up --force-company` to overwrite, or copy them into company.yaml first")
+		}
+	}
 	cm, err := CompanyConfigMap(string(body))
 	if err != nil {
 		return err
 	}
 	// Before can-core starts: a ConfigMap volume is mounted with its content at pod start, whereas
 	// an update reaches a running pod only after the kubelet's next sync (a minute or more).
-	_, err = r.apply(ctx, []byte(cm), true)
-	return err
+	if _, err = r.apply(ctx, []byte(cm), true); err != nil {
+		return err
+	}
+	return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
 }
 
 func (r *runner) core(ctx context.Context, c CoreOptions) error {

@@ -275,6 +275,10 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatal("the timer unit was not installed on the host")
 	}
 
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "BACKUPS DO NOT WORK YET") {
+		t.Fatalf("a backup that cannot work yet must say so: %v", res.Warnings)
+	}
+
 	// --- nothing secret on disk or in the progress log -----------------------------------------
 	raw, _ := os.ReadFile(provider.StatePath(dir))
 	for _, secret := range []string{res.Admin.Password, res.Admin.TOTPSecret, kit.Restic.Password, kit.Bucket.SecretAccessKey} {

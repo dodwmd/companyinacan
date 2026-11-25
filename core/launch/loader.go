@@ -33,13 +33,8 @@ func (l SSHImageLoader) Load(ctx context.Context, set ImageSet, progress func(st
 		return fmt.Errorf("prepare %s: %w", ImagesDir, err)
 	}
 	for _, img := range up {
-		b, err := img.Read()
-		if err != nil {
-			return err
-		}
 		dest := ImagesDir + "/" + img.File
-		progress(fmt.Sprintf("uploading %s (%d MiB) as %s", img.Name, len(b)>>20, img.Ref))
-		if err := l.Host.Copy(ctx, dest, b, "0600"); err != nil {
+		if err := l.upload(ctx, img, dest, progress); err != nil {
 			return fmt.Errorf("upload %s: %w", img.Name, err)
 		}
 		script := fmt.Sprintf(`set -eu
@@ -67,4 +62,24 @@ func lineWith(s, sub string) string {
 		}
 	}
 	return ""
+}
+
+// upload streams the tarball when the runner can (the file is verified first and never held in
+// memory), and falls back to a buffered copy for runners that cannot.
+func (l SSHImageLoader) upload(ctx context.Context, img Image, dest string, progress func(string)) error {
+	if sc, ok := l.Host.(provider.StreamCopier); ok {
+		f, n, err := img.Open()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+		progress(fmt.Sprintf("uploading %s (%d MiB, streamed) as %s", img.Name, n>>20, img.Ref))
+		return sc.CopyFrom(ctx, dest, f, "0600")
+	}
+	b, err := img.Read()
+	if err != nil {
+		return err
+	}
+	progress(fmt.Sprintf("uploading %s (%d MiB) as %s", img.Name, len(b)>>20, img.Ref))
+	return l.Host.Copy(ctx, dest, b, "0600")
 }

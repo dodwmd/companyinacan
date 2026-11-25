@@ -220,10 +220,41 @@ Do not run this from CI. With a fresh Hetzner account:
 7. `make down ARGS=--yes`; confirm in the provider console that the server, firewall and key are gone.
 8. Repeat three times and report median and worst case in `specs/000-*/measurements.md`.
 
+## Security notes
+
+- **The admin UI is public** on `https://admin.<host>` in https mode. It is protected by a password, mandatory
+  TOTP and login throttling. Behind Traefik can-core throttles per client address (`CAN_TRUST_PROXY=true`, the
+  last `X-Forwarded-For` entry Traefik appends): repeated failures lock that (username, address) pair, so an
+  attacker can lock out the admin only from their own address. Add an IP allowlist (SPEC.md section 3.1) if the
+  admin works from fixed addresses. In the plain-HTTP fallback the admin UI is not routed at all.
+- **No HTTP to HTTPS redirect.** Only the `websecure` entrypoint serves the routes in https mode; plain `http://`
+  gets Traefik's 404. A redirect middleware belongs in the platform base and is not part of E24; type the
+  `https://` URL.
+- **Manifests are embedded, not signature-verified at run time.** The platform base, can-core and site manifests
+  are compiled into the `can` binary; the binary's integrity is what the release signatures and checksums
+  cover. A modified `can` (or a modified `deploy/release-images.json`, whose digests are only as trustworthy
+  as the file you got it from: verify it against the release's signed checksums) can deploy any image as a
+  privileged workload. Download `can` and the manifest from the release and verify them (docs/releasing.md).
+- **Re-running does not overwrite the company you edited in the cluster.** `can up` remembers the digest of the
+  `company.yaml` it last pushed. If the ConfigMap in the cluster differs from that (changed in the admin UI or by
+  `can apply`), the `company` phase stops and asks for `--force-company`; an identical document is not
+  re-applied at all.
+- **`--output json` never carries secrets without `--print-secrets`**, even in a terminal; in that case the
+  credentials are *not* marked as shown, and the next run issues new ones.
+- `kubectl` is always pinned to this company's kubeconfig **and** its context, never to your current context.
+- Image tarballs are streamed over SSH after a checksum pass, so memory use does not grow with their size.
+
 ## Known gaps
 
-- The backup script needs can-core to write its dumps to `/var/lib/can/dumps` on the host. The can-core
-  Deployment does not mount that hostPath yet, so a backup run exits 10 (marker missing) until it does.
+- **Backups do not work yet, and `can up` says so.** The backup script needs can-core to write its dumps and a
+  completion marker to `/var/lib/can/dumps` on the host. The can-core pod cannot mount that directory: the
+  `can-system` namespace enforces Pod Security `baseline`, which forbids `hostPath` volumes, so every backup run
+  exits 10 (marker missing). With `--backup-*`, `can up` installs the timer and produces the kit but prints and
+  returns a `BACKUPS DO NOT WORK YET` warning. The fix is a design decision (dumps on a PVC read through the
+  local-path directory, or an in-cluster backup job) and is not part of this change.
 - Uploading images through `k3s ctr images import`, and `apt install restic`, are not yet exercised on a real
   host (CI uses k3d's importer and a recording fake host).
+- **The five-minute budget is not verified on real hardware.** Only the in-cluster part is measured, on k3d.
+- The default bundle (forms) is enabled in the cluster only unless you pass `--write-bundle`, which rewrites
+  `company.yaml` (comments may be reformatted); otherwise add `forms: {}` yourself.
 - Email: connect a relay after `make up`; it is outside the budget (SPEC.md section 3.4).

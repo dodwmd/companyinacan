@@ -32,7 +32,7 @@ var lifecycle = struct {
 	// post-deploy reachability probe, terminal detection and the kubectl lookup.
 	stack    func(context.Context, launch.Options, launch.Deps) (*launch.Result, error)
 	access   func(context.Context, provider.Target) (func(), error)
-	kube     func(kubeconfig string) launch.Kube
+	kube     func(kubeconfig, context string) launch.Kube
 	probe    func(ctx context.Context, url string) error
 	isTTY    func() bool
 	lookPath func(string) (string, error)

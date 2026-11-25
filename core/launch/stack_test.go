@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -387,10 +388,11 @@ func TestDefaultBundleIsPushedNotWrittenToDisk(t *testing.T) {
 // --- backup -------------------------------------------------------------------------------
 
 type hostFake struct {
-	mu     sync.Mutex
-	ran    []string
-	copied map[string][]byte
-	out    map[string]string
+	mu       sync.Mutex
+	ran      []string
+	copied   map[string][]byte
+	out      map[string]string
+	streamed []string
 }
 
 func (h *hostFake) Run(_ context.Context, script string) (string, error) {
@@ -459,6 +461,95 @@ func TestBackupInstalledOnHostAndKitReturned(t *testing.T) {
 	}
 	if !strings.Contains(joined, "enable --now can-backup.timer") {
 		t.Fatalf("the timer is not enabled:\n%s", joined)
+	}
+}
+
+func (h *hostFake) CopyFrom(ctx context.Context, p string, r io.Reader, mode string) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.streamed = append(h.streamed, p)
+	h.mu.Unlock()
+	return h.Copy(ctx, p, b, mode)
+}
+
+func TestImagesAreStreamedWhenTheRunnerCanAndReverified(t *testing.T) {
+	set, err := LoadDir(imagesDir(t, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &hostFake{}
+	if err := (SSHImageLoader{Host: h}).Load(context.Background(), set, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.streamed) != 3 {
+		t.Fatalf("streamed %v", h.streamed)
+	}
+	// a tarball changed after LoadDir is refused before any byte is sent
+	if err := os.WriteFile(set.Images[ImageCore].path, []byte("tampered"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h2 := &hostFake{}
+	if err := (SSHImageLoader{Host: h2}).Load(context.Background(), set, func(string) {}); err == nil || len(h2.streamed) != 0 {
+		t.Fatalf("a tampered tarball must be refused before upload: %v", err)
+	}
+}
+
+func TestBackupReusesPasswordAlreadyOnHostAndWarnsLoudly(t *testing.T) {
+	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
+	o, d, _ := newStack(t, k, &fakeLoader{})
+	h := &hostFake{out: map[string]string{"cat /etc/can/backup.d/restic.password": "left-by-crashed-run-0123456789\n"}}
+	d.Host = h
+	o.Backup = backupInstall(t, o)
+	res, err := Run(context.Background(), o, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Kit.Restic.Password != "left-by-crashed-run-0123456789" || string(h.copied["/etc/can/backup.d/restic.password"]) != res.Kit.Restic.Password {
+		t.Fatalf("a crash after restic init must not mint a second password: %q", res.Kit.Restic.Password)
+	}
+	if len(res.Warnings) == 0 || !strings.Contains(res.Warnings[0], "BACKUPS DO NOT WORK YET") {
+		t.Fatalf("the missing dump mount must be reported loudly: %v", res.Warnings)
+	}
+}
+
+func TestCompanyChangedInClusterIsNotOverwrittenWithoutForce(t *testing.T) {
+	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
+	o, d, _ := newStack(t, k, &fakeLoader{})
+	if _, err := Run(context.Background(), o, d); err != nil {
+		t.Fatal(err)
+	}
+	// someone edited the company in the admin UI
+	k.rules = append([]kubeRule{{contains: "get configmap company", out: "name: edited in the UI\n"}}, k.rules...)
+	_, err := Run(context.Background(), o, d)
+	var pe *PhaseError
+	if !errors.As(err, &pe) || pe.Phase != "company" || !strings.Contains(err.Error(), "--force-company") {
+		t.Fatalf("want a refusal naming --force-company, got %v", err)
+	}
+	o.ForceCompany = true
+	if _, err := Run(context.Background(), o, d); err != nil {
+		t.Fatalf("forced: %v", err)
+	}
+}
+
+func TestCompanyUnchangedInClusterIsNotReapplied(t *testing.T) {
+	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
+	o, d, _ := newStack(t, k, &fakeLoader{})
+	res, err := Run(context.Background(), o, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.calls = nil
+	k.rules = append([]kubeRule{{contains: "get configmap company", out: string(res.CompanyYAML)}}, k.rules...)
+	if _, err := Run(context.Background(), o, d); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range k.calls {
+		if strings.Contains(c.Stdin, "kind: ConfigMap") && strings.Contains(c.Stdin, "company.yaml: ") {
+			t.Fatal("an identical company must not be applied again")
+		}
 	}
 }
 

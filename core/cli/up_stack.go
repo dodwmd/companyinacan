@@ -32,6 +32,8 @@ type stackFlags struct {
 	releaseManifest string
 	printSecrets    bool
 	noDefaultBundle bool
+	writeBundle     bool
+	forceCompany    bool
 	domainLive      bool
 	acmeEmail       string
 	backupEndpoint  string
@@ -50,6 +52,8 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release manifest pinning every image by digest (default deploy/release-images.json when present)")
 	fl.BoolVar(&f.printSecrets, "print-secrets", false, "print the admin password, TOTP secret and recovery kit without a terminal (CI); never the default")
 	fl.BoolVar(&f.noDefaultBundle, "no-default-bundle", false, "do not add the forms module to the company pushed to the cluster")
+	fl.BoolVar(&f.writeBundle, "write-bundle", false, "also write the default bundle (the forms module) into company.yaml on disk, so `can apply` keeps it")
+	fl.BoolVar(&f.forceCompany, "force-company", false, "overwrite the company.yaml in the cluster even if it was changed there (admin UI, `can apply`) since the last `can up`")
 	fl.BoolVar(&f.domainLive, "domain-live", false, "the company domain's DNS records resolve to the server: also route and certify it (implied by dns.provider: cloudflare)")
 	fl.StringVar(&f.acmeEmail, "acme-email", "", "registration address for Let's Encrypt certificates (optional)")
 	fl.StringVar(&f.backupEndpoint, "backup-endpoint", "", "S3 endpoint URL; with --backup-bucket and --backup-credentials-file turns the backup timer and recovery kit on")
@@ -232,10 +236,10 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	o := launch.Options{
 		Dir: t.dir, Company: t.company, CompanyYAML: prep.companyYAML, Images: prep.images, Routes: routes,
-		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, SiteBaseURL: base, Backup: prep.backup,
+		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, Backup: prep.backup,
 	}
 	d := launch.Deps{
-		Kube: lifecycle.kube(provider.KubeconfigPath(t.dir)), Loader: launch.SSHImageLoader{Host: host}, Host: host,
+		Kube: lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)), Loader: launch.SSHImageLoader{Host: host}, Host: host,
 		Store: t.store, Redactor: t.redact, Out: t.redact.Writer(out), Now: lifecycle.now,
 	}
 	lr, runErr := lifecycle.stack(ctx, o, d)
@@ -247,8 +251,16 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	if runErr != nil {
 		return t.fail(runErr)
 	}
+	res.Warnings = append(res.Warnings, lr.Warnings...)
 	if lr.BundleAdded {
-		res.Warnings = append(res.Warnings, "company.yaml does not list the forms module: the default bundle enabled it in the cluster only. Add `forms: {}` under modules: so `can apply` keeps it")
+		if f.writeBundle {
+			if err := writeFileAtomic(filepath.Join(t.dir, "company.yaml"), lr.CompanyYAML); err != nil {
+				return t.fail(fmt.Errorf("--write-bundle: %w", err))
+			}
+			res.Warnings = append(res.Warnings, "added the forms module to company.yaml (--write-bundle); yaml comments in that file may have been reformatted")
+		} else {
+			res.Warnings = append(res.Warnings, "company.yaml does not list the forms module: the default bundle enabled it in the cluster only. Add `forms: {}` under modules: (or run `can up --write-bundle`) so `can apply` keeps it; a later `can apply` would disable it again")
+		}
 	}
 
 	if len(res.Records) > 0 {
@@ -289,9 +301,14 @@ func (t *target) summarize(cmd *cobra.Command, g *globalOpts, out io.Writer, res
 	var adminShown, kitShown bool
 	if lr.Admin != nil {
 		res.AdminUser = lr.Admin.Username
-		if showSecrets && g.json() {
+		// JSON output is machine output: a terminal does not make it a safe place to hand over
+		// secrets (no confirmation, and it is redacted without --print-secrets). Only
+		// --print-secrets writes them, and only then are they counted as handed over.
+		if g.json() && f.printSecrets {
 			res.Admin = &credsJSON{Username: lr.Admin.Username, Password: lr.Admin.Password, TOTPSecret: lr.Admin.TOTPSecret, TOTPURI: lr.Admin.TOTPURI}
 			adminShown = true
+		} else if g.json() {
+			res.Warnings = append(res.Warnings, "admin credentials were created but not shown (--output json without --print-secrets); run `can up` again without --output json in a terminal, or with --print-secrets: a new password and TOTP secret are issued until they have been shown")
 		}
 	}
 	if lr.Kit != nil && f.kitOut != "" {
@@ -307,6 +324,8 @@ func (t *target) summarize(cmd *cobra.Command, g *globalOpts, out io.Writer, res
 	} else if lr.Kit != nil && f.printSecrets && g.json() {
 		res.Kit = lr.Kit.Text()
 		kitShown = true
+	} else if lr.Kit != nil && g.json() {
+		res.Warnings = append(res.Warnings, "the recovery kit was not shown (--output json without --print-secrets or --kit-out); run `can up` again to be offered it")
 	}
 
 	if g.json() {
@@ -446,7 +465,10 @@ func defaultAccess(ctx context.Context, tgt provider.Target) (func(), error) {
 	return tun.Close, nil
 }
 
-func defaultKube(kubeconfig string) launch.Kube { return launch.ExecKube{Kubeconfig: kubeconfig} }
+// defaultKube pins both the kubeconfig and its context (defence in depth: never the operator's current context).
+func defaultKube(kubeconfig, context string) launch.Kube {
+	return launch.ExecKube{Kubeconfig: kubeconfig, Context: context}
+}
 
 func defaultProbe(ctx context.Context, url string) error {
 	deadline := time.Now().Add(60 * time.Second)
@@ -496,7 +518,7 @@ func (t *target) stackChecks(ctx context.Context) ([]provider.Check, bool) {
 		return cs, false
 	}
 	defer closeTunnel()
-	return launch.Status(ctx, t.store, lifecycle.kube(provider.KubeconfigPath(t.dir)))
+	return launch.Status(ctx, t.store, lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)))
 }
 
 // unreachable is a Kube that reports why the cluster cannot be queried.
@@ -535,4 +557,12 @@ echo CAN_BACKUP_REMOVED
 		return fmt.Errorf("could not remove the backup timer from the server: %v %s", err, strings.TrimSpace(res))
 	}
 	return nil
+}
+
+func writeFileAtomic(path string, b []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

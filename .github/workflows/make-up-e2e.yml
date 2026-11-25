@@ -1,6 +1,7 @@
 name: make-up-e2e
 
-# Not a required check (continue-on-error). Epic E24: runs the phases `can up` performs after a
+# Not a required check (it is not in branch protection), but a failure is shown as a red job: it does
+# not use continue-on-error, which would report a failed test as success. Epic E24: runs the phases `can up` performs after a
 # server exists (apply the platform base, load the images, deploy can-core, create the admin, push
 # company.yaml, publish the site, route it, install the backup timer on a fake host) against a real
 # k3d cluster, with the production code (core/launch) and a k3d stand-in for the provider. It then
@@ -32,7 +33,6 @@ jobs:
   e2e:
     name: make-up phases on k3d
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,13 +59,15 @@ jobs:
           echo "images_build_seconds=$(( $(date +%s) - start ))" >> "$RUNNER_TEMP/timings.env"
           ls -l build/images
       - name: can up phases against the cluster
+        id: e2e
+        continue-on-error: true
         env:
           CAN_IT_MAKEUP: "1"
           CAN_IT_IMAGES: ${{ github.workspace }}/build/images
           CAN_IT_TIMINGS: ${{ runner.temp }}/phase-timings.md
         run: go test -tags integration -count=1 -v -timeout 25m -run TestMakeUpPhasesOnK3d ./test/integration/...
       - name: Cluster state on failure
-        if: failure()
+        if: always() && steps.e2e.outcome == 'failure'
         run: |
           kubectl --context k3d-companyinacan-dev get pods,svc,ingressroute,middleware,netpol -A || true
           kubectl --context k3d-companyinacan-dev -n can-system describe pod -l app.kubernetes.io/name=can-core || true
@@ -90,3 +92,8 @@ jobs:
       - name: Delete the cluster
         if: always()
         run: go run ./cmd/can dev down
+      - name: Fail the job when the e2e test failed
+        if: steps.e2e.outcome == 'failure'
+        run: |
+          echo "::error title=make-up-e2e::TestMakeUpPhasesOnK3d failed; see the test step log"
+          exit 1

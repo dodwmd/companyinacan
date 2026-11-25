@@ -5,7 +5,7 @@
 ```
 can up [dir] [--plan] [--provision-only] [--dns manual|cloudflare] [--modules-dir D]
        [--images-from DIR | --release-manifest FILE]
-       [--print-secrets] [--no-default-bundle] [--domain-live] [--acme-email ADDR]
+       [--print-secrets] [--no-default-bundle] [--write-bundle] [--force-company] [--domain-live] [--acme-email ADDR]
        [--backup-endpoint URL --backup-bucket NAME --backup-credentials-file FILE [--backup-region R]]
        [--kit-out FILE [--kit-passphrase-file FILE]]
 ```

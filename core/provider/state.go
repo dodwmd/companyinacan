@@ -57,6 +57,9 @@ type LaunchState struct {
 	AdminUser       string `json:"admin_user,omitempty"`
 	AdminCreated    bool   `json:"admin_created,omitempty"`
 	AdminCredsShown bool   `json:"admin_creds_shown,omitempty"`
+	// CompanySHA256 is the digest of the company.yaml last pushed by `can up`; a different document
+	// in the cluster means someone (the admin UI, `can apply`) changed it since.
+	CompanySHA256 string `json:"company_sha256,omitempty"`
 	// SiteSHA256 is the digest of the last published site archive.
 	SiteSHA256 string `json:"site_sha256,omitempty"`
 	// BackupInstalled is true once the host backup timer is installed (`can down` removes it).

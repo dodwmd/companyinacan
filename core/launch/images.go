@@ -218,6 +218,28 @@ func (i Image) Read() ([]byte, error) {
 	return b, nil
 }
 
+// Open verifies the tarball against its recorded checksum by streaming it (constant memory) and
+// returns it positioned at the start, with its size. The caller closes it.
+func (i Image) Open() (*os.File, int64, error) {
+	f, err := os.Open(i.path)
+	if err != nil {
+		return nil, 0, err
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err == nil && hex.EncodeToString(h.Sum(nil)) != i.SHA256 {
+		err = fmt.Errorf("image %s: tarball changed on disk since it was verified", i.Name)
+	}
+	if err == nil {
+		_, err = f.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, 0, err
+	}
+	return f, n, nil
+}
+
 // ImageOptions says where images come from.
 type ImageOptions struct {
 	FromDir         string // --images-from

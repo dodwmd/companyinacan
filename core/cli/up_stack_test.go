@@ -55,7 +55,7 @@ func useStack(t *testing.T, tty bool, res *launch.Result, err error) *stackSpy {
 	old := lifecycle
 	lifecycle.lookPath = func(string) (string, error) { return "/usr/bin/kubectl", nil }
 	lifecycle.access = func(context.Context, provider.Target) (func(), error) { return func() {}, nil }
-	lifecycle.kube = func(string) launch.Kube { return nopKube{} }
+	lifecycle.kube = func(string, string) launch.Kube { return nopKube{} }
 	lifecycle.probe = func(context.Context, string) error { return nil }
 	lifecycle.isTTY = func() bool { return tty }
 	lifecycle.stack = func(_ context.Context, o launch.Options, d launch.Deps) (*launch.Result, error) {
@@ -361,7 +361,7 @@ func TestStatusReportsStackAndDegradesWhenItIsDown(t *testing.T) {
 	if code != ExitFailure || !strings.Contains(out, "degraded") || !strings.Contains(out, "can-core") {
 		t.Fatalf("the fake cluster reports nothing available: code=%d out=%q", code, out)
 	}
-	lifecycle.kube = func(string) launch.Kube { return allAvailable{} }
+	lifecycle.kube = func(string, string) launch.Kube { return allAvailable{} }
 	st := provider.NewStore(dir)
 	_ = st.Mutate(func(s *provider.State) error {
 		s.Launch.Phases["ready"] = "2026-11-25T12:00:00Z"
@@ -377,6 +377,50 @@ func newTestKit(o launch.Options) (*backup.Kit, error) {
 	in := o.Backup.Input
 	in.Password = ""
 	return backup.NewKit(in)
+}
+
+func TestUpJSONOnATerminalWithoutPrintSecretsDoesNotMarkCredentialsShown(t *testing.T) {
+	dir, _ := setup(t)
+	useStack(t, true, stackResult(), nil)
+	code, out, _ := run(t, append(stackArgs(dir), "--output", "json")...)
+	if code != ExitOK {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	if strings.Contains(out, testPassword) || strings.Contains(out, testTOTP) {
+		t.Fatalf("json holds a secret:\n%s", out)
+	}
+	if !strings.Contains(out, "not shown") {
+		t.Fatalf("the operator must be told:\n%s", out)
+	}
+	st, _ := provider.NewStore(dir).Load()
+	if st.Launch != nil && st.Launch.AdminCredsShown {
+		t.Fatal("credentials the operator never saw must stay re-issuable")
+	}
+}
+
+func TestWriteBundleForceCompanyAndPinnedContext(t *testing.T) {
+	dir, _ := setup(t)
+	res := stackResult()
+	res.BundleAdded = true
+	res.CompanyYAML = []byte("schema: 1\nname: Acme Co\ndomain: acme.example\nprovider:\n  type: ssh\n  options:\n    host: 203.0.113.7\nmodules:\n  forms: {}\n")
+	res.Warnings = []string{"BACKUPS DO NOT WORK YET"}
+	spy := useStack(t, false, res, nil)
+	var gotKubeconfig, gotCtx string
+	lifecycle.kube = func(kc, c string) launch.Kube { gotKubeconfig, gotCtx = kc, c; return nopKube{} }
+	code, out, errs := run(t, stackArgs(dir, "--write-bundle", "--force-company")...)
+	if code != ExitOK {
+		t.Fatalf("code=%d err=%q", code, errs)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "company.yaml"))
+	if !strings.Contains(string(b), "forms") || !spy.opts.ForceCompany {
+		t.Fatalf("write-bundle/force-company not honoured: %s %+v", b, spy.opts)
+	}
+	if gotCtx != "acme-co" || !strings.HasSuffix(gotKubeconfig, filepath.Join(".can", "kubeconfig")) {
+		t.Fatalf("kubectl must be pinned to the company's kubeconfig and context: %q %q", gotKubeconfig, gotCtx)
+	}
+	if !strings.Contains(out, "BACKUPS DO NOT WORK YET") {
+		t.Fatalf("stack warnings must reach the summary:\n%s", out)
+	}
 }
 
 type allAvailable struct{}
