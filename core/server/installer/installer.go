@@ -32,6 +32,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/dbprov"
 	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/modsecrets"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/deploy"
 )
@@ -66,6 +67,9 @@ type Config struct {
 	RequireAdmission bool
 	DB               dbprov.Provisioner
 	Log              *slog.Logger
+	// SecretsFor lists the secrets can-core generates into a module's `can-module` Secret
+	// (default modsecrets.For). Values are generated once and kept; see ensureSecrets.
+	SecretsFor func(module string) []modsecrets.Spec
 
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
@@ -90,6 +94,9 @@ func New(cfg Config) *Installer {
 	}
 	if cfg.RBACWait == 0 {
 		cfg.RBACWait = 30 * time.Second
+	}
+	if cfg.SecretsFor == nil {
+		cfg.SecretsFor = modsecrets.For
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -118,6 +125,9 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	}
 	if s.Manifest == nil {
 		return errors.New("no manifest")
+	}
+	if err := in.checkRotations(s); err != nil {
+		return err
 	}
 	// 1. Render and validate before touching the cluster.
 	objs, err := in.renderBounded(ctx, s)
@@ -348,6 +358,9 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) error 
 		"CAN_API_URL": in.cfg.PlatformURL, "CAN_MODULE_ID": s.ID, "CAN_WEBHOOK_SECRET": s.HMACSecret,
 		"CAN_TOKEN_FILE": TokenDir + "/token", "CAN_TOKEN_AUDIENCE": "can",
 	}
+	if err := in.generatedSecrets(ctx, s, mod); err != nil {
+		return err
+	}
 	kind := s.Manifest.Requires.Database
 	if kind == "postgres" || kind == "mariadb" {
 		prov := in.cfg.DB
@@ -371,6 +384,50 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) error 
 		}
 	}
 	return in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod))
+}
+
+// checkRotations refuses a rotation request that names a key the module has no rotatable secret
+// for, before anything in the cluster is touched.
+func (in *Installer) checkRotations(s reconcile.Spec) error {
+	for _, k := range s.Rotate {
+		if k == modsecrets.WebhookKey {
+			continue
+		}
+		ok := false
+		for _, sp := range in.cfg.SecretsFor(s.ID) {
+			ok = ok || (sp.Key == k && !sp.NoRotate)
+		}
+		if !ok {
+			return fmt.Errorf("secret %q of module %s cannot be rotated (unknown, or rotating it would damage data)", k, s.ID)
+		}
+	}
+	return nil
+}
+
+// generatedSecrets adds the module's generated secrets to the can-module Secret data. A value that
+// already exists is kept, so enabling twice, upgrading or disabling and re-enabling never changes
+// a credential; only a requested rotation does. Values are never logged.
+func (in *Installer) generatedSecrets(ctx context.Context, s reconcile.Spec, data map[string]string) error {
+	rotate := map[string]bool{}
+	for _, k := range s.Rotate {
+		rotate[k] = true
+	}
+	for _, sp := range in.cfg.SecretsFor(s.ID) {
+		cur := in.existingSecretKey(ctx, s.Namespace, secretModule, sp.Key)
+		switch {
+		case cur != "" && rotate[sp.Key] && sp.Kind == modsecrets.Keyring:
+			next, err := modsecrets.RotateKeyring(cur)
+			if err != nil {
+				return fmt.Errorf("rotating %s of module %s: %w", sp.Key, s.ID, err)
+			}
+			data[sp.Key] = next
+		case cur != "" && !rotate[sp.Key]:
+			data[sp.Key] = cur
+		default:
+			data[sp.Key] = modsecrets.Generate(sp.Kind)
+		}
+	}
+	return nil
 }
 
 // ---- rendering ---------------------------------------------------------------------------------

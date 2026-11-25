@@ -17,6 +17,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -34,7 +35,9 @@ type Server struct {
 	Approvals *approvals.Engine
 	Notify    *notify.Service
 	// Mod is module management (epic E12b); nil answers 503 on its endpoints.
-	Mod        *modmgr.Service
+	Mod *modmgr.Service
+	// PATs issues and revokes personal access tokens for module APIs; nil answers 503 on its routes.
+	PATs       *pat.Service
 	Log        *slog.Logger
 	Secure     bool // set the Secure cookie attribute (false only for plain-HTTP local dev)
 	TrustProxy bool // take the client address from the ingress's X-Forwarded-For
@@ -53,7 +56,7 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...)
+	return append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.tokenRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {

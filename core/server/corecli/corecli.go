@@ -300,7 +300,7 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		}
 		return nil
 	}
-	cmd.AddCommand(boot, unlock, reset, rolesCmd(getenv))
+	cmd.AddCommand(boot, unlock, reset, rolesCmd(getenv), secretsCmd(getenv))
 	return cmd
 }
 

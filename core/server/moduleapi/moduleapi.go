@@ -17,6 +17,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
 	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -38,6 +39,9 @@ type Server struct {
 	RBAC      *rbac.Service
 	Approvals *approvals.Engine
 	Notify    *notify.Service
+	// PATs resolves personal access tokens presented to a module (E03c); nil means only module
+	// tokens introspect.
+	PATs *pat.Service
 }
 
 type route struct {
@@ -120,26 +124,51 @@ func (s *Server) self(w http.ResponseWriter, _ *http.Request, m store.Module) {
 
 type introspectRequest struct {
 	Token string `json:"token"`
+	// Audience, when set, is the module the caller serves. A personal access token bound to any
+	// other module is reported inactive.
+	Audience string `json:"audience"`
 }
 
 type introspectResponse struct {
-	Active         bool   `json:"active"`
-	ModuleID       string `json:"module_id,omitempty"`
-	Namespace      string `json:"namespace,omitempty"`
-	ServiceAccount string `json:"service_account,omitempty"`
+	Active bool `json:"active"`
+	// Kind is "module" for a projected ServiceAccount token and "user" for a personal access token.
+	Kind           string   `json:"kind,omitempty"`
+	ModuleID       string   `json:"module_id,omitempty"`
+	Namespace      string   `json:"namespace,omitempty"`
+	ServiceAccount string   `json:"service_account,omitempty"`
+	Subject        string   `json:"subject,omitempty"`
+	Permissions    []string `json:"permissions,omitempty"`
+	ExpiresAt      string   `json:"expires_at,omitempty"`
 }
 
-// introspect lets an adapter verify a caller's token (SPEC §4.3). The answer for any token that is
-// not an enabled module's is simply {"active": false}: it does not reveal why.
-func (s *Server) introspect(w http.ResponseWriter, r *http.Request, _ store.Module) {
+// introspect lets a module verify a caller's token (SPEC §4.3). A personal access token is
+// answered only to the module it is bound to, with its subject and permissions; every other case
+// (unknown, expired, revoked, another module's, malformed) is simply {"active": false}: it does
+// not reveal why. A projected module token is verified by TokenReview as before.
+func (s *Server) introspect(w http.ResponseWriter, r *http.Request, caller store.Module) {
 	var req introspectRequest
 	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if pat.LooksLikeToken(req.Token) {
+		// Checked before any TokenReview: a personal access token is not a ServiceAccount token
+		// and must not count against the review rate limit.
+		if s.PATs == nil || (req.Audience != "" && req.Audience != caller.ID) {
+			httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
+			return
+		}
+		res, ok := s.PATs.Introspect(r.Context(), caller.ID, req.Token)
+		if !ok {
+			httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, introspectResponse{Active: true, Kind: "user", Subject: res.Subject, Permissions: res.Permissions, ExpiresAt: res.ExpiresAt.UTC().Format(time.RFC3339)})
 		return
 	}
 	m, err := s.Auth.Authenticate(r.Context(), req.Token)
 	switch {
 	case err == nil:
-		httpx.WriteJSON(w, http.StatusOK, introspectResponse{Active: true, ModuleID: m.ID, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount})
+		httpx.WriteJSON(w, http.StatusOK, introspectResponse{Active: true, Kind: "module", ModuleID: m.ID, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount})
 	case errors.Is(err, modauth.ErrUnauthenticated), errors.Is(err, modauth.ErrForbidden):
 		httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
 	case errors.Is(err, tokenreview.ErrRateLimited):
@@ -174,6 +203,9 @@ func (s *Server) capability(w http.ResponseWriter, r *http.Request, m store.Modu
 type publishRequest struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data"`
+	// SourceID is the publisher's own id of the event. Publishing it again returns the first
+	// event instead of delivering twice, so a publisher can retry safely.
+	SourceID string `json:"source_id"`
 }
 
 func (s *Server) publish(w http.ResponseWriter, r *http.Request, m store.Module) {
@@ -197,10 +229,18 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request, m store.Module)
 		httpx.Problem(w, http.StatusForbidden, "module does not list "+req.Type+" under publishes")
 		return
 	}
-	env, err := s.Bus.Publish(r.Context(), m.ID, req.Type, req.Data)
+	if req.SourceID != "" && !events.SourceIDRe.MatchString(req.SourceID) {
+		httpx.Problem(w, http.StatusBadRequest, "source_id must be 1 to 128 characters of letters, digits and _ . : -")
+		return
+	}
+	env, dup, err := s.Bus.PublishOnce(r.Context(), m.ID, req.Type, req.Data, req.SourceID)
 	if err != nil {
 		httpx.Problem(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"id": env.ID, "time": env.Time.UTC().Format(time.RFC3339)})
+	out := map[string]any{"id": env.ID}
+	if !dup {
+		out["time"] = env.Time.UTC().Format(time.RFC3339)
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, out)
 }

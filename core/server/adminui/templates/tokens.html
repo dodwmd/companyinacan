@@ -1,0 +1,55 @@
+{{define "content"}}
+<h1>{{t "tk.title"}}</h1>
+<p class="hint">{{t "tk.help"}}</p>
+{{if .Data.New}}
+<section aria-labelledby="h-new">
+<h2 id="h-new">{{t "tk.new_title"}}</h2>
+<p role="status">{{t "tk.new_once"}}</p>
+<p><code>{{.Data.New.Token}}</code></p>
+<p>{{t "tk.new_for" .Data.New.Module .Data.New.Name}} <time datetime="{{iso .Data.New.Expires}}">{{ts .Data.New.Expires}}</time></p>
+</section>
+{{end}}
+<section aria-labelledby="h-list">
+<h2 id="h-list">{{t "tk.list"}}</h2>
+{{if .Data.Rows}}<div class="table-wrap" role="region" aria-labelledby="cap-tokens" tabindex="0">
+<table>
+<caption id="cap-tokens" class="sr">{{t "tk.list"}}</caption>
+<thead><tr><th scope="col">{{t "tk.col_name"}}</th><th scope="col">{{t "tk.col_module"}}</th><th scope="col">{{t "tk.col_perms"}}</th><th scope="col">{{t "tk.col_expires"}}</th><th scope="col">{{t "tk.col_state"}}</th><th scope="col"><span class="sr">{{t "tk.revoke"}}</span></th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr>
+<th scope="row">{{.Name}}</th><td>{{.Module}}</td><td>{{.Permissions}}</td>
+<td><time datetime="{{iso .Expires}}">{{ts .Expires}}</time></td><td>{{.State}}</td>
+<td><form method="post" action="/tokens/{{.ID}}/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">{{t "tk.revoke"}}</button></form></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "tk.none"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-issue">
+<h2 id="h-issue">{{t "tk.issue"}}</h2>
+{{if .Data.Modules}}
+<form method="post" action="/tokens" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="tk-name">{{t "tk.name"}}</label>
+<input id="tk-name" name="name" type="text" maxlength="80" required></p>
+<p><label for="tk-module">{{t "tk.module"}}</label>
+<select id="tk-module" name="module">
+{{range .Data.Modules}}<option value="{{.ID}}">{{.ID}}</option>
+{{end}}</select></p>
+{{range $mi, $m := .Data.Modules}}<fieldset>
+<legend>{{t "tk.perms_of" $m.ID}}</legend>
+{{range $pi, $p := $m.Perms}}<p><input id="tk-p-{{$mi}}-{{$pi}}" type="checkbox" name="permissions" value="{{$p}}"> <label for="tk-p-{{$mi}}-{{$pi}}">{{$p}}</label></p>
+{{end}}</fieldset>
+{{end}}
+<p><label for="tk-ttl">{{t "tk.ttl"}}</label>
+<select id="tk-ttl" name="ttl_hours">
+{{range .Data.TTLs}}<option value="{{.}}">{{.}}</option>
+{{end}}</select></p>
+<p class="hint">{{t "tk.perm_hint"}}</p>
+<p><button type="submit">{{t "tk.issue_button"}}</button></p>
+</form>
+{{else}}<p class="empty">{{t "tk.no_modules"}}</p>{{end}}
+</section>
+{{end}}

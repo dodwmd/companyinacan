@@ -51,8 +51,14 @@ paths:
   /v1/tokens/introspect:
     post:
       operationId: introspectToken
-      summary: Verify another module's projected token (performs a TokenReview)
-      description: "Any token that does not belong to an enabled module answers {\"active\": false} without saying why."
+      summary: Verify a caller's token (a module's projected token, or a personal access token bound to the calling module)
+      description: |
+        A projected ServiceAccount token is verified by TokenReview and answers kind `module`. A personal
+        access token (`canpat_...`, issued in the admin UI or API) answers kind `user` with its subject
+        and permissions, and only to the module it is bound to. The optional `audience` names the module
+        the caller serves; a mismatch answers inactive. Every other case (unknown, expired, revoked,
+        another module's, malformed) answers {"active": false} without saying why. Personal access
+        tokens do not count against the TokenReview rate limit.
       requestBody:
         required: true
         content:
@@ -110,10 +116,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [id, time]
+                required: [id]
                 properties:
                   id: { type: string }
-                  time: { type: string, format: date-time }
+                  time: { type: string, format: date-time, description: "Absent when source_id repeated an earlier publish" }
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Problem" }
@@ -296,11 +302,16 @@ components:
       required: [token]
       properties:
         token: { type: string }
+        audience: { type: string, description: "The module the caller serves (personal access tokens)" }
     IntrospectResponse:
       type: object
       required: [active]
       properties:
         active: { type: boolean }
+        kind: { type: string, enum: [module, user] }
+        subject: { type: string, description: "user:<admin username> (kind user)" }
+        permissions: { type: array, items: { type: string }, description: "Module permissions granted to the token (kind user)" }
+        expires_at: { type: string, format: date-time }
         module_id: { type: string }
         namespace: { type: string }
         service_account: { type: string }
@@ -328,6 +339,7 @@ components:
       properties:
         type: { type: string, pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+\\.v[1-9][0-9]*$" }
         data: { type: object, description: "Event payload, at most 256 KiB" }
+        source_id: { type: string, pattern: "^[A-Za-z0-9_.:-]{1,128}$", description: "The publisher's own id of the event: publishing it again returns the first event instead of delivering twice" }
     Envelope:
       type: object
       required: [id, type, time, source, data]
