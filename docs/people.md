@@ -192,7 +192,7 @@ gateway), de-duplicate on `id`. Payloads carry ids and machine values only. Sche
 (carries the task's `action`, for example `identity.provision`, so a provisioning integration can react).
 
 A consumer that wants "hired" subscribes to `person.status_changed.v1` and filters on `to: active`
-(`from: onboarding` for a first start; `from: leave` or `offboarding` are returns). The `from` and `to`
+(`from: onboarding` for a first start; `from: offboarding` is a rescinded notice; leave never appears, it is masked as `active`, see Roles above). The `from` and `to`
 fields are in the schema for exactly this.
 
 SPEC.md names `person.hired.v1` and `person.left.v1`; this module publishes the finer-grained
@@ -225,7 +225,7 @@ tokens from an address never blocks a request that presents a valid credential. 
 bounded: when a table is full it is cleared, which forgives every tracked address at once, so this slows
 guessing and scraping but is not a substitute for network policy. `introspect.url` must be https or loopback unless
 `introspect.allow_insecure_http` is set for a protected in-cluster Service; the endpoint receives every
-user's bearer token. Introspection answers are cached in a bounded LRU, refusals for 5 s.
+user's bearer token. Introspection answers are cached in a bounded LRU, refusals for 5 s. Note that every *distinct* bad token triggers an outbound introspection call before any limit applies (the cache only absorbs repeats of the same token for 5 s), so keep the introspection endpoint able to take that load or front it with network policy.
 
 Authentication is an interface (`Authenticator`). Shipped: static bearer tokens (constant time) and an
 introspection client (`POST {"token"}` -> `{"active","subject","roles"}`, unknown roles dropped, positive

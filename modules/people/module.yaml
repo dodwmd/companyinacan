@@ -34,6 +34,7 @@ provides:
   - { capability: performance, schema: performance.v1, service: people-api, port: 8081 }
 publishes:
   - { event: person.created.v1, schema: ./events/person.created.v1.json }
+  # leave is masked as active in this event (see the schema description)
   - { event: person.status_changed.v1, schema: ./events/person.status_changed.v1.json }
   - { event: person.offboarded.v1, schema: ./events/person.offboarded.v1.json }
   - { event: person.erased.v1, schema: ./events/person.erased.v1.json }
