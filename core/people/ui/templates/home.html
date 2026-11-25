@@ -1,0 +1,47 @@
+{{define "content"}}
+<h1>{{t "home.title" .Data.Name}}</h1>
+
+<section aria-labelledby="h-tasks">
+<h2 id="h-tasks">{{t "home.tasks"}}</h2>
+{{if .Data.Tasks}}
+<ul class="list">
+{{range .Data.Tasks}}
+<li>
+<span>{{.Title}}{{if .About}} <span class="muted">({{t "home.task_about" .About}})</span>{{end}}</span>
+<span class="muted{{if .Overdue}} overdue{{end}}">{{if .Due}}{{t "home.due" (date .Due)}}{{end}}{{if .Overdue}} {{t "home.overdue"}}{{end}}</span>
+<form method="post" action="/tasks/{{.ID}}/complete" class="inline">{{template "csrf" $}}<button type="submit">{{t "home.complete"}}</button></form>
+</li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "home.no_tasks"}}</p>{{end}}
+</section>
+
+{{if .Data.ApprovalsWired}}
+<section aria-labelledby="h-appr">
+<h2 id="h-appr">{{t "home.approvals"}}</h2>
+{{if .Data.Approvals}}
+<ul class="list">{{range .Data.Approvals}}<li><a href="{{.URL}}">{{.Title}}</a></li>{{end}}</ul>
+{{else}}<p class="muted">{{t "home.no_approvals"}}</p>{{end}}
+</section>
+{{end}}
+
+<section aria-labelledby="h-1on1">
+<h2 id="h-1on1">{{t "home.meetings"}}</h2>
+{{if .Data.Meetings}}
+<ul class="list">
+{{range .Data.Meetings}}<li><a href="/meetings/{{.ID}}">{{t "home.meeting_with" .With}}</a> <span class="muted">{{when .When}}</span></li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "home.no_meetings"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-goals">
+<h2 id="h-goals">{{t "home.goals"}}</h2>
+{{if .Data.Goals}}
+<ul class="list">
+{{range .Data.Goals}}<li><a href="/goals/{{.ID}}">{{.Title}}</a> {{if .Period}}<span class="muted">{{.Period}}</span>{{end}} {{template "bar" .Progress}}</li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "home.no_goals"}}</p>{{end}}
+</section>
+{{end}}

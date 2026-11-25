@@ -1,0 +1,14 @@
+{{define "content"}}
+<h1>{{t "rev.title"}}</h1>
+<p><a href="/feedback">{{t "rev.feedback_link"}}</a></p>
+{{if .Data.Rows}}
+<div class="scroll">
+<table>
+<caption>{{t "rev.caption"}}</caption>
+<thead><tr><th scope="col">{{t "rev.person"}}</th><th scope="col">{{t "rev.cycle"}}</th><th scope="col">{{t "rev.state"}}</th><th scope="col">{{t "rev.status"}}</th></tr></thead>
+<tbody>{{range .Data.Rows}}<tr><th scope="row"><a href="/reviews/{{.ID}}">{{.Person}}</a></th><td>{{.Cycle}}</td><td>{{.State}}</td><td>{{.Status}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "rev.none"}}</p>{{end}}
+{{end}}

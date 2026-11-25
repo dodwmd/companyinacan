@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>{{t "dir.title"}}</h1>
+<form method="get" action="/people" role="search" class="card">
+<p><label for="q">{{t "dir.search"}}</label>
+<input id="q" name="q" type="search" value="{{.Data.Q}}" maxlength="64"></p>
+<p><button type="submit">{{t "dir.go"}}</button></p>
+</form>
+{{if .Data.Rows}}
+<div class="scroll">
+<table>
+<caption>{{t "dir.caption"}}</caption>
+<thead><tr><th scope="col">{{t "person.name"}}</th><th scope="col">{{t "person.position"}}</th><th scope="col">{{t "person.team"}}</th><th scope="col">{{t "person.location"}}</th><th scope="col">{{t "person.status"}}</th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr><th scope="row"><a href="/people/{{.ID}}">{{.Name}}</a></th><td>{{.Title}}</td><td>{{.Team}}</td><td>{{.Location}}</td><td>{{.Status}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "dir.none"}}</p>{{end}}
+{{if .Data.Truncated}}<p class="hint">{{t "dir.truncated"}}</p>{{end}}
+{{end}}

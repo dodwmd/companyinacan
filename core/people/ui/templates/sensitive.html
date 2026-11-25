@@ -1,0 +1,28 @@
+{{define "content"}}
+<h1>{{t "sens.title"}}</h1>
+<p class="notice" role="note">{{t "sens.notice" .Data.Name}}</p>
+{{if .Data.Revealed}}
+<table>
+<caption>{{t "sens.caption" .Data.Name}}</caption>
+<thead><tr><th scope="col">{{t "sens.field"}}</th><th scope="col">{{t "sens.value"}}</th></tr></thead>
+<tbody>
+{{range .Data.Fields}}<tr><th scope="row">{{.Label}}</th><td>{{if .Available}}{{.Value}}{{else}}<span class="muted">{{t "sens.hidden"}}</span>{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+<p class="hint">{{t "sens.done"}}</p>
+{{else}}
+<table>
+<caption>{{t "sens.caption_fields"}}</caption>
+<thead><tr><th scope="col">{{t "sens.field"}}</th><th scope="col">{{t "sens.access"}}</th></tr></thead>
+<tbody>
+{{range .Data.Fields}}<tr><th scope="row">{{.Label}}</th><td>{{if .Available}}{{t "sens.can_reveal"}}{{else}}<span class="muted">{{t "sens.hidden"}}</span>{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+<form method="post" action="{{.Data.Action}}">
+{{template "csrf" .}}
+<p><button type="submit">{{t "sens.reveal"}}</button></p>
+</form>
+{{end}}
+{{end}}

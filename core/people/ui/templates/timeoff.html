@@ -1,0 +1,53 @@
+{{define "content"}}
+<h1>{{t "to.title"}}</h1>
+<p class="actions">
+<a href="/timeoff/calendar">{{t "to.calendar_link"}}</a>
+<a href="/timeoff/queue">{{t "to.queue_link"}}</a>
+</p>
+
+<section aria-labelledby="h-bal">
+<h2 id="h-bal">{{t "to.balances"}}</h2>
+{{if .Data.Balances}}
+<table>
+<caption>{{t "to.balance_cap"}}</caption>
+<thead><tr><th scope="col">{{t "to.type"}}</th><th scope="col">{{t "to.days"}}</th><th scope="col">{{t "to.pending"}}</th></tr></thead>
+<tbody>{{range .Data.Balances}}<tr><th scope="row">{{.Type}}</th><td>{{.Days}}</td><td>{{.Pending}}</td></tr>
+{{end}}</tbody>
+</table>
+{{else}}<p class="muted">{{t "to.no_balances"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-new">
+<h2 id="h-new">{{t "to.new"}}</h2>
+<form method="post" action="/timeoff" class="card">
+{{template "csrf" .}}
+<p><label for="type_id">{{t "to.type"}}</label>
+<select id="type_id" name="type_id" required>{{range .Data.Types}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></p>
+<p><label for="start_date">{{t "to.start"}}</label><input id="start_date" name="start_date" type="date" required></p>
+<p><label for="start_part">{{t "to.start_part"}}</label>
+<select id="start_part" name="start_part"><option value="full">{{t "to.full"}}</option><option value="pm">{{t "to.from_noon"}}</option></select></p>
+<p><label for="end_date">{{t "to.end"}}</label><input id="end_date" name="end_date" type="date" required></p>
+<p><label for="end_part">{{t "to.end_part"}}</label>
+<select id="end_part" name="end_part"><option value="full">{{t "to.full"}}</option><option value="am">{{t "to.until_noon"}}</option></select></p>
+<p><label for="note">{{t "to.note"}}</label>
+<textarea id="note" name="note" rows="3" maxlength="1000" aria-describedby="note-hint"></textarea></p>
+<p id="note-hint" class="hint">{{t "to.note_hint"}}</p>
+<p><button type="submit" name="action" value="submit">{{t "to.submit"}}</button>
+<button type="submit" name="action" value="draft">{{t "to.save_draft"}}</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-mine">
+<h2 id="h-mine">{{t "to.mine"}}</h2>
+{{if .Data.Mine}}
+<div class="scroll">
+<table>
+<caption>{{t "to.caption"}}</caption>
+<thead><tr><th scope="col">{{t "to.type"}}</th><th scope="col">{{t "to.dates"}}</th><th scope="col">{{t "to.length"}}</th><th scope="col">{{t "to.status"}}</th></tr></thead>
+<tbody>{{range .Data.Mine}}<tr><th scope="row"><a href="/timeoff/{{.ID}}">{{.Type}}</a></th><td>{{.Start}} - {{.End}}</td><td>{{.Days}}</td><td>{{.Status}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "to.none"}}</p>{{end}}
+</section>
+{{end}}

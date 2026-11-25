@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Feedback requests - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback" aria-current="page">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Feedback requests</h1>
+<p class="hint">Answer once. In an anonymous cycle your name is not stored with your answers.</p>
+
+<table>
+<caption>Open feedback requests</caption>
+<thead><tr><th scope="col">About</th><th scope="col">Kind</th><th scope="col">Answer</th></tr></thead>
+<tbody><tr><th scope="row">Ann Example</th><td>Peer feedback</td><td><a href="/feedback/ID">Answer</a></td></tr>
+</tbody>
+</table>
+
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

@@ -22,6 +22,7 @@ type Config struct {
 	Introspect  IntrospectConfig  `yaml:"introspect"`
 	Retention   map[string]string `yaml:"retention"`
 	Reviews     ReviewsConfig     `yaml:"reviews"`
+	UI          UIConfig          `yaml:"ui"`
 }
 
 // ReviewsConfig holds the review defaults.
@@ -29,6 +30,24 @@ type ReviewsConfig struct {
 	// MinResponses is the default number of feedback answers needed before any feedback about a
 	// person is shown (at least 3: fewer could identify the authors). A cycle can raise it.
 	MinResponses int `yaml:"min_responses"`
+}
+
+// UIConfig turns on the server-rendered self-service web UI (specs/026-people-ui). It is off by
+// default: the module then serves the JSON API only.
+type UIConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// InsecureCookies drops the Secure attribute (and the __Host- cookie prefix) for plain-HTTP
+	// local development. Leave it false behind TLS.
+	InsecureCookies bool `yaml:"insecure_cookies"`
+	// TrustProxy reads the client address for failed-login throttling from X-Forwarded-For (the
+	// last entry, as appended by the ingress). Set it only behind a proxy you control.
+	TrustProxy bool `yaml:"trust_proxy"`
+	// NotificationsURL, when set, adds a Notifications link to the navigation (the can-core admin
+	// UI notifications page).
+	NotificationsURL string `yaml:"notifications_url"`
+	// IdleMinutes and AbsoluteHours bound a session (defaults 30 minutes and 8 hours).
+	IdleMinutes   int `yaml:"idle_minutes"`
+	AbsoluteHours int `yaml:"absolute_hours"`
 }
 
 // WebhookConfig is where outbox events are delivered (can-core's event endpoint).
@@ -114,6 +133,15 @@ func ParseConfig(data []byte) (*Config, error) {
 		if h := u.Hostname(); h != "localhost" && h != "127.0.0.1" && h != "::1" {
 			errs = append(errs, errors.New("introspect.url must be https (or loopback); set introspect.allow_insecure_http only for a protected in-cluster Service"))
 		}
+	}
+	if u := c.UI.NotificationsURL; u != "" {
+		p, err := url.Parse(u)
+		if err != nil || (p.Scheme != "http" && p.Scheme != "https") || p.Host == "" || p.User != nil {
+			errs = append(errs, errors.New("ui.notifications_url must be an http(s) URL without credentials"))
+		}
+	}
+	if c.UI.IdleMinutes < 0 || c.UI.IdleMinutes > 24*60 || c.UI.AbsoluteHours < 0 || c.UI.AbsoluteHours > 24*30 {
+		errs = append(errs, errors.New("ui.idle_minutes and ui.absolute_hours are out of range"))
 	}
 	known := map[string]bool{}
 	for _, cl := range Classes {

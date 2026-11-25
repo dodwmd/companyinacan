@@ -622,3 +622,11 @@ func (s *Service) ListUpdates(ctx context.Context, a Actor, goalID string) ([]Go
 	}
 	return out, rows.Err()
 }
+
+// CanWriteGoal reports whether the caller may change the goal, using the same policy decision
+// UpdateGoal enforces. The web UI uses it only to decide whether to show the edit forms; an
+// unreadable or unknown goal is false.
+func (s *Service) CanWriteGoal(ctx context.Context, a Actor, id string) bool {
+	_, f, err := s.goalForRead(ctx, a, id)
+	return err == nil && Decide(a, ActGoalWrite, f)
+}

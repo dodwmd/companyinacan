@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Home - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Welcome, Ann Example</h1>
+
+<section aria-labelledby="h-tasks">
+<h2 id="h-tasks">My tasks</h2>
+
+<ul class="list">
+
+<li>
+<span>Read the handbook</span>
+<span class="muted overdue">due 4 Mar 2026 (overdue)</span>
+<form method="post" action="/tasks/ID/complete" class="inline"><input type="hidden" name="csrf" value="CSRF"><button type="submit">Mark done</button></form>
+</li>
+
+</ul>
+
+</section>
+
+
+<section aria-labelledby="h-appr">
+<h2 id="h-appr">Approvals waiting</h2>
+
+<ul class="list"><li><a href="http://admin.localhost/approvals/7">Laptop request</a></li></ul>
+
+</section>
+
+
+<section aria-labelledby="h-1on1">
+<h2 id="h-1on1">Upcoming 1:1s</h2>
+
+<ul class="list">
+<li><a href="/meetings/ID">1:1 with Boss Example</a> <span class="muted">Thu 12 Mar 2026 09:00 UTC</span></li>
+
+</ul>
+
+</section>
+
+<section aria-labelledby="h-goals">
+<h2 id="h-goals">Goals in progress</h2>
+
+<ul class="list">
+<li><a href="/goals/ID">Ship it</a> <span class="muted">2026-Q1</span> <progress max="100" value="0" aria-label="Progress">0%</progress> <span class="pct">0%</span></li>
+
+</ul>
+
+</section>
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

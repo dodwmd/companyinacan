@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Time off - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff" aria-current="page">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Time off</h1>
+<p class="actions">
+<a href="/timeoff/calendar">Team calendar</a>
+<a href="/timeoff/queue">Approval queue</a>
+</p>
+
+<section aria-labelledby="h-bal">
+<h2 id="h-bal">Balances</h2>
+
+<table>
+<caption>Leave balances in days</caption>
+<thead><tr><th scope="col">Leave type</th><th scope="col">Days left</th><th scope="col">Reserved by pending requests</th></tr></thead>
+<tbody><tr><th scope="row">vacation</th><td>25</td><td>1.5</td></tr>
+</tbody>
+</table>
+
+</section>
+
+<section aria-labelledby="h-new">
+<h2 id="h-new">Request time off</h2>
+<form method="post" action="/timeoff" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="type_id">Leave type</label>
+<select id="type_id" name="type_id" required><option value="ID">Vacation</option></select></p>
+<p><label for="start_date">First day</label><input id="start_date" name="start_date" type="date" required></p>
+<p><label for="start_part">First day starts</label>
+<select id="start_part" name="start_part"><option value="full">Whole day</option><option value="pm">At noon (afternoon only)</option></select></p>
+<p><label for="end_date">Last day</label><input id="end_date" name="end_date" type="date" required></p>
+<p><label for="end_part">Last day ends</label>
+<select id="end_part" name="end_part"><option value="full">Whole day</option><option value="am">At noon (morning only)</option></select></p>
+<p><label for="note">Note for your manager</label>
+<textarea id="note" name="note" rows="3" maxlength="1000" aria-describedby="note-hint"></textarea></p>
+<p id="note-hint" class="hint">Only you, your manager and HR can read this.</p>
+<p><button type="submit" name="action" value="submit">Submit request</button>
+<button type="submit" name="action" value="draft">Save as draft</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-mine">
+<h2 id="h-mine">My requests</h2>
+
+<div class="scroll">
+<table>
+<caption>Time off requests</caption>
+<thead><tr><th scope="col">Leave type</th><th scope="col">Dates</th><th scope="col">Days</th><th scope="col">Status</th></tr></thead>
+<tbody><tr><th scope="row"><a href="/timeoff/ID">Vacation</a></th><td>23 Mar 2026 (afternoon) - 24 Mar 2026</td><td>1.5</td><td>Pending</td></tr>
+</tbody>
+</table>
+</div>
+
+</section>
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

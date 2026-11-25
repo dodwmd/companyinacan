@@ -387,3 +387,7 @@ one-directional. Everything below is read from the code, not run on a cluster.
   (the E11a engine can notify on the events); anonymity is not proof against someone with database access;
   the finance module does not consume `timeoff.*` yet; no cluster verification.
 - Write auditing is after the commit (see Audit); search indexing of sensitive classes is out by design.
+
+## Web UI
+
+The module can serve a self-service web UI (profile, directory, org chart, 1:1s, goals, time off, reviews) next to the API: see [`people-ui.md`](people-ui.md). It is off unless `ui.enabled` is set.

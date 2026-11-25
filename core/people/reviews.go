@@ -1189,3 +1189,30 @@ func (s *Service) revMutate(ctx context.Context, a Actor, action, id string, fie
 	}
 	return err
 }
+
+// ReviewCaps says which writes the caller may make on a review.
+type ReviewCaps struct {
+	SelfWrite        bool
+	ManagerWrite     bool
+	Nominate         bool
+	NominationDecide bool
+	Acknowledge      bool
+}
+
+// ReviewCapabilities answers, with the very decisions the write methods enforce, which forms the
+// web UI should offer for a review. A review the caller may not know exists yields no capability.
+func (s *Service) ReviewCapabilities(ctx context.Context, a Actor, id string) ReviewCaps {
+	ctx, cancel := readCtx(ctx)
+	defer cancel()
+	_, _, f, err := s.revFact(ctx, s.db, a, id)
+	if err != nil {
+		return ReviewCaps{}
+	}
+	return ReviewCaps{
+		SelfWrite:        Decide(a, ActRevSelfWrite, f),
+		ManagerWrite:     Decide(a, ActRevMgrWrite, f),
+		Nominate:         Decide(a, ActRevNominate, f),
+		NominationDecide: Decide(a, ActRevNominationDecide, f),
+		Acknowledge:      Decide(a, ActRevAck, f),
+	}
+}

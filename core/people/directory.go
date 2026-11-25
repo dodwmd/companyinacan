@@ -1056,3 +1056,27 @@ func (s *Service) History(ctx context.Context, a Actor, id string) ([]HistoryEnt
 	}
 	return out, rows.Err()
 }
+
+// SensitiveFieldsFor lists the sensitive fields the actor could read for the person, without
+// reading or decrypting any (so nothing is audited as a read). It answers ErrNotFound when the
+// person is invisible and ErrForbidden when no field is readable; the web UI uses it to decide
+// whether to offer the reveal button.
+func (s *Service) SensitiveFieldsFor(ctx context.Context, a Actor, id string) ([]string, error) {
+	f, si, err := s.personFact(ctx, a, id)
+	if err != nil {
+		return nil, err
+	}
+	if si.erased {
+		return nil, ErrNotFound
+	}
+	var out []string
+	for _, fld := range SensitiveFields {
+		if FieldAccess(a, false, fld, f) {
+			out = append(out, fld)
+		}
+	}
+	if len(out) == 0 {
+		return nil, ErrForbidden
+	}
+	return out, nil
+}

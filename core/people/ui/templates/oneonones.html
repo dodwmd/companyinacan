@@ -1,0 +1,10 @@
+{{define "content"}}
+<h1>{{t "oo.title"}}</h1>
+{{if .Data}}
+<ul class="list">
+{{range .Data}}<li><a href="/oneonones/{{.ID}}">{{t "home.meeting_with" .With}}</a> <span class="muted">{{.Cadence}}</span></li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "oo.none"}}</p>{{end}}
+<p class="hint">{{t "oo.how"}}</p>
+{{end}}

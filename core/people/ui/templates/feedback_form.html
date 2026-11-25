@@ -1,0 +1,10 @@
+{{define "content"}}
+<h1>{{t "fb.page" .Data.Subject}}</h1>
+<p class="notice" role="note">{{if .Data.Anonymous}}{{t "fb.anonymous"}}{{else}}{{t "fb.attributed"}}{{end}}</p>
+<form method="post" action="/feedback/{{.Data.ID}}" class="card">
+{{template "csrf" .}}
+{{template "qfields" .Data.Fields}}
+<p><button type="submit">{{t "fb.send"}}</button></p>
+</form>
+<p><a href="/feedback">{{t "fb.title"}}</a></p>
+{{end}}

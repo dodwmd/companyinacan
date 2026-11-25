@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>{{t "profile.title"}}</h1>
+{{template "person_facts" .Data}}
+<section aria-labelledby="h-edit">
+<h2 id="h-edit">{{t "profile.edit"}}</h2>
+<p class="hint">{{t "profile.edit_hint"}}</p>
+<form method="post" action="/me" class="card">
+{{template "csrf" .}}
+<p><label for="preferred_name">{{t "profile.preferred_name"}}</label>
+<input id="preferred_name" name="preferred_name" value="{{.Data.P.PreferredName}}" maxlength="100"></p>
+<p><label for="work_phone">{{t "profile.work_phone"}}</label>
+<input id="work_phone" name="work_phone" type="tel" value="{{.Data.P.WorkPhone}}" maxlength="40"></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+</section>
+{{if .Data.CanSensitive}}
+<section aria-labelledby="h-sens">
+<h2 id="h-sens">{{t "profile.sensitive"}}</h2>
+<p>{{t "profile.sensitive_hint"}}</p>
+<p><a href="{{.Data.SensitivePath}}">{{t "profile.sensitive_link"}}</a></p>
+</section>
+{{end}}
+{{end}}

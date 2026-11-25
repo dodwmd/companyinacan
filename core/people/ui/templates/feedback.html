@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>{{t "fb.title"}}</h1>
+<p class="hint">{{t "fb.how"}}</p>
+{{if .Data}}
+<table>
+<caption>{{t "fb.caption"}}</caption>
+<thead><tr><th scope="col">{{t "fb.about"}}</th><th scope="col">{{t "rev.kind"}}</th><th scope="col">{{t "fb.open"}}</th></tr></thead>
+<tbody>{{range .Data}}<tr><th scope="row">{{.Subject}}</th><td>{{.Kind}}</td><td><a href="/feedback/{{.ID}}">{{t "fb.open"}}</a></td></tr>
+{{end}}</tbody>
+</table>
+{{else}}<p class="muted">{{t "fb.none"}}</p>{{end}}
+{{end}}

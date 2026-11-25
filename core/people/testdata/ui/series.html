@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>1:1s - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones" aria-current="page">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>1:1s with Ann Example</h1>
+<p class="muted">Weekly</p>
+<section aria-labelledby="h-sched">
+<h2 id="h-sched">Schedule a meeting</h2>
+<form method="post" action="/oneonones/ID/meetings" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="scheduled_at">Date and time (UTC)</label>
+<input id="scheduled_at" name="scheduled_at" type="datetime-local" required aria-describedby="when-hint"></p>
+<p id="when-hint" class="hint">Times are in UTC.</p>
+<p><button type="submit">Schedule</button></p>
+</form>
+</section>
+<section aria-labelledby="h-meetings">
+<h2 id="h-meetings">Meetings</h2>
+
+<ul class="list"><li><a href="/meetings/ID">Thu 12 Mar 2026 09:00 UTC</a> <span class="badge">Scheduled</span></li></ul>
+
+</section>
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

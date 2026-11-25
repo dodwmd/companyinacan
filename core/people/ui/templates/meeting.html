@@ -1,0 +1,68 @@
+{{define "content"}}
+<h1>{{t "oo.meeting_title" .Data.With}}</h1>
+<p>{{when .Data.When}} <span class="badge">{{.Data.Status}}</span> <a href="/oneonones/{{.Data.SeriesID}}">{{t "oo.back"}}</a></p>
+
+<section aria-labelledby="h-agenda">
+<h2 id="h-agenda">{{t "oo.agenda"}}</h2>
+{{if .Data.Agenda}}<ul class="list">{{range .Data.Agenda}}<li>{{.Text}} <span class="muted">{{.Author}}</span></li>{{end}}</ul>{{else}}<p class="muted">{{t "oo.no_agenda"}}</p>{{end}}
+<form method="post" action="/meetings/{{.Data.ID}}/agenda" class="card">
+{{template "csrf" .}}
+<p><label for="agenda-text">{{t "oo.add_topic"}}</label>
+<input id="agenda-text" name="text" required maxlength="1000"></p>
+<p><button type="submit">{{t "common.add"}}</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-notes">
+<h2 id="h-notes">{{t "oo.shared_notes"}}</h2>
+<p class="hint">{{t "oo.shared_hint"}}</p>
+<form method="post" action="/meetings/{{.Data.ID}}/notes" class="card">
+{{template "csrf" .}}
+<p><label for="shared-notes">{{t "oo.shared_notes"}}</label>
+<textarea id="shared-notes" name="text" rows="6" maxlength="20000">{{.Data.Shared}}</textarea></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+</section>
+
+{{if .Data.HasPrivate}}
+<section aria-labelledby="h-private" class="private">
+<h2 id="h-private">{{t "oo.private_notes"}}</h2>
+<p class="hint">{{t "oo.private_hint"}}</p>
+<form method="post" action="/meetings/{{.Data.ID}}/private-notes" class="card">
+{{template "csrf" .}}
+<p><label for="private-notes">{{t "oo.private_notes"}}</label>
+<textarea id="private-notes" name="text" rows="6" maxlength="20000">{{.Data.Private}}</textarea></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+</section>
+{{end}}
+
+<section aria-labelledby="h-actions">
+<h2 id="h-actions">{{t "oo.actions"}}</h2>
+{{template "actions" (pair . .Data.Actions)}}
+{{if .Data.FollowUps}}
+<h3>{{t "oo.followups"}}</h3>
+{{template "actions" (pair . .Data.FollowUps)}}
+{{end}}
+<form method="post" action="/meetings/{{.Data.ID}}/actions" class="card">
+{{template "csrf" .}}
+<p><label for="act-text">{{t "oo.action_text"}}</label>
+<input id="act-text" name="text" required maxlength="1000"></p>
+<p><label for="act-who">{{t "oo.assignee"}}</label>
+<select id="act-who" name="assignee_id">{{range .Data.Participants}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></p>
+<p><label for="act-due">{{t "oo.due"}}</label>
+<input id="act-due" name="due_date" type="date"></p>
+<p><button type="submit">{{t "common.add"}}</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-mstatus">
+<h2 id="h-mstatus">{{t "oo.mark"}}</h2>
+<form method="post" action="/meetings/{{.Data.ID}}/status" class="inline">
+{{template "csrf" .}}
+<button type="submit" name="status" value="held">{{t "mstatus.held"}}</button>
+<button type="submit" name="status" value="cancelled">{{t "mstatus.cancelled"}}</button>
+<button type="submit" name="status" value="scheduled">{{t "mstatus.scheduled"}}</button>
+</form>
+</section>
+{{end}}

@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>{{t "org.title"}}</h1>
+{{if .Data.Chain}}
+<section aria-labelledby="h-chain">
+<h2 id="h-chain">{{t "org.chain"}}</h2>
+<ol class="chain">
+{{range .Data.Chain}}<li><a href="/org/{{.ID}}">{{.Name}}</a></li>
+{{end}}
+</ol>
+{{if .Data.Truncated}}<p class="hint">{{t "org.truncated"}}</p>{{end}}
+</section>
+{{end}}
+<section aria-labelledby="h-subject">
+<h2 id="h-subject">{{t "org.person"}}</h2>
+<p><a href="/people/{{.Data.Subject.ID}}">{{.Data.Subject.Name}}</a> <span class="badge">{{.Data.Subject.Status}}</span></p>
+</section>
+<section aria-labelledby="h-reps">
+<h2 id="h-reps">{{t "org.reports"}}</h2>
+{{if .Data.Reports}}
+<ul class="list">{{range .Data.Reports}}<li><a href="/org/{{.ID}}">{{.Name}}</a> <span class="badge">{{.Status}}</span></li>{{end}}</ul>
+{{else}}<p class="muted">{{t "org.no_reports"}}</p>{{end}}
+</section>
+{{end}}

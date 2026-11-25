@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Reviews - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff">Time off</a></li>
+<li><a href="/reviews" aria-current="page">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Review of Ann Example</h1>
+<p>2026 annual <span class="badge">Open</span> <span class="badge">In progress</span></p>
+
+
+
+
+<section aria-labelledby="h-mgr">
+<h2 id="h-mgr">Manager review</h2>
+<p class="hint">Your overall rating and summary are shown to the person only after calibration and release.</p>
+<form method="post" action="/reviews/ID/manager" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+
+
+
+<p>
+
+<label for="r-q1">Delivers results</label>
+<select id="r-q1" name="r_q1"><option value="">Choose</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
+
+</p>
+
+
+<p>
+
+<label for="t-q2">What went well?</label>
+<textarea id="t-q2" name="t_q2" rows="4" maxlength="4000"></textarea>
+
+</p>
+
+
+
+<p><label for="rating">Overall rating</label>
+<select id="rating" name="rating"><option value="">Choose</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></p>
+<p><label for="summary">Summary</label>
+<textarea id="summary" name="summary" rows="4" maxlength="2000"></textarea></p>
+<p><button type="submit">Save draft</button> <button type="submit" name="submit" value="1">Submit (final)</button></p>
+</form>
+</section>
+
+
+
+
+
+
+
+<section aria-labelledby="h-fb">
+<h2 id="h-fb">Peer and upward feedback</h2>
+
+<h3>Peer feedback</h3>
+
+<p class="muted">Feedback is shown after the cycle closes and enough people have given feedback. Until then no counts and no names are shown to anyone.</p>
+
+
+</section>
+
+
+
+<section aria-labelledby="h-nom">
+<h2 id="h-nom">Nominations</h2>
+
+<table>
+<caption>Nominations</caption>
+<thead><tr><th scope="col">Reviewer</th><th scope="col">Kind</th><th scope="col">Nomination</th><th scope="col">Decision</th></tr></thead>
+<tbody><tr><th scope="row">Ben Example</th><td>Peer feedback</td><td>Approved</td><td>
+
+</td></tr>
+</tbody>
+</table>
+
+
+<form method="post" action="/reviews/ID/nominations" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p class="hint">Choose colleagues who can give feedback. Your manager approves peers you propose.</p>
+<p><label for="reviewer_id">Reviewer</label>
+<select id="reviewer_id" name="reviewer_id"><option value="ID">Boss Example</option><option value="ID">Ben Example</option></select></p>
+<p><label for="kind">Kind</label>
+<select id="kind" name="kind"><option value="peer">Peer feedback</option><option value="upward">Upward feedback</option></select></p>
+<p><button type="submit">Add reviewer</button></p>
+</form>
+
+</section>
+
+
+
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>

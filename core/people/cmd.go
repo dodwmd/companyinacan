@@ -121,7 +121,17 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	api := &API{Svc: svc, Auth: auth, Log: log, Can: canEvents}
-	srv := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
+	handler := api.Handler()
+	if cfg.UI.Enabled {
+		ui := &UI{Svc: svc, Auth: auth, Log: log, Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.UI.TrustProxy, NotificationsURL: cfg.UI.NotificationsURL,
+			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour}
+		top := http.NewServeMux()
+		top.Handle("/v1/", handler)
+		top.Handle("GET /healthz", handler)
+		top.Handle("/", ui.Handler())
+		handler = top
+	}
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { defer wg.Done(); background(ctx, svc, disp, log) }()

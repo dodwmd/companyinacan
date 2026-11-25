@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>My profile - Company in a Can: People</title>
+<link rel="stylesheet" href="/static/people.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: People</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/me" aria-current="page">My profile</a></li>
+<li><a href="/people">Directory</a></li>
+<li><a href="/org">Org chart</a></li>
+<li><a href="/team">My team</a></li>
+<li><a href="/oneonones">1:1s</a></li>
+<li><a href="/goals">Goals</a></li>
+<li><a href="/timeoff">Time off</a></li>
+<li><a href="/reviews">Reviews</a></li>
+<li><a href="/feedback">Feedback requests</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>My profile</h1>
+
+<dl class="facts">
+<dt>Name</dt><dd>Ann Example</dd>
+<dt>Status</dt><dd><span class="badge status-active">Active</span></dd>
+<dt>Work email</dt><dd>ann@example.com</dd>
+
+
+
+
+<dt>Team</dt><dd>Core</dd>
+<dt>Started</dt><dd>6 Jan 2025</dd>
+<dt>Manager</dt><dd><a href="/people/ID">Boss Example</a></dd>
+</dl>
+
+<section aria-labelledby="h-edit">
+<h2 id="h-edit">Edit</h2>
+<p class="hint">You can change your preferred name and work phone. Other details are maintained by HR.</p>
+<form method="post" action="/me" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="preferred_name">Preferred name</label>
+<input id="preferred_name" name="preferred_name" value="" maxlength="100"></p>
+<p><label for="work_phone">Work phone</label>
+<input id="work_phone" name="work_phone" type="tel" value="" maxlength="40"></p>
+<p><button type="submit">Save</button></p>
+</form>
+</section>
+
+<section aria-labelledby="h-sens">
+<h2 id="h-sens">Sensitive details</h2>
+<p>Date of birth, national id, home address, personal phone and compensation are kept encrypted and shown only on a separate screen. Each time you reveal them the read is recorded in the audit log.</p>
+<p><a href="/me/sensitive">Open the sensitive details screen</a></p>
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can people self-service. Apache-2.0. A tool, not legal or HR advice.</p>
+</footer>
+</body>
+</html>
