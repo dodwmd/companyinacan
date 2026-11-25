@@ -46,6 +46,29 @@ pinned linter and falls back to `go vet` if it cannot).
 To add a validation case, drop `testdata/invalid/<name>.yaml` and a sidecar
 `<name>.expect.yaml` listing the expected `rule` and `path`; the contract suite picks it up.
 
+## Flaky tests
+
+A test that fails sometimes is a bug, in the test or in the code. The `unit` job is required, so a
+flake blocks everyone.
+
+- Never hide a flake with `t.Skip`, a retry loop around the whole test, or `-run` filters. A skip that
+  hides a failing assertion is worse than a red test.
+- Fix the cause. The usual ones, and the usual cure:
+  - a wall-clock assertion (`elapsed < 100ms`): inject a clock or sleep function, or assert an
+    observable property (a count, an ordering, a channel receive) instead of a duration;
+  - random test data that can collide with an assertion (a random id that happens to contain `555`):
+    use fixture literals with an unambiguous pattern;
+  - a tight shutdown or wait deadline: wait on a condition (a channel, `Eventually`-style polling) with
+    a generous guard that only exists to turn a hang into a failure, not to measure speed;
+  - shared package-level state between parallel or shuffled tests: give each test its own instance.
+- Reproduce before and after with `sh scripts/flaky-hunt.sh` (for example
+  `PKGS=./core/jobs/... ITER=50 sh scripts/flaky-hunt.sh`). It repeats the tests with shuffled order
+  under CPU load. The non-required `flaky-hunt` workflow runs it nightly.
+- Quarantine is the last resort and needs an open issue. A quarantined test carries the issue link in
+  the skip message (`t.Skip("flaky, see https://github.com/dodwmd/companyinacan/issues/NNN")`), the
+  issue says how to reproduce it, and the same pull request adds the test to the list in
+  `docs/measurements/ci-stability.md`. A quarantine without an issue link is rejected in review.
+
 ## Sign-off (DCO)
 
 Every commit must carry a `Signed-off-by` line certifying the

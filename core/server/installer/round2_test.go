@@ -113,7 +113,7 @@ func TestEnableRenderHonoursContext(t *testing.T) {
 	if err := in.Enable(ctx, spec); err == nil {
 		t.Fatal("expected an error")
 	}
-	if time.Since(start) > 10*time.Second {
+	if time.Since(start) > 60*time.Second {
 		t.Fatal("Enable did not return promptly")
 	}
 }

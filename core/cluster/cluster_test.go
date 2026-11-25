@@ -139,9 +139,42 @@ func TestUpStopsAtFirstFailure(t *testing.T) {
 		listKey: errors.New("No nodes found"),
 		"k3d cluster create companyinacan-dev --config dev/k3d.yaml": boom,
 	}}
-	err := New(cfg(), f).Up(context.Background())
-	if !errors.Is(err, boom) || len(f.calls) != 2 {
+	m := New(cfg(), f)
+	m.sleep = func(time.Duration) {}
+	err := m.Up(context.Background())
+	// 1 status call, then CreateAttempts creates with a cleanup delete between them; nothing after.
+	want := 1 + CreateAttempts + (CreateAttempts - 1)
+	if !errors.Is(err, boom) || len(f.calls) != want {
 		t.Fatalf("err=%v calls=%v", err, f.lines())
+	}
+	for _, l := range f.lines() {
+		if strings.HasPrefix(l, "kubectl") {
+			t.Fatalf("must not continue after a failed create: %v", f.lines())
+		}
+	}
+}
+
+func TestUpRetriesATransientCreateFailure(t *testing.T) {
+	create := "k3d cluster create companyinacan-dev --config dev/k3d.yaml"
+	n := 0
+	f := &countingFake{fake: fake{err: map[string]error{listKey: errors.New("No nodes found")}}, failFirst: map[string]int{create: 1}, n: &n}
+	m := New(cfg(), f)
+	var slept int
+	m.sleep = func(time.Duration) { slept++ }
+	if err := m.Up(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if slept != 1 {
+		t.Fatalf("slept=%d", slept)
+	}
+	var deletes int
+	for _, l := range f.lines() {
+		if l == "k3d cluster delete companyinacan-dev" {
+			deletes++
+		}
+	}
+	if deletes != 1 {
+		t.Fatalf("a failed create must be cleaned up once: %v", f.lines())
 	}
 }
 

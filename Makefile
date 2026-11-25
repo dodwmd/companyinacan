@@ -19,8 +19,8 @@ build: ## build bin/can, bin/can-static and bin/can-core
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-static ./cmd/can-static
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-core ./cmd/can-core
 
-unit: ## unit tests
-	$(GO) test -race ./cmd/... ./core/... ./test/wiring/... ./test/e2e/harness/... ./dev/...
+unit: ## unit tests: -race, shuffled, uncached (a failure prints -test.shuffle SEED)
+	$(GO) test -race -count=1 -shuffle=on ./cmd/... ./core/... ./test/wiring/... ./test/e2e/harness/... ./dev/...
 
 contract: ## schema and example contract tests
 	$(GO) test ./test/contract/...

@@ -136,12 +136,25 @@ func TestHealthCheckTimeoutAndPanic(t *testing.T) {
 	hl := NewHealth()
 	hl.SetTTL(0)
 	hl.SetTimeout(30 * time.Millisecond)
-	hl.Add("slow", true, func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() })
+	// The check records the deadline it was given: if SetTimeout were ignored it would see the 2 s
+	// default. This does not depend on how fast the machine is.
+	granted := make(chan time.Duration, 1)
+	hl.Add("slow", true, func(ctx context.Context) error {
+		if dl, ok := ctx.Deadline(); ok {
+			granted <- time.Until(dl)
+		} else {
+			granted <- time.Hour
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	})
 	hl.Add("panics", false, func(context.Context) error { panic("boom") })
-	start := time.Now()
 	rep := hl.Check(context.Background())
-	if time.Since(start) > time.Second || rep.Status != "down" {
-		t.Fatalf("timeout not enforced: %v %+v", time.Since(start), rep)
+	if rep.Status != "down" {
+		t.Fatalf("timeout not enforced: %+v", rep)
+	}
+	if d := <-granted; d > 30*time.Millisecond {
+		t.Fatalf("the check was given %v, not the 30ms timeout", d)
 	}
 }
 

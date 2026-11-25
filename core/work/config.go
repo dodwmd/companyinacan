@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -36,6 +37,10 @@ type Config struct {
 	// RetentionDays deletes issues resolved longer ago than this (0 keeps them forever).
 	RetentionDays      int `yaml:"retention_days"`
 	AuditRetentionDays int `yaml:"audit_retention_days"`
+
+	// authPenalty overrides the delay added to throttled authentication failures; zero means the
+	// default. Only tests in this package can set it.
+	authPenalty time.Duration
 }
 
 // DefaultConfig returns the defaults.

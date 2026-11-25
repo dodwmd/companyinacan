@@ -100,6 +100,9 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		penalty:  300 * time.Millisecond,
 		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
+	if cfg.authPenalty > 0 {
+		a.penalty = cfg.authPenalty
+	}
 	a.forceSecure = cfg.forceSecure(opt.PublicURL)
 	if a.ui, err = newWebUI(a, now); err != nil {
 		_ = store.Close()

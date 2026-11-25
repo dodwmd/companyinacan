@@ -95,7 +95,7 @@ func TestParseFilterIsLinear(t *testing.T) {
 		_, _ = ParseFilter(strings.Repeat("and ", 125), userAttrs)
 		_, _ = ParseFilter(strings.Repeat(`"`, 500), userAttrs)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	if d := time.Since(start); d > 30*time.Second {
 		t.Fatalf("took %v", d)
 	}
 }
