@@ -62,6 +62,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // first and always: only a request with invalid credentials counts as a failure, so a valid token
 // is never refused because of other requests from its address.
 func (a *API) guard(perm string, fn apiFn) http.HandlerFunc {
+	return a.guardWhen(perm, func(p *Principal) bool { return p.Has(perm) }, fn)
+}
+
+// guardPurge opens the purge hook to administrators and to the restore-only credential.
+func (a *API) guardPurge(fn apiFn) http.HandlerFunc {
+	return a.guardWhen(PermAdmin, func(p *Principal) bool { return p.Restore || p.Has(PermAdmin) }, fn)
+}
+
+func (a *API) guardWhen(perm string, allowed func(*Principal) bool, fn apiFn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r, a.TrustProxy)
 		tok, ok := bearerToken(r)
@@ -86,7 +95,7 @@ func (a *API) guard(perm string, fn apiFn) http.HandlerFunc {
 			problem(w, http.StatusUnauthorized, "a valid bearer token is required")
 			return
 		}
-		if !p.Has(perm) {
+		if !allowed(p) {
 			problem(w, http.StatusForbidden, "this needs the "+perm+" permission")
 			return
 		}
@@ -217,7 +226,7 @@ func (a *API) Handler() http.Handler {
 	route("GET /v1/admin/files", a.guard(PermAdmin, a.adminFiles))
 	route("POST /v1/subjects/{subject}/erasure", a.guard(PermAdmin, a.erase))
 	route("GET /v1/erasures", a.guard(PermAdmin, a.listErasures))
-	route("POST /v1/purge", a.guard(PermAdmin, a.purge))
+	route("POST /v1/purge", a.guardPurge(a.purge))
 	route("POST /v1/retention/run", a.guard(PermAdmin, a.runRetention))
 	route("GET /v1/audit", a.guard(PermAdmin, a.audit))
 	return obs.Instrument(securityHeaders(mux)) // request metrics and /readyz (epic E22)

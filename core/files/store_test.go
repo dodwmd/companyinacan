@@ -979,7 +979,7 @@ func TestEraseSubjectRemovesBlobsAndScrubsTheDatabaseFiles(t *testing.T) {
 		t.Errorf("purge hook: %v", err)
 	}
 	_ = e.s.SetHold(ctx, e.root, keep.ID, true, nil)
-	if err := e.s.PurgeSubject(ctx, e.root, keep.ID, ClassContent); err != nil {
+	if err := e.s.PurgeSubject(ctx, &Principal{Subject: "svc:restore", Restore: true}, keep.ID, ClassContent); err != nil {
 		t.Errorf("purge by file id: %v", err)
 	}
 	if len(e.blobs()) != 0 {

@@ -49,9 +49,9 @@ var table = map[string][]Spec{
 	"people": {{Key: "CAN_PEOPLE_API_TOKEN"}, {Key: KeyringKey, Kind: Keyring}},
 	// The service token for the provisioning API (can-core and operators); the SCIM tokens are made through that API.
 	"provisioning": {{Key: "CAN_PROVISIONING_API_TOKEN"}},
-	// The service token, the HMAC secret that signs share links (rotating it ends every live link, which
+	// The service token, the restore-only credential of the purge hook, the HMAC secret that signs share links (rotating it ends every live link, which
 	// is its own decision, so it is rotatable) and the sealed-field keyring for names and descriptions.
-	"files": {{Key: "CAN_FILES_API_TOKEN"}, {Key: "CAN_FILES_LINK_SECRET"}, {Key: KeyringKey, Kind: Keyring}},
+	"files": {{Key: "CAN_FILES_API_TOKEN"}, {Key: "CAN_FILES_RESTORE_TOKEN"}, {Key: "CAN_FILES_LINK_SECRET"}, {Key: KeyringKey, Kind: Keyring}},
 }
 
 // For returns the secrets generated for a module (none for modules that need none).

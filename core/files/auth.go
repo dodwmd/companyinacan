@@ -36,6 +36,22 @@ func (s StaticToken) Authenticate(_ context.Context, tok string) (*Principal, er
 	return nil, nil
 }
 
+// StaticRestoreToken authenticates the restore-only credential (CAN_FILES_RESTORE_TOKEN, optional).
+// Its principal holds no permission: it opens the purge hook and nothing else.
+type StaticRestoreToken struct{ Token string }
+
+// Authenticate implements Authenticator.
+func (s StaticRestoreToken) Authenticate(_ context.Context, tok string) (*Principal, error) {
+	if len(s.Token) < 32 {
+		return nil, nil
+	}
+	a, b := sha256.Sum256([]byte(tok)), sha256.Sum256([]byte(s.Token))
+	if subtle.ConstantTimeCompare(a[:], b[:]) == 1 {
+		return &Principal{Subject: "svc:restore", Restore: true}, nil
+	}
+	return nil, nil
+}
+
 // CanAuth authenticates the personal access tokens can-core issues, by introspection. Any doubt
 // is "not valid"; an introspection outage is an error.
 type CanAuth struct{ In *modclient.Introspector }

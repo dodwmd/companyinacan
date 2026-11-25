@@ -365,12 +365,14 @@ func (s *Store) ListErasures(ctx context.Context, p *Principal, after int64) ([]
 	return out, rows.Err()
 }
 
-// PurgeSubject is the purge(subject, class) hook the backup restore replays: idempotent, it
-// ignores legal holds (the erasure was authorised when the tombstone was written), and an unknown
-// subject is a no-op. The subject is a data subject id (an erasure) or a file id (a retention
-// purge).
+// PurgeSubject is the purge(subject, class) hook the backup restore replays: idempotent, and an
+// unknown subject is a no-op. The subject is a data subject id (an erasure) or a file id (a
+// retention purge). An administrator is refused when any matching file is under a legal hold or a
+// retention date. Only the restore-only credential (Principal.Restore) ignores both, because a
+// restore re-applies an erasure that was authorised when its tombstone was written; it is audited
+// as file.restore_purge.
 func (s *Store) PurgeSubject(ctx context.Context, p *Principal, subject, class string) error {
-	if !p.Has(PermAdmin) {
+	if !p.Restore && !p.Has(PermAdmin) {
 		return ErrForbidden
 	}
 	if !subjectRe.MatchString(subject) {
@@ -379,13 +381,32 @@ func (s *Store) PurgeSubject(ctx context.Context, p *Principal, subject, class s
 	if class != ClassContent && class != ClassMetadata {
 		return invalid("class must be one of %v", Classes)
 	}
-	if err := s.inTx(ctx, func(tx *sql.Tx) error {
-		n, err := s.markPurging(ctx, tx, purgeIntent{"erasure", p.Subject, "file.purge"}, ofSubject, subject, subject)
+	action := "file.purge"
+	if p.Restore {
+		action = "file.restore_purge"
+	}
+	blocked := false
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		if !p.Restore {
+			var n int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM files WHERE `+ofSubject+` AND (status IN ('active','deleted')) AND `+heldOrLocked, subject, subject, ts(s.now())).Scan(&n); err != nil {
+				return err
+			}
+			if n > 0 {
+				blocked = true
+				return conflict("a legal hold or a retention date forbids purging; only a restore replay may")
+			}
+		}
+		n, err := s.markPurging(ctx, tx, purgeIntent{"erasure", p.Subject, action}, ofSubject, subject, subject)
 		if err != nil || n == 0 {
 			return err
 		}
-		return s.tombstoneClaimed(ctx, tx, "file.purge")
-	}); err != nil {
+		return s.tombstoneClaimed(ctx, tx, action)
+	})
+	if blocked {
+		s.auditDeny(ctx, p.Subject, action, "subject:"+subject)
+	}
+	if err != nil {
 		return err
 	}
 	if _, err := s.finishPurges(ctx, ofSubject, subject, subject); err != nil {

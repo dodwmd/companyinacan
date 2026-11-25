@@ -77,6 +77,9 @@ type Principal struct {
 	Subject string
 	Perms   []string
 	Groups  []string // opaque directory group ids, from a GroupResolver
+	// Restore marks the restore-only credential: it may call the purge hook, ignoring holds and
+	// retention dates, and nothing else. It is not a permission a token can be given.
+	Restore bool
 }
 
 // Has reports whether the principal holds a permission (write includes read; admin includes both).

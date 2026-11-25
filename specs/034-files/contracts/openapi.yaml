@@ -626,7 +626,7 @@ paths:
           description: The token or the role does not allow it
   /v1/purge:
     post:
-      summary: 'The purge(subject, class) hook a restore replays. Idempotent; ignores holds.'
+      summary: 'The purge(subject, class) hook a restore replays. Idempotent. An administrator gets 409 for a file under a legal hold or a retention date; only the restore-only credential (CAN_FILES_RESTORE_TOKEN) ignores them, audited as file.restore_purge.'
       operationId: postV1Purge
       x-permission: files.admin
       requestBody:
@@ -643,6 +643,8 @@ paths:
           description: Invalid request
         '403':
           description: The token or the role does not allow it
+        '409':
+          description: Conflict
   /v1/retention/run:
     post:
       summary: 'Run one retention sweep now.'

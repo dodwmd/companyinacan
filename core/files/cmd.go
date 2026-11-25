@@ -30,8 +30,11 @@ const defaultConfigPath = "/etc/can-files/files.yaml"
 type Secrets struct {
 	APIToken   string // CAN_FILES_API_TOKEN: the service token (can-core, other modules, operators)
 	LinkSecret string // CAN_FILES_LINK_SECRET: signs share links
-	S3KeyID    string // CAN_FILES_S3_ACCESS_KEY_ID, only with backend.type s3
-	S3Secret   string // CAN_FILES_S3_SECRET_ACCESS_KEY
+	// RestoreToken (CAN_FILES_RESTORE_TOKEN, optional) is the restore-only credential: the purge
+	// hook with it ignores legal holds and retention dates.
+	RestoreToken string
+	S3KeyID      string // CAN_FILES_S3_ACCESS_KEY_ID, only with backend.type s3
+	S3Secret     string // CAN_FILES_S3_SECRET_ACCESS_KEY
 }
 
 func distinctBytes(s string) int {
@@ -48,7 +51,7 @@ func distinctBytes(s string) int {
 
 // SecretsFromEnv loads and sanity-checks the secrets for a configuration.
 func SecretsFromEnv(getenv func(string) string, cfg *Config) (Secrets, error) {
-	s := Secrets{APIToken: getenv("CAN_FILES_API_TOKEN"), LinkSecret: getenv("CAN_FILES_LINK_SECRET"),
+	s := Secrets{APIToken: getenv("CAN_FILES_API_TOKEN"), LinkSecret: getenv("CAN_FILES_LINK_SECRET"), RestoreToken: getenv("CAN_FILES_RESTORE_TOKEN"),
 		S3KeyID: getenv("CAN_FILES_S3_ACCESS_KEY_ID"), S3Secret: getenv("CAN_FILES_S3_SECRET_ACCESS_KEY")}
 	var errs []error
 	if len(s.APIToken) < 32 || distinctBytes(s.APIToken) < 10 {
@@ -56,6 +59,9 @@ func SecretsFromEnv(getenv func(string) string, cfg *Config) (Secrets, error) {
 	}
 	if len(s.LinkSecret) < 32 || distinctBytes(s.LinkSecret) < 10 {
 		errs = append(errs, errors.New("CAN_FILES_LINK_SECRET is required, at least 32 characters with at least 10 different ones; changing it invalidates every share link"))
+	}
+	if s.RestoreToken != "" && (len(s.RestoreToken) < 32 || distinctBytes(s.RestoreToken) < 10 || s.RestoreToken == s.APIToken) {
+		errs = append(errs, errors.New("CAN_FILES_RESTORE_TOKEN, when set, is at least 32 characters with at least 10 different ones and differs from the API token"))
 	}
 	if cfg.Backend.Type == "s3" && (s.S3KeyID == "" || s.S3Secret == "") {
 		errs = append(errs, errors.New("CAN_FILES_S3_ACCESS_KEY_ID and CAN_FILES_S3_SECRET_ACCESS_KEY are required with backend.type s3"))
@@ -198,7 +204,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 0
 	}
 
-	auth := MultiAuth{StaticToken{Token: sec.APIToken}}
+	auth := MultiAuth{StaticToken{Token: sec.APIToken}, StaticRestoreToken{Token: sec.RestoreToken}}
 	if can != nil {
 		auth = append(auth, &CanAuth{In: &modclient.Introspector{API: can}})
 	}
