@@ -2,12 +2,13 @@ package launch
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"path"
 	"strings"
+
+	"golang.org/x/crypto/argon2"
 
 	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
@@ -147,11 +148,11 @@ echo CAN_BACKUP_OK
 	return false, "", nil
 }
 
-// kitFingerprint identifies the repository and password a kit opens, without holding either
-// (the password is 32 random bytes; its hash does not help guess it).
+// kitFingerprint identifies the repository and password a kit opens, without holding either: an
+// argon2id digest of the password salted with the repository.
 func kitFingerprint(k *backup.Kit) string {
-	h := sha256.Sum256([]byte("can-kit\x00" + k.Restic.Repository + "\x00" + k.Restic.Password))
-	return hex.EncodeToString(h[:])
+	sum := argon2.IDKey([]byte(k.Restic.Password), []byte("can-kit\x00"+k.Restic.Repository), 1, 64*1024, 4, 32)
+	return hex.EncodeToString(sum)
 }
 
 // noteKit hands the kit to the result and teaches the redactor its secrets, so a later error
