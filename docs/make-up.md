@@ -178,7 +178,26 @@ Budget by phase, with what is known:
 
 ### Measured on k3d in CI (workflow `make-up-e2e`, advisory)
 
-TIMINGS_PLACEHOLDER
+Two runs of the `make-up-e2e` workflow on a GitHub-hosted `ubuntu-latest` runner (`launch.Run`, the same code
+`can up` runs after the server exists; images imported with `k3d image import`; a fake host for the backup
+timer). Times are the per-phase durations the run reports:
+
+| Phase | Run 1 (s) | Run 2 (s) | What it covers |
+|---|---|---|---|
+| base | 1.8 | 1.6 | wait for k3s CRDs, apply deploy/base |
+| images | 7.9 | 7.9 | import three tarballs into k3d (on a real server: upload over SSH + import; not measured) |
+| company | 0.1 | 0.1 | ConfigMap |
+| core | 4.2 | 5.4 | can-core Deployment available |
+| admin | 0.5 | 1.0 | `admin bootstrap` in the pod |
+| site | 2.5 | 2.0 | build, ConfigMap, site pod available |
+| routes | 4.1 | 11.0 | IngressRoutes, then wait for can-core to install the forms module (its reconcile interval is 15 s) and for its pod, then the `/_forms` route |
+| backup, ready | 0.4 | 0.4 | fake host; `kubectl wait` |
+| **`launch.Run` total** | **21.5** | **29.5** | |
+
+Outside that table, on the same runner: creating the k3d cluster and applying the base took 31 s, and
+`make images` (a cold Go build of three images, not part of a user's `make up` when images are prebuilt or
+pulled by digest) took 88 s. The whole test, including the assertions (admin login, site, a form post that
+waits out the form's 3 s minimum fill time, kit, idempotent re-run), ran in 41 s.
 
 These numbers include image pulls of Traefik and k3s system images done when the cluster was created (outside
 the table), exclude VM creation and the k3s install, and run on a shared runner; treat them as a floor for the
