@@ -45,6 +45,7 @@ and the code is the truth.
 | [work-tracker.md](work-tracker.md), [work-ui.md](work-ui.md) | The `work` tracker: API, CLI, web UI |
 | [people.md](people.md), [people-ui.md](people-ui.md) | The `people` directory, 1:1s, goals, reviews, time off; its web UI |
 | [recruiting.md](recruiting.md), [recruiting-ui.md](recruiting-ui.md) | The `jobs` module: requisitions, careers pages, ATS; its web UI |
+| [provisioning.md](provisioning.md) | Account provisioning (SCIM) for joiners, movers and leavers |
 | [finance.md](finance.md), [finance-ui.md](finance-ui.md) | Invoices, payments, contracts, timesheets, expenses; the finance web UI |
 | [equity.md](equity.md) | Cap table and option grants (a tool, not legal or tax advice) |
 | [../modules/README.md](../modules/README.md) | One directory per module, licences and network copyleft |

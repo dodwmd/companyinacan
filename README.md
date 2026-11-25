@@ -37,6 +37,7 @@ server) are in [docs/getting-started.md](docs/getting-started.md).
 | `people` | Directory, org, 1:1s, goals, reviews, time off, web UI | experimental | 30 MB | Sensitive fields sealed, one policy layer |
 | `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | Board connectors are stubs |
 | `finance` | Parties, invoices, payments, contracts, timesheets, expenses, purchase orders, web UI | experimental | 28 MB | Fake payment and e-sign providers only |
+| `provisioning` | Joiner, mover and leaver account provisioning (SCIM) driven by people events | experimental | 20 MB | Tested against a fake directory and a fake SCIM server only; not in the compose stack ([docs/provisioning.md](docs/provisioning.md)) |
 | `equity` | Cap table, option grants with vesting, exercises, ledger | experimental | 16 MB | A tool, not legal or tax advice; quantities stored in plaintext |
 | `support`, `crm` | Wrapped FreeScout, EspoCRM | **not-deployable** | 250, 350 MB | Image needs root, tags unresolved |
 | `newsletter`, `analytics`, `wiki`, `status` | Wrapped Listmonk, GoatCounter, DokuWiki, Uptime Kuma | experimental | 20 to 128 MB | Charts checked offline only, never started |
