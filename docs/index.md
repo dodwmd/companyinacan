@@ -48,6 +48,8 @@ and the code is the truth.
 | [provisioning.md](provisioning.md) | Account provisioning (SCIM) for joiners, movers and leavers |
 | [finance.md](finance.md), [finance-ui.md](finance-ui.md) | Invoices, payments, contracts, timesheets, expenses; the finance web UI |
 | [equity.md](equity.md) | Cap table and option grants (a tool, not legal or tax advice) |
+| [board.md](board.md) | Board meetings, quorum, resolutions, minutes (a tool, not legal advice; experimental, not in the compose stack) |
+| [entity.md](entity.md) | Legal entities, statutory registers, filings calendar (a tool, not legal advice; experimental, not in the compose stack) |
 | [../modules/README.md](../modules/README.md) | One directory per module, licences and network copyleft |
 
 ## Project

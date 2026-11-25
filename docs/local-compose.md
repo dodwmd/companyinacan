@@ -43,6 +43,7 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://jobs.localhost:8080> | recruiting web UI (sign in with a jobs access token, [recruiting-ui.md](recruiting-ui.md)); public careers pages at `/careers`; API under `/v1` (bearer token) |
 | <http://finance.localhost:8080> | finance web UI (sign in with a finance token, see `docs/finance-ui.md`) and API (`/v1/...`, bearer token) |
 | <http://forms.localhost:8080> | leads API of the forms gateway (`/v1/leads`, bearer token) |
+| (not in the stack) | the `board` and `entity` modules (`cmd/can-board`) are not part of this compose stack yet; see `docs/board.md` |
 | <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) |
 
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
