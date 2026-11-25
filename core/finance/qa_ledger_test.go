@@ -81,3 +81,52 @@ func TestQACamtNtryRefIsNotADedupKey(t *testing.T) {
 		t.Errorf("keys %q %q %q", a.Txns[0].Key, b.Txns[0].Key, c.Txns[0].Key)
 	}
 }
+
+// QA 4: every statement block is held to one account and currency, and an over-long identifier is refused
+// rather than blanked (which skipped the "is this your account" check).
+func TestQAMultiAccountAndLongIDStatementsAreRefused(t *testing.T) {
+	stmt := func(acct, ccy string) string {
+		id := ""
+		if acct != "" {
+			id = "<Id><IBAN>" + acct + "</IBAN></Id>"
+		}
+		return "<Stmt><Acct>" + id + "<Ccy>" + ccy + "</Ccy></Acct><Ntry><Amt Ccy=\"USD\">1.00</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>2026-06-01</Dt></BookgDt></Ntry></Stmt>"
+	}
+	camt := func(s ...string) error {
+		_, err := ParseCAMT053(strings.NewReader("<Document><BkToCstmrStmt>"+strings.Join(s, "")+"</BkToCstmrStmt></Document>"), "USD")
+		return err
+	}
+	long := strings.Repeat("A", 65)
+	for name, err := range map[string]error{
+		"two accounts":   camt(stmt("DE111111", "USD"), stmt("DE222222", "USD")),
+		"one unnamed":    camt(stmt("DE111111", "USD"), stmt("", "USD")),
+		"two currencies": camt(stmt("DE111111", "USD"), stmt("DE111111", "EUR")),
+		"long id":        camt(stmt(long, "USD")),
+		"other currency": camt(stmt("", "EUR")),
+	} {
+		if err == nil {
+			t.Errorf("camt %s: accepted", name)
+		}
+	}
+	if err := camt(stmt("DE111111", "USD"), stmt("DE11 1111", "USD")); err != nil {
+		t.Errorf("two statements of one account: %v", err)
+	}
+	block := func(acct, ccy string) string {
+		return "<STMTRS><CURDEF>" + ccy + "<BANKACCTFROM><ACCTID>" + acct + "</BANKACCTFROM><STMTTRN><DTPOSTED>20260601<TRNAMT>1.00<FITID>" + acct + ccy + "</STMTTRN></STMTRS>"
+	}
+	ofx := func(s ...string) error {
+		_, err := ParseOFX(strings.NewReader("<OFX>"+strings.Join(s, "")+"</OFX>"), "USD")
+		return err
+	}
+	for name, err := range map[string]error{
+		"two accounts":    ofx(block("111111", "USD"), block("222222", "USD")),
+		"two currencies":  ofx(block("111111", "USD"), block("111111", "EUR")),
+		"long id":         ofx(block(long, "USD")),
+		"other currency":  ofx(strings.Replace(block("111111", "EUR"), "<ACCTID>111111", "", 1)),
+		"two ids a block": ofx(strings.Replace(block("111111", "USD"), "</BANKACCTFROM>", "<ACCTID>222222</BANKACCTFROM>", 1)),
+	} {
+		if err == nil {
+			t.Errorf("ofx %s: accepted", name)
+		}
+	}
+}

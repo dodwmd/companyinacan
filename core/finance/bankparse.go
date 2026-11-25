@@ -26,7 +26,50 @@ const (
 	maxFieldBytes     = 1000
 	maxXMLDepth       = 32
 	maxSGMLDepth      = 16
+	maxAccountIDBytes = 64
 )
+
+// statementIDs holds one file to one account and one currency. A file with several statement blocks is
+// accepted only when every block names the same account and currency (or, for the account, none does): entries
+// are never attributed to an account their block did not name.
+type statementIDs struct {
+	blocks, named int
+	account, cur  string
+}
+
+// block records the identifiers one statement block gave (empty when it gave none).
+func (s *statementIDs) block(account, cur string) error {
+	s.blocks++
+	if len(account) > maxAccountIDBytes {
+		return parseErr("the account identifier is longer than %d bytes", maxAccountIDBytes)
+	}
+	if account != "" {
+		if s.account != "" && normalizeNumber(account) != normalizeNumber(s.account) {
+			return parseErr("the file holds statements of more than one account; import one account at a time")
+		}
+		s.account = account
+		s.named++
+	}
+	if cur != "" {
+		if s.cur != "" && cur != s.cur {
+			return parseErr("the file holds statements in more than one currency")
+		}
+		s.cur = cur
+	}
+	if s.named != 0 && s.named != s.blocks {
+		return parseErr("some statements in the file name their account and some do not")
+	}
+	return nil
+}
+
+// set adds a value seen inside a block, refusing a second different one.
+func setOnce(dst *string, v, what string) error {
+	if *dst != "" && *dst != v {
+		return parseErr("a statement names more than one %s", what)
+	}
+	*dst = v
+	return nil
+}
 
 // ParsedTxn is one transaction read from a statement.
 type ParsedTxn struct {
@@ -189,7 +232,11 @@ func finishStatement(ps *ParsedStatement, accountCurrency string) error {
 			seen[t.Key] = content
 		}
 	}
-	if ps.AccountID, _ = cleanText(ps.AccountID, 64); ps.AccountID != "" && ps.Currency != "" && ps.Currency != accountCurrency {
+	var err error
+	if ps.AccountID, err = cleanText(ps.AccountID, maxAccountIDBytes); err != nil {
+		return err // never blank an identifier: that would skip the check that the statement is this account's
+	}
+	if ps.Currency != "" && ps.Currency != accountCurrency {
 		return parseErr("the statement currency differs from the bank account's")
 	}
 	return nil
@@ -383,6 +430,9 @@ func ParseOFX(r io.Reader, currency string) (*ParsedStatement, error) {
 	ps := &ParsedStatement{}
 	var cur *ParsedTxn
 	var stack []string
+	var ids statementIDs
+	var stAccount, stCur string
+	inBlock := false
 	i := 0
 	for i < len(b) {
 		lt := bytes.IndexByte(b[i:], '<')
@@ -404,6 +454,12 @@ func ParseOFX(r io.Reader, currency string) (*ParsedStatement, error) {
 			if len(stack) > 0 && stack[len(stack)-1] == name {
 				stack = stack[:len(stack)-1]
 			}
+			if (name == "STMTRS" || name == "CCSTMTRS") && inBlock {
+				if err := ids.block(stAccount, stCur); err != nil {
+					return nil, err
+				}
+				inBlock, stAccount, stCur = false, "", ""
+			}
 			if name == "STMTTRN" && cur != nil {
 				ps.Txns = append(ps.Txns, *cur)
 				cur = nil
@@ -424,6 +480,12 @@ func ParseOFX(r io.Reader, currency string) (*ParsedStatement, error) {
 				return nil, parseErr("the statement is nested too deeply")
 			}
 			stack = append(stack, tag)
+			if tag == "STMTRS" || tag == "CCSTMTRS" {
+				if inBlock {
+					return nil, parseErr("a statement block is not closed")
+				}
+				inBlock = true
+			}
 			if tag == "STMTTRN" {
 				if len(ps.Txns) >= maxStatementRows {
 					return nil, parseErr("the statement has more than %d transactions", maxStatementRows)
@@ -475,15 +537,26 @@ func ParseOFX(r io.Reader, currency string) (*ParsedStatement, error) {
 				cur.Currency = strings.ToUpper(raw)
 			}
 		case tag == "ACCTID":
-			ps.AccountID = raw
+			if err := setOnce(&stAccount, raw, "account"); err != nil {
+				return nil, err
+			}
 		case tag == "CURDEF":
-			ps.Currency = strings.ToUpper(raw)
+			if err := setOnce(&stCur, strings.ToUpper(raw), "currency"); err != nil {
+				return nil, err
+			}
 		}
 		i += nx
 	}
 	if cur != nil {
 		return nil, parseErr("a transaction is not closed")
 	}
+	// A block left open (or identifiers outside any block) is still checked.
+	if inBlock || stAccount != "" || stCur != "" {
+		if err := ids.block(stAccount, stCur); err != nil {
+			return nil, err
+		}
+	}
+	ps.AccountID, ps.Currency = ids.account, ids.cur
 	if err := finishStatement(ps, currency); err != nil {
 		return nil, err
 	}
@@ -527,7 +600,8 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 	var text strings.Builder
 	var cur *ParsedTxn
 	var credit *bool
-	var amtCcy, acctSvcrRef string
+	var amtCcy, acctSvcrRef, stAccount, stCur string
+	var ids statementIDs
 	inPath := func(suffix ...string) bool {
 		if len(path) < len(suffix) {
 			return false
@@ -555,6 +629,9 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 			}
 			path = append(path, t.Name.Local)
 			text.Reset()
+			if t.Name.Local == "Stmt" {
+				stAccount, stCur = "", ""
+			}
 			if t.Name.Local == "Ntry" {
 				if len(ps.Txns) >= maxStatementRows {
 					return nil, parseErr("the statement has more than %d transactions", maxStatementRows)
@@ -577,11 +654,20 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 			v := strings.TrimSpace(text.String())
 			switch {
 			case inPath("Stmt", "Acct", "Id", "IBAN"), inPath("Stmt", "Acct", "Id", "Othr", "Id"):
-				if ps.AccountID == "" {
-					ps.AccountID = v
+				if v == "" {
+					break
+				}
+				if err := setOnce(&stAccount, v, "account"); err != nil {
+					return nil, err
 				}
 			case inPath("Stmt", "Acct", "Ccy"):
-				ps.Currency = v
+				if err := setOnce(&stCur, v, "currency"); err != nil {
+					return nil, err
+				}
+			case t.Name.Local == "Stmt":
+				if err := ids.block(stAccount, stCur); err != nil {
+					return nil, err
+				}
 			case !inEntry():
 			case inPath("Ntry", "Amt"):
 				if amtCcy != "" && amtCcy != currency {
@@ -645,6 +731,7 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 	if len(path) != 0 || cur != nil {
 		return nil, parseErr("the XML is truncated")
 	}
+	ps.AccountID, ps.Currency = ids.account, ids.cur
 	if err := finishStatement(ps, currency); err != nil {
 		return nil, err
 	}

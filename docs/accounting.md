@@ -69,7 +69,9 @@ row does not open), key from `CAN_FINANCE_SEAL_KEY` (64 hex characters; can-core
 rotates it, because a new key could not open what the old one sealed). Without the key, adding a bank account
 answers 503. The API and the UI show only `****` and the last four characters; the audit log and events never
 hold the number. A statement that names its account (OFX `ACCTID`, CAMT IBAN) must match the bank account it is
-imported into; the error says nothing about either number.
+imported into; the error says nothing about either number. A file holding several accounts or currencies is refused
+(several statement blocks are accepted only when all name the same account and currency), as is an account identifier
+over 64 bytes.
 
 **Statement files are untrusted.** Limits: 2 MiB and 5000 transactions per file (and the API's
 `max_body_bytes`, 1 MiB by default: raise it to import larger files), 1000 bytes per field, nesting 16 (OFX) or 32
