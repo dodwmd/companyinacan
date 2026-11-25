@@ -1,0 +1,19 @@
+# Code owners (epic E20, DRAFT). GitHub requests a review from the matching owner on every pull
+# request. The file only BLOCKS merging when branch protection sets "Require review from Code Owners"
+# (scripts/gh-protect-main.sh with REVIEWS>=1), which needs a second maintainer; until then it routes
+# review requests. Later patterns win. Replace or extend the handle as maintainers join.
+*                          @dodwmd
+
+# Release and supply-chain surface: changes here alter what is built, signed and published.
+/.github/                  @dodwmd
+/scripts/                  @dodwmd
+/deploy/                   @dodwmd
+/Makefile                  @dodwmd
+/SECURITY.md               @dodwmd
+
+# Schemas, the accepted-licences policy and the specs are contracts (Constitution I, IV, VI).
+/schemas/                  @dodwmd
+/SPEC.md                   @dodwmd
+/.specify/                 @dodwmd
+/LICENSE                   @dodwmd
+/THIRD_PARTY_LICENSES      @dodwmd

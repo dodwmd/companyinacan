@@ -9,7 +9,7 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check compose-up compose-down compose-logs compose-test
+.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check lint-scripts scan-secrets release-build compose-up compose-down compose-logs compose-test
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -59,6 +59,16 @@ status: ## show the server state; exit 0 only when ready
 
 release-check: ## fail if deploy Dockerfiles or module charts still have placeholder image digests
 	sh scripts/check-image-pins.sh
+
+lint-scripts: ## shellcheck the scripts and check the deploy Dockerfiles (epic E20)
+	sh scripts/lint-shell.sh
+	sh scripts/lint-dockerfiles.sh
+
+scan-secrets: ## in-repo secret scan of the tracked files (allowlist: scripts/secret-allowlist.txt)
+	sh scripts/scan-secrets.sh
+
+release-build: ## local, unpublished build of the release archives into dist/ (VERSION=vX.Y.Z); never pushes anything
+	sh scripts/build-release.sh $(VERSION) dist
 
 # Whole stack in containers, no Kubernetes (docker compose v2 or podman-compose). See docs/local-compose.md.
 COMPOSE ?= docker compose -p companyinacan

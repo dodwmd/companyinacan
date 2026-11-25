@@ -1,0 +1,293 @@
+name: release
+
+# Release pipeline (epic E20, specs/024-release-security, runbook docs/releasing.md).
+#  * Real release: push a tag vX.Y.Z (or vX.Y.Z-rc.N) that is on main. Nothing else triggers a publish.
+#    The tag filter is the loose glob v*.*.*; the verify job enforces strict semver and rejects the rest.
+#  * Dry run: Actions > release > Run workflow, dry_run=true (the default). It builds, tests, checks
+#    reproducibility, generates SBOMs and builds every container image, but pushes, signs, attests and
+#    publishes NOTHING, and its publish jobs do not even start. Upload the artifacts to inspect them.
+# The write permissions (packages, id-token, attestations, contents) exist ONLY on the publish jobs.
+# Every other job is read-only and runs untrusted-input-free: version strings reach shell steps through
+# env vars, never through ${{ }} interpolation into the script.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build everything but publish nothing (leave true unless re-running a real release from its tag)"
+        type: boolean
+        default: true
+      version:
+        description: "Version label for a dry run on a branch (vX.Y.Z[-pre]); ignored when run from a tag"
+        type: string
+        default: "v0.0.0-dryrun"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGES: "can-core:deploy/can-core can-static:deploy/can-static can-forms:deploy/forms can-work:deploy/work can-people:deploy/people can-jobs:deploy/jobs can-finance:deploy/finance can-equity:deploy/equity can-hooks:deploy/hooks"
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Decide version and whether this run may publish
+        id: v
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = tag ]; then version="$REF_NAME"; else version="$INPUT_VERSION"; fi
+          echo "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "not a semantic version: $version" >&2; exit 1; }
+          publish=false
+          # Publishing needs a tag ref AND (a tag push OR a dispatch that explicitly turned the dry run off).
+          if [ "$REF_TYPE" = tag ] && { [ "$EVENT" = push ] || [ "$INPUT_DRY_RUN" = false ]; }; then publish=true; fi
+          case "$version" in *-*) pre=true ;; *) pre=false ;; esac
+          {
+            echo "version=$version"
+            echo "prerelease=$pre"
+            echo "publish=$publish"
+          } >>"$GITHUB_OUTPUT"
+          echo "version=$version publish=$publish prerelease=$pre"
+      - name: Tag must be on main
+        if: steps.v.outputs.publish == 'true'
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "the release tag is not an ancestor of main" >&2; exit 1; }
+      - name: Full test suite (lint, unit, contract, licences check)
+        run: make test
+      - name: can licences --check (THIRD_PARTY_LICENSES is current and every wrapped licence is accepted)
+        run: go run ./cmd/can licences --modules-dir modules --check
+      - name: Script self-tests
+        run: |
+          sh scripts/lint-shell.sh --require
+          sh scripts/lint-dockerfiles_test.sh
+          sh scripts/resolve-base-digests_test.sh
+          sh scripts/release-notes_test.sh
+          sh scripts/bump-version_test.sh
+          sh scripts/gen-sbom_test.sh
+
+  build:
+    name: build binaries
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Build twice and compare sha256 (reproducibility gate)
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          sh scripts/check-reproducible.sh "$VERSION" "$RUNNER_TEMP/repro"
+      - name: Assemble archives, SBOMs, licences and checksums
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          mkdir -p out/dist
+          cp "$RUNNER_TEMP"/repro/a/*.tar.gz out/dist/
+          for d in "$RUNNER_TEMP"/repro/a/bin/*/; do
+            n=$(basename "$d"); name=${n%_linux_*}; arch=${n##*_}
+            sh scripts/gen-sbom.sh "$d/$name" "$VERSION" >"out/dist/${name}_${VERSION}_linux_${arch}.cdx.json"
+          done
+          cp THIRD_PARTY_LICENSES out/dist/THIRD_PARTY_LICENSES
+          (cd out/dist && sha256sum -- * >SHA256SUMS)
+          cat out/dist/SHA256SUMS
+      - name: Release notes
+        run: |
+          set -euo pipefail
+          # A dry run on a branch has no tag yet: a local, unpushed tag gives the notes script its range.
+          git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null || git tag "$VERSION"
+          sh scripts/release-notes.sh "$VERSION" >out/notes.md
+          cat out/notes.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-out
+          path: out
+          retention-days: 14
+          if-no-files-found: error
+
+  images-check:
+    name: build images (no push)
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build every image with base digests resolved at build time
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          : >out/base-digests.txt
+          for entry in $IMAGES; do
+            image=${entry%%:*}; dir=${entry#*:}
+            args=""
+            for kv in $(sh scripts/resolve-base-digests.sh "$dir/Dockerfile"); do
+              args="$args --build-arg $kv"
+              echo "$image $kv" >>out/base-digests.txt
+            done
+            context=.; [ "$dir" = deploy/hooks ] && context=deploy/hooks
+            # shellcheck disable=SC2086
+            docker buildx build --platform linux/amd64 --provenance=false \
+              -f "$dir/Dockerfile" $args --build-arg "VERSION=$VERSION" \
+              --output "type=oci,dest=$RUNNER_TEMP/$image.oci.tar" "$context"
+          done
+          cat out/base-digests.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-check
+          path: out/base-digests.txt
+          retention-days: 14
+
+  publish-images:
+    name: publish ${{ matrix.image }}
+    # Skipped entirely on a dry run: no registry login, no signing, no attestation.
+    if: needs.verify.outputs.publish == 'true'
+    needs: [verify, build, images-check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [can-core, can-static, can-forms, can-work, can-people, can-jobs, can-finance, can-equity, can-hooks]
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      IMAGE: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - name: Build and push
+        id: push
+        run: |
+          set -euo pipefail
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          repo="ghcr.io/$owner/$IMAGE"
+          dir=""
+          for entry in $IMAGES; do [ "${entry%%:*}" = "$IMAGE" ] && dir=${entry#*:}; done
+          [ -n "$dir" ] || { echo "unknown image $IMAGE" >&2; exit 1; }
+          args=""
+          for kv in $(sh scripts/resolve-base-digests.sh "$dir/Dockerfile"); do args="$args --build-arg $kv"; done
+          context=.; [ "$dir" = deploy/hooks ] && context=deploy/hooks
+          tags="-t $repo:$VERSION"
+          case "$VERSION" in *-*) ;; *) tags="$tags -t $repo:latest" ;; esac
+          # shellcheck disable=SC2086
+          docker buildx build --platform linux/amd64 --provenance=false \
+            -f "$dir/Dockerfile" $args --build-arg "VERSION=$VERSION" $tags \
+            --push --metadata-file "$RUNNER_TEMP/md.json" "$context"
+          digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/md.json")
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+          echo "repo=$repo" >>"$GITHUB_OUTPUT"
+          mkdir -p out
+          echo "$repo@$digest" >"out/digest-$IMAGE.txt"
+      - name: Sign the image by digest (keyless, Sigstore)
+        env:
+          REF: ${{ steps.push.outputs.repo }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$REF"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.push.outputs.repo }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.image }}
+          path: out/digest-${{ matrix.image }}.txt
+
+  publish-release:
+    name: publish GitHub release
+    if: needs.verify.outputs.publish == 'true'
+    needs: [verify, build, publish-images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-out
+          path: out
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            out/dist/*.tar.gz
+            out/dist/*.cdx.json
+            out/dist/THIRD_PARTY_LICENSES
+      - name: Sign the checksums file (keyless; the bundle is published next to it)
+        run: cosign sign-blob --yes --bundle out/dist/SHA256SUMS.sigstore.json out/dist/SHA256SUMS
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          {
+            cat out/notes.md
+            echo
+            echo "### Container images"
+            echo
+            echo '```'
+            cat digests/digest-*.txt
+            echo '```'
+            echo
+            echo "Verify: see SECURITY.md (cosign verify, gh attestation verify) and docs/releasing.md."
+          } >out/release-body.md
+          flag=""; [ "$PRERELEASE" = true ] && flag="--prerelease"
+          # The tag already exists (this workflow was triggered by it); --verify-tag refuses to create one.
+          # shellcheck disable=SC2086
+          gh release create "$VERSION" out/dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$VERSION" --notes-file out/release-body.md $flag

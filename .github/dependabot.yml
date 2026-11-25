@@ -1,0 +1,53 @@
+# Dependabot (epic E20). Weekly, grouped so a week's updates arrive as one reviewable pull request
+# per ecosystem. GitHub Actions are pinned by commit SHA with the tag in a trailing comment;
+# Dependabot rewrites both. Pull requests from Dependabot run the same required checks as any other.
+# Note: Dockerfile bases are written as `FROM ${ARG}` with digests resolved at release time
+# (scripts/resolve-base-digests.sh), which Dependabot cannot parse; the docker entries below cover
+# the literal `FROM` lines that exist today and any added later. Release builds pick up the current
+# base digests anyway.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(deps)"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci(deps)"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directories:
+      - /deploy/can-core
+      - /deploy/can-static
+      - /deploy/equity
+      - /deploy/finance
+      - /deploy/forms
+      - /deploy/hooks
+      - /deploy/jobs
+      - /deploy/people
+      - /deploy/work
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker-bases:
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(deps)"
+    open-pull-requests-limit: 5

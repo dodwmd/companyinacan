@@ -1,0 +1,119 @@
+name: security
+
+# Supply-chain and security checks (epic E20, specs/024-release-security). NOT a required check yet:
+# kept out of ci.yml so it cannot change the required job names (lint, unit, contract, licences, dco).
+# Promote individual jobs to required once they have been stable on main (docs/maintainers.md).
+# Runs on pull requests (never pull_request_target: fork code gets a read-only token and no secrets),
+# on main, weekly (new advisories appear without any commit) and on demand.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: go mod verify
+        run: go mod verify
+      - name: govulncheck (pinned; only vulnerabilities the code can reach fail the job)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+
+  dependency-review:
+    name: dependency-review
+    # The action needs the pull request base and head; it has nothing to compare on other events.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+          # Go dependencies are linked into Apache-2.0 binaries: strong and network copyleft cannot be
+          # linked in. (The wrapped-app list in schemas/accepted-licences.yaml is a different policy:
+          # those apps run as separate containers.) A contract test keeps this list free of permissive ids.
+          deny-licenses: GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, LGPL-2.1-only, LGPL-2.1-or-later, LGPL-3.0-only, LGPL-3.0-or-later, EUPL-1.2
+          comment-summary-in-pr: never
+
+  codeql:
+    name: codeql (go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          languages: go
+          build-mode: autobuild
+      - uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          category: "/language:go"
+
+  secrets:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Self-test the scanner
+        run: sh scripts/scan-secrets_test.sh
+      - name: Scan tracked files (in-repo scanner, allowlist in scripts/secret-allowlist.txt)
+        run: sh scripts/scan-secrets.sh
+
+  scripts:
+    name: shell and Dockerfile lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: shellcheck (preinstalled on ubuntu-latest; --require fails if it is missing)
+        run: sh scripts/lint-shell.sh --require
+      - name: Dockerfile checks (placeholders allowed here, flagged in release builds)
+        run: |
+          sh scripts/lint-dockerfiles_test.sh
+          sh scripts/lint-dockerfiles.sh
+      - name: Release script self-tests
+        run: |
+          sh scripts/resolve-base-digests_test.sh
+          sh scripts/release-notes_test.sh
+          sh scripts/bump-version_test.sh
+          sh scripts/gh-protect-main_test.sh
+          sh scripts/gen-sbom_test.sh
+
+  release-readiness:
+    name: release-check (informational)
+    # `make release-check` fails while REPLACE_WITH_ digest placeholders exist, which is the normal
+    # state of main: the release workflow resolves them at build time. This job only reports it.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make release-check
+      - run: sh scripts/lint-dockerfiles.sh --release
