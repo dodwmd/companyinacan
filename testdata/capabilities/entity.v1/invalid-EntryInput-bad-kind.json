@@ -1,0 +1,11 @@
+{
+  "kind": "gifted",
+  "party_ref": "pers_0123456789abcdef01234567",
+  "office": "director",
+  "title": "Chair",
+  "effective_on": "2026-01-01",
+  "detail": {
+    "name": "Dee One"
+  },
+  "resolution_ref": "res_0123456789abcdef01234567"
+}

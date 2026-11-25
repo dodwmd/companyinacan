@@ -87,3 +87,18 @@ var StatusV1 []byte
 //
 //go:embed equity.v1.json
 var EquityV1 []byte
+
+// BoardV1 is the contract of the `board` capability (in-house board module).
+//
+//go:embed board.v1.json
+var BoardV1 []byte
+
+// ResolutionsV1 is the contract of the `resolutions` capability (in-house board module).
+//
+//go:embed resolutions.v1.json
+var ResolutionsV1 []byte
+
+// EntityV1 is the contract of the `entity` capability (in-house entity module).
+//
+//go:embed entity.v1.json
+var EntityV1 []byte

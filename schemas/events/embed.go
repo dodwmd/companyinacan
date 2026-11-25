@@ -182,3 +182,18 @@ var ProvisionStepCompletedV1 []byte
 //
 //go:embed provision.failed.v1.json
 var ProvisionFailedV1 []byte
+
+// BoardMeetingScheduledV1 is the JSON Schema of the board.meeting.scheduled.v1 event.
+//
+//go:embed board.meeting.scheduled.v1.json
+var BoardMeetingScheduledV1 []byte
+
+// BoardResolutionPassedV1 is the JSON Schema of the board.resolution.passed.v1 event.
+//
+//go:embed board.resolution.passed.v1.json
+var BoardResolutionPassedV1 []byte
+
+// EntityFilingDueV1 is the JSON Schema of the entity.filing.due.v1 event.
+//
+//go:embed entity.filing.due.v1.json
+var EntityFilingDueV1 []byte

@@ -1,0 +1,70 @@
+# Board: in-house Go service (cmd/can-board, library core/board), module 1 of 2 in one binary (the other is `entity`).
+# Boards and committees with members and terms, meetings with notice and quorum as data, agendas, board packs (document
+# references only), conflicts and recusal, resolutions (roll call, written consent, secret ballot), minutes with versions,
+# action items linked to `work` issues. Board materials are CONFIDENTIAL (constitution V, SPEC.md section 3.7): in-house
+# only, 404 for what the caller cannot see, per-field access, audited reads, sealed sensitive fields, retention that gives way
+# to the legal record, legal hold and erasure.
+# THIS IS A TOOL, NOT LEGAL ADVICE. Quorum, notice, voting, signing and minute-keeping law are NOT implemented; they are data
+# the operator enters per body and documented limits (docs/board.md).
+schema: 1
+id: board
+name: Board and governance
+description: Boards and committees, meetings, agendas, board packs, quorum and recusal, resolutions by roll call, written consent or secret ballot, minutes with versions, action items. Directors see only the bodies they sit on; board materials are sealed and every read is audited. Exposes a `resolutions` capability so other modules (equity grants) can ask for a resolution and read its outcome. Record-keeping only.
+category: governance
+version: 0.1.0
+# experimental: unit-, contract- and race-tested offline, but not yet run on a cluster; there are no Helm templates yet
+# (values only), no admin UI, and can-core does not yet inject the keyring Secret, route its introspection endpoint, wire the
+# equity approval seam to the `resolutions` capability, or deploy this module and `entity` as one release. See modules/board/README.md.
+status: experimental
+provider:
+  type: inhouse
+  name: can-board
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Idle RAM target 20 MB (SPEC.md section 3.6); the measured figure is recorded in specs/029-board-entity/measurements.md.
+  ram_mb: 20
+  ram_limit_mb: 64
+  disk_mb: 200
+provides:
+  - { capability: board, schema: board.v1, service: board-api, port: 8082 }
+  - { capability: resolutions, schema: resolutions.v1, service: board-api, port: 8082 }
+publishes:
+  # ids, dates and the result only: never titles, text, votes or minutes
+  - { event: board.meeting.scheduled.v1, schema: ./events/board.meeting.scheduled.v1.json }
+  - { event: board.resolution.passed.v1, schema: ./events/board.resolution.passed.v1.json }
+# Coarse permissions gate the capability verbs; the finer rules (member of this body only, recused, subject, chair, proposer is
+# never the sole approver, drafter never approves their minutes, per field) are enforced inside the service by one policy
+# layer (core/board/policy.go). Role names are this module's own and never the reserved can-core roles (`auditor` is reserved,
+# so the external auditor role is `audit-viewer`).
+permissions: [board.read, board.write, board.vote, board.approve, board.minutes, board.sensitive-read, board.admin, board.self-read, board.integrate]
+roles:
+  director: [board.read, board.write, board.vote, board.approve, board.sensitive-read, board.self-read]
+  officer: [board.read, board.self-read]
+  secretary: [board.read, board.write, board.minutes, board.sensitive-read, board.self-read]
+  admin: [board.read, board.admin]   # operates the service: structure, legal hold, erasure; sees no board content
+  observer: [board.read]
+  audit-viewer: [board.read, board.sensitive-read]
+  employee: [board.self-read]
+  integration: [board.integrate]     # the can-core service account: asks for resolutions, reads outcomes, nothing else
+approvals:
+  # The type pattern forbids a dot: the qualified name is `board.resolution`. A decision another module needs a board resolution
+  # for (equity grants) is requested through the `resolutions` capability; the chain is the resolution itself (the body's vote).
+  - { type: resolution, default_chain: [board] }
+data_classes:
+  # Minutes: statutory records. Legal retention overrides erasure; attendance refers to people by opaque id.
+  - { class: board-minutes, retention: legal, sensitivity: sensitive }
+  # Resolutions, versions, votes, consents, secret ballots: the record of decisions.
+  - { class: board-resolutions, retention: legal, sensitivity: sensitive }
+  # Board pack document lists and notes (references only, no bytes).
+  - { class: board-packs, retention: 7y, sensitivity: sensitive }
+  # Declared interests and their nature. Sealed per field; erasure clears the nature.
+  - { class: board-private, retention: 7y, sensitivity: sensitive }
+  # Append-only, hash-chained audit trail: ids and field names only (shared with the entity module).
+  - { class: board-audit, retention: legal, sensitivity: standard }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

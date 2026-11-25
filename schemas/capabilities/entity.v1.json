@@ -1,0 +1,966 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/entity.v1.json",
+  "title": "entity.v1",
+  "description": "Capability `entity` (SPEC.md section 4.3): company records: legal entities with sealed registration numbers, registered agent and addresses with effective dates, statutory registers (members, directors, charges) as append-only ledgers with as-of views, officers and directors with history, a filings calendar with reminder events, document references and links to share classes in `equity` by opaque id. Provided by the in-house entity module. THIS IS A TOOL, NOT LEGAL ADVICE: jurisdiction-specific rules (quorum and notice law, who must sign, which registers a company must keep, filing deadlines, director duties) are not implemented; they are data fields the operator enters and documented limits. Records are confidential: a caller who may not see a record gets 404, one who may see it but not a field or action gets 403.",
+  "x-capability": "entity",
+  "x-verbs": [
+    {
+      "verb": "create_legal_entity",
+      "method": "POST",
+      "path": "/v1/legal-entities",
+      "request": "LegalEntityInput",
+      "response": "LegalEntity",
+      "write": true,
+      "permission": "entity.write",
+      "description": "secretary or admin; identifiers only by the secretary."
+    },
+    {
+      "verb": "list_legal_entities",
+      "method": "GET",
+      "path": "/v1/legal-entities",
+      "response": "LegalEntityList",
+      "permission": "entity.read"
+    },
+    {
+      "verb": "get_legal_entity",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}",
+      "response": "LegalEntity",
+      "permission": "entity.read"
+    },
+    {
+      "verb": "set_entity_status",
+      "method": "POST",
+      "path": "/v1/legal-entities/{id}/status",
+      "request": "EntityStatusRequest",
+      "response": "LegalEntity",
+      "write": true,
+      "permission": "entity.write"
+    },
+    {
+      "verb": "get_identifiers",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/identifiers",
+      "response": "Identifiers",
+      "permission": "entity.sensitive-read",
+      "description": "Sealed registration and tax numbers; audited before return."
+    },
+    {
+      "verb": "add_contact",
+      "method": "POST",
+      "path": "/v1/legal-entities/{id}/contacts",
+      "request": "ContactInput",
+      "response": "Contact",
+      "write": true,
+      "permission": "entity.write",
+      "description": "Registered agent or an address, effective-dated; the previous record of the kind ends the day before."
+    },
+    {
+      "verb": "list_contacts",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/contacts",
+      "response": "ContactList",
+      "permission": "entity.read",
+      "description": "Query: as_of (date or all)."
+    },
+    {
+      "verb": "record_register_entry",
+      "method": "POST",
+      "path": "/v1/legal-entities/{id}/registers/{register}/entries",
+      "request": "EntryInput",
+      "response": "Entry",
+      "write": true,
+      "permission": "entity.write",
+      "description": "Append-only ledger entry (members, directors, charges); a mistake is corrected by a later entry naming it."
+    },
+    {
+      "verb": "view_register",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/registers/{register}",
+      "response": "RegisterView",
+      "permission": "entity.read",
+      "description": "Query: as_of, known_at, history=true. Names and personal details per field policy; audited per entry."
+    },
+    {
+      "verb": "export_register_csv",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/registers/{register}/export.csv",
+      "permission": "entity.sensitive-read",
+      "description": "text/csv, formula-injection protected. Query: as_of."
+    },
+    {
+      "verb": "list_officers",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/officers",
+      "response": "RegisterView",
+      "permission": "entity.read",
+      "description": "The directors register as of a date. Query: as_of."
+    },
+    {
+      "verb": "attest_register_entry",
+      "method": "POST",
+      "path": "/v1/register-entries/{id}/attest",
+      "response": "Entry",
+      "write": true,
+      "permission": "entity.attest",
+      "description": "A director or officer; never the person named, never the recorder (403 separation_of_duties)."
+    },
+    {
+      "verb": "create_obligation",
+      "method": "POST",
+      "path": "/v1/legal-entities/{id}/obligations",
+      "request": "ObligationInput",
+      "response": "Obligation",
+      "write": true,
+      "permission": "entity.write",
+      "description": "Obligations are data; creates the first due date. Reminders are entity.filing.due.v1."
+    },
+    {
+      "verb": "list_filings",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/filings",
+      "response": "FilingList",
+      "permission": "entity.read",
+      "description": "Query: status."
+    },
+    {
+      "verb": "record_filing_result",
+      "method": "POST",
+      "path": "/v1/filings/{id}/result",
+      "request": "FilingResult",
+      "response": "Filing",
+      "write": true,
+      "permission": "entity.write",
+      "description": "Filed or waived; creates the next due date of a recurring obligation."
+    },
+    {
+      "verb": "add_document",
+      "method": "POST",
+      "path": "/v1/legal-entities/{id}/documents",
+      "request": "DocumentInput",
+      "response": "Document",
+      "write": true,
+      "permission": "entity.write",
+      "description": "Document reference only."
+    },
+    {
+      "verb": "list_documents",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/documents",
+      "response": "DocumentList",
+      "permission": "entity.read"
+    },
+    {
+      "verb": "link_share_class",
+      "method": "POST",
+      "path": "/v1/legal-entities/{id}/share-classes",
+      "request": "ShareClassLinkRequest",
+      "response": "ShareClassLink",
+      "write": true,
+      "permission": "entity.write",
+      "description": "Opaque id of a share class in `equity`."
+    },
+    {
+      "verb": "list_share_class_links",
+      "method": "GET",
+      "path": "/v1/legal-entities/{id}/share-classes",
+      "response": "ShareClassLinkList",
+      "permission": "entity.read"
+    }
+  ],
+  "$defs": {
+    "LegalEntityInput": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "jurisdiction": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "entity_type": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "incorporated_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "fiscal_year_end": {
+          "type": "string",
+          "pattern": "^[0-1][0-9]-[0-3][0-9]$"
+        },
+        "registration_number": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "tax_id": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "equity_entity_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "LegalEntity": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^lge_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "jurisdiction": {
+          "type": "string"
+        },
+        "entity_type": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "dormant",
+            "dissolved"
+          ]
+        },
+        "incorporated_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "fiscal_year_end": {
+          "type": "string"
+        },
+        "equity_entity_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "status"
+      ]
+    },
+    "LegalEntityList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LegalEntity"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "EntityStatusRequest": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "dormant",
+            "dissolved"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ]
+    },
+    "Identifiers": {
+      "type": "object",
+      "properties": {
+        "entity_id": {
+          "type": "string",
+          "pattern": "^lge_[0-9a-f]{24}$"
+        },
+        "registration_number": {
+          "type": "string"
+        },
+        "tax_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "entity_id"
+      ]
+    },
+    "ContactInput": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "registered_agent",
+            "registered_office",
+            "principal_office",
+            "postal"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 1000,
+          "minLength": 1
+        },
+        "person_ref": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "address",
+        "effective_from"
+      ]
+    },
+    "Contact": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ctc_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "registered_agent",
+            "registered_office",
+            "principal_office",
+            "postal"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "person_ref": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "effective_to": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "withheld": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "effective_from"
+      ]
+    },
+    "ContactList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contact"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "EntryInput": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "appointed",
+            "ceased",
+            "allotted",
+            "transferred",
+            "created",
+            "satisfied"
+          ]
+        },
+        "party_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "office": {
+          "type": "string",
+          "enum": [
+            "director",
+            "officer",
+            "secretary",
+            "auditor",
+            ""
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "class_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": -1000000000000,
+          "maximum": 1000000000000
+        },
+        "effective_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "detail": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxProperties": 12
+        },
+        "resolution_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "corrects_id": {
+          "type": "string",
+          "pattern": "^reg_[0-9a-f]{24}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "party_ref",
+        "effective_on"
+      ]
+    },
+    "Entry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^reg_[0-9a-f]{24}$"
+        },
+        "register": {
+          "type": "string",
+          "enum": [
+            "members",
+            "directors",
+            "charges"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "appointed",
+            "ceased",
+            "allotted",
+            "transferred",
+            "created",
+            "satisfied"
+          ]
+        },
+        "party_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "office": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "class_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "effective_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "resolution_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "corrects_id": {
+          "type": "string",
+          "pattern": "^reg_[0-9a-f]{24}$"
+        },
+        "recorded_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "attested": {
+          "type": "boolean"
+        },
+        "attested_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "detail": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "detail_withheld": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "register",
+        "kind",
+        "party_ref",
+        "effective_on",
+        "recorded_on",
+        "attested"
+      ]
+    },
+    "StateLine": {
+      "type": "object",
+      "properties": {
+        "party_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "office": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "class_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "since": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "entry_id": {
+          "type": "string",
+          "pattern": "^reg_[0-9a-f]{24}$"
+        },
+        "attested": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "party_ref",
+        "since",
+        "entry_id",
+        "attested"
+      ]
+    },
+    "RegisterView": {
+      "type": "object",
+      "properties": {
+        "entity_id": {
+          "type": "string",
+          "pattern": "^lge_[0-9a-f]{24}$"
+        },
+        "register": {
+          "type": "string",
+          "enum": [
+            "members",
+            "directors",
+            "charges"
+          ]
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "known_at": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "state": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateLine"
+          }
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Entry"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "entity_id",
+        "register",
+        "as_of",
+        "state"
+      ]
+    },
+    "ObligationInput": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "authority": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "first_due_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "recurrence": {
+          "type": "string",
+          "enum": [
+            "once",
+            "monthly",
+            "quarterly",
+            "annual"
+          ]
+        },
+        "lead_days": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 366
+          },
+          "maxItems": 8
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "first_due_on",
+        "recurrence"
+      ]
+    },
+    "Obligation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^obl_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^lge_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "authority": {
+          "type": "string"
+        },
+        "first_due_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "recurrence": {
+          "type": "string",
+          "enum": [
+            "once",
+            "monthly",
+            "quarterly",
+            "annual"
+          ]
+        },
+        "lead_days": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 366
+          }
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "entity_id",
+        "name",
+        "first_due_on",
+        "recurrence",
+        "lead_days",
+        "active"
+      ]
+    },
+    "Filing": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        },
+        "obligation_id": {
+          "type": "string",
+          "pattern": "^obl_[0-9a-f]{24}$"
+        },
+        "entity_id": {
+          "type": "string",
+          "pattern": "^lge_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "due_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "filed",
+            "waived"
+          ]
+        },
+        "overdue": {
+          "type": "boolean"
+        },
+        "days_until": {
+          "type": "integer"
+        },
+        "filed_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "doc_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "obligation_id",
+        "entity_id",
+        "name",
+        "due_on",
+        "status",
+        "overdue",
+        "days_until"
+      ]
+    },
+    "FilingList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Filing"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "FilingResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "filed",
+            "waived"
+          ]
+        },
+        "filed_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "doc_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ]
+    },
+    "DocumentInput": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "doc_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "doc_ref",
+        "title"
+      ]
+    },
+    "Document": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^doc_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "doc_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "doc_ref"
+      ]
+    },
+    "DocumentList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Document"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "ShareClassLinkRequest": {
+      "type": "object",
+      "properties": {
+        "class_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "class_ref"
+      ]
+    },
+    "ShareClassLink": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^scl_[0-9a-f]{24}$"
+        },
+        "class_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "class_ref"
+      ]
+    },
+    "ShareClassLinkList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShareClassLink"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    }
+  }
+}

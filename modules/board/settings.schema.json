@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/modules/board/settings.schema.json",
+  "title": "board settings",
+  "description": "Operator settings for the board module (company.yaml modules.board). Secrets (API token, webhook secret, encryption keys) are never settings; can-core generates them as Secrets. This module is a tool, not legal advice: review every retention value against local law.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per data class retention. Minutes, resolutions and the audit trail are the legal record and can only be `legal`.",
+      "properties": {
+        "board-minutes": { "const": "legal" },
+        "board-resolutions": { "const": "legal" },
+        "board-audit": { "const": "legal" },
+        "board-packs": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "board-private": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+      }
+    }
+  }
+}

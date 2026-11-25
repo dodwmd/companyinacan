@@ -35,6 +35,7 @@ updates:
     directories:
       - /deploy/can-core
       - /deploy/can-static
+      - /deploy/board
       - /deploy/equity
       - /deploy/finance
       - /deploy/forms

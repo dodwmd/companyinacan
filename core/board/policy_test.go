@@ -242,7 +242,7 @@ func TestFieldAccess(t *testing.T) {
 
 func TestSeparationOfDuties(t *testing.T) {
 	a := Actor{Subject: "Alice@Example.test", PersonID: personX}
-	same := []string{"alice@example.test", "ALICE@EXAMPLE.TEST ", "Alice@Example.test", "al​ice@example.test", "ａｌｉｃｅ@example.test", personX}
+	same := []string{"alice@example.test", "ALICE@EXAMPLE.TEST ", "Alice@Example.test", "al\u200bice@example.test", "ａｌｉｃｅ@example.test", personX}
 	for _, o := range same {
 		if sodOK(a, o) {
 			t.Errorf("%q should be the same person as the actor", o)

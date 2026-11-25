@@ -1,0 +1,5922 @@
+# OpenAPI 3.1 for can-board. Generated once from the route table and the capability schemas, then maintained by hand;
+# test/contract/board_test.go checks it against the routes the service really registers.
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "can-board API (board, resolutions and entity capabilities)",
+  "version": "0.1.0",
+  "description": "REST JSON surface of the in-house board and entity service (modules `board` and `entity`, one binary, one listener). THIS IS A TOOL, NOT LEGAL ADVICE: jurisdiction-specific rules (quorum and notice law, who must sign, which registers a company must keep, filing deadlines, director duties) are not implemented; they are data the operator enters. Board materials are confidential: every route authenticates first and the service decides per caller, per record and per field; a caller who may not see a record gets 404 (indistinguishable from a missing one), a caller who may see it but not do the thing gets 403. Reads of sensitive fields are audited before data is returned (fail closed). Creates accept an Idempotency-Key header. Events carry ids, dates and the result only."
+ },
+ "servers": [
+  {
+   "url": "http://board-api:8082"
+  }
+ ],
+ "security": [
+  {
+   "bearer": []
+  }
+ ],
+ "paths": {
+  "/healthz": {
+   "get": {
+    "operationId": "healthz",
+    "security": [],
+    "summary": "Liveness and database check",
+    "responses": {
+     "200": {
+      "description": "ok"
+     },
+     "503": {
+      "description": "database unavailable",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/bodies": {
+   "post": {
+    "operationId": "create_body",
+    "summary": "create body (secretary or admin.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.admin",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BodyInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Body"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_bodies",
+    "summary": "list bodies (Only the bodies the caller can see.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BodyList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/bodies/{id}": {
+   "get": {
+    "operationId": "get_body",
+    "summary": "get body",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Body"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/bodies/{id}/members": {
+   "post": {
+    "operationId": "add_member",
+    "summary": "add member (secretary.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MemberInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Member"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_members",
+    "summary": "list members (Query: as_of (date or all).)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MemberList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/bodies/{id}/members/{mid}/end": {
+   "post": {
+    "operationId": "end_member_term",
+    "summary": "end member term",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "mid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EndMemberRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Member"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/bodies/{id}/meetings": {
+   "post": {
+    "operationId": "schedule_meeting",
+    "summary": "schedule meeting (Notice is checked against the body's notice_days; emits board.meeting.scheduled.v1.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MeetingInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Meeting"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_meetings",
+    "summary": "list meetings",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MeetingList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}": {
+   "get": {
+    "operationId": "get_meeting",
+    "summary": "get meeting",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Meeting"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/status": {
+   "post": {
+    "operationId": "set_meeting_status",
+    "summary": "set meeting status",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MeetingStatusRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Meeting"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/agenda": {
+   "post": {
+    "operationId": "add_agenda_item",
+    "summary": "add agenda item",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AgendaInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AgendaItem"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_agenda",
+    "summary": "list agenda",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AgendaList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/attendance/{person}": {
+   "put": {
+    "operationId": "record_attendance",
+    "summary": "record attendance (secretary.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "person",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AttendanceInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Attendee"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/attendance": {
+   "get": {
+    "operationId": "list_attendance",
+    "summary": "list attendance",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AttendeeList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/quorum": {
+   "get": {
+    "operationId": "get_quorum",
+    "summary": "get quorum (Exact integer arithmetic from the body's quorum rule.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Quorum"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/pack/items": {
+   "post": {
+    "operationId": "add_pack_item",
+    "summary": "add pack item (Document reference only, no bytes.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PackInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PackItem"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/pack/issue": {
+   "post": {
+    "operationId": "issue_pack",
+    "summary": "issue pack",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Meeting"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/pack": {
+   "get": {
+    "operationId": "get_pack",
+    "summary": "get pack (Audited per item; 404 to those who may not read it.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.sensitive-read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Pack"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/bodies/{id}/resolutions": {
+   "post": {
+    "operationId": "create_resolution",
+    "summary": "create resolution (Idempotency-Key supported (201 first time, 200 on a replay).)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "Idempotency-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "maxLength": 128
+      },
+      "description": "A repeat with the same key and body returns the first result (200)."
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResolutionInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "replay of an idempotent create",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_resolutions",
+    "summary": "list resolutions (No text.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResolutionList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/bodies/{id}/resolutions/export.csv": {
+   "get": {
+    "operationId": "export_resolutions_csv",
+    "summary": "export resolutions csv (text/csv, formula-injection protected, audited before output.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.sensitive-read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "CSV; text cells are protected against spreadsheet formula injection",
+      "content": {
+       "text/csv": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}": {
+   "get": {
+    "operationId": "get_resolution",
+    "summary": "get resolution (Title and text only when the field policy allows; the tally only once closed.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/amend": {
+   "post": {
+    "operationId": "amend_resolution",
+    "summary": "amend resolution (Creates a new version; proposer only, before voting opens.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AmendInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/propose": {
+   "post": {
+    "operationId": "propose_resolution",
+    "summary": "propose resolution",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/open-vote": {
+   "post": {
+    "operationId": "open_vote",
+    "summary": "open vote (chair or secretary; fixes the voter list and checks quorum.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/vote": {
+   "post": {
+    "operationId": "cast_vote",
+    "summary": "cast vote (Roll call, written consent signature or secret ballot.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.vote",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/VoteInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/close": {
+   "post": {
+    "operationId": "close_vote",
+    "summary": "close vote (Records the final tally; emits board.resolution.passed.v1 on a pass.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/withdraw": {
+   "post": {
+    "operationId": "withdraw_resolution",
+    "summary": "withdraw resolution",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/conflicts": {
+   "post": {
+    "operationId": "declare_conflict",
+    "summary": "declare conflict",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.vote",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ConflictInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Conflict"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolutions/{id}/votes": {
+   "get": {
+    "operationId": "list_votes",
+    "summary": "list votes (After close; never for a secret ballot.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.sensitive-read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/VoteList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/minutes": {
+   "post": {
+    "operationId": "draft_minutes",
+    "summary": "draft minutes (secretary; a new version.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.minutes",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MinutesInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Minutes"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_minutes",
+    "summary": "list minutes",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MinutesList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/minutes/{id}": {
+   "get": {
+    "operationId": "get_minutes",
+    "summary": "get minutes",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Minutes"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "put": {
+    "operationId": "edit_minutes",
+    "summary": "edit minutes (Drafts only.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.minutes",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MinutesInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Minutes"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/minutes/{id}/approve": {
+   "post": {
+    "operationId": "approve_minutes",
+    "summary": "approve minutes (A director who attended and did not draft it (403 separation_of_duties otherwise).)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.approve",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Minutes"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/meetings/{id}/actions": {
+   "post": {
+    "operationId": "create_action",
+    "summary": "create action",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ActionInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActionItem"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_meeting_actions",
+    "summary": "list meeting actions",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActionList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/actions": {
+   "get": {
+    "operationId": "list_my_actions",
+    "summary": "list my actions",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.self-read",
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActionList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/actions/{id}": {
+   "get": {
+    "operationId": "get_action",
+    "summary": "get action",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.self-read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActionItem"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "patch": {
+    "operationId": "update_action",
+    "summary": "update action (The assignee or the secretary.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.self-read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ActionStatusRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActionItem"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/people/{person}/legal-hold": {
+   "put": {
+    "operationId": "set_legal_hold",
+    "summary": "set legal hold (204.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.admin",
+    "parameters": [
+     {
+      "name": "person",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LegalHoldRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "no content"
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/people/{person}/erasure": {
+   "post": {
+    "operationId": "request_erasure",
+    "summary": "request erasure (Legal retention overrides erasure for minutes, votes and registers.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.admin",
+    "parameters": [
+     {
+      "name": "person",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Erasure"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/erasures": {
+   "get": {
+    "operationId": "list_erasures",
+    "summary": "list erasures (Query: after.)",
+    "tags": [
+     "board"
+    ],
+    "x-permission": "board.admin",
+    "parameters": [
+     {
+      "name": "after",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErasureList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolution-requests": {
+   "post": {
+    "operationId": "request_resolution",
+    "summary": "request resolution (Creates (or returns) a draft resolution for another module's decision; the secretary completes and runs it. A subject who is a director is recused automatically; the requester cannot be the sole approver.)",
+    "tags": [
+     "resolutions"
+    ],
+    "x-permission": "board.integrate",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResolutionRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResolutionOutcome"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/resolution-outcomes": {
+   "get": {
+    "operationId": "get_resolution_outcome",
+    "summary": "get resolution outcome (Query: type, ref. pending, approved, rejected or cancelled; ids and a date only.)",
+    "tags": [
+     "resolutions"
+    ],
+    "x-permission": "board.integrate",
+    "parameters": [
+     {
+      "name": "type",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "ref",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResolutionOutcome"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities": {
+   "post": {
+    "operationId": "create_legal_entity",
+    "summary": "create legal entity (secretary or admin; identifiers only by the secretary.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LegalEntityInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LegalEntity"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_legal_entities",
+    "summary": "list legal entities",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LegalEntityList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}": {
+   "get": {
+    "operationId": "get_legal_entity",
+    "summary": "get legal entity",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LegalEntity"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/status": {
+   "post": {
+    "operationId": "set_entity_status",
+    "summary": "set entity status",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EntityStatusRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LegalEntity"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/identifiers": {
+   "get": {
+    "operationId": "get_identifiers",
+    "summary": "get identifiers (Sealed registration and tax numbers; audited before return.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.sensitive-read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Identifiers"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/contacts": {
+   "post": {
+    "operationId": "add_contact",
+    "summary": "add contact (Registered agent or an address, effective-dated; the previous record of the kind ends the day before.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ContactInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Contact"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_contacts",
+    "summary": "list contacts (Query: as_of (date or all).)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ContactList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/registers/{register}/entries": {
+   "post": {
+    "operationId": "record_register_entry",
+    "summary": "record register entry (Append-only ledger entry (members, directors, charges); a mistake is corrected by a later entry naming it.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "register",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EntryInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Entry"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/registers/{register}": {
+   "get": {
+    "operationId": "view_register",
+    "summary": "view register (Query: as_of, known_at, history=true. Names and personal details per field policy; audited per entry.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "register",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "known_at",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "history",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RegisterView"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/registers/{register}/export.csv": {
+   "get": {
+    "operationId": "export_register_csv",
+    "summary": "export register csv (text/csv, formula-injection protected. Query: as_of.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.sensitive-read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "register",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "CSV; text cells are protected against spreadsheet formula injection",
+      "content": {
+       "text/csv": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/officers": {
+   "get": {
+    "operationId": "list_officers",
+    "summary": "list officers (The directors register as of a date. Query: as_of.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "as_of",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RegisterView"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/register-entries/{id}/attest": {
+   "post": {
+    "operationId": "attest_register_entry",
+    "summary": "attest register entry (A director or officer; never the person named, never the recorder (403 separation_of_duties).)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.attest",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Entry"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/obligations": {
+   "post": {
+    "operationId": "create_obligation",
+    "summary": "create obligation (Obligations are data; creates the first due date. Reminders are entity.filing.due.v1.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ObligationInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Obligation"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/filings": {
+   "get": {
+    "operationId": "list_filings",
+    "summary": "list filings (Query: status.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FilingList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/filings/{id}/result": {
+   "post": {
+    "operationId": "record_filing_result",
+    "summary": "record filing result (Filed or waived; creates the next due date of a recurring obligation.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FilingResult"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Filing"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/documents": {
+   "post": {
+    "operationId": "add_document",
+    "summary": "add document (Document reference only.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DocumentInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Document"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_documents",
+    "summary": "list documents",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DocumentList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  },
+  "/v1/legal-entities/{id}/share-classes": {
+   "post": {
+    "operationId": "link_share_class",
+    "summary": "link share class (Opaque id of a share class in `equity`.)",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.write",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ShareClassLinkRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ShareClassLink"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   },
+   "get": {
+    "operationId": "list_share_class_links",
+    "summary": "list share class links",
+    "tags": [
+     "entity"
+    ],
+    "x-permission": "entity.read",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ShareClassLinkList"
+        }
+       }
+      }
+     },
+     "400": {
+      "$ref": "#/components/responses/Invalid"
+     },
+     "401": {
+      "$ref": "#/components/responses/Unauthenticated"
+     },
+     "403": {
+      "$ref": "#/components/responses/Forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/NotFound"
+     },
+     "409": {
+      "$ref": "#/components/responses/Conflict"
+     },
+     "429": {
+      "$ref": "#/components/responses/TooMany"
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "bearer": {
+    "type": "http",
+    "scheme": "bearer"
+   }
+  },
+  "responses": {
+   "Unauthenticated": {
+    "description": "A valid bearer token is required.",
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    }
+   },
+   "Forbidden": {
+    "description": "The record is visible to the caller but the action or field is not permitted (or separation of duties).",
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    }
+   },
+   "NotFound": {
+    "description": "Not found. A record the caller may not see answers exactly like a missing one.",
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    }
+   },
+   "Conflict": {
+    "description": "The request conflicts with the current state.",
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    }
+   },
+   "TooMany": {
+    "description": "Too many failed authentications from this address, or too many requests from this subject.",
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    }
+   },
+   "Invalid": {
+    "description": "The request is not valid.",
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/Error"
+      }
+     }
+    }
+   }
+  },
+  "schemas": {
+   "BodyInput": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 120,
+      "minLength": 1
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "board",
+       "committee"
+      ]
+     },
+     "parent_id": {
+      "type": "string",
+      "pattern": "^bdy_[0-9a-f]{24}$"
+     },
+     "entity_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "quorum_num": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+     },
+     "quorum_den": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+     },
+     "quorum_min": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+     },
+     "quorum_excludes_recused": {
+      "type": "boolean"
+     },
+     "pass_num": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+     },
+     "pass_den": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+     },
+     "pass_inclusive": {
+      "type": "boolean"
+     },
+     "notice_days": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 366
+     },
+     "notice_basis": {
+      "type": "string",
+      "maxLength": 200
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "name",
+     "kind"
+    ]
+   },
+   "Body": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^bdy_[0-9a-f]{24}$"
+     },
+     "name": {
+      "type": "string"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "board",
+       "committee"
+      ]
+     },
+     "parent_id": {
+      "type": "string",
+      "pattern": "^bdy_[0-9a-f]{24}$"
+     },
+     "entity_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "quorum_num": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "quorum_den": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "quorum_min": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "quorum_excludes_recused": {
+      "type": "boolean"
+     },
+     "pass_num": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "pass_den": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "pass_inclusive": {
+      "type": "boolean"
+     },
+     "notice_days": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 366
+     },
+     "notice_basis": {
+      "type": "string"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "name",
+     "kind",
+     "quorum_num",
+     "quorum_den",
+     "quorum_min",
+     "quorum_excludes_recused",
+     "pass_num",
+     "pass_den",
+     "pass_inclusive",
+     "notice_days",
+     "created_at"
+    ]
+   },
+   "BodyList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Body"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "MemberInput": {
+    "type": "object",
+    "properties": {
+     "person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "chair",
+       "member",
+       "secretary",
+       "observer"
+      ]
+     },
+     "start_date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "person_id",
+     "role"
+    ]
+   },
+   "Member": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^mbr_[0-9a-f]{24}$"
+     },
+     "person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "chair",
+       "member",
+       "secretary",
+       "observer"
+      ]
+     },
+     "start_date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "end_date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "person_id",
+     "role",
+     "start_date"
+    ]
+   },
+   "MemberList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Member"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "EndMemberRequest": {
+    "type": "object",
+    "properties": {
+     "end_date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false
+   },
+   "MeetingInput": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     },
+     "starts_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "starts_time": {
+      "type": "string",
+      "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "in-person",
+       "remote",
+       "hybrid"
+      ]
+     },
+     "notice_given_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "short_notice_waiver_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "invitees": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "person_id": {
+         "type": "string",
+         "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "capacity": {
+         "type": "string",
+         "enum": [
+          "attendee",
+          "officer"
+         ]
+        }
+       },
+       "additionalProperties": false,
+       "required": [
+        "person_id",
+        "capacity"
+       ]
+      },
+      "maxItems": 200
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "title",
+     "starts_on"
+    ]
+   },
+   "Meeting": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^mtg_[0-9a-f]{24}$"
+     },
+     "body_id": {
+      "type": "string",
+      "pattern": "^bdy_[0-9a-f]{24}$"
+     },
+     "title": {
+      "type": "string"
+     },
+     "starts_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "starts_time": {
+      "type": "string"
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "in-person",
+       "remote",
+       "hybrid"
+      ]
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "scheduled",
+       "held",
+       "cancelled"
+      ]
+     },
+     "notice_given_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "notice_days_required": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 366
+     },
+     "short_notice_waiver_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "pack_issued_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "invitees": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "person_id": {
+         "type": "string",
+         "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "capacity": {
+         "type": "string",
+         "enum": [
+          "attendee",
+          "officer"
+         ]
+        }
+       },
+       "additionalProperties": false,
+       "required": [
+        "person_id",
+        "capacity"
+       ]
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "body_id",
+     "title",
+     "starts_on",
+     "mode",
+     "status",
+     "notice_given_on",
+     "notice_days_required"
+    ]
+   },
+   "MeetingList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Meeting"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "MeetingStatusRequest": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "held",
+       "cancelled"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "status"
+    ]
+   },
+   "AgendaInput": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "information",
+       "discussion",
+       "resolution",
+       "closed"
+      ]
+     },
+     "resolution_id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "title",
+     "kind"
+    ]
+   },
+   "AgendaItem": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^agi_[0-9a-f]{24}$"
+     },
+     "position": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "title": {
+      "type": "string"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "information",
+       "discussion",
+       "resolution",
+       "closed"
+      ]
+     },
+     "resolution_id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "position",
+     "title",
+     "kind"
+    ]
+   },
+   "AgendaList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/AgendaItem"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "AttendanceInput": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "present",
+       "remote",
+       "apology",
+       "absent"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "status"
+    ]
+   },
+   "Attendee": {
+    "type": "object",
+    "properties": {
+     "person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "present",
+       "remote",
+       "apology",
+       "absent"
+      ]
+     },
+     "capacity": {
+      "type": "string",
+      "enum": [
+       "member",
+       "observer",
+       "invitee",
+       ""
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "person_id",
+     "status",
+     "capacity"
+    ]
+   },
+   "AttendeeList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Attendee"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "Quorum": {
+    "type": "object",
+    "properties": {
+     "eligible": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "present": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "required": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "met": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "eligible",
+     "present",
+     "required",
+     "met"
+    ]
+   },
+   "PackInput": {
+    "type": "object",
+    "properties": {
+     "doc_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     },
+     "note": {
+      "type": "string",
+      "maxLength": 1000
+     },
+     "media_type": {
+      "type": "string",
+      "maxLength": 100
+     },
+     "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "doc_ref",
+     "title"
+    ]
+   },
+   "PackItem": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^pki_[0-9a-f]{24}$"
+     },
+     "doc_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "title": {
+      "type": "string"
+     },
+     "note": {
+      "type": "string"
+     },
+     "media_type": {
+      "type": "string"
+     },
+     "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "sha256": {
+      "type": "string"
+     },
+     "position": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "supplementary": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "doc_ref",
+     "title",
+     "size_bytes",
+     "position",
+     "supplementary"
+    ]
+   },
+   "Pack": {
+    "type": "object",
+    "properties": {
+     "meeting_id": {
+      "type": "string",
+      "pattern": "^mtg_[0-9a-f]{24}$"
+     },
+     "issued_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/PackItem"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "meeting_id",
+     "items"
+    ]
+   },
+   "ResolutionInput": {
+    "type": "object",
+    "properties": {
+     "meeting_id": {
+      "type": "string",
+      "pattern": "^mtg_[0-9a-f]{24}$"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "meeting",
+       "consent"
+      ]
+     },
+     "secret_ballot": {
+      "type": "boolean"
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     },
+     "text": {
+      "type": "string",
+      "maxLength": 20000,
+      "minLength": 1
+     },
+     "subjects": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "pattern": "^pers_[0-9a-f]{24}$"
+      },
+      "maxItems": 20
+     },
+     "consent_deadline": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "pass_num": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+     },
+     "pass_den": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+     },
+     "pass_inclusive": {
+      "type": "boolean"
+     },
+     "supersedes_id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "title",
+     "text"
+    ]
+   },
+   "AmendInput": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     },
+     "text": {
+      "type": "string",
+      "maxLength": 20000,
+      "minLength": 1
+     },
+     "meeting_id": {
+      "type": "string",
+      "pattern": "^mtg_[0-9a-f]{24}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "title",
+     "text"
+    ]
+   },
+   "Resolution": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     },
+     "body_id": {
+      "type": "string",
+      "pattern": "^bdy_[0-9a-f]{24}$"
+     },
+     "meeting_id": {
+      "type": "string",
+      "pattern": "^mtg_[0-9a-f]{24}$"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "meeting",
+       "consent"
+      ]
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "draft",
+       "proposed",
+       "voting",
+       "passed",
+       "failed",
+       "withdrawn"
+      ]
+     },
+     "secret_ballot": {
+      "type": "boolean"
+     },
+     "version": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "title": {
+      "type": "string"
+     },
+     "text": {
+      "type": "string"
+     },
+     "text_withheld": {
+      "type": "boolean"
+     },
+     "pass_num": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "pass_den": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "pass_inclusive": {
+      "type": "boolean"
+     },
+     "consent_deadline": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "external_type": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "external_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "supersedes_id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     },
+     "eligible": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "quorum_required": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "quorum_present": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "result": {
+      "type": "object",
+      "properties": {
+       "for": {
+        "type": "integer",
+        "minimum": 0
+       },
+       "against": {
+        "type": "integer",
+        "minimum": 0
+       },
+       "abstain": {
+        "type": "integer",
+        "minimum": 0
+       },
+       "reason": {
+        "type": "string",
+        "enum": [
+         "tally",
+         "all_signed",
+         "declined",
+         "deadline",
+         "withdrawn",
+         "proposer_sole_approver",
+         "no_quorum"
+        ]
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "for",
+       "against",
+       "abstain",
+       "reason"
+      ]
+     },
+     "closed_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "voted": {
+      "type": "boolean"
+     },
+     "conflicts": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Conflict"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "body_id",
+     "kind",
+     "status",
+     "secret_ballot",
+     "version",
+     "pass_num",
+     "pass_den",
+     "pass_inclusive"
+    ]
+   },
+   "ResolutionList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Resolution"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "Conflict": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^cfl_[0-9a-f]{24}$"
+     },
+     "person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "treatment": {
+      "type": "string",
+      "enum": [
+       "recuse",
+       "abstain",
+       "disclosed"
+      ]
+     },
+     "nature": {
+      "type": "string",
+      "maxLength": 1000
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "person_id",
+     "treatment"
+    ]
+   },
+   "ConflictInput": {
+    "type": "object",
+    "properties": {
+     "person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "treatment": {
+      "type": "string",
+      "enum": [
+       "recuse",
+       "abstain",
+       "disclosed"
+      ]
+     },
+     "nature": {
+      "type": "string",
+      "maxLength": 1000
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "treatment"
+    ]
+   },
+   "VoteInput": {
+    "type": "object",
+    "properties": {
+     "choice": {
+      "type": "string",
+      "enum": [
+       "for",
+       "against",
+       "abstain"
+      ]
+     },
+     "signature_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "choice"
+    ]
+   },
+   "VoteRecord": {
+    "type": "object",
+    "properties": {
+     "person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "choice": {
+      "type": "string",
+      "enum": [
+       "for",
+       "against",
+       "abstain"
+      ]
+     },
+     "method": {
+      "type": "string",
+      "enum": [
+       "roll_call",
+       "consent"
+      ]
+     },
+     "signature_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "cast_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "person_id",
+     "choice",
+     "method",
+     "cast_on"
+    ]
+   },
+   "VoteList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/VoteRecord"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "MinutesInput": {
+    "type": "object",
+    "properties": {
+     "content": {
+      "type": "string",
+      "maxLength": 200000,
+      "minLength": 1
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "content"
+    ]
+   },
+   "Minutes": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^min_[0-9a-f]{24}$"
+     },
+     "meeting_id": {
+      "type": "string",
+      "pattern": "^mtg_[0-9a-f]{24}$"
+     },
+     "version": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "draft",
+       "approved",
+       "superseded"
+      ]
+     },
+     "content": {
+      "type": "string"
+     },
+     "content_withheld": {
+      "type": "boolean"
+     },
+     "approved_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "meeting_id",
+     "version",
+     "status"
+    ]
+   },
+   "MinutesList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Minutes"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "ActionInput": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1
+     },
+     "assignee_person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "work_issue_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "due_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "resolution_id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "text"
+    ]
+   },
+   "ActionItem": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^act_[0-9a-f]{24}$"
+     },
+     "meeting_id": {
+      "type": "string",
+      "pattern": "^mtg_[0-9a-f]{24}$"
+     },
+     "text": {
+      "type": "string"
+     },
+     "assignee_person_id": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "work_issue_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "due_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "resolution_id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "done",
+       "cancelled"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "meeting_id",
+     "text",
+     "status"
+    ]
+   },
+   "ActionList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ActionItem"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "ActionStatusRequest": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "done",
+       "cancelled"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "status"
+    ]
+   },
+   "LegalHoldRequest": {
+    "type": "object",
+    "properties": {
+     "hold": {
+      "type": "boolean"
+     },
+     "reason": {
+      "type": "string",
+      "maxLength": 500
+     }
+    },
+    "additionalProperties": false
+   },
+   "Erasure": {
+    "type": "object",
+    "properties": {
+     "subject": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "classes": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "retained": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "class": {
+         "type": "string"
+        },
+        "count": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "reason": {
+         "type": "string"
+        }
+       },
+       "additionalProperties": false,
+       "required": [
+        "class",
+        "count",
+        "reason"
+       ]
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "subject",
+     "classes",
+     "date",
+     "retained"
+    ]
+   },
+   "ErasureEntry": {
+    "type": "object",
+    "properties": {
+     "seq": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "subject": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "class": {
+      "type": "string"
+     },
+     "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "seq",
+     "subject",
+     "class",
+     "date"
+    ]
+   },
+   "ErasureList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ErasureEntry"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "ResolutionRequest": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$",
+      "maxLength": 64
+     },
+     "ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "body_id": {
+      "type": "string",
+      "pattern": "^bdy_[0-9a-f]{24}$"
+     },
+     "requester": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$"
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 200
+     },
+     "subjects": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "pattern": "^pers_[0-9a-f]{24}$"
+      },
+      "maxItems": 20
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "type",
+     "ref",
+     "body_id",
+     "requester"
+    ]
+   },
+   "ResolutionOutcome": {
+    "type": "object",
+    "properties": {
+     "resolution_id": {
+      "type": "string",
+      "pattern": "^res_[0-9a-f]{24}$"
+     },
+     "body_id": {
+      "type": "string",
+      "pattern": "^bdy_[0-9a-f]{24}$"
+     },
+     "type": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "outcome": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "approved",
+       "rejected",
+       "cancelled"
+      ]
+     },
+     "decided_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "resolution_id",
+     "body_id",
+     "type",
+     "ref",
+     "outcome"
+    ]
+   },
+   "LegalEntityInput": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     },
+     "jurisdiction": {
+      "type": "string",
+      "maxLength": 100
+     },
+     "entity_type": {
+      "type": "string",
+      "maxLength": 100
+     },
+     "incorporated_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "fiscal_year_end": {
+      "type": "string",
+      "pattern": "^[0-1][0-9]-[0-3][0-9]$"
+     },
+     "registration_number": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "tax_id": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "equity_entity_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "name"
+    ]
+   },
+   "LegalEntity": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^lge_[0-9a-f]{24}$"
+     },
+     "name": {
+      "type": "string"
+     },
+     "jurisdiction": {
+      "type": "string"
+     },
+     "entity_type": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "active",
+       "dormant",
+       "dissolved"
+      ]
+     },
+     "incorporated_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "fiscal_year_end": {
+      "type": "string"
+     },
+     "equity_entity_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "name",
+     "status"
+    ]
+   },
+   "LegalEntityList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/LegalEntity"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "EntityStatusRequest": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "active",
+       "dormant",
+       "dissolved"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "status"
+    ]
+   },
+   "Identifiers": {
+    "type": "object",
+    "properties": {
+     "entity_id": {
+      "type": "string",
+      "pattern": "^lge_[0-9a-f]{24}$"
+     },
+     "registration_number": {
+      "type": "string"
+     },
+     "tax_id": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "entity_id"
+    ]
+   },
+   "ContactInput": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "registered_agent",
+       "registered_office",
+       "principal_office",
+       "postal"
+      ]
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 200
+     },
+     "address": {
+      "type": "string",
+      "maxLength": 1000,
+      "minLength": 1
+     },
+     "person_ref": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "effective_from": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "kind",
+     "address",
+     "effective_from"
+    ]
+   },
+   "Contact": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^ctc_[0-9a-f]{24}$"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "registered_agent",
+       "registered_office",
+       "principal_office",
+       "postal"
+      ]
+     },
+     "name": {
+      "type": "string"
+     },
+     "address": {
+      "type": "string"
+     },
+     "person_ref": {
+      "type": "string",
+      "pattern": "^pers_[0-9a-f]{24}$"
+     },
+     "effective_from": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "effective_to": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "withheld": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "kind",
+     "effective_from"
+    ]
+   },
+   "ContactList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Contact"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "EntryInput": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "appointed",
+       "ceased",
+       "allotted",
+       "transferred",
+       "created",
+       "satisfied"
+      ]
+     },
+     "party_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "office": {
+      "type": "string",
+      "enum": [
+       "director",
+       "officer",
+       "secretary",
+       "auditor",
+       ""
+      ]
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 100
+     },
+     "class_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "quantity": {
+      "type": "integer",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000
+     },
+     "effective_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "detail": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string",
+       "maxLength": 1000
+      },
+      "maxProperties": 12
+     },
+     "resolution_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "corrects_id": {
+      "type": "string",
+      "pattern": "^reg_[0-9a-f]{24}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "kind",
+     "party_ref",
+     "effective_on"
+    ]
+   },
+   "Entry": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^reg_[0-9a-f]{24}$"
+     },
+     "register": {
+      "type": "string",
+      "enum": [
+       "members",
+       "directors",
+       "charges"
+      ]
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "appointed",
+       "ceased",
+       "allotted",
+       "transferred",
+       "created",
+       "satisfied"
+      ]
+     },
+     "party_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "office": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "class_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "quantity": {
+      "type": "integer"
+     },
+     "effective_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "resolution_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "corrects_id": {
+      "type": "string",
+      "pattern": "^reg_[0-9a-f]{24}$"
+     },
+     "recorded_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "attested": {
+      "type": "boolean"
+     },
+     "attested_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "detail": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      }
+     },
+     "detail_withheld": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "register",
+     "kind",
+     "party_ref",
+     "effective_on",
+     "recorded_on",
+     "attested"
+    ]
+   },
+   "StateLine": {
+    "type": "object",
+    "properties": {
+     "party_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "office": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "class_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "quantity": {
+      "type": "integer"
+     },
+     "since": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "entry_id": {
+      "type": "string",
+      "pattern": "^reg_[0-9a-f]{24}$"
+     },
+     "attested": {
+      "type": "boolean"
+     },
+     "name": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "party_ref",
+     "since",
+     "entry_id",
+     "attested"
+    ]
+   },
+   "RegisterView": {
+    "type": "object",
+    "properties": {
+     "entity_id": {
+      "type": "string",
+      "pattern": "^lge_[0-9a-f]{24}$"
+     },
+     "register": {
+      "type": "string",
+      "enum": [
+       "members",
+       "directors",
+       "charges"
+      ]
+     },
+     "as_of": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "known_at": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "state": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/StateLine"
+      }
+     },
+     "entries": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Entry"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "entity_id",
+     "register",
+     "as_of",
+     "state"
+    ]
+   },
+   "ObligationInput": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     },
+     "authority": {
+      "type": "string",
+      "maxLength": 200
+     },
+     "first_due_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "recurrence": {
+      "type": "string",
+      "enum": [
+       "once",
+       "monthly",
+       "quarterly",
+       "annual"
+      ]
+     },
+     "lead_days": {
+      "type": "array",
+      "items": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 366
+      },
+      "maxItems": 8
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "name",
+     "first_due_on",
+     "recurrence"
+    ]
+   },
+   "Obligation": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^obl_[0-9a-f]{24}$"
+     },
+     "entity_id": {
+      "type": "string",
+      "pattern": "^lge_[0-9a-f]{24}$"
+     },
+     "name": {
+      "type": "string"
+     },
+     "authority": {
+      "type": "string"
+     },
+     "first_due_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "recurrence": {
+      "type": "string",
+      "enum": [
+       "once",
+       "monthly",
+       "quarterly",
+       "annual"
+      ]
+     },
+     "lead_days": {
+      "type": "array",
+      "items": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 366
+      }
+     },
+     "active": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "entity_id",
+     "name",
+     "first_due_on",
+     "recurrence",
+     "lead_days",
+     "active"
+    ]
+   },
+   "Filing": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^fil_[0-9a-f]{24}$"
+     },
+     "obligation_id": {
+      "type": "string",
+      "pattern": "^obl_[0-9a-f]{24}$"
+     },
+     "entity_id": {
+      "type": "string",
+      "pattern": "^lge_[0-9a-f]{24}$"
+     },
+     "name": {
+      "type": "string"
+     },
+     "due_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "filed",
+       "waived"
+      ]
+     },
+     "overdue": {
+      "type": "boolean"
+     },
+     "days_until": {
+      "type": "integer"
+     },
+     "filed_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "doc_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "obligation_id",
+     "entity_id",
+     "name",
+     "due_on",
+     "status",
+     "overdue",
+     "days_until"
+    ]
+   },
+   "FilingList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Filing"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "FilingResult": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "filed",
+       "waived"
+      ]
+     },
+     "filed_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "doc_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "status"
+    ]
+   },
+   "DocumentInput": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "doc_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "doc_ref",
+     "title"
+    ]
+   },
+   "Document": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^doc_[0-9a-f]{24}$"
+     },
+     "kind": {
+      "type": "string"
+     },
+     "doc_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     },
+     "title": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "doc_ref"
+    ]
+   },
+   "DocumentList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Document"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "ShareClassLinkRequest": {
+    "type": "object",
+    "properties": {
+     "class_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "class_ref"
+    ]
+   },
+   "ShareClassLink": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^scl_[0-9a-f]{24}$"
+     },
+     "class_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "class_ref"
+    ]
+   },
+   "ShareClassLinkList": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ShareClassLink"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "items"
+    ]
+   },
+   "Error": {
+    "type": "object",
+    "required": [
+     "code",
+     "message"
+    ],
+    "properties": {
+     "code": {
+      "type": "string",
+      "enum": [
+       "invalid",
+       "not_found",
+       "separation_of_duties",
+       "forbidden",
+       "conflict",
+       "timeout",
+       "unauthenticated",
+       "rate_limited",
+       "internal",
+       "unhealthy"
+      ]
+     },
+     "message": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ }
+}

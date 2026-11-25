@@ -1,0 +1,52 @@
+# Entity: in-house Go service (cmd/can-board, library core/board), module 2 of 2 in one binary (the other is `board`).
+# Company records: legal entities, registered agent and addresses (effective-dated), statutory registers (members, directors
+# and officers, charges) as append-only ledgers with as-of views, a filings calendar with reminder events, document references
+# and links to share classes in `equity` by opaque id. Registration numbers and personal details are sealed; reads are audited.
+# THIS IS A TOOL, NOT LEGAL ADVICE. Which registers a company must keep, what they must show, what must be filed and when are
+# NOT implemented: obligations and due dates are data the operator enters (docs/entity.md).
+schema: 1
+id: entity
+name: Entity and legal calendar
+description: Legal entities with sealed registration numbers, the registered agent and addresses with history, officers and directors with effective dates, statutory registers (members, directors, charges) as append-only ledgers viewable as of any date, a filings calendar with reminder events, document references and links to equity share classes. Record-keeping only.
+category: governance
+version: 0.1.0
+# experimental: see the `board` module (same binary and release): offline-tested only, no Helm templates, no admin UI, and
+# can-core does not yet deploy `board` and `entity` as one release. See modules/entity/README.md.
+status: experimental
+provider:
+  type: inhouse
+  name: can-board
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # One process serves both modules; enabling both does not double the footprint (docs/entity.md).
+  ram_mb: 20
+  ram_limit_mb: 64
+  disk_mb: 200
+provides:
+  - { capability: entity, schema: entity.v1, service: board-api, port: 8082 }
+publishes:
+  # ids and dates only
+  - { event: entity.filing.due.v1, schema: ./events/entity.filing.due.v1.json }
+permissions: [entity.read, entity.write, entity.attest, entity.sensitive-read, entity.admin]
+roles:
+  secretary: [entity.read, entity.write, entity.sensitive-read]
+  admin: [entity.read, entity.admin]   # sees the structure, never identifiers or register detail
+  officer: [entity.read, entity.attest, entity.sensitive-read]
+  director: [entity.read, entity.attest, entity.sensitive-read]
+  audit-viewer: [entity.read, entity.sensitive-read]
+data_classes:
+  # Statutory registers: kept by law. Names stay on erasure; addresses and dates of birth are removed.
+  - { class: entity-register, retention: legal, sensitivity: sensitive }
+  # Individuals' addresses, dates of birth and agent details.
+  - { class: entity-person, retention: 7y, sensitivity: sensitive }
+  # Filings calendar: ids, dates and receipt references.
+  - { class: entity-filings, retention: legal, sensitivity: standard }
+  # The entity module's rows in the shared append-only audit trail.
+  - { class: entity-audit, retention: legal, sensitivity: standard }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

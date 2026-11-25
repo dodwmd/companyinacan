@@ -1,0 +1,17 @@
+{
+  "name": "Annual return",
+  "authority": "Registry",
+  "first_due_on": "2026-12-31",
+  "recurrence": "annual",
+  "lead_days": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ]
+}

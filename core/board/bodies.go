@@ -41,15 +41,7 @@ func (s *Service) hide(ctx context.Context, a Actor, act Action, f Fact, resourc
 	return nil
 }
 
-func (s *Service) day(offset int) string {
-	return s.now().UTC().AddDate(0, 0, offset).Format(dateLayout)
-}
-
 // ---- relationship facts --------------------------------------------------------------------------
-
-type memberRow struct {
-	ID, PersonID, Role, Start, End string
-}
 
 // memberRole is the actor's role in the body on a day ("" when not in term).
 func (s *Service) memberRole(ctx context.Context, q querier, bodyID, person, day string) (string, error) {

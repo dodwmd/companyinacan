@@ -1,0 +1,13 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "entity.filing.due.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "filing_id": "fil_0123456789abcdef01234567",
+    "obligation_id": "obl_0123456789abcdef01234567",
+    "entity_id": "lge_0123456789abcdef01234567",
+    "due_on": "2026-12-31",
+    "days_before": 7
+  }
+}

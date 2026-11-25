@@ -1,0 +1,12 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "board.resolution.passed.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "board",
+  "data": {
+    "resolution_id": "res_0123456789abcdef01234567",
+    "body_id": "bdy_0123456789abcdef01234567",
+    "result": "failed",
+    "passed_on": "2026-12-10"
+  }
+}

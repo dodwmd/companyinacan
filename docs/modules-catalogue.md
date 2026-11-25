@@ -25,6 +25,8 @@ provision's), not listed by the admin or module API and cannot be a `primary`.
 | `finance` | in-house | experimental | 28 | Apache-2.0 | `invoices`, `contracts`, `timesheets` | Tests offline (16 MB measured idle per modules/README.md, before the UI); web UI (E15b); invoice flow with a second approver and the public link run in the compose e2e suite. Not run on a cluster |
 | `provisioning` | in-house | experimental | 20 | Apache-2.0 | `identity.provision` | Unit, race and contract tests offline against fakes (a fake directory, a fake SCIM server); RAM measured locally. No connector has talked to a real service (Google Workspace, GitHub and Slack are stubs), the module namespace NetworkPolicy does not yet allow its egress, and nothing ran on a cluster |
 | `equity` | in-house | experimental | 16 | Apache-2.0 | `equity` | Unit, race, fuzz and contract tests offline; 15.8 MiB idle measured locally; grant approval by a board identity and vesting run in the compose e2e suite (fake introspection). No Helm templates, no admin UI, no cluster run. A tool, not legal, tax or securities advice |
+| `board` | in-house | experimental | 20 | Apache-2.0 | `board`, `resolutions` | Unit, race, fuzz and contract tests offline; 14.4 MiB idle measured locally (one binary with `entity`). No Helm templates, no admin UI, no cluster run, equity approval seam not wired. A tool, not legal advice |
+| `entity` | in-house | experimental | 20 | Apache-2.0 | `entity` | Same binary and release as `board`; tested offline with it. Jurisdiction rules (registers, filings) are data, not implemented. A tool, not legal advice |
 
 ## Wrapped open-source modules
 

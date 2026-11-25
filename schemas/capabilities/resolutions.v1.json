@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/resolutions.v1.json",
+  "title": "resolutions.v1",
+  "description": "Capability `resolutions` (SPEC.md section 4.3): the seam by which another module (for example `equity` grants that need board approval) asks for a board resolution and reads its outcome. A request creates a draft resolution; the company secretary completes and runs it; the outcome is pending, approved, rejected or cancelled and carries ids and a date only. Event: board.resolution.passed.v1. Provided by the in-house board module. THIS IS A TOOL, NOT LEGAL ADVICE: jurisdiction-specific rules (quorum and notice law, who must sign, which registers a company must keep, filing deadlines, director duties) are not implemented; they are data fields the operator enters and documented limits. Only the integration role (the can-core service account) may call these verbs. A person the decision is about who sits on the body is recused automatically and the requester cannot be the sole approver.",
+  "x-capability": "resolutions",
+  "x-verbs": [
+    {
+      "verb": "request_resolution",
+      "method": "POST",
+      "path": "/v1/resolution-requests",
+      "request": "ResolutionRequest",
+      "response": "ResolutionOutcome",
+      "write": true,
+      "permission": "board.integrate",
+      "description": "Creates (or returns) a draft resolution for another module's decision; the secretary completes and runs it. A subject who is a director is recused automatically; the requester cannot be the sole approver."
+    },
+    {
+      "verb": "get_resolution_outcome",
+      "method": "GET",
+      "path": "/v1/resolution-outcomes",
+      "response": "ResolutionOutcome",
+      "permission": "board.integrate",
+      "description": "Query: type, ref. pending, approved, rejected or cancelled; ids and a date only."
+    }
+  ],
+  "$defs": {
+    "ResolutionRequest": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$",
+          "maxLength": 64
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "body_id": {
+          "type": "string",
+          "pattern": "^bdy_[0-9a-f]{24}$"
+        },
+        "requester": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^pers_[0-9a-f]{24}$"
+          },
+          "maxItems": 20
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "ref",
+        "body_id",
+        "requester"
+      ]
+    },
+    "ResolutionOutcome": {
+      "type": "object",
+      "properties": {
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        },
+        "body_id": {
+          "type": "string",
+          "pattern": "^bdy_[0-9a-f]{24}$"
+        },
+        "type": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "approved",
+            "rejected",
+            "cancelled"
+          ]
+        },
+        "decided_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "resolution_id",
+        "body_id",
+        "type",
+        "ref",
+        "outcome"
+      ]
+    }
+  }
+}

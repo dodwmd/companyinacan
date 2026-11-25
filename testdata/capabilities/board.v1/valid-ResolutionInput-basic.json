@@ -1,0 +1,8 @@
+{
+  "meeting_id": "mtg_0123456789abcdef01234567",
+  "title": "Approve the budget",
+  "text": "RESOLVED that the FY27 budget is approved.",
+  "subjects": [
+    "pers_0123456789abcdef01234567"
+  ]
+}

@@ -11,14 +11,13 @@ import (
 // the members who attended; an approved version is immutable; a correction is a new version that must
 // be approved again, and the earlier approved version stays on record.
 type Minutes struct {
-	ID             string `json:"id"`
-	MeetingID      string `json:"meeting_id"`
-	Version        int    `json:"version"`
-	Status         string `json:"status"` // draft | approved | superseded
-	Content        string `json:"content,omitempty"`
-	ContentHidden  bool   `json:"content_withheld,omitempty"`
-	ApprovedOn     string `json:"approved_on,omitempty"`
-	CanApproveHint bool   `json:"-"`
+	ID            string `json:"id"`
+	MeetingID     string `json:"meeting_id"`
+	Version       int    `json:"version"`
+	Status        string `json:"status"` // draft | approved | superseded
+	Content       string `json:"content,omitempty"`
+	ContentHidden bool   `json:"content_withheld,omitempty"`
+	ApprovedOn    string `json:"approved_on,omitempty"`
 }
 
 type minRow struct {

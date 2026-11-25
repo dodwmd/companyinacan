@@ -127,8 +127,6 @@ func truncate(s string, n int) string {
 	return s
 }
 
-func itoa(n int64) string { return strconv.FormatInt(n, 10) }
-
 func isUnique(err error) bool { return err != nil && strings.Contains(err.Error(), "UNIQUE") }
 
 func (d *Dispatcher) post(ctx context.Context, id, typ string, body []byte, now time.Time) error {

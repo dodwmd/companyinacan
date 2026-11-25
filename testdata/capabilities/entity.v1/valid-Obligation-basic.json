@@ -1,0 +1,13 @@
+{
+  "id": "obl_0123456789abcdef01234567",
+  "entity_id": "lge_0123456789abcdef01234567",
+  "name": "Annual return",
+  "first_due_on": "2026-12-31",
+  "recurrence": "annual",
+  "lead_days": [
+    30,
+    7,
+    0
+  ],
+  "active": true
+}

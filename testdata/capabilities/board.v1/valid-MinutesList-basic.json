@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "id": "min_0123456789abcdef01234567",
+      "meeting_id": "mtg_0123456789abcdef01234567",
+      "version": 1,
+      "status": "draft"
+    }
+  ]
+}

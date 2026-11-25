@@ -1,0 +1,1780 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/board.v1.json",
+  "title": "board.v1",
+  "description": "Capability `board` (SPEC.md section 4.3): bodies (board and committees) with members and terms, meetings with notice requirements as data, agendas, attendance and exact-integer quorum, board packs (document references only), conflicts and recusal, resolutions (roll call, written consent, secret ballot; amendments create versions), minutes (approved versions are immutable), action items linked to `work` issues by opaque id. Provided by the in-house board module. THIS IS A TOOL, NOT LEGAL ADVICE: jurisdiction-specific rules (quorum and notice law, who must sign, which registers a company must keep, filing deadlines, director duties) are not implemented; they are data fields the operator enters and documented limits. Board materials are confidential: bodies are JSON over HTTP with a bearer token; authorisation is enforced by the provider per caller, per record and per field (roles director, officer, secretary, admin, observer, audit-viewer, employee, integration): a caller who may not see a record gets 404, a caller who may see it but not a field or action gets 403. Counts are integers; people are opaque directory person ids. Consumers must not depend on anything not in this file.",
+  "x-capability": "board",
+  "x-verbs": [
+    {
+      "verb": "create_body",
+      "method": "POST",
+      "path": "/v1/bodies",
+      "request": "BodyInput",
+      "response": "Body",
+      "write": true,
+      "permission": "board.admin",
+      "description": "secretary or admin."
+    },
+    {
+      "verb": "list_bodies",
+      "method": "GET",
+      "path": "/v1/bodies",
+      "response": "BodyList",
+      "permission": "board.read",
+      "description": "Only the bodies the caller can see."
+    },
+    {
+      "verb": "get_body",
+      "method": "GET",
+      "path": "/v1/bodies/{id}",
+      "response": "Body",
+      "permission": "board.read"
+    },
+    {
+      "verb": "add_member",
+      "method": "POST",
+      "path": "/v1/bodies/{id}/members",
+      "request": "MemberInput",
+      "response": "Member",
+      "write": true,
+      "permission": "board.write",
+      "description": "secretary."
+    },
+    {
+      "verb": "list_members",
+      "method": "GET",
+      "path": "/v1/bodies/{id}/members",
+      "response": "MemberList",
+      "permission": "board.read",
+      "description": "Query: as_of (date or all)."
+    },
+    {
+      "verb": "end_member_term",
+      "method": "POST",
+      "path": "/v1/bodies/{id}/members/{mid}/end",
+      "request": "EndMemberRequest",
+      "response": "Member",
+      "write": true,
+      "permission": "board.write"
+    },
+    {
+      "verb": "schedule_meeting",
+      "method": "POST",
+      "path": "/v1/bodies/{id}/meetings",
+      "request": "MeetingInput",
+      "response": "Meeting",
+      "write": true,
+      "permission": "board.write",
+      "description": "Notice is checked against the body's notice_days; emits board.meeting.scheduled.v1."
+    },
+    {
+      "verb": "list_meetings",
+      "method": "GET",
+      "path": "/v1/bodies/{id}/meetings",
+      "response": "MeetingList",
+      "permission": "board.read"
+    },
+    {
+      "verb": "get_meeting",
+      "method": "GET",
+      "path": "/v1/meetings/{id}",
+      "response": "Meeting",
+      "permission": "board.read"
+    },
+    {
+      "verb": "set_meeting_status",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/status",
+      "request": "MeetingStatusRequest",
+      "response": "Meeting",
+      "write": true,
+      "permission": "board.write"
+    },
+    {
+      "verb": "add_agenda_item",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/agenda",
+      "request": "AgendaInput",
+      "response": "AgendaItem",
+      "write": true,
+      "permission": "board.write"
+    },
+    {
+      "verb": "list_agenda",
+      "method": "GET",
+      "path": "/v1/meetings/{id}/agenda",
+      "response": "AgendaList",
+      "permission": "board.read"
+    },
+    {
+      "verb": "record_attendance",
+      "method": "PUT",
+      "path": "/v1/meetings/{id}/attendance/{person}",
+      "request": "AttendanceInput",
+      "response": "Attendee",
+      "write": true,
+      "permission": "board.write",
+      "description": "secretary."
+    },
+    {
+      "verb": "list_attendance",
+      "method": "GET",
+      "path": "/v1/meetings/{id}/attendance",
+      "response": "AttendeeList",
+      "permission": "board.read"
+    },
+    {
+      "verb": "get_quorum",
+      "method": "GET",
+      "path": "/v1/meetings/{id}/quorum",
+      "response": "Quorum",
+      "permission": "board.read",
+      "description": "Exact integer arithmetic from the body's quorum rule."
+    },
+    {
+      "verb": "add_pack_item",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/pack/items",
+      "request": "PackInput",
+      "response": "PackItem",
+      "write": true,
+      "permission": "board.write",
+      "description": "Document reference only, no bytes."
+    },
+    {
+      "verb": "issue_pack",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/pack/issue",
+      "response": "Meeting",
+      "write": true,
+      "permission": "board.write"
+    },
+    {
+      "verb": "get_pack",
+      "method": "GET",
+      "path": "/v1/meetings/{id}/pack",
+      "response": "Pack",
+      "permission": "board.sensitive-read",
+      "description": "Audited per item; 404 to those who may not read it."
+    },
+    {
+      "verb": "create_resolution",
+      "method": "POST",
+      "path": "/v1/bodies/{id}/resolutions",
+      "request": "ResolutionInput",
+      "response": "Resolution",
+      "write": true,
+      "permission": "board.write",
+      "description": "Idempotency-Key supported (201 first time, 200 on a replay)."
+    },
+    {
+      "verb": "list_resolutions",
+      "method": "GET",
+      "path": "/v1/bodies/{id}/resolutions",
+      "response": "ResolutionList",
+      "permission": "board.read",
+      "description": "No text."
+    },
+    {
+      "verb": "export_resolutions_csv",
+      "method": "GET",
+      "path": "/v1/bodies/{id}/resolutions/export.csv",
+      "permission": "board.sensitive-read",
+      "description": "text/csv, formula-injection protected, audited before output."
+    },
+    {
+      "verb": "get_resolution",
+      "method": "GET",
+      "path": "/v1/resolutions/{id}",
+      "response": "Resolution",
+      "permission": "board.read",
+      "description": "Title and text only when the field policy allows; the tally only once closed."
+    },
+    {
+      "verb": "amend_resolution",
+      "method": "POST",
+      "path": "/v1/resolutions/{id}/amend",
+      "request": "AmendInput",
+      "response": "Resolution",
+      "write": true,
+      "permission": "board.write",
+      "description": "Creates a new version; proposer only, before voting opens."
+    },
+    {
+      "verb": "propose_resolution",
+      "method": "POST",
+      "path": "/v1/resolutions/{id}/propose",
+      "response": "Resolution",
+      "write": true,
+      "permission": "board.write"
+    },
+    {
+      "verb": "open_vote",
+      "method": "POST",
+      "path": "/v1/resolutions/{id}/open-vote",
+      "response": "Resolution",
+      "write": true,
+      "permission": "board.write",
+      "description": "chair or secretary; fixes the voter list and checks quorum."
+    },
+    {
+      "verb": "cast_vote",
+      "method": "POST",
+      "path": "/v1/resolutions/{id}/vote",
+      "request": "VoteInput",
+      "response": "Resolution",
+      "write": true,
+      "permission": "board.vote",
+      "description": "Roll call, written consent signature or secret ballot."
+    },
+    {
+      "verb": "close_vote",
+      "method": "POST",
+      "path": "/v1/resolutions/{id}/close",
+      "response": "Resolution",
+      "write": true,
+      "permission": "board.write",
+      "description": "Records the final tally; emits board.resolution.passed.v1 on a pass."
+    },
+    {
+      "verb": "withdraw_resolution",
+      "method": "POST",
+      "path": "/v1/resolutions/{id}/withdraw",
+      "response": "Resolution",
+      "write": true,
+      "permission": "board.write"
+    },
+    {
+      "verb": "declare_conflict",
+      "method": "POST",
+      "path": "/v1/resolutions/{id}/conflicts",
+      "request": "ConflictInput",
+      "response": "Conflict",
+      "write": true,
+      "permission": "board.vote"
+    },
+    {
+      "verb": "list_votes",
+      "method": "GET",
+      "path": "/v1/resolutions/{id}/votes",
+      "response": "VoteList",
+      "permission": "board.sensitive-read",
+      "description": "After close; never for a secret ballot."
+    },
+    {
+      "verb": "draft_minutes",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/minutes",
+      "request": "MinutesInput",
+      "response": "Minutes",
+      "write": true,
+      "permission": "board.minutes",
+      "description": "secretary; a new version."
+    },
+    {
+      "verb": "list_minutes",
+      "method": "GET",
+      "path": "/v1/meetings/{id}/minutes",
+      "response": "MinutesList",
+      "permission": "board.read"
+    },
+    {
+      "verb": "get_minutes",
+      "method": "GET",
+      "path": "/v1/minutes/{id}",
+      "response": "Minutes",
+      "permission": "board.read"
+    },
+    {
+      "verb": "edit_minutes",
+      "method": "PUT",
+      "path": "/v1/minutes/{id}",
+      "request": "MinutesInput",
+      "response": "Minutes",
+      "write": true,
+      "permission": "board.minutes",
+      "description": "Drafts only."
+    },
+    {
+      "verb": "approve_minutes",
+      "method": "POST",
+      "path": "/v1/minutes/{id}/approve",
+      "response": "Minutes",
+      "write": true,
+      "permission": "board.approve",
+      "description": "A director who attended and did not draft it (403 separation_of_duties otherwise)."
+    },
+    {
+      "verb": "create_action",
+      "method": "POST",
+      "path": "/v1/meetings/{id}/actions",
+      "request": "ActionInput",
+      "response": "ActionItem",
+      "write": true,
+      "permission": "board.write"
+    },
+    {
+      "verb": "list_meeting_actions",
+      "method": "GET",
+      "path": "/v1/meetings/{id}/actions",
+      "response": "ActionList",
+      "permission": "board.read"
+    },
+    {
+      "verb": "list_my_actions",
+      "method": "GET",
+      "path": "/v1/actions",
+      "response": "ActionList",
+      "permission": "board.self-read"
+    },
+    {
+      "verb": "get_action",
+      "method": "GET",
+      "path": "/v1/actions/{id}",
+      "response": "ActionItem",
+      "permission": "board.self-read"
+    },
+    {
+      "verb": "update_action",
+      "method": "PATCH",
+      "path": "/v1/actions/{id}",
+      "request": "ActionStatusRequest",
+      "response": "ActionItem",
+      "write": true,
+      "permission": "board.self-read",
+      "description": "The assignee or the secretary."
+    },
+    {
+      "verb": "set_legal_hold",
+      "method": "PUT",
+      "path": "/v1/people/{person}/legal-hold",
+      "request": "LegalHoldRequest",
+      "write": true,
+      "permission": "board.admin",
+      "description": "204."
+    },
+    {
+      "verb": "request_erasure",
+      "method": "POST",
+      "path": "/v1/people/{person}/erasure",
+      "response": "Erasure",
+      "write": true,
+      "permission": "board.admin",
+      "description": "Legal retention overrides erasure for minutes, votes and registers."
+    },
+    {
+      "verb": "list_erasures",
+      "method": "GET",
+      "path": "/v1/erasures",
+      "response": "ErasureList",
+      "permission": "board.admin",
+      "description": "Query: after."
+    }
+  ],
+  "$defs": {
+    "BodyInput": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 120,
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "board",
+            "committee"
+          ]
+        },
+        "parent_id": {
+          "type": "string",
+          "pattern": "^bdy_[0-9a-f]{24}$"
+        },
+        "entity_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "quorum_num": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "quorum_den": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "quorum_min": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "quorum_excludes_recused": {
+          "type": "boolean"
+        },
+        "pass_num": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "pass_den": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "pass_inclusive": {
+          "type": "boolean"
+        },
+        "notice_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 366
+        },
+        "notice_basis": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind"
+      ]
+    },
+    "Body": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^bdy_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "board",
+            "committee"
+          ]
+        },
+        "parent_id": {
+          "type": "string",
+          "pattern": "^bdy_[0-9a-f]{24}$"
+        },
+        "entity_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "quorum_num": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quorum_den": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quorum_min": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quorum_excludes_recused": {
+          "type": "boolean"
+        },
+        "pass_num": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pass_den": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pass_inclusive": {
+          "type": "boolean"
+        },
+        "notice_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 366
+        },
+        "notice_basis": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "quorum_num",
+        "quorum_den",
+        "quorum_min",
+        "quorum_excludes_recused",
+        "pass_num",
+        "pass_den",
+        "pass_inclusive",
+        "notice_days",
+        "created_at"
+      ]
+    },
+    "BodyList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Body"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "MemberInput": {
+      "type": "object",
+      "properties": {
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "chair",
+            "member",
+            "secretary",
+            "observer"
+          ]
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "person_id",
+        "role"
+      ]
+    },
+    "Member": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^mbr_[0-9a-f]{24}$"
+        },
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "chair",
+            "member",
+            "secretary",
+            "observer"
+          ]
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "person_id",
+        "role",
+        "start_date"
+      ]
+    },
+    "MemberList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Member"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "EndMemberRequest": {
+      "type": "object",
+      "properties": {
+        "end_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "MeetingInput": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "starts_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "starts_time": {
+          "type": "string",
+          "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "in-person",
+            "remote",
+            "hybrid"
+          ]
+        },
+        "notice_given_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "short_notice_waiver_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "invitees": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "person_id": {
+                "type": "string",
+                "pattern": "^pers_[0-9a-f]{24}$"
+              },
+              "capacity": {
+                "type": "string",
+                "enum": [
+                  "attendee",
+                  "officer"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "person_id",
+              "capacity"
+            ]
+          },
+          "maxItems": 200
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "starts_on"
+      ]
+    },
+    "Meeting": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        },
+        "body_id": {
+          "type": "string",
+          "pattern": "^bdy_[0-9a-f]{24}$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "starts_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "starts_time": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "in-person",
+            "remote",
+            "hybrid"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "scheduled",
+            "held",
+            "cancelled"
+          ]
+        },
+        "notice_given_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "notice_days_required": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 366
+        },
+        "short_notice_waiver_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "pack_issued_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "invitees": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "person_id": {
+                "type": "string",
+                "pattern": "^pers_[0-9a-f]{24}$"
+              },
+              "capacity": {
+                "type": "string",
+                "enum": [
+                  "attendee",
+                  "officer"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "person_id",
+              "capacity"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "body_id",
+        "title",
+        "starts_on",
+        "mode",
+        "status",
+        "notice_given_on",
+        "notice_days_required"
+      ]
+    },
+    "MeetingList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Meeting"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "MeetingStatusRequest": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "held",
+            "cancelled"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ]
+    },
+    "AgendaInput": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "information",
+            "discussion",
+            "resolution",
+            "closed"
+          ]
+        },
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "kind"
+      ]
+    },
+    "AgendaItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^agi_[0-9a-f]{24}$"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "information",
+            "discussion",
+            "resolution",
+            "closed"
+          ]
+        },
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "position",
+        "title",
+        "kind"
+      ]
+    },
+    "AgendaList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AgendaItem"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "AttendanceInput": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "present",
+            "remote",
+            "apology",
+            "absent"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ]
+    },
+    "Attendee": {
+      "type": "object",
+      "properties": {
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "present",
+            "remote",
+            "apology",
+            "absent"
+          ]
+        },
+        "capacity": {
+          "type": "string",
+          "enum": [
+            "member",
+            "observer",
+            "invitee",
+            ""
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "person_id",
+        "status",
+        "capacity"
+      ]
+    },
+    "AttendeeList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Attendee"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "Quorum": {
+      "type": "object",
+      "properties": {
+        "eligible": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "present": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "required": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "met": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "eligible",
+        "present",
+        "required",
+        "met"
+      ]
+    },
+    "PackInput": {
+      "type": "object",
+      "properties": {
+        "doc_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "media_type": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "doc_ref",
+        "title"
+      ]
+    },
+    "PackItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^pki_[0-9a-f]{24}$"
+        },
+        "doc_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "supplementary": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "doc_ref",
+        "title",
+        "size_bytes",
+        "position",
+        "supplementary"
+      ]
+    },
+    "Pack": {
+      "type": "object",
+      "properties": {
+        "meeting_id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        },
+        "issued_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PackItem"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "meeting_id",
+        "items"
+      ]
+    },
+    "ResolutionInput": {
+      "type": "object",
+      "properties": {
+        "meeting_id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "meeting",
+            "consent"
+          ]
+        },
+        "secret_ballot": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 20000,
+          "minLength": 1
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^pers_[0-9a-f]{24}$"
+          },
+          "maxItems": 20
+        },
+        "consent_deadline": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "pass_num": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "pass_den": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "pass_inclusive": {
+          "type": "boolean"
+        },
+        "supersedes_id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "text"
+      ]
+    },
+    "AmendInput": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 20000,
+          "minLength": 1
+        },
+        "meeting_id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "text"
+      ]
+    },
+    "Resolution": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        },
+        "body_id": {
+          "type": "string",
+          "pattern": "^bdy_[0-9a-f]{24}$"
+        },
+        "meeting_id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "meeting",
+            "consent"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "proposed",
+            "voting",
+            "passed",
+            "failed",
+            "withdrawn"
+          ]
+        },
+        "secret_ballot": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "text_withheld": {
+          "type": "boolean"
+        },
+        "pass_num": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pass_den": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pass_inclusive": {
+          "type": "boolean"
+        },
+        "consent_deadline": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "external_type": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "external_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "supersedes_id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        },
+        "eligible": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quorum_required": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quorum_present": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "for": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "against": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "abstain": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "tally",
+                "all_signed",
+                "declined",
+                "deadline",
+                "withdrawn",
+                "proposer_sole_approver",
+                "no_quorum"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "for",
+            "against",
+            "abstain",
+            "reason"
+          ]
+        },
+        "closed_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "voted": {
+          "type": "boolean"
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Conflict"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "body_id",
+        "kind",
+        "status",
+        "secret_ballot",
+        "version",
+        "pass_num",
+        "pass_den",
+        "pass_inclusive"
+      ]
+    },
+    "ResolutionList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Resolution"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "Conflict": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^cfl_[0-9a-f]{24}$"
+        },
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "treatment": {
+          "type": "string",
+          "enum": [
+            "recuse",
+            "abstain",
+            "disclosed"
+          ]
+        },
+        "nature": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "person_id",
+        "treatment"
+      ]
+    },
+    "ConflictInput": {
+      "type": "object",
+      "properties": {
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "treatment": {
+          "type": "string",
+          "enum": [
+            "recuse",
+            "abstain",
+            "disclosed"
+          ]
+        },
+        "nature": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "treatment"
+      ]
+    },
+    "VoteInput": {
+      "type": "object",
+      "properties": {
+        "choice": {
+          "type": "string",
+          "enum": [
+            "for",
+            "against",
+            "abstain"
+          ]
+        },
+        "signature_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "choice"
+      ]
+    },
+    "VoteRecord": {
+      "type": "object",
+      "properties": {
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "choice": {
+          "type": "string",
+          "enum": [
+            "for",
+            "against",
+            "abstain"
+          ]
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "roll_call",
+            "consent"
+          ]
+        },
+        "signature_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "cast_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "person_id",
+        "choice",
+        "method",
+        "cast_on"
+      ]
+    },
+    "VoteList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VoteRecord"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "MinutesInput": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "maxLength": 200000,
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "content"
+      ]
+    },
+    "Minutes": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^min_[0-9a-f]{24}$"
+        },
+        "meeting_id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "approved",
+            "superseded"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "content_withheld": {
+          "type": "boolean"
+        },
+        "approved_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "meeting_id",
+        "version",
+        "status"
+      ]
+    },
+    "MinutesList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Minutes"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "ActionInput": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 2000,
+          "minLength": 1
+        },
+        "assignee_person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "work_issue_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "due_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ]
+    },
+    "ActionItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^act_[0-9a-f]{24}$"
+        },
+        "meeting_id": {
+          "type": "string",
+          "pattern": "^mtg_[0-9a-f]{24}$"
+        },
+        "text": {
+          "type": "string"
+        },
+        "assignee_person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "work_issue_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        "due_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^res_[0-9a-f]{24}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "done",
+            "cancelled"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "meeting_id",
+        "text",
+        "status"
+      ]
+    },
+    "ActionList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActionItem"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    },
+    "ActionStatusRequest": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "done",
+            "cancelled"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ]
+    },
+    "LegalHoldRequest": {
+      "type": "object",
+      "properties": {
+        "hold": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "Erasure": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "retained": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "class": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "class",
+              "count",
+              "reason"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "classes",
+        "date",
+        "retained"
+      ]
+    },
+    "ErasureEntry": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "subject": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "class": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "seq",
+        "subject",
+        "class",
+        "date"
+      ]
+    },
+    "ErasureList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ErasureEntry"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ]
+    }
+  }
+}

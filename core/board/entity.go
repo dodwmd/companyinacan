@@ -694,7 +694,7 @@ func detailKeyOK(k string) bool {
 		return false
 	}
 	for _, r := range k {
-		if !(r >= 'a' && r <= 'z') && r != '_' {
+		if (r < 'a' || r > 'z') && r != '_' {
 			return false
 		}
 	}
