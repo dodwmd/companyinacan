@@ -209,7 +209,8 @@ func TestCanCoreLifecycle(t *testing.T) {
 	// 2. injected config and a module API call with the real projected token, reviewed by the real API server
 	eventually(t, 90*time.Second, "the stub to authenticate against the module API with its projected token", func() (bool, string) {
 		l := stubLogs()
-		return strings.Contains(l, `"id":"stub"`) && strings.Contains(l, `"namespace":"mod-stub"`), l
+		// the admin-port probe takes its 3 s timeout before it logs, so wait for it as well
+		return strings.Contains(l, `"id":"stub"`) && strings.Contains(l, `"namespace":"mod-stub"`) && strings.Contains(l, "ADMIN "), l
 	})
 	l := stubLogs()
 	for _, want := range []string{"GREETING=first", "CAN_API_URL=http://can-core.can-system.svc.cluster.local:8090", "CAN_WEBHOOK_SECRET_SET=yes", "ADMIN blocked"} {
