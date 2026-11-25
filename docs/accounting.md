@@ -146,7 +146,7 @@ that would belong in its own module with its own credentials, not in this one.
 
 `PayrollAdapter`: inbound only. `POST /v1/ledger/payroll-import?adapter=csv` with a file whose header is exactly
 `date,account_code,debit,credit,currency,memo` creates one draft journal per date and currency, each of which must
-balance. The drafts post only when someone else approves them. The same file imports once.
+balance. The drafts post only when someone else approves them. Importing the same file again creates nothing, except a journal whose draft was deleted, which is made again.
 **No payroll is calculated here.** The file is whatever your payroll provider produced; this module checks that it balances and nothing
 else. Verify payroll, tax and super with your payroll provider and your accountant.
 

@@ -319,7 +319,7 @@ type PayrollImportResult struct {
 }
 
 // ImportPayrollJournal reads a payroll journal file into draft manual journals. They post only when
-// someone other than the importer approves them (PostJournal). The same file is imported once.
+// someone other than the importer approves them (PostJournal). Importing the same file again makes only the journals whose drafts were deleted.
 func (s *Store) ImportPayrollJournal(ctx context.Context, a *Principal, adapter string, body io.Reader) (*PayrollImportResult, error) {
 	ad, ok := payrollAdapters[adapter]
 	if !ok {
@@ -341,28 +341,33 @@ func (s *Store) ImportPayrollJournal(ctx context.Context, a *Principal, adapter 
 	}
 	res := &PayrollImportResult{DraftIDs: []int64{}, Disclaimer: PayrollDisclaimer}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		var prev string
-		err := tx.QueryRowContext(ctx, `SELECT entry_ids FROM payroll_imports WHERE sha256 = ?`, hash).Scan(&prev)
-		if err == nil {
-			res.Already = true
-			return json.Unmarshal([]byte(prev), &res.DraftIDs)
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
+		// A journal of this file that still exists (draft or posted) is never made twice; one whose draft was
+		// deleted is made again, so a deleted draft can be re-imported.
+		res.DraftIDs, res.Already = []int64{}, true
 		for _, j := range journals {
+			ref := hash[:16] + ":" + j.EntryDate + ":" + j.Currency
+			if id, ok, err := s.entryExists(ctx, tx, "payroll", ref); err != nil {
+				return err
+			} else if ok {
+				res.DraftIDs = append(res.DraftIDs, id)
+				continue
+			}
 			lines, err := s.resolveLines(ctx, tx, j.Lines)
 			if err != nil {
 				return err
 			}
-			id, err := s.insertDraftEntry(ctx, tx, postSpec{Source: "payroll", Ref: hash[:16] + ":" + j.EntryDate + ":" + j.Currency, Date: j.EntryDate, Currency: j.Currency, Memo: j.Memo, By: a.Subject, Lines: lines})
+			id, err := s.insertDraftEntry(ctx, tx, postSpec{Source: "payroll", Ref: ref, Date: j.EntryDate, Currency: j.Currency, Memo: j.Memo, By: a.Subject, Lines: lines})
 			if err != nil {
 				return err
 			}
-			res.DraftIDs = append(res.DraftIDs, id)
+			res.DraftIDs, res.Already = append(res.DraftIDs, id), false
+		}
+		if res.Already {
+			return nil
 		}
 		ids, _ := json.Marshal(res.DraftIDs)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO payroll_imports (sha256, entry_ids, imported_by, imported_at) VALUES (?, ?, ?, ?)`, hash, string(ids), a.Subject, ts(s.now())); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO payroll_imports (sha256, entry_ids, imported_by, imported_at) VALUES (?, ?, ?, ?)
+			ON CONFLICT (sha256) DO UPDATE SET entry_ids = excluded.entry_ids, imported_by = excluded.imported_by, imported_at = excluded.imported_at`, hash, string(ids), a.Subject, ts(s.now())); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, a.Subject, "ledger.payroll.import", hash[:16], map[string]any{"drafts": len(res.DraftIDs)})

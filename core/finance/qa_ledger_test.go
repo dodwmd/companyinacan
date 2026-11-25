@@ -239,3 +239,27 @@ func TestQAOnlyManualJournalsAreReversedByHand(t *testing.T) {
 	}
 	e.must(201, bea, "POST", "/v1/ledger/journals/"+id(j.ID)+"/reverse", obj{"date": "2026-05-02", "reason": "r"}, nil)
 }
+
+// QA 8: a deleted payroll draft can be imported again; journals that still exist are not duplicated.
+func TestQADeletedPayrollDraftCanBeReimported(t *testing.T) {
+	e := newEnv(t)
+	ledgerOn(t, e)
+	drafter := e.token("dana", acct, nil, nil, false)
+	file := "date,account_code,debit,credit,currency,memo\n2026-05-31,5000,10.00,,USD,a\n2026-05-31,1000,,10.00,USD,b\n2026-06-30,5000,12.00,,USD,a\n2026-06-30,1000,,12.00,USD,b\n"
+	var first, again PayrollImportResult
+	e.must(201, drafter, "POST", "/v1/ledger/payroll-import?adapter=csv", file, &first)
+	e.must(204, drafter, "DELETE", "/v1/ledger/journals/"+id(first.DraftIDs[0]), nil, nil)
+	e.must(201, drafter, "POST", "/v1/ledger/payroll-import?adapter=csv", file, &again)
+	if len(again.DraftIDs) != 2 || again.DraftIDs[0] == first.DraftIDs[0] || again.DraftIDs[1] != first.DraftIDs[1] || again.Already {
+		t.Fatalf("first %v, again %+v", first.DraftIDs, again)
+	}
+	var third PayrollImportResult
+	if code := e.do(drafter, "POST", "/v1/ledger/payroll-import?adapter=csv", file, &third); code != 200 || !third.Already {
+		t.Errorf("third = %d %+v", code, third)
+	}
+	var n int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM journal_entries WHERE source = 'payroll'`).Scan(&n)
+	if n != 2 {
+		t.Errorf("%d payroll entries", n)
+	}
+}
