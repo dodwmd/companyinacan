@@ -72,3 +72,23 @@ var ChecklistTaskCompletedV1 []byte
 //
 //go:embed person.erased.v1.json
 var PersonErasedV1 []byte
+
+// JobOpenedV1 is the JSON Schema of the job.opened.v1 event.
+//
+//go:embed job.opened.v1.json
+var JobOpenedV1 []byte
+
+// ApplicationReceivedV1 is the JSON Schema of the application.received.v1 event.
+//
+//go:embed application.received.v1.json
+var ApplicationReceivedV1 []byte
+
+// ApplicationStageChangedV1 is the JSON Schema of the application.stage_changed.v1 event.
+//
+//go:embed application.stage_changed.v1.json
+var ApplicationStageChangedV1 []byte
+
+// CandidateHiredV1 is the JSON Schema of the candidate.hired.v1 event.
+//
+//go:embed candidate.hired.v1.json
+var CandidateHiredV1 []byte

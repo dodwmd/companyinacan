@@ -34,6 +34,7 @@ var Catalogue = []string{
 	"person.hired.v1", "person.left.v1",
 	"person.created.v1", "person.status_changed.v1", "person.offboarded.v1", "person.erased.v1",
 	"oneonone.scheduled.v1", "goal.updated.v1", "checklist.task_completed.v1",
+	"job.opened.v1", "application.stage_changed.v1", "candidate.hired.v1",
 	"document.signed.v1",
 	"contract.requested.v1", "contract.signed.v1", "contract.expiring.v1",
 	"time.approved.v1",

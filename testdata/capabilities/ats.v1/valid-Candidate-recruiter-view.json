@@ -1,0 +1,12 @@
+{
+  "id": "cand_00000000000000c1",
+  "name": "Ada Example",
+  "email": "ada@example.com",
+  "tags": [],
+  "talent_pool": false,
+  "talent_consent_at": null,
+  "consent_at": "2026-11-25T09:00:00Z",
+  "consent_version": "v1",
+  "erased": false,
+  "legal_hold": false
+}

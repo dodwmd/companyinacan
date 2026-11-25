@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/candidate.hired.v1.json",
+  "title": "candidate.hired.v1",
+  "description": "Published when a candidate is hired: the hand-off the people module consumes to start onboarding. Carries ids and job facts only; the people module fetches name and contact details through the `ats` capability with a token that may read them (audited), and uses candidate_id as the idempotency key. Delivered at least once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "candidate.hired.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "jobs"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "application_id",
+        "job_id",
+        "job_title",
+        "department",
+        "employment_type",
+        "actor",
+        "hired_at"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "application_id": {
+          "type": "string",
+          "pattern": "^app_[0-9a-f]{16}$"
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{16}$"
+        },
+        "job_title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "employment_type": {
+          "enum": [
+            "full_time",
+            "part_time",
+            "contract",
+            "temporary",
+            "intern",
+            "volunteer",
+            "other"
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "hired_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+# Jobs: in-house Go service (cmd/can-jobs, library core/jobs). Recruiting with job-board
+# syndication built in: requisitions and postings, public careers pages with schema.org JobPosting
+# data, feeds, application intake, an ATS pipeline with scorecards, a talent pool, consent,
+# retention and erasure. Candidate data is personal data (constitution V), so this is an in-house
+# module only: sealed fields, audited reads, retention, legal hold and erasure tombstones.
+# This is a tool, not legal or employment advice; compliance is the operator's responsibility
+# (docs/recruiting.md). It does not post to LinkedIn, Indeed or Glassdoor: those need partner access.
+schema: 1
+id: jobs
+name: Jobs and recruiting
+description: Job requisitions and postings, public careers pages with Google for Jobs data, XML and JSON feeds, application intake with spam controls and resume upload, an ATS pipeline with scorecards and blind feedback, talent pool, duplicate detection, consent and retention, erasure with tombstones, and the hire hand-off event. Partner API connectors for LinkedIn, Indeed and Glassdoor are documented stubs.
+category: people
+version: 0.1.0
+# experimental: unit-, contract- and race-tested offline; the image has not been built or run on
+# a cluster, there are no Helm templates yet (values only, like people), no web UI for recruiters,
+# no real virus scanner or board connector, and can-core does not yet inject the keyring Secret.
+status: experimental
+provider:
+  type: inhouse
+  name: can-jobs
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Idle RAM target 30 MB (SPEC.md section 6.1). Measured on the static linux/amd64 build:
+  # 16.0 MiB RSS idle, 23.0 MiB after 100 job creates and 200 careers-page and API list requests
+  # (specs/013-jobs-recruiting/research.md R8).
+  ram_mb: 30
+  ram_limit_mb: 64
+  disk_mb: 1000
+provides:
+  - { capability: jobs, schema: jobs.v1, service: jobs, port: 8080 }
+  - { capability: ats, schema: ats.v1, service: jobs, port: 8080 }
+publishes:
+  - { event: job.opened.v1, schema: ./events/job.opened.v1.json }
+  - { event: application.received.v1, schema: ./events/application.received.v1.json }
+  - { event: application.stage_changed.v1, schema: ./events/application.stage_changed.v1.json }
+  # the hand-off the people module consumes to start onboarding
+  - { event: candidate.hired.v1, schema: ./events/candidate.hired.v1.json }
+# Coarse permissions gate the capability verbs; the finer rules (job scope, hiring manager of the
+# job, assigned interviewer, per field) are enforced inside the service (core/jobs/scope.go).
+permissions: [jobs.read, jobs.write, ats.read, ats.write, ats.hire, ats.interview, jobs.admin]
+# Manifest role names use hyphens; the API token role is hiring_manager.
+roles:
+  recruiter: [jobs.read, jobs.write, ats.read, ats.write, ats.hire, ats.interview]
+  hiring-manager: [jobs.read, ats.read, ats.write, ats.interview]
+  interviewer: [ats.interview]
+  admin: [jobs.read, jobs.write, ats.read, ats.write, ats.hire, ats.interview, jobs.admin]
+data_classes:
+  # Name, email, phone, address, salary expectation, notes, cover letters. Sealed per field;
+  # every read audited; never in events. Counts from the last decision on the candidate's
+  # applications (12 months rejected, 24 months talent pool with consent, 6 months after a hire).
+  - { class: candidate-pii, retention: 12m, sensitivity: sensitive }
+  # Resume files (on the volume, never in the database) and their metadata.
+  - { class: candidate-resumes, retention: 12m, sensitivity: sensitive }
+  # Scorecards, interview feedback and rejection notes.
+  - { class: candidate-evaluations, retention: 12m, sensitivity: sensitive }
+  # Voluntary diversity answers: collected only when the operator turns it on, stored with no
+  # link to a candidate, read as suppressed aggregates by admins only.
+  - { class: eeo-aggregate, retention: 3y, sensitivity: sensitive }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

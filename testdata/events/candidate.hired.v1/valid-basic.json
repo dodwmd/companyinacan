@@ -1,0 +1,16 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "candidate.hired.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "jobs",
+  "data": {
+    "candidate_id": "cand_00000000000000c1",
+    "application_id": "app_00000000000000b1",
+    "job_id": "job_00000000000000a1",
+    "job_title": "Senior Engineer",
+    "department": "Engineering",
+    "employment_type": "full_time",
+    "actor": "rita@example.com",
+    "hired_at": "2026-11-25T09:00:00Z"
+  }
+}

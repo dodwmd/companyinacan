@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/jobs.v1.json",
+  "title": "jobs.v1",
+  "description": "Capability `jobs` (SPEC.md section 4.3, Recruiting): job requisitions and postings with an approval hook, public careers pages and feeds. Provided by the in-house jobs module. Bodies are JSON over HTTP with a bearer token. Authorisation is by role (recruiter, hiring_manager, interviewer, admin) and by the token's job scope; anything outside a caller's scope is a 404. Consumers must not depend on anything not in this file.",
+  "x-capability": "jobs",
+  "x-verbs": [
+    {
+      "verb": "list",
+      "method": "GET",
+      "path": "/v1/jobs",
+      "response": "JobList",
+      "permission": "jobs.read",
+      "description": "Query: status, department, cursor, limit. Returns only the jobs the caller's role and token scope reach."
+    },
+    {
+      "verb": "get",
+      "method": "GET",
+      "path": "/v1/jobs/{id}",
+      "response": "Job",
+      "permission": "jobs.read",
+      "description": "404 for a job outside the caller's scope, the same as for one that does not exist."
+    },
+    {
+      "verb": "create",
+      "method": "POST",
+      "path": "/v1/jobs",
+      "request": "NewJob",
+      "response": "Job",
+      "write": true,
+      "permission": "jobs.write",
+      "description": "Creates a draft. recruiter or admin, unscoped tokens only."
+    },
+    {
+      "verb": "transition",
+      "method": "POST",
+      "path": "/v1/jobs/{id}/transitions",
+      "request": "TransitionRequest",
+      "response": "Job",
+      "write": true,
+      "permission": "jobs.write",
+      "description": "draft to open or closed, open to paused or closed, paused to open or closed. Closing needs a reason. 409 for an illegal move or a missing approval."
+    },
+    {
+      "verb": "boards",
+      "method": "GET",
+      "path": "/v1/boards",
+      "response": "BoardList",
+      "permission": "jobs.read",
+      "description": "Status per job board: feed, connected or needs_partner_access."
+    }
+  ],
+  "$defs": {
+    "Job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "slug",
+        "title",
+        "status",
+        "remote",
+        "employment_type",
+        "sections",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{16}$"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "location": {
+          "type": "object"
+        },
+        "remote": {
+          "enum": [
+            "onsite",
+            "hybrid",
+            "remote"
+          ]
+        },
+        "applicant_countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "employment_type": {
+          "type": "string"
+        },
+        "salary": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "publish_salary": {
+          "type": "boolean"
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "heading",
+              "body"
+            ],
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "hiring_manager": {
+          "type": "string"
+        },
+        "headcount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "open",
+            "paused",
+            "closed"
+          ]
+        },
+        "approval": {
+          "enum": [
+            "none",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "valid_through": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opened_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "closed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "close_reason": {
+          "type": "string"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "JobList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Job"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "NewJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "remote",
+        "employment_type",
+        "sections"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "department": {},
+        "location": {},
+        "remote": {
+          "enum": [
+            "onsite",
+            "hybrid",
+            "remote"
+          ]
+        },
+        "applicant_countries": {},
+        "employment_type": {
+          "enum": [
+            "full_time",
+            "part_time",
+            "contract",
+            "temporary",
+            "intern",
+            "volunteer",
+            "other"
+          ]
+        },
+        "salary": {},
+        "publish_salary": {},
+        "sections": {
+          "type": "array",
+          "minItems": 1
+        },
+        "hiring_manager": {},
+        "headcount": {},
+        "valid_through": {}
+      }
+    },
+    "TransitionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "to"
+      ],
+      "properties": {
+        "to": {
+          "enum": [
+            "open",
+            "paused",
+            "closed"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "filled",
+            "cancelled",
+            "expired",
+            "other"
+          ]
+        }
+      }
+    },
+    "BoardList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "status"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "feed",
+                  "connected",
+                  "needs_partner_access"
+                ]
+              },
+              "supports_apply": {
+                "type": "boolean"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

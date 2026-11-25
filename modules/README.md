@@ -10,6 +10,7 @@ Directories starting with `_` are examples and are not enabled or listed in THIR
 | `newsletter` | Listmonk | AGPL-3.0 | 50 MB | Postgres | `newsletter` |
 | `analytics` | GoatCounter | EUPL-1.2 | 20 MB | SQLite | `analytics` |
 | `people` | in-house | Apache-2.0 | 30 MB (14 MB measured idle) | SQLite | `directory`, `performance` |
+| `jobs` | in-house | Apache-2.0 | 30 MB (16 MB measured idle) | SQLite | `jobs`, `ats` |
 
 ## Licences and network copyleft
 

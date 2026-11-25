@@ -1,0 +1,18 @@
+{
+  "id": "job_00000000000000a1",
+  "slug": "senior-engineer-00a1b2",
+  "title": "Senior Engineer",
+  "department": "Engineering",
+  "remote": "hybrid",
+  "employment_type": "full_time",
+  "sections": [
+    {
+      "heading": "About",
+      "body": "Work."
+    }
+  ],
+  "status": "open",
+  "approval": "none",
+  "headcount": 1,
+  "version": 2
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/application.stage_changed.v1.json",
+  "title": "application.stage_changed.v1",
+  "description": "Published when an application moves, is rejected or is hired. Carries ids, stage keys and the new status, never a rejection note or reason text. Delivered at least once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "application.stage_changed.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "jobs"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "application_id",
+        "job_id",
+        "candidate_id",
+        "from",
+        "to",
+        "status",
+        "actor",
+        "changed_at"
+      ],
+      "properties": {
+        "application_id": {
+          "type": "string",
+          "pattern": "^app_[0-9a-f]{16}$"
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{16}$"
+        },
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "from": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,29}$"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "rejected",
+            "withdrawn",
+            "hired"
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "changed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

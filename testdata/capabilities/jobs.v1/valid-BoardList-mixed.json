@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "name": "google-jobs",
+      "status": "feed"
+    },
+    {
+      "name": "linkedin",
+      "status": "needs_partner_access"
+    }
+  ]
+}

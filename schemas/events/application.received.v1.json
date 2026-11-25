@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/application.received.v1.json",
+  "title": "application.received.v1",
+  "description": "Published when an application is stored (careers form or staff entry). Carries opaque ids and the tracking source only: no name, email or any candidate field. Consumers fetch details through the `ats` capability with a token that may see them (the read is audited). Delivered at least once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "application.received.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "jobs"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "application_id",
+        "job_id",
+        "candidate_id",
+        "source",
+        "new_candidate",
+        "received_at"
+      ],
+      "properties": {
+        "application_id": {
+          "type": "string",
+          "pattern": "^app_[0-9a-f]{16}$"
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{16}$"
+        },
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{0,40}$"
+        },
+        "new_candidate": {
+          "type": "boolean"
+        },
+        "received_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

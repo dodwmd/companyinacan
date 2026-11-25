@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/job.opened.v1.json",
+  "title": "job.opened.v1",
+  "description": "Published when a job becomes open (first opening or reopening after a pause). Carries job facts only, no candidate data. Delivered at least once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "job.opened.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "jobs"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "job_id",
+        "slug",
+        "title",
+        "department",
+        "employment_type",
+        "remote",
+        "reopened",
+        "opened_at",
+        "actor"
+      ],
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{16}$"
+        },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "employment_type": {
+          "enum": [
+            "full_time",
+            "part_time",
+            "contract",
+            "temporary",
+            "intern",
+            "volunteer",
+            "other"
+          ]
+        },
+        "remote": {
+          "enum": [
+            "onsite",
+            "hybrid",
+            "remote"
+          ]
+        },
+        "reopened": {
+          "type": "boolean"
+        },
+        "opened_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 254
+        }
+      }
+    }
+  }
+}

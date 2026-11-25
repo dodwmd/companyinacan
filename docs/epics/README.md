@@ -32,6 +32,7 @@ Backlog (broken down into epics when the previous phase is done):
 | E13a | first slice of E13/E14: in-house `people` (directory, org, lifecycle, checklists) and `performance` (1:1s, goals), retention/erasure | 3a — built offline, experimental: `specs/012-people-directory/` |
 | E15 | `invoices`, `contracts`, expenses, vendors, accounting/payroll adapters | 3b |
 | E16 | `jobs` (careers page, feeds, ATS, board connectors) | 3b |
+| E16a | first slice of E16: in-house `jobs` (requisitions, careers pages with JobPosting data, feeds, application intake, ATS pipeline, talent pool, consent/retention/erasure); board connectors are stubs (partner access needed) | 3b — built offline, experimental: `specs/013-jobs-recruiting/` |
 | E17 | `equity`, `board`, `entity`; investor and other portals; search, reporting, import | 3b |
 | E18 | Registry, more providers, hibernation, multi-company on one server | 3c |
 | E19 | Android companion app (approvals, notifications, timesheets, 1:1s, work items) on the public API; PWA hardening for the web UI | 3a |
