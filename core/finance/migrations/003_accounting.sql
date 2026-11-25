@@ -79,6 +79,7 @@ CREATE TABLE journal_entries (
     CHECK ((status = 'draft') = (number IS NULL))
 );
 CREATE INDEX journal_entries_date ON journal_entries (entry_date, id);
+CREATE UNIQUE INDEX journal_entries_number ON journal_entries (number) WHERE number IS NOT NULL;
 -- A business event posts once, however many times it is retried.
 CREATE UNIQUE INDEX journal_source_once ON journal_entries (source, source_ref) WHERE source_ref <> '' AND source <> 'reversal';
 CREATE UNIQUE INDEX journal_reversal_once ON journal_entries (reversal_of) WHERE reversal_of IS NOT NULL;
@@ -223,17 +224,18 @@ CREATE TABLE bank_reconciliations (
     UNIQUE (bank_account_id, period)
 );
 
--- Export batches: the cursor is the last journal entry id handed to an adapter, so an entry is never
--- exported twice; the content is kept so a batch can be downloaded again byte for byte.
+-- Export batches: the cursor is the last posting number (journal_entries.number, assigned when an entry
+-- posts, gap-free) handed to an adapter. Entry ids would not do: a draft posted after later entries were
+-- exported has a lower id and would never be exported. So an entry is never exported twice nor skipped; the content is kept so a batch can be downloaded again byte for byte.
 CREATE TABLE export_cursors (
     adapter       TEXT    PRIMARY KEY,
-    last_entry_id INTEGER NOT NULL
+    last_number   INTEGER NOT NULL
 );
 CREATE TABLE export_batches (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     adapter     TEXT    NOT NULL,
-    first_entry INTEGER NOT NULL,
-    last_entry  INTEGER NOT NULL,
+    first_number INTEGER NOT NULL,
+    last_number  INTEGER NOT NULL,
     entry_count INTEGER NOT NULL,
     sha256      TEXT    NOT NULL,
     content     TEXT    NOT NULL,

@@ -97,15 +97,16 @@ func (csvExporter) Export(_ context.Context, entries []JournalEntry, w io.Writer
 type ExportBatch struct {
 	ID         int64     `json:"id"`
 	Adapter    string    `json:"adapter"`
-	FirstEntry int64     `json:"first_entry"`
-	LastEntry  int64     `json:"last_entry"`
+	// FirstNumber and LastNumber are posting numbers (the n of JE-0000n).
+	FirstNumber int64    `json:"first_number"`
+	LastNumber  int64    `json:"last_number"`
 	EntryCount int       `json:"entry_count"`
 	SHA256     string    `json:"sha256"`
 	CreatedBy  string    `json:"created_by"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// ExportJournal exports the posted entries after the adapter's cursor, at most exportBatchSize, as one
+// ExportJournal exports, in posting order, the posted entries after the adapter's cursor, at most exportBatchSize, as one
 // batch. The batch, the cursor and the audit entry are written in one transaction, so an entry is in
 // exactly one batch per adapter: running it twice never exports anything twice, and with an
 // Idempotency-Key a retry returns the same batch. Nothing to export returns a batch with ID 0.
@@ -123,21 +124,21 @@ func (s *Store) ExportJournal(ctx context.Context, a *Principal, adapter, idemKe
 		var err error
 		out, replayed, err = idemRun(ctx, s, tx, a.Subject, idemKey, "ledger.export."+adapter, map[string]string{"adapter": adapter}, func() (*ExportBatch, error) {
 			var cursor int64
-			if err := tx.QueryRowContext(ctx, `SELECT last_entry_id FROM export_cursors WHERE adapter = ?`, adapter).Scan(&cursor); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			if err := tx.QueryRowContext(ctx, `SELECT last_number FROM export_cursors WHERE adapter = ?`, adapter).Scan(&cursor); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
 			}
-			rows, err := tx.QueryContext(ctx, `SELECT id FROM journal_entries WHERE status = 'posted' AND id > ? ORDER BY id LIMIT ?`, cursor, exportBatchSize)
+			rows, err := tx.QueryContext(ctx, `SELECT id, number FROM journal_entries WHERE status = 'posted' AND number > ? ORDER BY number LIMIT ?`, cursor, exportBatchSize)
 			if err != nil {
 				return nil, err
 			}
-			var ids []int64
+			var ids, numbers []int64
 			for rows.Next() {
-				var id int64
-				if err := rows.Scan(&id); err != nil {
+				var id, number int64
+				if err := rows.Scan(&id, &number); err != nil {
 					_ = rows.Close()
 					return nil, err
 				}
-				ids = append(ids, id)
+				ids, numbers = append(ids, id), append(numbers, number)
 			}
 			if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 				return nil, err
@@ -158,17 +159,17 @@ func (s *Store) ExportJournal(ctx context.Context, a *Principal, adapter, idemKe
 				return nil, err
 			}
 			sum := sha256.Sum256(buf.Bytes())
-			b := &ExportBatch{Adapter: adapter, FirstEntry: ids[0], LastEntry: ids[len(ids)-1], EntryCount: len(ids), SHA256: hex.EncodeToString(sum[:]), CreatedBy: a.Subject, CreatedAt: s.now().UTC()}
-			res, err := tx.ExecContext(ctx, `INSERT INTO export_batches (adapter, first_entry, last_entry, entry_count, sha256, content, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				adapter, b.FirstEntry, b.LastEntry, b.EntryCount, b.SHA256, buf.String(), a.Subject, ts(s.now()))
+			b := &ExportBatch{Adapter: adapter, FirstNumber: numbers[0], LastNumber: numbers[len(numbers)-1], EntryCount: len(ids), SHA256: hex.EncodeToString(sum[:]), CreatedBy: a.Subject, CreatedAt: s.now().UTC()}
+			res, err := tx.ExecContext(ctx, `INSERT INTO export_batches (adapter, first_number, last_number, entry_count, sha256, content, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				adapter, b.FirstNumber, b.LastNumber, b.EntryCount, b.SHA256, buf.String(), a.Subject, ts(s.now()))
 			if err != nil {
 				return nil, err
 			}
 			b.ID, _ = res.LastInsertId()
-			if _, err := tx.ExecContext(ctx, `INSERT INTO export_cursors (adapter, last_entry_id) VALUES (?, ?) ON CONFLICT (adapter) DO UPDATE SET last_entry_id = excluded.last_entry_id`, adapter, b.LastEntry); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO export_cursors (adapter, last_number) VALUES (?, ?) ON CONFLICT (adapter) DO UPDATE SET last_number = excluded.last_number`, adapter, b.LastNumber); err != nil {
 				return nil, err
 			}
-			if err := s.audit(ctx, tx, a.Subject, "ledger.export", fmt.Sprint(b.ID), map[string]any{"adapter": adapter, "entries": b.EntryCount, "first": b.FirstEntry, "last": b.LastEntry, "sha256": b.SHA256}); err != nil {
+			if err := s.audit(ctx, tx, a.Subject, "ledger.export", fmt.Sprint(b.ID), map[string]any{"adapter": adapter, "entries": b.EntryCount, "first": b.FirstNumber, "last": b.LastNumber, "sha256": b.SHA256}); err != nil {
 				return nil, err
 			}
 			return b, nil
@@ -183,7 +184,7 @@ func (s *Store) ListExports(ctx context.Context, a *Principal, before int64, lim
 	limit = clampLimit(limit)
 	cancel, rctx := readCtx(ctx)
 	defer cancel()
-	q := `SELECT id, adapter, first_entry, last_entry, entry_count, sha256, created_by, created_at FROM export_batches`
+	q := `SELECT id, adapter, first_number, last_number, entry_count, sha256, created_by, created_at FROM export_batches`
 	var args []any
 	if before > 0 {
 		q += ` WHERE (id < ?)`
@@ -198,7 +199,7 @@ func (s *Store) ListExports(ctx context.Context, a *Principal, before int64, lim
 	for rows.Next() {
 		var b ExportBatch
 		var c int64
-		if err := rows.Scan(&b.ID, &b.Adapter, &b.FirstEntry, &b.LastEntry, &b.EntryCount, &b.SHA256, &b.CreatedBy, &c); err != nil {
+		if err := rows.Scan(&b.ID, &b.Adapter, &b.FirstNumber, &b.LastNumber, &b.EntryCount, &b.SHA256, &b.CreatedBy, &c); err != nil {
 			return nil, 0, err
 		}
 		b.CreatedAt = fromUnix(c)
@@ -221,8 +222,8 @@ func (s *Store) ExportContent(ctx context.Context, a *Principal, id int64) (*Exp
 	var b ExportBatch
 	var c int64
 	var content string
-	err := s.rdb.QueryRowContext(rctx, `SELECT id, adapter, first_entry, last_entry, entry_count, sha256, created_by, created_at, content FROM export_batches WHERE id = ?`, id).
-		Scan(&b.ID, &b.Adapter, &b.FirstEntry, &b.LastEntry, &b.EntryCount, &b.SHA256, &b.CreatedBy, &c, &content)
+	err := s.rdb.QueryRowContext(rctx, `SELECT id, adapter, first_number, last_number, entry_count, sha256, created_by, created_at, content FROM export_batches WHERE id = ?`, id).
+		Scan(&b.ID, &b.Adapter, &b.FirstNumber, &b.LastNumber, &b.EntryCount, &b.SHA256, &b.CreatedBy, &c, &content)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}

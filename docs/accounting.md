@@ -108,8 +108,8 @@ written, the request fails and nothing is shown.
 writes one row per journal line: `entry_number, entry_date, source, source_ref, memo, currency, line, account_code,
 account_name, debit, credit, line_memo` (amounts as plain decimals, text defused against formula injection).
 
-Export is a batch with a **cursor**: `POST /v1/ledger/exports {"adapter":"csv"}` takes the posted entries after the
-adapter's last exported entry (at most 500), stores the file, moves the cursor and writes the audit entry in one
+Export is a batch with a **cursor**: `POST /v1/ledger/exports {"adapter":"csv"}` takes, in posting order, the posted entries after the
+adapter's last exported posting number (at most 500), stores the file, moves the cursor and writes the audit entry in one
 transaction. Running it again exports nothing new; with an `Idempotency-Key` a retry returns the same batch;
 `GET /v1/ledger/exports/{id}/download` returns the same bytes (audited). `xero`, `quickbooks` and `wave` answer `501 not_implemented`,
 change nothing and make no network call. They are registered so that the interface is real; a working adapter is a separate piece of work

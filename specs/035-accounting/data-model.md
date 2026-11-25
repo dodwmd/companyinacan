@@ -14,7 +14,7 @@ existing databases in a transaction and records version 3). Dates are `YYYY-MM-D
 | `bank_statements` | one imported file: `format`, `sha256` (unique per account), `size_bytes`, counts, who and when | the same file is a no-op |
 | `bank_transactions` | `txn_key` (unique per account), `booked_on`, signed `amount_minor` (money in positive), `currency`, `reference`, `counterparty`, `description`, `status` (unmatched, matched, ignored), `matched_payment_id`, who and when, `ignore_reason` | what the bank reported cannot change; a matched or ignored row is final; no delete before retention |
 | `bank_reconciliations` | a signed-off month per bank account | unique `(bank_account_id, period)` |
-| `export_cursors`, `export_batches` | last exported entry per adapter; stored batch (`content`, `sha256`, range, count, who, when) | batches append-only |
+| `export_cursors`, `export_batches` | last exported posting number per adapter; stored batch (`content`, `sha256`, range, count, who, when) | batches append-only |
 | `payroll_imports` | SHA-256 of an imported payroll file and the drafts it made | one import per file |
 
 **Journal sources**: `manual`, `payroll`, `invoice`, `credit_note`, `invoice_void`, `payment`, `expense`, `expense_reimbursed`, `reversal`. `source_ref` is

@@ -418,7 +418,7 @@ func TestJournalExportIsIdempotentAndSafe(t *testing.T) {
 	}
 	post("later", 999)
 	e.must(201, drafter, "POST", "/v1/ledger/exports", obj{"adapter": "csv"}, &b3)
-	if b3.EntryCount != 1 || b3.FirstEntry <= b1.LastEntry {
+	if b3.EntryCount != 1 || b3.FirstNumber <= b1.LastNumber {
 		t.Errorf("third batch %+v after %+v", b3, b1)
 	}
 	code, hdr, body := e.req(drafter, "GET", "/v1/ledger/exports/"+id(b1.ID)+"/download", nil)
@@ -451,7 +451,7 @@ func TestJournalExportIsIdempotentAndSafe(t *testing.T) {
 		t.Errorf("unknown adapter = %d", code)
 	}
 	var cur int64
-	_ = e.app.store.db.QueryRow(`SELECT COALESCE(MAX(last_entry_id), 0) FROM export_cursors WHERE adapter <> 'csv'`).Scan(&cur)
+	_ = e.app.store.db.QueryRow(`SELECT COALESCE(MAX(last_number), 0) FROM export_cursors WHERE adapter <> 'csv'`).Scan(&cur)
 	if cur != 0 {
 		t.Error("a stub moved a cursor")
 	}
