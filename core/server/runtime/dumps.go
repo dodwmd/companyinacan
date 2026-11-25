@@ -66,13 +66,28 @@ func backupModules(db *store.DB) func(context.Context) ([]string, error) {
 
 // newDumper builds the dump runner; hooks can only run (as Jobs) with the Kubernetes installer.
 func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error) {
+	record := func(ctx context.Context, id string) (store.Module, bool) {
+		m, err := db.GetModule(ctx, id)
+		return m, err == nil
+	}
 	d := &dumps.Dumper{Store: &dumps.Store{Dir: c.DumpsDir}, DBPath: c.DBPath, Modules: backupModules(db),
 		Database: func(ctx context.Context, id string) string {
-			m, err := db.GetModule(ctx, id)
-			if err != nil || m.Manifest.Requires.Database == "" {
+			m, ok := record(ctx, id)
+			if !ok || m.Manifest.Requires.Database == "" {
 				return "unknown"
 			}
 			return m.Manifest.Requires.Database
+		},
+		Disabled: func(ctx context.Context, id string) bool {
+			m, ok := record(ctx, id)
+			return ok && m.State == store.StateDisabled
+		},
+		Unrunnable: func(ctx context.Context, id string) string {
+			m, ok := record(ctx, id)
+			if !ok {
+				return ""
+			}
+			return m.Manifest.BackupHookUnrunnable()
 		},
 		CompanyFile: c.CompanyFile, Log: log}
 	if c.Installer == "kubernetes" && c.ModuleInstaller == nil {

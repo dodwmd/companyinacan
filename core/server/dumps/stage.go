@@ -2,9 +2,11 @@ package dumps
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // run is the state of the dump run in progress. Uploads go into its staging directory; the
@@ -128,16 +130,85 @@ func (d *Dumper) openRun(id string) error {
 	return nil
 }
 
-// publish swaps the staged module dumps in for the previous set.
+// publish swaps the staged module dumps in for the previous set. If the new set cannot be moved
+// in, the previous one is put back.
 func (d *Dumper) publish() error {
 	d.mu.Lock()
 	cur := d.cur
 	d.mu.Unlock()
-	live := filepath.Join(d.Store.Dir, "modules")
-	if err := os.Rename(live, filepath.Join(cur.dir, "old")); err != nil && !errors.Is(err, os.ErrNotExist) {
+	live, old := filepath.Join(d.Store.Dir, "modules"), filepath.Join(cur.dir, "old")
+	if err := d.move(live, old); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return os.Rename(filepath.Join(cur.dir, "modules"), live)
+	if err := d.move(filepath.Join(cur.dir, "modules"), live); err != nil {
+		if rerr := d.move(old, live); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+			return errors.Join(err, fmt.Errorf("and the previous set could not be put back: %w", rerr))
+		}
+		return err
+	}
+	return nil
+}
+
+func (d *Dumper) move(from, to string) error {
+	if d.rename != nil {
+		return d.rename(from, to)
+	}
+	return os.Rename(from, to)
+}
+
+// recoverSwap puts the previous set back if a run died between the two renames of publish. It
+// must run before leftovers are cleaned.
+func (d *Dumper) recoverSwap() error {
+	live := filepath.Join(d.Store.Dir, "modules")
+	if _, err := os.Lstat(live); !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	olds, err := filepath.Glob(filepath.Join(d.Store.Dir, ".run-*", "old"))
+	if err != nil || len(olds) == 0 {
+		return err
+	}
+	sort.Strings(olds) // run ids start with the time: the last is the newest
+	d.log().Warn("recovering the previous module dumps from an interrupted run", "from", olds[len(olds)-1])
+	return os.Rename(olds[len(olds)-1], live)
+}
+
+// published reports whether the current set holds a dump of module.
+func (d *Dumper) published(module string) bool {
+	ents, err := os.ReadDir(filepath.Join(d.Store.Dir, "modules", module))
+	return err == nil && len(ents) > 0
+}
+
+// carryForward puts the module's published files into the staged set, in place of anything its
+// hook uploaded in this run. Hard links (not copies, not symlinks) leave the current set whole
+// until the swap.
+func (d *Dumper) carryForward(module string) (bool, error) {
+	d.mu.Lock()
+	dir := d.cur.dir
+	d.mu.Unlock()
+	dst := filepath.Join(dir, "modules", module)
+	if err := os.RemoveAll(dst); err != nil {
+		return false, err
+	}
+	if !d.published(module) {
+		return false, nil
+	}
+	src := filepath.Join(d.Store.Dir, "modules", module)
+	ents, err := os.ReadDir(src)
+	if err != nil {
+		return false, err
+	}
+	if err := plainDir(dst); err != nil {
+		return false, err
+	}
+	for _, e := range ents {
+		if !e.Type().IsRegular() {
+			continue
+		}
+		if err := os.Link(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // closeRun discards the staging directory.

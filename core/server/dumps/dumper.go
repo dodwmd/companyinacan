@@ -36,6 +36,10 @@ type Dumper struct {
 	Modules func(ctx context.Context) ([]string, error)
 	// Database names a module's requires.database, recorded in the DumpedList.
 	Database func(ctx context.Context, module string) string
+	// Disabled reports whether a module is disabled; Unrunnable why its hook is known not to run
+	// ("" if it can). A disabled module never stops backups: it is skipped and reported.
+	Disabled   func(ctx context.Context, module string) bool
+	Unrunnable func(ctx context.Context, module string) string
 	// CompanyFile is the applied company.yaml, copied into every run ("" skips).
 	CompanyFile string
 	Now         func() time.Time // default time.Now
@@ -51,6 +55,8 @@ type Dumper struct {
 	cur    *run
 	// syncPath flushes a file or directory to disk (default fsync); tests observe it.
 	syncPath func(string) error
+	// rename is os.Rename; tests fail it.
+	rename func(from, to string) error
 }
 
 // ErrNoData is returned by a HookRunner when a module has nothing to dump.
@@ -111,10 +117,12 @@ func newRunID(t time.Time) string {
 	return t.UTC().Format("20060102T150405Z") + "-" + hex.EncodeToString(b[:])
 }
 
-// Run performs one dump run: delete the marker, dump can-core's state, run every module's backup
-// hook, and only if all of that succeeded write the marker. A failing hook does not stop the
-// others (their dumps are still refreshed) but leaves the run without a marker, so the host
-// script refuses to back up a set that is missing a module.
+// Run performs one dump run. It removes the marker, copies can-core's state and company.yaml in
+// place (so a failed run has already replaced those two), then runs each module's backup hook
+// into a staging directory. Only if every enabled or failed module with data uploaded is the new
+// set swapped in and the marker written; otherwise the previous module dumps stay, without a
+// marker, so the host script backs up nothing. A disabled module never fails the run: if its hook
+// cannot run or fails it is skipped, reported, and its raw volume files stay in the backup.
 func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if !d.begin() {
 		return Result{}, ErrBusy
@@ -146,6 +154,9 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 			return Result{}, fmt.Errorf("list modules: %w", err)
 		}
 	}
+	if err := d.recoverSwap(); err != nil {
+		return Result{}, fmt.Errorf("recover the previous dumps: %w", err)
+	}
 	if err := d.Store.clean(mods); err != nil {
 		return Result{}, fmt.Errorf("remove stale dumps: %w", err)
 	}
@@ -164,29 +175,65 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if len(mods) > 0 && d.Hooks == nil {
 		return Result{}, fmt.Errorf("modules %v need their backup hooks run, but this can-core cannot run Jobs", mods)
 	}
+	var skipped []backup.SkippedModule
+	database := func(m string) string {
+		if d.Database == nil {
+			return "unknown"
+		}
+		return d.Database(ctx, m)
+	}
+	skip := func(m, reason string, noData bool) error {
+		kept, err := d.carryForward(m)
+		if err != nil {
+			return fmt.Errorf("keep the earlier dump of %s: %w", m, err)
+		}
+		s := backup.SkippedModule{ID: m, Reason: reason, Database: database(m), NoData: noData, Kept: kept}
+		d.log().Warn("module not dumped", "module", m, "detail", s.Message())
+		skipped = append(skipped, s)
+		return nil
+	}
 	for _, m := range mods {
+		disabled := d.Disabled != nil && d.Disabled(ctx, m)
+		if disabled && d.Unrunnable != nil {
+			if why := d.Unrunnable(ctx, m); why != "" {
+				if err := skip(m, "it is disabled and its backup hook cannot run ("+why+")", false); err != nil {
+					return Result{}, err
+				}
+				continue
+			}
+		}
 		d.startTurn(m)
 		hctx, cancel := context.WithTimeout(ctx, d.hookTimeout())
 		err := d.Hooks.RunBackup(hctx, m)
 		cancel()
 		n := d.endTurn()
 		if errors.Is(err, ErrNoData) {
-			d.log().Info("module has no data to dump", "module", m)
+			// Nothing to dump is fine for a module that never had a dump; one that had one has lost
+			// its volume or database, which must not pass silently.
+			if d.published(m) {
+				if err := skip(m, "it reports no data although it had a dump (volume or database gone?)", true); err != nil {
+					return Result{}, err
+				}
+			} else {
+				d.log().Info("module has no data to dump", "module", m)
+			}
 			continue
 		}
 		if err == nil && n == 0 {
 			err = errors.New("the backup hook succeeded but uploaded nothing")
+		}
+		if err != nil && disabled && ctx.Err() == nil {
+			if serr := skip(m, "it is disabled and its backup hook failed: "+err.Error(), false); serr != nil {
+				return Result{}, serr
+			}
+			continue
 		}
 		if err != nil {
 			d.log().Error("module backup hook failed", "module", m, "error", err)
 			failed = append(failed, fmt.Errorf("module %s: %w", m, err))
 			continue
 		}
-		db := "unknown"
-		if d.Database != nil {
-			db = d.Database(ctx, m)
-		}
-		fmt.Fprintf(&dumped, "%s %s\n", m, db)
+		fmt.Fprintf(&dumped, "%s %s\n", m, database(m))
 	}
 	if err := errors.Join(failed...); err != nil {
 		return Result{}, fmt.Errorf("dump run %s incomplete, no completion marker written: %w", runID, err)
@@ -197,7 +244,7 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if err := d.Store.writeAtomic(d.Store.Dir, DumpedList, strings.NewReader(dumped.String())); err != nil {
 		return Result{}, fmt.Errorf("write the list of dumped modules: %w", err)
 	}
-	if err := backup.WriteDumpRun(d.Store.Dir, backup.DumpRun{RunID: runID, At: d.now(), OK: true}); err != nil {
+	if err := backup.WriteDumpRun(d.Store.Dir, backup.DumpRun{RunID: runID, At: d.now(), OK: true, Skipped: skipped}); err != nil {
 		return Result{}, fmt.Errorf("record the run: %w", err)
 	}
 	// The marker claims the set is complete: it must not reach the disk before the set does.
