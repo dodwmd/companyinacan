@@ -28,6 +28,8 @@ func init() {
 		"err.not_approver":         "You are not an approver of an open step of this request.",
 		"err.not_pending":          "This request has already been decided, withdrawn or has expired.",
 		"err.already_voted":        "You have already voted on this request.",
+		"err.next_step":            "The next approval step could not be opened (the directory or the approver list is unavailable). Your vote was not recorded; try again shortly.",
+		"err.owner_only":           "Only an owner can change owners, and nobody can assign roles to themselves.",
 		"err.last_owner":           "The last owner cannot be removed.",
 		"err.user_not_found":       "User not found",
 		"err.user_not_found_msg":   "No admin user has that name.",

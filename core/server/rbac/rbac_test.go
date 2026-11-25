@@ -119,22 +119,22 @@ func TestOverridesRevokeAndGrant(t *testing.T) {
 	ctx := context.Background()
 	e.module("expenses", []string{"expenses.read", "expenses.approve"}, map[string][]string{"finance": {"expenses.read", "expenses.approve"}}, store.StateEnabled)
 	_ = e.s.Grant(ctx, "root", "user:fin", "finance", "")
-	if err := e.s.Override(ctx, "root", "finance", "expenses.approve", EffectRevoke); err != nil {
+	if err := e.s.Override(ctx, CLIActor, "finance", "expenses.approve", EffectRevoke); err != nil {
 		t.Fatal(err)
 	}
 	if e.check("user:fin", "expenses.approve", "") {
 		t.Fatal("revoked default grant must no longer apply (cache must be invalidated)")
 	}
-	if err := e.s.Override(ctx, "root", "finance", "expenses.read", EffectReset); err != nil {
+	if err := e.s.Override(ctx, CLIActor, "finance", "expenses.read", EffectReset); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.s.Override(ctx, "root", "finance", "expenses.approve", EffectReset); err != nil {
+	if err := e.s.Override(ctx, CLIActor, "finance", "expenses.approve", EffectReset); err != nil {
 		t.Fatal(err)
 	}
 	if !e.check("user:fin", "expenses.approve", "") {
 		t.Fatal("reset restores the manifest default")
 	}
-	if err := e.s.Override(ctx, "root", Owner, "x.y", EffectRevoke); err == nil {
+	if err := e.s.Override(ctx, CLIActor, Owner, "x.y", EffectRevoke); err == nil {
 		t.Fatal("the owner role must not be editable")
 	}
 }
@@ -175,11 +175,11 @@ func TestLastOwnerCannotBeRevoked(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	_ = e.s.Grant(ctx, "cli", "user:root", Owner, "")
-	if err := e.s.Revoke(ctx, "user:root", "user:root", Owner, ""); !errors.Is(err, ErrLastOwner) {
+	if err := e.s.Revoke(ctx, "root", "user:root", Owner, ""); !errors.Is(err, ErrLastOwner) {
 		t.Fatalf("err = %v, want ErrLastOwner", err)
 	}
-	_ = e.s.Grant(ctx, "user:root", "user:two", Owner, "")
-	if err := e.s.Revoke(ctx, "user:root", "user:root", Owner, ""); err != nil {
+	_ = e.s.Grant(ctx, "root", "user:two", Owner, "")
+	if err := e.s.Revoke(ctx, "root", "user:root", Owner, ""); err != nil {
 		t.Fatalf("with a second owner the revoke must work: %v", err)
 	}
 }
@@ -233,7 +233,7 @@ func TestSubjectsWithRoleIsBounded(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	for i := 0; i < 30; i++ {
-		_ = e.s.Grant(ctx, "root", "user:u"+string(rune('a'+i%26))+string(rune('a'+i/26)), Owner, "")
+		_ = e.s.Grant(ctx, CLIActor, "user:u"+string(rune('a'+i%26))+string(rune('a'+i/26)), Owner, "")
 	}
 	got, err := e.s.SubjectsWithRole(ctx, Owner, 10)
 	if err != nil || len(got) != 10 {

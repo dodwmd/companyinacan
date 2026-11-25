@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -113,6 +116,12 @@ func (h HTTPWebhook) Post(ctx context.Context, target, text string) error {
 	c := h.Client
 	if c == nil {
 		c = &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		if !h.AllowInsecure {
+			// The URL comes from company.yaml, so it is operator-trusted, but a typo or a poisoned
+			// file must not turn can-core into a probe of the cluster: refuse private, loopback and
+			// link-local addresses at connect time (after DNS, so rebinding does not help).
+			c.Transport = &http.Transport{DialContext: (&net.Dialer{Timeout: 5 * time.Second, Control: denyPrivate}).DialContext}
+		}
 	}
 	body, _ := json.Marshal(map[string]string{"text": text})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
@@ -132,6 +141,23 @@ func (h HTTPWebhook) Post(ctx context.Context, target, text string) error {
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("webhook answered %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// denyPrivate is a net.Dialer Control function that rejects non-public destinations.
+func denyPrivate(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return err
+	}
+	ip = ip.Unmap()
+	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return errors.New("webhook destination is not a public address")
 	}
 	return nil
 }

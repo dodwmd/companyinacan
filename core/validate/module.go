@@ -56,6 +56,10 @@ func moduleRules(doc *config.Doc, m *config.Module) []problem.Problem {
 		}
 	}
 
+	for _, v := range config.PlatformViolations(m) {
+		add("semantic.platform-name", v.Path, v.Message, problem.Error)
+	}
+
 	for i, dc := range m.DataClasses {
 		if dc.Sensitivity == "sensitive" && m.Provider.Type != "inhouse" {
 			add("semantic.sensitive-requires-inhouse", fmt.Sprintf("/data_classes/%d/sensitivity", i),

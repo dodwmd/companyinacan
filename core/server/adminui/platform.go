@@ -13,6 +13,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
+	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -348,6 +349,9 @@ func (s *Server) approvalErr(w http.ResponseWriter, r *http.Request, sc *session
 		s.fail(w, r, sc, http.StatusConflict, "err.conflict", "err.not_pending")
 	case errors.Is(err, approvals.ErrAlreadyVoted):
 		s.fail(w, r, sc, http.StatusConflict, "err.conflict", "err.already_voted")
+	case errors.Is(err, approvals.ErrResolver), errors.Is(err, approvals.ErrNoApprover):
+		s.Log.Error("approval staffing failed", "request_id", httpx.RequestID(r.Context()), "error", err)
+		s.fail(w, r, sc, http.StatusBadGateway, "err.gateway", "err.next_step")
 	default:
 		s.internal(w, r, sc, err)
 	}
@@ -682,6 +686,8 @@ func (s *Server) accessChange(w http.ResponseWriter, r *http.Request, sc *sessio
 	switch err := change(sc.User.Username, "user:"+name, strings.TrimSpace(r.PostFormValue("role")), strings.TrimSpace(r.PostFormValue("scope"))); {
 	case errors.Is(err, rbac.ErrUnknownRole), errors.Is(err, rbac.ErrInvalid):
 		s.fail(w, r, sc, http.StatusBadRequest, "err.bad_request", "err.bad_value")
+	case errors.Is(err, rbac.ErrForbidden):
+		s.fail(w, r, sc, http.StatusForbidden, "err.forbidden", "err.owner_only")
 	case errors.Is(err, rbac.ErrLastOwner):
 		s.fail(w, r, sc, http.StatusConflict, "err.conflict", "err.last_owner")
 	case errors.Is(err, store.ErrNotFound):

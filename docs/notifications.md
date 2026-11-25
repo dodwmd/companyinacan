@@ -31,8 +31,12 @@ offline (epic E11a). No email provider exists yet, see "Gaps". Spec: `specs/015-
    At most 50 recipients per rule. Only enabled modules' rules apply (cached 30 s).
 3. **Modules directly**: `POST /v1/notifications` (module API; the module lists `notify` under
    `requires.capabilities`). The type must start with the module id and a dot, `dedupe_key` makes a
-   reminder idempotent, `link` must be a site-relative path, `data` holds up to 20 short strings
+   reminder idempotent (keys are per module), `link` must be a site-relative path, `data` holds up to 20 short strings
    (`title` and `body` are shown for module-defined types).
+
+Rules from manifests honour each recipient's in-app mute even when `urgent`, may only use types in
+their own `<module-id>.` namespace, and dedupe per module. A recipient receives at most 200 in-app
+notices per hour; the rest are dropped.
 
 Notifications created from events copy only `id` and `*_id` members of the event data, never names or
 emails.
@@ -47,7 +51,9 @@ id, so a redelivered event cannot notify twice.
 - Email: the `Mailer` interface (the platform's `email.send`). Templates are project-owned; values are
   escaped in HTML, stripped of control characters in the subject and text.
 - Webhook (Slack-style `{"text": ...}`): named channels in company.yaml, https only, no redirects,
-  errors never contain the URL:
+  errors never contain the URL, and the connection is refused at dial time for private, loopback,
+  link-local and multicast addresses (the URL is operator-trusted; this limits a typo or a poisoned
+  file probing the cluster):
 
   ```yaml
   notifications:

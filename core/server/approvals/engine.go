@@ -63,7 +63,8 @@ type Engine struct {
 	d     Deps
 	// mu serialises mutations: can-core is one process with one SQLite connection, and every
 	// decision reads state, resolves approvers (further queries) and then writes in a transaction.
-	mu sync.Mutex
+	mu     sync.Mutex
+	failed map[string]time.Time // timer rows that failed, skipped until the time shown
 }
 
 // New returns an Engine.
@@ -575,10 +576,12 @@ func (e *Engine) Decide(ctx context.Context, id, actor, decision, comment string
 	now := e.now().Unix()
 	err = e.db.InTx(ctx, func(tx *sql.Tx) error {
 		var status string
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM approval_requests WHERE id=?`, id).Scan(&status); err != nil {
+		var expires int64
+		if err := tx.QueryRowContext(ctx, `SELECT status, expires_at FROM approval_requests WHERE id=?`, id).Scan(&status, &expires); err != nil {
 			return err
 		}
-		if status != "pending" {
+		// Expiry holds even if the ticker has not run yet (or is failing).
+		if status != "pending" || (expires > 0 && expires <= now) {
 			return ErrNotPending
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO approval_decisions(request_id, step_idx, actor, on_behalf_of, kind, comment, at) VALUES (?,?,?,?,?,?,?)`,
@@ -749,41 +752,65 @@ func (e *Engine) finish(ctx context.Context, req Request, status, kind, actor, c
 }
 
 // Tick expires and escalates requests that are due and returns how many it handled. Each call does
-// at most TickBatch units of work; call it every minute or so.
+// at most TickBatch units of work; call it every minute or so. A row that fails is skipped for
+// failBackoff (and the error reported at the end), so one bad row cannot starve the rest.
 func (e *Engine) Tick(ctx context.Context) (int, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	now := e.now().Unix()
+	now := e.now()
+	if e.failed == nil {
+		e.failed = map[string]time.Time{}
+	}
+	for id, until := range e.failed {
+		if !now.Before(until) {
+			delete(e.failed, id)
+		}
+	}
+	var errs []error
+	fail := func(id string, err error) {
+		e.failed[id] = now.Add(failBackoff)
+		e.d.Log.Error("approval timer failed", "request", id, "error", err)
+		errs = append(errs, err)
+	}
 	done := 0
-	ids, err := e.dueIDs(ctx, `SELECT id FROM approval_requests WHERE status='pending' AND expires_at>0 AND expires_at<=? ORDER BY expires_at LIMIT ?`, now, TickBatch)
+	ids, err := e.dueIDs(ctx, `SELECT id FROM approval_requests WHERE status='pending' AND expires_at>0 AND expires_at<=? ORDER BY expires_at LIMIT ?`, now.Unix(), TickBatch+len(e.failed))
 	if err != nil {
 		return 0, err
 	}
 	for _, id := range ids {
+		if _, bad := e.failed[id]; bad || done >= TickBatch {
+			continue
+		}
 		req, err := e.loadRequest(ctx, id)
+		if err == nil {
+			err = e.finish(ctx, req, "expired", "expire", "system", "")
+		}
+		if err != nil && !errors.Is(err, ErrNotPending) {
+			fail(id, err)
+			continue
+		}
+		done++
+	}
+	if done < TickBatch {
+		ids, err = e.dueIDs(ctx, `SELECT id FROM approval_requests WHERE status='pending' AND escalated=0 AND escalate_at>0 AND escalate_at<=? ORDER BY escalate_at LIMIT ?`, now.Unix(), TickBatch+len(e.failed))
 		if err != nil {
 			return done, err
 		}
-		if err := e.finish(ctx, req, "expired", "expire", "system", ""); err != nil && !errors.Is(err, ErrNotPending) {
-			return done, err
+		for _, id := range ids {
+			if _, bad := e.failed[id]; bad || done >= TickBatch {
+				continue
+			}
+			if err := e.escalate(ctx, id); err != nil {
+				fail(id, err)
+				continue
+			}
+			done++
 		}
-		done++
 	}
-	if done >= TickBatch {
-		return done, nil
-	}
-	ids, err = e.dueIDs(ctx, `SELECT id FROM approval_requests WHERE status='pending' AND escalated=0 AND escalate_at>0 AND escalate_at<=? ORDER BY escalate_at LIMIT ?`, now, TickBatch-done)
-	if err != nil {
-		return done, err
-	}
-	for _, id := range ids {
-		if err := e.escalate(ctx, id); err != nil {
-			return done, err
-		}
-		done++
-	}
-	return done, nil
+	return done, errors.Join(errs...)
 }
+
+const failBackoff = 5 * time.Minute
 
 func (e *Engine) dueIDs(ctx context.Context, q string, args ...any) ([]string, error) {
 	rows, err := e.db.QueryContext(ctx, q, args...)

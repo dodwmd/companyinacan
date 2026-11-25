@@ -185,6 +185,10 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request, m store.Module)
 		httpx.Problem(w, http.StatusBadRequest, "invalid event type: want <noun>.<verb>.v<N>")
 		return
 	}
+	if config.IsReservedEvent(req.Type) {
+		httpx.Problem(w, http.StatusForbidden, "events in the approval. and notification. namespaces are published only by can-core")
+		return
+	}
 	declared := false
 	for _, p := range m.Manifest.Publishes {
 		declared = declared || p.Event == req.Type

@@ -39,6 +39,7 @@ const (
 const (
 	MaxUnreadCount       = 100 // the badge shows "99+" beyond this
 	MaxRecipientsPerRule = 50
+	MaxInAppPerHour      = 200 // per recipient; further notices in the hour are dropped
 	maxDataKeys          = 20
 	maxDataValue         = 200
 	digestBatch          = 50
@@ -117,6 +118,9 @@ type Notice struct {
 	// Link is a site-relative admin UI path.
 	Link   string
 	Urgent bool
+	// RespectMute makes the recipient's in-app mute apply even to an urgent notice. Modules set it:
+	// urgency is the platform's to grant, not a module's to claim against a recipient's choice.
+	RespectMute bool
 }
 
 var errInvalid = errors.New("invalid notification")
@@ -190,7 +194,7 @@ func (s *Service) Notify(ctx context.Context, n Notice) (id int64, created bool,
 	if err != nil {
 		return 0, false, err
 	}
-	if !n.Urgent {
+	if !n.Urgent || n.RespectMute {
 		on, err := s.prefEnabled(ctx, n.Subject, n.Type, ChannelInApp)
 		if err != nil {
 			return 0, false, err
@@ -198,6 +202,14 @@ func (s *Service) Notify(ctx context.Context, n Notice) (id int64, created bool,
 		if !on {
 			return 0, false, nil
 		}
+	}
+	var recent int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM notifications WHERE subject=? AND created_at>? LIMIT ?)`,
+		n.Subject, s.opt.Now().Add(-time.Hour).Unix(), MaxInAppPerHour).Scan(&recent); err != nil {
+		return 0, false, err
+	}
+	if recent >= MaxInAppPerHour {
+		return 0, false, nil // a flood of notices cannot bury the inbox or the database
 	}
 	id, created, err = s.insert(ctx, n, data)
 	if err != nil || !created {

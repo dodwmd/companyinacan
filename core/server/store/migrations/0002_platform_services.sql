@@ -24,7 +24,10 @@ CREATE TABLE rbac_overrides (
 
 -- Existing admins keep full access: the single admin of earlier versions becomes an owner.
 INSERT INTO rbac_assignments(subject, role, scope, granted_by, granted_at)
-  SELECT 'user:' || username, 'owner', '', 'migration', created_at FROM admin_users;
+  SELECT 'user:' || username, 'owner', '', 'migration', created_at FROM admin_users
+   WHERE length(username) BETWEEN 1 AND 64 AND username NOT GLOB '*[^A-Za-z0-9_.@-]*';
+-- An admin whose name is not a valid subject (older versions allowed any characters) gets no role
+-- and cannot use role-gated pages until renamed; `can-core admin roles list` shows them without roles.
 
 CREATE TABLE approval_policies (
   type        TEXT PRIMARY KEY,

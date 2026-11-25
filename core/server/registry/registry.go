@@ -134,6 +134,12 @@ func Declares(m *config.Module, capability string) bool {
 // Register records the module with its provisions and subscriptions derived from its manifest,
 // replacing any earlier registration of the same module.
 func (r *Registry) Register(ctx context.Context, m store.Module) error {
+	if vs := config.PlatformViolations(&m.Manifest); len(vs) > 0 {
+		return fmt.Errorf("%w: %s: %s", ErrReservedName, vs[0].Path, vs[0].Message)
+	}
+	if err := r.checkApprovalTypes(ctx, m); err != nil {
+		return err
+	}
 	ps, ss, err := FromManifest(&m.Manifest)
 	if err != nil {
 		return err
@@ -217,4 +223,34 @@ func (r *Registry) List(ctx context.Context) ([]Resolution, error) {
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// ErrReservedName is returned for a manifest that uses names owned by can-core.
+var ErrReservedName = errors.New("manifest uses a name reserved for can-core")
+
+// ErrApprovalTypeTaken is returned when another enabled module already declares an approval type:
+// policies are keyed by type, so two modules sharing one would share (and could spoof) a policy.
+var ErrApprovalTypeTaken = errors.New("approval type is already declared by another module")
+
+func (r *Registry) checkApprovalTypes(ctx context.Context, m store.Module) error {
+	if len(m.Manifest.Approvals) == 0 {
+		return nil
+	}
+	others, err := r.db.ListModules(ctx)
+	if err != nil {
+		return err
+	}
+	for _, o := range others {
+		if o.ID == m.ID || o.State != store.StateEnabled {
+			continue
+		}
+		for _, a := range o.Manifest.Approvals {
+			for _, mine := range m.Manifest.Approvals {
+				if a.Type == mine.Type {
+					return fmt.Errorf("%w: %q is declared by %q", ErrApprovalTypeTaken, a.Type, o.ID)
+				}
+			}
+		}
+	}
+	return nil
 }

@@ -91,6 +91,11 @@ func (s *Service) HandleEvent(ctx context.Context, env events.Envelope) {
 
 func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope) {
 	typ := mr.rule.Type
+	if typ != "" && !strings.HasPrefix(typ, mr.module+".") {
+		s.opt.Log.Error("notification rule type outside the module namespace ignored", "module", mr.module, "type", typ)
+		return
+	}
+	key := env.ID + "|" + mr.module + "|" + typ
 	if typ == "" {
 		typ = strings.TrimSuffix(env.Type, env.Type[strings.LastIndex(env.Type, "."):])
 	}
@@ -133,12 +138,12 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 		if n++; n > MaxRecipientsPerRule {
 			break
 		}
-		if _, _, err := s.Notify(ctx, Notice{Subject: subj, Type: typ, DedupeKey: env.ID + "|" + typ, Data: data, Urgent: mr.rule.Urgent}); err != nil {
+		if _, _, err := s.Notify(ctx, Notice{Subject: subj, Type: typ, DedupeKey: key, Data: data, Urgent: mr.rule.Urgent, RespectMute: true}); err != nil {
 			s.opt.Log.Error("notification rule failed", "module", mr.module, "event", env.Type, "error", err)
 		}
 	}
 	for _, ch := range channels {
-		if err := s.NotifyChannel(ctx, ch, Notice{Type: typ, DedupeKey: env.ID + "|" + typ, Data: data}); err != nil && !errorsIsNotFound(err) {
+		if err := s.NotifyChannel(ctx, ch, Notice{Type: typ, DedupeKey: key, Data: data}); err != nil && !errorsIsNotFound(err) {
 			s.opt.Log.Error("notification channel failed", "module", mr.module, "event", env.Type, "error", err)
 		}
 	}

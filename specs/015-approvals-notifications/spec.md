@@ -89,6 +89,6 @@ cannot be removed. The admin UI and API enforce permissions on the existing oper
 
 No real `email.send` provider (a failing `NoMailer` is wired: deliveries show as failed in the log);
 approval notifications are synchronous with the request; SSO group claims for roles are not emitted;
-RBAC cache is per process (CLI role changes apply within 30 s); scoped roles are matched against the
+the RBAC cache is dropped when the database changes (`PRAGMA data_version`), so CLI changes apply at once; scoped roles are matched against the
 `resource` argument of `can.check` only, not against approval `ref`; no UI for role overrides (API
 only); a module-facing "who may approve this" query is not provided.

@@ -89,6 +89,9 @@ func (s *Server) approvalErr(w http.ResponseWriter, r *http.Request, err error) 
 		httpx.Problem(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, approvals.ErrNotPending), errors.Is(err, approvals.ErrAlreadyVoted):
 		httpx.Problem(w, http.StatusConflict, err.Error())
+	case errors.Is(err, approvals.ErrResolver), errors.Is(err, approvals.ErrNoApprover):
+		s.Log.Error("approval staffing failed", "request_id", httpx.RequestID(r.Context()), "error", err)
+		httpx.Problem(w, http.StatusBadGateway, "the next approval step could not be staffed; try again shortly")
 	default:
 		s.internal(w, r, err)
 	}
@@ -498,6 +501,8 @@ func (s *Server) roleChange(w http.ResponseWriter, r *http.Request, p principal,
 	switch err := change(p.User.Username, "user:"+name, b.Role, b.Scope); {
 	case errors.Is(err, rbac.ErrUnknownRole), errors.Is(err, rbac.ErrInvalid):
 		httpx.Problem(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, rbac.ErrForbidden):
+		httpx.Problem(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, rbac.ErrLastOwner):
 		httpx.Problem(w, http.StatusConflict, err.Error())
 	case errors.Is(err, store.ErrNotFound):
@@ -532,6 +537,8 @@ func (s *Server) overrideRole(w http.ResponseWriter, r *http.Request, p principa
 		return
 	}
 	switch err := s.RBAC.Override(r.Context(), p.User.Username, r.PathValue("role"), b.Permission, b.Effect); {
+	case errors.Is(err, rbac.ErrForbidden):
+		httpx.Problem(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, rbac.ErrUnknownRole), errors.Is(err, rbac.ErrInvalid):
 		httpx.Problem(w, http.StatusBadRequest, err.Error())
 	case err != nil:

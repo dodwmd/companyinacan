@@ -208,7 +208,9 @@ func (e *Engine) Waiting(ctx context.Context, actor string, limit int) ([]Reques
 			return nil, err
 		}
 		for _, a := range as {
-			roleSet[a.Role] = true
+			if a.Scope == "" { // scoped assignments are not role membership here (see rbac.HasRole)
+				roleSet[a.Role] = true
+			}
 		}
 	}
 	args := []any{}

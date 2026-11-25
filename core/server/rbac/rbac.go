@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
@@ -68,7 +69,14 @@ var (
 	ErrUnknownRole = errors.New("unknown role")
 	ErrLastOwner   = errors.New("the last owner cannot be removed")
 	ErrInvalid     = errors.New("invalid argument")
+	// ErrForbidden is returned when the actor may not make the change (owner changes need an owner,
+	// nobody grants themselves a role).
+	ErrForbidden = errors.New("not allowed to make this change")
 )
+
+// CLIActor is the audit actor of `can-core admin roles`, the break-glass path inside the pod: it
+// may do what owners do, because it exists for installations that have no working owner.
+const CLIActor = "cli"
 
 var (
 	subjectRe = regexp.MustCompile(`^(user|party):[A-Za-z0-9_.@-]{1,64}$`)
@@ -116,6 +124,7 @@ type Service struct {
 	ttl   time.Duration
 
 	mu     sync.Mutex
+	dataV  int64                      // PRAGMA data_version when the caches were filled
 	roles  map[string]map[string]bool // role -> permissions, nil when stale
 	rolesT time.Time
 	rolesS map[string][]string // role -> sources
@@ -175,16 +184,24 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 		if m.State != store.StateEnabled {
 			continue
 		}
+		declared := map[string]bool{}
+		for _, p := range m.Manifest.Permissions {
+			declared[p] = true
+		}
 		for r, ps := range m.Manifest.Roles {
-			if r == Owner {
-				continue // a module cannot widen or narrow the break-glass role
+			if config.IsBuiltinRole(r) {
+				continue // module roles never merge into built-in roles (owner, operator, auditor)
 			}
 			if roles[r] == nil {
 				roles[r] = map[string]bool{}
 				sources[r] = append(sources[r], m.ID)
 			}
 			for _, p := range ps {
-				add(r, p, m.ID)
+				// Defence in depth behind validate and the registry: a role grants only
+				// permissions its own manifest declares, never platform ones.
+				if declared[p] && !config.IsReservedPermission(p) {
+					add(r, p, m.ID)
+				}
 			}
 		}
 	}
@@ -210,6 +227,23 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 	return roles, sources, rows.Err()
 }
 
+// sync drops every cache when another connection (the CLI, `can apply`) changed the database since
+// the caches were filled: PRAGMA data_version changes exactly then, so revocations made outside
+// this process are seen at once, not after the TTL.
+func (s *Service) sync(ctx context.Context) error {
+	var v int64
+	if err := s.db.QueryRowContext(ctx, `PRAGMA data_version`).Scan(&v); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	if v != s.dataV {
+		s.dataV = v
+		s.roles, s.subj = nil, map[string]subjEntry{}
+	}
+	s.mu.Unlock()
+	return nil
+}
+
 func (s *Service) roleTable(ctx context.Context) (map[string]map[string]bool, map[string][]string, error) {
 	s.mu.Lock()
 	if s.roles != nil && s.now().Sub(s.rolesT) < s.ttl {
@@ -229,6 +263,9 @@ func (s *Service) roleTable(ctx context.Context) (map[string]map[string]bool, ma
 }
 
 func (s *Service) assignments(ctx context.Context, subject string) ([]Assignment, error) {
+	if err := s.sync(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	if e, ok := s.subj[subject]; ok && s.now().Sub(e.at) < s.ttl {
 		s.mu.Unlock()
@@ -308,26 +345,27 @@ func (s *Service) Check(ctx context.Context, subject, permission, resource strin
 	return false, nil
 }
 
-// HasRole reports whether subject holds the role (any scope).
+// HasRole reports whether subject holds the role without a scope. Scoped assignments answer
+// resource questions in Check only; approver resolution and notification fan-out use this.
 func (s *Service) HasRole(ctx context.Context, subject, role string) (bool, error) {
 	as, err := s.assignments(ctx, subject)
 	if err != nil {
 		return false, err
 	}
 	for _, a := range as {
-		if a.Role == role {
+		if a.Role == role && a.Scope == "" {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// SubjectsWithRole lists up to limit subjects holding the role, in subject order.
+// SubjectsWithRole lists up to limit subjects holding the role without a scope, in subject order.
 func (s *Service) SubjectsWithRole(ctx context.Context, role string, limit int) ([]string, error) {
 	if limit < 1 || limit > 1000 {
 		limit = 1000
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT subject FROM rbac_assignments WHERE role=? ORDER BY subject LIMIT ?`, role, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT subject FROM rbac_assignments WHERE role=? AND scope='' ORDER BY subject LIMIT ?`, role, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -406,10 +444,21 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 	if !subjectRe.MatchString(subject) || !roleRe.MatchString(role) || (scope != "" && !scopeRe.MatchString(scope)) {
 		return ErrInvalid
 	}
+	if role == Owner && scope != "" {
+		return fmt.Errorf("%w: the owner role cannot be scoped", ErrInvalid)
+	}
 	if err := s.roleExists(ctx, role); err != nil {
 		return err
 	}
 	err := s.db.InTx(ctx, func(tx *sql.Tx) error {
+		if actor != CLIActor && subject == "user:"+actor {
+			return fmt.Errorf("%w: nobody assigns roles to themselves", ErrForbidden)
+		}
+		if role == Owner {
+			if err := s.requireOwner(ctx, tx, actor); err != nil {
+				return err
+			}
+		}
 		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO rbac_assignments(subject, role, scope, granted_by, granted_at) VALUES (?,?,?,?,?)`,
 			subject, role, scope, actor, s.db.Now().Unix())
 		if err != nil {
@@ -425,6 +474,23 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 	return err
 }
 
+// requireOwner fails unless the actor is an unscoped owner (read inside the transaction, so
+// concurrent changes cannot slip between the check and the write). The CLI actor passes: it is the
+// recovery path for installations without a working owner.
+func (s *Service) requireOwner(ctx context.Context, tx *sql.Tx, actor string) error {
+	if actor == CLIActor {
+		return nil
+	}
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments WHERE subject=? AND role=? AND scope=''`, "user:"+actor, Owner).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: only an owner changes owners", ErrForbidden)
+	}
+	return nil
+}
+
 // Revoke removes an assignment. The last holder of owner cannot be removed.
 func (s *Service) Revoke(ctx context.Context, actor, subject, role, scope string) error {
 	if !subjectRe.MatchString(subject) || !roleRe.MatchString(role) {
@@ -432,6 +498,9 @@ func (s *Service) Revoke(ctx context.Context, actor, subject, role, scope string
 	}
 	err := s.db.InTx(ctx, func(tx *sql.Tx) error {
 		if role == Owner {
+			if err := s.requireOwner(ctx, tx, actor); err != nil {
+				return err
+			}
 			var others int
 			if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT subject) FROM rbac_assignments WHERE role=? AND scope='' AND subject<>?`, Owner, subject).Scan(&others); err != nil {
 				return err
@@ -466,10 +535,13 @@ func (s *Service) Override(ctx context.Context, actor, role, permission, effect 
 	if !roleRe.MatchString(role) || !permRe.MatchString(permission) || (effect != EffectGrant && effect != EffectRevoke && effect != EffectReset) {
 		return ErrInvalid
 	}
-	if err := s.roleExists(ctx, role); err != nil && effect != EffectGrant {
+	if err := s.roleExists(ctx, role); err != nil {
 		return err
 	}
 	err := s.db.InTx(ctx, func(tx *sql.Tx) error {
+		if err := s.requireOwner(ctx, tx, actor); err != nil {
+			return err
+		}
 		var err error
 		if effect == EffectReset {
 			_, err = tx.ExecContext(ctx, `DELETE FROM rbac_overrides WHERE role=? AND permission=?`, role, permission)
