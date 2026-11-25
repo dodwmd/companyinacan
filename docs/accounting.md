@@ -119,6 +119,11 @@ over 64 bytes.
 **Deduplication.** A transaction is unique per bank account by the bank's own id (`FITID`, `AcctSvcrRef`, the CSV
 `id_col`; CAMT `NtryRef` is not used because banks restart it in every message) or, when the file has none, by a hash of its content plus its occurrence number in the file. The same
 file twice is recognised by its SHA-256 and changes nothing; an overlapping file adds only the new transactions.
+The response lists the skipped rows (`skipped`: row, date, amount, `already_imported` or `id_reused` for a bank id that
+arrived with other details, and whether it is `forceable`). Without a bank id, two different payments with the same date,
+amount and text in two different files look identical: the second is skipped and listed, and `force_duplicates=true`
+imports the file's content-keyed rows anyway (check the list first: forcing an overlapping file imports its overlap
+again). Rows with a bank id are never forced. An id used twice in one file for different details rejects the file.
 
 **Matching only suggests.** For an incoming transaction the engine proposes open invoices in the same currency
 whose balance equals the amount, or whose number appears in the reference (a partial payment). Nothing is recorded

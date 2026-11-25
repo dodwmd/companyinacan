@@ -224,8 +224,11 @@ func finishStatement(ps *ParsedStatement, accountCurrency string) error {
 		if t.Key, err = cleanText(t.Key, 200); err != nil {
 			return err
 		}
+		if strings.HasPrefix(t.Key, derivedKeyPrefix) {
+			t.Key = "id:" + t.Key
+		}
 		if t.Key != "" {
-			content := fmt.Sprintf("%s|%d|%s", t.Date, t.AmountMinor, t.Reference)
+			content := strings.Join([]string{t.Date, fmt.Sprint(t.AmountMinor), t.Reference, t.Counterparty, t.Description}, "\x1f")
 			if prev, dup := seen[t.Key]; dup && prev != content {
 				return parseErr("transaction %d: the id is used twice for different transactions", n)
 			}
@@ -242,6 +245,9 @@ func finishStatement(ps *ParsedStatement, accountCurrency string) error {
 	return nil
 }
 
+// derivedKeyPrefix marks a key made from the row's content, as opposed to the bank's own id.
+const derivedKeyPrefix = "h:"
+
 // deriveKeys gives every transaction without a bank id a key from its content plus its occurrence number in
 // the file, so identical rows in one file both import and re-importing a file yields the same keys.
 func deriveKeys(txns []ParsedTxn) {
@@ -254,7 +260,7 @@ func deriveKeys(txns []ParsedTxn) {
 		base := strings.Join([]string{t.Date, fmt.Sprint(t.AmountMinor), t.Currency, t.Reference, t.Counterparty, t.Description}, "\x1f")
 		count[base]++
 		sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x1e%d", base, count[base])))
-		t.Key = "h:" + hex.EncodeToString(sum[:16])
+		t.Key = derivedKeyPrefix + hex.EncodeToString(sum[:16])
 	}
 }
 

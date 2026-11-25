@@ -170,11 +170,26 @@ type StatementResult struct {
 	DuplicateCount int    `json:"duplicate_count"`
 	// AlreadyImported is true when this exact file was imported before: nothing changed.
 	AlreadyImported bool `json:"already_imported"`
+	// Skipped lists the rows counted as duplicates (the first maxSkippedListed), so nothing disappears silently.
+	Skipped []SkippedRow `json:"skipped,omitempty"`
 }
+
+// SkippedRow is a statement row that was not imported.
+type SkippedRow struct {
+	Row         int    `json:"row"` // 1 is the first transaction of the file
+	BookedOn    string `json:"booked_on"`
+	AmountMinor int64  `json:"amount_minor"`
+	// Reason is already_imported, or id_reused when the bank's id matches a transaction with other details.
+	Reason string `json:"reason"`
+	// Forceable rows have no bank id: they can be imported with force_duplicates=true.
+	Forceable bool `json:"forceable"`
+}
+
+const maxSkippedListed = 200
 
 // ImportStatement reads a statement file into bank transactions, once. The same file again, and any
 // transaction already known by its bank id (or content hash), is counted as a duplicate and skipped.
-func (s *Store) ImportStatement(ctx context.Context, a *Principal, accountID int64, format string, body io.Reader, csvCfg CSVConfig, idemKey string) (*StatementResult, bool, error) {
+func (s *Store) ImportStatement(ctx context.Context, a *Principal, accountID int64, format string, body io.Reader, csvCfg CSVConfig, force bool, idemKey string) (*StatementResult, bool, error) {
 	data, err := readStatement(body)
 	if err != nil {
 		var pe *errParse
@@ -189,15 +204,15 @@ func (s *Store) ImportStatement(ctx context.Context, a *Principal, accountID int
 	var replayed bool
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		out, replayed, err = idemRun(ctx, s, tx, a.Subject, idemKey, fmt.Sprintf("bank.import.%d", accountID), map[string]any{"format": format, "sha256": hash}, func() (*StatementResult, error) {
-			return s.importStatementTx(ctx, tx, a, accountID, format, data, hash, csvCfg)
+		out, replayed, err = idemRun(ctx, s, tx, a.Subject, idemKey, fmt.Sprintf("bank.import.%d", accountID), map[string]any{"format": format, "sha256": hash, "force": force}, func() (*StatementResult, error) {
+			return s.importStatementTx(ctx, tx, a, accountID, format, data, hash, csvCfg, force)
 		})
 		return err
 	})
 	return out, replayed, err
 }
 
-func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, accountID int64, format string, data []byte, hash string, csvCfg CSVConfig) (*StatementResult, error) {
+func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, accountID int64, format string, data []byte, hash string, csvCfg CSVConfig, force bool) (*StatementResult, error) {
 	var cur, sealed string
 	var active int
 	err := tx.QueryRowContext(ctx, `SELECT currency, sealed_number, active FROM bank_accounts WHERE id = ?`, accountID).Scan(&cur, &sealed, &active)
@@ -258,18 +273,47 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 	}
 	sid, _ := res.LastInsertId()
 	out := &StatementResult{StatementID: sid, BankAccountID: accountID, Format: format, TransactionCnt: len(ps.Txns)}
-	for _, t := range ps.Txns {
+	insert := func(t ParsedTxn, key string) (bool, error) {
 		r, err := tx.ExecContext(ctx, `INSERT INTO bank_transactions (bank_account_id, statement_id, txn_key, booked_on, amount_minor, currency, reference, counterparty, description, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (bank_account_id, txn_key) DO NOTHING`,
-			accountID, sid, t.Key, t.Date, t.AmountMinor, t.Currency, t.Reference, t.Counterparty, t.Description, ts(s.now()))
+			accountID, sid, key, t.Date, t.AmountMinor, t.Currency, t.Reference, t.Counterparty, t.Description, ts(s.now()))
+		if err != nil {
+			return false, err
+		}
+		n, _ := r.RowsAffected()
+		return n == 1, nil
+	}
+	for i, t := range ps.Txns {
+		added, err := insert(t, t.Key)
 		if err != nil {
 			return nil, err
 		}
-		if n, _ := r.RowsAffected(); n == 1 {
-			out.NewCount++
-		} else {
-			out.DuplicateCount++
+		// Without a bank id, two files can hold equal rows that are two real payments. They are skipped (and
+		// listed) unless the caller says to take them; the key then carries the file's hash.
+		derived := strings.HasPrefix(t.Key, derivedKeyPrefix)
+		if !added && force && derived {
+			if added, err = insert(t, t.Key+":"+hash[:16]); err != nil {
+				return nil, err
+			}
 		}
+		if added {
+			out.NewCount++
+			continue
+		}
+		out.DuplicateCount++
+		if len(out.Skipped) >= maxSkippedListed {
+			continue
+		}
+		sk := SkippedRow{Row: i + 1, BookedOn: t.Date, AmountMinor: t.AmountMinor, Reason: "already_imported", Forceable: derived}
+		var same int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM bank_transactions WHERE bank_account_id = ? AND txn_key = ? AND booked_on = ? AND amount_minor = ? AND reference = ? AND counterparty = ? AND description = ?`,
+			accountID, t.Key, t.Date, t.AmountMinor, t.Reference, t.Counterparty, t.Description).Scan(&same); err != nil {
+			return nil, err
+		}
+		if same == 0 && !derived {
+			sk.Reason = "id_reused"
+		}
+		out.Skipped = append(out.Skipped, sk)
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE bank_statements SET new_count = ?, duplicate_count = ? WHERE id = ?`, out.NewCount, out.DuplicateCount, sid); err != nil {
 		return nil, err

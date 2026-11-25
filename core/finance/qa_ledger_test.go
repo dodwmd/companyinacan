@@ -263,3 +263,34 @@ func TestQADeletedPayrollDraftCanBeReimported(t *testing.T) {
 		t.Errorf("%d payroll entries", n)
 	}
 }
+
+// QA 9: equal rows across files are listed, can be forced when they have no bank id, and an id reused for other
+// details is called out; counterparty and description take part in the same-id check.
+func TestQASkippedRowsAreListedAndForceable(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	path := "/v1/bank/accounts/" + id(b.ID) + "/statements?format=csv&delimiter=comma&date_col=1&amount_col=2&reference_col=3"
+	e.must(201, admin, "POST", path, "d,a,r\n2026-06-10,10.00,coffee\n", nil)
+	second := "d,a,r\n2026-06-10,10.00,coffee\n2026-06-11,1.00,x\n"
+	var res StatementResult
+	e.must(201, admin, "POST", path, second, &res)
+	if res.NewCount != 1 || len(res.Skipped) != 1 || res.Skipped[0].Row != 1 || res.Skipped[0].Reason != "already_imported" || !res.Skipped[0].Forceable {
+		t.Fatalf("%+v", res)
+	}
+	var forced StatementResult
+	e.must(201, admin, "POST", path+"&force_duplicates=true", "d,a,r\n2026-06-10,10.00,coffee\n2026-06-12,2.00,y\n", &forced)
+	if forced.NewCount != 2 || forced.DuplicateCount != 0 {
+		t.Errorf("forced %+v", forced)
+	}
+	withID := "/v1/bank/accounts/" + id(b.ID) + "/statements" + csvQuery
+	e.must(201, admin, "POST", withID, "d,a,r,n,i\n2026-06-20,5.00,r,Alice,Z1\n", nil)
+	var reused StatementResult
+	e.must(201, admin, "POST", withID+"&force_duplicates=true", "d,a,r,n,i\n2026-06-20,5.00,r,Mallory,Z1\n", &reused)
+	if reused.NewCount != 0 || len(reused.Skipped) != 1 || reused.Skipped[0].Reason != "id_reused" || reused.Skipped[0].Forceable {
+		t.Errorf("reused id %+v", reused)
+	}
+	if code := e.do(admin, "POST", withID, "d,a,r,n,i\n2026-06-21,5.00,r,Alice,Z2\n2026-06-21,5.00,r,Bob,Z2\n", nil); code != 422 {
+		t.Errorf("one id, two counterparties in a file = %d", code)
+	}
+}

@@ -19,7 +19,7 @@ func checkParsed(t *testing.T, ps *ParsedStatement, err error) {
 		if x.AmountMinor == 0 || x.AmountMinor > maxMinor || x.AmountMinor < -maxMinor {
 			t.Fatalf("amount %d accepted", x.AmountMinor)
 		}
-		if !validDate(x.Date) || x.Currency != "USD" || x.Key == "" || len(x.Key) > 200 {
+		if !validDate(x.Date) || x.Currency != "USD" || x.Key == "" || len(x.Key) > 200+len("id:") {
 			t.Fatalf("bad transaction %+v", x)
 		}
 		for _, s := range []string{x.Reference, x.Counterparty, x.Description, x.Key} {

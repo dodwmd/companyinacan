@@ -31,7 +31,7 @@ whatever the permission, and the same `403` for an id that exists or not).
 | `GET`, `POST /v1/ledger/exports`, `GET .../{id}/download` | read, write, read | `{adapter}`; `501` for xero, quickbooks, wave |
 | `POST /v1/ledger/payroll-import?adapter=csv` | write | body is the file |
 | `GET`, `POST /v1/bank/accounts`, `GET .../{id}` | read, admin, read | create `{name, currency, number, ledger_account_code}`; `503` without the seal key |
-| `POST /v1/bank/accounts/{id}/statements` | write | body is the file; query `format` and, for csv, `delimiter`, `date_col`, `amount_col` (or `debit_col`, `credit_col`), `reference_col`, `description_col`, `counterparty_col`, `id_col`, `date_layout`, `decimal`, `thousands`, `header` |
+| `POST /v1/bank/accounts/{id}/statements` | write | body is the file; query `format` and, for csv, `delimiter`, `date_col`, `amount_col` (or `debit_col`, `credit_col`), `reference_col`, `description_col`, `counterparty_col`, `id_col`, `date_layout`, `decimal`, `thousands`, `header`; `force_duplicates=true` imports equal rows that have no bank id; the answer lists skipped rows |
 | `GET`, `POST /v1/bank/accounts/{id}/reconciliation` | read, approve | `{period: "YYYY-MM"}` |
 | `GET /v1/bank/transactions` | read | `account_id`, `status`, `from`, `to`, `cursor`; audited |
 | `GET /v1/bank/transactions/{id}/suggestions` | read | advice only; audited |

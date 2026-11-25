@@ -443,7 +443,7 @@ func (a *api) importStatement(w http.ResponseWriter, r *http.Request, p *Princip
 			return
 		}
 	}
-	res, replayed, err := a.store.ImportStatement(r.Context(), p, id, format, r.Body, cfg, idem)
+	res, replayed, err := a.store.ImportStatement(r.Context(), p, id, format, r.Body, cfg, r.URL.Query().Get("force_duplicates") == "true", idem)
 	if err != nil {
 		a.fail(w, err)
 		return
