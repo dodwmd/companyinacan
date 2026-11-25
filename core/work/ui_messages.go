@@ -28,6 +28,8 @@ var messagesEN = map[string]string{
 	"nav.epics":     "Epics",
 	"nav.pages":     "Pages",
 
+	"render.truncated": "Text shortened here to keep the page fast. The full text is in the edit form and the API.",
+
 	"login.title":   "Sign in",
 	"login.intro":   "Sign in with a personal access token. Create one in the admin UI (Tokens) with the work permissions you need.",
 	"login.token":   "Personal access token",
@@ -162,6 +164,7 @@ var messagesEN = map[string]string{
 	"activity.description":        "the description",
 	"activity.change":             "%s from %s to %s",
 	"activity.linked":             "linked %s %s %s",
+	"activity.linked_hidden":      "linked another issue",
 	"activity.commented":          "commented",
 	"activity.ranked":             "changed its order in the backlog",
 	"activity.unlinked":           "removed a link",

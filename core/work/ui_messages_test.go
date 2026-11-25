@@ -16,7 +16,7 @@ var dynamicMessageFamilies = map[string][]string{
 	"sprint.":   {"planned", "active", "closed"},
 	"linktype.": LinkTypes,
 	"status.":   {"todo"},
-	"activity.": {"created", "transitioned", "updated", "commented", "ranked", "linked", "unlinked", "attachment_added", "attachment_removed"},
+	"activity.": {"created", "transitioned", "updated", "commented", "ranked", "linked", "linked_hidden", "unlinked", "attachment_added", "attachment_removed"},
 	"flash.":    {"created", "updated", "moved", "ranked", "commented", "linked", "unlinked", "watching", "unwatched", "sprint_created", "sprint_started", "sprint_completed", "logged_out"},
 }
 

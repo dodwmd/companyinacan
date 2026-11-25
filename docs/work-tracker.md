@@ -280,7 +280,7 @@ can-work healthcheck -addr 127.0.0.1:8080                     # for container pr
 ```
 
 `work.yaml` is optional; every key is documented in `modules/work/README.md`. Footprint:
-13.6 MiB RSS idle and 20.4 MiB after 200 creates and 200 searches (target 20 MB, limit 48 MB).
+13.6 MiB RSS idle and 20.4 MiB after 200 creates and 200 searches for the API alone; with the web UI see `modules/work/README.md` (declared 28 MB, limit 64 MB).
 
 ## What is not here yet
 

@@ -11,15 +11,16 @@ import (
 // api implements the `work` capability REST API (schemas/capabilities/work.v1.json,
 // specs/011-work-tracker/contracts/openapi.yaml).
 type api struct {
-	store      *Store
-	auth       Authenticator
-	log        *slog.Logger
-	maxBody    int64
-	trustProxy bool
-	limiter    *rateLimiter  // per principal
-	failures   *rateLimiter  // failed authentications per client address
-	penalty    time.Duration // delay added to failures from an address over the limit
-	ui         *webUI        // the web UI under /ui/ (ui.go)
+	store       *Store
+	auth        Authenticator
+	log         *slog.Logger
+	maxBody     int64
+	trustProxy  bool
+	limiter     *rateLimiter  // per principal
+	failures    *rateLimiter  // failed authentications per client address
+	penalty     time.Duration // delay added to failures from an address over the limit
+	ui          *webUI        // the web UI under /ui/ (ui.go)
+	forceSecure bool          // UI cookies are always Secure
 }
 
 func (a *api) handler() http.Handler {

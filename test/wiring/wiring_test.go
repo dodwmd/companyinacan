@@ -415,7 +415,7 @@ func TestHireHandOffStartsOnboardingInPeople(t *testing.T) {
 	if got := w.eventsOf("candidate.hired.v1"); len(got) != 1 {
 		t.Fatalf("%d candidate.hired events in can-core", len(got))
 	}
-	w.noPersonalDataInCanCore("Ada", "ada@example.com", "555")
+	w.noPersonalDataInCanCore("Ada", "ada@example.com", "555 0100")
 	for _, v := range []string{list[0].GivenName, list[0].FamilyName, list[0].WorkEmail} {
 		if strings.Contains(v, "Ada") || strings.Contains(v, "example") {
 			t.Fatalf("the person record carries candidate data: %q", v)

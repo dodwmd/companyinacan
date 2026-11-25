@@ -107,6 +107,9 @@ func (s *Store) ListActivity(ctx context.Context, a *Principal, key string, afte
 			return nil, 0, err
 		}
 		e.Data, e.At = json.RawMessage(d), fromUnix(at)
+		if e.Kind == "linked" && !a.Unscoped() {
+			e.Data = redactLinkActivity(a, e.Data)
+		}
 		out = append(out, e)
 	}
 	var next int64
@@ -379,4 +382,19 @@ func (s *Store) RemoveAttachment(ctx context.Context, a *Principal, key string, 
 		}
 		return s.addActivity(ctx, tx, row.id, a.Subject, "attachment_removed", map[string]any{"attachment_id": id})
 	})
+}
+
+// redactLinkActivity hides the keys of a "linked" entry when the other end is in a project the
+// caller cannot see (the entry itself stays, so the history has no hole).
+func redactLinkActivity(a *Principal, data json.RawMessage) json.RawMessage {
+	var d struct{ Type, From, To string }
+	if json.Unmarshal(data, &d) != nil {
+		return json.RawMessage(`{"redacted":true}`)
+	}
+	for _, k := range []string{d.From, d.To} {
+		if p, _, ok := splitKey(k); !ok || !a.CanProject(p) {
+			return json.RawMessage(`{"redacted":true}`)
+		}
+	}
+	return data
 }

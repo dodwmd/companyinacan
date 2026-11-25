@@ -57,6 +57,7 @@ an audit log without secrets.
 
 ## Footprint
 
-Idle RAM target 20 MB (limit 48 MB). Measured on the static linux/amd64 build: 13.6 MiB RSS after
-start and 20.4 MiB after 200 issue creates plus 100 searches and 100 board reads (VmRSS). See
-`specs/011-work-tracker/research.md` R7.
+Declared 28 MB (limit 64 MB). Measured on the static linux/amd64 build: 13.4 MiB RSS idle without
+the web UI and 16.6 MiB with it; 27.7 MiB after 400 UI list and board renders, 31.0 MiB after renders
+of an issue with a 50 KB description and 30 large comments (VmRSS, development machine, not a
+cluster). The API alone: `specs/011-work-tracker/research.md` R7 (20.4 MiB under load).

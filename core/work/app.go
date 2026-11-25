@@ -44,6 +44,9 @@ type Options struct {
 	// Can is the can-core client of an installed module (CAN_API_URL): personal access tokens are
 	// introspected through it and events are published through it instead of a webhook URL.
 	Can *modclient.Client
+	// PublicURL is the address people use to reach the tracker (CAN_WORK_PUBLIC_URL); an https URL
+	// makes the UI cookies Secure.
+	PublicURL string
 }
 
 // App wires the store, the webhook dispatcher and the HTTP API.
@@ -97,6 +100,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		penalty:  300 * time.Millisecond,
 		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
+	a.forceSecure = cfg.forceSecure(opt.PublicURL)
 	if a.ui, err = newWebUI(a, now); err != nil {
 		_ = store.Close()
 		return nil, err

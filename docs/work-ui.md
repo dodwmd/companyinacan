@@ -166,11 +166,22 @@ needs a decision about exposing a login form on the public internet.
 
 ## Operating notes
 
-* Config: nothing new. The UI uses `trust_proxy`, `max_body_bytes` and the `rate_limit` block.
+* Config: the UI uses `trust_proxy`, `max_body_bytes` and the `rate_limit` block, plus one new key,
+  `ui.force_secure`. Cookies are `Secure` and `__Host-` prefixed when the request arrived over TLS,
+  when `trust_proxy: true` and the proxy sets `X-Forwarded-Proto: https`, or when `ui.force_secure`
+  is on. `force_secure` defaults to on when the environment variable `CAN_WORK_PUBLIC_URL` is an
+  `https://` URL (set it to the address people use), and to off otherwise (plain-HTTP compose).
+  Set `ui.force_secure: true` behind a TLS-terminating proxy that you do not trust to set headers;
+  never turn it on for plain HTTP, the browser would drop the cookies and sign-in would loop.
+* Long text: each description or comment is rendered up to 20,000 bytes, and a page renders at most
+  150,000 bytes of Markdown in total; the rest is shortened with a notice (the edit form and API have
+  the full text). Rendering is a single linear pass, so large or hostile text cannot slow a page.
+* Activity: a "linked" entry whose other issue is in a project you cannot see is shown without the
+  other key, in the UI and in `GET /v1/issues/{key}/activity`.
 * Logs: the access log already omits query strings and bodies; the UI adds no token or form value
   to it.
 * A restart signs everybody out. If can-core cannot be reached to check a can-core token, requests fail closed: the session ends and the next click goes to the sign-in page.
-* Footprint (static build, development machine): idle RSS 13.6 MiB without the UI and 16.8 MiB with it; binary 12.4 MB to 15.1 MB, mostly `html/template`. Not measured on a cluster.
+* Footprint (static build, development machine): idle RSS 13.4 MiB without the UI and 16.6 MiB with it, 27.7 MiB after 400 list and board renders, 31.0 MiB with large fixtures; binary 12.4 MB to 15.1 MB, mostly `html/template`. The module now declares 28 MB with a 64 MB limit. Not measured on a cluster.
 * Roll back: the UI adds no table or migration; an older binary simply has no `/ui/`.
 * Local compose: `dev/compose/smoke.sh` signs in with the dev admin token and opens the SMOKE
   project through the edge.

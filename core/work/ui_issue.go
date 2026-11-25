@@ -75,14 +75,19 @@ func (u *webUI) issuePage(c *uiCtx) {
 		c.fail(err, "/ui/")
 		return
 	}
-	v := &uiIssueView{Issue: d, Description: renderText(d.Description), Labels: strings.Join(d.Labels, " "), Priorities: Priorities, LinkTypes: LinkTypes}
+	rb := newRenderBudget()
+	v := &uiIssueView{Issue: d, Description: rb.render(d.Description), Labels: strings.Join(d.Labels, " "), Priorities: Priorities, LinkTypes: LinkTypes}
 	comments, cn, err := s.ListComments(ctx, c.p, key, c.cursorParam("ca"), 30)
 	if err != nil {
 		c.fail(err, "/ui/")
 		return
 	}
 	for _, cm := range comments {
-		v.Comments = append(v.Comments, uiComment{Comment: cm, HTML: renderText(cm.Body)})
+		if err := ctx.Err(); err != nil { // the request budget bounds rendering too
+			c.fail(err, "/ui/")
+			return
+		}
+		v.Comments = append(v.Comments, uiComment{Comment: cm, HTML: rb.render(cm.Body)})
 	}
 	if cn > 0 {
 		v.CommentsMore = "/ui/issues/" + key + "?ca=" + strconv.FormatInt(cn, 10) + "#comments"
@@ -185,6 +190,9 @@ func activityText(a Activity) string {
 	case "linked":
 		var d struct{ Type, From, To string }
 		_ = json.Unmarshal(a.Data, &d)
+		if d.From == "" || d.To == "" {
+			return msg("activity.linked_hidden")
+		}
 		return msg("activity.linked", short(d.From), short(d.Type), short(d.To))
 	case "commented", "ranked", "unlinked", "attachment_added", "attachment_removed":
 		return msg("activity." + a.Kind)

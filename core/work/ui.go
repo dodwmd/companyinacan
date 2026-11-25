@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -174,7 +175,7 @@ type uiCtx struct {
 }
 
 func (u *webUI) secure(r *http.Request) bool {
-	return r.TLS != nil || (u.a.trustProxy && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
+	return u.a.forceSecure || r.TLS != nil || (u.a.trustProxy && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
 }
 
 func (u *webUI) sessionCookieName(r *http.Request) string {
@@ -429,13 +430,21 @@ func (c *uiCtx) base(title, current string) *uiBase {
 	return b
 }
 
+var uiBufs = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
 func (c *uiCtx) render(status int, page string, b *uiBase) {
 	t := c.u.pages[page]
 	if t == nil {
 		panic("work ui: no template " + page)
 	}
-	var buf bytes.Buffer
-	if err := t.ExecuteTemplate(&buf, "layout", b); err != nil {
+	buf := uiBufs.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer func() {
+		if buf.Cap() <= 1<<20 { // do not keep a huge page's buffer alive
+			uiBufs.Put(buf)
+		}
+	}()
+	if err := t.ExecuteTemplate(buf, "layout", b); err != nil {
 		c.u.a.log.Error("ui render", "page", page, "error", err)
 		http.Error(c.w, "internal error", http.StatusInternalServerError)
 		return

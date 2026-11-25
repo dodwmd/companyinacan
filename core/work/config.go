@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -25,6 +26,13 @@ type Config struct {
 	Webhook struct {
 		URL string `yaml:"url"`
 	} `yaml:"webhook"`
+	// UI settings for the web UI under /ui/.
+	UI struct {
+		// ForceSecure marks the UI's cookies Secure (and __Host- prefixed) even when the request
+		// did not arrive over TLS, for a TLS-terminating proxy that does not set X-Forwarded-Proto
+		// or is not trusted. Unset: on when CAN_WORK_PUBLIC_URL is an https URL.
+		ForceSecure *bool `yaml:"force_secure"`
+	} `yaml:"ui"`
 	// RetentionDays deletes issues resolved longer ago than this (0 keeps them forever).
 	RetentionDays      int `yaml:"retention_days"`
 	AuditRetentionDays int `yaml:"audit_retention_days"`
@@ -84,4 +92,13 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("retention_days and audit_retention_days must be >= 0"))
 	}
 	return errors.Join(errs...)
+}
+
+// forceSecure reports whether the UI's cookies are always Secure: the explicit setting, else
+// whether the public URL is https.
+func (c *Config) forceSecure(publicURL string) bool {
+	if c.UI.ForceSecure != nil {
+		return *c.UI.ForceSecure
+	}
+	return strings.HasPrefix(strings.ToLower(publicURL), "https://")
 }
