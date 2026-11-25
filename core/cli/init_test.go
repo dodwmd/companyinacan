@@ -87,7 +87,7 @@ func TestDefaultTerminalDetectionIgnoresDevNull(t *testing.T) {
 	if err != nil {
 		t.Skip("no /dev/null")
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if stdinIsTerminal(f) {
 		t.Fatal("/dev/null must not be treated as an interactive terminal")
 	}
