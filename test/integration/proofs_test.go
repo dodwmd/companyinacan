@@ -238,7 +238,7 @@ spec:
 func review(t *testing.T, token, aud, field string) string {
 	t.Helper()
 	out, err := kubectlStdin(fmt.Sprintf(tokenReview, token, aud), "--as=system:serviceaccount:can-system:can-core",
-		"create", "-f", "-", "-o", "jsonpath={"+field+"}")
+		"create", "--validate=false", "-f", "-", "-o", "jsonpath={"+field+"}")
 	if err != nil {
 		t.Fatalf("TokenReview as can-core failed: %v\n%s", err, out)
 	}
@@ -278,7 +278,8 @@ func TestCanCoreRBACScope(t *testing.T) {
 	const core = "--as=system:serviceaccount:can-system:can-core"
 	can := func(args ...string) string {
 		out, _ := kubectl(append([]string{"auth", "can-i"}, append(args, core)...)...)
-		return strings.TrimSpace(out)
+		lines := strings.Split(strings.TrimSpace(out), "\n") // kubectl may print a Warning first
+		return strings.TrimSpace(lines[len(lines)-1])
 	}
 	if got := can("get", "secrets", "-n", "kube-system"); got != "no" {
 		t.Errorf("can-core can read kube-system secrets: %q", got)
