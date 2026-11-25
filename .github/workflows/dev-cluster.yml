@@ -1,0 +1,42 @@
+name: dev-cluster
+
+# UNVERIFIED: written without access to Docker/k3d (epic E02). Not a required check; the first
+# run is the verification. Kept out of ci.yml so it cannot affect the required job names.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "dev/**"
+      - "core/cluster/**"
+      - "test/integration/**"
+      - ".github/workflows/dev-cluster.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        run: curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/v5.8.3/install.sh | TAG=v5.8.3 bash
+      - name: Create the cluster
+        run: make dev
+      - name: Integration tests
+        run: go test -tags integration -count=1 -v ./test/integration/...
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,svc,networkpolicy -A || true
+          kubectl --context k3d-companyinacan-dev -n kube-system logs deployment/coredns --tail=50 || true
+      - name: Delete the cluster
+        if: always()
+        run: make down

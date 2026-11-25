@@ -1,0 +1,91 @@
+# can-core is highly privileged by design (SPEC 3.1) but gets the narrowest ClusterRole that
+# works: no wildcards, no escalate/bind/impersonate, never cluster-admin. Because `escalate`
+# and `bind` are withheld, can-core cannot grant permissions it does not itself hold.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: can-core
+  namespace: can-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: can-core
+rules:
+  # Module namespaces (mod-<id>) and their guard rails.
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [resourcequotas, limitranges, serviceaccounts, services, configmaps, persistentvolumeclaims, secrets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [traefik.io, traefik.containo.us]
+    resources: [ingressroutes, middlewares]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Helm releases install namespaced RBAC for module charts.
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Module identity: validate projected ServiceAccount tokens.
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: can-core
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: can-core
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system
+---
+# kube-system is not default-denied and not ours: can-core may only touch the two objects
+# it manages there (coredns-custom rewrites, Traefik HelmChartConfig).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: can-core-kube-system
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [coredns-custom]
+    verbs: [get, update, patch]
+  - apiGroups: [helm.cattle.io]
+    resources: [helmchartconfigs]
+    resourceNames: [traefik]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: can-core-kube-system
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: can-core-kube-system
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system

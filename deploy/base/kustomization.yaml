@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Base cluster configuration shared by `can dev` (k3d) and production k3s (epic E06).
+# Apply with: kubectl apply -k deploy/base
+resources:
+  - namespaces.yaml
+  - quotas.yaml
+  - networkpolicies.yaml
+  - rbac.yaml
+  - traefik-config.yaml
+  - coredns-custom.yaml

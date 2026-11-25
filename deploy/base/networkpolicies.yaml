@@ -1,0 +1,208 @@
+# Default-deny plus explicit allows for each platform namespace (SPEC 3.1). kube-system
+# (Traefik, CoreDNS) is deliberately not default-denied. Enforced by k3s's kube-router.
+#
+# Port conventions (the charts of E03/E04 must match): can-core admin 8080, site 8081,
+# can-core module API 8090, portal 8080.
+# ---- can-system -------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: can-system
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: can-system
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: can-system
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/name, operator: In, values: [can-core, site]}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: traefik}
+      ports:
+        - {protocol: TCP, port: 8080}
+        - {protocol: TCP, port: 8081}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-module-api-from-modules
+  namespace: can-system
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: can-core}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {can.dev/namespace-kind: module}
+        - namespaceSelector:
+            matchLabels: {can.dev/namespace-kind: portal}
+      ports:
+        - {protocol: TCP, port: 8090}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-can-core-egress
+  namespace: can-system
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: can-core}
+  policyTypes: [Egress]
+  egress:
+    # Module webhook and health ports (varying per module).
+    - to:
+        - namespaceSelector:
+            matchLabels: {can.dev/namespace-kind: module}
+    # Create databases and users.
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: can-data}
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 3306}
+    # Kubernetes API server (node IP after Service DNAT).
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {protocol: TCP, port: 6443}
+        - {protocol: TCP, port: 443}
+---
+# ---- can-data ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: can-data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: can-data
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-from-modules-and-core
+  namespace: can-data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: can-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: can-core}
+        - namespaceSelector:
+            matchLabels: {can.dev/namespace-kind: module}
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 3306}
+---
+# ---- can-portal -------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: can-portal
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: can-portal
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: can-portal
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: traefik}
+      ports:
+        - {protocol: TCP, port: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-portal-egress-to-module-api
+  namespace: can-portal
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: can-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: can-core}
+      ports:
+        - {protocol: TCP, port: 8090}

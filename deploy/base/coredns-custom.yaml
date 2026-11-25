@@ -1,0 +1,17 @@
+# k3s re-applies its own CoreDNS manifest and reverts edits to `coredns`, but imports
+# `*.override` (inside the default server block) and `*.server` keys from this ConfigMap.
+#
+# Pods must reach the host's public names through Traefik rather than their own loopback
+# (localtest.me resolves to 127.0.0.1). `admin.localtest.me` is pinned first with a no-op
+# `stop` rule so it is never rewritten (SPEC 3.1: modules must not reach the admin router);
+# can-core-api is a stable in-cluster alias for the module API.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  localtest.override: |
+    rewrite stop name exact admin.localtest.me admin.localtest.me
+    rewrite stop name exact can-api.localtest.me can-core-api.can-system.svc.cluster.local answer auto
+    rewrite stop name regex (.*)\.localtest\.me traefik.kube-system.svc.cluster.local answer auto

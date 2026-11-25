@@ -71,7 +71,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newValidateCmd(g),
 		newDoctorCmd(g),
 		newApplyCmd(),
-		newStubCmd("dev", "Create a local k3s company cluster", "E02", "local dev cluster"),
+		newDevCmd(g),
 		newStubCmd("up", "Provision a server and deploy the company", "E06", "server providers and make up"),
 		newLicencesCmd(g),
 	)

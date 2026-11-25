@@ -10,7 +10,7 @@ make dev       # same thing locally on k3s (k3d)
 
 Every capability is a **module** you can switch on or off (support, CRM, wiki, newsletter, analytics, …). Modules initially wrap existing open-source apps and are meant to be replaced by in-house implementations over time, without changing how the rest of the system interacts with them. It runs on a single-node k3s cluster on any provider that gives you a VM with SSH, with first-class support for a few (Hetzner first).
 
-> **Status:** pre-alpha. The foundation (epic E01) is in place: the `can` CLI skeleton (`init`, `validate`, `doctor`, `licences`), the `company.yaml` / `module.yaml` schemas with contract tests, licence checks and CI. `make up` and `make dev` are not implemented yet; see [docs/epics](docs/epics/README.md) for the plan.
+> **Status:** pre-alpha. The foundation (epic E01) is in place: the `can` CLI skeleton (`init`, `validate`, `doctor`, `licences`), the `company.yaml` / `module.yaml` schemas with contract tests, licence checks and CI. `make dev` (local k3d cluster, [docs](docs/dev-cluster.md)) is implemented but unverified on a real cluster; `make up` is not implemented yet; see [docs/epics](docs/epics/README.md) for the plan.
 
 ## Goals
 
