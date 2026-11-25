@@ -153,6 +153,12 @@ manual.
   module charts as well as Dockerfiles.
 - **FR-009**: Resource figures that are estimates MUST be labelled as such wherever they appear;
   no measurement may be invented.
+- **FR-011**: A manifest may mark a `provides` or `subscribes` entry `status: planned` (adapter
+  not deployed); planned entries MUST be ignored by provider resolution, `primary` validation,
+  the registry, event routing and module introspection, and draw warning
+  `semantic.provides-adapter-disabled`. A module may carry `status: experimental` or
+  `not-deployable` and then draws `semantic.module-status`. The three starter modules use these
+  markers; a contract test keeps `planned` in step with each chart's `adapter.enabled`.
 - **FR-010**: `THIRD_PARTY_LICENSES` MUST be regenerated and committed (`can licences --write`).
 
 ### Key Entities

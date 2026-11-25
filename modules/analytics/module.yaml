@@ -4,6 +4,11 @@ id: analytics
 name: Analytics
 description: Cookie-free, privacy-friendly web analytics for the company site. Wraps GoatCounter on SQLite (chosen over Umami for footprint, see specs/007-starter-modules/research.md); an adapter exposes the analytics capability.
 category: marketing
+# Experimental: not run on a cluster, and NOT self-starting: GoatCounter needs its first site and
+# user created once by hand (`goatcounter db create site`, README "First site") until the adapter's
+# register_site verb (T032) exists. The create command and its idempotence are unverified, so no
+# init container is shipped that could crash-loop on restart.
+status: experimental
 version: 0.1.0
 provider:
   type: oss-wrapper
@@ -25,10 +30,11 @@ resources:
   # Estimate from SPEC.md section 6.1 (~20 MB) for a single Go binary on SQLite; not yet
   # measured (research.md R5). The adapter (6 MB request) is inside this figure.
   ram_mb: 20
-  ram_limit_mb: 64
+  ram_limit_mb: 96
   disk_mb: 1024
+# status: planned = the adapter is not built yet (T032); ignored by the registry. Keep in step with chart adapter.enabled.
 provides:
-  - { capability: analytics, schema: analytics.v1, service: analytics-adapter, port: 8081 }
+  - { capability: analytics, schema: analytics.v1, service: analytics-adapter, port: 8081, status: planned }
 permissions: [analytics.read, analytics.admin]
 roles:
   viewer: [analytics.read]

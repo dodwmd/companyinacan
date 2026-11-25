@@ -4,6 +4,11 @@ id: newsletter
 name: Newsletter
 description: Mailing lists, double opt-in, campaigns and subscriber management. Wraps Listmonk; an adapter exposes the newsletter capability, publishes subscriber.added.v1 and subscribes people who opt in on a form (lead.created.v1). Sends through a bulk relay (docs/email-policy.md).
 category: marketing
+# Experimental: nothing here has run on a cluster (images, flags and paths unverified, README "Open
+# items"), the capability adapter is not built, and the bulk-relay SMTP settings are MANUAL until the
+# adapter (T031) can write them through the Listmonk API: the operator pastes the credentials into
+# Listmonk Settings, SMTP. The can-smtp Secret is created but Listmonk does not read it from the environment.
+status: experimental
 version: 0.1.0
 provider:
   type: oss-wrapper
@@ -28,14 +33,16 @@ resources:
   ram_mb: 50
   ram_limit_mb: 128
   disk_mb: 1024
+# status: planned = the adapter that serves it is not built yet (T031); ignored by the registry and
+# event routing. Keep in step with chart adapter.enabled.
 provides:
-  - { capability: newsletter, schema: newsletter.v1, service: newsletter-adapter, port: 8081 }
+  - { capability: newsletter, schema: newsletter.v1, service: newsletter-adapter, port: 8081, status: planned }
 consumes: [leads]
 publishes:
   - { event: subscriber.added.v1, schema: ./events/subscriber.added.v1.json }
 subscribes:
   # Only forms that carry the newsletter opt-in field are subscribed; the adapter ignores the rest.
-  - { event: lead.created.v1, service: newsletter-adapter, port: 8081, webhook: /hooks/lead, optional: true }
+  - { event: lead.created.v1, service: newsletter-adapter, port: 8081, webhook: /hooks/lead, optional: true, status: planned }
 permissions: [newsletter.read, newsletter.write, newsletter.admin]
 roles:
   marketing: [newsletter.read, newsletter.write]

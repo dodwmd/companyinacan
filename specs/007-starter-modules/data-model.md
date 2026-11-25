@@ -8,7 +8,7 @@
 | `runtime.subdomain` / `ui` | `support` / `support:8080` | `newsletter` / `newsletter:9000` | `stats` / `analytics:8080` |
 | `requires.database` | mariadb | postgres | sqlite |
 | `requires.capabilities` | email.send | email.send | none |
-| `resources` (ram / limit / disk MB, estimates) | 250 / 512 / 2048 | 50 / 128 / 1024 | 20 / 64 / 1024 |
+| `resources` (ram / limit / disk MB, estimates) | 250 / 512 / 2048 | 50 / 128 / 1024 | 20 / 96 / 1024 |
 | `provides` | tickets (tickets.v1) at support-adapter:8081 | newsletter (newsletter.v1) at newsletter-adapter:8081 | analytics (analytics.v1) at analytics-adapter:8081 |
 | `consumes` | none | leads | none |
 | `publishes` | ticket.created.v1 | subscriber.added.v1 | none |

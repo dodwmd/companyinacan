@@ -1,0 +1,17 @@
+schema: 1
+id: zeta
+name: Zeta
+description: Test module zeta whose capability adapter is not deployed yet.
+version: 0.1.0
+provider:
+  type: inhouse
+runtime:
+  chart: ./chart
+  subdomain: zeta
+  ui: { service: app, port: 8080 }
+requires:
+  database: none
+resources:
+  ram_mb: 20
+provides:
+  - { capability: tickets, schema: tickets.v1, service: adapter, port: 8081, status: planned }

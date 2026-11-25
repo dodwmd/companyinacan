@@ -20,6 +20,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/dodwmd/companyinacan/core/licence"
+	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/schemas"
 	"github.com/dodwmd/companyinacan/schemas/capabilities"
 	"github.com/dodwmd/companyinacan/schemas/events"
@@ -36,12 +37,13 @@ type starter struct {
 	event     string
 	ramMB     int
 	ramLimit  int
+	status    string // module status marker
 }
 
 var starters = []starter{
-	{"support", "AGPL-3.0-only", "mariadb", "support", "tickets", "tickets.v1", 8080, "ticket.created.v1", 250, 512},
-	{"newsletter", "AGPL-3.0-only", "postgres", "newsletter", "newsletter", "newsletter.v1", 9000, "subscriber.added.v1", 50, 128},
-	{"analytics", "EUPL-1.2", "sqlite", "stats", "analytics", "analytics.v1", 8080, "", 20, 64},
+	{"support", "AGPL-3.0-only", "mariadb", "support", "tickets", "tickets.v1", 8080, "ticket.created.v1", 250, 512, "not-deployable"},
+	{"newsletter", "AGPL-3.0-only", "postgres", "newsletter", "newsletter", "newsletter.v1", 9000, "subscriber.added.v1", 50, 128, "experimental"},
+	{"analytics", "EUPL-1.2", "sqlite", "stats", "analytics", "analytics.v1", 8080, "", 20, 96, "experimental"},
 }
 
 func readYAML(t *testing.T, rel string) map[string]any {
@@ -80,10 +82,25 @@ func TestStarterManifests(t *testing.T) {
 	for _, s := range starters {
 		t.Run(s.id, func(t *testing.T) {
 			rel := "modules/" + s.id + "/module.yaml"
-			if ps := validateModule(filepath.Join(root, rel)); len(ps) != 0 {
+			if ps := onlyUnexpected(validateModule(filepath.Join(root, rel))); len(ps) != 0 {
 				t.Fatalf("%s:\n%s", rel, join(ps))
 			}
 			m := readYAML(t, rel)
+			if m["status"] != s.status {
+				t.Errorf("status = %v, want %s (not enable-ready until verified on a cluster)", m["status"], s.status)
+			}
+			// planned must track the chart: a capability is available only when the adapter is enabled.
+			adapterOn := asMap(asMap(readYAML(t, "modules/"+s.id+"/chart/values.yaml"))["adapter"])["enabled"] == true
+			for _, p := range asList(m["provides"]) {
+				if (asMap(p)["status"] != "planned") != adapterOn {
+					t.Errorf("provides %v status and chart adapter.enabled=%v drifted apart", asMap(p)["capability"], adapterOn)
+				}
+			}
+			for _, p := range asList(m["subscribes"]) {
+				if (asMap(p)["status"] != "planned") != adapterOn {
+					t.Errorf("subscribes %v status and chart adapter.enabled=%v drifted apart", asMap(p)["event"], adapterOn)
+				}
+			}
 			prov := asMap(m["provider"])
 			if prov["type"] != "oss-wrapper" || prov["licence"] != s.licence || prov["licence_class"] != "osi" {
 				t.Errorf("provider = %v, want oss-wrapper %s osi", prov, s.licence)
@@ -139,6 +156,14 @@ func TestStarterManifests(t *testing.T) {
 				if !bytes.HasPrefix(b, []byte("#!/bin/sh\n")) || !bytes.Contains(b, []byte("set -eu")) {
 					t.Errorf("%s must be a POSIX sh script with `set -eu`", p)
 				}
+				for _, want := range []string{"-H @", "--connect-timeout", "--max-time", "umask 077"} {
+					if !bytes.Contains(b, []byte(want)) {
+						t.Errorf("%s lacks %q (token out of argv, bounded transfers)", p, want)
+					}
+				}
+				if bytes.Contains(b, []byte("Bearer $(")) {
+					t.Errorf("%s puts the bearer token on curl's command line", p)
+				}
 				if !bytes.Contains(b, []byte("/v1/dumps/")) || !bytes.Contains(b, []byte("CAN_TOKEN_FILE")) {
 					t.Errorf("%s must move the dump through the can-core dump endpoint with the projected token", p)
 				}
@@ -172,6 +197,18 @@ func TestStarterManifests(t *testing.T) {
 	}
 }
 
+// onlyUnexpected drops the warnings the status markers are meant to raise and keeps the rest.
+func onlyUnexpected(ps []problem.Problem) []problem.Problem {
+	var out []problem.Problem
+	for _, p := range ps {
+		if p.Severity == problem.Warning && (p.Rule == "semantic.module-status" || p.Rule == "semantic.provides-adapter-disabled") {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 func containsAny(l []any, s string) bool {
 	for _, x := range l {
 		if x == s {
@@ -179,6 +216,21 @@ func containsAny(l []any, s string) bool {
 		}
 	}
 	return false
+}
+
+func TestStatusMarkersRaiseWarnings(t *testing.T) {
+	for _, s := range starters {
+		got := map[string]int{}
+		for _, p := range validateModule(filepath.Join(root, "modules", s.id, "module.yaml")) {
+			if p.Severity != problem.Warning {
+				t.Errorf("%s: unexpected %s", s.id, p)
+			}
+			got[p.Rule]++
+		}
+		if got["semantic.module-status"] != 1 || got["semantic.provides-adapter-disabled"] != 1 {
+			t.Errorf("%s: warnings %v, want one module-status and one provides-adapter-disabled", s.id, got)
+		}
+	}
 }
 
 func TestNewsletterWiring(t *testing.T) {
@@ -393,6 +445,15 @@ func TestChartsRender(t *testing.T) {
 					t.Fatal(err)
 				}
 				checkRendered(t, s, docs, host, withAdapter)
+			}
+			if s.id == "support" {
+				docs, err := helmRender(t, s.id, "ingress.host="+host, "adapter.enabled=true", "inbound.mode=imap")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if f := mustJSON(ofKind(docs, "IngressRoute")[0].get("spec")); strings.Contains(f, "/inbound") {
+					t.Errorf("imap mode must not expose a public inbound route: %s", f)
+				}
 			}
 			// local dev: plain HTTP, no certificate resolver
 			docs, err := helmRender(t, s.id, "ingress.host="+host, "ingress.tls=false")

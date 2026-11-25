@@ -14,8 +14,17 @@ Directories starting with `_` are examples and are not enabled or listed in THIR
 
 Wrapped apps keep their own licences; the manifests, charts and hooks in this repository are
 Apache-2.0. FreeScout and Listmonk are **AGPL-3.0** and GoatCounter is **EUPL-1.2**; both are
-*network copyleft* licences: the obligation to offer source applies to users who interact with
-the program over a network, not only to people who receive copies.
+*network copyleft* licences, in different words:
+
+- AGPL-3.0 section 13: if you **modify** the program and let users interact with it remotely
+  over a network, you must offer those users the source of your modified version.
+- EUPL-1.2 Article 1 defines "Distribution or Communication" to include providing online access
+  to the work's essential functionalities, and Article 5 requires Derivative Works that are
+  distributed or communicated to stay under the EUPL (or a compatible licence listed in its appendix).
+  Running it unmodified creates no Derivative Work.
+
+This is engineering guidance for this repository, not legal advice; check with counsel before
+shipping a modified fork.
 
 What that means here:
 

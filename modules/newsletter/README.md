@@ -1,5 +1,10 @@
 # newsletter
 
+> **Status: experimental.** Never run on a cluster; the `newsletter` capability and the
+> `lead.created.v1` subscription are marked `planned` (adapter not built, T031). Until the adapter
+> exists the **SMTP/bulk-relay settings are manual**: paste the relay credentials into Listmonk
+> Settings, SMTP; Listmonk does not read them from the environment.
+
 Mailing lists, double opt-in and campaigns. Wraps [Listmonk](https://github.com/knadh/listmonk)
 (Go), provides the `newsletter` capability, publishes `subscriber.added.v1`, and optionally
 subscribes people who tick a newsletter box on a form (consumes `leads`, subscribes to

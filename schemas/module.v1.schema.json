@@ -11,6 +11,7 @@
     "name": { "type": "string", "minLength": 1, "maxLength": 80 },
     "description": { "type": "string", "minLength": 1 },
     "category": { "type": "string", "pattern": "^[a-z][a-z-]*$" },
+    "status": { "enum": ["ready", "experimental", "not-deployable"], "description": "Maturity of the module. Absent means ready. experimental: not yet verified on a cluster or needs manual steps; not-deployable: known not to run as shipped. Both draw a validation warning so they are not offered as enable-ready." },
     "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$" },
     "provider": {
       "type": "object",
@@ -78,7 +79,8 @@
           "capability": { "$ref": "#/$defs/capName" },
           "schema": { "type": "string", "pattern": "^[a-z][a-z0-9.]*\\.v[1-9][0-9]*$" },
           "service": { "$ref": "#/$defs/dnsLabel" },
-          "port": { "$ref": "#/$defs/port" }
+          "port": { "$ref": "#/$defs/port" },
+          "status": { "$ref": "#/$defs/serveStatus" }
         }
       }
     },
@@ -106,7 +108,8 @@
           "service": { "$ref": "#/$defs/dnsLabel" },
           "port": { "$ref": "#/$defs/port" },
           "webhook": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]*$" },
-          "optional": { "type": "boolean" }
+          "optional": { "type": "boolean" },
+          "status": { "$ref": "#/$defs/serveStatus" }
         }
       }
     },
@@ -162,6 +165,7 @@
     "healthcheck": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]*$" }
   },
   "$defs": {
+    "serveStatus": { "enum": ["available", "planned"], "description": "planned: declared for the contract, but the serving process (adapter) is not deployed yet; excluded from provider resolution, primary designation and event routing. Absent means available." },
     "moduleId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" },
     "capName": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9]+)*$" },
     "dnsLabel": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" },

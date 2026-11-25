@@ -7,6 +7,7 @@ type Module struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	Category    string `yaml:"category"`
+	Status      string `yaml:"status"` // ready (default), experimental, not-deployable
 	Version     string `yaml:"version"`
 	Provider    struct {
 		Type            string `yaml:"type"`
@@ -36,6 +37,7 @@ type Module struct {
 		Schema     string `yaml:"schema"`
 		Service    string `yaml:"service"`
 		Port       int    `yaml:"port"`
+		Status     string `yaml:"status"` // available (default) or planned
 	} `yaml:"provides"`
 	Consumes  []string `yaml:"consumes"`
 	Publishes []struct {
@@ -47,6 +49,7 @@ type Module struct {
 		Service string `yaml:"service"`
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
+		Status  string `yaml:"status"` // available (default) or planned
 	} `yaml:"subscribes"`
 	Permissions []string            `yaml:"permissions"`
 	Roles       map[string][]string `yaml:"roles"`
@@ -65,3 +68,6 @@ func DecodeModule(d *Doc) (*Module, error) {
 	}
 	return &m, nil
 }
+
+// ProvidesServed reports whether a provision is actually served (status is not "planned").
+func ProvidesServed(status string) bool { return status != "planned" }

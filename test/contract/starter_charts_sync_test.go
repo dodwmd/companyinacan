@@ -34,7 +34,7 @@ func TestEveryModuleManifestValidates(t *testing.T) {
 		t.Fatalf("found only %d manifests", len(files))
 	}
 	for _, f := range files {
-		if ps := validateModule(f); len(ps) != 0 {
+		if ps := onlyUnexpected(validateModule(f)); len(ps) != 0 {
 			t.Errorf("%s:\n%s", f, join(ps))
 		}
 	}

@@ -14,6 +14,16 @@ placeholder, `make release-check` fails while it remains, and the digest is look
 `crane digest alpine:3.22` and committed in a reviewed change. The `hooks.image` reference in the
 module manifests is a tag; can-core resolves it to the digest recorded at release time.
 
+## Client versions
+
+Dump tools must not be older than the server they dump: `pg_dump` refuses a newer server, and the
+Postgres client here is `postgresql17-client`, so the shared Postgres in `can-data` must be major
+version 17 or lower. The MariaDB client series should match the shared MariaDB major. At first
+build record the exact `apk` versions (`apk info -v`) here and in the release notes, and compare
+them with the database image versions E03 deploys; bump the client packages together with the
+database images. The Alpine digest freezes the base layer, not the package index, so the exact
+versions in each published image are the record.
+
 ## Status
 
 Not built here (no container runtime in the authoring environment). Confirm on first build that

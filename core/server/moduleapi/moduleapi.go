@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
@@ -90,6 +91,9 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, store.Module)
 func (s *Server) self(w http.ResponseWriter, _ *http.Request, m store.Module) {
 	provides := []string{}
 	for _, p := range m.Manifest.Provides {
+		if !config.ProvidesServed(p.Status) {
+			continue
+		}
 		provides = append(provides, p.Capability)
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{

@@ -1,5 +1,10 @@
 # support
 
+> **Status: not deployable.** The only practical FreeScout image needs root, which module
+> namespaces refuse, and its tag is unresolved. Do not enable this module on a real server until
+> a non-root wrapper image exists (specs/007-starter-modules tasks T032, T041). `can validate`
+> warns (`semantic.module-status`) and the `tickets` capability is marked `planned` (no adapter yet).
+
 Shared support inbox. Wraps [FreeScout](https://github.com/freescout-help-desk/freescout) (PHP),
 provides the `tickets` capability and publishes `ticket.created.v1`.
 

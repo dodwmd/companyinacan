@@ -12,6 +12,10 @@ token_file="${CAN_TOKEN_FILE:-/var/run/secrets/can/token}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# The bearer token goes to curl through a 0600 header file, never through argv (visible in /proc).
+umask 077
+printf 'Authorization: Bearer %s\n' "$(cat "$token_file")" >"$tmp/auth"
+
 # --single-transaction: a consistent InnoDB snapshot without locking the live app.
 MYSQL_PWD="$DB_PASSWORD" mariadb-dump \
 	--host="$DB_HOST" --port="${DB_PORT:-3306}" --user="$DB_USER" \
@@ -25,7 +29,7 @@ gzip -c "$tmp/dump.sql" >"$tmp/dump.sql.gz"
 gzip -t "$tmp/dump.sql.gz"
 
 curl --fail --silent --show-error --retry 3 \
-	-X PUT -H "Authorization: Bearer $(cat "$token_file")" \
+	-X PUT -H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
 	--data-binary @"$tmp/dump.sql.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/database.sql.gz"
 echo "backup: $CAN_MODULE database dumped"

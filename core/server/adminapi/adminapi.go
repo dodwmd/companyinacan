@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
@@ -184,6 +185,9 @@ type moduleView struct {
 func view(m store.Module) moduleView {
 	v := moduleView{ID: m.ID, Name: m.Manifest.Name, Version: m.Version, State: m.State, Namespace: m.Namespace, LastError: m.LastError, Provides: []string{}, RAMMB: m.Manifest.Resources.RAMMB, UpdatedAt: m.UpdatedAt}
 	for _, p := range m.Manifest.Provides {
+		if !config.ProvidesServed(p.Status) {
+			continue
+		}
 		v.Provides = append(v.Provides, p.Capability)
 	}
 	return v

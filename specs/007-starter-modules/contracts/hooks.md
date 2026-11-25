@@ -9,6 +9,16 @@ can-core mounts `modules/<id>/hooks/*.sh` as a ConfigMap and runs the hook as a 
 with image `hooks.image` (`ghcr.io/dodwmd/can-hooks`, `deploy/hooks`). Jobs run non-root, with the
 same restricted security context as the module's pods.
 
+## Job pod requirements
+
+- `securityContext.fsGroup` equal to the module pod's (1000), so the hooks user can write the
+  module volume (analytics restore); `runAsNonRoot` and the rest of the restricted profile.
+- Hook Jobs may run with a read-only root filesystem: mount an `emptyDir` at `/tmp` (scripts use
+  `mktemp -d`) sized for the largest dump. The module PVC is mounted at `/data` for analytics only.
+- The bearer token is passed to curl through a 0600 header file (`-H @file`), never on argv;
+  every transfer has `--connect-timeout 10 --max-time 600`.
+- analytics `restore.sh` refuses to run unless `/data` is a mount point.
+
 ## Environment
 
 | Variable | Source | Used by |

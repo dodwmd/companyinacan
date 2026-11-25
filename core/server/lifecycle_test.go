@@ -60,12 +60,14 @@ func TestStubModuleLifecycle(t *testing.T) {
 		Service string `yaml:"service"`
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
+		Status  string `yaml:"status"`
 	}{Event: "lead.created.v1", Service: "stub", Port: 8000, Webhook: "/hooks/lead"})
 	stub.Provides = append(stub.Provides, struct {
 		Capability string `yaml:"capability"`
 		Schema     string `yaml:"schema"`
 		Service    string `yaml:"service"`
 		Port       int    `yaml:"port"`
+		Status     string `yaml:"status"`
 	}{Capability: "contacts", Service: "stub", Port: 8000})
 
 	on := true

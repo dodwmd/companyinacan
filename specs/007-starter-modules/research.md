@@ -70,7 +70,7 @@ candidate behind the same `analytics` capability.
 |---|---|---|---|
 | support | 250 | 512 | SPEC catalogue ~250 MB; limit about 2x for PHP bursts and imports |
 | newsletter | 50 | 128 | SPEC catalogue ~50 MB; limit 2.5x: Go GC plus campaign batches |
-| analytics | 20 | 64 | SPEC catalogue ~20 MB; limit about 3x for dashboard queries over SQLite |
+| analytics | 20 | 96 | SPEC catalogue ~20 MB; app limit 64 MB (3x idle, headroom for dashboard queries over SQLite) plus 32 MB adapter |
 
 Pod requests (app plus adapter) sum to exactly the declared `ram_mb`; limits sum to the declared
 limit (asserted by the contract test). SPEC says CI fails above 1.2x of `ram_mb` once measured:
@@ -119,6 +119,11 @@ receives the signed inbound webhook, creates the GoatCounter site). Writing thre
 separate epic-sized piece of work with its own footprint; E07 delivers the contract, the chart
 slot and the manifests, and says so. Consequence: `provides` is declared but unserved until the
 adapters ship; consumers must treat the capability as absent when `adapter.enabled` is false.
+
+Marker (QA follow-up): `provides[].status: planned` and `subscribes[].status: planned` keep the
+contract declared while the registry ignores it, instead of removing the declarations; module
+`status: not-deployable|experimental` flags support (root-only image) and newsletter/analytics
+(unverified; analytics also needs a manual first site, newsletter a manual SMTP step).
 
 ## R11. Image pins: placeholders and the existing script
 

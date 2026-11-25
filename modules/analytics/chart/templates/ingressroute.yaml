@@ -19,12 +19,14 @@ spec:
           port: {{ .Values.service.port }}
     {{- if .Values.adapter.enabled }}
     {{- range .Values.ingress.adapterRoutes }}
+    {{- if or (not .inboundMode) (eq .inboundMode $.Values.inbound.mode) }}
     - match: Host(`{{ $host }}`) && PathPrefix(`{{ .pathPrefix }}`)
       kind: Rule
       priority: {{ .priority }}
       services:
         - name: {{ $.Chart.Name }}-adapter
           port: {{ $.Values.adapter.port }}
+    {{- end }}
     {{- end }}
     {{- end }}
   {{- if .Values.ingress.tls }}

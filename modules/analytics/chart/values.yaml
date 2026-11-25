@@ -23,7 +23,7 @@ persistence:
   mountPath: /data         # goatcounter.sqlite3
 resources:
   requests: { memory: 14Mi, cpu: 10m }
-  limits: { memory: 40Mi }
+  limits: { memory: 64Mi }
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -51,4 +51,4 @@ adapter:
   env: {}
   resources:
     requests: { memory: 6Mi, cpu: 5m }
-    limits: { memory: 24Mi }
+    limits: { memory: 32Mi }

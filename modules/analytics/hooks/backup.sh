@@ -15,6 +15,10 @@ token_file="${CAN_TOKEN_FILE:-/var/run/secrets/can/token}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# The bearer token goes to curl through a 0600 header file, never through argv (visible in /proc).
+umask 077
+printf 'Authorization: Bearer %s\n' "$(cat "$token_file")" >"$tmp/auth"
+
 [ -f "$db" ] || { echo "backup: $db not found (is the data volume mounted?)" >&2; exit 1; }
 
 # .backup uses SQLite's online backup API: consistent even while GoatCounter writes (WAL).
@@ -23,7 +27,7 @@ sqlite3 "$db" ".timeout 10000" ".backup '$tmp/goatcounter.sqlite3'"
 gzip -c "$tmp/goatcounter.sqlite3" >"$tmp/dump.sqlite3.gz"
 
 curl --fail --silent --show-error --retry 3 \
-	-X PUT -H "Authorization: Bearer $(cat "$token_file")" \
+	-X PUT -H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
 	--data-binary @"$tmp/dump.sqlite3.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/goatcounter.sqlite3.gz"
 echo "backup: $CAN_MODULE database dumped"

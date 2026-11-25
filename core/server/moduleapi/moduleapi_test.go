@@ -62,6 +62,7 @@ func newHarness(t *testing.T) *harness {
 		Service string `yaml:"service"`
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
+		Status  string `yaml:"status"`
 	}{Event: "lead.created.v1", Service: "crm", Port: 8000, Webhook: "/hooks/lead"})
 	support := manifest("support")
 	support.Provides = append(support.Provides, struct {
@@ -69,6 +70,7 @@ func newHarness(t *testing.T) *harness {
 		Schema     string `yaml:"schema"`
 		Service    string `yaml:"service"`
 		Port       int    `yaml:"port"`
+		Status     string `yaml:"status"`
 	}{Capability: "tickets", Service: "support", Port: 8080})
 	for _, m := range []config.Module{forms, crm, support} {
 		if err := reg.Register(ctx, store.Module{ID: m.ID, Version: m.Version, Namespace: "mod-" + m.ID, ServiceAccount: m.ID, State: store.StateEnabled, HMACSecret: "s", Manifest: m}); err != nil {

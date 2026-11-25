@@ -10,8 +10,12 @@ token_file="${CAN_TOKEN_FILE:-/var/run/secrets/can/token}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# The bearer token goes to curl through a 0600 header file, never through argv (visible in /proc).
+umask 077
+printf 'Authorization: Bearer %s\n' "$(cat "$token_file")" >"$tmp/auth"
+
 curl --fail --silent --show-error --retry 3 \
-	-H "Authorization: Bearer $(cat "$token_file")" \
+	-H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
 	-o "$tmp/dump.sql.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/database.sql.gz"
 gzip -t "$tmp/dump.sql.gz"

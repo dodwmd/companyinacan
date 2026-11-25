@@ -80,6 +80,9 @@ func ServiceURL(namespace, service string, port int) (string, error) {
 func FromManifest(m *config.Module) ([]store.Provider, []store.Subscription, error) {
 	var ps []store.Provider
 	for _, p := range m.Provides {
+		if !config.ProvidesServed(p.Status) {
+			continue // planned: declared for the contract, not served yet
+		}
 		svc := p.Service
 		if svc == "" {
 			svc = m.ID
@@ -95,6 +98,9 @@ func FromManifest(m *config.Module) ([]store.Provider, []store.Subscription, err
 	}
 	var ss []store.Subscription
 	for _, s := range m.Subscribes {
+		if !config.ProvidesServed(s.Status) {
+			continue
+		}
 		svc, port := s.Service, s.Port
 		if svc == "" {
 			svc = m.ID

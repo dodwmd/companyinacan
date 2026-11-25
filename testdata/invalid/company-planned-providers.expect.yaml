@@ -1,0 +1,7 @@
+problems:
+  - rule: semantic.provides-adapter-disabled
+    path: "/provides/0/status"
+    severity: warning
+  - rule: semantic.provides-adapter-disabled
+    path: "/provides/0/status"
+    severity: warning

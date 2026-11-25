@@ -23,6 +23,6 @@ accepted:
   - id: GPL-3.0-or-later
   - id: AGPL-3.0-only
   - id: AGPL-3.0-or-later
-  # EUPL-1.2 (GoatCounter): OSI-approved copyleft that also covers use over a network; its appendix
+  # EUPL-1.2 (GoatCounter): OSI-approved copyleft whose "Distribution or Communication" (Art. 1) includes online access to the work (not legal advice); its appendix
   # lists AGPL-3.0 as a compatible licence.
   - id: EUPL-1.2

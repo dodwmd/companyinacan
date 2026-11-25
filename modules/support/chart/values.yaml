@@ -18,7 +18,7 @@ ingress:
   tls: true                # false on local dev (plain HTTP, no certificate resolver)
   certResolver: letsencrypt
   adapterRoutes:           # public paths served by the adapter (inbound-parse webhook)
-    - { pathPrefix: /inbound, priority: 100 }
+    - { pathPrefix: /inbound, priority: 100, inboundMode: webhook }   # only in webhook mode
 persistence:
   enabled: true
   size: 2Gi

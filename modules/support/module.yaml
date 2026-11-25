@@ -4,6 +4,10 @@ id: support
 name: Support inbox
 description: Shared support inbox with email in and out, assignment and canned replies. Wraps FreeScout; an adapter exposes the tickets capability and the ticket.created.v1 event. Inbound mail arrives over IMAP or an inbound-parse webhook (docs/email-policy.md).
 category: support
+# NOT DEPLOYABLE as shipped: the community FreeScout image needs root (module namespaces enforce
+# `restricted`) and its tag is unresolved. Until a non-root wrapper image exists (specs/007-starter-modules
+# tasks T032, T041) `can validate` warns and the module must not be offered as enable-ready.
+status: not-deployable
 version: 0.1.0
 provider:
   type: oss-wrapper
@@ -28,8 +32,10 @@ resources:
   ram_mb: 250
   ram_limit_mb: 512
   disk_mb: 2048
+# status: planned = the adapter that serves the capability is not built yet (T030); the registry,
+# provider resolution and event routing ignore planned entries. Keep in step with chart adapter.enabled.
 provides:
-  - { capability: tickets, schema: tickets.v1, service: support-adapter, port: 8081 }
+  - { capability: tickets, schema: tickets.v1, service: support-adapter, port: 8081, status: planned }
 publishes:
   - { event: ticket.created.v1, schema: ./events/ticket.created.v1.json }
 permissions: [tickets.read, tickets.write, tickets.admin]
