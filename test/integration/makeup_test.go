@@ -190,9 +190,12 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	if got := mustKubectl(t, "-n", "can-system", "get", "deploy", "can-core", "-o", "jsonpath={.status.availableReplicas}"); got != "1" {
 		t.Fatalf("can-core availableReplicas=%q", got)
 	}
-	if st, body, _ := edge(t, "GET", "http://"+adminHost+"/healthz", nil, nil); st != 200 {
-		t.Fatalf("admin /healthz through Traefik: %d %s", st, body)
-	}
+	// Traefik loads a new route a moment after it is applied: wait for it, not for a fixed time.
+	eventually(t, 45*time.Second, "the admin and site routes to be live in Traefik", func() (bool, string) {
+		a, ab, _ := edge(t, "GET", "http://"+adminHost+"/healthz", nil, nil)
+		s, sb, _ := edge(t, "GET", "http://"+siteHost+"/", nil, nil)
+		return a == 200 && s == 200, fmt.Sprintf("admin %d %.80s; site %d %.80s", a, ab, s, sb)
+	})
 
 	// --- the admin can log in with the generated password and TOTP --------------------------
 	if res.Admin == nil || res.Admin.Password == "" || res.Admin.TOTPSecret == "" {
