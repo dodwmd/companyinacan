@@ -355,7 +355,13 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) error 
 
 // moduleDir returns the module's directory, refusing ids or paths that leave ModulesDir.
 func (in *Installer) moduleDir(id string) (string, error) {
-	return filepath.Join(in.cfg.ModulesDir, id), nil // id matched idRE: no separators
+	for _, d := range []string{id, "_" + id} { // `_id` directories are examples (validate.ManifestPath)
+		p := filepath.Join(in.cfg.ModulesDir, d) // id matched idRE: no separators
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("no module directory for %q under %s", id, in.cfg.ModulesDir)
 }
 
 func (in *Installer) values(s reconcile.Spec, dir string) (map[string]any, error) {
