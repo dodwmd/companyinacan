@@ -47,17 +47,18 @@ core/server/store/migrations/0006_webpush.sql
 docs/pwa.md
 ```
 
-## Measurements (this machine, 2026-11-25, `go build -trimpath -ldflags="-s -w"`)
+## Measurements (this machine, 2026-11-25, `go build -trimpath -ldflags="-s -w"`, base = origin/main including SSO)
 
 | | before (origin/main) | after | delta |
 |---|---|---|---|
-| `can-core` binary | 19,149,063 bytes | 19,284,231 bytes | +135,168 bytes (+0.7%) |
-| idle VmRSS, `can-core serve`, empty database, 6 s after start, 3 runs each | 47,428 / 47,972 / 47,552 kB (median 46.4 MiB) | 48,500 / 48,200 / 48,092 kB (median 47.1 MiB) | about +0.6 MiB (run-to-run spread is about 0.5 MiB, so the real change is between 0 and 1 MiB) |
+| `can-core` binary | 19,394,823 bytes | 19,534,087 bytes | +139,264 bytes (+0.7%) |
+| idle VmRSS, `can-core serve`, empty database, 6 s after start, 4 runs each | 49,280 / 48,408 / 48,288 / 48,688 kB (median about 47.4 MiB) | 48,384 / 48,536 / 48,536 / 48,968 kB (median about 47.4 MiB) | within run-to-run noise (about 0.5 MiB); an earlier 3-run comparison on the pre-SSO base showed +0.6 MiB (46.4 to 47.1 MiB) |
 
-The idle number is with no push subscription: it is the cost of the larger binary's pages and the new
-migration, not of push state. The cost with active subscriptions (one HTTP transport, a few KiB per
-device, at most eight delivery goroutines) was not measured under load. The SSO branch (PR #30) measured
-50.6 MiB on its own base; the two deltas add.
+So the honest statement is: binary +0.14 MB, idle RSS between 0 and about +0.6 MiB with no subscription
+(larger binary pages, the new migration; no push state exists). The cost with active subscriptions
+(one HTTP transport, a few KiB per device, at most eight delivery goroutines) was not measured under
+load. These runs use the fake token reviewer and no modules, so the absolute numbers differ from the
+50.6 MiB PR #30 measured in its environment; only the before/after pair is meaningful.
 
 ## Not verified
 

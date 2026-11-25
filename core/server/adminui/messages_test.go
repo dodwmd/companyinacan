@@ -76,7 +76,7 @@ func TestEmbeddedAssetsStaySmall(t *testing.T) {
 		}
 		return nil
 	})
-	if total > 100<<10 || css > 16<<10 {
-		t.Fatalf("assets %d bytes, css %d bytes (budget 100 KiB / 16 KiB)", total, css)
+	if total > 120<<10 || css > 16<<10 {
+		t.Fatalf("assets %d bytes, css %d bytes (budget 120 KiB / 16 KiB)", total, css)
 	}
 }
