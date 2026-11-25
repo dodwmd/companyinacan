@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/dodwmd/companyinacan/core/backup"
 	"regexp"
 	"strings"
 	"time"
@@ -107,6 +108,8 @@ type Health struct {
 	CertsNote string // set when certificate status is unavailable
 	Disk      []DiskUsage
 	DiskNote  string
+	// Dump is the last backup dump run; nil when dumps are off or none has run.
+	Dump *backup.DumpRun
 }
 
 // Status gathers the health snapshot. A source that is missing or fails is reported as unavailable,
@@ -138,6 +141,12 @@ func (s *Service) Status(ctx context.Context) (Health, error) {
 	}
 	if h.Reconcile, err = s.lastReconcile(ctx); err != nil {
 		return h, err
+	}
+	if s.LastDump != nil {
+		if run, err := s.LastDump(); err == nil {
+			run.Error = Sanitise(run.Error)
+			h.Dump = &run
+		}
 	}
 	if s.Ingress == nil {
 		h.CertsNote = "unavailable"

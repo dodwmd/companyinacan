@@ -37,6 +37,9 @@ type KubeHooks struct {
 	PlatformURL string // module API URL as seen from module namespaces
 	Manifest    func(ctx context.Context, module string) (*config.Module, error)
 	Poll        time.Duration // default 2 s
+	// PullTimeout bounds how long a hook pod may fail to start (image pull, configuration)
+	// before the hook is given up (default 2 minutes).
+	PullTimeout time.Duration
 }
 
 type obj = map[string]any
@@ -212,6 +215,11 @@ func (h *KubeHooks) wait(ctx context.Context, ns, name string) error {
 	}
 	t := time.NewTicker(every)
 	defer t.Stop()
+	pull := h.PullTimeout
+	if pull <= 0 {
+		pull = 2 * time.Minute
+	}
+	var stuckSince time.Time
 	for {
 		j, err := h.API.Get(ctx, "Job", ns, name)
 		if err != nil && ctx.Err() == nil {
@@ -224,12 +232,42 @@ func (h *KubeHooks) wait(ctx context.Context, ns, name string) error {
 		if count(st["failed"]) > 0 {
 			return fmt.Errorf("hook Job %s/%s failed (kubectl -n %s logs job/%s)", ns, name, ns, name)
 		}
+		switch reason := h.stuck(ctx, ns, name); {
+		case reason == "":
+			stuckSince = time.Time{}
+		case stuckSince.IsZero():
+			stuckSince = time.Now()
+		case time.Since(stuckSince) >= pull:
+			return fmt.Errorf("hook Job %s/%s cannot start: %s for %s", ns, name, reason, pull)
+		}
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("hook Job %s/%s did not finish: %w", ns, name, ctx.Err())
 		case <-t.C:
 		}
 	}
+}
+
+// stuck returns why the Job's pod cannot start, or "" when it is not in such a state.
+func (h *KubeHooks) stuck(ctx context.Context, ns, job string) string {
+	pods, err := h.API.List(ctx, "Pod", ns, "job-name="+job)
+	if err != nil {
+		return ""
+	}
+	for _, p := range pods {
+		st, _ := p["status"].(obj)
+		cs, _ := st["containerStatuses"].([]any)
+		for _, c := range cs {
+			m, _ := c.(obj)
+			state, _ := m["state"].(obj)
+			w, _ := state["waiting"].(obj)
+			switch r, _ := w["reason"].(string); r {
+			case "ImagePullBackOff", "ErrImagePull", "InvalidImageName", "ErrImageNeverPull", "CreateContainerConfigError":
+				return r
+			}
+		}
+	}
+	return ""
 }
 
 func count(v any) int {

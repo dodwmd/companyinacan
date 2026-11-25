@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/obs"
 	obslog "github.com/dodwmd/companyinacan/core/obs/log"
 	"github.com/dodwmd/companyinacan/core/obs/obssql"
@@ -355,6 +356,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		uiSrv.Mod, adminSrv.Mod = svc, svc
 		if dumper != nil {
 			svc.OnPurged = dumper.Forget
+			svc.LastDump = func() (backup.DumpRun, error) { return backup.ReadDumpRun(cfg.DumpsDir) }
 		}
 		if rerr := svc.Recover(workCtx); rerr != nil {
 			log.Error("could not close interrupted applies", "error", rerr)

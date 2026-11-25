@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dodwmd/companyinacan/core/backup"
 	"sort"
 	"strings"
 	"time"
@@ -93,6 +94,8 @@ type Service struct {
 	Purger     Purger
 	// OnPurged removes what else holds a purged module's data (its backup dumps); optional.
 	OnPurged func(id string) error
+	// LastDump reads the outcome of the last backup dump run; optional.
+	LastDump func() (backup.DumpRun, error)
 	Secrets  SecretWriter
 	Ingress  IngressStatus
 	Disk     DiskReader

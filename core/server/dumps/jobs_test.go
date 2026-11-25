@@ -161,3 +161,30 @@ func TestKubeHooksVolumeFollowsTheDatabase(t *testing.T) {
 		}
 	}
 }
+
+// QA 6: a hook image that cannot be pulled fails the hook after a bounded wait, not after the
+// whole 15 minute deadline.
+func TestKubeHooksGivesUpOnAnImageThatCannotBePulled(t *testing.T) {
+	h, api, _ := hookFixture(t)
+	h.PullTimeout = 20 * time.Millisecond
+	go func() {
+		for {
+			jobs, _ := api.List(context.Background(), "Job", "mod-wiki", "")
+			if len(jobs) > 0 {
+				name := jobs[0]["metadata"].(map[string]any)["name"].(string)
+				_ = api.Apply(context.Background(), kube.Object{"apiVersion": "v1", "kind": "Pod",
+					"metadata": map[string]any{"name": "p", "namespace": "mod-wiki", "labels": map[string]any{"job-name": name}},
+					"status":   map[string]any{"containerStatuses": []any{map[string]any{"state": map[string]any{"waiting": map[string]any{"reason": "ImagePullBackOff"}}}}}})
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	err := h.RunBackup(ctx, "wiki")
+	if err == nil || !strings.Contains(err.Error(), "ImagePullBackOff") || time.Since(start) > 5*time.Second {
+		t.Fatalf("%v after %s", err, time.Since(start))
+	}
+}

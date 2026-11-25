@@ -187,6 +187,9 @@ func Status(ctx context.Context, r ResticAPI, dumpsDir string, now time.Time, ma
 		return rep
 	}
 	rep.Enabled = true
+	if run, err := ReadDumpRun(dumpsDir); err == nil && !run.OK {
+		rep.Problems = append(rep.Problems, fmt.Sprintf("last dump run failed at %s: %s", run.At.UTC().Format("2006-01-02 15:04 MST"), run.Error))
+	}
 	if m, err := ReadMarker(filepath.Join(dumpsDir, MarkerName)); err != nil {
 		rep.Problems = append(rep.Problems, err.Error())
 	} else {

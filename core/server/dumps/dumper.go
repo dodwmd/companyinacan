@@ -115,13 +115,21 @@ func newRunID(t time.Time) string {
 // hook, and only if all of that succeeded write the marker. A failing hook does not stop the
 // others (their dumps are still refreshed) but leaves the run without a marker, so the host
 // script refuses to back up a set that is missing a module.
-func (d *Dumper) Run(ctx context.Context) (Result, error) {
+func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if !d.begin() {
 		return Result{}, ErrBusy
 	}
 	defer d.end()
 	start := d.now()
 	runID := newRunID(start)
+	defer func() {
+		if rerr == nil {
+			return // recorded before the marker, with the set it describes
+		}
+		if err := backup.WriteDumpRun(d.Store.Dir, backup.DumpRun{RunID: runID, At: d.now(), Error: rerr.Error()}); err != nil {
+			d.log().Error("could not record the failed dump run", "error", err)
+		}
+	}()
 	if err := plainDir(d.Store.Dir); err != nil {
 		return Result{}, err
 	}
@@ -188,6 +196,9 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 	}
 	if err := d.Store.writeAtomic(d.Store.Dir, DumpedList, strings.NewReader(dumped.String())); err != nil {
 		return Result{}, fmt.Errorf("write the list of dumped modules: %w", err)
+	}
+	if err := backup.WriteDumpRun(d.Store.Dir, backup.DumpRun{RunID: runID, At: d.now(), OK: true}); err != nil {
+		return Result{}, fmt.Errorf("record the run: %w", err)
 	}
 	// The marker claims the set is complete: it must not reach the disk before the set does.
 	if err := d.syncAll(); err != nil {

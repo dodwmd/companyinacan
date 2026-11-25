@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/backup"
 )
 
 type hookFunc func(ctx context.Context, module string) error
@@ -282,5 +284,31 @@ func TestDumpedListNamesOnlyWhatWasDumped(t *testing.T) {
 	_, _ = d.Run(context.Background())
 	if exists(filepath.Join(d.Store.Dir, DumpedList)) {
 		t.Fatal("stale list of dumped modules")
+	}
+}
+
+// QA 6: the outcome of the last run is recorded for `can backup status` and the admin UI.
+func TestLastRunIsRecorded(t *testing.T) {
+	fail := true
+	d, _ := newDumper(t, []string{"wiki"}, &fakeHooks{})
+	d.Hooks = hookFunc(func(_ context.Context, m string) error {
+		if fail {
+			return errors.New("ImagePullBackOff")
+		}
+		return upload(d, m, "a", "v")
+	})
+	_, _ = d.Run(context.Background())
+	r, err := backup.ReadDumpRun(d.Store.Dir)
+	if err != nil || r.OK || !strings.Contains(r.Error, "wiki") || !strings.Contains(r.Error, "ImagePullBackOff") {
+		t.Fatalf("%+v %v", r, err)
+	}
+	fail = false
+	res, err := d.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err = backup.ReadDumpRun(d.Store.Dir)
+	if err != nil || !r.OK || r.RunID != res.RunID || r.Error != "" {
+		t.Fatalf("%+v %v", r, err)
 	}
 }

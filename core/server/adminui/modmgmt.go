@@ -2,6 +2,7 @@ package adminui
 
 import (
 	"errors"
+	"github.com/dodwmd/companyinacan/core/backup"
 	"net/http"
 	"net/url"
 	"sort"
@@ -658,6 +659,7 @@ type statusData struct {
 	DiskNote    bool
 	LatestRun   string
 	Footprint   fpView
+	Dump        *backup.DumpRun
 }
 
 type certView struct {
@@ -681,7 +683,7 @@ func (s *Server) statusPage(w http.ResponseWriter, r *http.Request, sc *sessionC
 		s.internal(w, r, sc, err)
 		return
 	}
-	d := statusData{Reconcile: h.Reconcile, Disk: h.Disk, CertsNote: h.CertsNote != "", DiskNote: h.DiskNote != ""}
+	d := statusData{Dump: h.Dump, Reconcile: h.Reconcile, Disk: h.Disk, CertsNote: h.CertsNote != "", DiskNote: h.DiskNote != ""}
 	d.ReconcileOK = h.Reconcile != nil && h.Reconcile.OK
 	for _, m := range h.Modules {
 		l := readyLabels[m.Ready]
