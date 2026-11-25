@@ -30,6 +30,7 @@ var peopleEvents = map[string][]byte{
 	"person.created.v1":           events.PersonCreatedV1,
 	"person.status_changed.v1":    events.PersonStatusChangedV1,
 	"person.offboarded.v1":        events.PersonOffboardedV1,
+	"person.erased.v1":            events.PersonErasedV1,
 	"oneonone.scheduled.v1":       events.OneOnOneScheduledV1,
 	"goal.updated.v1":             events.GoalUpdatedV1,
 	"checklist.task_completed.v1": events.ChecklistTaskCompletedV1,
@@ -316,6 +317,8 @@ func TestServiceEventsMatchSchemas(t *testing.T) {
 		_, err = s.ChangeStatus(ctx, hr, rep.ID, st, "", "")
 		must(err)
 	}
+	_, err = s.RequestErasure(ctx, hr, rep.ID)
+	must(err)
 	evs, err := s.AllEvents(ctx)
 	must(err)
 	seen := map[string]int{}

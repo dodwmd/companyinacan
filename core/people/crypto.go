@@ -57,9 +57,17 @@ func ParseKeyring(s string) (*Keyring, error) {
 // LoadKeyring reads a keyring file (a mounted Secret). It refuses files readable by group or
 // others so a misconfigured mount fails closed.
 func LoadKeyring(path string) (*Keyring, error) {
-	st, err := os.Stat(path)
+	st, err := os.Lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("keyring: %w", err)
+	}
+	// A symlink could point the service at a file the operator never meant to trust (and a
+	// Secret volume's ..data links must not be used: mount the key with subPath).
+	if st.Mode()&os.ModeSymlink != 0 || !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("keyring: %s must be a regular file, not a symlink (mount the Secret key with subPath)", path)
+	}
+	if err := checkOwner(path, st); err != nil {
+		return nil, err
 	}
 	if st.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("keyring: %s must not be accessible by group or others (mode %o)", path, st.Mode().Perm())

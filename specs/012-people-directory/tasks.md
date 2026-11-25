@@ -41,6 +41,15 @@ dated at the start date, blocking an immediate onboarding transition; one wrong 
 - [x] `docs/people.md`, `modules/people/README.md`, SPEC.md event-catalogue note, `modules/README.md` row, epics status
 - [x] Idle RAM measured locally (13.8 MiB idle, 22.3 MiB after load)
 
+## Phase 7b: QA round 1 (PR #18) fixes
+- [x] F1 VACUUM + WAL truncate after erasure/retention, test greps db and -wal; F2 no events for private goals;
+      F3 no existence oracle on goal creation; F4 compare-and-swap rotation, keyring symlink/owner checks;
+      F5 manager tasks resolve live, identity.* self-service blocked; F6 sealed status notes, leave masked,
+      history audited; F7 rate limits, denial-audit cap, LRU with negative cache, https introspection,
+      goal list cap after visibility; F8 append-only triggers, softened wording; F9 lazy + minute-tick
+      status application; F10 SPEC flows and events catalogue; F11 scrubbed attribution, `person.erased.v1`,
+      documented residue; F12 proper cycle detection
+
 ## Phase 8: Open (needs a cluster or other epics)
 - [ ] Helm templates; render tests; k3d integration tests (NetworkPolicy, restricted PSA, PVC ownership)
 - [ ] CI footprint check on k3d; image build, digest pins

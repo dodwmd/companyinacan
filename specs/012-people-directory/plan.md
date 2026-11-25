@@ -74,7 +74,7 @@ test/contract/people_test.go
 
 | Addition | Why | Simpler alternative rejected because |
 |---|---|---|
-| Hash-chained audit table inside the module | Audit hook must work before can-core's audit accepts module events | A plain log cannot show tampering; the hook interface lets can-core replace it later |
+| Hash-chained, append-only (triggers) audit table inside the module | Audit hook must work before can-core's audit accepts module events | A plain log is easier to edit silently; the chain only detects edits by someone who cannot rewrite it all, so strong evidence needs the head hash kept elsewhere (documented); the hook lets can-core replace it |
 | Introspection client + static tokens | Same seam as forms; users need identities, can-core needs a service account | Static tokens alone cannot carry per-user subjects and roles |
 | Exhaustive policy enumeration test | The policy is the security boundary | Hand-picked cases alone miss combinations (status x role x relationship) |
 

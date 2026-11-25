@@ -36,6 +36,7 @@ publishes:
   - { event: person.created.v1, schema: ./events/person.created.v1.json }
   - { event: person.status_changed.v1, schema: ./events/person.status_changed.v1.json }
   - { event: person.offboarded.v1, schema: ./events/person.offboarded.v1.json }
+  - { event: person.erased.v1, schema: ./events/person.erased.v1.json }
   - { event: oneonone.scheduled.v1, schema: ./events/oneonone.scheduled.v1.json }
   - { event: goal.updated.v1, schema: ./events/goal.updated.v1.json }
   - { event: checklist.task_completed.v1, schema: ./events/checklist.task_completed.v1.json }

@@ -2,6 +2,7 @@ package people
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -93,15 +94,59 @@ type IntrospectAuthenticator struct {
 	Now    func() time.Time
 
 	mu    sync.Mutex
-	cache map[[sha256.Size]byte]cached
+	cache *lru
 }
 
-type cached struct {
-	p       Principal
+// lru is a bounded least-recently-used cache of introspection answers, positive and negative.
+// Negative answers are kept briefly so a client replaying a bad token cannot turn every request
+// into a call to the introspection endpoint.
+type lru struct {
+	max int
+	ll  *list.List
+	m   map[[sha256.Size]byte]*list.Element
+}
+
+type lruEntry struct {
+	key     [sha256.Size]byte
+	p       *Principal // nil: a definitive "no"
 	expires time.Time
 }
 
-const maxIntrospectCache = 1024
+const (
+	maxIntrospectCache = 1024
+	negativeTTL        = 5 * time.Second
+)
+
+func newLRU(max int) *lru {
+	return &lru{max: max, ll: list.New(), m: map[[sha256.Size]byte]*list.Element{}}
+}
+
+func (c *lru) get(k [sha256.Size]byte, now time.Time) (*lruEntry, bool) {
+	e, ok := c.m[k]
+	if !ok {
+		return nil, false
+	}
+	en := e.Value.(*lruEntry)
+	if !now.Before(en.expires) {
+		c.ll.Remove(e)
+		delete(c.m, k)
+		return nil, false
+	}
+	c.ll.MoveToFront(e)
+	return en, true
+}
+
+func (c *lru) put(k [sha256.Size]byte, p *Principal, expires time.Time) {
+	if e, ok := c.m[k]; ok {
+		c.ll.Remove(e)
+	}
+	c.m[k] = c.ll.PushFront(&lruEntry{key: k, p: p, expires: expires})
+	for c.ll.Len() > c.max {
+		last := c.ll.Back()
+		c.ll.Remove(last)
+		delete(c.m, last.Value.(*lruEntry).key)
+	}
+}
 
 // Authenticate implements Authenticator.
 func (a *IntrospectAuthenticator) Authenticate(r *http.Request) (*Principal, error) {
@@ -115,12 +160,24 @@ func (a *IntrospectAuthenticator) Authenticate(r *http.Request) (*Principal, err
 	}
 	key := sha256.Sum256([]byte(tok))
 	a.mu.Lock()
-	if c, ok := a.cache[key]; ok && now().Before(c.expires) {
+	if a.cache == nil {
+		a.cache = newLRU(maxIntrospectCache)
+	}
+	if c, ok := a.cache.get(key, now()); ok {
 		a.mu.Unlock()
-		p := c.p
+		if c.p == nil {
+			return nil, ErrUnauthenticated
+		}
+		p := *c.p
 		return &p, nil
 	}
 	a.mu.Unlock()
+	deny := func() (*Principal, error) {
+		a.mu.Lock()
+		a.cache.put(key, nil, now().Add(negativeTTL))
+		a.mu.Unlock()
+		return nil, ErrUnauthenticated
+	}
 
 	body, _ := json.Marshal(map[string]string{"token": tok})
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -142,6 +199,9 @@ func (a *IntrospectAuthenticator) Authenticate(r *http.Request) (*Principal, err
 		return nil, ErrUnauthenticated
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return deny() // the endpoint refused this token; do not ask again for a few seconds
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, ErrUnauthenticated
 	}
@@ -151,7 +211,7 @@ func (a *IntrospectAuthenticator) Authenticate(r *http.Request) (*Principal, err
 		Roles   []string `json:"roles"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil || !out.Active || !subjectRe.MatchString(out.Subject) {
-		return nil, ErrUnauthenticated
+		return deny()
 	}
 	p := Principal{Subject: out.Subject, Roles: knownRoles(out.Roles)}
 	ttl := a.TTL
@@ -159,10 +219,7 @@ func (a *IntrospectAuthenticator) Authenticate(r *http.Request) (*Principal, err
 		ttl = 30 * time.Second
 	}
 	a.mu.Lock()
-	if a.cache == nil || len(a.cache) >= maxIntrospectCache {
-		a.cache = map[[sha256.Size]byte]cached{}
-	}
-	a.cache[key] = cached{p: p, expires: now().Add(ttl)}
+	a.cache.put(key, &p, now().Add(ttl))
 	a.mu.Unlock()
 	return &p, nil
 }

@@ -32,7 +32,12 @@ type Auditor interface {
 	Record(ctx context.Context, e AuditEvent) error
 }
 
-// SQLAuditor writes a tamper-evident chain: each row's hash covers the previous hash.
+// SQLAuditor writes an append-only (triggers refuse UPDATE and DELETE), hash-chained table:
+// each row's hash covers the previous hash, so editing or removing an old row breaks every
+// later hash. That detects accidental damage and edits by anyone who does not rewrite the whole
+// chain; it does not stop a database administrator who can recompute it. To make tampering
+// evident against that person too, keep the latest hash somewhere they cannot write (can-core's
+// audit log, or a periodic copy of `can-people verify-audit` output).
 type SQLAuditor struct {
 	db  *sql.DB
 	now func() time.Time
@@ -94,6 +99,13 @@ func (s *Service) auditRead(ctx context.Context, a Actor, resource string, field
 
 // auditDeny records a refused access attempt. Best effort: the refusal stands either way.
 func (s *Service) auditDeny(ctx context.Context, a Actor, action, resource string, fields []string) {
+	record, notice := s.deny.check(a.auditID(), s.now())
+	if notice {
+		_ = s.audit.Record(ctx, AuditEvent{Time: s.now(), Actor: a.auditID(), Action: "deny-throttled", Resource: "-", Outcome: "denied"})
+	}
+	if !record {
+		return
+	}
 	_ = s.audit.Record(ctx, AuditEvent{Time: s.now(), Actor: a.auditID(), Action: action, Resource: resource, Fields: fields, Outcome: "denied"})
 }
 

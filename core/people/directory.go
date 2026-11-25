@@ -40,6 +40,9 @@ type Person struct {
 	erasedAtUnix  int64
 }
 
+// absentPersonID stands in for malformed ids so they take the same path as unknown ones.
+const absentPersonID = "pers_000000000000000000000000"
+
 const personCols = `seq, id, kind, status, COALESCE(sso_subject,''), given_name, family_name, preferred_name, work_email, work_phone, location,
  COALESCE(department_id,''), COALESCE(team_id,''), COALESCE(position_id,''), COALESCE(manager_id,''), start_date, end_date,
  legal_hold, legal_hold_reason, COALESCE(ended_at,0), COALESCE(erased_at,0), created_at, updated_at`
@@ -245,7 +248,7 @@ func (s *Service) CreatePerson(ctx context.Context, a Actor, in PersonInput) (*P
 // cannot be probed.
 func (s *Service) GetPerson(ctx context.Context, a Actor, id string) (*Person, error) {
 	if !personIDRe.MatchString(id) {
-		return nil, ErrNotFound
+		id = absentPersonID // same code path as an id that does not exist
 	}
 	f, si, err := s.factFor(ctx, s.db, a, id)
 	if err != nil {
@@ -259,7 +262,16 @@ func (s *Service) GetPerson(ctx context.Context, a Actor, id string) (*Person, e
 		return nil, err
 	}
 	v := p.view(a)
+	v.maskLeave(a, f)
 	return &v, nil
+}
+
+// maskLeave presents "leave" as "active" to colleagues: that someone is on leave can reveal
+// health or family circumstances. The person, their manager chain and hr/admin see the truth.
+func (p *Person) maskLeave(a Actor, f Fact) {
+	if p.Status == StLeave && !f.Self && !f.Chain && !a.hrAdmin() {
+		p.Status = StActive
+	}
 }
 
 // PersonFilter narrows ListPeople.
@@ -282,7 +294,9 @@ func (s *Service) ListPeople(ctx context.Context, a Actor, flt PersonFilter) ([]
 	}
 	q := `SELECT ` + personCols + ` FROM people WHERE seq > ?`
 	args := []any{flt.AfterSeq}
-	for col, v := range map[string]string{"status": string(flt.Status), "department_id": flt.DepartmentID, "team_id": flt.TeamID, "manager_id": flt.ManagerID} {
+	// The status filter is applied after masking (below), never in SQL: filtering on "leave"
+	// would otherwise reveal who is on leave to people who may not know.
+	for col, v := range map[string]string{"department_id": flt.DepartmentID, "team_id": flt.TeamID, "manager_id": flt.ManagerID} {
 		if v != "" {
 			q += " AND " + col + " = ?"
 			args = append(args, v)
@@ -316,11 +330,16 @@ func (s *Service) ListPeople(ctx context.Context, a Actor, flt PersonFilter) ([]
 		if !Decide(a, ActDirRead, f) {
 			continue
 		}
+		v := p.view(a)
+		v.maskLeave(a, f)
+		if flt.Status != "" && v.Status != flt.Status {
+			continue
+		}
 		if len(out) == flt.Limit {
 			next = out2seq(out, all)
 			break
 		}
-		out = append(out, p.view(a))
+		out = append(out, v)
 	}
 	return out, next, nil
 }
@@ -435,7 +454,7 @@ func (s *Service) UpdatePerson(ctx context.Context, a Actor, id string, patch Pe
 // the person at all (the 404-not-403 rule that stops id probing).
 func (s *Service) personFact(ctx context.Context, a Actor, id string) (Fact, *subjectInfo, error) {
 	if !personIDRe.MatchString(id) {
-		return Fact{}, nil, ErrNotFound
+		id = absentPersonID
 	}
 	f, si, err := s.factFor(ctx, s.db, a, id)
 	if err != nil {
@@ -802,6 +821,12 @@ func (s *Service) ChangeStatus(ctx context.Context, a Actor, id string, to Statu
 	if err := validText("note", note, 500, false); err != nil {
 		return nil, err
 	}
+	// Notes are free text about a person's employment (reasons for leave or exit): sealed.
+	if note != "" {
+		if note, err = s.keys.Seal(note, id+":status_note"); err != nil {
+			return nil, err
+		}
+	}
 	err = s.tx(ctx, func(tx *sqlTx) error {
 		var pending int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM status_history WHERE person_id = ? AND applied = 0`, id).Scan(&pending); err != nil {
@@ -959,6 +984,9 @@ func (s *Service) History(ctx context.Context, a Actor, id string) ([]HistoryEnt
 		s.auditDeny(ctx, a, "read", "history:"+id, nil)
 		return nil, ErrForbidden
 	}
+	if err := s.auditRead(ctx, a, "history:"+id, []string{"status_history"}); err != nil {
+		return nil, errors.New("audit unavailable, read refused")
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT from_status, to_status, effective_date, applied, recorded_at, recorded_by, note FROM status_history WHERE person_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return nil, err
@@ -973,6 +1001,13 @@ func (s *Service) History(ctx context.Context, a Actor, id string) ([]HistoryEnt
 			return nil, err
 		}
 		h.Applied, h.RecordedAt = applied == 1, time.Unix(at, 0).UTC().Format(time.RFC3339)
+		if h.Note != "" {
+			if plain, err := s.keys.Open(h.Note, id+":status_note"); err == nil {
+				h.Note = plain
+			} else {
+				h.Note = ""
+			}
+		}
 		if !a.hrAdmin() {
 			h.RecordedBy = "" // who recorded a change is for HR; employees see what and when
 		}

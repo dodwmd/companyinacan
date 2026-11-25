@@ -20,6 +20,7 @@ const (
 	EventPersonCreated        = "person.created.v1"
 	EventPersonStatusChanged  = "person.status_changed.v1"
 	EventPersonOffboarded     = "person.offboarded.v1"
+	EventPersonErased         = "person.erased.v1"
 	EventOneOnOneScheduled    = "oneonone.scheduled.v1"
 	EventGoalUpdated          = "goal.updated.v1"
 	EventChecklistTaskDone    = "checklist.task_completed.v1"

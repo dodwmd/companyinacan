@@ -70,11 +70,13 @@ type Options struct {
 
 // Service is the application layer: authorisation, storage, audit and events.
 type Service struct {
-	db        *sql.DB
-	keys      *Keyring
-	audit     Auditor
-	retention map[string]RetentionRule
-	now       func() time.Time
+	db         *sql.DB
+	keys       *Keyring
+	audit      Auditor
+	deny       denyLimiter
+	rotateHook func() // tests: runs between reading a value and its compare-and-swap
+	retention  map[string]RetentionRule
+	now        func() time.Time
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -254,6 +256,27 @@ func nullStr(s string) any {
 	return s
 }
 
+// scrub removes erased data from places secure_delete does not reach: it rewrites the file
+// (VACUUM, which also drops free pages) and truncates the write-ahead log, where the pre-erasure
+// pages would otherwise survive until the next automatic checkpoint. Backups and snapshots taken
+// earlier still hold the data until they expire (SPEC.md section 3.7; the E08 erasure ledger
+// re-applies the erasure after a restore).
+func (s *Service) scrub(ctx context.Context, vacuum bool) error {
+	if vacuum {
+		if _, err := s.db.ExecContext(ctx, `VACUUM`); err != nil {
+			return fmt.Errorf("vacuum: %w", err)
+		}
+	}
+	var busy, logFrames, checkpointed int
+	if err := s.db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &checkpointed); err != nil {
+		return fmt.Errorf("wal checkpoint: %w", err)
+	}
+	if busy != 0 {
+		return errors.New("wal checkpoint was blocked; erased data may remain in the write-ahead log")
+	}
+	return nil
+}
+
 // ---- actor resolution and relationship facts -----------------------------------------------
 
 // ResolveActor links a Principal to their person record. A subject with a person record that is
@@ -270,6 +293,17 @@ func (s *Service) ResolveActor(ctx context.Context, p *Principal) (Actor, error)
 	}
 	if err != nil {
 		return a, err
+	}
+	// A status change that has come due but was not applied yet (the hourly tick) must not keep
+	// a leaver's access alive: apply due changes now, then re-read.
+	var due int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM status_history WHERE applied = 0 AND effective_date <= ?`, s.today()).Scan(&due); err == nil && due > 0 {
+		if _, err := s.ApplyDue(ctx); err != nil {
+			return a, err
+		}
+		if err := s.db.QueryRowContext(ctx, `SELECT id, status FROM people WHERE sso_subject = ?`, p.Subject).Scan(&id, &status); err != nil {
+			return a, err
+		}
 	}
 	a.PersonID, a.HasPerson, a.Status = id, true, Status(status)
 	return a, nil
@@ -338,6 +372,16 @@ func (s *Service) subject(ctx context.Context, q querier, id string) (*subjectIn
 // factFor computes the relationship of the actor to a person.
 func (s *Service) factFor(ctx context.Context, q querier, a Actor, personID string) (Fact, *subjectInfo, error) {
 	si, err := s.subject(ctx, q, personID)
+	if errors.Is(err, ErrNotFound) {
+		// Do the lookups a real record would cost, so "does not exist" and "exists but is not
+		// yours" take about the same time (best effort against an existence oracle).
+		_, _ = managerChain(ctx, q, personID)
+		if a.HasPerson {
+			var t sql.NullString
+			_ = q.QueryRowContext(ctx, `SELECT team_id FROM people WHERE id = ?`, a.PersonID).Scan(&t)
+		}
+		return Fact{}, nil, err
+	}
 	if err != nil {
 		return Fact{}, nil, err
 	}

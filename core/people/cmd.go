@@ -134,12 +134,15 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 
 // background applies due status changes and the retention sweep hourly and delivers events.
 func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logger) {
-	maint := func() {
+	due := func() {
 		if n, err := svc.ApplyDue(ctx); err != nil && ctx.Err() == nil {
 			log.Error("apply due status changes", "error", err)
 		} else if n > 0 {
 			log.Info("applied due status changes", "count", n)
 		}
+	}
+	maint := func() {
+		due()
 		if rep, err := svc.RunRetention(ctx); err != nil && ctx.Err() == nil {
 			log.Error("retention sweep", "error", err)
 		} else if rep != nil && len(rep.Purged) > 0 {
@@ -149,6 +152,8 @@ func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logg
 	maint()
 	hour := time.NewTicker(time.Hour)
 	defer hour.Stop()
+	minute := time.NewTicker(time.Minute) // access must end on the effective date, not an hour later
+	defer minute.Stop()
 	var tick <-chan time.Time
 	if d != nil {
 		t := time.NewTicker(5 * time.Second)
@@ -159,6 +164,8 @@ func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logg
 		select {
 		case <-ctx.Done():
 			return
+		case <-minute.C:
+			due()
 		case <-hour.C:
 			maint()
 		case <-tick:

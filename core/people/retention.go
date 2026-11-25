@@ -2,6 +2,7 @@ package people
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -81,6 +82,11 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 			`UPDATE people SET manager_id=NULL WHERE manager_id=?`,
 			`UPDATE status_history SET note='' WHERE person_id=?`,
 			`UPDATE status_history SET recorded_by='erased' WHERE recorded_by=?`,
+			`UPDATE checklists SET created_by='erased' WHERE created_by=?`,
+			`UPDATE checklist_tasks SET done_by='erased' WHERE done_by=?`,
+			`UPDATE goals SET created_by='erased' WHERE created_by=?`,
+			`UPDATE action_items SET created_by='erased' WHERE created_by=?`,
+			`UPDATE agenda_items SET author_id='erased' WHERE author_id=?`,
 		}
 	case ClassSensitive:
 		stmts = []string{`UPDATE people SET sens_dob=NULL, sens_national_id=NULL, sens_address=NULL, sens_phone=NULL, sens_salary=NULL WHERE id=?`}
@@ -149,9 +155,15 @@ func (s *Service) RequestErasure(ctx context.Context, a Actor, id string) (*Eras
 				return err
 			}
 		}
-		return nil
+		if si.erased {
+			return nil // repeat request: nothing new to announce
+		}
+		return s.enqueue(ctx, tx, EventPersonErased, map[string]any{"party_id": id, "erased_on": date})
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.scrub(ctx, true); err != nil {
 		return nil, err
 	}
 	if err := s.auditWrite(ctx, a, "erase", "person:"+id, nil); err != nil {
@@ -226,7 +238,10 @@ func (s *Service) PurgeSubject(ctx context.Context, subject, class string) error
 	if !personIDRe.MatchString(subject) {
 		return invalid("subject must be a person id")
 	}
-	return s.tx(ctx, func(tx *sqlTx) error { return s.purgeClass(ctx, tx, subject, class) })
+	if err := s.tx(ctx, func(tx *sqlTx) error { return s.purgeClass(ctx, tx, subject, class) }); err != nil {
+		return err
+	}
+	return s.scrub(ctx, false)
 }
 
 // RunRetention enforces per-class retention. A person's classes expire retention-period after
@@ -291,6 +306,14 @@ func (s *Service) RunRetention(ctx context.Context) (*RetentionReport, error) {
 			rep.Purged[class] += n
 		}
 	}
+	for _, n := range rep.Purged {
+		if n > 0 {
+			if err := s.scrub(ctx, true); err != nil {
+				return rep, err
+			}
+			break
+		}
+	}
 	return rep, nil
 }
 
@@ -305,13 +328,27 @@ func (s *Service) execCount(ctx context.Context, q string, args ...any) (int, er
 
 // RotateKeys re-seals every sealed value written with a retired key under the active key.
 // It returns the number of values re-sealed. Run it after adding a key at the top of the
-// keyring; when it returns 0 the old key can be removed.
+// keyring; when it returns 0 the old key can be removed. Each value is replaced with a
+// compare-and-swap (the UPDATE only applies if the stored ciphertext is still the one that was
+// read), so a concurrent write is never overwritten with stale data; values that changed in
+// the meantime are retried on the next pass.
 func (s *Service) RotateKeys(ctx context.Context) (int, error) {
-	n := 0
+	total := 0
+	for pass := 0; pass < 5; pass++ {
+		n, missed, err := s.rotateOnce(ctx)
+		total += n
+		if err != nil || missed == 0 {
+			return total, err
+		}
+	}
+	return total, errors.New("rotate-keys: values kept changing during rotation; run it again")
+}
+
+func (s *Service) rotateOnce(ctx context.Context) (n, missed int, _ error) {
 	for field, col := range sensCols {
 		rows, err := s.db.QueryContext(ctx, `SELECT id, `+col+` FROM people WHERE `+col+` IS NOT NULL`) //nolint:gosec // column from a fixed map
 		if err != nil {
-			return n, err
+			return n, missed, err
 		}
 		type item struct{ id, sealed string }
 		var items []item
@@ -319,7 +356,7 @@ func (s *Service) RotateKeys(ctx context.Context) (int, error) {
 			var it item
 			if err := rows.Scan(&it.id, &it.sealed); err != nil {
 				_ = rows.Close()
-				return n, err
+				return n, missed, err
 			}
 			if s.keys.NeedsRotation(it.sealed) {
 				items = append(items, it)
@@ -330,14 +367,22 @@ func (s *Service) RotateKeys(ctx context.Context) (int, error) {
 			aad := sensAAD(it.id, field)
 			plain, err := s.keys.Open(it.sealed, aad)
 			if err != nil {
-				return n, fmt.Errorf("rotate %s: %w", aad, err)
+				return n, missed, fmt.Errorf("rotate %s: %w", aad, err)
 			}
 			c, err := s.keys.Seal(plain, aad)
 			if err != nil {
-				return n, err
+				return n, missed, err
 			}
-			if _, err := s.db.ExecContext(ctx, `UPDATE people SET `+col+` = ? WHERE id = ?`, c, it.id); err != nil { //nolint:gosec // column from a fixed map
-				return n, err
+			if s.rotateHook != nil {
+				s.rotateHook()
+			}
+			res, err := s.db.ExecContext(ctx, `UPDATE people SET `+col+` = ? WHERE id = ? AND `+col+` = ?`, c, it.id, it.sealed) //nolint:gosec // column from a fixed map
+			if err != nil {
+				return n, missed, err
+			}
+			if k, _ := res.RowsAffected(); k == 0 {
+				missed++
+				continue
 			}
 			n++
 		}
@@ -346,7 +391,7 @@ func (s *Service) RotateKeys(ctx context.Context) (int, error) {
 		col := field + "_sealed"
 		rows, err := s.db.QueryContext(ctx, `SELECT id, `+col+` FROM oneonone_meetings WHERE `+col+` IS NOT NULL`) //nolint:gosec // column from a fixed list
 		if err != nil {
-			return n, err
+			return n, missed, err
 		}
 		type item struct{ id, sealed string }
 		var items []item
@@ -354,7 +399,7 @@ func (s *Service) RotateKeys(ctx context.Context) (int, error) {
 			var it item
 			if err := rows.Scan(&it.id, &it.sealed); err != nil {
 				_ = rows.Close()
-				return n, err
+				return n, missed, err
 			}
 			if s.keys.NeedsRotation(it.sealed) {
 				items = append(items, it)
@@ -365,17 +410,63 @@ func (s *Service) RotateKeys(ctx context.Context) (int, error) {
 			aad := it.id + ":" + field
 			plain, err := s.keys.Open(it.sealed, aad)
 			if err != nil {
-				return n, fmt.Errorf("rotate %s: %w", aad, err)
+				return n, missed, fmt.Errorf("rotate %s: %w", aad, err)
 			}
 			c, err := s.keys.Seal(plain, aad)
 			if err != nil {
-				return n, err
+				return n, missed, err
 			}
-			if _, err := s.db.ExecContext(ctx, `UPDATE oneonone_meetings SET `+col+` = ? WHERE id = ?`, c, it.id); err != nil { //nolint:gosec // column from a fixed list
-				return n, err
+			res, err := s.db.ExecContext(ctx, `UPDATE oneonone_meetings SET `+col+` = ? WHERE id = ? AND `+col+` = ?`, c, it.id, it.sealed) //nolint:gosec // column from a fixed list
+			if err != nil {
+				return n, missed, err
+			}
+			if k, _ := res.RowsAffected(); k == 0 {
+				missed++
+				continue
 			}
 			n++
 		}
 	}
-	return n, nil
+	// status history notes (keyed by row sequence)
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, person_id, note FROM status_history WHERE note != ''`)
+	if err != nil {
+		return n, missed, err
+	}
+	type note struct {
+		seq            int64
+		person, sealed string
+	}
+	var notes []note
+	for rows.Next() {
+		var x note
+		if err := rows.Scan(&x.seq, &x.person, &x.sealed); err != nil {
+			_ = rows.Close()
+			return n, missed, err
+		}
+		if s.keys.NeedsRotation(x.sealed) {
+			notes = append(notes, x)
+		}
+	}
+	_ = rows.Close()
+	for _, x := range notes {
+		aad := x.person + ":status_note"
+		plain, err := s.keys.Open(x.sealed, aad)
+		if err != nil {
+			return n, missed, fmt.Errorf("rotate %s: %w", aad, err)
+		}
+		c, err := s.keys.Seal(plain, aad)
+		if err != nil {
+			return n, missed, err
+		}
+		res, err := s.db.ExecContext(ctx, `UPDATE status_history SET note = ? WHERE seq = ? AND note = ?`, c, x.seq, x.sealed)
+		if err != nil {
+			return n, missed, err
+		}
+		if k, _ := res.RowsAffected(); k == 0 {
+			missed++
+			continue
+		}
+		n++
+	}
+	return n, missed, nil
 }

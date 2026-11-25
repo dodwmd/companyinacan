@@ -55,6 +55,14 @@ Rules worth knowing:
 - **Elevated roles need an active person.** `manager`, `hr` and `admin` powers are suspended while the
   person is on leave or offboarding; self-service stays. The can-core service account (hr + admin, no
   person record) is exempt from this because it has no employment status; it never gets manager powers.
+- **Leave is masked.** Colleagues see someone on leave as `active` (it can reveal health or family
+  circumstances); the person, their manager chain and hr/admin see `leave`. The `status=leave` list
+  filter is applied after masking.
+- **identity.\* checklist actions** (for example `identity.provision`) cannot be assigned to the person
+  themself and nobody can complete one about themself. A `manager`-role task always resolves to the
+  person's *current* manager when read or completed.
+- **Access ends on the effective date.** A due, future-dated status change is applied when the affected
+  person next authenticates and by a one-minute background tick, not an hour later.
 - **404, not 403,** when the caller may not see the record at all, so ids cannot be probed.
 - **A manager who is replaced loses access** to the old 1:1 series immediately, private notes
   included. The new manager starts a new series and sees nothing of the old one. The report keeps
@@ -80,13 +88,21 @@ k2 <64 hex characters>
 k1 <64 hex characters>
 ```
 
+The key file must be a **regular file** owned by the service user or root with mode 0400/0600: a symlink
+is refused. Kubernetes Secret volumes expose files through `..data` symlinks, so mount the one key with
+`subPath` (the chart values show it). The key id is carried in the ciphertext but is not part of the
+authenticated data, so swapping the id inside a stored value can only make decryption fail, never succeed
+under a different key; binding it into the AAD would change the stored format and is left for a later
+format version.
+
 Rotation: add a new key on top, restart, run `can-people rotate-keys` (it re-seals every value
 written under an older key and prints how many), repeat until it reports 0, then remove the old key.
-Removing a key that still protects data makes that data unreadable. Back up the keyring separately from
+Re-sealing is a compare-and-swap, so a value written while rotation runs is never overwritten with a stale
+copy (the pass retries). Status-history notes are rotated too. Removing a key that still protects data makes that data unreadable. Back up the keyring separately from
 the database; **losing it loses the sensitive data**. Generate a key with `head -c 32 /dev/urandom | xxd -p -c 64`.
 
-Not encrypted: names, work contact, dates and ids (`directory-basic`), 1:1 agenda items and action
-items, goals. Protect the volume and backups as sensitive anyway (encrypted backups only, SPEC.md section 5).
+Also sealed: the free-text `note` on status changes. Not encrypted: names, work contact, dates and ids
+(`directory-basic`), 1:1 agenda items and action items, goals. Protect the volume and backups as sensitive anyway (encrypted backups only, SPEC.md section 5).
 
 ## Audit
 
@@ -97,6 +113,13 @@ items, goals. Protect the volume and backups as sensitive anyway (encrypted back
   read of someone else's goal;
 - every write, and every **denied** access attempt on sensitive resources;
 - the actor is a person id (or `svc:<subject>`), never a name.
+
+Reading a person's status history is audited too. Denial records are capped per actor (30 a minute, then
+one "deny-throttled" notice) so a misbehaving client cannot fill the log. The audit table refuses UPDATE and
+DELETE through the service (triggers), and rows are hash-chained. **That is not strong tamper evidence:**
+anyone who can write the database file can drop the triggers and recompute the whole chain. To detect
+that, keep the latest hash somewhere they cannot write (can-core's audit log, or periodic `verify-audit`
+output stored elsewhere). An HMAC keyed outside the database is a possible later hardening.
 
 A sensitive read happens **only after** its audit record was written: if the audit hook fails, the read
 fails. Write audit is recorded after the commit, so a failure there is reported as an error although the
@@ -131,6 +154,20 @@ automatically). The sweep runs hourly and on demand (`POST /v1/retention/run`, `
 - **After a restore**, replay the ledger with `can-people purge -subject <id> -class <class>` (or
   `-class all`). It is idempotent, ignores legal holds (the erasure was authorised when it was
   recorded) and is a no-op for an unknown subject.
+- **No data left behind in the files.** Every erasure and every retention sweep that purged something then
+  runs `VACUUM` and `PRAGMA wal_checkpoint(TRUNCATE)`, because `secure_delete` alone does not scrub the
+  write-ahead log; a test greps `people.db` and `people.db-wal` for the erased name, email and note.
+  **Backups and snapshots taken earlier still contain the data** until they expire (default horizon 35
+  days, SPEC.md section 3.7). The erasure ledger (E08, `core/backup/ledger.go`) is how a restore re-applies
+  the erasure: `purge` is replayed before workloads start.
+- **Erasing a manager deletes their 1:1 series**, including the report's side of those meetings (shared
+  notes, agenda, actions): a series is personal data of both participants and cannot be kept without the
+  erased party. Erasing a *report* likewise deletes the series from the manager's view.
+- **Residue that remains by design:** the status history's transitions and dates (notes are cleared), audit
+  entries (opaque ids and field names), the tombstone row itself, and the `erasures` rows. Attribution
+  columns (`created_by`, `done_by`, `recorded_by`, `author_id`) that named the erased person are replaced
+  with `erased`; goal-update comments they wrote are cleared.
+- `person.erased.v1` is published (once) so consumers can drop their own copies by `party_id`.
 - **Kept on purpose:** the status history's dates and transitions (employment records are often legally
   required; notes are cleared), and the audit log. Event payloads contain only ids and machine values.
 - Backups keep erased data until the last snapshot containing it expires (SPEC.md section 3.7).
@@ -142,8 +179,13 @@ gateway), de-duplicate on `id`. Payloads carry ids and machine values only. Sche
 `schemas/events/`:
 
 `person.created.v1`, `person.status_changed.v1` (when a change takes effect, with `effective_date`),
-`person.offboarded.v1`, `oneonone.scheduled.v1`, `goal.updated.v1`, `checklist.task_completed.v1`
+`person.offboarded.v1`, `person.erased.v1`, `oneonone.scheduled.v1`, `goal.updated.v1` (never for a
+`private` goal: even an id-only event would reveal that it exists), `checklist.task_completed.v1`
 (carries the task's `action`, for example `identity.provision`, so a provisioning integration can react).
+
+A consumer that wants "hired" subscribes to `person.status_changed.v1` and filters on `to: active`
+(`from: onboarding` for a first start; `from: leave` or `offboarding` are returns). The `from` and `to`
+fields are in the schema for exactly this.
 
 SPEC.md names `person.hired.v1` and `person.left.v1`; this module publishes the finer-grained
 `person.created`, `person.status_changed` and `person.offboarded` instead (a hire is `status_changed` to
@@ -168,6 +210,11 @@ retention: {}                # per class overrides
 
 Environment: `CAN_PEOPLE_API_TOKEN` (required, 24+ characters; the can-core service account, roles hr + admin),
 `CAN_PEOPLE_WEBHOOK_SECRET` (required when a webhook is set), `CAN_PEOPLE_INTROSPECT_TOKEN`.
+
+Requests are rate limited (per address before authentication, per subject after, and a stricter bucket
+for failed authentications: 429 with `Retry-After`). `introspect.url` must be https or loopback unless
+`introspect.allow_insecure_http` is set for a protected in-cluster Service; the endpoint receives every
+user's bearer token. Introspection answers are cached in a bounded LRU, refusals for 5 s.
 
 Authentication is an interface (`Authenticator`). Shipped: static bearer tokens (constant time) and an
 introspection client (`POST {"token"}` -> `{"active","subject","roles"}`, unknown roles dropped, positive

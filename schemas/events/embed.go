@@ -67,3 +67,8 @@ var GoalUpdatedV1 []byte
 //
 //go:embed checklist.task_completed.v1.json
 var ChecklistTaskCompletedV1 []byte
+
+// PersonErasedV1 is the JSON Schema of the person.erased.v1 event.
+//
+//go:embed person.erased.v1.json
+var PersonErasedV1 []byte

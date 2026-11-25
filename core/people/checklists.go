@@ -93,6 +93,9 @@ func (s *Service) CreateTemplate(ctx context.Context, a Actor, in TemplateInput)
 		if it.Action != "" && !actionRe.MatchString(it.Action) {
 			return nil, invalid("item %d: invalid action", i+1)
 		}
+		if strings.HasPrefix(it.Action, "identity.") && it.AssigneeRole == "self" {
+			return nil, invalid("item %d: an identity.* action cannot be assigned to the person themself", i+1)
+		}
 	}
 	items, _ := json.Marshal(in.Items)
 	id := newID("tpl")
@@ -202,7 +205,7 @@ func (s *Service) instantiate(ctx context.Context, q querier, personID, template
 		case "self":
 			t.AssigneeID = personID
 		case "manager":
-			t.AssigneeID = mgr.String
+			t.AssigneeID = mgr.String // shown now; resolved live on every read
 		}
 		if _, err := q.ExecContext(ctx, `INSERT INTO checklist_tasks (id, checklist_id, person_id, ord, title, assignee_role, assignee_id, due_date, action) VALUES (?,?,?,?,?,?,?,?,?)`,
 			t.ID, cl.ID, personID, i, t.Title, t.AssigneeRole, nullStr(t.AssigneeID), t.DueDate, t.Action); err != nil {
@@ -240,7 +243,12 @@ func (s *Service) autoChecklists(ctx context.Context, q querier, personID string
 	return nil
 }
 
-const taskCols = `t.id, t.checklist_id, t.person_id, t.title, t.assignee_role, COALESCE(t.assignee_id,''), t.due_date, t.action, t.done_at IS NOT NULL, t.done_by`
+// assigneeExpr resolves who a task is assigned to *now*: a manager-role task follows the live
+// reporting line (a new manager inherits it, a former manager loses it); other roles use the
+// person fixed when the checklist was created.
+const assigneeExpr = `CASE WHEN t.assignee_role = 'manager' THEN (SELECT manager_id FROM people WHERE id = t.person_id) ELSE t.assignee_id END`
+
+const taskCols = `t.id, t.checklist_id, t.person_id, t.title, t.assignee_role, COALESCE(` + assigneeExpr + `,''), t.due_date, t.action, t.done_at IS NOT NULL, t.done_by`
 
 func scanTask(sc interface{ Scan(...any) error }) (Task, error) {
 	var t Task
@@ -297,7 +305,7 @@ func (s *Service) MyTasks(ctx context.Context, a Actor) ([]Task, error) {
 	if !Decide(a, ActTaskListOwn, Fact{}) && !a.hrAdmin() {
 		return nil, ErrForbidden
 	}
-	q := `SELECT ` + taskCols + ` FROM checklist_tasks t WHERE t.done_at IS NULL AND (t.assignee_id = ?`
+	q := `SELECT ` + taskCols + ` FROM checklist_tasks t WHERE t.done_at IS NULL AND ((` + assigneeExpr + `) = ?`
 	args := []any{a.PersonID}
 	var roles []any
 	for _, r := range []string{RoleHR, RoleAdmin} {
@@ -306,7 +314,7 @@ func (s *Service) MyTasks(ctx context.Context, a Actor) ([]Task, error) {
 		}
 	}
 	if len(roles) > 0 {
-		q += ` OR (t.assignee_id IS NULL AND t.assignee_role IN (?` + strings.Repeat(",?", len(roles)-1) + `))`
+		q += ` OR ((` + assigneeExpr + `) IS NULL AND t.assignee_role IN (?` + strings.Repeat(",?", len(roles)-1) + `))`
 		args = append(args, roles...)
 	}
 	rows, err := s.db.QueryContext(ctx, q+`) ORDER BY t.due_date, t.id`, args...)
@@ -341,6 +349,12 @@ func (s *Service) CompleteTask(ctx context.Context, a Actor, taskID string) (*Ta
 	if !Decide(a, ActTaskComplete, f) {
 		s.auditDeny(ctx, a, "write", "task:"+taskID, nil)
 		return nil, ErrNotFound
+	}
+	// Nobody completes an identity.* task about themself (a person cannot provision or
+	// approve their own access); another assignee, hr or admin must do it.
+	if strings.HasPrefix(t.Action, "identity.") && a.HasPerson && a.PersonID == t.PersonID {
+		s.auditDeny(ctx, a, "write", "task:"+taskID, nil)
+		return nil, ErrForbidden
 	}
 	if t.Done {
 		return &t, nil // idempotent

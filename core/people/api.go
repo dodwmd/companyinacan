@@ -6,9 +6,11 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +25,32 @@ type API struct {
 	Log  *slog.Logger
 
 	routes []string
+
+	once    sync.Once
+	perIP   *rateLimiter // every request, before authentication
+	failIP  *rateLimiter // failed authentications
+	perUser *rateLimiter // authenticated requests per subject
+}
+
+func (a *API) limiters() {
+	a.once.Do(func() {
+		a.perIP = newRateLimiter(300, 50, 10000, nil)
+		a.failIP = newRateLimiter(20, 1, 10000, nil)
+		a.perUser = newRateLimiter(120, 20, 10000, nil)
+	})
+}
+
+func clientHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func tooMany(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "5")
+	writeJSON(w, http.StatusTooManyRequests, apiError{"rate_limited", "too many requests"})
 }
 
 // Routes lists the registered "METHOD /path" patterns (after Handler has been called); the
@@ -74,10 +102,21 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 // bypasses it except /healthz.
 func (a *API) wrap(fn handlerFn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		a.limiters()
+		ip := clientHost(r)
+		if !a.perIP.allow(ip) || !a.failIP.available(ip) {
+			tooMany(w)
+			return
+		}
 		p, err := a.Auth.Authenticate(r)
 		if err != nil || p == nil {
+			a.failIP.take(ip)
 			w.Header().Set("WWW-Authenticate", `Bearer realm="can-people"`)
 			writeJSON(w, http.StatusUnauthorized, apiError{"unauthenticated", "a valid bearer token is required"})
+			return
+		}
+		if !a.perUser.allow(p.Subject) {
+			tooMany(w)
 			return
 		}
 		actor, err := a.Svc.ResolveActor(r.Context(), p)

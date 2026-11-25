@@ -163,6 +163,11 @@ func (s *Service) goalForRead(ctx context.Context, a Actor, id string) (*Goal, F
 }
 
 func (s *Service) goalEvent(ctx context.Context, q querier, g *Goal, change string) error {
+	// A private goal is for its owner alone: even an id-only event would tell every subscriber
+	// that the person has a private goal and when they work on it. No event is published.
+	if g.Visibility == "private" {
+		return nil
+	}
 	if err := s.loadKRs(ctx, q, g); err != nil {
 		return err
 	}
@@ -194,15 +199,22 @@ func (s *Service) checkAlignment(ctx context.Context, q querier, a Actor, g *Goa
 	if !Decide(a, ActGoalRead, pf) {
 		return invalid("parent goal does not exist") // do not reveal goals the caller cannot see
 	}
-	for cur, i := p, 0; cur != nil && i < 20; i++ {
+	// Walk up from the proposed parent with a visited set: a pre-existing cycle terminates, and
+	// the bound is only a safety net far above any real alignment depth.
+	seen := map[string]bool{}
+	for cur := p; cur != nil; {
 		if cur.ID == g.ID {
 			return invalid("alignment would create a cycle")
 		}
+		if seen[cur.ID] || len(seen) >= 10000 {
+			return invalid("the parent goal's alignment chain is already cyclic or too deep")
+		}
+		seen[cur.ID] = true
 		if cur.ParentID == "" {
 			break
 		}
 		if cur, err = s.goalRow(ctx, q, cur.ParentID); err != nil {
-			break
+			return err
 		}
 	}
 	ok := false
@@ -260,10 +272,9 @@ func (s *Service) CreateGoal(ctx context.Context, a Actor, in GoalInput) (*Goal,
 		if g.Visibility == "" {
 			g.Visibility = "manager"
 		}
-		pf, _, err := s.factFor(ctx, s.db, a, g.OwnerID)
-		if errors.Is(err, ErrNotFound) {
-			return nil, invalid("owner does not exist")
-		}
+		// An owner the caller cannot see answers exactly like one that does not exist (404):
+		// no existence oracle through goal creation.
+		pf, _, err := s.personFact(ctx, a, g.OwnerID)
 		if err != nil {
 			return nil, err
 		}
@@ -353,7 +364,9 @@ func (s *Service) ListGoals(ctx context.Context, a Actor, flt GoalFilter) ([]Goa
 			args = append(args, v)
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, q+" ORDER BY created_at, id LIMIT 500", args...)
+	// The cap applies to what the caller may see, never to the rows scanned: a limit in SQL
+	// would let invisible goals crowd visible ones out of the page.
+	rows, err := s.db.QueryContext(ctx, q+" ORDER BY created_at, id LIMIT 20000", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -388,6 +401,9 @@ func (s *Service) ListGoals(ctx context.Context, a Actor, flt GoalFilter) ([]Goa
 			foreign = append(foreign, g.ID)
 		}
 		out = append(out, *g)
+		if len(out) == 500 {
+			break
+		}
 	}
 	if len(foreign) > 0 {
 		if err := s.auditRead(ctx, a, "goals", foreign); err != nil {

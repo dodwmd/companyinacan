@@ -50,6 +50,7 @@ type env struct {
 	clock *time.Time
 	ctx   context.Context
 	hr    Actor // service account with hr+admin, no person record
+	path  string
 }
 
 func newEnv(t *testing.T) *env {
@@ -60,12 +61,13 @@ func newEnv(t *testing.T) *env {
 	}
 	clock := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	aud := &recAuditor{}
-	s, err := Open(filepath.Join(t.TempDir(), "people.db"), Options{Keyring: kr, Auditor: aud, Now: func() time.Time { return clock }})
+	path := filepath.Join(t.TempDir(), "people.db")
+	s, err := Open(path, Options{Keyring: kr, Auditor: aud, Now: func() time.Time { return clock }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	return &env{t: t, s: s, aud: aud, clock: &clock, ctx: context.Background(), hr: Actor{Subject: "svc-hr", Roles: []string{RoleHR, RoleAdmin}}}
+	return &env{t: t, s: s, path: path, aud: aud, clock: &clock, ctx: context.Background(), hr: Actor{Subject: "svc-hr", Roles: []string{RoleHR, RoleAdmin}}}
 }
 
 func (e *env) must(err error) {
@@ -976,6 +978,15 @@ func TestAuditChainDetectsTampering(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.must(s.VerifyAudit(e.ctx))
+	if _, err = s.db.Exec(`UPDATE audit_log SET actor = 'nobody' WHERE seq = 2`); err == nil {
+		t.Fatal("the audit log accepted an UPDATE")
+	}
+	if _, err = s.db.Exec(`DELETE FROM audit_log`); err == nil {
+		t.Fatal("the audit log accepted a DELETE")
+	}
+	// someone with database write access drops the triggers and edits a row: the chain notices
+	_, err = s.db.Exec(`DROP TRIGGER audit_log_no_update`)
+	e.must(err)
 	_, err = s.db.Exec(`UPDATE audit_log SET actor = 'nobody' WHERE seq = 2`)
 	e.must(err)
 	if s.VerifyAudit(e.ctx) == nil {
