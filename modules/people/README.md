@@ -9,8 +9,19 @@ binary `cmd/can-people`, image `deploy/people`. A module like any other (`module
 integrated, not built. Compliance with employment and data-protection law is the operator's
 responsibility.
 
-**Status: experimental.** Tested offline (unit, race, contract); not yet run on a cluster, no Helm
-templates, no admin UI. `can validate` warns accordingly.
+**Status: experimental.** Tested offline (unit, race, contract); the chart installs through can-core's
+installer in unit tests; not yet run on a cluster, no admin UI. `can validate` warns accordingly.
+
+**Installed under can-core** (see [`docs/module-wiring.md`](../../docs/module-wiring.md)): can-core generates `CAN_PEOPLE_API_TOKEN` and the
+sealed-field keyring once and rotates them on request (`can-core admin secrets rotate people keyring`
+adds a key and keeps the old ones; run `can-people rotate-keys` afterwards to re-seal). Personal access
+tokens are introspected through can-core and become roles from their permissions (`people.read` is
+employee, `performance.write` without `people.sensitive-write` adds manager, `people.write` is hr,
+`people.admin` is admin); a token's subject is `user:<admin username>`, so a person is linked to it by
+setting their `sso_subject` to that value. Events go to can-core. **`candidate.hired.v1` from jobs
+starts onboarding:** a person in status `onboarding` (named "New hire" and the candidate id; the hand-off
+carries no personal data, HR fills in the real details) and the onboarding checklist, once per
+candidate. If no template starts on entering onboarding, a default one is created.
 
 Why in-house: people records, salary and ID data, and performance notes are sensitive data classes.
 Wrapped third-party apps cannot enforce per-field access or audit reads, so `can validate` rejects a

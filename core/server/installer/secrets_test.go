@@ -7,10 +7,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/server/kube"
 	"github.com/dodwmd/companyinacan/core/server/modsecrets"
 )
 
 func secretFixture(t *testing.T) (func(...string) error, func() map[string]any, *bytes.Buffer) {
+	t.Helper()
+	enable, data, logs, _ := secretFixtureAPI(t)
+	return enable, data, logs
+}
+
+func secretFixtureAPI(t *testing.T) (func(...string) error, func() map[string]any, *bytes.Buffer, *kube.Fake) {
 	t.Helper()
 	in, api, _, spec := fixture(t, nil)
 	logs := &bytes.Buffer{}
@@ -23,7 +30,7 @@ func secretFixture(t *testing.T) (func(...string) error, func() map[string]any, 
 		s.Rotate = rot
 		return in.Enable(context.Background(), s)
 	}
-	return enable, func() map[string]any { return secretData(get(t, api, "Secret", "mod-stub", "can-module")) }, logs
+	return enable, func() map[string]any { return secretData(get(t, api, "Secret", "mod-stub", "can-module")) }, logs, api
 }
 
 func TestGeneratedSecretsAreCreatedOnceAndKept(t *testing.T) {

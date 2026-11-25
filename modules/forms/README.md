@@ -92,9 +92,10 @@ per page load". Volume is bounded by the per-IP rate limit, not by the token.
 | `PATCH /v1/leads/{id}` `{"status":..,"note":..}` | `leads.write` | status: new, contacted, qualified, closed, spam |
 | `GET /v1/leads/export.csv` | `leads.read` | formula-injection safe (`=+-@` cells get a leading `'`); capped at 10,000 rows |
 
-Authentication goes through the `Authenticator` interface. Until can-core exposes token
-introspection, static bearer tokens (`CAN_FORMS_API_TOKEN` read+write, `CAN_FORMS_API_READ_TOKEN`
-read-only) are used.
+Authentication goes through the `Authenticator` interface: static bearer tokens
+(`CAN_FORMS_API_TOKEN` read+write, `CAN_FORMS_API_READ_TOKEN` read-only; can-core generates both when
+the module is installed) and, installed under can-core, personal access tokens issued in the admin UI
+and introspected through can-core (`leads.read`, `leads.write`). See [`docs/module-wiring.md`](../../docs/module-wiring.md).
 
 ## Webhook
 
@@ -104,6 +105,14 @@ read-only) are used.
 the signature and reject timestamps older than a few minutes (`forms.VerifySignature`).
 Delivery is retried in-process, best effort: network errors, 5xx and 429 are retried with exponential backoff
 (1 s, 2 s, 4 s, ... up to `max_attempts`); other 4xx are permanent. Redirects are not followed.
+**Installed under can-core** the event goes to can-core (`POST /v1/events`) instead: ids only (`lead_id`,
+`form_id`, `submitted_at`, an empty `fields`), never the name, e-mail address or message, because
+can-core keeps events for 30 days and feeds notifications from them. The manifest's notification rule
+turns each lead into an inbox item for the `sales` role. Four attempts with backoff, then the event is
+dropped: the lead is stored, but forms still has no outbox. The public listener has no route through
+can-core's Traefik (the installer allows only `<subdomain>.<domain>` hosts, not the same-origin
+`/_forms` path), so the chart's ingress stays off: see [`docs/module-wiring.md`](../../docs/module-wiring.md).
+
 Retries live in memory: if the process stops mid-retry the event is not resent (the outcome so far is in `lead_deliveries`, and the lead is stored). Consumers should still de-duplicate on the event `id`. This is the interim path until the can-core event bus (at-least-once outbox) exists.
 
 ## Privacy and retention

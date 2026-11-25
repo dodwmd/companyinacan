@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -142,9 +143,11 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 		return err
 	}
 	// 3. Database and Secrets.
-	if err := in.ensureSecrets(ctx, s); err != nil {
+	version, err := in.ensureSecrets(ctx, s)
+	if err != nil {
 		return err
 	}
+	stampSecretVersion(objs, version)
 	// 4. The module's workloads, atomically.
 	return in.rollout(ctx, s, objs)
 }
@@ -353,14 +356,63 @@ func (in *Installer) existingSecretKey(ctx context.Context, ns, name, key string
 	return string(b)
 }
 
-func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) error {
+// secretVersionAnnotation on a pod template changes whenever the module's Secrets change, which
+// rolls the pods: environment variables are read once at start, so without it a rotated secret
+// would sit unused in the Secret until the pod happened to restart.
+const secretVersionAnnotation = "can.dev/secret-version"
+
+// secretVersion is a short digest of the Secret data (never the data itself).
+func secretVersion(maps ...map[string]string) string {
+	h := sha256.New()
+	for _, m := range maps {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(h, "%d:%s=%d:%s;", len(k), k, len(m[k]), m[k])
+		}
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// stampSecretVersion records the Secret version on the pod templates of Deployments and
+// StatefulSets. Jobs and CronJobs are left alone: a Job's template cannot be changed in place.
+func stampSecretVersion(objs []kube.Object, version string) {
+	for _, o := range objs {
+		if k := o["kind"]; k != "Deployment" && k != "StatefulSet" {
+			continue
+		}
+		spec := asMap(o["spec"])
+		tpl := asMap(spec["template"])
+		if tpl == nil {
+			continue
+		}
+		md := asMap(tpl["metadata"])
+		if md == nil {
+			md = map[string]any{}
+			tpl["metadata"] = md
+		}
+		ann := asMap(md["annotations"])
+		if ann == nil {
+			ann = map[string]any{}
+			md["annotations"] = ann
+		}
+		ann[secretVersionAnnotation] = version
+	}
+}
+
+func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (string, error) {
 	mod := map[string]string{
 		"CAN_API_URL": in.cfg.PlatformURL, "CAN_MODULE_ID": s.ID, "CAN_WEBHOOK_SECRET": s.HMACSecret,
 		"CAN_TOKEN_FILE": TokenDir + "/token", "CAN_TOKEN_AUDIENCE": "can",
 	}
 	if err := in.generatedSecrets(ctx, s, mod); err != nil {
-		return err
+		return "", err
 	}
+	var db map[string]string
 	kind := s.Manifest.Requires.Database
 	if kind == "postgres" || kind == "mariadb" {
 		prov := in.cfg.DB
@@ -373,17 +425,20 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) error 
 		}
 		c, err := prov.Ensure(ctx, kind, s.ID, pw)
 		if err != nil {
-			return fmt.Errorf("creating %s database: %w", kind, err)
+			return "", fmt.Errorf("creating %s database: %w", kind, err)
 		}
-		db := map[string]string{
+		db = map[string]string{
 			"DB_KIND": c.Kind, "DB_HOST": c.Host, "DB_PORT": fmt.Sprint(c.Port), "DB_NAME": c.Database,
 			"DB_USER": c.User, "DB_PASSWORD": c.Password, "DATABASE_URL": c.URL(),
 		}
 		if err := in.cfg.API.Apply(ctx, secret(s.Namespace, secretDB, s.ID, db)); err != nil {
-			return fmt.Errorf("writing database Secret: %w", err)
+			return "", fmt.Errorf("writing database Secret: %w", err)
 		}
 	}
-	return in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod))
+	if err := in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod)); err != nil {
+		return "", err
+	}
+	return secretVersion(mod, db), nil
 }
 
 // checkRotations refuses a rotation request that names a key the module has no rotatable secret

@@ -6,9 +6,16 @@ In-house work tracker: a lean, API-first, Jira-style issue tracker. Library `cor
 `work.issue.created.v1`, `work.issue.updated.v1`, `work.issue.transitioned.v1` and
 `work.comment.created.v1`.
 
-**Status: experimental.** Built and tested offline and measured locally; the image has not been
-built or run on a cluster, and there is no web UI yet. A Plane wrapper for 8 GB+ servers is a later,
-separate module that provides the same capability.
+**Status: experimental.** Built and tested offline and measured locally. The chart installs through
+can-core's installer in unit tests; the advisory dev-cluster CI job builds the image and installs it
+through can-core on a k3d cluster, creates an issue with a personal access token and disables it again
+(what that proves and does not: [`docs/module-wiring.md`](../../docs/module-wiring.md)). There is no web UI yet. A Plane wrapper for 8 GB+
+servers is a later, separate module that provides the same capability.
+
+**Installed under can-core** (`CAN_API_URL` set): can-core generates `CAN_WORK_ADMIN_TOKEN` once;
+personal access tokens issued in the admin UI (`/tokens`) authenticate here through can-core's
+introspection (permissions `work.read`, `work.write`, `work.admin`, bound to this module, refused when
+can-core is unreachable); events go to can-core (`POST /v1/events`) instead of `webhook.url`.
 
 The full guide, with curl examples, search syntax, tokens, events and limits, is
 [`docs/work-tracker.md`](../../docs/work-tracker.md). The wire contract is
