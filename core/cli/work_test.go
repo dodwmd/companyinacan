@@ -16,7 +16,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/work"
 )
 
-const workCLIToken = "cli-test-token-0123456789abcdef"
+const workCLIToken = "cli-test-token-0123456789abcdefXYZ"
 
 func workServer(t *testing.T) *httptest.Server {
 	t.Helper()

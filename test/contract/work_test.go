@@ -205,7 +205,7 @@ func TestLiveEventsMatchSchemas(t *testing.T) {
 	cfg.DBPath = filepath.Join(t.TempDir(), "w.db")
 	cfg.Webhook.URL = recv.URL
 	const secret = "whsec-0123456789abcdef"
-	const tok = "contract-token-0123456789abcdef"
+	const tok = "contract-token-0123456789abcdefXYZ"
 	app, err := work.NewApp(cfg, work.Secrets{AdminToken: tok, WebhookSecret: secret}, work.Options{Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"math/rand"
+	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -889,6 +892,13 @@ func TestSearchNeverLeavesTokenScope(t *testing.T) {
 		"-project:ACME", "is:blocked", "-is:blocked", "is:open", "-is:resolved", "priority:P0", "-priority:P3", "assignee:ceo", "label:x",
 		"-label:none", "parent:SEC-1", "parent:none", "-parent:none", "sprint:none", "layoffs", "secret", "text:plan", "type:epic,task",
 		"status:todo", "-status:done", "created>=-7d", "updated>2000-01-01", "due<2100-01-01", "-assignee:none", "reporter:root",
+		// hostile and odd shapes
+		"(", ")", "((key:SEC-1))", ") OR (1=1", "' OR 1=1 --", `"unbalanced`, `"quoted \" text"`, `"project:SEC"`, "OR", "AND", "NOT",
+		"ｋｅｙ:ＳＥＣ-1", "ｐｒｏｊｅｃｔ:SEC", "日本語", "\u0000", "key:SEC-1\u200b", "KEY:SEC-1", "Project:SEC", "-Key:ACME-1",
+		"label:" + strings.Repeat("a", 200), "assignee:" + strings.Repeat("ü", 100), strings.Repeat("z", 400),
+		"project:ACME,SEC", "project:SEC,ACME,OPS", "-project:SEC", "key:SEC-1,SEC-2,SEC-3,ACME-1,ACME-2,SEC-9",
+		"sprint:1", "sprint:2", "sprint:active", "-sprint:none", "sprint:none", "parent:SEC-1,ACME-1", "-parent:SEC-1",
+		"is:blocked is:open", "is:overdue", "text:ACME", "%", "_", "1=1", "created:2026-11-25", "resolved<2100-01-01",
 	}
 	rng := rand.New(rand.NewSource(11))
 	check := func(q string) {
@@ -907,7 +917,17 @@ func TestSearchNeverLeavesTokenScope(t *testing.T) {
 		check(q)
 		check("project:ACME " + q)
 	}
-	for i := 0; i < 3000; i++ {
+	sp, err := s.CreateSprint(ctx, admin, "SEC", NewSprint{Name: "sec sprint"})
+	if err != nil || sp.ID != 1 {
+		t.Fatalf("sprint 1 should be SEC's: %+v %v", sp, err)
+	}
+	if _, err := s.UpdateIssue(ctx, admin, sec.Key, &Patch{SprintID: Opt[int64]{Set: true, V: sp.ID}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.StartSprint(ctx, admin, sp.ID); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 6000; i++ {
 		var parts []string
 		for j := 0; j < 1+rng.Intn(4); j++ {
 			parts = append(parts, pool[rng.Intn(len(pool))])
@@ -1141,5 +1161,63 @@ func TestRankKeepsVersionButLogsActivityAndStaysShort(t *testing.T) {
 	last, _, _ := s.ListIssues(ctx, alice, "ACME", "", "-created", 1, 0)
 	if len(last[0].Rank) > maxRankLen+1 {
 		t.Fatalf("appends grew the rank to %q", last[0].Rank)
+	}
+}
+
+func TestRemoveLinkNeedsBothEndsVisible(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustProject(t, s, "ACME")
+	mustProject(t, s, "SEC")
+	ctx := context.Background()
+	sec := mustIssue(t, s, admin, "SEC", CreateIssue{})
+	own := mustIssue(t, s, admin, "ACME", CreateIssue{})
+	l, err := s.AddLink(ctx, admin, sec.Key, "blocks", own.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveLink(ctx, acmeRW, own.Key, l.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("scoped token removing a link into SEC: %v", err)
+	}
+	d, _ := s.GetIssue(ctx, admin, own.Key)
+	if len(d.Links) != 1 {
+		t.Fatal("the link must still exist")
+	}
+	acts, _, _ := s.ListActivity(ctx, admin, sec.Key, 0, 50)
+	for _, a := range acts {
+		if a.Kind == "unlinked" {
+			t.Fatal("activity written on the invisible side")
+		}
+	}
+	if err := s.RemoveLink(ctx, admin, own.Key, l.ID); err != nil {
+		t.Fatalf("an admin can: %v", err)
+	}
+}
+
+func TestAdminTokenMustBeStrong(t *testing.T) {
+	for _, weak := range []string{"", "short", strings.Repeat("a", 40), "abababababababababababababababab", "0123456789012345678901234567"} {
+		if _, err := SecretsFromEnv(func(k string) string {
+			if k == "CAN_WORK_ADMIN_TOKEN" {
+				return weak
+			}
+			return ""
+		}); err == nil {
+			t.Errorf("%q accepted", weak)
+		}
+	}
+	if _, err := SecretsFromEnv(func(k string) string {
+		if k == "CAN_WORK_ADMIN_TOKEN" {
+			return "q8Zr3LmW0xYp7TnVb2KdHs9JfAe5GcUo"
+		}
+		return ""
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchTimeoutIsA503WithAHint(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeStoreError(rec, slog.New(slog.DiscardHandler), fmt.Errorf("query: %w", context.DeadlineExceeded))
+	if rec.Code != 503 || !strings.Contains(rec.Body.String(), "narrow the query") || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 }

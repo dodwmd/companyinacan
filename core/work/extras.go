@@ -220,14 +220,22 @@ func (s *Store) RemoveLink(ctx context.Context, a *Principal, key string, linkID
 		if err != nil {
 			return err
 		}
-		var typ string
+		var typ, srcProject, dstProject string
 		var src, dst int64
-		err = tx.QueryRowContext(ctx, `SELECT type, source_id, target_id FROM issue_links WHERE id = ? AND (source_id = ? OR target_id = ?)`, linkID, row.id, row.id).Scan(&typ, &src, &dst)
+		err = tx.QueryRowContext(ctx, `SELECT k.type, k.source_id, k.target_id, sp.key, dp.key FROM issue_links k
+			JOIN issues si ON si.id = k.source_id JOIN projects sp ON sp.id = si.project_id
+			JOIN issues di ON di.id = k.target_id JOIN projects dp ON dp.id = di.project_id
+			WHERE k.id = ? AND (k.source_id = ? OR k.target_id = ?)`, linkID, row.id, row.id).Scan(&typ, &src, &dst, &srcProject, &dstProject)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
+		}
+		// A link into a project the caller cannot see is invisible, so it cannot be removed
+		// either (and no activity row is written on the side the caller cannot see).
+		if !a.CanProject(srcProject) || !a.CanProject(dstProject) {
+			return ErrNotFound
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM issue_links WHERE id = ?`, linkID); err != nil {
 			return err

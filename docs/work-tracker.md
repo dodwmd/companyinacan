@@ -27,7 +27,7 @@ no web UI yet (the admin UI, E12, and the board UI are later). See
 
 Every call needs `Authorization: Bearer <token>`.
 
-* **Bootstrap admin token**: `CAN_WORK_ADMIN_TOKEN` (24+ characters) from the module Secret. It
+* **Bootstrap admin token**: `CAN_WORK_ADMIN_TOKEN` (32+ characters, high entropy; weak values are refused at start) from the module Secret. It
   holds every scope on every project. Use it to mint real tokens, then keep it out of daily use.
 * **API tokens** (`cwt_<id>_<secret>`): minted with `POST /v1/tokens`. The secret is shown once;
   only its SHA-256 is stored. A token has a `kind` (`personal` for a person, `service` for a bot
@@ -115,7 +115,7 @@ curl -sSG $CAN_WORK_URL/v1/issues -H "Authorization: Bearer $TOKEN" \
 | `login "two words"` | bare words match title or description |
 
 Queries are capped at 500 characters, 20 terms and 3 free-text terms (substring matches are the
-expensive ones), run on a read-only connection pool with a 4 second deadline, and never block
+expensive ones), run on a read-only connection pool with a 4 second deadline (a search that exceeds it is stopped with 503 `search_timeout`: narrow the query), and never block
 writers. The language is parsed into fixed SQL
 fragments and every value is bound as a parameter, so there is nothing to inject into.
 `limit` is at most 100; `cursor` is opaque and offset based (a page can shift if issues are created
@@ -231,7 +231,7 @@ the forms gateway). Delivery is at least once, per event, with caveats you shoul
 * Failures (network error, 5xx, 429, any non-2xx) are retried with exponential backoff (30 s,
   doubling, capped at 6 h) for **7 days**. The queue is the SQLite outbox, so a restart loses nothing.
 * After 7 days an undelivered event is *dead-lettered*, not dropped: it is logged at error level
-  ("webhook event dead-lettered"), listed by `GET /v1/events/dead` (admin) for 90 days, and can be
+  ("webhook event dead-lettered"), listed by `GET /v1/events/dead` (admin, paged with `cursor`) for 90 days, and can be
   put back with `POST /v1/events/{id}/replay` (same event id, fresh 7-day window). Poll the dead
   list (or alert on that log line) so a broken receiver is noticed.
 * **Ordering is not guaranteed** once a retry is involved: a later event can arrive before an
@@ -246,7 +246,7 @@ the forms gateway). Delivery is at least once, per event, with caveats you shoul
 |---|---|
 | Request body | 1 MiB (`max_body_bytes`, 413 above) |
 | Requests per token | 600 per minute (`rate_limit.per_minute`, 429 with `Retry-After`) |
-| Failed authentications | 30 per minute per client address; further *bad* tokens from that address get 429. A valid token always works, so a shared address cannot be used to lock others out |
+| Failed authentications | 30 per minute per client address; further *bad* tokens from that address get 429 after a 300 ms delay. A valid token always works, so a shared address cannot be used to lock others out |
 | Title / description / comment | 200 / 50,000 / 20,000 characters |
 | Labels | 20 per issue, `[a-z0-9][a-z0-9._:-]{0,39}` |
 | Bulk operations | 100 items |

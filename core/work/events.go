@@ -249,6 +249,7 @@ func (s *Store) purgeOutbox(ctx context.Context, tx dbq, now time.Time) error {
 
 // DeadEvent is an event that was not delivered within the delivery window.
 type DeadEvent struct {
+	seq       int64
 	EventID   string    `json:"event_id"`
 	Type      string    `json:"type"`
 	CreatedAt time.Time `json:"created_at"`
@@ -258,23 +259,29 @@ type DeadEvent struct {
 }
 
 // ListDeadEvents lists undelivered events past the delivery window, oldest first.
-func (s *Store) ListDeadEvents(ctx context.Context, limit int) ([]DeadEvent, error) {
-	rs, err := s.db.QueryContext(ctx, `SELECT event_id, type, created_at, dead_at, attempts, last_error FROM outbox WHERE dead_at IS NOT NULL AND delivered_at IS NULL ORDER BY id LIMIT ?`, clampLimit(limit))
+// after is the cursor (0 = start); next is the cursor for the following page (0 = last page).
+func (s *Store) ListDeadEvents(ctx context.Context, after int64, limit int) (items []DeadEvent, next int64, err error) {
+	limit = clampLimit(limit)
+	rs, err := s.db.QueryContext(ctx, `SELECT id, event_id, type, created_at, dead_at, attempts, last_error FROM outbox WHERE dead_at IS NOT NULL AND delivered_at IS NULL AND id > ? ORDER BY id LIMIT ?`, after, limit+1)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = rs.Close() }()
 	out := []DeadEvent{}
 	for rs.Next() {
 		var d DeadEvent
 		var c, dd int64
-		if err := rs.Scan(&d.EventID, &d.Type, &c, &dd, &d.Attempts, &d.LastError); err != nil {
-			return nil, err
+		if err := rs.Scan(&d.seq, &d.EventID, &d.Type, &c, &dd, &d.Attempts, &d.LastError); err != nil {
+			return nil, 0, err
 		}
 		d.CreatedAt, d.DeadAt = fromUnix(c), fromUnix(dd)
 		out = append(out, d)
 	}
-	return out, rs.Err()
+	if len(out) > limit {
+		out = out[:limit]
+		next = out[limit-1].seq
+	}
+	return out, next, rs.Err()
 }
 
 // ReplayEvent puts a dead event back in the queue with a fresh delivery window. The event

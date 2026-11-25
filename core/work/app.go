@@ -16,7 +16,7 @@ var errEOF = io.EOF
 
 // Secrets are read from the environment, never from the config file.
 type Secrets struct {
-	AdminToken    string // bootstrap token with every scope (CAN_WORK_ADMIN_TOKEN, >= 24 characters)
+	AdminToken    string // bootstrap token with every scope (CAN_WORK_ADMIN_TOKEN, >= 32 characters)
 	WebhookSecret string // HMAC secret for webhook signatures (CAN_WORK_WEBHOOK_SECRET)
 }
 
@@ -24,8 +24,8 @@ type Secrets struct {
 func SecretsFromEnv(getenv func(string) string) (Secrets, error) {
 	s := Secrets{AdminToken: getenv("CAN_WORK_ADMIN_TOKEN"), WebhookSecret: getenv("CAN_WORK_WEBHOOK_SECRET")}
 	var errs []error
-	if len(s.AdminToken) < 24 {
-		errs = append(errs, errors.New("CAN_WORK_ADMIN_TOKEN is required and must be at least 24 characters"))
+	if len(s.AdminToken) < 32 || distinctBytes(s.AdminToken) < 10 {
+		errs = append(errs, errors.New("CAN_WORK_ADMIN_TOKEN is required, at least 32 characters with at least 10 different ones (for example `openssl rand -base64 32`)"))
 	}
 	if s.WebhookSecret != "" && len(s.WebhookSecret) < 16 {
 		errs = append(errs, errors.New("CAN_WORK_WEBHOOK_SECRET must be at least 16 characters when set"))
@@ -86,6 +86,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	a := &api{
 		store: store, auth: auth, log: log, maxBody: cfg.MaxBodyBytes, trustProxy: cfg.TrustProxy,
 		limiter:  newRateLimiter(cfg.RateLimit.PerMinute, time.Minute, cfg.RateLimit.MaxTracked, now),
+		penalty:  300 * time.Millisecond,
 		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
 	app.handler = withMiddleware(log, a.handler())
@@ -181,4 +182,16 @@ func listen(addr string) (net.Listener, error) {
 		addr = "0.0.0.0" + addr
 	}
 	return net.Listen("tcp", addr)
+}
+
+func distinctBytes(s string) int {
+	var seen [256]bool
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if !seen[s[i]] {
+			seen[s[i]] = true
+			n++
+		}
+	}
+	return n
 }

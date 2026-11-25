@@ -30,7 +30,7 @@ digests it built with next to the image.
 | API listener | `:8080` (`work` and `projects` capabilities, ClusterIP only, bearer token; `GET /healthz` needs none) |
 | Data | `/data/work.db` (SQLite, WAL), one persistent volume |
 | Config | `/etc/can-work/work.yaml`, optional: built-in defaults apply when it is absent (see `modules/work/README.md`) |
-| Secrets (env) | `CAN_WORK_ADMIN_TOKEN` (24+ characters); `CAN_WORK_WEBHOOK_SECRET` when `webhook.url` is set |
+| Secrets (env) | `CAN_WORK_ADMIN_TOKEN` (32+ characters); `CAN_WORK_WEBHOOK_SECRET` when `webhook.url` is set |
 | Idle RAM | 13.6 MiB RSS measured (20.4 MiB after 200 creates and 200 searches); target 20 MB, limit 48 MB |
 | Root filesystem | read-only works: only `/data` is written |
 

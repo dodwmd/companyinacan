@@ -473,15 +473,16 @@ paths:
       x-required-scope: work.admin
       summary: Webhook events not delivered within the 7-day delivery window (unscoped admin)
       description: Undelivered events are retried with capped backoff (30 s doubling to 6 h) for 7 days, are then kept as dead (logged at error level) for 90 days and can be replayed. Delivery is at least once, per event; ordering across events is not guaranteed once a retry is involved, so receivers should use `version` and `time`.
-      parameters: [{ $ref: "#/components/parameters/Limit" }]
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
       responses:
         "200":
-          description: Dead events, oldest first
+          description: Dead events, oldest first; next_cursor when more
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  next_cursor: { type: string }
                   items:
                     type: array
                     items:
@@ -518,7 +519,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { enum: [bad_request, unauthenticated, forbidden, not_found, conflict, version_mismatch, idempotency_mismatch, invalid, too_large, rate_limited, internal, unhealthy] }
+        code: { enum: [bad_request, unauthenticated, forbidden, not_found, conflict, version_mismatch, idempotency_mismatch, invalid, too_large, rate_limited, search_timeout, internal, unhealthy] }
         message: { type: string }
         errors: { type: array, items: { type: object, properties: { field: { type: string }, message: { type: string } } } }
     IssueKey: { type: string, pattern: "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$", examples: [ACME-123] }

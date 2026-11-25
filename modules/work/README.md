@@ -33,7 +33,7 @@ retention_days: 1825             # delete issues resolved longer ago; 0 keeps ev
 audit_retention_days: 2555
 ```
 
-Environment: `CAN_WORK_ADMIN_TOKEN` (required, 24+ characters: the bootstrap admin token),
+Environment: `CAN_WORK_ADMIN_TOKEN` (required, 32+ characters with some variety, for example `openssl rand -base64 32`: the bootstrap admin token),
 `CAN_WORK_WEBHOOK_SECRET` (16+ characters, required with `webhook.url`), `CAN_WORK_CONFIG`
 (config path; default `/etc/can-work/work.yaml` when present).
 

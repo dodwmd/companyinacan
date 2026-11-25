@@ -16,8 +16,9 @@ type api struct {
 	log        *slog.Logger
 	maxBody    int64
 	trustProxy bool
-	limiter    *rateLimiter // per principal
-	failures   *rateLimiter // failed authentications per client address
+	limiter    *rateLimiter  // per principal
+	failures   *rateLimiter  // failed authentications per client address
+	penalty    time.Duration // delay added to failures from an address over the limit
 }
 
 func (a *api) handler() http.Handler {
@@ -81,16 +82,20 @@ func (a *api) handler() http.Handler {
 type handlerFunc func(w http.ResponseWriter, r *http.Request, p *Principal)
 
 // guard authenticates, rate-limits, checks the permission and caps the body before the
-// handler runs. Failed authentications are counted per client address and, past the limit,
-// answered 429 without even being checked. Only the failing path is throttled: a valid token
-// always authenticates, so an attacker behind a shared address (an ingress, a NAT) can slow
-// other bad guesses but can never lock legitimate callers out.
+// handler runs. Every request is authenticated, so a valid token always works: an attacker
+// behind a shared address (an ingress, a NAT) cannot lock legitimate callers out. Only
+// failures are counted per client address; past the limit a failure is answered 429 after a
+// short delay, which makes a flood of guesses slow and costly without affecting valid callers.
 func (a *api) guard(perm string, next handlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, err := a.auth.Authenticate(r)
 		if err != nil {
 			ip := clientIP(r, a.trustProxy)
 			if ok, wait := a.failures.allow(ip); !ok {
+				select { // the cost: guessing from an address that is over the limit gets slower
+				case <-time.After(a.penalty):
+				case <-r.Context().Done():
+				}
 				tooMany(w, wait)
 				return
 			}
@@ -640,12 +645,21 @@ func (a *api) listDead(w http.ResponseWriter, r *http.Request, p *Principal) {
 		a.fail(w, ErrForbidden)
 		return
 	}
-	items, err := a.store.ListDeadEvents(r.Context(), queryInt(r, "limit"))
+	after, ok := decodeCursor(r.URL.Query().Get("cursor"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "bad_request", "invalid cursor")
+		return
+	}
+	items, next, err := a.store.ListDeadEvents(r.Context(), after, queryInt(r, "limit"))
 	if err != nil {
 		a.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	resp := map[string]any{"items": items}
+	if next > 0 {
+		resp["next_cursor"] = encodeCursor(next)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *api) replayEvent(w http.ResponseWriter, r *http.Request, p *Principal) {

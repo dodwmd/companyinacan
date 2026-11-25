@@ -1,6 +1,7 @@
 package work
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -57,6 +58,9 @@ func writeStoreError(w http.ResponseWriter, log *slog.Logger, err error) {
 		writeError(w, http.StatusConflict, "conflict", err.Error())
 	case errors.Is(err, ErrIdempotencyMismatch):
 		writeError(w, http.StatusUnprocessableEntity, "idempotency_mismatch", err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusServiceUnavailable, "search_timeout", "the search took too long and was stopped; narrow the query (add status:, project:, label: or a date range) and try again")
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "this token cannot do that")
 	default:

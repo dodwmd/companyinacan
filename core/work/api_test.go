@@ -20,7 +20,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const bootstrap = "bootstrap-token-0123456789abc"
+const bootstrap = "bootstrap-token-0123456789abcdefXYZ"
 
 type harness struct {
 	t   *testing.T
@@ -827,5 +827,52 @@ func TestEveryOperationEnforcesItsDocumentedScope(t *testing.T) {
 	}
 	if n < 35 {
 		t.Fatalf("only %d operations walked", n)
+	}
+}
+
+func TestDeadEventsArePaginated(t *testing.T) {
+	srv := httptest.NewServer(&hook{})
+	defer srv.Close()
+	h := newHarness(t, func(c *Config) { c.Webhook.URL = srv.URL })
+	writer := h.setup()
+	for i := 0; i < 5; i++ {
+		h.mustDo(201, "POST", "/v1/projects/ACME/issues", writer, map[string]any{"type": "task", "title": "x"})
+	}
+	if _, err := h.app.store.db.Exec(`UPDATE outbox SET dead_at = 1`); err != nil {
+		t.Fatal(err)
+	}
+	var seen []string
+	cursor := ""
+	for pages := 0; pages < 10; pages++ {
+		page := h.mustDo(200, "GET", "/v1/events/dead?limit=2&cursor="+cursor, bootstrap, nil)
+		for _, it := range page["items"].([]any) {
+			seen = append(seen, it.(map[string]any)["event_id"].(string))
+		}
+		next, _ := page["next_cursor"].(string)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(seen) != 5 {
+		t.Fatalf("paging saw %d of 5 dead events: %v", len(seen), seen)
+	}
+	h.mustDo(400, "GET", "/v1/events/dead?cursor=!!", bootstrap, nil)
+}
+
+func TestFailuresFromAnAddressOverTheLimitAreSlowedNotValidTokens(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.RateLimit.AuthFailuresPerMin = 2 })
+	for i := 0; i < 2; i++ {
+		h.mustDo(401, "GET", "/v1/me", "bad-token-bad-token-bad-token-bad", nil)
+	}
+	start := time.Now()
+	h.mustDo(429, "GET", "/v1/me", "bad-token-bad-token-bad-token-bad", nil)
+	if time.Since(start) < 200*time.Millisecond {
+		t.Fatalf("a failure from an address over the limit must cost something: %v", time.Since(start))
+	}
+	start = time.Now()
+	h.mustDo(200, "GET", "/v1/me", bootstrap, nil)
+	if time.Since(start) > 150*time.Millisecond {
+		t.Fatalf("a valid token must not be delayed: %v", time.Since(start))
 	}
 }
