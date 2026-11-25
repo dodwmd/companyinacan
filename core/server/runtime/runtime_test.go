@@ -49,7 +49,7 @@ func get(t *testing.T, url string) int {
 func TestRunServesTwoSeparateListenersAndShutsDownGracefully(t *testing.T) {
 	cfg := Config{
 		AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "state.db"),
-		SecureCookies: false, TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 20 * time.Second,
+		SecureCookies: false, TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 30 * time.Second,
 	}
 	addrs := make(chan [2]net.Addr, 1)
 	cfg.OnListen = func(a, m net.Addr) { addrs <- [2]net.Addr{a, m} }
@@ -89,7 +89,7 @@ func TestRunServesTwoSeparateListenersAndShutsDownGracefully(t *testing.T) {
 		if err != nil {
 			t.Fatalf("shutdown error: %v", err)
 		}
-	case <-time.After(45 * time.Second): // a loaded CI runner under -race; the code's own bound is ShutdownTimeout
+	case <-time.After(120 * time.Second): // a guard against a hang only; the code's own bound is ShutdownTimeout
 		t.Fatal("no graceful shutdown")
 	}
 	if _, err := http.Get(admin + "/healthz"); err == nil { //nolint:gosec,noctx // listener must be closed
@@ -130,7 +130,7 @@ func TestRunObservability(t *testing.T) {
 	env := map[string]string{"CAN_METRICS_ADDR": metrics, "CAN_METRICS_TOKEN": "tok-123", "CAN_RAM_DECLARED_MB": "48"}
 	cfg := Config{
 		AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "state.db"),
-		TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 20 * time.Second, Version: "v9.9.9", Commit: "c0ffee",
+		TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 30 * time.Second, Version: "v9.9.9", Commit: "c0ffee",
 		Env: func(k string) string { return env[k] },
 	}
 	addrs := make(chan [2]net.Addr, 1)

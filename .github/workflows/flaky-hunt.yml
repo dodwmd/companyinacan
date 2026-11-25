@@ -1,0 +1,52 @@
+name: flaky-hunt
+
+# Nightly hunt for flaky unit tests (see CONTRIBUTING.md, "Flaky tests"). NOT a required check: it is
+# kept out of ci.yml so it cannot change the required job names (lint, unit, contract, licences, dco).
+# It repeats the unit suite under CPU load and shuffled order, then uploads the names of the tests that
+# failed at least once. It never blocks a merge; a failing test name is a bug to fix or an issue to file.
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "Iterations of the unit suite"
+        required: false
+        default: "20"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flaky-hunt
+  cancel-in-progress: false
+
+jobs:
+  hunt:
+    name: flaky-hunt
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Hunt (20 iterations unless dispatched with another number)
+        env:
+          INPUT_ITERATIONS: ${{ inputs.iterations }}
+        run: |
+          ITER="${INPUT_ITERATIONS:-20}" sh scripts/flaky-hunt.sh
+      - name: Failing tests
+        if: failure()
+        run: |
+          { echo '### Tests that failed at least once'; echo '```'; cat flaky-hunt-out/failing-tests.txt || true; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: flaky-hunt-failing-tests
+          path: |
+            flaky-hunt-out/failing-tests.txt
+            flaky-hunt-out/raw-failures.txt
+          if-no-files-found: ignore

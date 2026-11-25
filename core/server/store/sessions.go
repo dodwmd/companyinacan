@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -46,10 +47,18 @@ func (db *DB) RevokeSession(ctx context.Context, userID int64, publicID string) 
 	if len(publicID) != PublicIDLen {
 		return false, nil
 	}
-	res, err := db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=? AND substr(id_hash,1,?)=?`, userID, PublicIDLen, publicID)
-	if err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	var found bool
+	err := db.InTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=? AND substr(id_hash,1,?)=?`, userID, PublicIDLen, publicID)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		if found = n > 0; !found {
+			return nil
+		}
+		// A revoked session may be a stolen one: whatever it launched into modules ends too.
+		return endLaunchAccessByUserID(ctx, tx, userID, db.Now())
+	})
+	return found && err == nil, err
 }

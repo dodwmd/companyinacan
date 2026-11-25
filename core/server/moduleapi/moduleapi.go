@@ -22,6 +22,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/ticket"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 )
 
@@ -47,6 +48,8 @@ type Server struct {
 	Identity *identity.Service
 	// Dumps stores the backup hooks' dumps (E08b); nil answers 503 on /v1/dumps.
 	Dumps Dumps
+	// Tickets redeems the launch tickets of single sign-on into module UIs (E11c); nil answers 503.
+	Tickets *ticket.Service
 }
 
 type route struct {
@@ -69,6 +72,9 @@ func (s *Server) routes() []route {
 		{"POST /v1/identity/revoke", s.authed(s.revokeIdentity)},
 		{"PUT /v1/dumps/{module}/{name}", s.authedAnyState(s.putDump)},
 		{"GET /v1/dumps/{module}/{name}", s.authed(s.getDump)},
+		{"POST /v1/tickets/peek", s.authed(s.peekTicket)},
+		{"POST /v1/tickets/redeem", s.authed(s.redeemTicket)},
+		{"POST /v1/tickets/revalidate", s.authed(s.revalidateSession)},
 	}
 }
 

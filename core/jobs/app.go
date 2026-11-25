@@ -167,7 +167,11 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	var uiHandler http.Handler
 	if cfg.UI.Enabled {
 		app.ui = &UI{Store: store, Auth: auth, Log: log, Site: cfg.Site(), Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.TrustProxy, Now: now, Timeout: timeout,
-			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour}
+			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour,
+			NoTokenLogin: !cfg.tokenLogin()}
+		if opt.Can != nil {
+			app.ui.Sessions = opt.Can
+		}
 		uiHandler = app.ui.Handler()
 	}
 	app.handler = withMiddleware(log, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

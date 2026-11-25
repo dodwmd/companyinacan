@@ -1,6 +1,8 @@
 package work
 
 import (
+	"html/template"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,9 +27,11 @@ func TestRenderTextIsLinearOnPathologicalInput(t *testing.T) {
 		"mixed multibyte": strings.Repeat("[é](**`é", 6000),
 	}
 	for name, in := range cases {
-		start := time.Now()
-		out := renderText(in)
-		if d := time.Since(start); d > 500*time.Millisecond {
+		// Linear rendering takes a few milliseconds here even with -race; a byte-by-byte quadratic
+		// scan of these inputs takes hundreds of milliseconds or more. The fastest of three runs is
+		// compared, so a busy machine does not trip the bound.
+		var out template.HTML
+		if d := fastestOf(3, func() { out = renderText(in) }); d > 250*time.Millisecond {
 			t.Errorf("%s: %v for %d bytes", name, d, len(in))
 		}
 		if len(out) > 8*len(in)+1000 {
@@ -37,6 +41,19 @@ func TestRenderTextIsLinearOnPathologicalInput(t *testing.T) {
 			t.Errorf("%s: %s", name, h)
 		}
 	}
+}
+
+// fastestOf runs f n times and returns the shortest duration, which is insensitive to load spikes.
+func fastestOf(n int, f func()) time.Duration {
+	best := time.Duration(math.MaxInt64)
+	for range n {
+		start := time.Now()
+		f()
+		if d := time.Since(start); d < best {
+			best = d
+		}
+	}
+	return best
 }
 
 func TestRenderTextTruncatesLongFieldsAndSaysSo(t *testing.T) {
@@ -54,12 +71,16 @@ func TestIssuePageWithHugeCommentsRendersQuickly(t *testing.T) {
 		f.h.mustDo(201, "POST", "/v1/issues/"+f.acmeKey+"/comments", bootstrap, map[string]any{"body": nasty[:19000] + strconv.Itoa(i)})
 	}
 	f.h.mustDo(200, "PATCH", "/v1/issues/"+f.acmeKey, bootstrap, map[string]any{"description": strings.Repeat("é", 49000)})
-	start := time.Now()
-	r := b.do("GET", "/ui/issues/"+f.acmeKey, nil)
-	if d := time.Since(start); r.Code != 200 || d > time.Second {
-		t.Fatalf("issue page: %d in %v", r.Code, d)
+	// About 30 ms with -race; the page budget keeps it there. Fastest of three, so load does not count.
+	code, page := 0, ""
+	d := fastestOf(3, func() {
+		r := b.do("GET", "/ui/issues/"+f.acmeKey, nil)
+		code, page = r.Code, r.Body
+	})
+	if code != 200 || d > time.Second {
+		t.Fatalf("issue page: %d in %v", code, d)
 	}
-	if !strings.Contains(r.Body, "Comment by") {
+	if !strings.Contains(page, "Comment by") {
 		t.Fatal("comments missing")
 	}
 }

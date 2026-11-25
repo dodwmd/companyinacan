@@ -23,6 +23,9 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
+  # The web UI (ui.enabled) accepts can-core launch tickets (specs/036-module-ui-sso). No chart
+  # routes it: the operator gives its address with CAN_MODULE_UI_URLS.
+  web_login: {}
   # The careers pages and feeds are the only public routes (see chart/templates/ingressroute.yaml).
   subdomain: careers
 requires:

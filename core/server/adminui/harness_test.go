@@ -88,6 +88,7 @@ type harness struct {
 	now    *time.Time
 	logs   *bytes.Buffer
 	ui     *Server
+	host   string // Host header to send, "" for the test server's own
 }
 
 func newHarness(t *testing.T) *harness {
@@ -138,6 +139,9 @@ func (h *harness) do(method, path string, form url.Values, cookies ...*http.Cook
 		body = strings.NewReader(form.Encode())
 	}
 	req, _ := http.NewRequest(method, h.srv.URL+path, body)
+	if h.host != "" {
+		req.Host = h.host
+	}
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}

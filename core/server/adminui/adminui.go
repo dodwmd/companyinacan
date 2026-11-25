@@ -33,6 +33,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/ticket"
 )
 
 //go:embed templates static
@@ -66,6 +67,8 @@ type Server struct {
 	PATs *pat.Service
 	// SSO is OpenID Connect sign-in (epic E11b); nil hides every trace of it.
 	SSO *sso.Service
+	// Tickets mints the launch tickets of single sign-on into module UIs (E11c); nil hides the Apps page.
+	Tickets *ticket.Service
 	// Leads reads leads through the `leads` capability; nil means "not configured".
 	Leads   LeadsClient
 	Company Company
@@ -89,7 +92,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...)
+	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), s.appRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {
@@ -240,6 +243,7 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 			p.Nav = append(p.Nav, navItem{Href: n.href, Label: s.msg(n.label), Current: n.key == active})
 		}
 		p.Nav = append(p.Nav, s.platformNav(r, sc, active)...)
+		p.Nav = append(p.Nav, s.appsNav(active)...)
 		p.Nav = append(p.Nav, s.modNav(r, sc, active)...)
 		p.Nav = append(p.Nav, s.ssoNav(r, sc, active)...)
 	}

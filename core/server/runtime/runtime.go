@@ -42,40 +42,43 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/ticket"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 	"github.com/dodwmd/companyinacan/core/server/webhook"
 )
 
 // Config is can-core's configuration (all from CAN_* environment variables).
 type Config struct {
-	AdminAddr          string        // CAN_ADMIN_ADDR, default :8080
-	ModuleAddr         string        // CAN_MODULE_ADDR, default :8090
-	DBPath             string        // CAN_DB_PATH
-	SecureCookies      bool          // CAN_COOKIE_SECURE, default true
-	TrustProxy         bool          // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For (set it behind Traefik; see deploy notes)
-	TokenReview        string        // CAN_TOKEN_REVIEW: kubernetes (default) or fake (development only)
-	PlatformURL        string        // CAN_PLATFORM_URL: module-API URL as seen from module namespaces
-	KubeAPI            string        // CAN_KUBE_API
-	SAToken            string        // CAN_SA_TOKEN_FILE
-	SACA               string        // CAN_SA_CA_FILE
-	MemLimitMB         int           // CAN_MEMLIMIT_MB: soft Go memory limit (idle RAM target, see plan.md)
-	LogLevel           string        // CAN_LOG_LEVEL
-	CompanyName        string        // CAN_COMPANY_NAME: shown on the admin dashboard
-	CompanyDomain      string        // CAN_COMPANY_DOMAIN: shown on the admin dashboard
-	PushEndpointAllow  []string      // CAN_PUSH_ENDPOINT_ALLOW: comma-separated host suffixes Web Push endpoints must match; empty = any public https host
-	VAPIDKeyFile       string        // CAN_VAPID_KEY_FILE: Web Push application server key from a mounted Secret; unset = generated on first use and kept in the state database
-	DirectoryTokenFile string        // CAN_DIRECTORY_TOKEN_FILE: bearer credential for the `directory` capability (reporting-line approval chains); unset = manager steps use their fallback
-	LeadsTokenFile     string        // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
-	Installer          string        // CAN_INSTALLER: kubernetes (deploy modules) or none (default; no deploys)
-	CompanyFile        string        // CAN_COMPANY_FILE: the applied company.yaml (mounted ConfigMap)
-	ModulesDir         string        // CAN_MODULES_DIR: module directories baked into the image
-	NodeIP             string        // CAN_NODE_IP: the node address (downward API status.hostIP)
-	ReconcileInterval  time.Duration // CAN_RECONCILE_INTERVAL_SECONDS, default 30
-	PostgresAdminURL   string        // CAN_POSTGRES_ADMIN_URL: admin connection used to create module databases
-	PostgresHost       string        // CAN_POSTGRES_HOST: Postgres Service as seen by modules
-	ShutdownTimeout    time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
-	PublicIPs          []string      // CAN_PUBLIC_IPS: the server's public addresses, listed in the setup wizard's DNS step
-	SSOSecretDir       string        // CAN_SSO_SECRET_DIR: directory with the SSO client secret as <name>/<key> files, a mounted Secret (default /etc/can/sso)
+	AdminAddr          string            // CAN_ADMIN_ADDR, default :8080
+	ModuleAddr         string            // CAN_MODULE_ADDR, default :8090
+	DBPath             string            // CAN_DB_PATH
+	SecureCookies      bool              // CAN_COOKIE_SECURE, default true
+	TrustProxy         bool              // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For (set it behind Traefik; see deploy notes)
+	TokenReview        string            // CAN_TOKEN_REVIEW: kubernetes (default) or fake (development only)
+	PlatformURL        string            // CAN_PLATFORM_URL: module-API URL as seen from module namespaces
+	KubeAPI            string            // CAN_KUBE_API
+	SAToken            string            // CAN_SA_TOKEN_FILE
+	SACA               string            // CAN_SA_CA_FILE
+	MemLimitMB         int               // CAN_MEMLIMIT_MB: soft Go memory limit (idle RAM target, see plan.md)
+	LogLevel           string            // CAN_LOG_LEVEL
+	CompanyName        string            // CAN_COMPANY_NAME: shown on the admin dashboard
+	CompanyDomain      string            // CAN_COMPANY_DOMAIN: shown on the admin dashboard
+	ModuleUIURLs       map[string]string // CAN_MODULE_UI_URLS: id=base URL of a module web UI, comma-separated (E11c); beats the manifest
+	ModuleUIURLsRaw    string            // the unparsed value, for start-up warnings
+	PushEndpointAllow  []string          // CAN_PUSH_ENDPOINT_ALLOW: comma-separated host suffixes Web Push endpoints must match; empty = any public https host
+	VAPIDKeyFile       string            // CAN_VAPID_KEY_FILE: Web Push application server key from a mounted Secret; unset = generated on first use and kept in the state database
+	DirectoryTokenFile string            // CAN_DIRECTORY_TOKEN_FILE: bearer credential for the `directory` capability (reporting-line approval chains); unset = manager steps use their fallback
+	LeadsTokenFile     string            // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
+	Installer          string            // CAN_INSTALLER: kubernetes (deploy modules) or none (default; no deploys)
+	CompanyFile        string            // CAN_COMPANY_FILE: the applied company.yaml (mounted ConfigMap)
+	ModulesDir         string            // CAN_MODULES_DIR: module directories baked into the image
+	NodeIP             string            // CAN_NODE_IP: the node address (downward API status.hostIP)
+	ReconcileInterval  time.Duration     // CAN_RECONCILE_INTERVAL_SECONDS, default 30
+	PostgresAdminURL   string            // CAN_POSTGRES_ADMIN_URL: admin connection used to create module databases
+	PostgresHost       string            // CAN_POSTGRES_HOST: Postgres Service as seen by modules
+	ShutdownTimeout    time.Duration     // CAN_SHUTDOWN_TIMEOUT_SECONDS
+	PublicIPs          []string          // CAN_PUBLIC_IPS: the server's public addresses, listed in the setup wizard's DNS step
+	SSOSecretDir       string            // CAN_SSO_SECRET_DIR: directory with the SSO client secret as <name>/<key> files, a mounted Secret (default /etc/can/sso)
 
 	// Backup dumps (epic E08b, dumps.go): CAN_DUMPS_DIR, CAN_DUMP_AT (UTC), CAN_DUMP_START_DELAY_SECONDS,
 	// CAN_DUMP_REQUEST_FILE.
@@ -131,7 +134,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		SAToken:     str("CAN_SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		SACA:        str("CAN_SA_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
 		LogLevel:    str("CAN_LOG_LEVEL", "info"), ShutdownTimeout: 15 * time.Second,
-		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"), VAPIDKeyFile: getenv("CAN_VAPID_KEY_FILE"), PushEndpointAllow: splitList(getenv("CAN_PUSH_ENDPOINT_ALLOW")),
+		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"), VAPIDKeyFile: getenv("CAN_VAPID_KEY_FILE"), PushEndpointAllow: splitList(getenv("CAN_PUSH_ENDPOINT_ALLOW")), ModuleUIURLs: parseModuleUIURLs(getenv("CAN_MODULE_UI_URLS")), ModuleUIURLsRaw: getenv("CAN_MODULE_UI_URLS"),
 		Installer: str("CAN_INSTALLER", "none"), CompanyFile: str("CAN_COMPANY_FILE", "/etc/can/company/company.yaml"), ModulesDir: str("CAN_MODULES_DIR", "/modules"),
 		NodeIP: getenv("CAN_NODE_IP"), PostgresAdminURL: getenv("CAN_POSTGRES_ADMIN_URL"), PostgresHost: str("CAN_POSTGRES_HOST", "postgres.can-data.svc.cluster.local"),
 		ReconcileInterval: 30 * time.Second, SSOSecretDir: str("CAN_SSO_SECRET_DIR", "/etc/can/sso"),
@@ -274,8 +277,16 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		Log: log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
 	ssoSvc.Auth = adminSrv.Auth
+	// Single sign-on into module UIs (E11c): launch tickets, minted by the admin UI and API,
+	// redeemed over the module API.
+	tickets := &ticket.Service{DB: db, Audit: al, Holds: pats.Holds,
+		Launcher: ticket.Launcher{Domain: cfg.CompanyDomain, Overrides: cfg.ModuleUIURLs, AllowHTTP: !cfg.SecureCookies}}
+	adminSrv.Tickets = tickets
+	for _, w := range moduleUIWarnings(cfg.ModuleUIURLsRaw, cfg.CompanyDomain, !cfg.SecureCookies) {
+		log.Warn("apps: " + w)
+	}
 	uiSrv := &adminui.Server{
-		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, SSO: ssoSvc,
+		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, SSO: ssoSvc, Tickets: tickets,
 		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
 		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: adminui.FileToken(cfg.LeadsTokenFile)},
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
@@ -297,7 +308,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		log.Warn("identity: reconciling offboarding facts failed", "error", err)
 	}
 	bus.Subscribe("person.offboarded.v1", idSvc.HandleOffboarded)
-	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc}
+	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc, Tickets: tickets}
 
 	var dumper *dumps.Dumper
 	if cfg.DumpsDir != "" {
@@ -480,6 +491,9 @@ func housekeeping(ctx context.Context, db *store.DB, log *slog.Logger) {
 			if _, err := db.PruneAPITokens(ctx, time.Now().Add(-30*24*time.Hour)); err != nil {
 				log.Error("token pruning failed", "error", err)
 			}
+			if err := db.PurgeLoginTickets(ctx, time.Now().Add(-time.Hour)); err != nil {
+				log.Error("launch ticket pruning failed", "error", err)
+			}
 		}
 	}
 }
@@ -504,6 +518,48 @@ func pushContact(domain string) string {
 }
 
 // splitList splits a comma-separated setting, dropping blanks.
+// parseModuleUIURLs reads "id=url,id=url". Entries that are not a lowercase module id and a
+// non-empty value are dropped; the launcher validates each URL itself.
+func parseModuleUIURLs(v string) map[string]string {
+	out := map[string]string{}
+	for _, p := range splitList(v) {
+		id, raw, ok := strings.Cut(p, "=")
+		id, raw = strings.TrimSpace(id), strings.TrimSpace(raw)
+		if !ok || raw == "" || id == "" || id != strings.ToLower(id) || strings.ContainsAny(id, "/ ") || id[0] < 'a' || id[0] > 'z' {
+			continue
+		}
+		out[id] = raw
+	}
+	return out
+}
+
+// moduleUIWarnings says what in the configuration will keep module UIs out of the Apps launcher
+// (E11c), so an operator hears about it at start-up and not from an empty page. Configured values
+// are never repeated: a URL can carry a password.
+func moduleUIWarnings(raw, domain string, allowHTTP bool) []string {
+	var out []string
+	switch {
+	case domain == "":
+		out = append(out, "CAN_COMPANY_DOMAIN is not set: no module web UI can be offered in Apps")
+	case !strings.Contains(domain, "."):
+		out = append(out, "CAN_COMPANY_DOMAIN is a single label: a launch cookie cannot be shared between hosts, so Apps works only when the admin UI and a module are on one host")
+	}
+	l := ticket.Launcher{Domain: domain, AllowHTTP: allowHTTP}
+	for i, entry := range splitList(raw) {
+		parsed := parseModuleUIURLs(entry)
+		if len(parsed) == 0 {
+			out = append(out, "CAN_MODULE_UI_URLS entry "+strconv.Itoa(i+1)+" is not <module id>=<URL> and is ignored")
+			continue
+		}
+		for id, u := range parsed {
+			if domain != "" && !l.Acceptable(u) {
+				out = append(out, "CAN_MODULE_UI_URLS: the address for "+id+" is not acceptable (https on the company domain, not the admin host, no credentials, query or fragment); the module is not offered in Apps")
+			}
+		}
+	}
+	return out
+}
+
 func splitList(v string) []string {
 	var out []string
 	for _, p := range strings.Split(v, ",") {

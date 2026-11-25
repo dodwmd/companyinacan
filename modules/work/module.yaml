@@ -18,6 +18,9 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
+  # The web UI accepts can-core launch tickets (specs/036-module-ui-sso). No chart routes it: the
+  # operator gives its address with CAN_MODULE_UI_URLS.
+  web_login: { base_path: /ui }
 requires:
   database: sqlite
   sso: none

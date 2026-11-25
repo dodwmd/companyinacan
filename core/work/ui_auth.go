@@ -11,6 +11,8 @@ import (
 type uiLoginView struct {
 	Error string
 	Next  string
+	// TokenLogin is whether the paste-a-token form is offered (ui.token_login).
+	TokenLogin bool
 }
 
 // loginPage shows the sign-in form. The CSRF protection of the login form is a double-submit cookie
@@ -25,7 +27,7 @@ func (u *webUI) renderLogin(c *uiCtx, status int, errKey, next string) {
 	u.setCookie(c.w, c.r, u.loginCookieName(c.r), tok, 3600)
 	b := c.base(msg("login.title"), "")
 	b.CSRF = tok
-	v := &uiLoginView{Next: next}
+	v := &uiLoginView{Next: next, TokenLogin: u.a.tokenLogin}
 	if errKey != "" {
 		v.Error = msg(errKey)
 	}
@@ -39,6 +41,10 @@ func (u *webUI) renderLogin(c *uiCtx, status int, errKey, next string) {
 // put in the cookie, and every login issues a new session id (a cookie sent along is ignored).
 func (u *webUI) loginPost(c *uiCtx) {
 	r := c.r
+	if !u.a.tokenLogin { // pasted-token sign-in is off (ui.token_login: false): launch tickets only
+		u.renderLogin(c, http.StatusForbidden, "login.token_off", "")
+		return
+	}
 	ck, err := r.Cookie(u.loginCookieName(r))
 	if err != nil || ck.Value == "" || subtle.ConstantTimeCompare([]byte(ck.Value), []byte(r.PostFormValue("csrf"))) != 1 {
 		u.renderLogin(c, http.StatusForbidden, "login.csrf", "")

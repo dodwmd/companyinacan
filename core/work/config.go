@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -32,10 +33,18 @@ type Config struct {
 		// did not arrive over TLS, for a TLS-terminating proxy that does not set X-Forwarded-Proto
 		// or is not trusted. Unset: on when CAN_WORK_PUBLIC_URL is an https URL.
 		ForceSecure *bool `yaml:"force_secure"`
+		// TokenLogin keeps the "paste a personal access token" sign-in (default true, for
+		// compatibility). Turn it off once single sign-on from the admin UI is in use: then the
+		// only way into the UI is a launch ticket (specs/036-module-ui-sso).
+		TokenLogin *bool `yaml:"token_login"`
 	} `yaml:"ui"`
 	// RetentionDays deletes issues resolved longer ago than this (0 keeps them forever).
 	RetentionDays      int `yaml:"retention_days"`
 	AuditRetentionDays int `yaml:"audit_retention_days"`
+
+	// authPenalty overrides the delay added to throttled authentication failures; zero means the
+	// default. Only tests in this package can set it.
+	authPenalty time.Duration
 }
 
 // DefaultConfig returns the defaults.
@@ -93,6 +102,9 @@ func (c *Config) Validate() error {
 	}
 	return errors.Join(errs...)
 }
+
+// tokenLogin reports whether the pasted-token sign-in is offered (default true).
+func (c *Config) tokenLogin() bool { return c.UI.TokenLogin == nil || *c.UI.TokenLogin }
 
 // forceSecure reports whether the UI's cookies are always Secure: the explicit setting, else
 // whether the public URL is https.

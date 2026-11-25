@@ -46,7 +46,15 @@
             "port": { "$ref": "#/$defs/port" }
           }
         },
-        "values": { "$ref": "#/$defs/relPath" }
+        "values": { "$ref": "#/$defs/relPath" },
+        "web_login": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "base_path": { "type": "string", "pattern": "^(/[a-z0-9-]{1,32}){0,2}$" },
+            "via_subdomain": { "type": "boolean" }
+          }
+        }
       }
     },
     "requires": {

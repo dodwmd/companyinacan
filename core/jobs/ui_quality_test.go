@@ -29,7 +29,7 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 			used[m[1]] = e.Name()
 		}
 	}
-	for _, f := range []string{"ui.go", "ui_pages.go", "ui_session.go"} {
+	for _, f := range []string{"ui.go", "ui_pages.go", "ui_session.go", "ui_sso.go"} {
 		b, _ := os.ReadFile(f)
 		for _, m := range goRe.FindAllStringSubmatch(string(b), -1) {
 			used[m[1]] = f

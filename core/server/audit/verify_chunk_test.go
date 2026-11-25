@@ -2,47 +2,29 @@ package audit
 
 import (
 	"context"
-	"sync"
 	"testing"
-	"time"
 )
 
 // A long log must not hold the store's only connection for the whole walk: a concurrent query has
 // to get in between chunks.
 func TestVerifyReleasesTheConnectionBetweenChunks(t *testing.T) {
 	l, db := newLog(t)
-	fill(t, l, 30000)
-	ctx := context.Background()
-
-	var wg sync.WaitGroup
-	stop := make(chan struct{})
-	var worst time.Duration
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			start := time.Now()
-			var n int
-			_ = db.QueryRowContext(ctx, `SELECT 1`).Scan(&n)
-			if d := time.Since(start); d > worst {
-				worst = d
-			}
-			time.Sleep(time.Millisecond)
+	fill(t, l, 3000)
+	// The store has a single connection. After every page, while Verify is still walking, that
+	// connection must be free: neither a pinned db.Conn, nor a transaction, nor open rows. This is
+	// checked synchronously from inside the walk, so it depends on no timing or scheduling.
+	pages := 0
+	res, err := l.Verify(context.Background(), VerifyOptions{Chunk: 100, afterPage: func() {
+		pages++
+		if n := db.Stats().InUse; n != 0 {
+			t.Fatalf("after page %d Verify still holds %d connection(s)", pages, n)
 		}
-	}()
-	res, err := l.Verify(ctx, VerifyOptions{Chunk: 1000})
-	close(stop)
-	wg.Wait()
-	if err != nil || !res.OK() || res.Entries != 30000 {
+	}})
+	if err != nil || !res.OK() || res.Entries != 3000 {
 		t.Fatalf("verify: %+v %v", res, err)
 	}
-	if worst > 100*time.Millisecond {
-		t.Fatalf("a concurrent query waited %v for the connection", worst)
+	if pages < 30 {
+		t.Fatalf("walked in %d pages, want at least 30 of 100 records", pages)
 	}
 }
 

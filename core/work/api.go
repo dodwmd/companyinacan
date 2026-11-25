@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // api implements the `work` capability REST API (schemas/capabilities/work.v1.json,
@@ -16,11 +18,13 @@ type api struct {
 	log         *slog.Logger
 	maxBody     int64
 	trustProxy  bool
-	limiter     *rateLimiter  // per principal
-	failures    *rateLimiter  // failed authentications per client address
-	penalty     time.Duration // delay added to failures from an address over the limit
-	ui          *webUI        // the web UI under /ui/ (ui.go)
-	forceSecure bool          // UI cookies are always Secure
+	limiter     *rateLimiter         // per principal
+	failures    *rateLimiter         // failed authentications per client address
+	penalty     time.Duration        // delay added to failures from an address over the limit
+	ui          *webUI               // the web UI under /ui/ (ui.go)
+	forceSecure bool                 // UI cookies are always Secure
+	tokenLogin  bool                 // the pasted-token sign-in is offered (ui.token_login)
+	sso         modclient.SessionAPI // launch-ticket sign-in through can-core; nil when not installed under it
 }
 
 func (a *api) handler() http.Handler {

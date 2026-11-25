@@ -128,6 +128,32 @@ module's static bootstrap token still works); a flood of bad tokens never slows 
 are refused locally by shape, cached negatively for 5 seconds, and the modules' failure limiters count
 failures only).
 
+## Signing in to a module's web page without a token (E11c)
+
+A module that serves a web UI for people can accept **launch tickets** instead of pasted tokens. It declares
+`runtime.web_login` in its manifest (work, people, jobs and finance do)
+(`specs/036-module-ui-sso`, [`sso.md`](sso.md)). Module-API calls, all authenticated by the module's
+projected token:
+
+* The browser that launched also holds a nonce cookie, `__Secure-can_launch_<module id>`
+  (`modclient.LaunchBinding` reads it). Send it as `binding`; without it nothing works.
+* `POST /v1/tickets/peek {"ticket", "binding"}` names the account (`subject`, `name`) without consuming, for the
+  confirmation page. Never replace another account's session without asking.
+* `POST /v1/tickets/redeem {"ticket", "binding"}` exchanges the ticket the browser brought (`cant_...`, 60 seconds, once,
+  minted for this module only) for `{"active": true, "subject", "name", "permissions", "return_path",
+  "session", "session_expires_at"}` or the identical `{"active": false}` for every failure. `permissions` are the
+  module's manifest permissions the person holds right now; `name` is a display name (no email, no groups);
+  `session` is an opaque handle to keep in memory only.
+* `POST /v1/tickets/revalidate {"session"}` returns the same shape (without `session`) while the person is
+  still enabled and holds at least one permission of the module, else `{"active": false}`. Ask on the
+  interval your PAT sessions already use; any doubt (can-core unreachable, inactive) ends the session.
+
+The in-house modules do this in `GET/POST <ui>/login/ticket`: the GET only shows a form naming the account (a scanner must not
+spend the ticket), the POST redeems, creates the module's own session with a fresh id, maps `permissions` with
+the same function the module uses for personal access tokens (a restricted actor: never more than a token
+with those permissions), and redirects to a clean URL. `ui.token_login: false` removes the paste-a-token form.
+`modclient.Client.PeekTicket` / `RedeemTicket` / `RevalidateSession` wrap the calls; `fakecore` fakes them.
+
 ## Events
 
 Installed modules publish to can-core (`POST /v1/events`, with the outbox envelope id as `source_id`, so

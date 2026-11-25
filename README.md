@@ -102,7 +102,7 @@ duties on approvals, and one policy layer per sensitive module. Known open issue
 [docs/security-model.md](docs/security-model.md): NetworkPolicy does not stop pod-to-node traffic on k3s
 (issues [#13](https://github.com/dodwmd/companyinacan/issues/13) and
 [#16](https://github.com/dodwmd/companyinacan/issues/16), design undecided), equity quantities are stored in
-plaintext, SSO covers the admin UI only, nothing here encrypts Kubernetes Secrets at rest, and the compose
+plaintext, SSO into module web pages works only for modules whose UI address you configure (not browser-verified), nothing here encrypts Kubernetes Secrets at rest, and the compose
 stack is not safe to expose. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## Observability

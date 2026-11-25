@@ -49,10 +49,21 @@ func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
 	if err != nil || !id.Active || id.Kind != "user" || !subjectRe.MatchString(id.Subject) {
 		return nil, ErrUnauthenticated
 	}
-	roles := rolesFromPermissions(id.Permissions)
-	if len(roles) == 0 {
+	p := principalFromPermissions(id.Subject, id.Permissions)
+	if p == nil {
 		return nil, ErrUnauthenticated
 	}
-	perms := append([]string{}, id.Permissions...) // non-nil: the token is restricted to them
-	return &Principal{Subject: id.Subject, Roles: roles, Perms: perms}, nil
+	return p, nil
+}
+
+// principalFromPermissions is the one mapping from what can-core says a person may do here to a
+// Principal, used for personal access tokens and launch-ticket sessions alike. It is nil when the
+// permissions grant no role in this module.
+func principalFromPermissions(subject string, permissions []string) *Principal {
+	roles := rolesFromPermissions(permissions)
+	if len(roles) == 0 {
+		return nil
+	}
+	perms := append([]string{}, permissions...) // non-nil: the caller is restricted to them
+	return &Principal{Subject: subject, Roles: roles, Perms: perms}
 }

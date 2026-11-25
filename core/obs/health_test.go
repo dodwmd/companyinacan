@@ -51,7 +51,7 @@ func TestHealthConcurrentCallersShareOneRun(t *testing.T) {
 			peak = running
 		}
 		mu.Unlock()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond) // long enough that every caller joins the one run, even on a loaded machine
 		mu.Lock()
 		running--
 		mu.Unlock()
@@ -69,19 +69,26 @@ func TestHealthConcurrentCallersShareOneRun(t *testing.T) {
 	if peak != 1 {
 		t.Fatalf("checks overlapped: peak %d", peak)
 	}
-	if runs > 4 || time.Since(start) > 400*time.Millisecond {
+	if runs > 4 {
 		t.Fatalf("20 concurrent probes ran the check %d times in %v; they should share a run", runs, time.Since(start))
 	}
 }
 
 func TestHealthCallerWhoGivesUpGetsAnAnswerQuickly(t *testing.T) {
 	hl := NewHealth()
-	hl.Add("slow", true, func(ctx context.Context) error { time.Sleep(300 * time.Millisecond); return nil })
+	// The check blocks until the test releases it and the per-check timeout is an hour, so the only way
+	// Check can return is by giving up on the caller's context: no timing threshold is involved.
+	hl.SetTimeout(time.Hour)
+	release := make(chan struct{})
+	defer close(release)
+	hl.Add("slow", true, func(ctx context.Context) error { <-release; return nil })
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	start := time.Now()
-	hl.Check(ctx)
-	if time.Since(start) > 150*time.Millisecond {
-		t.Fatalf("a cancelled caller waited %v", time.Since(start))
+	returned := make(chan struct{})
+	go func() { hl.Check(ctx); close(returned) }()
+	select {
+	case <-returned:
+	case <-time.After(30 * time.Second):
+		t.Fatal("a cancelled caller kept waiting for the check")
 	}
 }

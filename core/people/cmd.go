@@ -130,7 +130,11 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	handler := api.Handler()
 	if cfg.UI.Enabled {
 		ui := &UI{Svc: svc, Auth: auth, Log: log, Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.UI.TrustProxy, NotificationsURL: cfg.UI.NotificationsURL,
-			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour}
+			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour,
+			NoTokenLogin: !cfg.UI.tokenLogin()}
+		if can != nil {
+			ui.Sessions = can // single sign-on: launch tickets from the admin UI's Apps page
+		}
 		top := http.NewServeMux()
 		top.Handle("/v1/", handler)
 		top.Handle("GET /healthz", handler)

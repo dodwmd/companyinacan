@@ -47,6 +47,10 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) |
 | <http://files.localhost:8080> | files API (`/v1/...`, bearer token) and the public share-link route `/s/{token}`; no virus scanner runs here, so `scanner.required` is off and files are stored labelled `skipped` ([files.md](files.md)) |
 
+The compose can-core runs with `CAN_INSTALLER=none`, so it has no installed module and its **Apps** page
+(single sign-on into module UIs, [`sso.md`](sso.md)) is empty: in this stack the modules' web pages keep the
+paste-a-token sign-in above (`ui.token_login` stays `true`).
+
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
 resolvers, older macOS tooling), use `curl --resolve admin.localhost:8080:127.0.0.1 ...`, add the names to
 `/etc/hosts` (`127.0.0.1 admin.localhost work.localhost people.localhost jobs.localhost finance.localhost

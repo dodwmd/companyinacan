@@ -19,6 +19,18 @@ type uiSession struct {
 	csrf    string
 	created time.Time
 	last    time.Time
+	// sso is set for a session that began with a launch ticket (specs/036-module-ui-sso): there is
+	// no token, only the opaque handle can-core answers revalidation for. Its content is guarded by
+	// the table's mutex; the pointer never changes after creation.
+	sso *ssoState
+}
+
+// ssoState is what a launch-ticket session knows about its person.
+type ssoState struct {
+	handle  string
+	name    string
+	perms   []string
+	checked time.Time
 }
 
 // uiSessions is a bounded in-memory session table keyed by the hash of the session id, so a memory
@@ -51,6 +63,17 @@ func (s *uiSessions) expired(v *uiSession, now time.Time) bool {
 // create always issues a fresh id (session fixation: a cookie sent with the login request is never
 // adopted) and evicts the oldest sessions when the table or the subject's share is full.
 func (s *uiSessions) create(token, subject string) (id string, sess *uiSession) {
+	return s.createWith(subject, func(v *uiSession) { v.token = token })
+}
+
+// createSSO is create for a launch-ticket session: no token, the can-core session handle instead.
+func (s *uiSessions) createSSO(subject, name, handle string, perms []string) (id string, sess *uiSession) {
+	return s.createWith(subject, func(v *uiSession) {
+		v.sso = &ssoState{handle: handle, name: name, perms: perms, checked: s.now()}
+	})
+}
+
+func (s *uiSessions) createWith(subject string, init func(*uiSession)) (id string, sess *uiSession) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
@@ -85,9 +108,27 @@ func (s *uiSessions) create(token, subject string) (id string, sess *uiSession) 
 		evict(func(*uiSession) bool { return true })
 	}
 	id = randToken(32)
-	sess = &uiSession{token: token, subject: subject, csrf: randToken(24), created: now, last: now}
+	sess = &uiSession{subject: subject, csrf: randToken(24), created: now, last: now}
+	init(sess)
 	s.m[sha256.Sum256([]byte(id))] = sess
 	return id, sess
+}
+
+// ssoSnapshot copies the state of a launch-ticket session.
+func (s *uiSessions) ssoSnapshot(v *uiSession) ssoState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return *v.sso
+}
+
+// ssoUpdate stores the outcome of a revalidation.
+func (s *uiSessions) ssoUpdate(v *uiSession, perms []string, name string, checked time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v.sso.perms, v.sso.checked = perms, checked
+	if name != "" {
+		v.sso.name = name
+	}
 }
 
 func (s *uiSessions) get(id string) (*uiSession, bool) {

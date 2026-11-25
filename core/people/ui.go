@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 //go:embed ui/templates ui/static
@@ -54,6 +56,12 @@ type UI struct {
 	AbsoluteTimeout time.Duration
 	RecheckEvery    time.Duration
 
+	// Sessions is can-core's launch-ticket API (single sign-on from the admin UI's Apps page). Nil:
+	// the ticket routes answer 404 and only pasted tokens sign in.
+	Sessions modclient.SessionAPI
+	// NoTokenLogin switches the "paste a personal access token" sign-in off (ui.token_login: false).
+	NoTokenLogin bool
+
 	Approvals        ApprovalSource // nil: no approvals section
 	NotificationsURL string         // empty: no notifications link
 
@@ -74,6 +82,8 @@ func (u *UI) routes() []route {
 	return []route{
 		{"GET /login", u.loginPage},
 		{"POST /login", u.loginPost},
+		{"GET /login/ticket", u.ticketPage},
+		{"POST /login/ticket", u.ticketPost},
 		{"POST /logout", u.authed(u.logout)},
 		{"GET /{$}", u.authed(u.home)},
 		{"POST /tasks/{id}/complete", u.authed(u.completeTask)},
@@ -385,7 +395,11 @@ func (u *UI) clientHost(r *http.Request) string {
 	return host
 }
 
-type loginData struct{ Error string }
+type loginData struct {
+	Error string
+	// TokenLogin is whether the paste-a-token form is offered (ui.token_login).
+	TokenLogin bool
+}
 
 func (u *UI) loginForm(w http.ResponseWriter, r *http.Request, status int, errMsg string) {
 	// The double-submit token is kept while it is valid, so a failed attempt does not invalidate
@@ -401,7 +415,7 @@ func (u *UI) loginForm(w http.ResponseWriter, r *http.Request, status int, errMs
 	u.render(w, r, nil, status, "login.html", "login.title", struct {
 		loginData
 		CSRF string
-	}{loginData{errMsg}, tok})
+	}{loginData{errMsg, !u.NoTokenLogin}, tok})
 }
 
 func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -413,6 +427,10 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
+	if u.NoTokenLogin { // pasted-token sign-in is off (ui.token_login: false): launch tickets only
+		u.loginForm(w, r, http.StatusForbidden, u.msg("login.token_off"))
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		u.renderError(w, r, nil, Actor{}, http.StatusBadRequest, "err.invalid_title", "err.bad_form")
 		return

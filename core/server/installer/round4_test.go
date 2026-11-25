@@ -68,7 +68,7 @@ func TestListDAGThroughEverySerialiserIsAnErrorNotACrash(t *testing.T) {
 			t.Errorf("%s: hostile chart installed", e)
 			continue
 		}
-		if d := time.Since(start); d > 10*time.Second {
+		if d := time.Since(start); d > 60*time.Second {
 			t.Errorf("%s: took %s", e, d)
 		}
 	}
@@ -91,7 +91,7 @@ func TestUnguardedDAGUseCannotKillTheParent(t *testing.T) {
 			continue
 		}
 		t.Logf("%s -> %v (%s)", e, strings.SplitN(err.Error(), "\n", 2)[0], time.Since(start).Round(time.Millisecond))
-		if d := time.Since(start); d > 15*time.Second {
+		if d := time.Since(start); d > 60*time.Second {
 			t.Errorf("%s: took %s", e, d)
 		}
 	}

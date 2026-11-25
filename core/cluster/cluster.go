@@ -197,7 +197,30 @@ func (m *Manager) Up(ctx context.Context) error {
 	case st.Exists:
 		return m.runPlan(ctx, m.cfg.StartPlan())
 	}
-	return m.runPlan(ctx, m.cfg.CreatePlan())
+	return m.create(ctx)
+}
+
+// CreateAttempts bounds how often `k3d cluster create` is tried. k3d sometimes fails with "could not
+// start a docker container" (a docker daemon or runner hiccup, not a defect of the cluster
+// definition); a half-created cluster is deleted and the create is retried after a growing pause.
+const CreateAttempts = 3
+
+func (m *Manager) create(ctx context.Context) error {
+	plan := m.cfg.CreatePlan()
+	var err error
+	for attempt := 1; attempt <= CreateAttempts; attempt++ {
+		if _, err = m.ex.Run(ctx, plan[0]); err == nil {
+			return m.runPlan(ctx, plan[1:])
+		}
+		err = fmt.Errorf("%s: %w", plan[0], err)
+		if attempt == CreateAttempts || ctx.Err() != nil {
+			break
+		}
+		// Remove whatever the failed attempt left behind; its failure is not interesting.
+		_, _ = m.ex.Run(ctx, m.cfg.DeletePlan()[0])
+		m.sleep(time.Duration(attempt) * RetryEvery)
+	}
+	return err
 }
 
 // Down deletes the cluster. Deleting an absent cluster is a successful no-op.
