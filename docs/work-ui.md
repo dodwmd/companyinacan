@@ -54,8 +54,10 @@ Wrong tokens are throttled per client address (the same limit as the API's faile
 authentications, `rate_limit.auth_failures_per_minute`). A valid token is never throttled, so
 somebody guessing from your office address cannot lock you out.
 
-Single sign-on to the module UI is **not** available yet; it is a follow-up that waits for the SSO
-epic. The login page will then gain a button, and the token paste stays as the fallback.
+Single sign-on to the module UI is **not** available yet; it is a follow-up. The company's OpenID
+Connect sign-in (E11b) covers the admin UI only; staff use a personal access token for modules, as
+here. When module-level SSO exists the login page will gain a button, and the token paste stays as
+the fallback.
 
 ## Pages
 

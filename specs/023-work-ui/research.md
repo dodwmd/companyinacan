@@ -22,7 +22,7 @@
 - **Alternatives**: storing a hash in SQLite (a hash cannot be re-authenticated, so revocation
   would not work); signed cookies carrying the token (token in the browser, no logout); sharing the
   admin UI's session secret (couples modules, forbidden by the task).
-- **Follow-up**: SSO-based sign-in to module UIs (the can-core side is PR #30). When it lands, the
+- **Follow-up**: SSO-based sign-in to module UIs. The OpenID Connect SSO of E11b (`specs/021-oidc-sso`) covers the admin UI only and says staff reach modules with personal access tokens, so this UI does too until module-level SSO exists. When it does, the
   login page gains a "Sign in with Company in a Can" button and the session holds the SSO subject
   instead of a token; the session table and CSRF code stay.
 

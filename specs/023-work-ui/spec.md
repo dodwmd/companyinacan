@@ -21,8 +21,8 @@ move and rank buttons; sprint planning; epic progress; the manager dashboard; em
 pages and a conflict page; message catalogue; golden HTML, accessibility, XSS, CSRF, scope and
 route-contract tests; `docs/work-ui.md`; a UI check in `dev/compose/smoke.sh`.
 
-Out (recorded in tasks.md as gaps): single sign-on to the module UI (waits for the SSO epic; PR #30
-is the can-core side), a public route for the UI through can-core's installer, project creation and
+Out (recorded in tasks.md as gaps): single sign-on to the module UI (E11b's OpenID Connect SSO covers the admin UI only; module UIs
+still take a personal access token), a public route for the UI through can-core's installer, project creation and
 workflow editing in the UI (use the admin UI or API), attachment upload, bulk edit, keyboard
 shortcuts, saved filters with names, drag and drop, notifications, a people picker (no call to the
 people service), burn-down charts, localisation beyond English.
