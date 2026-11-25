@@ -1,0 +1,18 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "work.issue.created.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "work",
+  "data": {
+    "issue_key": "ACME-12",
+    "project": "ACME",
+    "type": "story",
+    "title": "Plan Q1 roadmap",
+    "priority": "P1",
+    "status": "todo",
+    "reporter": "manager@example.com",
+    "assignee": "bob@example.com",
+    "parent": "ACME-3",
+    "created_at": "2026-11-25T09:00:00Z"
+  }
+}

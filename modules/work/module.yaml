@@ -1,0 +1,55 @@
+# Work tracker: in-house Go service (cmd/can-work, library core/work), a lean Jira-style
+# tracker with an API first. A Plane wrapper for 8 GB+ servers is a later, separate module
+# that provides the same `work` capability (SPEC.md section 6.1).
+schema: 1
+id: work
+name: Work tracker
+description: API-first issue tracker. Projects, epics, stories, tasks, bugs and subtasks, P0 to P3 priorities, configurable workflows, sprints and boards, comments, links, watchers and an activity log. Scoped API tokens for people and service accounts, idempotent creates, signed webhook events, and the work and projects capabilities.
+category: operations
+# experimental: the service and its tests are complete and measured locally, but the image
+# has not been built or run on a cluster yet (specs/011-work-tracker/tasks.md, known gaps);
+# `can validate` warns so it is not offered as enable-ready until that is checked.
+status: experimental
+version: 0.1.0
+provider:
+  type: inhouse
+  name: can-work
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Idle RAM target 20 MB. Measured on the static linux/amd64 build: 13.6 MiB RSS idle and
+  # 20.4 MiB after 200 issue creates and 200 searches/boards (research.md R7). The limit leaves
+  # room for bursts and the SQLite page cache.
+  ram_mb: 20
+  ram_limit_mb: 48
+  disk_mb: 500
+provides:
+  - { capability: work, schema: work.v1, service: work, port: 8080 }
+  - { capability: projects, schema: projects.v1, service: work, port: 8080 }
+publishes:
+  - { event: work.issue.created.v1, schema: ./events/work.issue.created.v1.json }
+  - { event: work.issue.updated.v1, schema: ./events/work.issue.updated.v1.json }
+  - { event: work.issue.transitioned.v1, schema: ./events/work.issue.transitioned.v1.json }
+  - { event: work.comment.created.v1, schema: ./events/work.comment.created.v1.json }
+permissions: [work.read, work.write, work.admin]
+roles:
+  member: [work.read, work.write]
+  viewer: [work.read]
+  manager: [work.read, work.write]
+  admin: [work.read, work.write, work.admin]
+data_classes:
+  # Titles, descriptions, comments and assignees. Internal business content and the names of
+  # employees (personal data), but no health, financial or identity-document data, so standard.
+  # Retention counts from resolution: resolved issues are deleted after the period. Open issues
+  # are kept. The default matches 5 years (core/work Config.RetentionDays).
+  - { class: work-issue, retention: 5y, sensitivity: standard }
+  # Admin actions (token and project changes). Never holds secrets.
+  - { class: work-audit, retention: 7y, sensitivity: standard }
+  # Attachment metadata only (name, size, hash, link); the tracker stores no file bytes yet.
+  - { class: work-attachment-metadata, retention: 5y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

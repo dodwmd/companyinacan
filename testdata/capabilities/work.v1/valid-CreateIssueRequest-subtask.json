@@ -1,0 +1,7 @@
+{
+  "type": "subtask",
+  "title": "x",
+  "parent": "ACME-12",
+  "assignee": null,
+  "due_date": null
+}

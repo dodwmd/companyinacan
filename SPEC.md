@@ -310,6 +310,7 @@ Modules must not call each other's internals. They talk through **capabilities**
 | `jobs` | Open roles, applications, candidate pipeline; board syndication (§5 Recruiting) | in-house ATS → OpenCATS/Frappe HR |
 | `vendors` | Suppliers, purchase orders, bills | in-house → Akaunting/ERPNext |
 | `work` | Issues/stories/epics/sprints with priority, status, assignee and links; create/update by API | Plane/Redmine → in-house `work` |
+| `projects` | Read-only project directory of the work tracker (keys, names, workflows), so `time`, `invoices` and `reports` can refer to a project | in-house `work` |
 | `performance` | 1:1 series, agendas, notes, action items, goals/OKRs, feedback and review cycles | in-house → other |
 | `documents` | Request/store/sign documents (offers, contracts, NDAs, POs) | Documenso → other e-sign |
 | `contracts` | Contract registry: parties, terms, dates, renewals, obligations, linked signed documents | in-house → other CLM |

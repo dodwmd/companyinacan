@@ -1,0 +1,33 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "work.issue.updated.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "work",
+  "data": {
+    "issue_key": "ACME-12",
+    "project": "ACME",
+    "version": 5,
+    "actor": "bot",
+    "changes": {
+      "assignee": {
+        "from": null,
+        "to": "bob@example.com"
+      },
+      "labels": {
+        "from": [],
+        "to": [
+          "a"
+        ]
+      },
+      "description": {
+        "from": "(changed)",
+        "to": "(changed)"
+      },
+      "estimate": {
+        "from": 3,
+        "to": 5.5
+      }
+    },
+    "updated_at": "2026-11-25T09:00:00Z"
+  }
+}

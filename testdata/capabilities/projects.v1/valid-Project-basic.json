@@ -1,0 +1,33 @@
+{
+  "key": "ACME",
+  "name": "Acme",
+  "description": "",
+  "archived": false,
+  "issue_count": 3,
+  "workflow": {
+    "statuses": [
+      {
+        "name": "todo",
+        "category": "todo"
+      },
+      {
+        "name": "done",
+        "category": "done"
+      }
+    ],
+    "initial": "todo",
+    "transitions": {
+      "todo": [
+        "done"
+      ]
+    }
+  },
+  "sla": {
+    "P0": {
+      "respond_hours": 1,
+      "resolve_hours": 24
+    }
+  },
+  "created_at": "2026-11-25T09:00:00Z",
+  "updated_at": "2026-11-25T09:00:00Z"
+}

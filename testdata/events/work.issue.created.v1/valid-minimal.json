@@ -1,0 +1,16 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "work.issue.created.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "work",
+  "data": {
+    "issue_key": "OPS-1",
+    "project": "OPS",
+    "type": "bug",
+    "title": "x",
+    "priority": "P0",
+    "status": "todo",
+    "reporter": "bot",
+    "created_at": "2026-11-25T09:00:00Z"
+  }
+}

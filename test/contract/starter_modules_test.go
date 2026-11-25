@@ -655,7 +655,7 @@ func TestStarterEventFixtures(t *testing.T) {
 // Fixture names are <valid|invalid>-<Definition>-<case>.json and are checked against
 // #/$defs/<Definition> of the capability schema.
 func TestCapabilityFixtures(t *testing.T) {
-	for name, raw := range map[string][]byte{"tickets.v1": capabilities.TicketsV1, "newsletter.v1": capabilities.NewsletterV1, "analytics.v1": capabilities.AnalyticsV1} {
+	for name, raw := range map[string][]byte{"tickets.v1": capabilities.TicketsV1, "newsletter.v1": capabilities.NewsletterV1, "analytics.v1": capabilities.AnalyticsV1, "work.v1": capabilities.WorkV1, "projects.v1": capabilities.ProjectsV1} {
 		t.Run(name, func(t *testing.T) {
 			compileSchema(t, name+".json", raw, "")
 			var top map[string]any

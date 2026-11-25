@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/work.issue.updated.v1.json",
+  "title": "work.issue.updated.v1",
+  "description": "Published when fields of an issue change (status moves are work.issue.transitioned.v1). `changes` maps each changed field to its old and new value; a changed description is reported as the marker \"(changed)\" so no body travels in events. A priority change to P0 or P1 shows up as changes.priority. Delivered at least once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "work.issue.updated.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "work"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_key",
+        "project",
+        "version",
+        "actor",
+        "changes",
+        "updated_at"
+      ],
+      "properties": {
+        "issue_key": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$"
+        },
+        "project": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "The issue version after this change (the ETag)."
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "changes": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "title",
+              "description",
+              "priority",
+              "assignee",
+              "due_date",
+              "estimate",
+              "parent",
+              "sprint_id",
+              "labels"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {},
+              "to": {}
+            }
+          }
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

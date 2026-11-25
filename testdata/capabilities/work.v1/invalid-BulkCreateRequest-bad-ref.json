@@ -1,0 +1,13 @@
+{
+  "issues": [
+    {
+      "type": "epic",
+      "title": "Q1"
+    },
+    {
+      "type": "story",
+      "title": "Signup",
+      "parent": "$first"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "work.comment.created.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "work",
+  "data": {
+    "issue_key": "OPS-1204",
+    "project": "OPS",
+    "comment_id": 99999,
+    "author": "svc:email-to-issue",
+    "created_at": "2026-11-25T09:00:00Z"
+  }
+}
