@@ -201,7 +201,7 @@ func constEq(a, b string) bool {
 // grants nothing.
 func (u *UI) recheckFor(p *Principal) time.Duration {
 	c := p.Caps()
-	if c.WriteJobs || c.Reports || c.EditCandidate || c.HireApps {
+	if c.WriteJobs || c.Reports || c.EditCandidate || c.HireApps || c.ReadCandidate {
 		return min(u.RecheckEvery, strongRecheck)
 	}
 	return u.RecheckEvery

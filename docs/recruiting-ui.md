@@ -42,8 +42,9 @@ Helm chart does not expose the `ui` block or a route yet (follow-up).
    `__Host-` name, over TLS). The server stores only its SHA-256. Idle sessions end after 30 minutes,
    any session after 8 hours; **Log out** deletes it on the server. The token is held in server
    memory only (to re-check it) and never sent back to the browser. The re-check runs **every minute
-   for sessions that can write requisitions, move hires, edit candidates or read the diversity
-   report**, every five minutes for the rest: revoking a token or demoting someone takes effect within
+   for sessions that can write requisitions, hire, edit candidates, read candidate contact data
+   (recruiters and hiring managers) or read the diversity report**, every five minutes for the rest
+   (interviewers): revoking a token or demoting someone takes effect within
    that time, and a token that cannot be verified ends the session. A restart signs everyone out.
 4. A wrong, unknown or revoked token all get the same refusal. Only failed attempts count against the
    per-address limit; a valid token is never throttled.
@@ -69,8 +70,10 @@ page, whether it exists or not.
   controls what the careers page and feeds publish. An open requisition links to its public posting;
   a draft says it is not public.
 * The board shows each stage with at most 25 candidates and says how many more there are. Moving a
-  candidate back or forward needs a **reason** (up to 500 characters). The reason is stored sealed with
-  the history entry and shown only to admins and recruiters. Rejecting needs a reason from the fixed
+  candidate back or forward needs a **reason** (up to 500 characters). The form carries the stage
+  the page showed; if the application has moved since (a stale page, a double click, a colleague's
+  move) the move is refused with a conflict and nothing changes. The reason is stored sealed with
+  the history entry, shown only to admins and recruiters, and only through the reveal described below. Rejecting needs a reason from the fixed
   list and an optional note (up to 2000 characters, sealed). There is no drag and drop.
 * **Hire** appears only for an application in an offer stage and for roles that may hire. It moves the
   application to the hired stage and queues `candidate.hired.v1` for the people module.
@@ -78,10 +81,19 @@ page, whether it exists or not.
 ## Candidate data
 
 The application page shows the candidate's **name**, stage, source, resume file metadata (name, type,
-size, virus-scan status) and the history. It does not show email, phone, address, salary expectation,
-cover letter, rejection note or recruiter notes. **Show contact details and notes** is a button
-(a POST) that reads them for your role, records the read in the audit log before showing them, and is
-limited to 10 per minute per user. Fields your role may not read say so.
+size, virus-scan status) and the history of stage changes (who, when, from and to). It does not show
+email, phone, address, salary expectation, cover letter, rejection note, recruiter notes or the
+**reasons** recorded with stage moves: the history only says that a reason was recorded. The page
+read does not decrypt any of those texts and its audit entry names only the name and resume metadata.
+
+**Show contact details and notes** is a button (a POST). It decrypts and shows, for your role only,
+the contact fields, cover letter, rejection note, recruiter notes and the move reasons. The service
+writes the audit entry (naming `cover_letter`, `reject_note`, `stage_notes`, and the candidate fields)
+**before** it decrypts, and the button is limited to 10 per minute per user. Fields your role may not
+read say so. The recruiter notes form on that page carries the version it was drawn from; saving
+over a newer edit is refused with a conflict (versions have one-second resolution, so two edits
+within the same second are not told apart). Writes through the UI (move, reject, hire, scorecards)
+do not decrypt or audit-read any of these texts either.
 
 The resume downloads as an attachment (`application/octet-stream`, `nosniff`), never inside the page;
 a file the scanner flagged is not offered. The scan status is shown ("Not scanned" when the module runs
@@ -96,7 +108,9 @@ submits once; a submitted scorecard is final. Until you submit, you see **nothin
 colleagues' feedback, not even whether any exists: the page shows one constant notice. After you
 submit, their submitted scorecards appear. This holds for anyone ever assigned, including someone who
 was later removed (removal does not release them) and whatever their role. A person who was never
-assigned (a recruiter, say) is not blind. You cannot remove your own assignment before submitting.
+assigned and has no scorecard row on the application is **not blind**: a recruiter, admin or a hiring
+manager reading an application on their own requisition sees every submitted scorecard, so assign
+people to the panel (or have them write a draft) before they read if independence matters. You cannot remove your own assignment before submitting.
 
 ## Diversity report
 
@@ -113,9 +127,13 @@ The residual risks are in [`recruiting.md`](recruiting.md).
 * Dashboards show counts per stage (aggregate, no names), the requisitions you can see and, for
   interviewers, your assignments.
 * Every request is bounded by `db_timeout_seconds`; past it the page is a 503 ("try again").
-* Reads of the reveal, lists and applications are audited by the service like API reads. The
-  application page's own read is audited as including the cover letter and rejection note it
-  unseals for your role even though the page does not draw them (see `specs/027-jobs-ui/research.md`).
+* Reads are audited by the service like API reads, and only for what is actually read: lists and the
+  application page audit names and resume metadata; the reveal audits the sealed texts (before
+  decrypting them). Talent-pool search by name prefix is a case-insensitive `LIKE` over the talent
+  pool and candidates table, which retention keeps small; it is not indexed, so a very large pool
+  scans it (50 rows are returned per page).
+* An expired database deadline is a 503, including on the scorecard and candidate lookups (these
+  used to answer 404).
 
 ## Not done
 

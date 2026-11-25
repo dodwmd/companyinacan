@@ -49,7 +49,9 @@ authorisation layer.
 8. **No email enumeration.** The UI has no email search. Login refuses an unknown, a revoked and a
    malformed token with the same message and status.
 9. **Reasons are required and bounded.** A stage move needs a reason (1 to 500 characters), sealed
-   with the history entry (migration 004) and shown only to roles that may read rejection notes. A
+   with the history entry (migration 004), shown only to roles that may read rejection notes and
+   only through the audited reveal. The form carries the stage it was drawn from; a move from a stage
+   the application has left is a conflict. A
    rejection needs a reason from the fixed vocabulary and an optional note of at most 2000 characters.
    Closing a requisition needs a reason from the fixed vocabulary.
 10. **CSRF** on every POST (session token, constant-time compare) plus `Sec-Fetch-Site`; login uses a

@@ -2,8 +2,10 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func (e *env) principal(tok string) *Principal {
@@ -62,13 +64,13 @@ func TestMoveApplicationNoteSealedAndBounded(t *testing.T) {
 	st := s.app.Store()
 	ctx := context.Background()
 	rec := s.principal(s.recruiter)
-	if _, err := st.MoveApplicationNote(ctx, rec, s.a1, "screen", ""); err == nil {
+	if _, err := st.MoveApplicationNote(ctx, rec, s.a1, "applied", "screen", ""); err == nil {
 		t.Error("a move without a reason was accepted")
 	}
-	if _, err := st.MoveApplicationNote(ctx, rec, s.a1, "screen", strings.Repeat("x", MoveNoteMax+1)); err == nil {
+	if _, err := st.MoveApplicationNote(ctx, rec, s.a1, "applied", "screen", strings.Repeat("x", MoveNoteMax+1)); err == nil {
 		t.Error("an over-long reason was accepted")
 	}
-	v, err := st.MoveApplicationNote(ctx, rec, s.a1, "screen", "strong portfolio, secret-reason")
+	v, err := st.MoveApplicationNote(ctx, rec, s.a1, "applied", "screen", "strong portfolio, secret-reason")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +80,19 @@ func TestMoveApplicationNoteSealedAndBounded(t *testing.T) {
 	}
 	if strings.Contains(string(s.rawDBBytes()), "secret-reason") {
 		t.Error("the move reason is stored in plaintext")
+	}
+	if _, err := st.MoveApplicationNote(ctx, rec, s.a1, "applied", "interview", "stale"); !errors.Is(err, ErrConflict) {
+		t.Errorf("a move from a stage the application has left = %v, want a conflict", err)
+	}
+	if _, err := st.MoveApplicationNote(ctx, rec, s.a1, "", "interview", "no from"); err == nil {
+		t.Error("a move without the stage it came from was accepted")
+	}
+	meta, err := st.GetApplicationMeta(ctx, rec, s.a1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mh := meta.History[len(meta.History)-1]; mh.Note != nil || !mh.HasNote || meta.CoverLetter != nil || meta.RejectNote != nil {
+		t.Errorf("the metadata read unsealed text: %+v", meta)
 	}
 	hv, err := st.GetApplication(ctx, s.principal(s.hmAlice), s.a1)
 	if err != nil {
@@ -93,5 +108,18 @@ func TestMoveApplicationNoteSealedAndBounded(t *testing.T) {
 	}
 	if strings.Contains(string(s.rawDBBytes()), "secret-reason") {
 		t.Error("the move reason survived erasure")
+	}
+}
+
+func TestExpiredDeadlineIsNotANotFound(t *testing.T) {
+	s := newScenario(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	time.Sleep(time.Millisecond)
+	if _, err := s.app.Store().ListScorecards(ctx, s.principal(s.recruiter), s.a1); errors.Is(err, ErrNotFound) || err == nil {
+		t.Errorf("ListScorecards with an expired deadline = %v, want the deadline error", err)
+	}
+	if _, err := s.app.Store().GetApplication(ctx, s.principal(s.recruiter), s.a1); errors.Is(err, ErrNotFound) || err == nil {
+		t.Errorf("GetApplication with an expired deadline = %v", err)
 	}
 }

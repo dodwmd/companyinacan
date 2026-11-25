@@ -51,11 +51,23 @@
 
 <form method="post" action="/applications/ID/notes" class="card">
 <input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="1795165230">
 <p><label for="cn-notes">Recruiter notes</label>
 <textarea id="cn-notes" name="notes" rows="6" maxlength="5000"></textarea></p>
 <p><button type="submit">Save</button></p>
 </form>
 
+<h2>History</h2>
+<div class="scroll">
+<table>
+<caption>Stage changes with their reasons</caption>
+<thead><tr><th scope="col">When</th><th scope="col">By</th><th scope="col">Change</th><th scope="col">Reason</th></tr></thead>
+<tbody>
+<tr><th scope="row">Fri 20 Nov 2026 09:00 UTC</th><td>applicant</td><td>Applied (Active)</td><td class="prose"></td></tr>
+
+</tbody>
+</table>
+</div>
 <p><a href="/applications/ID">Back to the application</a></p>
 
 

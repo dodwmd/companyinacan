@@ -41,6 +41,7 @@
 <h2 id="h-move">{{t "app.move"}}</h2>
 <form method="post" action="/applications/{{.A.ID}}/move" class="card">
 {{template "csrf" $}}
+<input type="hidden" name="from" value="{{.A.Stage}}">
 <p><label for="mv-note">{{t "move.note"}}</label>
 <input id="mv-note" name="note" required maxlength="500"></p>
 <p>
@@ -135,7 +136,7 @@
 <caption>{{t "app.history_caption"}}</caption>
 <thead><tr><th scope="col">{{t "hist.when"}}</th><th scope="col">{{t "hist.who"}}</th><th scope="col">{{t "hist.change"}}</th><th scope="col">{{t "hist.note"}}</th></tr></thead>
 <tbody>
-{{range .History}}<tr><th scope="row">{{.At}}</th><td>{{.Actor}}</td><td>{{if .From}}{{.From}} &rarr; {{end}}{{.To}} ({{t (printf "astatus.%s" .Status)}})</td><td>{{if .HasNote}}{{.Note}}{{end}}</td></tr>
+{{range .History}}<tr><th scope="row">{{.At}}</th><td>{{.Actor}}</td><td>{{if .From}}{{.From}} &rarr; {{end}}{{.To}} ({{t (printf "astatus.%s" .Status)}})</td><td>{{if .HasNote}}{{t "hist.note_available"}}{{end}}</td></tr>
 {{end}}
 </tbody>
 </table>

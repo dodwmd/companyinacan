@@ -45,5 +45,5 @@ browser, a device or a cluster and is **not** done.
 - [ ] T020 [V] Browser, phone and screen-reader pass; verify the manifest installs
 - [ ] T021 Helm: expose the `ui` block and a route (follow-up, as for people)
 - [ ] T022 Shared `core/uikit` package for session, headers and the quality checkers (proposal in `research.md`; own epic)
-- [ ] T023 Finer read audit: a metadata read of an application that does not unseal the cover letter and rejection note
+- [x] T023 QA round 1: metadata read that decrypts nothing, reasons behind the reveal, `from` on moves, notes version, hiring-manager recheck, 503 instead of 404 on deadline
 - [ ] T024 Approval decision and stage editing screens

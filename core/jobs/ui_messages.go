@@ -180,10 +180,11 @@ var uiMessagesEN = map[string]string{
 	"app.history":         "History",
 	"app.history_caption": "Stage changes",
 
-	"hist.when":   "When",
-	"hist.who":    "By",
-	"hist.change": "Change",
-	"hist.note":   "Reason",
+	"hist.when":           "When",
+	"hist.who":            "By",
+	"hist.change":         "Change",
+	"hist.note":           "Reason",
+	"hist.note_available": "A reason was recorded. Use Show contact details and notes to read it.",
 
 	"astatus.active":    "Active",
 	"astatus.rejected":  "Rejected",
@@ -242,10 +243,11 @@ var uiMessagesEN = map[string]string{
 	"interviews.scorecard": "Your scorecard",
 	"interviews.none":      "Nothing is assigned to you.",
 
-	"reveal.title":       "Candidate details",
-	"reveal.audited":     "These details were read for you and the read was recorded in the audit log. Do not copy them into other systems.",
-	"reveal.unavailable": "Not available to you",
-	"reveal.back":        "Back to the application",
+	"reveal.title":           "Candidate details",
+	"reveal.audited":         "These details were read for you and the read was recorded in the audit log. Do not copy them into other systems.",
+	"reveal.unavailable":     "Not available to you",
+	"reveal.back":            "Back to the application",
+	"reveal.history_caption": "Stage changes with their reasons",
 
 	"cand.title":                  "Candidate",
 	"candidate.title":             "Candidate",

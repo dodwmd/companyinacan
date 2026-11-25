@@ -232,7 +232,7 @@ func (s *Store) ListScorecards(ctx context.Context, p *Principal, appID string) 
 	pred, args := p.appPred("a", "j")
 	var one int
 	if err := s.rdb.QueryRowContext(ctx, `SELECT 1 FROM applications a JOIN jobs j ON j.id = a.job_id WHERE (a.id = ?) AND `+pred, append([]any{appID}, args...)...).Scan(&one); err != nil {
-		return nil, ErrNotFound
+		return nil, notFoundOr(err)
 	}
 	l, err := s.readScorecards(ctx, appID, p.Subject, false)
 	if err != nil {

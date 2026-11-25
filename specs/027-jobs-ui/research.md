@@ -60,13 +60,22 @@ page drops the names too: the existence of a "prefer to self-describe" answer in
 respondent is information. It is closed months only, as the service says, so it is empty until the
 first month ends.
 
-## Audit granularity of reads
+## Audit granularity of reads and where sealed text is decrypted
 
-`GetApplication` audits the read of the sealed fields it unseals (cover letter, rejection note) even
-though the detail page does not draw them, because the service unseals them for the caller's role
-before the UI chooses what to show. The page never renders them; the reveal re-reads them and is
-audited again. A finer service split (a metadata read that does not unseal) would make the audit
-exact; recorded as a follow-up rather than changing the API's behaviour in this PR.
+QA found that the first cut decrypted the cover letter, rejection note and stage-move reasons on
+every application page view and drew the reasons inline. Now `GetApplicationMeta` (and any call made
+with a `MetaOnly` context, which the UI sets on every request, so the write methods' trailing read
+too) decrypts nothing and audits only name and resume metadata. The reveal alone lifts the flag; the
+service confirms the application is in scope, writes the audit entry naming the sealed fields, then
+decrypts. History entries carry `has_note` instead of the text. The JSON API is unchanged: its
+`GET /v1/applications/{id}` still returns the texts the role may read, now audited before they are
+decrypted.
+
+## Stale moves and notes
+
+A move form carries the stage it was drawn from and the service refuses (409) when the application
+is elsewhere, so a double click or a colleague's move cannot apply a second, unintended move. The
+notes form carries the candidate's `updated_at` (seconds) as a version.
 
 ## Talent-pool search
 

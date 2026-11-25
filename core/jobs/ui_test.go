@@ -490,32 +490,49 @@ func TestUIMoveNeedsAReason(t *testing.T) {
 	u := newUIScenario(t)
 	c := u.login(t, u.recruiter)
 	c.get("/applications/" + u.a1)
-	if w := c.post("/applications/"+u.a1+"/move", url.Values{"to": {"screen"}, "note": {""}}); w.Code != 400 {
+	if w := c.post("/applications/"+u.a1+"/move", url.Values{"from": {"applied"}, "to": {"screen"}, "note": {""}}); w.Code != 400 {
 		t.Errorf("move without a reason = %d", w.Code)
 	}
-	if w := c.post("/applications/"+u.a1+"/move", url.Values{"to": {"screen"}, "note": {strings.Repeat("a", MoveNoteMax+1)}}); w.Code != 400 {
+	if w := c.post("/applications/"+u.a1+"/move", url.Values{"from": {"applied"}, "to": {"screen"}, "note": {strings.Repeat("a", MoveNoteMax+1)}}); w.Code != 400 {
 		t.Errorf("move with an over-long reason = %d", w.Code)
 	}
-	if w := c.post("/applications/"+u.a1+"/move", url.Values{"to": {"nope"}, "note": {"ok"}}); w.Code != 400 {
+	if w := c.post("/applications/"+u.a1+"/move", url.Values{"from": {"applied"}, "to": {"nope"}, "note": {"ok"}}); w.Code != 400 {
 		t.Errorf("move to an unknown stage = %d", w.Code)
 	}
-	if w := c.post("/applications/"+u.a1+"/move", url.Values{"to": {"hired"}, "note": {"ok"}}); w.Code != 409 {
+	if w := c.post("/applications/"+u.a1+"/move", url.Values{"from": {"applied"}, "to": {"hired"}, "note": {"ok"}}); w.Code != 409 {
 		t.Errorf("move into hired = %d", w.Code)
 	}
-	w := c.post("/applications/"+u.a1+"/move", url.Values{"to": {"screen"}, "note": {"good call, MOVE-REASON-1"}})
+	w := c.post("/applications/"+u.a1+"/move", url.Values{"from": {"applied"}, "to": {"screen"}, "note": {"good call, MOVE-REASON-1"}})
 	wantCode(t, w, 303, "move")
 	page := body(c.get("/applications/" + u.a1))
-	if !strings.Contains(page, "MOVE-REASON-1") || !strings.Contains(page, "Screen") {
-		t.Errorf("the history lacks the move and its reason: %.600s", page)
+	if strings.Contains(page, "MOVE-REASON-1") {
+		t.Error("a stage-move reason is drawn on the application page without a reveal")
 	}
-	// the hiring manager moves too, but does not read recruiter-only reasons
+	if !strings.Contains(page, "Screen") || !strings.Contains(page, "A reason was recorded") {
+		t.Errorf("the history lacks the move or the reason marker: %.600s", page)
+	}
+	before := u.auditCount(t, "application:"+u.a1)
+	if !strings.Contains(plain(c.post("/applications/"+u.a1+"/reveal", nil)), "good call, MOVE-REASON-1") {
+		t.Error("the reveal does not show the reason")
+	}
+	if u.auditCount(t, "application:"+u.a1) <= before {
+		t.Error("reading the reason was not audited")
+	}
+	// the hiring manager moves too, but never reads recruiter-only reasons
 	hm := u.login(t, u.hmAlice)
-	if strings.Contains(body(hm.get("/applications/"+u.a1)), "MOVE-REASON-1") {
-		t.Error("the hiring manager sees a reason the service seals from them")
+	if strings.Contains(plain(hm.post("/applications/"+u.a1+"/reveal", nil)), "MOVE-REASON-1") || strings.Contains(body(hm.get("/applications/"+u.a1)), "A reason was recorded") {
+		t.Error("the hiring manager is offered or shown a reason the service seals from them")
 	}
-	wantCode(t, hm.post("/applications/"+u.a1+"/move", url.Values{"to": {"interview"}, "note": {"panel next"}}), 303, "hiring manager move")
+	wantCode(t, hm.post("/applications/"+u.a1+"/move", url.Values{"from": {"screen"}, "to": {"interview"}, "note": {"panel next"}}), 303, "hiring manager move")
+	// a stale page (the application is no longer in the stage the form showed) is refused
+	if w := c.post("/applications/"+u.a1+"/move", url.Values{"from": {"screen"}, "to": {"offer"}, "note": {"double click"}}); w.Code != 409 {
+		t.Errorf("a move from a stale stage = %d", w.Code)
+	}
+	if w := c.post("/applications/"+u.a1+"/move", url.Values{"to": {"offer"}, "note": {"no from"}}); w.Code != 400 {
+		t.Errorf("a move without the stage it came from = %d", w.Code)
+	}
 	// an interviewer may not move
-	wantCode(t, u.login(t, u.ivy).post("/applications/"+u.a1+"/move", url.Values{"to": {"interview"}, "note": {"x"}}), 403, "interviewer move")
+	wantCode(t, u.login(t, u.ivy).post("/applications/"+u.a1+"/move", url.Values{"from": {"interview"}, "to": {"screen"}, "note": {"x"}}), 403, "interviewer move")
 }
 
 func TestUIRejectAndHireFlow(t *testing.T) {
@@ -532,14 +549,14 @@ func TestUIRejectAndHireFlow(t *testing.T) {
 	if !strings.Contains(body(c.get("/applications/"+u.a2)), "Rejected") {
 		t.Error("the page does not show the rejection")
 	}
-	if w := c.post("/applications/"+u.a2+"/move", url.Values{"to": {"screen"}, "note": {"again"}}); w.Code != 409 {
+	if w := c.post("/applications/"+u.a2+"/move", url.Values{"from": {"applied"}, "to": {"screen"}, "note": {"again"}}); w.Code != 409 {
 		t.Errorf("moving a rejected application = %d", w.Code)
 	}
 	// hire: not from the screen stage, a hiring manager may not, a recruiter may from offer
 	if w := c.post("/applications/"+u.a1+"/hire", nil); w.Code != 409 {
 		t.Errorf("hire outside an offer stage = %d", w.Code)
 	}
-	wantCode(t, c.post("/applications/"+u.a1+"/move", url.Values{"to": {"offer"}, "note": {"make an offer"}}), 303, "move to offer")
+	wantCode(t, c.post("/applications/"+u.a1+"/move", url.Values{"from": {"applied"}, "to": {"offer"}, "note": {"make an offer"}}), 303, "move to offer")
 	hm := u.login(t, u.hmAlice)
 	if w := hm.post("/applications/"+u.a1+"/hire", nil); w.Code != 403 {
 		t.Errorf("hiring manager hire = %d", w.Code)
@@ -813,5 +830,68 @@ func TestUIDisabledByDefault(t *testing.T) {
 	}
 	if r := u.do("", "GET", "/v1/nope", nil); strings.Contains(r.str(), "<html") {
 		t.Errorf("unknown /v1 path answers the UI: %s", r.str())
+	}
+}
+
+func TestUIApplicationPageReadsAndAuditsNoSealedText(t *testing.T) {
+	u := newUIScenario(t)
+	c := u.login(t, u.recruiter)
+	wantCode(t, c.post("/applications/"+u.a1+"/move", url.Values{"from": {"applied"}, "to": {"screen"}, "note": {"AUDIT-REASON"}}), 303, "move")
+	var lastFields string
+	read := func() string {
+		es, _, err := u.app.Store().ListAudit(context.Background(), 0, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := ""
+		for _, e := range es {
+			if e.Resource == "application:"+u.a1 {
+				if out == "" {
+					out = e.Fields
+				}
+			}
+		}
+		return out
+	}
+	c.get("/applications/" + u.a1)
+	lastFields = read()
+	for _, sealed := range []string{"cover_letter", "reject_note", "stage_notes"} {
+		if strings.Contains(lastFields, sealed) {
+			t.Errorf("viewing the page is audited as reading %q: %s", sealed, lastFields)
+		}
+	}
+	c.post("/applications/"+u.a1+"/reveal", nil)
+	if f := read(); !strings.Contains(f, "stage_notes") || !strings.Contains(f, "cover_letter") {
+		t.Errorf("the reveal is not audited as reading the sealed texts: %s", f)
+	}
+}
+
+func TestUINotesFormRefusesAStaleVersion(t *testing.T) {
+	u := newUIScenario(t)
+	c := u.login(t, u.recruiter)
+	page := body(c.post("/applications/"+u.a1+"/reveal", nil))
+	ver := regexp.MustCompile(`name="version" value="(\d+)"`).FindStringSubmatch(page)
+	if ver == nil {
+		t.Fatalf("no version in the notes form: %.400s", page)
+	}
+	u.clk.Add(2 * time.Second)
+	wantCode(t, c.post("/applications/"+u.a1+"/notes", url.Values{"notes": {"first"}, "version": {ver[1]}}), 303, "save notes")
+	u.clk.Add(2 * time.Second)
+	wantCode(t, c.post("/applications/"+u.a1+"/notes", url.Values{"notes": {"second"}, "version": {ver[1]}}), 409, "stale notes")
+}
+
+func TestUIHiringManagerSessionsRecheckEveryMinute(t *testing.T) {
+	u := newUIScenario(t)
+	c := u.login(t, u.hmAlice)
+	var id string
+	for _, it := range u.want(u.do(adminTok, "GET", "/v1/tokens", nil), 200).m(t)["items"].([]any) {
+		if it.(map[string]any)["subject"] == "alice" {
+			id = it.(map[string]any)["id"].(string)
+		}
+	}
+	u.want(u.do(adminTok, "DELETE", "/v1/tokens/"+id, nil), 204)
+	u.clk.Add(61 * time.Second)
+	if w := c.get("/"); w.Code != 303 {
+		t.Errorf("a revoked hiring manager token still has a session a minute later: %d", w.Code)
 	}
 }

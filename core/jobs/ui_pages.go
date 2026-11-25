@@ -344,6 +344,7 @@ func (u *UI) jobApproval(c *uiCtx) error {
 
 type card struct {
 	ID, Name   string
+	From       string
 	Prev, Next *stageView
 }
 
@@ -403,7 +404,7 @@ func (u *UI) jobPage(c *uiCtx) error {
 			return err
 		}
 		for _, v := range vs {
-			cd := card{ID: v.ID, Name: v.CandidateName}
+			cd := card{ID: v.ID, Name: v.CandidateName, From: v.Stage}
 			if i > 0 {
 				p := ss[i-1]
 				cd.Prev = &p
@@ -427,7 +428,7 @@ type histRow struct {
 	From, To, Status, Actor string
 	At                      string
 	Note                    string
-	HasNote                 bool
+	HasNote                 bool // a reason exists and the caller may reveal it
 }
 
 type appPageData struct {
@@ -455,7 +456,7 @@ type appPageData struct {
 
 func (u *UI) appPage(c *uiCtx) error {
 	id := c.r.PathValue("id")
-	a, err := u.Store.GetApplication(c.ctx(), c.p, id)
+	a, err := u.Store.GetApplicationMeta(c.ctx(), c.p, id)
 	if err != nil {
 		return err
 	}
@@ -481,13 +482,7 @@ func (u *UI) appPage(c *uiCtx) error {
 			}
 		}
 	}
-	for _, h := range a.History {
-		r := histRow{From: stageName(ss, h.From), To: stageName(ss, h.To), Status: h.Status, Actor: h.Actor, At: fmtWhen(h.At)}
-		if h.Note != nil {
-			r.Note, r.HasNote = *h.Note, true
-		}
-		d.History = append(d.History, r)
-	}
+	d.History = historyRows(ss, a.History)
 	if a.Resume != nil {
 		d.ResumeScan = a.Resume.Scan
 		d.ResumeLink = a.Resume.Scan != string(ScanInfected)
@@ -523,13 +518,27 @@ func (u *UI) appPage(c *uiCtx) error {
 
 func (u *UI) appMove(c *uiCtx) error {
 	id := c.r.PathValue("id")
-	if _, err := u.Store.MoveApplicationNote(c.ctx(), c.p, id, c.r.PostForm.Get("to"), strings.TrimSpace(c.r.PostForm.Get("note"))); err != nil {
+	if _, err := u.Store.MoveApplicationNote(c.ctx(), c.p, id, c.r.PostForm.Get("from"), c.r.PostForm.Get("to"), strings.TrimSpace(c.r.PostForm.Get("note"))); err != nil {
 		return err
 	}
 	return u.redirect(c, back(c, "/applications/"+id), "moved")
 }
 
 var returnRE = regexp.MustCompile(`^/jobs/job_[0-9a-f]{16}$`)
+
+// historyRows draws the history. A reason is drawn only when the Store returned it (the reveal);
+// otherwise only the marker that one exists.
+func historyRows(ss []stageView, hs []StageChange) []histRow {
+	var out []histRow
+	for _, h := range hs {
+		r := histRow{From: stageName(ss, h.From), To: stageName(ss, h.To), Status: h.Status, Actor: h.Actor, At: fmtWhen(h.At), HasNote: h.HasNote}
+		if h.Note != nil {
+			r.Note = *h.Note
+		}
+		out = append(out, r)
+	}
+	return out
+}
 
 // back returns where a board or page form wants to go afterwards: only a local path of this UI.
 func back(c *uiCtx, def string) string {
@@ -614,6 +623,8 @@ type revealData struct {
 	Candidate   *Candidate
 	CoverLetter *string
 	RejectNote  *string
+	History     []histRow
+	Version     int64
 	Restricted  []string
 	CanEdit     bool
 }
@@ -627,7 +638,8 @@ func (u *UI) appReveal(c *uiCtx) error {
 		return nil
 	}
 	id := c.r.PathValue("id")
-	a, err := u.Store.GetApplication(c.ctx(), c.p, id)
+	// Only here are the sealed texts of the application unsealed (and audited by the Store first).
+	a, err := u.Store.GetApplication(MetaOnly(c.ctx(), false), c.p, id)
 	if err != nil {
 		return err
 	}
@@ -635,20 +647,29 @@ func (u *UI) appReveal(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	d := revealData{AppID: id, Name: cand.Name, Candidate: cand, CoverLetter: a.CoverLetter, RejectNote: a.RejectNote, CanEdit: cand.Notes != nil && c.p.Caps().EditCandidate}
+	d := revealData{AppID: id, Name: cand.Name, Candidate: cand, CoverLetter: a.CoverLetter, RejectNote: a.RejectNote, Version: cand.UpdatedAt.Unix(), CanEdit: cand.Notes != nil && c.p.Caps().EditCandidate}
 	d.Restricted = cand.RestrictedFields
+	if ss, err := u.stageViews(c); err == nil {
+		d.History = historyRows(ss, a.History)
+	} else {
+		return err
+	}
 	u.render(c.w, c.r, c, http.StatusOK, "reveal.html", "reveal.title", d)
 	return nil
 }
 
 func (u *UI) appNotes(c *uiCtx) error {
 	id := c.r.PathValue("id")
-	a, err := u.Store.GetApplication(c.ctx(), c.p, id)
+	a, err := u.Store.GetApplicationMeta(c.ctx(), c.p, id)
 	if err != nil {
 		return err
 	}
+	ver, err := strconv.ParseInt(c.r.PostForm.Get("version"), 10, 64)
+	if err != nil {
+		return invalid("version", "the form is out of date; show the details again")
+	}
 	notes := strings.TrimSpace(c.r.PostForm.Get("notes"))
-	if _, err := u.Store.PatchCandidate(c.ctx(), c.p, a.CandidateID, CandidatePatch{Notes: &notes}); err != nil {
+	if _, err := u.Store.PatchCandidate(c.ctx(), c.p, a.CandidateID, CandidatePatch{Notes: &notes, IfUpdatedAt: &ver}); err != nil {
 		return err
 	}
 	return u.redirect(c, "/applications/"+id, "saved")

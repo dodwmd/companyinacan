@@ -62,6 +62,7 @@
 <form method="post" action="/applications/{{.ID}}/move" class="inline">
 {{template "csrf" $}}
 <input type="hidden" name="return" value="/jobs/{{$.Data.Job.ID}}">
+<input type="hidden" name="from" value="{{.From}}">
 <label for="n-{{.ID}}" class="visually-hidden">{{t "move.note"}}</label>
 <input id="n-{{.ID}}" name="note" required maxlength="500" placeholder="{{t "move.note"}}">
 {{if .Prev}}<button type="submit" name="to" value="{{.Prev.Key}}">{{t "move.back" .Prev.Name}}</button>{{end}}

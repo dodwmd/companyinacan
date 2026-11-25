@@ -240,7 +240,7 @@ func (u *UI) authed(fn uiHandler) http.HandlerFunc {
 				return
 			}
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), u.Timeout)
+		ctx, cancel := context.WithTimeout(MetaOnly(r.Context(), true), u.Timeout)
 		defer cancel()
 		r = r.WithContext(ctx)
 		if err := fn(&uiCtx{ss: ss, p: p, r: r, w: w}); err != nil {

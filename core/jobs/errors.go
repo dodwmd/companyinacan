@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -98,4 +99,13 @@ func normEmail(s string) (string, bool) {
 		return "", false
 	}
 	return strings.ToLower(s), true
+}
+
+// notFoundOr maps "no row" to ErrNotFound and returns any other database error (an expired
+// deadline, a locked database) as it is, so callers answer 503 rather than a false 404.
+func notFoundOr(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
 }

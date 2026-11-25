@@ -15,6 +15,7 @@
 {{if .CanEdit}}
 <form method="post" action="/applications/{{.AppID}}/notes" class="card">
 {{template "csrf" $}}
+<input type="hidden" name="version" value="{{.Version}}">
 <p><label for="cn-notes">{{t "cand.notes"}}</label>
 <textarea id="cn-notes" name="notes" rows="6" maxlength="5000">{{.Candidate.Notes}}</textarea></p>
 <p><button type="submit">{{t "common.save"}}</button></p>
@@ -22,6 +23,17 @@
 {{else}}
 <p class="prose">{{if .Candidate.Notes}}{{.Candidate.Notes}}{{else}}<span class="muted">{{t "reveal.unavailable"}}</span>{{end}}</p>
 {{end}}
+<h2>{{t "app.history"}}</h2>
+<div class="scroll">
+<table>
+<caption>{{t "reveal.history_caption"}}</caption>
+<thead><tr><th scope="col">{{t "hist.when"}}</th><th scope="col">{{t "hist.who"}}</th><th scope="col">{{t "hist.change"}}</th><th scope="col">{{t "hist.note"}}</th></tr></thead>
+<tbody>
+{{range .History}}<tr><th scope="row">{{.At}}</th><td>{{.Actor}}</td><td>{{if .From}}{{.From}} &rarr; {{end}}{{.To}} ({{t (printf "astatus.%s" .Status)}})</td><td class="prose">{{.Note}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
 <p><a href="/applications/{{.AppID}}">{{t "reveal.back"}}</a></p>
 {{end}}
 {{end}}

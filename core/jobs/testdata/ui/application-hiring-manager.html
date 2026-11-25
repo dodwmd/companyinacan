@@ -76,6 +76,7 @@
 <h2 id="h-move">Move or reject</h2>
 <form method="post" action="/applications/ID/move" class="card">
 <input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="from" value="applied">
 <p><label for="mv-note">Reason for the move</label>
 <input id="mv-note" name="note" required maxlength="500"></p>
 <p>

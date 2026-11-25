@@ -474,6 +474,9 @@ type CandidatePatch struct {
 	Address           *string   `json:"address"`
 	SalaryExpectation *string   `json:"salary_expectation"`
 	Phone             *string   `json:"phone"`
+	// IfUpdatedAt, when set, must equal the candidate's last update (unix seconds) or the patch is
+	// refused with ErrVersionMismatch. The web UI uses it for the notes form.
+	IfUpdatedAt *int64 `json:"-"`
 }
 
 // PatchCandidate updates tags and the sealed recruiter fields.
@@ -513,6 +516,15 @@ func (s *Store) PatchCandidate(ctx context.Context, p *Principal, id string, in 
 		return nil, err
 	}
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		if in.IfUpdatedAt != nil {
+			var cur int64
+			if err := tx.QueryRowContext(ctx, `SELECT updated_at FROM candidates WHERE id = ?`, id).Scan(&cur); err != nil {
+				return err
+			}
+			if cur != *in.IfUpdatedAt {
+				return ErrVersionMismatch
+			}
+		}
 		var changed []string
 		set := func(col, name string, v *string) error {
 			if v == nil {
@@ -561,7 +573,7 @@ func (s *Store) SetTalentPool(ctx context.Context, p *Principal, id string, in b
 	pred, args := p.candidatePred("c")
 	var one int
 	if err := s.rdb.QueryRowContext(ctx, `SELECT 1 FROM candidates c WHERE (c.id = ? AND c.erased_at IS NULL) AND `+pred, append([]any{id}, args...)...).Scan(&one); err != nil {
-		return nil, ErrNotFound
+		return nil, notFoundOr(err)
 	}
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		now := ts(s.now())

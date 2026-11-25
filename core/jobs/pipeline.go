@@ -117,6 +117,8 @@ type StageChange struct {
 	// Note is the reason given for a move made with MoveApplicationNote. It is sealed and shown only
 	// to roles that may read the rejection note; nil otherwise.
 	Note *string `json:"note,omitempty"`
+	// HasNote says a reason exists that the caller may read, without reading it.
+	HasNote bool `json:"has_note,omitempty"`
 }
 
 // ApplicationView is an application as the API returns it. Sealed text is present only for
@@ -187,29 +189,70 @@ func (s *Store) appView(p *Principal, sc scanner, detail bool) (*ApplicationView
 	return &v, fields, nil
 }
 
-// GetApplication returns one application the caller may see, audited.
+type metaOnlyKey struct{}
+
+// MetaOnly marks a context so that GetApplication (and the write methods that return the changed
+// application) skip the sealed text: cover letter, rejection note and stage-move reasons are then
+// neither unsealed nor audited as read. The web UI sets it on every request and lifts it only for
+// its explicit reveal.
+func MetaOnly(ctx context.Context, on bool) context.Context {
+	return context.WithValue(ctx, metaOnlyKey{}, on)
+}
+
+func metaOnly(ctx context.Context) bool { on, _ := ctx.Value(metaOnlyKey{}).(bool); return on }
+
+// GetApplication returns one application the caller may see, audited. It unseals the cover
+// letter, rejection note and stage-move reasons the role may read, unless the context is MetaOnly.
 func (s *Store) GetApplication(ctx context.Context, p *Principal, id string) (*ApplicationView, error) {
+	return s.getApplication(ctx, p, id, !metaOnly(ctx))
+}
+
+// GetApplicationMeta returns the application without any sealed text (name, stage, status,
+// resume metadata, interviewers, history without reasons). Nothing is unsealed.
+func (s *Store) GetApplicationMeta(ctx context.Context, p *Principal, id string) (*ApplicationView, error) {
+	return s.getApplication(ctx, p, id, false)
+}
+
+func (s *Store) getApplication(ctx context.Context, p *Principal, id string, full bool) (*ApplicationView, error) {
 	if !p.Can(ActAppRead) {
 		return nil, ErrForbidden
 	}
 	pred, args := p.appPred("a", "j")
-	v, fields, err := s.appView(p, s.rdb.QueryRowContext(ctx, `SELECT `+appCols+appFrom+` WHERE (a.id = ?) AND `+pred, append([]any{id}, args...)...), true)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+	if full {
+		// Audit before anything is unsealed: confirm the application is in scope, record the read
+		// of the sealed fields this role can see, then read them.
+		var one int
+		err := s.rdb.QueryRowContext(ctx, `SELECT 1 FROM applications a JOIN jobs j ON j.id = a.job_id WHERE (a.id = ?) AND `+pred, append([]any{id}, args...)...).Scan(&one)
+		if err != nil {
+			return nil, notFoundOr(err)
+		}
+		fields := []string{"name", "resume_meta"}
+		if p.canSee(fieldCover) {
+			fields = append(fields, fieldCover)
+		}
+		if p.canSee(fieldRejNote) {
+			fields = append(fields, fieldRejNote, "stage_notes")
+		}
+		if err := s.auditRead(ctx, p, "application:"+id, fields); err != nil {
+			return nil, err
+		}
 	}
+	v, fields, err := s.appView(p, s.rdb.QueryRowContext(ctx, `SELECT `+appCols+appFrom+` WHERE (a.id = ?) AND `+pred, append([]any{id}, args...)...), full)
 	if err != nil {
-		return nil, err
+		return nil, notFoundOr(err)
 	}
 	if p.Role != RoleInterviewer {
 		if v.Interviewers, err = s.interviewersOf(ctx, id); err != nil {
 			return nil, err
 		}
 	}
-	if v.History, err = s.historyOf(ctx, p, id); err != nil {
+	if v.History, err = s.historyOf(ctx, p, id, full); err != nil {
 		return nil, err
 	}
-	if err := s.auditRead(ctx, p, "application:"+id, fields); err != nil {
-		return nil, err
+	if !full {
+		if err := s.auditRead(ctx, p, "application:"+id, fields); err != nil {
+			return nil, err
+		}
 	}
 	return v, nil
 }
@@ -231,7 +274,7 @@ func (s *Store) interviewersOf(ctx context.Context, appID string) ([]string, err
 	return out, rows.Err()
 }
 
-func (s *Store) historyOf(ctx context.Context, p *Principal, appID string) ([]StageChange, error) {
+func (s *Store) historyOf(ctx context.Context, p *Principal, appID string, unsealNotes bool) ([]StageChange, error) {
 	rows, err := s.rdb.QueryContext(ctx, `SELECT seq, from_stage, to_stage, status, actor, at, note_sealed FROM stage_history WHERE application_id = ? ORDER BY seq`, appID)
 	if err != nil {
 		return nil, err
@@ -246,7 +289,8 @@ func (s *Store) historyOf(ctx context.Context, p *Principal, appID string) ([]St
 			return nil, err
 		}
 		c.At = fromUnix(at)
-		if sealed.Valid && p.canSee(fieldRejNote) {
+		c.HasNote = sealed.Valid && p.canSee(fieldRejNote)
+		if c.HasNote && unsealNotes {
 			note, err := s.unseal("stage_history", strconv.FormatInt(seq, 10), "note_sealed", sealed)
 			if err != nil {
 				return nil, err
@@ -347,21 +391,25 @@ func stageKind(ctx context.Context, tx dbq, key string) (string, error) {
 // MoveApplication moves an active application to another pipeline stage. Hiring is a separate
 // action; moving into the hired stage is refused.
 func (s *Store) MoveApplication(ctx context.Context, p *Principal, id, to string) (*ApplicationView, error) {
-	return s.moveApplication(ctx, p, id, to, "", false)
+	return s.moveApplication(ctx, p, id, "", to, "", false)
 }
 
 // MoveNoteMax bounds the reason of a stage move.
 const MoveNoteMax = 500
 
-// MoveApplicationNote is MoveApplication with a required reason (1 to MoveNoteMax characters),
+// MoveApplicationNote is MoveApplication with the stage the caller saw (from: a stale page, a
+// double click or a concurrent move by someone else is a conflict) and a required reason (1 to MoveNoteMax characters),
 // sealed with the history entry. The web UI uses it: a person who moves a candidate says why.
-func (s *Store) MoveApplicationNote(ctx context.Context, p *Principal, id, to, note string) (*ApplicationView, error) {
-	return s.moveApplication(ctx, p, id, to, note, true)
+func (s *Store) MoveApplicationNote(ctx context.Context, p *Principal, id, from, to, note string) (*ApplicationView, error) {
+	return s.moveApplication(ctx, p, id, from, to, note, true)
 }
 
-func (s *Store) moveApplication(ctx context.Context, p *Principal, id, to, note string, needNote bool) (*ApplicationView, error) {
+func (s *Store) moveApplication(ctx context.Context, p *Principal, id, from, to, note string, needNote bool) (*ApplicationView, error) {
 	if !p.Can(ActAppMove) {
 		return nil, ErrForbidden
+	}
+	if needNote && from == "" {
+		return nil, invalid("from", "the stage the page showed is required")
 	}
 	if needNote || note != "" {
 		var pr problems
@@ -377,6 +425,9 @@ func (s *Store) moveApplication(ctx context.Context, p *Principal, id, to, note 
 		}
 		if st.status != AppActive {
 			return conflict("the application is %s; only active applications move", st.status)
+		}
+		if from != "" && st.stage != from {
+			return conflict("the application is no longer in stage %q (it is in %q); reload the page and try again", from, st.stage)
 		}
 		kind, err := stageKind(ctx, tx, to)
 		if err != nil {
