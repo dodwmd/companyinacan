@@ -152,6 +152,29 @@ func (c *Client) PublishEnvelope(ctx context.Context, envelope []byte) error {
 	return nil
 }
 
+// Email is a request to the platform's email.send capability. The sender address is can-core's.
+type Email struct {
+	To      []string `json:"to"`
+	ReplyTo string   `json:"reply_to,omitempty"`
+	Subject string   `json:"subject"`
+	Text    string   `json:"text"`
+	// SourceID makes the request idempotent: repeating it queues nothing new.
+	SourceID string `json:"source_id,omitempty"`
+}
+
+// SendEmail queues mail through can-core. ErrUnavailable (retry later) covers network errors, 5xx
+// and quota refusals; any other error is final.
+func (c *Client) SendEmail(ctx context.Context, e Email) error {
+	status, b, err := c.do(ctx, http.MethodPost, "/v1/email", e, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusAccepted && status != http.StatusOK {
+		return fmt.Errorf("can-core refused the email: HTTP %d %s", status, problemDetail(b))
+	}
+	return nil
+}
+
 func problemDetail(b []byte) string {
 	var p struct {
 		Detail string `json:"detail"`

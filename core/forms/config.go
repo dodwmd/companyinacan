@@ -30,10 +30,13 @@ type Config struct {
 	CORSAllowedOrigins []string        `yaml:"cors_allowed_origins"`
 	RateLimit          RateLimitConfig `yaml:"rate_limit"`
 	RetentionDays      int             `yaml:"retention_days"`
-	Email              EmailConfig     `yaml:"email"`
-	Webhook            WebhookConfig   `yaml:"webhook"`
-	Captcha            CaptchaConfig   `yaml:"captcha"`
-	Forms              []Form          `yaml:"forms"`
+	// NotifyEmail is the notify_email of every form that has none of its own (the chart sets it from
+	// the module setting of the same name).
+	NotifyEmail []string      `yaml:"notify_email"`
+	Email       EmailConfig   `yaml:"email"`
+	Webhook     WebhookConfig `yaml:"webhook"`
+	Captcha     CaptchaConfig `yaml:"captcha"`
+	Forms       []Form        `yaml:"forms"`
 }
 
 // RateLimitConfig bounds submissions per client IP.
@@ -42,7 +45,8 @@ type RateLimitConfig struct {
 	MaxTrackedIPs int `yaml:"max_tracked_ips"`
 }
 
-// EmailConfig points at the can-core email.send endpoint.
+// EmailConfig points at an email.send endpoint. An installed module leaves it empty and uses
+// can-core. From is ignored (kept so older files still load): the sender is can-core's.
 type EmailConfig struct {
 	URL  string `yaml:"url"`
 	From string `yaml:"from"`
@@ -180,6 +184,9 @@ func (c *Config) applyDefaults() {
 	for i := range c.Forms {
 		f := &c.Forms[i]
 		def(&f.Honeypot, "website")
+		if len(f.NotifyEmail) == 0 {
+			f.NotifyEmail = c.NotifyEmail
+		}
 		if f.MinFillSeconds == nil {
 			three := 3
 			f.MinFillSeconds = &three

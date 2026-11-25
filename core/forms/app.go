@@ -93,14 +93,21 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		captcha = v
 	}
 
+	// email.url wins (a static endpoint and token); otherwise an installed module uses can-core.
 	mailer := opt.Mailer
 	if mailer == nil && cfg.Email.URL != "" {
-		mailer = &HTTPMailer{URL: cfg.Email.URL, Token: sec.EmailToken, From: cfg.Email.From, Client: opt.Client}
+		mailer = &HTTPMailer{URL: cfg.Email.URL, Token: sec.EmailToken, Client: opt.Client}
+	}
+	if mailer == nil && opt.Can != nil {
+		mailer = &CanMailer{Client: opt.Can}
+	}
+	if cfg.Email.From != "" {
+		log.Warn("email.from is ignored: the sender address is set by the operator in can-core (company.yaml email.relay.from)")
 	}
 	if mailer == nil {
 		for _, f := range cfg.Forms {
 			if len(f.NotifyEmail) > 0 {
-				log.Warn("notify_email is set but email.url is not; no notification emails will be sent", "form", f.ID)
+				log.Warn("notify_email is set but there is no email.send (neither email.url nor can-core); no notification emails will be sent", "form", f.ID)
 			}
 		}
 	}

@@ -17,37 +17,37 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
-// Email is a message handed to the email.send capability.
-type Email struct {
-	To      []string `json:"to"`
-	ReplyTo string   `json:"reply_to,omitempty"`
-	From    string   `json:"from,omitempty"`
-	Subject string   `json:"subject"`
-	Text    string   `json:"text"`
-}
+// Email is a message handed to the email.send capability. The sender address is can-core's.
+type Email = modclient.Email
 
 // Mailer sends email through the email.send capability. Tests use a fake.
 type Mailer interface {
 	Send(ctx context.Context, e Email) error
 }
 
-// HTTPMailer calls the email.send REST endpoint provided by can-core.
+// CanMailer sends through can-core with the module's projected token (an installed module).
+type CanMailer struct{ Client *modclient.Client }
+
+// Send implements Mailer.
+func (m *CanMailer) Send(ctx context.Context, e Email) error { return m.Client.SendEmail(ctx, e) }
+
+// HTTPMailer calls an email.send REST endpoint with a static bearer token (email.url in the
+// config; the Docker Compose stack uses it).
 type HTTPMailer struct {
 	URL    string
 	Token  string
-	From   string
 	Client *http.Client
 }
 
-// Send implements Mailer.
+// Send implements Mailer. Errors worth retrying wrap modclient.ErrUnavailable.
 func (m *HTTPMailer) Send(ctx context.Context, e Email) error {
-	if e.From == "" {
-		e.From = m.From
-	}
 	body, err := json.Marshal(e)
 	if err != nil {
 		return err
@@ -66,14 +66,45 @@ func (m *HTTPMailer) Send(ctx context.Context, e Email) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", modclient.ErrUnavailable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("email.send: status %d", resp.StatusCode)
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode <= 299:
+		return nil
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+		return fmt.Errorf("%w: email.send: status %d", modclient.ErrUnavailable, resp.StatusCode)
 	}
-	return nil
+	return fmt.Errorf("email.send: status %d", resp.StatusCode)
+}
+
+// Limits of one email.send request (can-core refuses more).
+const (
+	maxEmailRecipients = 10
+	maxEmailSubject    = 200
+	maxEmailText       = 60000
+)
+
+// cut shortens s to at most n bytes without splitting a rune.
+func cut(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// plain keeps line breaks and tabs and blanks every other control character.
+func plain(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' {
+			return ' '
+		}
+		return r
+	}, strings.ToValidUTF8(s, "?"))
 }
 
 // BuildNotification renders the notification email for a stored lead. The subject only
@@ -100,8 +131,18 @@ func BuildNotification(f *Form, l *Lead) Email {
 	for _, k := range append(order, rest...) {
 		fmt.Fprintf(&b, "%s: %s\n", k, l.Fields[k])
 	}
-	fmt.Fprintf(&b, "\nLead id: %s\n", l.ID)
-	return Email{To: f.NotifyEmail, ReplyTo: l.Email, Subject: "New " + oneLine(f.Name) + " submission", Text: b.String()}
+	text := plain(b.String())
+	if len(text) > maxEmailText {
+		text = cut(text, maxEmailText) + "\n(shortened; the whole submission is in the leads view)\n"
+	}
+	text += fmt.Sprintf("\nLead id: %s\n", l.ID)
+	// The recipients are the operator's notify_email and nothing else. The visitor's address is only
+	// ever a Reply-To, and only when it is a plain address.
+	reply := ""
+	if config.ValidAddress(l.Email) {
+		reply = l.Email
+	}
+	return Email{To: f.NotifyEmail, ReplyTo: reply, Subject: cut(plain(oneLine("New "+f.Name+" submission")), maxEmailSubject), Text: text, SourceID: "lead:" + l.ID}
 }
 
 func oneLine(s string) string {
@@ -319,8 +360,8 @@ func (d *Dispatcher) run(j job) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if d.mailer != nil && len(j.form.NotifyEmail) > 0 {
-		err := d.mailer.Send(ctx, BuildNotification(j.form, j.lead))
-		d.record(ctx, j.lead.ID, "email", 1, err)
+		n, err := d.sendEmail(ctx, BuildNotification(j.form, j.lead))
+		d.record(ctx, j.lead.ID, "email", n, err)
 	}
 	if d.webhook != nil {
 		n, err := d.webhook.Send(ctx, NewLeadCreated(j.lead, d.now()))
@@ -334,6 +375,41 @@ func (d *Dispatcher) run(j job) {
 		n, err := publishCan(ctx, d.can, NewLeadCreated(j.lead, d.now()), sleep)
 		d.record(ctx, j.lead.ID, "webhook", n, err) // the event channel; the delivery log has two kinds
 	}
+}
+
+// sendEmail hands the notification to email.send, in requests of at most maxEmailRecipients, and
+// retries briefly while it is unavailable; the source id makes a retry safe. can-core queues the
+// mail durably. If it stays unreachable the notification is recorded as failed (forms keeps no
+// outbox of its own); the lead is stored either way.
+func (d *Dispatcher) sendEmail(ctx context.Context, e Email) (int, error) {
+	sleep := d.sleep
+	if sleep == nil {
+		sleep = sleepCtx
+	}
+	to, id, attempts := e.To, e.SourceID, 0
+	for part := 0; len(to) > 0; part++ {
+		n := min(len(to), maxEmailRecipients)
+		e.To, to = to[:n], to[n:]
+		if part > 0 && id != "" {
+			e.SourceID = id + "." + strconv.Itoa(part)
+		}
+		backoff := time.Second
+		for try := 1; ; try++ {
+			attempts++
+			err := d.mailer.Send(ctx, e)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, modclient.ErrUnavailable) || try == 3 {
+				return attempts, err
+			}
+			if serr := sleep(ctx, backoff); serr != nil {
+				return attempts, serr
+			}
+			backoff *= 2
+		}
+	}
+	return attempts, nil
 }
 
 func (d *Dispatcher) record(ctx context.Context, leadID, kind string, attempts int, err error) {
