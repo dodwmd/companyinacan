@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,8 @@ type Dumper struct {
 	mu     sync.Mutex
 	active bool
 	cur    *run
+	// syncPath flushes a file or directory to disk (default fsync); tests observe it.
+	syncPath func(string) error
 }
 
 // Result describes a finished run.
@@ -155,6 +158,10 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 	if err := d.publish(); err != nil {
 		return Result{}, fmt.Errorf("publish the dumps: %w", err)
 	}
+	// The marker claims the set is complete: it must not reach the disk before the set does.
+	if err := d.syncAll(); err != nil {
+		return Result{}, fmt.Errorf("flush the dumps to disk: %w", err)
+	}
 	done := d.now()
 	if err := backup.WriteMarker(marker, backup.Marker{RunID: runID, FinishedAt: done}); err != nil {
 		return Result{}, fmt.Errorf("write the completion marker: %w", err)
@@ -221,6 +228,52 @@ func (d *Dumper) dumpState(ctx context.Context) error {
 		_ = os.Remove(tmp + ext)
 	}
 	return os.Rename(tmp, filepath.Join(dir, "state.db"))
+}
+
+// fsync flushes one file or directory.
+func fsync(p string) error {
+	f, err := os.Open(p) //nolint:gosec // inside the dumps directory
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// syncAll flushes every published file, then every directory holding one, deepest first.
+func (d *Dumper) syncAll() error {
+	syncPath := d.syncPath
+	if syncPath == nil {
+		syncPath = fsync
+	}
+	var dirs []string
+	err := filepath.WalkDir(d.Store.Dir, func(p string, e os.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case p != d.Store.Dir && strings.HasPrefix(e.Name(), "."):
+			if e.IsDir() {
+				return filepath.SkipDir
+			}
+		case e.IsDir():
+			dirs = append(dirs, p)
+		case e.Type().IsRegular():
+			return syncPath(p)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if err := syncPath(dirs[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NeedsRun reports whether the marker is missing, unreadable or older than maxAge.

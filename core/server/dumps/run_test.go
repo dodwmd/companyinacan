@@ -208,3 +208,31 @@ func TestForgetRemovesAModulesDumps(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// QA 12: every file and directory of the set is on stable storage before the marker appears.
+func TestEverythingIsSyncedBeforeTheMarker(t *testing.T) {
+	d, _ := newDumper(t, []string{"wiki"}, &fakeHooks{})
+	d.Hooks = hookFunc(func(_ context.Context, m string) error { return upload(d, m, "a", "v") })
+	synced := map[string]bool{}
+	d.syncPath = func(p string) error {
+		if exists(filepath.Join(d.Store.Dir, COMPLETE)) {
+			t.Errorf("%s synced after the marker was written", p)
+		}
+		rel, _ := filepath.Rel(d.Store.Dir, p)
+		synced[rel] = true
+		return fsync(p)
+	}
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{".", "can-core", "can-core/state.db", "modules", "modules/wiki", "modules/wiki/a"} {
+		if !synced[p] {
+			t.Errorf("%s was not synced (synced: %v)", p, synced)
+		}
+	}
+	// a failed sync means no marker
+	d.syncPath = func(string) error { return errors.New("disk gone") }
+	if _, err := d.Run(context.Background()); err == nil || exists(filepath.Join(d.Store.Dir, COMPLETE)) {
+		t.Fatalf("marker despite a failed sync: %v", err)
+	}
+}
