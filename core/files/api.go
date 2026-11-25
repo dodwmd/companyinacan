@@ -618,25 +618,41 @@ func (a *API) revokeShare(w http.ResponseWriter, r *http.Request, p *Principal) 
 
 // ---- administration ------------------------------------------------------------------------------
 
+// setHold requires legal_hold: a request that does not say must never lift a hold. retain_until is
+// left as it is when omitted, cleared by null and set by a date or time.
 func (a *API) setHold(w http.ResponseWriter, r *http.Request, p *Principal) error {
 	var in struct {
-		LegalHold   bool    `json:"legal_hold"`
-		RetainUntil *string `json:"retain_until"`
+		LegalHold   *bool           `json:"legal_hold"`
+		RetainUntil json.RawMessage `json:"retain_until"`
 	}
 	if err := readJSON(w, r, &in); err != nil {
 		return err
 	}
+	if in.LegalHold == nil {
+		return invalid("legal_hold (true or false) is required")
+	}
 	var until *time.Time
-	if in.RetainUntil != nil && *in.RetainUntil != "" {
-		t, err := time.Parse(time.DateOnly, *in.RetainUntil)
+	switch raw := string(in.RetainUntil); raw {
+	case "": // omitted: unchanged
+	case "null":
+		until = &time.Time{}
+	default:
+		var s string
+		if err := json.Unmarshal(in.RetainUntil, &s); err != nil {
+			return invalid("retain_until is a date, a time or null")
+		}
+		t, err := time.Parse(time.DateOnly, s)
 		if err != nil {
-			if t, err = time.Parse(time.RFC3339, *in.RetainUntil); err != nil {
+			if t, err = time.Parse(time.RFC3339, s); err != nil {
 				return invalid("retain_until is a date (2027-01-31) or an RFC 3339 time")
 			}
 		}
+		if t.IsZero() {
+			return invalid("retain_until is out of range")
+		}
 		until = &t
 	}
-	if err := a.Store.SetHold(r.Context(), p, r.PathValue("id"), in.LegalHold, until); err != nil {
+	if err := a.Store.SetHold(r.Context(), p, r.PathValue("id"), *in.LegalHold, until); err != nil {
 		return err
 	}
 	w.WriteHeader(http.StatusNoContent)

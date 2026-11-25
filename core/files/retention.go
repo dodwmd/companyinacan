@@ -20,7 +20,8 @@ var Classes = []string{ClassContent, ClassMetadata}
 
 const pendingBlobGrace = time.Hour
 
-// SetHold places or lifts a legal hold and sets the retention date (nil clears it). files.admin
+// SetHold places or lifts a legal hold, and changes the retention date only when retainUntil is
+// given: nil leaves it as it is, a pointer to the zero time clears it. files.admin
 // only: the people who manage a space must not be able to lift a hold placed on it. A held file
 // cannot be deleted, purged, erased or swept; a retention date blocks deletion until it passes.
 // The admin acts on ids and sees no content.
@@ -32,7 +33,8 @@ func (s *Store) SetHold(ctx context.Context, p *Principal, fileID string, hold b
 		return ErrNotFound
 	}
 	var until any
-	if retainUntil != nil {
+	change := retainUntil != nil
+	if change && !retainUntil.IsZero() {
 		if retainUntil.Before(s.now().AddDate(-1, 0, 0)) || retainUntil.After(s.now().AddDate(100, 0, 0)) {
 			return invalid("retain_until is out of range")
 		}
@@ -43,7 +45,7 @@ func (s *Store) SetHold(ctx context.Context, p *Principal, fileID string, hold b
 		h = 1
 	}
 	return s.txFor(ctx, p, "file.hold", "file:"+fileID, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE files SET legal_hold = ?, retain_until = ?, rev = rev + 1, updated_at = ? WHERE (id = ?) AND (status IN ('active','deleted'))`, h, until, ts(s.now()), fileID)
+		res, err := tx.ExecContext(ctx, `UPDATE files SET legal_hold = ?, retain_until = CASE WHEN ? THEN ? ELSE retain_until END, rev = rev + 1, updated_at = ? WHERE (id = ?) AND (status IN ('active','deleted'))`, h, change, until, ts(s.now()), fileID)
 		if err != nil {
 			return err
 		}
@@ -54,7 +56,10 @@ func (s *Store) SetHold(ctx context.Context, p *Principal, fileID string, hold b
 			}
 			return ErrNotFound
 		}
-		fields := []string{"retain_until"}
+		var fields []string
+		if change {
+			fields = append(fields, "retain_until")
+		}
 		if hold {
 			fields = append(fields, "hold:on")
 		} else {
