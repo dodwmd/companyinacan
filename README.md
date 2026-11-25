@@ -36,7 +36,7 @@ server) are in [docs/getting-started.md](docs/getting-started.md).
 | `work` | Jira-like tracker with API, CLI and web UI | experimental | 28 MB | Installed through can-core on k3d once (advisory CI) |
 | `people` | Directory, org, 1:1s, goals, reviews, time off, web UI | experimental | 30 MB | Sensitive fields sealed, one policy layer |
 | `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | Board connectors are stubs |
-| `finance` | Parties, invoices, payments, contracts, timesheets, expenses, purchase orders | experimental | 20 MB | Fake payment and e-sign providers only; no web UI |
+| `finance` | Parties, invoices, payments, contracts, timesheets, expenses, purchase orders, web UI | experimental | 28 MB | Fake payment and e-sign providers only |
 | `equity` | Cap table, option grants with vesting, exercises, ledger | experimental | 16 MB | A tool, not legal or tax advice; quantities stored in plaintext |
 | `support`, `crm` | Wrapped FreeScout, EspoCRM | **not-deployable** | 250, 350 MB | Image needs root, tags unresolved |
 | `newsletter`, `analytics`, `wiki`, `status` | Wrapped Listmonk, GoatCounter, DokuWiki, Uptime Kuma | experimental | 20 to 128 MB | Charts checked offline only, never started |
