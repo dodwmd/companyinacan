@@ -73,17 +73,17 @@ func TestLedgerDetectsTampering(t *testing.T) {
 
 func TestLedgerSealOpen(t *testing.T) {
 	l := newLedger(t)
-	_, _, _ = l.Append("s1", "c")
+	_, _, _ = l.Append("subject-marker-s1", "c")
 	es, _ := l.Read()
 	sealed, err := SealLedger(es, "restic-password-1234567890")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(sealed), "s1") {
+	if strings.Contains(string(sealed), "subject-marker-s1") {
 		t.Error("plaintext visible")
 	}
 	got, err := OpenLedger(sealed, "restic-password-1234567890")
-	if err != nil || len(got) != 1 || got[0].Subject != "s1" {
+	if err != nil || len(got) != 1 || got[0].Subject != "subject-marker-s1" {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if _, err := OpenLedger(sealed, "another-password-0000000000"); err == nil {
