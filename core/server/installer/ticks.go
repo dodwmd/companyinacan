@@ -54,9 +54,17 @@ func walk(n parse.Node, tick parse.Node) {
 		if x == nil {
 			return
 		}
+		// Every `{{ template "x" }}` call is counted too: a chain of defines that each call the next
+		// twice is exponential without any range or include.
+		nodes := make([]parse.Node, 0, len(x.Nodes))
 		for _, c := range x.Nodes {
+			if _, ok := c.(*parse.TemplateNode); ok {
+				nodes = append(nodes, tick.Copy())
+			}
 			walk(c, tick)
+			nodes = append(nodes, c)
 		}
+		x.Nodes = nodes
 	case *parse.IfNode:
 		walk(x.List, tick)
 		walk(x.ElseList, tick)

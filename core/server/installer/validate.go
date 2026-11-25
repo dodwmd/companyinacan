@@ -180,12 +180,12 @@ func (in *Installer) checkIngressRoute(name string, spec map[string]any, s recon
 			}
 		}
 	}
-	for _, k := range []string{"tls"} {
-		if t := asMap(spec[k]); t != nil {
-			for f := range t {
-				if f != "certResolver" && f != "domains" && f != "secretName" {
-					return fmt.Errorf("ingressroute %s: tls field %q is not allowed", name, f)
-				}
+	if t := asMap(spec["tls"]); t != nil {
+		for f, v := range t {
+			// No domains, secretName or options: a module may not request certificates for other
+			// names or pick another certificate store. Its own route Host is what gets certified.
+			if f != "certResolver" || v != "letsencrypt" {
+				return fmt.Errorf("ingressroute %s: tls may only set certResolver: letsencrypt (got %s=%v)", name, f, v)
 			}
 		}
 	}

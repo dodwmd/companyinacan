@@ -16,6 +16,15 @@ const overallRenderTimeout = 30 * time.Second
 // renderBounded renders in a goroutine under a timeout so a stuck template can never hold up the
 // reconcile loop. The iteration budget (ticks.go) also stops the abandoned goroutine.
 func (in *Installer) renderBounded(ctx context.Context, s reconcile.Spec) ([]kube.Object, error) {
+	// At most one render per module at a time: a render that outlived its caller (Go templates
+	// cannot be interrupted; the iteration budget ends it soon) must not be joined by another.
+	in.mu.Lock()
+	if in.rendering[s.ID] {
+		in.mu.Unlock()
+		return nil, fmt.Errorf("a previous render of %s is still running; not starting another", s.ID)
+	}
+	in.rendering[s.ID] = true
+	in.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, overallRenderTimeout)
 	defer cancel()
 	type result struct {
@@ -24,6 +33,11 @@ func (in *Installer) renderBounded(ctx context.Context, s reconcile.Spec) ([]kub
 	}
 	ch := make(chan result, 1)
 	go func() {
+		defer func() {
+			in.mu.Lock()
+			delete(in.rendering, s.ID)
+			in.mu.Unlock()
+		}()
 		defer func() {
 			if r := recover(); r != nil {
 				ch <- result{nil, fmt.Errorf("rendering panicked: %v", r)}

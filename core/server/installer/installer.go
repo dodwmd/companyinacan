@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -69,7 +70,12 @@ type Config struct {
 }
 
 // Installer implements reconcile.ModuleInstaller.
-type Installer struct{ cfg Config }
+type Installer struct {
+	cfg Config
+
+	mu        sync.Mutex
+	rendering map[string]bool // modules with a render still running (at most one each)
+}
 
 // New returns an Installer.
 func New(cfg Config) *Installer {
@@ -85,7 +91,7 @@ func New(cfg Config) *Installer {
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Installer{cfg: cfg}
+	return &Installer{cfg: cfg, rendering: map[string]bool{}}
 }
 
 var (
@@ -479,7 +485,7 @@ func (in *Installer) render(ctx context.Context, s reconcile.Spec) ([]kube.Objec
 		m["namespace"] = s.Namespace
 		setLabels(o, map[string]string{labelManaged: "can-core", labelModule: s.ID})
 	}
-	r := newRefs(objs, mergedValues(chart, vals), s)
+	r := newRefs(objs, s)
 	for _, o := range objs {
 		if err := in.hardenWorkload(o, s, r); err != nil {
 			return nil, fmt.Errorf("%v %s: %w", o["kind"], nameOf(o), err)

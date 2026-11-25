@@ -284,3 +284,13 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   this PR's head. So module isolation, module-egress denial, TokenReview and RBAC scope are covered by that job, not by the
   `integration` job, and neither is a required check. Those proofs run against the E02 templates and not against
   namespaces created by the new installer; the lifecycle test is what exercises the installer's own namespaces.
+
+### R18 addendum (QA round 3)
+- `{{ template "x" }}` calls are instrumented like `range` and `include`, so an exponential chain of defines
+  (45 levels, two calls each) hits the 200000-step budget in well under a second, and the abandoned render goroutine
+  finishes because the budget, not a timer, ends it. At most one render per module runs at a time; a reconcile that finds
+  one still running fails instead of starting another. Tests assert the time and that the goroutine count returns to baseline.
+- Secret references in a pod template may only name chart-defined Secrets, `can-module`, `can-db`, and the two names
+  can-core provides for the starter charts (`can-database`, `can-smtp`); names are no longer taken from chart values.
+  A chart volume called `can-token` must be the projected `can` token. IngressRoute `tls` may only set
+  `certResolver: letsencrypt` (no `domains`, `secretName`, `options`).

@@ -17,7 +17,7 @@ type refs struct {
 	secrets, configMaps, pvcs map[string]bool
 }
 
-func newRefs(objs []kube.Object, values map[string]any, s reconcile.Spec) refs {
+func newRefs(objs []kube.Object, s reconcile.Spec) refs {
 	r := refs{secrets: map[string]bool{secretModule: true}, configMaps: map[string]bool{}, pvcs: map[string]bool{}}
 	if k := s.Manifest.Requires.Database; k == "postgres" || k == "mariadb" {
 		r.secrets[secretDB] = true
@@ -32,10 +32,11 @@ func newRefs(objs []kube.Object, values map[string]any, s reconcile.Spec) refs {
 			r.pvcs[nameOf(o)] = true
 		}
 	}
-	for _, v := range asMap(values["secrets"]) {
-		if n, ok := v.(string); ok && n != "" && n != secretRelease {
-			r.secrets[n] = true
-		}
+	// Names can-core itself provides (the starter charts' Secret contract,
+	// specs/007-starter-modules/contracts/module-charts.md). Never taken from chart values: a chart
+	// must not be able to name an arbitrary Secret by setting a value.
+	for _, n := range []string{"can-database", "can-smtp"} {
+		r.secrets[n] = true
 	}
 	delete(r.secrets, secretRelease)
 	return r
@@ -112,6 +113,9 @@ func (r refs) checkVolume(v any) (keep bool, err error) {
 		if k != "name" {
 			sources = append(sources, k)
 		}
+	}
+	if name == tokenVolume && (len(sources) != 1 || sources[0] != "projected") {
+		return false, fmt.Errorf("volume %q is reserved for the projected `can` token", name)
 	}
 	if len(sources) != 1 {
 		return false, fmt.Errorf("volume %q must have exactly one source", name)
