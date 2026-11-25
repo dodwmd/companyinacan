@@ -113,7 +113,7 @@ func newSiteBuildCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&out, "out", "", "output directory (default <dir>/public)")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "public origin for canonical/sitemap URLs (default https://<domain>)")
 	cmd.Flags().BoolVar(&noCompress, "no-compress", false, "do not write precompressed .gz files")
-	cmd.Flags().BoolVar(&force, "force", false, "write into a non-empty directory that is not a previous site output (only generated paths are overwritten; nothing is deleted)")
+	cmd.Flags().BoolVar(&force, "force", false, "write into a non-empty directory that is not a previous site output (only generated files are overwritten; files this tool did not generate are never deleted)")
 	return cmd
 }
 

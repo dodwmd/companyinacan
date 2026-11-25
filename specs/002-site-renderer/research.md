@@ -40,9 +40,11 @@
 
 ## R6. Writing output safely and atomically
 - **Decision**: `Output.Write` opens the directory as an `os.Root`; each file is written to
-  `<name>.tmp` and renamed over the target; assets first, `index.html` last; stale files are
-  removed afterwards, and only if the directory is empty or carries the `.can-site` marker (or
-  `--force`).
+  `<name>.tmp` and renamed over the target; assets first, `index.html` last; the `.can-site` marker
+  records every generated path, and afterwards only paths the previous marker listed that are no
+  longer generated are removed. Foreign files are never deleted (even in a marked directory, even
+  with `--force`), a hostile or legacy marker cannot widen that, and a directory containing
+  `company.yaml` is always refused. A non-empty directory without a marker needs `--force`.
 - **Rationale**: the static server sees either the old or the new file, never a torn one; a mistyped
   `--out` cannot delete user data; symlinks planted in a PVC cannot redirect writes (tested).
 - **Alternatives**: building into a sibling directory and swapping with a rename (cleaner, but a

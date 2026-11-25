@@ -40,8 +40,8 @@ func TestWriteReplacesStaleFiles(t *testing.T) {
 	if err := second.Write(dir, WriteOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "stale.html")); !os.IsNotExist(err) {
-		t.Error("stale file should have been removed")
+	if _, err := os.Stat(filepath.Join(dir, "stale.html")); err != nil {
+		t.Error("a file this tool never generated must survive")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "assets", "logo.svg")); !os.IsNotExist(err) {
 		t.Error("asset from the previous build should have been removed")
@@ -170,12 +170,96 @@ func TestForceNeverDeletesForeignFiles(t *testing.T) {
 			t.Errorf("%s: %v", f, err)
 		}
 	}
-	// Once the marker exists, the directory is ours and stale generated files are removed.
+	// Even once the marker exists, foreign files are never deleted.
 	if err := render(t, minimal).Write(dir, WriteOptions{Force: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "keep.txt")); !os.IsNotExist(err) {
-		t.Error("with the marker present, stale files are cleaned")
+	for _, f := range []string{"keep.txt", "sub/also.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil {
+			t.Errorf("%s was deleted from a marked directory", f)
+		}
+	}
+}
+
+func TestMarkedDirectoryKeepsForeignFilesAndRemovesStaleGenerated(t *testing.T) {
+	dir := t.TempDir()
+	if err := renderFull(t).Write(dir, WriteOptions{Compress: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"precious.txt", "docs/a.md"} {
+		p := filepath.Join(dir, filepath.FromSlash(f))
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte("mine"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := render(t, minimal).Write(dir, WriteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"precious.txt", "docs/a.md"} {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil {
+			t.Errorf("foreign %s deleted", f)
+		}
+	}
+	for _, f := range []string{"assets/logo.svg", "index.html.gz", "sitemap.xml.gz"} {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); !os.IsNotExist(err) {
+			t.Errorf("stale generated %s should be removed", f)
+		}
+	}
+	m, _ := os.ReadFile(filepath.Join(dir, MarkerFile))
+	if !strings.Contains(string(m), "\nindex.html\n") || strings.Contains(string(m), "precious") {
+		t.Errorf("marker content: %q", m)
+	}
+}
+
+func TestLegacyEmptyMarkerDeletesNothing(t *testing.T) {
+	dir := t.TempDir()
+	for f, c := range map[string]string{MarkerFile: "generated\n", "old.html": "x"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := render(t, minimal).Write(dir, WriteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old.html")); err != nil {
+		t.Error("legacy marker must not authorise deletions")
+	}
+}
+
+func TestMarkedDirectoryWithCompanyYAMLIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	if err := render(t, minimal).Write(dir, WriteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	cy := filepath.Join(dir, "company.yaml")
+	if err := os.WriteFile(cy, []byte("schema: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := render(t, minimal).Write(dir, WriteOptions{Force: true}); err == nil || !strings.Contains(err.Error(), "company.yaml") {
+		t.Fatalf("want refusal, got %v", err)
+	}
+	if _, err := os.Stat(cy); err != nil {
+		t.Error("company.yaml deleted")
+	}
+}
+
+func TestMarkerCannotAuthoriseEscapes(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(filepath.Dir(dir), "outside-"+filepath.Base(dir))
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(outside) }()
+	marker := markerHeader + "../" + filepath.Base(outside) + "\n/etc/passwd\ncompany.yaml\n"
+	if err := os.WriteFile(filepath.Join(dir, MarkerFile), []byte(marker), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := render(t, minimal).Write(dir, WriteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Error("a hostile marker deleted a file outside the directory")
 	}
 }
 
