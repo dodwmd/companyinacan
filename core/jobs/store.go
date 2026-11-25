@@ -125,6 +125,16 @@ func OpenStore(path string, o StoreOptions) (*Store, error) {
 	return s, nil
 }
 
+// resumesOpen reports whether the apply form may take a resume: a store exists and, when scanning
+// is required (the default), a real scanner is wired.
+func (s *Store) resumesOpen() bool {
+	if s.resumes == nil {
+		return false
+	}
+	_, noop := s.scanner.(NoopScanner)
+	return !s.cfg.Apply.ScannerRequired || !noop
+}
+
 // Close releases the database.
 func (s *Store) Close() error { return errors.Join(s.rdb.Close(), s.db.Close()) }
 

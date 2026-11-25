@@ -149,11 +149,11 @@ func (s *Store) writeJob(ctx context.Context, p *Principal, j *Job, create bool)
 			return s.audit(ctx, tx, p.Subject, "job.create", "job:"+j.ID, nil, "ok")
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE jobs SET title=?, department=?, city=?, region=?, country=?, postal_code=?, remote=?, applicant_countries=?, employment_type=?,
-			salary_min=?, salary_max=?, salary_currency=?, salary_period=?, publish_salary=?, sections=?, hiring_manager=?, headcount=?, valid_through=?, updated_at=?, version=version+1
+			salary_min=?, salary_max=?, salary_currency=?, salary_period=?, publish_salary=?, sections=?, hiring_manager=?, headcount=?, valid_through=?, updated_at=?, approval=?, status=?, version=version+1
 			WHERE id=? AND version=?`,
 			j.Title, j.Department, j.Location.City, j.Location.Region, j.Location.Country, j.Location.PostalCode, j.Remote, string(ac), j.EmploymentType,
 			nullFloat(j.Salary, func(s *Salary) float64 { return s.Min }), nullFloat(j.Salary, func(s *Salary) float64 { return s.Max }), cur, per, pub, string(secs),
-			j.HiringManager, j.Headcount, nullUnix(j.ValidThrough), ts(j.UpdatedAt), j.ID, j.Version)
+			j.HiringManager, j.Headcount, nullUnix(j.ValidThrough), ts(j.UpdatedAt), j.Approval, j.Status, j.ID, j.Version)
 		if err != nil {
 			return err
 		}
@@ -301,12 +301,23 @@ func (s *Store) PatchJob(ctx context.Context, p *Principal, id string, in JobPat
 		return nil, mergeInvalid(pr, err)
 	}
 	j.UpdatedAt = now
+	// An approved requisition approved a specific text. When approval is required, any edit
+	// withdraws it, and an open job is paused until it is approved again, so unapproved content
+	// is never live.
+	if s.cfg.Approval.Required && j.Approval == ApprovalApproved {
+		j.Approval = ApprovalNone
+		if j.Status == StatusOpen {
+			j.Status = StatusPaused
+		}
+	}
 	if err := s.writeJob(ctx, p, j, false); err != nil {
 		return nil, err
 	}
 	out, err := s.GetJob(ctx, p, id)
 	if err == nil && out.Status == StatusOpen {
 		s.syndicate(ctx, out, "update")
+	} else if err == nil && out.Status == StatusPaused {
+		s.syndicate(ctx, out, "close")
 	}
 	return out, err
 }
@@ -321,8 +332,8 @@ func (s *Store) RequestApproval(ctx context.Context, p *Principal, id string) (*
 	if err != nil {
 		return nil, err
 	}
-	if j.Status != StatusDraft || (j.Approval != ApprovalNone && j.Approval != ApprovalRejected) {
-		return nil, conflict("approval can be requested for a draft that has none pending or granted (status %s, approval %s)", j.Status, j.Approval)
+	if (j.Status != StatusDraft && j.Status != StatusPaused) || (j.Approval != ApprovalNone && j.Approval != ApprovalRejected) {
+		return nil, conflict("approval can be requested for a draft or paused job that has none pending or granted (status %s, approval %s)", j.Status, j.Approval)
 	}
 	ref, state, err := s.approver.Request(ctx, j, p.Subject)
 	if err != nil {
@@ -369,8 +380,12 @@ func (s *Store) DecideApproval(ctx context.Context, p *Principal, id string, app
 		state = ApprovalApproved
 	}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE jobs SET approval=?, updated_at=?, version=version+1 WHERE id=? AND approval='pending'`, state, ts(s.now()), id); err != nil {
+		res, err := tx.ExecContext(ctx, `UPDATE jobs SET approval=?, updated_at=?, version=version+1 WHERE id=? AND approval='pending'`, state, ts(s.now()), id)
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return conflict("the approval was decided or withdrawn meanwhile")
 		}
 		return s.audit(ctx, tx, p.Subject, "job.approval_"+state, "job:"+id, nil, "ok")
 	})

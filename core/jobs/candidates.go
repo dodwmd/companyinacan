@@ -162,7 +162,7 @@ func (s *Store) Apply(ctx context.Context, in PublicApplication) (*ApplyResult, 
 			return err
 		}
 		if in.EEO != nil && s.cfg.Apply.CollectEEO {
-			if err := s.insertEEO(ctx, tx, j.ID, *in.EEO); err != nil {
+			if err := s.insertEEO(ctx, tx, *in.EEO); err != nil {
 				return err
 			}
 		}

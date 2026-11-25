@@ -90,7 +90,14 @@ func TestScorecardVisibilityRules(t *testing.T) {
 	}
 	items := func(r *resp) (n, hidden int, body string) {
 		m := r.m(t)
-		return len(m["items"].([]any)), int(m["hidden_until_submitted"].(float64)), r.str()
+		h := 0
+		if m["others_hidden"] == true {
+			h = 1
+		}
+		if _, ok := m["hidden_until_submitted"]; ok {
+			t.Error("the count of hidden scorecards leaks how many colleagues have finished")
+		}
+		return len(m["items"].([]any)), h, r.str()
 	}
 	// ivy saves a draft; nobody else sees it
 	s.want(card(s.ivy, 4, "IVY-PRIVATE-NOTE"), 200)
@@ -286,10 +293,11 @@ func TestTalentPoolAndConsent(t *testing.T) {
 
 func TestEEOIsSeparateAndAggregateOnly(t *testing.T) {
 	e := newEnv(t, func(c *Config) { c.EEO.MinCell = 3 })
-	jid, slug := e.openJob("Engineer", "alice")
+	_, slug := e.openJob("Engineer", "alice")
 	answers := []map[string]string{
-		{"eeo_gender": "female", "eeo_ethnicity": "asian"}, {"eeo_gender": "female", "eeo_ethnicity": "white"}, {"eeo_gender": "male", "eeo_ethnicity": "white"},
-		{"eeo_gender": "female", "eeo_ethnicity": "white"}, {"eeo_gender": "self-described-garbage", "eeo_ethnicity": "white"},
+		{"eeo_gender": "female", "eeo_ethnicity": "asian"}, {"eeo_gender": "female", "eeo_ethnicity": "white"}, {"eeo_gender": "female", "eeo_ethnicity": "white"},
+		{"eeo_gender": "male", "eeo_ethnicity": "white"}, {"eeo_gender": "male", "eeo_ethnicity": "white"}, {"eeo_gender": "male", "eeo_ethnicity": "white"},
+		{"eeo_gender": "self-described-garbage", "eeo_ethnicity": "white"},
 	}
 	for i, a := range answers {
 		f := goodApplication("eeo" + string(rune('a'+i)) + "@example.test")
@@ -313,16 +321,39 @@ func TestEEOIsSeparateAndAggregateOnly(t *testing.T) {
 		}
 		return strings.Join(out, ",")
 	}
-	if c := cols("eeo_responses"); strings.Contains(c, "candidate") || strings.Contains(c, "application") || strings.Contains(c, "email") || strings.Contains(c, "created") {
-		t.Errorf("eeo_responses can be joined to a person: %s", c)
+	// Regression (QA): no diversity table may have a per-response row, a monotonic id or a
+	// timestamp finer than a month, or row order would line responses up with applications.
+	var eeoTables []string
+	trs, _ := e.app.store.db.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'eeo%'`)
+	for trs.Next() {
+		var n string
+		_ = trs.Scan(&n)
+		eeoTables = append(eeoTables, n)
+	}
+	_ = trs.Close()
+	if len(eeoTables) != 1 || eeoTables[0] != "eeo_counts" {
+		t.Fatalf("diversity tables = %v, want only the counter table", eeoTables)
+	}
+	if c := cols("eeo_counts"); c != "month,field,value,n" {
+		t.Errorf("eeo_counts columns = %s (no id, no job, no timestamp finer than a month)", c)
+	}
+	var ddl string
+	_ = e.app.store.db.QueryRow(`SELECT sql FROM sqlite_master WHERE name = 'eeo_counts'`).Scan(&ddl)
+	if strings.Contains(strings.ToUpper(ddl), "AUTOINCREMENT") || !strings.Contains(strings.ToUpper(ddl), "WITHOUT ROWID") {
+		t.Errorf("eeo_counts has an insertion sequence: %s", ddl)
 	}
 	var fks int
-	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_list('eeo_responses')`).Scan(&fks)
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_list('eeo_counts')`).Scan(&fks)
 	if fks != 0 {
-		t.Error("eeo_responses has a foreign key")
+		t.Error("eeo_counts has a foreign key")
 	}
-	rep := e.want(e.do(adminTok, "GET", "/v1/eeo-report?job_id="+jid, nil), 200).m(t)
-	if rep["responses"] != float64(5) {
+	var rows int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM eeo_counts WHERE field = '_responses'`).Scan(&rows)
+	if rows != 1 {
+		t.Errorf("responses are stored per response, not per month: %d counter rows", rows)
+	}
+	rep := e.want(e.do(adminTok, "GET", "/v1/eeo-report", nil), 200).m(t)
+	if rep["responses"] != float64(7) {
 		t.Errorf("responses = %v", rep["responses"])
 	}
 	g := rep["fields"].(map[string]any)["gender"].([]any)
@@ -331,8 +362,20 @@ func TestEEOIsSeparateAndAggregateOnly(t *testing.T) {
 		cm := c.(map[string]any)
 		got[cm["value"].(string)] = cm["count"]
 	}
-	if got["female"] != float64(3) || got["male"] != nil {
-		t.Errorf("gender cells (small cells must be suppressed): %v", got)
+	if got["female"] != float64(3) || got["male"] != float64(3) {
+		t.Errorf("gender cells: %v", got)
+	}
+	// complementary suppression: one small ethnicity cell (asian = 1) hides the whole question,
+	// otherwise it could be recovered as total minus the others
+	for _, c := range rep["fields"].(map[string]any)["ethnicity"].([]any) {
+		if c.(map[string]any)["count"] != nil {
+			t.Errorf("a question with a suppressed cell still shows counts: %v", c)
+		}
+	}
+	// per-job reports are not offered (a global and a per-job report could be subtracted)
+	pj := e.want(e.do(adminTok, "GET", "/v1/eeo-report?job_id=job_0000000000000000", nil), 200).m(t)
+	if string(mustJSON(pj)) != string(mustJSON(rep)) {
+		t.Error("job_id changes the diversity report; per-job differencing would be possible")
 	}
 	if _, ok := got["self-described-garbage"]; ok {
 		t.Error("free text stored as an answer")
@@ -390,4 +433,72 @@ func TestGuardsOnInput(t *testing.T) {
 		t.Errorf("oversize body = %d", r.Code)
 	}
 	_ = time.Second
+}
+
+// Regression (QA major): blindness depends on "has ever been assigned", so unassigning
+// yourself, reading, and re-assigning must not expose colleagues' feedback.
+func TestBlindFeedbackSurvivesUnassignAndReassign(t *testing.T) {
+	s := newScenario(t)
+	app := "/v1/applications/" + s.a1
+	s.want(s.do(s.recruiter, "PUT", app+"/interviewers/alice", nil), 204) // alice is the hiring manager of job 1
+	s.want(s.do(s.ivy, "PUT", app+"/scorecards/mine", map[string]any{"rating": 4, "recommendation": "yes", "comments": "IVY-SECRET"}), 200)
+	s.want(s.do(s.ivy, "POST", app+"/scorecards/mine/submit", nil), 200)
+	read := func(tok string) (n int, hidden bool, body string) {
+		r := s.want(s.do(tok, "GET", app+"/scorecards", nil), 200)
+		m := r.m(t)
+		return len(m["items"].([]any)), m["others_hidden"] == true, r.str()
+	}
+	if n, hidden, _ := read(s.hmAlice); n != 0 || !hidden {
+		t.Fatalf("assigned manager is not blind: %d %v", n, hidden)
+	}
+	// 1. removing your own assignment before submitting is refused
+	if r := s.do(s.hmAlice, "DELETE", app+"/interviewers/alice", nil); r.Code != 409 {
+		t.Errorf("self-unassign before submitting = %d", r.Code)
+	}
+	// 2. someone else removes her: she is no longer an interviewer but stays blind
+	s.want(s.do(s.recruiter, "DELETE", app+"/interviewers/alice", nil), 204)
+	if n, hidden, body := read(s.hmAlice); n != 0 || !hidden || strings.Contains(body, "IVY-SECRET") {
+		t.Errorf("unassigned (previously assigned) manager can read feedback: %d %v", n, hidden)
+	}
+	// 3. re-assigning changes nothing
+	s.want(s.do(s.recruiter, "PUT", app+"/interviewers/alice", nil), 204)
+	if n, hidden, _ := read(s.hmAlice); n != 0 || !hidden {
+		t.Errorf("re-assigned manager can read feedback: %d %v", n, hidden)
+	}
+	// 4. a draft scorecard row alone also keeps you blind
+	s.want(s.do(s.hmAlice, "PUT", app+"/scorecards/mine", map[string]any{"rating": 2, "recommendation": "no"}), 200)
+	s.want(s.do(s.recruiter, "DELETE", app+"/interviewers/alice", nil), 204)
+	if n, hidden, body := read(s.hmAlice); n != 1 || !hidden || strings.Contains(body, "IVY-SECRET") {
+		t.Errorf("a manager with a draft card can read feedback: %d %v", n, hidden) // n=1 is her own draft
+	}
+	// 5. the same holds for recruiters and admins who were ever assigned
+	for name, tok := range map[string]string{"recruiter": s.recruiter, "admin": adminTok} {
+		subj := map[string]string{"recruiter": "rita", "admin": bootstrapSubject}[name]
+		other := map[string]string{"recruiter": adminTok, "admin": s.recruiter}[name]
+		s.want(s.do(other, "PUT", app+"/interviewers/"+subj, nil), 204)
+		s.want(s.do(other, "DELETE", app+"/interviewers/"+subj, nil), 204)
+		if n, hidden, _ := read(tok); n != 0 || !hidden {
+			t.Errorf("a previously assigned %s can read feedback: %d %v", name, n, hidden)
+		}
+	}
+	// 6. once she submits, she sees it, and may then remove herself
+	s.want(s.do(s.recruiter, "PUT", app+"/interviewers/alice", nil), 204)
+	s.want(s.do(s.hmAlice, "POST", app+"/scorecards/mine/submit", nil), 200)
+	if n, hidden, body := read(s.hmAlice); n != 2 || hidden || !strings.Contains(body, "IVY-SECRET") {
+		t.Errorf("after submitting: %d %v", n, hidden)
+	}
+	s.want(s.do(s.hmAlice, "DELETE", app+"/interviewers/alice", nil), 204)
+	// assignments are audited with the subject
+	log := s.want(s.do(adminTok, "GET", "/v1/audit?limit=200", nil), 200).str()
+	if !strings.Contains(log, `"action":"interviewer.remove"`) || !strings.Contains(log, `"action":"interviewer.assign"`) || !strings.Contains(log, "subject=alice") {
+		t.Error("assign and unassign are not audited")
+	}
+	// a removed interviewer can no longer reach the application as an interviewer
+	if r := s.do(s.ivy, "GET", app, nil); r.Code != 200 {
+		t.Errorf("ivy still assigned: %d", r.Code)
+	}
+	s.want(s.do(s.recruiter, "DELETE", app+"/interviewers/ivy", nil), 204)
+	if r := s.do(s.ivy, "GET", app, nil); r.Code != 404 {
+		t.Errorf("a removed interviewer still reaches the application: %d", r.Code)
+	}
 }

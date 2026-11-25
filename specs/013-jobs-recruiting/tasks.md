@@ -21,6 +21,12 @@ Order is the order the work was done. `[x]` = done and tested offline.
 - [x] T009 Idle RAM measured locally (research R8).
 - [x] T010 `docs/recruiting.md` with the honest limits of board access and the legal disclaimer.
 
+## Phase 4: QA round 1 fixes (PR #19)
+
+- [x] T011 Blind feedback bypass: soft-removed assignments, blindness from "ever assigned or has a scorecard row", no self-unassign before submitting, audited assign/unassign; regression `TestBlindFeedbackSurvivesUnassignAndReassign` (fails without the fix).
+- [x] T012 Diversity data: counters instead of rows (migration 003), whole-question suppression, no per-job report; regression checks the table shape.
+- [x] T013 Minors: `others_hidden` flag instead of a count; editing an approved job withdraws approval (open job paused); `DecideApproval` checks rows affected; `scanner_required` defaults to true and the form hides the resume field; retention purges write tombstones; remote JSON-LD always has `applicantLocationRequirements`; docs for timing-token replay, plaintext name, scanner and magic-byte limits.
+
 ## Known gaps (not done in this slice)
 
 - [ ] Recruiter web UI; interview scheduling and offer letters.

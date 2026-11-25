@@ -10,9 +10,9 @@ SQLite, `core/jobs/migrations`. Timestamps are unix seconds UTC. Columns ending 
 | `candidates` | one person, unique by `email_hash` | sealed email, phone, address, salary expectation, notes; consent version and time; talent-pool flag; `retain_until` (NULL while an application is active); `legal_hold`; `erased_at` |
 | `applications` | candidate x job, unique pair | stage, status active/rejected/withdrawn/hired, sealed cover letter and rejection note, resume metadata only (opaque key, name, type, size, sha256, scan verdict) |
 | `stage_history` | every stage change | actor and time, no free text |
-| `interviewers` | assignment of a login to an application | gates scorecards and interviewer visibility |
+| `interviewers` | assignment of a login to an application | gates scorecards and interviewer visibility; soft-removed (`removed_at`) so "ever assigned" survives |
 | `scorecards` | one per (application, author) | rating 1-4, recommendation, sealed comments, draft or submitted |
-| `eeo_responses` | voluntary diversity answers | **no candidate key, no foreign key, no timestamp finer than a month**; only aggregates are read |
+| `eeo_counts` | voluntary diversity answers as counters | key (month, field, value), `WITHOUT ROWID`: **no per-response row, no id, no job, no timestamp finer than a month**; only whole-organisation aggregates are read |
 | `api_tokens` | hashed secrets | role, job scope, expiry, revocation |
 | `audit_log` | append-only, hash-chained | triggers refuse UPDATE and DELETE; ids and field names only |
 | `erasures` | tombstones (subject, class, date) | unique per subject and class; feed for the backup ledger |
@@ -27,7 +27,7 @@ SQLite, `core/jobs/migrations`. Timestamps are unix seconds UTC. Columns ending 
 | `candidate-evaluations` | scorecards, rejection notes | with `candidate-pii` |
 | `eeo-aggregate` | anonymous diversity rows | 3 years |
 
-Erasure and retention purge the three candidate classes and leave an id-only shell (candidate id, application ids, stages, dates) so pipeline reports stay consistent. Shells with no remaining application are deleted by the sweep.
+Erasure and retention (both write tombstones) purge the three candidate classes and leave an id-only shell (candidate id, application ids, stages, dates) so pipeline reports stay consistent. Shells with no remaining application are deleted by the sweep.
 
 ## State rules
 

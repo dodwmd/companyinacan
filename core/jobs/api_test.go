@@ -327,7 +327,12 @@ func TestJobLifecycleAndValidation(t *testing.T) {
 	ver := r.Hdr.Get("ETag")
 	req := map[string]any{"title": "Staff Platform Engineer"}
 	e.want(e.doIfMatch(adminTok, "PATCH", "/v1/jobs/"+id, `"1"`, req), 412)
-	e.want(e.doIfMatch(adminTok, "PATCH", "/v1/jobs/"+id, ver, req), 200)
+	edited := e.want(e.doIfMatch(adminTok, "PATCH", "/v1/jobs/"+id, ver, req), 200).m(t)
+	if edited["approval"] != "none" {
+		t.Errorf("editing an approved requisition kept its approval: %v", edited["approval"])
+	}
+	e.want(e.do(adminTok, "POST", "/v1/jobs/"+id+"/approval-requests", nil), 200)
+	e.want(e.do(admin2, "POST", "/v1/jobs/"+id+"/approval", map[string]any{"decision": "approve"}), 200)
 	e.want(e.do(adminTok, "POST", "/v1/jobs/"+id+"/transitions", map[string]any{"to": "open"}), 200)
 	// illegal moves
 	if r := e.do(adminTok, "POST", "/v1/jobs/"+id+"/transitions", map[string]any{"to": "draft"}); r.Code != 409 {

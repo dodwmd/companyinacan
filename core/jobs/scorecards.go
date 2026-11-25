@@ -31,14 +31,15 @@ type ScorecardInput struct {
 // ScorecardList is what a caller may see of an application's feedback.
 type ScorecardList struct {
 	Items []Scorecard `json:"items"`
-	// HiddenUntilSubmitted counts submitted scorecards of other people that stay hidden because
-	// the caller is an interviewer on this application who has not submitted their own yet.
-	HiddenUntilSubmitted int `json:"hidden_until_submitted"`
+	// OthersHidden is true when other people's submitted feedback exists but stays hidden because
+	// the caller is (or was) an interviewer on this application and has not submitted their own.
+	// It is a flag, not a count, so how many colleagues have finished is not leaked.
+	OthersHidden bool `json:"others_hidden"`
 }
 
 func (s *Store) isInterviewer(ctx context.Context, q dbq, appID, subject string) (bool, error) {
 	var one int
-	err := q.QueryRowContext(ctx, `SELECT 1 FROM interviewers WHERE application_id = ? AND subject = ?`, appID, subject).Scan(&one)
+	err := q.QueryRowContext(ctx, `SELECT 1 FROM interviewers WHERE application_id = ? AND subject = ? AND removed_at IS NULL`, appID, subject).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -177,10 +178,13 @@ func (s *Store) readScorecards(ctx context.Context, appID, viewer string, ownOnl
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	assigned, err := s.isInterviewer(ctx, s.rdb, appID, viewer)
-	if err != nil {
+	// Blind until you have submitted, for anyone who has EVER been assigned or has any
+	// scorecard row (draft or submitted) here, whatever their role and even after removal.
+	var ever int
+	if err := s.rdb.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM interviewers WHERE application_id = ?1 AND subject = ?2) OR EXISTS (SELECT 1 FROM scorecards WHERE application_id = ?1 AND author = ?2)`, appID, viewer).Scan(&ever); err != nil {
 		return nil, err
 	}
+	assigned := ever == 1
 	mySubmitted := false
 	for _, r := range all {
 		if r.sc.Author == viewer && r.sc.Status == "submitted" {
@@ -198,7 +202,7 @@ func (s *Store) readScorecards(ctx context.Context, appID, viewer string, ownOnl
 		case r.sc.Status != "submitted":
 			continue // other people's drafts are never visible
 		case blind:
-			out.HiddenUntilSubmitted++
+			out.OthersHidden = true
 			continue
 		}
 		c, err := s.unseal("scorecards", r.sc.ID, "comments_sealed", r.sealed)

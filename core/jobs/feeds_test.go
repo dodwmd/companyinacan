@@ -180,3 +180,19 @@ func TestFeedsOmitNonOpenAndEscape(t *testing.T) {
 		}
 	}
 }
+
+// Regression (QA): Google requires applicantLocationRequirements for TELECOMMUTE, also when the
+// job only names a location country.
+func TestRemoteJSONLDAlwaysHasApplicantLocationRequirements(t *testing.T) {
+	j := fixtureJobs()[1]
+	j.ApplicantCountries = nil
+	b, err := JobPostingJSONLD(testSite(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	if reqs, _ := m["applicantLocationRequirements"].([]any); m["jobLocationType"] != "TELECOMMUTE" || len(reqs) != 1 {
+		t.Errorf("remote JobPosting without applicant countries: %s", b)
+	}
+}

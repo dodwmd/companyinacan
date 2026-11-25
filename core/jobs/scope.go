@@ -51,7 +51,7 @@ func (p *Principal) appPred(a, j string) (string, []any) {
 		parts = append(parts, j+".hiring_manager = ?")
 		args = append(args, p.Subject)
 	case RoleInterviewer:
-		parts = append(parts, "EXISTS (SELECT 1 FROM interviewers iv WHERE iv.application_id = "+a+".id AND iv.subject = ?)")
+		parts = append(parts, "EXISTS (SELECT 1 FROM interviewers iv WHERE iv.application_id = "+a+".id AND iv.subject = ? AND iv.removed_at IS NULL)")
 		args = append(args, p.Subject)
 	default:
 		parts = append(parts, "0")

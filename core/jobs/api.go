@@ -565,7 +565,7 @@ func (a *api) runRetention(w http.ResponseWriter, r *http.Request, _ *Principal)
 }
 
 func (a *api) eeoReport(w http.ResponseWriter, r *http.Request, p *Principal) {
-	rep, err := a.store.EEOAggregate(r.Context(), p, r.URL.Query().Get("job_id"))
+	rep, err := a.store.EEOAggregate(r.Context(), p)
 	if err != nil {
 		a.fail(w, err)
 		return

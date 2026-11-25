@@ -21,7 +21,7 @@ config:
   # Off by default: turn it on only when a proxy that appends the client address fronts the pod.
   trust_proxy: false
   rate_limit: { per_minute: 600, auth_failures_per_minute: 30, apply_per_hour: 10 }
-  apply: { max_resume_bytes: 5242880, collect_eeo: false, captcha_provider: "" }
+  apply: { max_resume_bytes: 5242880, collect_eeo: false, captcha_provider: "", scanner_required: true }   # true = no resume uploads until a real virus scanner is wired in
   approval: { required: false }
   webhook:
     url: ""          # can-core event endpoint for the outbox; empty = no events are queued

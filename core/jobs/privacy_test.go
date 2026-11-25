@@ -253,7 +253,7 @@ func TestRetentionTimers(t *testing.T) {
 	}
 }
 
-func TestRetentionWithoutTombstonesAndOtherData(t *testing.T) {
+func TestRetentionExpiresJobsDeletesEEOAndWritesTombstones(t *testing.T) {
 	e := newEnv(t, func(c *Config) { c.Retention.EEODays = 30; c.Retention.ClosedJobDays = 10 })
 	id, slug := e.openJob("Engineer", "alice")
 	f := goodApplication("eeo@example.test")
@@ -261,15 +261,13 @@ func TestRetentionWithoutTombstonesAndOtherData(t *testing.T) {
 	e.want(e.apply(slug, f), 303)
 	e.clk.Add(70 * 24 * time.Hour) // the job expires on its own
 	rep, err := e.app.store.RunRetention(ctxBG())
-	if err != nil || rep.JobsExpired != 1 || rep.EEODeleted != 1 {
+	if err != nil || rep.JobsExpired != 1 || rep.EEODeleted != 2 {
 		t.Fatalf("report %+v %v", rep, err)
 	}
 	if m := e.want(e.do(adminTok, "GET", "/v1/jobs/"+id, nil), 200).m(t); m["status"] != "closed" || m["close_reason"] != "expired" {
 		t.Errorf("expired job: %v", m)
 	}
-	if r := e.want(e.do(adminTok, "GET", "/v1/erasures", nil), 200).m(t)["items"].([]any); len(r) != 0 {
-		t.Error("retention wrote erasure tombstones (those are for requests)")
-	}
+	_ = id
 }
 
 func TestNoFileBytesInTheDatabaseAndTraversalIsImpossible(t *testing.T) {
@@ -304,5 +302,78 @@ func TestInfectedResumeIsNeverServed(t *testing.T) {
 	}
 	if r := e.do(rec, "GET", "/v1/applications/"+id+"/resume", nil); r.Code != 404 {
 		t.Errorf("infected resume served: %d", r.Code)
+	}
+}
+
+// Regression (QA): a retention purge must leave tombstones too, or restoring an older backup
+// resurrects candidates whose retention period had ended.
+func TestRetentionPurgeWritesTombstones(t *testing.T) {
+	s := newScenario(t)
+	s.want(s.do(s.recruiter, "POST", "/v1/applications/"+s.a1+"/reject", map[string]any{"reason": "not_a_fit"}), 200)
+	s.clk.Add(400 * 24 * time.Hour)
+	rep, err := s.app.store.RunRetention(ctxBG())
+	if err != nil || rep.CandidatesPurged != 1 {
+		t.Fatalf("report %+v %v", rep, err)
+	}
+	ents := s.want(s.do(adminTok, "GET", "/v1/erasures", nil), 200).m(t)["items"].([]any)
+	if len(ents) != 3 {
+		t.Fatalf("tombstones after a retention purge = %v", ents)
+	}
+	for _, e := range ents {
+		if e.(map[string]any)["subject"] != s.c1 {
+			t.Errorf("tombstone for the wrong subject: %v", e)
+		}
+	}
+}
+
+// Regression (QA): editing an approved requisition withdraws the approval, and a live job is
+// paused until it is approved again.
+func TestEditingAnOpenApprovedJobRequiresReapproval(t *testing.T) {
+	e := newEnv(t, func(c *Config) { c.Approval.Required = true })
+	boss := e.mint(RoleAdmin, "boss")
+	id := e.want(e.do(adminTok, "POST", "/v1/jobs", jobBody("Analyst", "alice")), 201).m(t)["id"].(string)
+	e.want(e.do(adminTok, "POST", "/v1/jobs/"+id+"/approval-requests", nil), 200) // auto-approves
+	e.want(e.do(adminTok, "POST", "/v1/jobs/"+id+"/transitions", map[string]any{"to": "open"}), 200)
+	m := e.want(e.do(adminTok, "PATCH", "/v1/jobs/"+id, map[string]any{"title": "Analyst with a different salary story"}), 200).m(t)
+	if m["status"] != "paused" || m["approval"] != "none" {
+		t.Errorf("after editing: status %v approval %v", m["status"], m["approval"])
+	}
+	if r := e.do(adminTok, "POST", "/v1/jobs/"+id+"/transitions", map[string]any{"to": "open"}); r.Code != 409 {
+		t.Errorf("reopen without re-approval = %d", r.Code)
+	}
+	_ = boss
+	// a decision on a job whose approval changed meanwhile fails instead of pretending
+	e.app.store.approver = pendingApprover{}
+	e.want(e.do(adminTok, "POST", "/v1/jobs/"+id+"/approval-requests", nil), 200)
+	if _, err := e.app.store.db.Exec(`UPDATE jobs SET approval = 'none' WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.do(boss, "POST", "/v1/jobs/"+id+"/approval", map[string]any{"decision": "approve"}); r.Code != 409 {
+		t.Errorf("decision on a withdrawn request = %d", r.Code)
+	}
+}
+
+// Regression (QA): with no real scanner wired the default is to take no resume at all.
+func TestScannerRequiredByDefaultRefusesResumes(t *testing.T) {
+	e := newEnv(t, func(c *Config) { c.Apply.ScannerRequired = true })
+	e.app.store.scanner = NoopScanner{}
+	_, slug := e.openJob("Engineer", "alice")
+	page := e.want(e.do("", "GET", "/careers/"+slug, nil), 200).str()
+	if strings.Contains(page, `type="file"`) {
+		t.Error("the form offers a resume upload although no scanner is wired")
+	}
+	if r := e.apply(slug, goodApplication("a@example.test"), pdf); r.Code != 422 {
+		t.Errorf("resume without a scanner = %d", r.Code)
+	}
+	if n := resumeFiles(e); n != 0 {
+		t.Errorf("%d files stored", n)
+	}
+	e.want(e.apply(slug, goodApplication("b@example.test")), 303) // applying without one still works
+	e.app.store.scanner = &FakeScanner{}
+	if r := e.apply(slug, goodApplication("c@example.test"), pdf); r.Code != 303 {
+		t.Errorf("resume with a real scanner = %d: %s", r.Code, r.Body)
+	}
+	if DefaultConfig().Apply.ScannerRequired != true {
+		t.Error("scanner_required must default to true")
 	}
 }

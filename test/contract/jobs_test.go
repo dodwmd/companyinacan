@@ -119,6 +119,9 @@ func TestJobsChartAndImage(t *testing.T) {
 	if cfg["trust_proxy"] != false {
 		t.Error("trust_proxy must default to false")
 	}
+	if asMap(cfg["apply"])["scanner_required"] != true {
+		t.Error("resume uploads must stay off until a real scanner is wired (scanner_required: true)")
+	}
 	if asMap(cfg["apply"])["collect_eeo"] != false {
 		t.Error("collecting diversity data must be off by default")
 	}

@@ -89,6 +89,7 @@ func DefaultConfig() *Config {
 	c.Apply.ConsentVersion = "v1"
 	c.Apply.ConsentText = "I agree that the company processes my application data to consider me for this role and keeps it for the retention period stated in its privacy notice."
 	c.Apply.DefaultValidDays = 60
+	c.Apply.ScannerRequired = true // no resume is accepted until a real scanner is wired, unless the operator turns this off
 	c.EEO.MinCell = 5
 	c.Retention.RejectedDays = 365
 	c.Retention.TalentPoolDays = 730

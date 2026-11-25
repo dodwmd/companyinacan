@@ -211,7 +211,7 @@ func (s *Store) GetApplication(ctx context.Context, p *Principal, id string) (*A
 }
 
 func (s *Store) interviewersOf(ctx context.Context, appID string) ([]string, error) {
-	rows, err := s.rdb.QueryContext(ctx, `SELECT subject FROM interviewers WHERE application_id = ? ORDER BY subject`, appID)
+	rows, err := s.rdb.QueryContext(ctx, `SELECT subject FROM interviewers WHERE application_id = ? AND removed_at IS NULL ORDER BY subject`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -476,14 +476,17 @@ func (s *Store) AssignInterviewer(ctx context.Context, p *Principal, appID, subj
 		if _, err := s.loadAppForWrite(ctx, tx, p, appID); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO interviewers (application_id, subject, assigned_by, at) VALUES (?,?,?,?)`, appID, subject, p.Subject, ts(s.now())); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO interviewers (application_id, subject, assigned_by, at) VALUES (?,?,?,?) ON CONFLICT (application_id, subject) DO UPDATE SET removed_at = NULL, assigned_by = excluded.assigned_by`, appID, subject, p.Subject, ts(s.now())); err != nil {
 			return err
 		}
-		return s.audit(ctx, tx, p.Subject, "interviewer.assign", "application:"+appID, nil, "ok")
+		return s.audit(ctx, tx, p.Subject, "interviewer.assign", "application:"+appID, []string{"subject=" + subject}, "ok")
 	})
 }
 
-// RemoveInterviewer removes an assignment and any draft scorecard (a submitted one stays).
+// RemoveInterviewer ends an assignment. The row is kept (soft removal) because blind feedback
+// depends on "has ever been assigned": unassigning yourself must not unlock your colleagues'
+// feedback. You cannot remove yourself until you have submitted a scorecard; someone removed by
+// another person stays blind. Draft scorecards stay too, for the same reason.
 func (s *Store) RemoveInterviewer(ctx context.Context, p *Principal, appID, subject string) error {
 	if !p.Can(ActAssign) {
 		return ErrForbidden
@@ -492,16 +495,19 @@ func (s *Store) RemoveInterviewer(ctx context.Context, p *Principal, appID, subj
 		if _, err := s.loadAppForWrite(ctx, tx, p, appID); err != nil {
 			return err
 		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM interviewers WHERE application_id = ? AND subject = ?`, appID, subject)
+		if subject == p.Subject {
+			var one int
+			if tx.QueryRowContext(ctx, `SELECT 1 FROM scorecards WHERE application_id = ? AND author = ? AND status = 'submitted'`, appID, subject).Scan(&one) != nil {
+				return conflict("you cannot remove your own assignment before submitting your scorecard")
+			}
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE interviewers SET removed_at = ? WHERE application_id = ? AND subject = ? AND removed_at IS NULL`, ts(s.now()), appID, subject)
 		if err != nil {
 			return err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
 			return ErrNotFound
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM scorecards WHERE application_id = ? AND author = ? AND status = 'draft'`, appID, subject); err != nil {
-			return err
-		}
-		return s.audit(ctx, tx, p.Subject, "interviewer.remove", "application:"+appID, nil, "ok")
+		return s.audit(ctx, tx, p.Subject, "interviewer.remove", "application:"+appID, []string{"subject=" + subject}, "ok")
 	})
 }

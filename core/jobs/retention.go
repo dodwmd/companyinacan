@@ -333,6 +333,11 @@ func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 				if err := s.purgeClass(ctx, tx, d.id, c); err != nil {
 					return err
 				}
+				// A tombstone for retention purges too, so a restore from an older backup
+				// cannot resurrect candidates whose retention period has ended.
+				if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?)`, d.id, c, s.today(), ts(s.now())); err != nil {
+					return err
+				}
 			}
 			return s.audit(ctx, tx, "system", "candidate.retention_purge", "candidate:"+d.id, nil, "ok")
 		})
@@ -357,7 +362,7 @@ func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 	}
 	// 4. Anonymous diversity responses.
 	if d := s.cfg.Retention.EEODays; d > 0 {
-		res, err := s.db.ExecContext(ctx, `DELETE FROM eeo_responses WHERE month < ?`, now.AddDate(0, 0, -d).UTC().Format("2006-01"))
+		res, err := s.db.ExecContext(ctx, `DELETE FROM eeo_counts WHERE month < ?`, now.AddDate(0, 0, -d).UTC().Format("2006-01"))
 		if err != nil {
 			return rep, err
 		}

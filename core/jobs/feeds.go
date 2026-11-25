@@ -152,7 +152,11 @@ func JobPostingJSONLD(site SiteInfo, j *Job) ([]byte, error) {
 	}
 	if j.Remote == "remote" {
 		ld.LocationType = "TELECOMMUTE"
-		for _, c := range j.ApplicantCountries {
+		countries := j.ApplicantCountries
+		if len(countries) == 0 && j.Location.Country != "" {
+			countries = []string{j.Location.Country} // Google requires applicantLocationRequirements for TELECOMMUTE
+		}
+		for _, c := range countries {
 			ld.Applicant = append(ld.Applicant, ldCountry{Type: "Country", Name: c})
 		}
 	}

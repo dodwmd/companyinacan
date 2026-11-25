@@ -84,6 +84,7 @@ func newEnv(t *testing.T, mut func(*Config)) *env {
 	cfg.RateLimit.AuthFailuresPerMin = 5
 	cfg.RateLimit.ApplyPerHour = 1000
 	cfg.Apply.CollectEEO = true
+	cfg.Apply.ScannerRequired = false
 	hook := newSink()
 	t.Cleanup(hook.srv.Close)
 	cfg.Webhook.URL = hook.srv.URL

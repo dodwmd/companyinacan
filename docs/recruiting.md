@@ -47,18 +47,27 @@ Anything outside a caller's scope is a 404, so ids cannot be probed. Scope is ap
 query as a parenthesised clause, whatever filters are added.
 
 **Blind feedback.** A scorecard is private to its author until submitted, and submitted scorecards
-are final. Anyone assigned as an interviewer on an application (whatever their role) sees other
-people's submitted feedback only after submitting their own; until then the response says how many
-are hidden.
+are final. Anyone who has **ever** been assigned as an interviewer on an application, or has any
+scorecard row on it (draft or submitted), whatever their role, sees other people's submitted
+feedback only after submitting their own. Unassigning is a soft removal: the record stays, so
+removing yourself, reading and re-assigning does not work; you cannot remove your own assignment
+before submitting, and assign and unassign are audited. Until then the response says only that
+other feedback is hidden (`others_hidden`), not how many colleagues have finished.
 
 **Diversity (EEO) data.** Off by default (`collect_eeo`). Whether to collect it is a legal decision
 that varies by country: required or encouraged in some, restricted in others. When on, the answers
-are voluntary, stored in a table with no link to a candidate or application and a month instead of
-a timestamp, never shown to interviewers or in any candidate view, and read only as aggregates by an
-admin with cells under `eeo.min_cell` (default 5) suppressed. Small-cell suppression lowers
-re-identification risk; it is not formal anonymisation. Because the answers are not linked to a
-person, an erasure request cannot find and remove one person's answers; the aggregate is anonymous
-by construction and is deleted after `eeo_days`.
+are voluntary and stored only as **counters** per month, field and answer (`eeo_counts`): no
+per-response row, no id, no job, no timestamp finer than a month, `WITHOUT ROWID` so there is no
+insertion sequence. (A first design stored one row per response; its row order tracked application
+order and could be lined up with candidates by anyone holding the file or a backup.) The answers
+are never shown to interviewers or in any candidate view and are read only as organisation-wide
+aggregates by an admin. If any answer of a question has fewer than `eeo.min_cell` (default 5)
+responses, the whole question is suppressed, so a hidden cell cannot be recovered from the total;
+per-job reports are not offered, so a global and a per-job report cannot be subtracted.
+**Residual risk:** this is not formal anonymisation. Someone who can read the database file before
+and after a single submission (for example two backups taken minutes apart) can see which counters
+moved. Because the answers are not linked to a person, an erasure request cannot remove one
+person's answers; the counters are deleted after `eeo_days`.
 
 ## Candidate data, consent and retention
 
@@ -71,18 +80,28 @@ by construction and is deleted after `eeo_days`.
   re-seals old values. The email dedupe hash is an HMAC under a separate key (`CAN_JOBS_HASH_KEY`),
   so a stolen database cannot be checked against a list of known addresses; changing that key
   breaks duplicate detection for existing candidates.
+* **Plaintext name.** `candidates.name` is stored unsealed so lists and name search work; email,
+  phone, address, salary expectation and notes are sealed. A database file therefore shows names.
+  Erasure and retention replace it with `[erased]`.
 * **Duplicates.** A candidate is unique by email hash. A repeat application adds an application to
   the same candidate; a repeat for the same job is accepted and dropped without telling the
   applicant. The public form never changes an existing candidate's profile.
 * **Resumes.** Bytes live on the volume under random names, never in the database. Limits: size
   (`max_resume_bytes`, default 5 MiB), type (PDF, DOCX, ODT, RTF, plain text; the content must match
   the extension). The `Scanner` hook runs before the application is stored; a scan error refuses the
-  upload. **The default scanner scans nothing** and marks files `skipped`; wire a real scanner (for
-  example a ClamAV client) and set `apply.scanner_required` before relying on this.
+  upload. **The built-in scanner scans nothing** (it marks files `skipped`), so `apply.scanner_required`
+  defaults to **true**: until a real scanner (for example a ClamAV client) is wired in, the form
+  shows no resume field and uploads are refused; applying without a resume still works. Setting it
+  to false accepts unscanned files, which readers can then download (the download carries
+  `X-Resume-Scan: skipped`). The magic-byte check only proves the first bytes look like the claimed
+  type: a DOCX or ODT is any ZIP, and a PDF can carry active content. Treat every resume as untrusted
+  and open it in a sandboxed viewer.
 * **Retention.** The timer is off while any application is active; after the last decision it runs
   `rejected_days` (default 365), `talent_pool_days` (730, with consent) or `hired_days` (180; 0
   keeps the record until erased). A sweep every `sweep_interval_hours` scrubs due candidates and
-  expires jobs past `validThrough`. Legal hold blocks retention and erasure.
+  expires jobs past `validThrough`. Legal hold blocks retention and erasure. A retention purge
+  writes the same erasure tombstones as a request, so restoring an older backup cannot bring back
+  candidates whose retention period had ended.
 * **Erasure.** `POST /v1/candidates/{id}/erasure` (unscoped admin) removes resume files, scorecards
   and notes, scrubs name and contact data, leaves an id-only shell so reports stay consistent, then
   vacuums the database and truncates the WAL. It writes three tombstones (`candidate-pii`,
@@ -103,7 +122,9 @@ by construction and is deleted after `eeo_days`.
 The apply endpoint is protected like the forms gateway: a signed timing token (rejects instant
 submissions and expired forms), a honeypot field (a bot is told it succeeded), a same-origin check,
 a per-address hourly rate limit (only the public form is limited; API credentials are never
-throttled), size limits, and an optional CAPTCHA. Pages carry a strict CSP, `nosniff` and no
+throttled), size limits, and an optional CAPTCHA. The timing token is stateless (signed, bound to
+the job, valid for `token_ttl_minutes`), so it can be replayed within its lifetime; the rate limit,
+the duplicate rule and the CAPTCHA are what bound abuse, not the token. Pages carry a strict CSP, `nosniff` and no
 third-party resources. There is no email verification of the applicant's address in this slice.
 
 Serve the public paths (`/careers`, `/feeds`, `/robots.txt`) through the ingress and keep `/v1`
@@ -131,7 +152,8 @@ curl -sX POST $API/v1/jobs/$ID/transitions -H "Authorization: Bearer $RECRUITER"
 ```
 
 Requisition approval is a hook (`Approver`): by default a job is approved immediately; with
-`approval.required` a job cannot open until an approver (never the requester) approves it. Wiring
+`approval.required` a job cannot open until an approver (never the requester) approves it. Editing
+an approved job withdraws the approval and pauses it if it was open, so unapproved text is never live. Wiring
 can-core's approvals capability is a later step.
 
 ## Known limits of this slice

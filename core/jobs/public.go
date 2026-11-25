@@ -101,7 +101,7 @@ var pageTmpl = template.Must(template.New("page").Funcs(template.FuncMap{
 <label>Email <input type="email" name="email" required maxlength="254" autocomplete="email"></label>
 <label>Phone (optional) <input type="tel" name="phone" maxlength="30" autocomplete="tel"></label>
 <label>Cover letter (optional) <textarea name="cover_letter" rows="6" maxlength="5000"></textarea></label>
-<label>Resume (optional; PDF, DOCX, ODT, RTF or text, up to {{.MaxMB}} MB) <input type="file" name="resume" accept=".pdf,.docx,.odt,.rtf,.txt"></label>
+{{if .ResumeOK}}<label>Resume (optional; PDF, DOCX, ODT, RTF or text, up to {{.MaxMB}} MB) <input type="file" name="resume" accept=".pdf,.docx,.odt,.rtf,.txt"></label>{{end}}
 {{if .EEO}}<fieldset><legend>Voluntary diversity questions (not shown to interviewers, kept apart from your application)</legend>
 {{range .EEO}}<label>{{.Label}} <select name="{{.Name}}"><option value="">Prefer not to answer</option>{{range .Options}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>{{end}}</fieldset>{{end}}
 <label class="check"><input type="checkbox" name="consent" required> {{.ConsentText}}</label>
@@ -126,6 +126,7 @@ type pageData struct {
 	Job         *Job
 	Notice      string
 	Accepting   bool
+	ResumeOK    bool
 	Token       string
 	MaxMB       int64
 	EEO         []eeoQ
@@ -295,6 +296,7 @@ func (p *publicHandler) detail(w http.ResponseWriter, r *http.Request) {
 		d.LD = template.JS(ld) //nolint:gosec // json.Marshal output: <, > and & are escaped, so it cannot close the script element
 		d.Token = p.signer.Issue(j.Slug)
 		d.MaxMB = p.cfg.Apply.MaxResumeBytes >> 20
+		d.ResumeOK = p.store.resumesOpen()
 		d.ConsentText = p.cfg.Apply.ConsentText
 		if p.cfg.Apply.CollectEEO {
 			for _, f := range EEOFields {
@@ -548,6 +550,9 @@ func (p *publicHandler) readForm(ctx context.Context, r *http.Request) (*applyFo
 }
 
 func (p *publicHandler) storeResume(ctx context.Context, part *multipart.Part) (*ResumeMeta, int, string) {
+	if !p.store.resumesOpen() {
+		return nil, http.StatusUnprocessableEntity, "Resume uploads are not available right now. You can apply without one."
+	}
 	name := SafeFilename(part.FileName())
 	head := make([]byte, 512)
 	n, err := io.ReadFull(part, head)
