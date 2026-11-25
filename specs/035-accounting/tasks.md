@@ -40,6 +40,8 @@ description: "Task list for Epic E15c: accounting interfaces"
 
 - [x] T017 Eighteen QA findings, one commit and a regression test each (`core/finance/qa_ledger_test.go`): bank number panic and transaction rollback; export cursor by posting number; CAMT dedup; one account and currency per file; purge foreign key; cut-over opening entry; hand reversal of manual journals only; payroll re-import; skipped rows and force import; linear CAMT remittance; bounded export batch; digit grouping; repeated sign-off; linking an existing payment; erasure report and no copied bank text; OFX leaves and currency; provider payment into a closed period; line moves
 
+- [x] T018 QA round 2: force on an imported file and forced keys that cumulative files recognise; export batches bounded by bytes (worst case measured, research R12); memo cut by characters; camt.053 only; CAMT keys from reference plus content; empty statements kept for their retention period
+
 ## Gaps (not done)
 
 - [ ] G01 `[V]` Real Xero, QuickBooks and Wave adapters (documented stubs only); they belong in their own module with their own credentials

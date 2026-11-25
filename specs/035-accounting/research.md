@@ -29,7 +29,7 @@ one transaction and reuses the idempotency on `(source, external_id)`: the exter
 - All: 2 MiB, 5000 rows, 1000-byte fields; control characters stripped from text.
 - Fuzzed (`FuzzParseCSV`, `FuzzParseOFX`, `FuzzParseCAMT053`, `FuzzPayrollCSV`, `FuzzAmountToMinor`) for 20 seconds each, 70 thousand to 1.4 million executions each: no panic, no invariant broken.
 
-**R7 Dedup keys.** Bank ids are unique per account in the table (`UNIQUE (bank_account_id, txn_key)`) with `INSERT ... ON CONFLICT DO NOTHING`; a file that repeats an id with different content is rejected (a corrupt file). Rows without an id get `h:` plus a hash of their content and their occurrence number among identical rows in the file, so two identical rows both import and a re-import produces the same keys. The whole file also has a SHA-256 per account.
+**R7 Dedup keys.** Bank ids are unique per account in the table (`UNIQUE (bank_account_id, txn_key)`) with `INSERT ... ON CONFLICT DO NOTHING`; a CSV or OFX file that repeats an id with different content is rejected (a corrupt file); CAMT references are combined with content (`servicerKeys`). Rows without an id get `h:` plus a hash of their content and their occurrence number among identical rows in the file, so two identical rows both import and a re-import produces the same keys. The whole file also has a SHA-256 per account.
 
 **R8 Seal key and AAD.** `CAN_FINANCE_SEAL_KEY` is a plain 32-byte key (the module has no keyring today, unlike people and jobs). Rotation would need a re-seal command and a key id; since the only sealed data is a number used to check a statement, the key is generated once and `NoRotate`. The bank account row id is the additional data, so a copied value does not open. The UI and API show only the last four characters, kept in clear in `last4`.
 
@@ -56,3 +56,8 @@ invoice purge deletes; unmatched ones are kept. Documented as a decision for the
 **R11 Known weaknesses.** Documents approved before the mappings are set are not back-filled: the cut-over posts their open balances (`docs/accounting.md`); other opening balances are a manual journal.
 `period_locks` (timesheets and expenses) and `ledger_closes` are separate on purpose (a payroll cut-off and an accounting close are different decisions) but a person must set both.
 An approval into a closed period fails rather than moving the date.
+
+**R12 Export memory (measured 2026-11-25, same build as R9, no UI, localhost).** 60 entries of 200 lines with every name and memo at its
+maximum in 4-byte characters, exported into 30 batches (largest 1.46 MB). Peak VmHWM: 18.8 MB idle, 32 MB after creating the entries, 42 MB
+after exporting, 44 MB after 90 sequential downloads, 50 MB after 90 downloads from 32 concurrent clients, against the 64 MiB limit. Two
+downloads at a time hold a file (`exportDownloads`); without that cap, eight concurrent clients reached 59 MB. Single runs, not on a cluster.
