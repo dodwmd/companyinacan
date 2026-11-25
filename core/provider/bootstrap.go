@@ -116,7 +116,11 @@ func Bootstrap(o BootstrapOptions) (string, error) {
 		return "", err
 	}
 	var b bytes.Buffer
-	if err := bootstrapTmpl.Execute(&b, o); err != nil {
+	data := struct {
+		BootstrapOptions
+		FirewallScript string
+	}{o, FirewallScript()}
+	if err := bootstrapTmpl.Execute(&b, data); err != nil {
 		return "", err
 	}
 	return b.String(), nil
@@ -152,11 +156,15 @@ func CloudInit(o BootstrapOptions) (string, error) {
 // is how `can up` (and status) knows a cloud-init run finished.
 const BootstrapDoneMarker = "/var/lib/can/bootstrap.done"
 
-// UninstallScript removes k3s and can-core state but leaves the box (and its
-// firewall and swap) alone, as `make down` promises for the ssh provider.
+// UninstallScript removes k3s, can-core state and the node isolation rules but
+// leaves the box (and its ufw firewall and swap) alone, as `make down` promises for the ssh provider.
 func UninstallScript() string {
 	return `#!/usr/bin/env bash
 set -euo pipefail
+echo "CAN_STEP: remove-node-firewall"
+if [ -x /usr/local/sbin/can-firewall ]; then
+  /usr/local/sbin/can-firewall uninstall
+fi
 echo "CAN_STEP: uninstall-k3s"
 if [ -x /usr/local/bin/k3s-uninstall.sh ]; then
   /usr/local/bin/k3s-uninstall.sh
@@ -227,14 +235,13 @@ if command -v ufw >/dev/null 2>&1; then
 {{- end}}
   ufw allow 80/tcp
   ufw allow 443/tcp
-  # k3s needs pod and service traffic to reach the host (API server, CoreDNS, kubelet)
+  # k3s needs pod and service traffic to reach the host (system pods use the API server). What
+  # pods may actually reach is narrowed by the node-firewall step below.
   ufw allow from "$POD_CIDR"
   ufw allow from "$SERVICE_CIDR"
   ufw allow in on cni0
   ufw allow in on flannel.1
-  # 6443 (k3s API) is not opened to the internet: can reaches it through an SSH tunnel. NOTE: the
-  # pod and service CIDR rules above mean PODS can still reach every node port, 6443 and the kubelet
-  # included (Phase 0, issue #13); NetworkPolicy does not prevent that on k3s either.
+  # 6443 (k3s API) is not opened to the internet: can reaches it through an SSH tunnel.
   ufw --force enable
 fi
 
@@ -317,6 +324,22 @@ case "$(k3s kubectl get nodes --no-headers 2>/dev/null || true)" in
   *" Ready"*) ;;
   *) echo "CAN_ERROR: node did not become Ready" >&2; exit 1 ;;
 esac
+
+# Pod-to-node isolation (specs/038-node-isolation): NetworkPolicy does not cover it on k3s.
+step node-firewall
+if ! command -v nft >/dev/null 2>&1; then
+  apt-get update -qq
+  apt-get install -y -qq nftables
+fi
+install -d -m 0755 /etc/can/firewall
+cat > /usr/local/sbin/can-firewall.new <<'CAN_FIREWALL_SCRIPT'
+{{.FirewallScript}}CAN_FIREWALL_SCRIPT
+chmod 0755 /usr/local/sbin/can-firewall.new
+mv /usr/local/sbin/can-firewall.new /usr/local/sbin/can-firewall
+/usr/local/sbin/can-firewall install || {
+  echo "CAN_ERROR: node isolation is not installed. Fix the cause above, then run on the server: bash /usr/local/sbin/can-bootstrap.sh" >&2
+  exit 1
+}
 
 echo "$want_config" > /var/lib/can/k3s-config.applied
 

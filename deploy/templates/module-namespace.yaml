@@ -105,7 +105,8 @@ spec:
         - {protocol: TCP, port: 3306}
     # The internet (SMTP, API calls), but not the node, the cluster CIDRs or link-local
     # (cloud metadata). NOTE (Phase 0, issue #13): on k3s this does NOT stop a pod reaching the node
-    # address or the API server; only a host firewall rule does.
+    # address or the API server; the host nftables rules of specs/038-node-isolation
+    # (core/provider/hostfw), installed by the server bootstrap, do.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

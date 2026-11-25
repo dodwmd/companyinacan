@@ -15,6 +15,7 @@ const (
 	StatusOptionalMissing = "optional-missing"
 	StatusUnreachable     = "unreachable" // installed, but the daemon or API did not answer (never fails doctor)
 	StatusNotRunning      = "not-running" // reachable, nothing deployed there
+	StatusFailed          = "failed"      // checked, and not as it must be
 )
 
 // Result is the outcome for one prerequisite.

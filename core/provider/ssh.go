@@ -86,7 +86,7 @@ func (p *SSH) Plan(_ context.Context, spec Spec, st *Store) ([]Action, error) {
 	ver := state.K3sVersion
 	return []Action{
 		{"ssh.preflight", fmt.Sprintf("check %s over ssh: OS, RAM >= %d MB, disk >= %d GB, ports 80/443/6443 free", t.Host, MinMemMB, MinDiskMB/1024), false},
-		{"ssh.bootstrap", fmt.Sprintf("install k3s %s (trimmed flags, kubelet fail-swap-on=false), swap, host firewall (22/80/443 + pod/service CIDR), image pre-seed (%d tarball(s))", bo.K3sVersion, len(bo.ImageTarballs)), ver == bo.K3sVersion && state.Done("ssh.bootstrap")},
+		{"ssh.bootstrap", fmt.Sprintf("install k3s %s (trimmed flags, kubelet fail-swap-on=false), swap, host firewall (22/80/443 + pod/service CIDR), pod-to-node isolation (nftables), image pre-seed (%d tarball(s))", bo.K3sVersion, len(bo.ImageTarballs)), ver == bo.K3sVersion && state.Done("ssh.bootstrap")},
 	}, nil
 }
 
