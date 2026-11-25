@@ -11,6 +11,9 @@ import (
 	"github.com/dodwmd/companyinacan/core/provider"
 )
 
+// KitCaveat is printed in the kit header and next to the hand-over.
+const KitCaveat = "this kit belongs to a repository that has no data yet; backups do not work until the dumps are mounted (docs/make-up.md, Known gaps)"
+
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // backup installs the backup script, unit and timer on the server (the same files `can backup
@@ -118,6 +121,7 @@ echo CAN_BACKUP_OK
 // noteKit hands the kit to the result and teaches the redactor its secrets, so a later error
 // message cannot echo them; the summary prints the kit through its own, unredacted writer.
 func (r *runner) noteKit(k *backup.Kit) {
+	k.Note = KitCaveat
 	r.res.Kit = k
 	if r.d.Redactor != nil {
 		for _, s := range []string{k.Restic.Password, k.Bucket.SecretAccessKey} {

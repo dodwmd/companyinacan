@@ -259,6 +259,9 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		}
 	}
 	var prep *stackPrep
+	if !sf.provisionOnly && sf.backupWanted() && !sf.allowBrokenBackup {
+		return usage("--backup-* is refused for now: it would install a timer and hand out a recovery kit for a repository that will never hold data, because the can-core pod cannot yet mount the host's dump directory (the can-system namespace's Pod Security level forbids hostPath), so every backup run exits 10. Pass --allow-broken-backup to proceed anyway; the kit then carries that caveat. See docs/make-up.md, Known gaps")
+	}
 	if !sf.provisionOnly {
 		// Everything that can be checked offline is checked before a server exists or is paid for.
 		if prep, err = t.stackPreflight(sf); err != nil {

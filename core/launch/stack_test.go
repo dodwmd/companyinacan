@@ -534,6 +534,24 @@ func TestCompanyChangedInClusterIsNotOverwrittenWithoutForce(t *testing.T) {
 	}
 }
 
+func TestCompanyReadFailureFailsClosed(t *testing.T) {
+	k := &fakeKube{rules: []kubeRule{{contains: "get configmap company", err: errors.New("Unable to connect to the server: tunnel down")}}}
+	o, d, _ := newStack(t, k, &fakeLoader{})
+	_, err := Run(context.Background(), o, d)
+	var pe *PhaseError
+	if !errors.As(err, &pe) || pe.Phase != "company" {
+		t.Fatalf("want a company PhaseError, got %v", err)
+	}
+	for _, c := range k.calls {
+		if strings.Contains(c.Stdin, "company.yaml: ") {
+			t.Fatal("must not apply a document it could not compare with the cluster's")
+		}
+	}
+	if !strings.Contains(strings.Join(k.calls[len(k.calls)-1].Args, " "), "--ignore-not-found") && len(k.called("--ignore-not-found")) == 0 {
+		t.Fatal("NotFound must be handled by --ignore-not-found, not by swallowing errors")
+	}
+}
+
 func TestCompanyUnchangedInClusterIsNotReapplied(t *testing.T) {
 	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
 	o, d, _ := newStack(t, k, &fakeLoader{})

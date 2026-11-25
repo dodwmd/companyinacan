@@ -1,7 +1,8 @@
 name: make-up-e2e
 
-# Not a required check (it is not in branch protection), but a failure is shown as a red job: it does
-# not use continue-on-error, which would report a failed test as success. Epic E24: runs the phases `can up` performs after a
+# Not a required check (it is not in branch protection). The test step has continue-on-error so the
+# diagnostics and summary steps run, and a final step fails the job when the test failed: the job has no
+# job-level continue-on-error, which would report a failed test as success. Epic E24: runs the phases `can up` performs after a
 # server exists (apply the platform base, load the images, deploy can-core, create the admin, push
 # company.yaml, publish the site, route it, install the backup timer on a fake host) against a real
 # k3d cluster, with the production code (core/launch) and a k3d stand-in for the provider. It then

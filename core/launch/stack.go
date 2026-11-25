@@ -401,7 +401,12 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 	}
 	// What is in the cluster now? Changes made there (the admin UI, `can apply`) must not be
 	// silently overwritten by a re-run of `can up`.
-	cur, gerr := r.kube(ctx, nil, "-n", SystemNS, "get", "configmap", "company", "-o", `jsonpath={.data.company\.yaml}`)
+	cur, gerr := r.kube(ctx, nil, "-n", SystemNS, "get", "configmap", "company", "--ignore-not-found", "-o", `jsonpath={.data.company\.yaml}`)
+	if gerr != nil {
+		// NotFound is not an error with --ignore-not-found, so this is the API, the tunnel or RBAC:
+		// applying blind could overwrite a document we could not read.
+		return fmt.Errorf("cannot read the company.yaml in the cluster, so cannot tell whether applying would overwrite changes: %w", gerr)
+	}
 	if gerr == nil && strings.TrimSpace(cur) != "" {
 		cs := sha256.Sum256([]byte(cur))
 		have := hex.EncodeToString(cs[:])

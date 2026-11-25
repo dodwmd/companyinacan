@@ -27,22 +27,23 @@ import (
 
 // stackFlags are the `can up` flags for everything after the server exists (epic E24).
 type stackFlags struct {
-	provisionOnly   bool
-	imagesFrom      string
-	releaseManifest string
-	printSecrets    bool
-	noDefaultBundle bool
-	writeBundle     bool
-	forceCompany    bool
-	domainLive      bool
-	acmeEmail       string
-	backupEndpoint  string
-	backupBucket    string
-	backupRegion    string
-	backupCreds     string
-	kitOut          string
-	kitPassFile     string
-	modulesDir      string
+	provisionOnly     bool
+	imagesFrom        string
+	releaseManifest   string
+	printSecrets      bool
+	noDefaultBundle   bool
+	writeBundle       bool
+	forceCompany      bool
+	allowBrokenBackup bool
+	domainLive        bool
+	acmeEmail         string
+	backupEndpoint    string
+	backupBucket      string
+	backupRegion      string
+	backupCreds       string
+	kitOut            string
+	kitPassFile       string
+	modulesDir        string
 }
 
 func (f *stackFlags) register(cmd *cobra.Command) {
@@ -52,6 +53,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release manifest pinning every image by digest (default deploy/release-images.json when present)")
 	fl.BoolVar(&f.printSecrets, "print-secrets", false, "print the admin password, TOTP secret and recovery kit without a terminal (CI); never the default")
 	fl.BoolVar(&f.noDefaultBundle, "no-default-bundle", false, "do not add the forms module to the company pushed to the cluster")
+	fl.BoolVar(&f.allowBrokenBackup, "allow-broken-backup", false, "accept --backup-*  although backups cannot work yet (the can-core pod cannot mount the host dump directory); the kit is marked with that caveat")
 	fl.BoolVar(&f.writeBundle, "write-bundle", false, "also write the default bundle (the forms module) into company.yaml on disk, so `can apply` keeps it")
 	fl.BoolVar(&f.forceCompany, "force-company", false, "overwrite the company.yaml in the cluster even if it was changed there (admin UI, `can apply`) since the last `can up`")
 	fl.BoolVar(&f.domainLive, "domain-live", false, "the company domain's DNS records resolve to the server: also route and certify it (implied by dns.provider: cloudflare)")
@@ -294,7 +296,8 @@ func schemeOf(tls bool) string {
 // summarize prints the result. Secrets go to the raw stdout writer, never through the redacting
 // progress writer, and only in a terminal (after a confirmation) or with --print-secrets.
 func (t *target) summarize(cmd *cobra.Command, g *globalOpts, out io.Writer, res *upResult, lr *launch.Result, f *stackFlags) error {
-	raw := cmd.OutOrStdout()
+	ew := &errWriter{w: cmd.OutOrStdout()}
+	var raw io.Writer = ew
 	tty := lifecycle.isTTY()
 	showSecrets := tty || f.printSecrets
 
@@ -363,6 +366,7 @@ func (t *target) summarize(cmd *cobra.Command, g *globalOpts, out io.Writer, res
 			p("\nAdmin: %s. Lost it? kubectl -n can-system exec -i deploy/can-core -- /can-core admin reset-password --rotate-totp (password on stdin).\n", lr.AdminNote)
 		}
 		if lr.Kit != nil {
+			p("\nCAVEAT: %s\n", launch.KitCaveat)
 			switch {
 			case f.kitOut != "":
 				p("\nRecovery kit written, encrypted, to %s. Keep it and its passphrase away from this server.\n", f.kitOut)
@@ -386,6 +390,9 @@ func (t *target) summarize(cmd *cobra.Command, g *globalOpts, out io.Writer, res
 			p("  %-8s %-8s %6.1fs\n", ph.Name, status, ph.Seconds)
 		}
 		p("\nNext: add DNS records for your domain if you have not (above), then `can up --domain-live`; connect email (docs/email-policy.md); `can status` shows health.\n")
+	}
+	if ew.err != nil {
+		return t.fail(fmt.Errorf("writing the summary to stdout failed (%v): the credentials and kit are not counted as shown; run `can up` again", ew.err))
 	}
 	if adminShown {
 		if err := launch.MarkAdminShown(t.store); err != nil {
@@ -565,4 +572,22 @@ func writeFileAtomic(path string, b []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// errWriter remembers the first write error, so a secret that did not reach the operator (a closed
+// pipe, a full disk) is never counted as shown.
+type errWriter struct {
+	w   io.Writer
+	err error
+}
+
+func (e *errWriter) Write(b []byte) (int, error) {
+	if e.err != nil {
+		return 0, e.err
+	}
+	n, err := e.w.Write(b)
+	if err != nil {
+		e.err = err
+	}
+	return n, err
 }

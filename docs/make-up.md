@@ -239,6 +239,7 @@ Do not run this from CI. With a fresh Hetzner account:
   `company.yaml` it last pushed. If the ConfigMap in the cluster differs from that (changed in the admin UI or by
   `can apply`), the `company` phase stops and asks for `--force-company`; an identical document is not
   re-applied at all.
+- **The company guard has a window.** `can up` compares the cluster's `company.yaml` with what it last pushed just before applying; an edit made in the admin UI in the instant between that read and the apply can still be overwritten. Do not edit the company in the UI while `can up` runs.
 - **`--output json` never carries secrets without `--print-secrets`**, even in a terminal; in that case the
   credentials are *not* marked as shown, and the next run issues new ones.
 - `kubectl` is always pinned to this company's kubeconfig **and** its context, never to your current context.
@@ -246,7 +247,7 @@ Do not run this from CI. With a fresh Hetzner account:
 
 ## Known gaps
 
-- **Backups do not work yet, and `can up` says so.** The backup script needs can-core to write its dumps and a
+- **Backups do not work yet, so `--backup-*` is refused** unless you pass `--allow-broken-backup` (usage error, exit 2, before anything is provisioned). With it, the kit header says `CAVEAT: this kit belongs to a repository that has no data yet` and so does the summary. The backup script needs can-core to write its dumps and a
   completion marker to `/var/lib/can/dumps` on the host. The can-core pod cannot mount that directory: the
   `can-system` namespace enforces Pod Security `baseline`, which forbids `hostPath` volumes, so every backup run
   exits 10 (marker missing). With `--backup-*`, `can up` installs the timer and produces the kit but prints and
