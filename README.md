@@ -101,6 +101,11 @@ duties on approvals, and one policy layer per sensitive module. Known open issue
 plaintext, SSO covers the admin UI only, nothing here encrypts Kubernetes Secrets at rest, and the compose
 stack is not safe to expose. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
+## Observability
+
+Every service has a token-protected metrics listener, `/readyz`, request ids and log redaction, and the compose stack has an
+optional Prometheus and Grafana profile: see [docs/observability.md](docs/observability.md).
+
 ## Documentation map
 
 Start at [docs/index.md](docs/index.md). The architecture and roadmap are in [SPEC.md](SPEC.md), the epic
