@@ -417,7 +417,7 @@ func (s *Server) setPref(w http.ResponseWriter, r *http.Request, p principal) {
 	}
 	switch err := s.Notify.SetPref(r.Context(), p.Subject(), b.Type, b.Channel, b.Enabled); {
 	case notify.ErrInvalid(err):
-		httpx.Problem(w, http.StatusBadRequest, "type, channel (email or inapp) or subject is invalid")
+		httpx.Problem(w, http.StatusBadRequest, "type, channel (email, inapp or webpush) or subject is invalid")
 	case err != nil:
 		s.internal(w, r, err)
 	default:

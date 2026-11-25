@@ -36,6 +36,8 @@ func (s *Server) platformRoutes() []route {
 		{"POST /notifications/settings", s.authed(s.notificationsSettings)},
 		{"POST /notifications/prefs", s.authed(s.notificationsPref)},
 		{"POST /notifications/{id}/read", s.authed(s.notificationRead)},
+		{"POST /notifications/push/test", s.authed(s.pushTest)},
+		{"POST /notifications/push/{id}/remove", s.authed(s.pushRemove)},
 		{"GET /access", s.authedPerm(rbac.PermManage, s.accessPage)},
 		{"POST /access/{username}/grant", s.authedPerm(rbac.PermManage, s.accessGrant)},
 		{"POST /access/{username}/revoke", s.authedPerm(rbac.PermManage, s.accessRevoke)},
@@ -461,7 +463,16 @@ type notifData struct {
 	NextURL                         string
 	Email, QuietStart, QuietEnd, TZ string
 	Digests                         []statusOption
-	EmailT, InAppT                  prefTable
+	EmailT, InAppT, PushT           prefTable
+	Devices                         []pushDeviceRow
+}
+
+type pushDeviceRow struct {
+	ID          int64
+	Label       string
+	Service     string
+	Added, Last time.Time
+	HasLast     bool
 }
 
 type prefTable struct {
@@ -543,11 +554,70 @@ func (s *Server) notificationsPage(w http.ResponseWriter, r *http.Request, sc *s
 	}
 	d.EmailT = prefTable{ID: "pe", Caption: s.msg("nt.channel_email"), CSRF: sc.Session.CSRF}
 	d.InAppT = prefTable{ID: "pi", Caption: s.msg("nt.channel_inapp"), CSRF: sc.Session.CSRF}
+	d.PushT = prefTable{ID: "pw", Caption: s.msg("nt.channel_push"), CSRF: sc.Session.CSRF}
 	for _, t := range prefTypes {
 		d.EmailT.Cells = append(d.EmailT.Cells, cell(notify.ChannelEmail, t))
 		d.InAppT.Cells = append(d.InAppT.Cells, cell(notify.ChannelInApp, t))
+		d.PushT.Cells = append(d.PushT.Cells, cell(notify.ChannelWebPush, t))
 	}
+	devs, err := s.Notify.Subscriptions(ctx, me)
+	if err != nil {
+		s.internal(w, r, sc, err)
+		return
+	}
+	for _, dv := range devs {
+		row := pushDeviceRow{ID: dv.ID, Label: dv.Label, Service: dv.Service, Added: dv.CreatedAt}
+		if dv.LastOK != nil {
+			row.Last, row.HasLast = *dv.LastOK, true
+		}
+		d.Devices = append(d.Devices, row)
+	}
+	// This page alone loads a script (static/push.js, the progressive enhancement that enables push
+	// on the current device) and so alone gets a CSP that allows same-origin scripts, the service
+	// worker registration and the same-origin API calls. Every other page keeps `script-src 'none'`.
+	w.Header().Set("Content-Security-Policy", pushPageCSP)
 	s.render(w, r, http.StatusOK, "notifications.html", s.page(r, sc, "notifications", s.msg("nt.title"), d))
+}
+
+const pushPageCSP = "default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+
+func (s *Server) pushTest(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
+	if s.Notify == nil {
+		s.fail(w, r, sc, http.StatusServiceUnavailable, "err.unavailable", "err.unavailable_msg")
+		return
+	}
+	switch _, err := s.Notify.SendTest(r.Context(), subjectOf(sc)); {
+	case errors.Is(err, notify.ErrNoSubscriptions):
+		s.fail(w, r, sc, http.StatusConflict, "err.push_no_device", "err.push_no_device_msg")
+	case errors.Is(err, notify.ErrPushRateLimited):
+		w.Header().Set("Retry-After", "30")
+		s.fail(w, r, sc, http.StatusTooManyRequests, "err.push_limited", "err.push_limited_msg")
+	case err != nil:
+		s.Log.Error("test push failed", "request_id", httpx.RequestID(r.Context()), "error", err)
+		s.fail(w, r, sc, http.StatusBadGateway, "err.push_failed", "err.push_failed_msg")
+	default:
+		s.redirect(w, r, "/notifications", "flash.push_test_sent")
+	}
+}
+
+func (s *Server) pushRemove(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
+	if s.Notify == nil {
+		s.fail(w, r, sc, http.StatusServiceUnavailable, "err.unavailable", "err.unavailable_msg")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	switch err := s.Notify.RemoveSubscription(r.Context(), subjectOf(sc), id); {
+	case errors.Is(err, store.ErrNotFound):
+		s.notFound(w, r)
+	case err != nil:
+		s.internal(w, r, sc, err)
+	default:
+		s.redirect(w, r, "/notifications", "flash.push_removed")
+	}
 }
 
 func (s *Server) notificationsReadAll(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {

@@ -25,6 +25,10 @@ worker that caches responses risks serving one user's authenticated page after l
 user of a shared device. We ship the manifest only and document the decision; PWA hardening (E19) may add
 a worker that caches only `/static/*` and the offline page, never authenticated HTML.
 
+*Update (E19a, [025-pwa-webpush](../025-pwa-webpush/research.md) R2):* a worker now exists for Web Push only:
+it handles `push` and `notificationclick`, intercepts no request and has no cache of any kind. The decision
+above stands for everything else: no offline shell, nothing authenticated cached.
+
 **R5. Icons.** Two small PNGs (192 and 512, maskable-safe padding) and an SVG favicon, generated once by
 a throwaway Go program and committed; no image tooling is needed at build time.
 

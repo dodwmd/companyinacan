@@ -21,7 +21,7 @@
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <input type="hidden" name="version" value="{{.Data.Version}}">
 <div class="table-wrap" role="region" aria-labelledby="cap-cat" tabindex="0">
-<table>
+<table class="rows">
 <caption id="cap-cat" class="sr">{{t "cg.modules"}}</caption>
 <thead><tr><th scope="col">{{t "mod.module"}}</th><th scope="col">{{t "mod.licence"}}</th><th scope="col">{{t "mod.ram"}}</th><th scope="col">{{t "cg.graph"}}</th><th scope="col">{{t "cg.enable"}}</th></tr></thead>
 <tbody>
@@ -29,10 +29,10 @@
 <th scope="row"><a href="/catalogue/{{.ID}}">{{.Name}}</a>
 <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{if .RecordedLabel}} <span class="badge {{.RecordedClass}}">{{.RecordedLabel}}</span>{{end}}
 {{if .Description}}<span class="hint">{{.Description}}</span>{{end}}{{if .Invalid}}<span class="hint errtext">{{t "cg.invalid" .Invalid}}</span>{{end}}</th>
-<td>{{.Licence}}{{if .SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</td>
-<td>{{t "mod.mb" .RAMMB}} <span class="muted">({{t "mod.limit"}} {{t "mod.mb" .LimitMB}})</span></td>
-<td>{{if .Requires}}<p class="graph">{{t "mod.requires"}}</p><ul>{{template "needs" .Requires}}</ul>{{end}}{{if .Provides}}<p class="graph">{{t "mod.provides"}}</p><ul>{{template "provides" .Provides}}</ul>{{end}}{{range .ConflictNote}}<p class="errtext">{{t "cg.conflicts_with" .}}</p>{{end}}</td>
-<td>{{if .Selectable}}<input type="checkbox" id="en-{{.ID}}" name="enable" value="{{.ID}}"{{if .Enabled}} checked{{end}}> <label class="check" for="en-{{.ID}}">{{t "cg.enable_named" .Name}}</label>
+<td data-label="{{t "mod.licence"}}">{{.Licence}}{{if .SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</td>
+<td data-label="{{t "mod.ram"}}">{{t "mod.mb" .RAMMB}} <span class="muted">({{t "mod.limit"}} {{t "mod.mb" .LimitMB}})</span></td>
+<td data-label="{{t "cg.graph"}}">{{if .Requires}}<p class="graph">{{t "mod.requires"}}</p><ul>{{template "needs" .Requires}}</ul>{{end}}{{if .Provides}}<p class="graph">{{t "mod.provides"}}</p><ul>{{template "provides" .Provides}}</ul>{{end}}{{range .ConflictNote}}<p class="errtext">{{t "cg.conflicts_with" .}}</p>{{end}}</td>
+<td data-label="{{t "cg.enable"}}">{{if .Selectable}}<input type="checkbox" id="en-{{.ID}}" name="enable" value="{{.ID}}"{{if .Enabled}} checked{{end}}> <label class="check" for="en-{{.ID}}">{{t "cg.enable_named" .Name}}</label>
 {{if .SourceAvailable}}<br><input type="checkbox" id="al-{{.ID}}" name="ack" value="licence:{{.ID}}"> <label class="check" for="al-{{.ID}}">{{t "cg.ack_licence" .Name}}</label>{{end}}
 {{if .Experimental}}<br><input type="checkbox" id="ae-{{.ID}}" name="ack" value="experimental:{{.ID}}"> <label class="check" for="ae-{{.ID}}">{{t "cg.ack_experimental" .Name}}</label>{{end}}
 {{else}}<span class="muted">{{t "cg.not_deployable"}}</span>{{end}}

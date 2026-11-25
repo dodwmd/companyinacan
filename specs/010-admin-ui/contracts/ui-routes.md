@@ -41,6 +41,8 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `POST /notifications/read` | yes | Mark all read |
 | `POST /notifications/settings` | yes | Fields `email`, `quiet_start`, `quiet_end` (HH:MM or empty), `tz`, `digest` |
 | `POST /notifications/prefs` | yes | Fields `type`, `channel` (`email`, `inapp`), `enabled` (absent = off) |
+| `POST /notifications/push/test` | yes | Sends one generic test notification to each of the caller's push devices. 303 with a flash; 409 no device; 429 (with `Retry-After`) more than one test per 30 seconds; 502 no device accepted it. Works without JavaScript |
+| `POST /notifications/push/{id}/remove` | yes | Removes one of the caller's push devices (404 for someone else's or an unknown id). Works without JavaScript |
 | `POST /notifications/{id}/read` | yes | Mark one of your own read; 404 otherwise |
 | `GET /access` | yes (`rbac.manage`) | Users, role assignments and role definitions |
 | `POST /access/{username}/grant` | yes (`rbac.manage`) | Fields `role`, `scope` |
@@ -68,8 +70,9 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `POST /settings/sso/test` | yes (`rbac.manage`) | Fetches discovery and the signing keys exactly as sign-in does (https, public addresses only, no redirects, size caps). Audited. 409 when SSO is not configured |
 | `POST /settings/sso/identities/{id}/link` | yes (`rbac.manage`, owner) | Field `username`: binds the identity to that existing local account. Never automatic. 403 for a non-owner, 409 for an unknown user, a non-local account or one that already has an identity |
 | `POST /settings/sso/identities/{id}/unlink` | yes (`rbac.manage`, owner) | Removes the identity (a provisioned user is deleted with its sessions; a linked local account stays). 409 for the last owner |
-| `GET /static/{file}` | no | Embedded stylesheet and icons (immutable cache) |
-| `GET /manifest.webmanifest` | no | Web app manifest |
+| `GET /static/{file}` | no | Embedded stylesheet, icons and the two scripts (`push.js`, and nothing else). Requested with `?v=<content hash>` (as the pages do) the response is `public, max-age=31536000, immutable`; otherwise `public, max-age=3600`. `sw.js` is not served here |
+| `GET /manifest.webmanifest` | no | Web app manifest (id, scope, standalone, theme and background colours equal to the stylesheet's, separate `any` and `maskable` icons, shortcuts to `/approvals` and `/notifications`) |
+| `GET /sw.js` | no | The push-only service worker (E19a): listeners `push` and `notificationclick` only, no request interception, no cache. `Content-Type: text/javascript`, `Cache-Control: no-cache`, `Service-Worker-Allowed: /`, `Content-Security-Policy: default-src 'none'` |
 
 Status codes on pages: 200, 303, 400 (bad form), 403 (CSRF / cross-site), 404, 409 (requeue of a non-dead
 delivery), 429, 502 (leads gateway), 500, 503.
@@ -78,4 +81,7 @@ delivery), 429, 502 (leads gateway), 500, 503.
 
 `Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
 `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`,
-`Cache-Control: no-store` (static assets: `public, max-age=3600`).
+`Cache-Control: no-store` (static assets: `public, max-age=3600`, or `immutable` when requested with the content hash).
+
+`GET /notifications` alone replaces the CSP with `default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+because it loads `/static/push.js` (external, deferred, no inline script) to enable push on the current device; the page is fully usable without it. Every other page keeps `script-src 'none'`.

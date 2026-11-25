@@ -575,6 +575,96 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/push/vapid-public-key:
+    get:
+      operationId: getPushPublicKey
+      summary: "The VAPID public key (applicationServerKey) browsers subscribe with; created on first use"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushPublicKey" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/push/subscriptions:
+    get:
+      operationId: listPushSubscriptions
+      summary: "Your push devices (never the endpoint or keys)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushDeviceList" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: addPushSubscription
+      summary: "Register a browser's PushSubscription (toJSON form); at most 10 per user"
+      description: "The endpoint must be an https URL on port 443 naming a public DNS host; addresses, userinfo, fragments and internal names are refused with 400. Re-posting a known endpoint refreshes it. 409 when the user already has 10 devices."
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushSubscription" }
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: false, required: [id], properties: { id: { type: integer } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "413": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deletePushSubscription
+      summary: "Remove your device by endpoint"
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [endpoint], properties: { endpoint: { type: string } } }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/push/test:
+    post:
+      operationId: sendPushTest
+      summary: "Send a generic test notification to your devices (one per 30 seconds)"
+      security: [{ session: [], csrf: [] }]
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: false, required: [sent], properties: { sent: { type: integer } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "502": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/push/vapid-key/rotate:
+    post:
+      operationId: rotatePushKey
+      summary: "Replace the VAPID key pair and drop every subscription (rbac.manage); 409 when the key is a mounted Secret"
+      security: [{ session: [], csrf: [] }]
+      responses:
+        "204": { description: Rotated }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/roles:
     get:
       operationId: listRoles
@@ -1117,13 +1207,47 @@ components:
         quiet_end: { type: integer, minimum: -1, maximum: 1439 }
         tz: { type: string }
         digest: { type: string, enum: [off, hourly, daily] }
+    PushPublicKey:
+      type: object
+      additionalProperties: false
+      required: [public_key]
+      properties: { public_key: { type: string, description: "Uncompressed P-256 point, base64url (87 characters)" } }
+    PushSubscription:
+      type: object
+      additionalProperties: false
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string, maxLength: 500 }
+        expirationTime: { type: [integer, "null"] }
+        keys:
+          type: object
+          additionalProperties: false
+          required: [p256dh, auth]
+          properties:
+            p256dh: { type: string, description: "Browser public key, base64url, 65-byte P-256 point" }
+            auth: { type: string, description: "Browser auth secret, base64url, 16 bytes" }
+    PushDevice:
+      type: object
+      additionalProperties: false
+      required: [id, label, service, created_at]
+      properties:
+        id: { type: integer }
+        label: { type: string, description: "Coarse device label such as 'Chrome on Android'" }
+        service: { type: string, description: "Host of the push service" }
+        created_at: { type: string, format: date-time }
+        last_ok: { type: string, format: date-time }
+    PushDeviceList:
+      type: object
+      additionalProperties: false
+      required: [subscriptions]
+      properties: { subscriptions: { type: array, items: { $ref: "#/components/schemas/PushDevice" } } }
     Preference:
       type: object
       additionalProperties: false
       required: [type, channel, enabled]
       properties:
         type: { type: string, description: Notification type or "*" }
-        channel: { type: string, enum: [email, inapp] }
+        channel: { type: string, enum: [email, inapp, webpush] }
         enabled: { type: boolean }
     PreferenceList:
       type: object

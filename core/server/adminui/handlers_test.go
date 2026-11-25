@@ -26,7 +26,7 @@ func split(route string) (string, string) {
 	return m, concrete(p)
 }
 
-var publicRoutes = map[string]bool{"GET /auth/oidc/login": true, "GET /auth/oidc/callback": true, "GET /login": true, "POST /login": true, "GET /static/{file}": true, "GET /manifest.webmanifest": true}
+var publicRoutes = map[string]bool{"GET /auth/oidc/login": true, "GET /auth/oidc/callback": true, "GET /login": true, "POST /login": true, "GET /static/{file}": true, "GET /manifest.webmanifest": true, "GET /sw.js": true}
 
 func TestEveryPageRequiresSession(t *testing.T) {
 	h := newHarness(t)
@@ -656,9 +656,9 @@ func TestStaticAndManifest(t *testing.T) {
 			t.Errorf("%s: %d", f, r.StatusCode)
 		}
 	}
-	// No service worker is shipped or served (research R4).
-	if r := h.do("GET", "/sw.js", nil); r.StatusCode == 200 {
-		t.Fatal("unexpected service worker")
+	// The only service worker is the push-only one of specs/025-pwa-webpush (see pwa_test.go).
+	if r := h.do("GET", "/sw.js", nil); r.StatusCode != 200 || strings.Contains(r.body, "fetch") {
+		t.Fatalf("service worker: %d", r.StatusCode)
 	}
 }
 

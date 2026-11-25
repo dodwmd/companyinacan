@@ -57,7 +57,7 @@ func newPHarness(t *testing.T) *pHarness {
 	clock := func() time.Time { return now }
 	al := audit.New(db)
 	h.rb = rbac.New(db, al, rbac.Options{Now: clock})
-	h.ntf = notify.New(db, notify.Options{Now: clock, Mailer: &notify.FakeMailer{}, Roles: h.rb})
+	h.ntf = notify.New(db, notify.Options{Now: clock, Mailer: &notify.FakeMailer{}, Roles: h.rb, PushSender: pushOK{}})
 	h.eng = approvals.New(db, al, approvals.Deps{Roles: h.rb, Perms: h.rb, Notifier: h.ntf, Now: clock})
 	m := store.Module{ID: "expenses", Version: "1", Namespace: "mod-expenses", ServiceAccount: "expenses", State: store.StateEnabled, HMACSecret: "s",
 		Manifest: config.Module{ID: "expenses", Permissions: []string{"expenses.approve", "expenses.pay"}, Roles: map[string][]string{"finance": {"expenses.approve"}}}}

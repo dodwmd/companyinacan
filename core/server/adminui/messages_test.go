@@ -69,12 +69,14 @@ func TestEmbeddedAssetsStaySmall(t *testing.T) {
 		if strings.HasSuffix(p, ".css") {
 			css += fi.Size()
 		}
-		if strings.HasSuffix(p, ".js") {
-			t.Errorf("%s: the admin UI ships no JavaScript", p)
+		// The only scripts are the push-only service worker and the push enable button
+		// (specs/025-pwa-webpush); each stays tiny and no other page loads either.
+		if strings.HasSuffix(p, ".js") && (p != "static/sw.js" && p != "static/push.js" || fi.Size() > 6<<10) {
+			t.Errorf("%s: the admin UI ships no JavaScript beyond static/sw.js and static/push.js (6 KiB each)", p)
 		}
 		return nil
 	})
-	if total > 100<<10 || css > 12<<10 {
-		t.Fatalf("assets %d bytes, css %d bytes (budget 100 KiB / 12 KiB)", total, css)
+	if total > 100<<10 || css > 16<<10 {
+		t.Fatalf("assets %d bytes, css %d bytes (budget 100 KiB / 16 KiB)", total, css)
 	}
 }

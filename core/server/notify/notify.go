@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -72,12 +73,29 @@ type Options struct {
 	Log   *slog.Logger
 	// RateLimitPerHour caps external messages per recipient per hour (default 30).
 	RateLimitPerHour int
+
+	// Web Push (push.go). Nothing below is used until a user subscribes.
+	// PushContact is the VAPID `sub` claim (mailto: or https:), default the project URL.
+	PushContact string
+	// VAPIDKeyFile, when set, is the application server private key (a mounted Secret); otherwise a
+	// key is generated on first use and kept in the state database.
+	VAPIDKeyFile string
+	// PushSender replaces the real Web Push client (tests).
+	PushSender PushSender
+	// PushHTTP replaces the push client's HTTP client; AllowInsecurePush skips the endpoint rules
+	// of Subscribe. Both are for tests with an httptest push service.
+	PushHTTP          *http.Client
+	AllowInsecurePush bool
+	// PushSleep waits between delivery retries (tests); default honours the context.
+	PushSleep func(ctx context.Context, d time.Duration) error
 }
 
 // Service is the notification service.
 type Service struct {
 	db  *store.DB
 	opt Options
+
+	push push
 
 	rulesAt time.Time
 	rules   []moduleRule
@@ -97,7 +115,10 @@ func New(db *store.DB, opt Options) *Service {
 	if opt.RateLimitPerHour <= 0 {
 		opt.RateLimitPerHour = defaultRateLimit
 	}
-	return &Service{db: db, opt: opt}
+	if opt.PushSleep == nil {
+		opt.PushSleep = sleepCtx
+	}
+	return &Service{db: db, opt: opt, push: push{sem: make(chan struct{}, maxPushInFlight), lastT: map[string]time.Time{}}}
 }
 
 // SetRateLimit changes the per-recipient hourly limit of external messages.
@@ -218,6 +239,7 @@ func (s *Service) Notify(ctx context.Context, n Notice) (id int64, created bool,
 	s.logDelivery(ctx, id, ChannelInApp, "sent", "")
 	s.emitSent(ctx, id, n.Subject, n.Type, ChannelInApp)
 	s.deliverEmail(ctx, id, n, data)
+	s.deliverPush(ctx, id, n)
 	return id, true, nil
 }
 
@@ -531,7 +553,7 @@ func (s *Service) Deliveries(ctx context.Context, limit int) ([]DeliveryLog, err
 
 // SetPref sets whether a channel is on for a notification type ("*" = every type without its own).
 func (s *Service) SetPref(ctx context.Context, subject, typ, channel string, enabled bool) error {
-	if !rbac.ValidSubject(subject) || (typ != "*" && !typeRe.MatchString(typ)) || (channel != ChannelEmail && channel != ChannelInApp) {
+	if !rbac.ValidSubject(subject) || (typ != "*" && !typeRe.MatchString(typ)) || (channel != ChannelEmail && channel != ChannelInApp && channel != ChannelWebPush) {
 		return errInvalid
 	}
 	e := 0

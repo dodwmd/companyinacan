@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/server/netguard"
 )
 
 // Message is one outgoing email.
@@ -145,48 +147,12 @@ func (h HTTPWebhook) Post(ctx context.Context, target, text string) error {
 	return nil
 }
 
-// denyPrivate is a net.Dialer Control function that rejects non-public destinations.
-func denyPrivate(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
-	ip, err := netip.ParseAddr(host)
-	if err != nil {
-		return err
-	}
-	if !publicAddr(ip) {
+// denyPrivate rejects non-public destinations at connect time (see netguard).
+func denyPrivate(network, address string, c syscall.RawConn) error {
+	if err := netguard.DenyPrivate(network, address, c); err != nil {
 		return errors.New("webhook destination is not a public address")
 	}
 	return nil
 }
 
-var nonPublic = func() []netip.Prefix {
-	var out []netip.Prefix
-	for _, p := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4", "192.88.99.0/24", "2002::/16", "2001:db8::/32", "100::/64", "2001::/32", "3fff::/20", "64:ff9b:1::/48", "::/96"} {
-		out = append(out, netip.MustParsePrefix(p))
-	}
-	return out
-}()
-
-// publicAddr reports whether ip is a routable public address. IPv4-mapped and NAT64 (64:ff9b::/96)
-// addresses are judged by the IPv4 address they embed. Refused outright: 6to4 (2002::/16) and its
-// relay anycast (192.88.99.0/24), Teredo (2001::/32), local-use NAT64 (64:ff9b:1::/48), the
-// deprecated IPv4-compatible form (::/96), the documentation ranges and 3fff::/20, and the other
-// special-purpose IPv4 blocks listed in nonPublic.
-func publicAddr(ip netip.Addr) bool {
-	ip = ip.Unmap()
-	if ip.Is6() && netip.MustParsePrefix("64:ff9b::/96").Contains(ip) {
-		b := ip.As16()
-		return publicAddr(netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}))
-	}
-	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
-		return false
-	}
-	for _, p := range nonPublic {
-		if p.Contains(ip) {
-			return false
-		}
-	}
-	return true
-}
+func publicAddr(ip netip.Addr) bool { return netguard.Public(ip) }
