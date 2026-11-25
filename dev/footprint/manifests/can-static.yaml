@@ -1,0 +1,49 @@
+# Footprint fixture: the can-static image (deploy/can-static/Dockerfile) serving a one-page
+# ConfigMap site, as the site pod will (E04). Namespace fp-static; requests/limits as SPEC 3.2
+# requires. Not the production chart (that arrives with E03/E04): it measures the binary.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fp-static
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: site
+  namespace: fp-static
+data:
+  index.html: |
+    <!doctype html><title>footprint</title><h1>footprint fixture</h1>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: can-static
+  namespace: fp-static
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: can-static}
+  template:
+    metadata:
+      labels: {app: can-static}
+    spec:
+      containers:
+        - name: can-static
+          image: can-static:fp
+          imagePullPolicy: Never
+          ports: [{containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8080}
+          resources:
+            requests: {cpu: 5m, memory: 16Mi}
+            limits: {memory: 32Mi}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - {name: site, mountPath: /srv/site, readOnly: true}
+      volumes:
+        - name: site
+          configMap: {name: site}

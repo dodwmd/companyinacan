@@ -1,0 +1,16 @@
+# Footprint variant "default": k3s as shipped (Traefik, CoreDNS, local-path, ServiceLB and
+# metrics-server all on). Same pinned image as dev/k3d.yaml. No host ports are mapped.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: fp-default
+image: rancher/k3s:v1.31.5-k3s1
+servers: 1
+agents: 0
+options:
+  k3d:
+    wait: true
+    timeout: 180s
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: false

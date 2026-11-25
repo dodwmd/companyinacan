@@ -1,0 +1,28 @@
+# Footprint variant "lean": "trimmed" plus ServiceLB and the embedded cloud controller disabled
+# (SPEC 3.2 "no cloud-controller"). With ServiceLB off, Traefik's LoadBalancer Service stays
+# <pending> (nothing assigns it an address), so this is an upper bound on savings, not a
+# deployable configuration unless something else serves ports 80 and 443.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: fp-lean
+image: rancher/k3s:v1.31.5-k3s1
+servers: 1
+agents: 0
+options:
+  k3d:
+    wait: true
+    timeout: 180s
+  k3s:
+    extraArgs:
+      - arg: --disable=metrics-server
+        nodeFilters: [server:*]
+      - arg: --disable=servicelb
+        nodeFilters: [server:*]
+      - arg: --disable-cloud-controller
+        nodeFilters: [server:*]
+      - arg: --secrets-encryption
+        nodeFilters: [server:*]
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: false

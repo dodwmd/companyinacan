@@ -1,0 +1,74 @@
+# Footprint fixture: the can-forms image (deploy/forms/Dockerfile) with a minimal config, in the
+# namespace mod-forms, compared against modules/forms/module.yaml ram_mb by `can footprint check`.
+# The tokens below are throwaway test values for a cluster that exists for a few minutes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mod-forms
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forms-config
+  namespace: mod-forms
+data:
+  forms.yaml: |
+    listen: ":8080"
+    api_listen: ":8081"
+    db_path: /data/forms.db
+    trust_proxy: true
+    forms:
+      - id: contact
+        name: Contact
+        fields:
+          - {name: name, type: text, required: true, max_length: 100}
+          - {name: email, type: email, required: true}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: forms-secrets
+  namespace: mod-forms
+stringData:
+  CAN_FORMS_TOKEN_KEY: footprint-fixture-token-key-0123456789abcdef
+  CAN_FORMS_API_TOKEN: footprint-fixture-api-token
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forms
+  namespace: mod-forms
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: forms}
+  template:
+    metadata:
+      labels: {app: forms}
+    spec:
+      securityContext: {fsGroup: 65532}
+      containers:
+        - name: forms
+          image: can-forms:fp
+          imagePullPolicy: Never
+          args: [serve, -config, /etc/can-forms/forms.yaml]
+          envFrom:
+            - secretRef: {name: forms-secrets}
+          ports: [{containerPort: 8080}, {containerPort: 8081}]
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8080}
+          resources:
+            requests: {cpu: 5m, memory: 15Mi}
+            limits: {memory: 32Mi}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - {name: config, mountPath: /etc/can-forms, readOnly: true}
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: config
+          configMap: {name: forms-config}
+        - name: data
+          emptyDir: {}
