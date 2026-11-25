@@ -1,0 +1,87 @@
+{{define "head"}}<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{.Title}}</title>
+<meta name="description" content="{{.Description}}">
+{{- if .NoIndex}}
+<meta name="robots" content="noindex, nofollow">
+{{- end}}
+{{- if .Canonical}}
+<link rel="canonical" href="{{.Canonical}}">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Description}}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{.Canonical}}">
+<meta property="og:site_name" content="{{.Name}}">
+{{- if .OGImage}}
+<meta property="og:image" content="{{.OGImage}}">
+<meta name="twitter:card" content="summary_large_image">
+{{- else}}
+<meta name="twitter:card" content="summary">
+{{- end}}
+<meta name="twitter:title" content="{{.Title}}">
+<meta name="twitter:description" content="{{.Description}}">
+{{- end}}
+{{- if .Logo}}
+<link rel="icon" href="{{.Logo}}">
+{{- end}}
+<link rel="stylesheet" href="{{.CSS}}">
+{{end}}
+{{- define "header"}}<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/">{{if .Logo}}<img src="{{.Logo}}" alt="" width="32" height="32">{{end}}<span>{{.Name}}</span></a>
+    {{- if .Nav}}
+    <nav aria-label="Primary">
+      <ul>
+        {{- range .Nav}}
+        <li><a href="#{{.Anchor}}">{{.Label}}</a></li>
+        {{- end}}
+      </ul>
+    </nav>
+    {{- end}}
+  </div>
+</header>
+{{end}}
+{{- define "index"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+{{- if .Canonical}}
+<script type="application/ld+json">{{.JSONLD}}</script>
+{{- end}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+{{template "header" .}}
+<main id="main">
+{{template "hero" .}}
+{{- template "features" .}}
+{{- template "pricing" .}}
+{{- template "faq" .}}
+{{- template "cta" .}}
+</main>
+{{template "footer" .}}
+</body>
+</html>
+{{end}}
+{{- define "notfound"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+{{template "header" .}}
+<main id="main">
+  <section class="hero" aria-labelledby="nf-title">
+    <div class="wrap">
+      <h1 id="nf-title">Page not found</h1>
+      <p class="lead">That page does not exist or has moved.</p>
+      <p><a class="btn" href="/">Back to the home page</a></p>
+    </div>
+  </section>
+</main>
+{{template "footer" .}}
+</body>
+</html>
+{{end}}

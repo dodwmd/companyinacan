@@ -1,0 +1,9 @@
+schema: 1
+name: Acme Co
+domain: acme.example
+provider:
+  type: local
+site:
+  hero:
+    headline: Hi
+    cta: { label: Go, href: "javascript:alert(1)" }

@@ -9,13 +9,14 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev down doctor up
+.PHONY: help build test unit contract lint licences dev down doctor up release-check
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
-build: ## build bin/can
+build: ## build bin/can and bin/can-static
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/can ./cmd/can
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-static ./cmd/can-static
 
 unit: ## unit tests
 	$(GO) test ./cmd/... ./core/...
@@ -46,3 +47,6 @@ doctor: ## check the prerequisites for `make dev`
 
 up: ## provision a server and deploy (not implemented yet, epic E06)
 	@$(GO) run ./cmd/can up
+
+release-check: ## fail if deploy Dockerfiles still have placeholder image digests
+	sh scripts/check-image-pins.sh
