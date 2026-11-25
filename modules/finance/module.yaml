@@ -49,7 +49,7 @@ roles:
   finance: [finance.read, finance.write]
   approver: [finance.read, finance.approve]
   admin: [finance.read, finance.write, finance.approve, finance.admin]
-  auditor: [finance.read]
+  finance-auditor: [finance.read]
 approvals:
   - { type: invoice, default_chain: [finance] }
   - { type: timesheet, default_chain: [manager] }
