@@ -50,8 +50,9 @@ Reading:
 - Applying `deploy/base` costs roughly +20 MiB over trimmed (the three extra namespaces' objects,
   quotas and the HelmChartConfig which makes Traefik reconfigure), again near the noise floor.
 
-**SPEC 3.2 row "k3s + Traefik + CoreDNS + local-path, target <= ~600 MB": confirmed as an upper
-bound on a 16 GB runner (510-563 MiB, headroom 40-90 MiB).** It was never shown for a 2 GB host.
+**SPEC 3.2 row "k3s + Traefik + CoreDNS + local-path, target <= ~600 MB": met on a 16 GB runner
+(510-563 MiB; reading the target as MiB the worst-run headroom is only about 37 MiB, 6%, and the
+host OS is not included).** It was never shown for a 2 GB host.
 
 ## 2. can-static and forms (images built in CI from the repo Dockerfiles)
 
@@ -64,7 +65,7 @@ These are working sets with no requests served; the forms README quotes 13.9 MiB
 measure (RSS includes mapped binary pages that the working set excludes). The declared 15 MB is a
 request for a 1.2x check, so the forms module is far inside its budget on this measure. Under load
 and with a real database it will be higher; not measured. The images are built with the digests of
-the current `golang:1.27` and distroless tags, not pinned release digests.
+the current `golang:1.27` and distroless tags, not pinned release digests; unpinned tags and digests are accepted for these CI measurement runs only.
 
 ## 3. NetworkPolicy, module-auth and CoreDNS proofs (stub modules on real k3s)
 
@@ -86,16 +87,17 @@ last two runs (the earlier runs differ only by test-harness bugs fixed since):
 namespace with only a default-deny Ingress+Egress policy still connects to the node's API port
 (172.18.0.2:6443) and kubelet (:10250); a module-template pod still reached `NODE_IP:6443` and the
 kubernetes Service `10.43.0.1:443` 90 s after its namespace existed, despite the `ipBlock except`.
-Pod-to-pod default-deny works. A host rule in the node's INPUT chain (`iptables -I INPUT -s
-10.42.0.0/16 -d <node> -p tcp --dport 6443 -j DROP`) did block it. So SPEC 3.1's host-firewall step
-(E06) is required, not optional, and the comment in the template ("also blocks the Kubernetes API
-server") was wrong. Until then a module pod can talk to the API server and the RBAC of its
-ServiceAccount is the only barrier.
+Pod-to-pod default-deny works. This was tested on k3d only (one k3s/kube-router version, no ufw), and reachability is not exploitability: the reachable ports still require credentials. A host rule in the node's INPUT chain (`iptables -I INPUT -s
+10.42.0.0/16 -d <node> -p tcp --dport 6443 -j DROP`) did block it, but that is a diagnostic, not a
+solution: system pods reach the API via `10.43.0.1:443` DNAT'd to node:6443 with a pod-CIDR source
+(CoreDNS, Traefik, can-core), so a CIDR drop breaks them too. The template comment ("also blocks the
+Kubernetes API server") was wrong. How to isolate is an open design decision (SPEC section 11);
+until then RBAC, no token mount and authentication on 6443/10250 are the barrier.
 
 **Second finding: policy enforcement lags.** In a new default-deny namespace a pod could still
-reach another pod at +0 s and was blocked by +20 s (kube-router programs policies asynchronously).
-A freshly started module pod has a short window of seconds during which default-deny is not yet in
-effect. Module workloads should start after the policies are effective, or tolerate the window.
+reach another pod at +0 s and was blocked by +20 s (kube-router programs policies asynchronously;
+the real delay is unknown, at most 20 s was observed). A freshly started module pod may have a short
+window during which default-deny is not yet in effect. Module workloads should start after the policies are effective, or tolerate the window.
 
 ## 4. Not measured (blocked or deferred)
 

@@ -57,7 +57,9 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow from "$SERVICE_CIDR"
   ufw allow in on cni0
   ufw allow in on flannel.1
-  # 6443 (k3s API) is deliberately not opened: can reaches it through an SSH tunnel
+  # 6443 (k3s API) is not opened to the internet: can reaches it through an SSH tunnel. NOTE: the
+  # pod and service CIDR rules above mean PODS can still reach every node port, 6443 and the kubelet
+  # included (Phase 0, issue #13); NetworkPolicy does not prevent that on k3s either.
   ufw --force enable
 fi
 
