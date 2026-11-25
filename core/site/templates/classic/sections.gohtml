@@ -1,0 +1,105 @@
+{{define "button"}}<a class="btn{{if .Secondary}} secondary{{end}}" href="{{.L.Href}}"{{if external .L.Href}} rel="noopener"{{end}}>{{.L.Label}}</a>{{end}}
+{{- define "hero"}}<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap">
+    <h1 id="hero-title">{{.HeroHeadline}}</h1>
+    {{- if .HeroSub}}
+    <p class="lead">{{.HeroSub}}</p>
+    {{- end}}
+    {{- if or .HeroCTA .HeroCTA2}}
+    <p class="actions">
+      {{- if .HeroCTA}}{{template "button" (btn .HeroCTA false)}}{{end}}
+      {{- if .HeroCTA2}} {{template "button" (btn .HeroCTA2 true)}}{{end}}
+    </p>
+    {{- end}}
+  </div>
+</section>
+{{end}}
+{{- define "features"}}{{if .Features}}
+<section id="features" class="section" aria-labelledby="features-title">
+  <div class="wrap">
+    <h2 id="features-title">Features</h2>
+    <ul class="grid cards">
+      {{- range .Features}}
+      <li class="card">
+        <h3>{{.Title}}</h3>
+        {{- if .Description}}
+        <p>{{.Description}}</p>
+        {{- end}}
+      </li>
+      {{- end}}
+    </ul>
+  </div>
+</section>
+{{end}}{{end}}
+{{- define "pricing"}}{{if .Pricing}}
+<section id="pricing" class="section alt" aria-labelledby="pricing-title">
+  <div class="wrap">
+    <h2 id="pricing-title">{{if .Pricing.Title}}{{.Pricing.Title}}{{else}}Pricing{{end}}</h2>
+    {{- if .Pricing.Subtitle}}
+    <p class="lead">{{.Pricing.Subtitle}}</p>
+    {{- end}}
+    <ul class="grid plans">
+      {{- range .Pricing.Plans}}
+      <li class="plan{{if .Highlighted}} highlighted{{end}}">
+        <h3>{{.Name}}</h3>
+        <p class="price"><span class="amount">{{.Price}}</span>{{if .Period}} <span class="period">{{.Period}}</span>{{end}}</p>
+        {{- if .Description}}
+        <p>{{.Description}}</p>
+        {{- end}}
+        {{- if .Features}}
+        <ul class="ticks">
+          {{- range .Features}}
+          <li>{{.}}</li>
+          {{- end}}
+        </ul>
+        {{- end}}
+        {{- if .CTA}}
+        <p>{{template "button" (btn .CTA (not .Highlighted))}}</p>
+        {{- end}}
+      </li>
+      {{- end}}
+    </ul>
+  </div>
+</section>
+{{end}}{{end}}
+{{- define "faq"}}{{if .FAQ}}
+<section id="faq" class="section" aria-labelledby="faq-title">
+  <div class="wrap narrow">
+    <h2 id="faq-title">Frequently asked questions</h2>
+    {{- range .FAQ}}
+    <details>
+      <summary>{{.Question}}</summary>
+      <p>{{.Answer}}</p>
+    </details>
+    {{- end}}
+  </div>
+</section>
+{{end}}{{end}}
+{{- define "cta"}}{{if .CTA}}
+<section id="contact" class="section cta" aria-labelledby="cta-title">
+  <div class="wrap">
+    <h2 id="cta-title">{{.CTA.Headline}}</h2>
+    {{- if .CTA.Text}}
+    <p class="lead">{{.CTA.Text}}</p>
+    {{- end}}
+    <p>{{template "button" (btn .CTA.Button false)}}</p>
+  </div>
+</section>
+{{end}}{{end}}
+{{- define "footer"}}<footer class="site-footer">
+  <div class="wrap">
+    {{- if .Footer.Links}}
+    <nav aria-label="Footer">
+      <ul>
+        {{- range .Footer.Links}}
+        <li><a href="{{.Href}}"{{if external .Href}} rel="noopener"{{end}}>{{.Label}}</a></li>
+        {{- end}}
+      </ul>
+    </nav>
+    {{- end}}
+    {{- if .Footer.Text}}
+    <p>{{.Footer.Text}}</p>
+    {{- end}}
+  </div>
+</footer>
+{{end}}
