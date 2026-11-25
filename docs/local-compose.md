@@ -113,13 +113,33 @@ always notice an `env_file` change on its own.
     false`) and no job-board connectors; no real captcha, email, Postgres or backup hooks.
 - No `can up`, DNS, ACME, provider provisioning or backups. `can-hooks` is not built.
 
+### Finance invoice flow needs two subjects
+
+The single dev finance token acts as one subject (`bootstrap-admin`), and finance enforces separation of duties:
+whoever created or edited an invoice cannot approve it. So with that token alone you **cannot** complete
+create, approve, send and the public invoice link (approve returns 403). To test the flow, mint a second token for
+another subject with the approve scope using the tokens API, and approve with it:
+
+```sh
+FIN=http://finance.localhost:8080; ADMIN="Authorization: Bearer dev-only-finance-admin-token-0123456789abcdef"
+curl -s -X POST $FIN/v1/tokens -H "$ADMIN" -H 'Content-Type: application/json' \
+  -d '{"kind":"service","subject":"dev-approver","name":"approver","scopes":["finance.approve","finance.read"]}'   # prints "token": "cft_..."
+curl -s -X POST $FIN/v1/invoices/<id>/approve -H "Authorization: Bearer cft_..."   # then send/link with the admin token
+```
+
+`FINANCE_FLOW=1 dev/compose/smoke.sh` runs this sequence (create party and invoice, creator approval refused,
+approval by the second subject, send). The approver token is stored in the finance database, not in a file, so
+there is no second static secret in `dev/compose/secrets/`.
+
 So this is good for exercising each service's own UI/API, the admin login flow, the form-to-lead path through a
 same-origin proxy, and the static site; it cannot tell you whether the modules integrate with can-core.
 
 ## Resources
 
-Measured with `docker stats --no-stream` on rootless podman, idle after the smoke test: can-core about 29 MiB,
-the edge about 15 MiB, the other services 2 to 5 MiB each, roughly 70 MiB in total. Building needs more: allow
+Measured with `docker stats --no-stream` on rootless podman: right after the smoke test can-core is about 29 MiB,
+the edge about 15 MiB and the other services 2 to 5 MiB each; after some use (logins, clicking through the admin
+UI) can-core reaches about 50 MiB and the whole stack stays **under 100 MiB** (an independent check measured
+about 94 MiB). Building needs more: allow
 2 GB of free RAM and about 5 GB of disk while images build (Go compiles eight binaries). Idle RAM of the images
 is far below the budgets in the module READMEs because `docker stats` reports cgroup memory, not RSS.
 
@@ -154,6 +174,17 @@ is far below the budgets in the module READMEs because `docker stats` reports cg
 - **Other containers on the machine.** Everything here is namespaced by the project name `companyinacan` and
   `can-` container names. Tear down only this stack with `docker compose -p companyinacan down -v`; do not use
   `system prune`.
+- **Locked out of the admin UI even with the right password.** can-core runs with `CAN_TRUST_PROXY=true`
+  behind the edge, and every local client reaches it from the same address, so 5 bad logins lock the account
+  (and 20 the address) for 15 minutes, correct logins included. Clear it with
+  `docker compose -p companyinacan exec core /can-core admin unlock`.
+- **First build takes a few minutes and needs the network.** It pulls `golang:1.27`, distroless and caddy
+  (not measured on a cold cache here) and downloads Go modules. Later builds are cached.
+- **`no pod ... pod_companyinacan` on `down`.** A harmless message from podman-compose; the containers,
+  network and (with `-v`) volumes are still removed.
+- **Unknown Host headers.** The edge serves any request whose Host matches no vhost from the public site vhost
+  (`localhost`). Only the public example site is reachable that way, but it means a DNS-rebinding page could read
+  it; another reason to keep the port on 127.0.0.1 and not to put anything private on the site.
 - **Admin login keeps failing.** TOTP codes depend on the clock; check the system time. Run
   `dev/compose/bootstrap-admin.sh` for a fresh secret and clear lockouts with
   `docker compose -p companyinacan exec core /can-core admin unlock`.

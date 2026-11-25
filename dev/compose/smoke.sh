@@ -89,4 +89,32 @@ expect_status "jobs careers page" 200 "http://jobs.localhost:$port/careers"
 expect_status "finance healthz" 200 "http://finance.localhost:$port/healthz"
 expect_status "work healthz" 200 "http://work.localhost:$port/healthz"
 
+# 6. OPTIONAL (FINANCE_FLOW=1): the invoice flow. The dev admin token cannot approve an invoice it
+# created (separation of duties), so a second token for another subject with the approve scope is
+# minted through the tokens API.
+if [ "${FINANCE_FLOW:-0}" = 1 ]; then
+  FIN_TOKEN="${FIN_TOKEN:-$(secret finance CAN_FINANCE_ADMIN_TOKEN)}"
+  fin="http://finance.localhost:$port"
+  fa=(-H "Authorization: Bearer $FIN_TOKEN" -H "Content-Type: application/json")
+  jfield() { sed -n 's/.*"'"$1"'":"\{0,1\}\([^",}]*\).*/\1/p' | head -n1; }
+  party="$(curlx -X POST "$fin/v1/parties" "${fa[@]}" -d '{"kind":"customer","name":"Smoke Customer","email":"customer@acme.example"}' | jfield id)"
+  [ -n "$party" ] || die "finance: could not create a party"
+  inv="$(curlx -X POST "$fin/v1/invoices" "${fa[@]}" \
+    -d "{\"party_id\":$party,\"currency\":\"USD\",\"lines\":[{\"description\":\"Anvil\",\"quantity_milli\":1000,\"unit_price_minor\":4900}]}" | jfield id)"
+  [ -n "$inv" ] || die "finance: could not create an invoice"
+  ok "finance invoice $inv created (draft)"
+  code="$(curlx -o /dev/null -w '%{http_code}' -X POST "$fin/v1/invoices/$inv/approve" "${fa[@]}")"
+  { [ "$code" = 403 ] || [ "$code" = 409 ]; } || die "finance: expected the creator's approval to be refused (403/409), got $code"
+  ok "finance creator cannot approve own invoice (HTTP $code, separation of duties)"
+  appr="$(curlx -X POST "$fin/v1/tokens" "${fa[@]}" \
+    -d "{\"kind\":\"service\",\"subject\":\"dev-approver\",\"name\":\"smoke approver $(date +%s)\",\"scopes\":[\"finance.approve\",\"finance.read\"]}" | jfield token)"
+  [ -n "$appr" ] || die "finance: could not mint an approver token (scope names: see core/finance/auth.go)"
+  code="$(curlx -o /dev/null -w '%{http_code}' -X POST "$fin/v1/invoices/$inv/approve" -H "Authorization: Bearer $appr" -H "Content-Type: application/json")"
+  [ "$code" = 200 ] || die "finance: approver token could not approve: HTTP $code"
+  ok "finance approve with a second subject (HTTP 200)"
+  code="$(curlx -o /dev/null -w '%{http_code}' -X POST "$fin/v1/invoices/$inv/send" "${fa[@]}")"
+  [ "$code" = 200 ] || die "finance: send: HTTP $code"
+  ok "finance send (HTTP 200)"
+fi
+
 printf '\nSmoke test passed: %d checks.\n' "$pass"
