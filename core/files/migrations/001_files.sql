@@ -96,6 +96,15 @@ CREATE TABLE shares (
 );
 CREATE INDEX shares_file ON shares (file_id);
 
+-- The access-list entries that let the creator share at the time. When the last of them stops
+-- being an editor or manager of the space, the link is revoked.
+CREATE TABLE share_grants (
+    share_id  TEXT NOT NULL REFERENCES shares(id) ON DELETE CASCADE,
+    principal TEXT NOT NULL,
+    PRIMARY KEY (share_id, principal)
+);
+CREATE INDEX share_grants_principal ON share_grants (principal);
+
 -- A blob is registered here before it is written and released in the same transaction that
 -- records its version: a crash in between leaves a row the sweep turns into a deleted blob.
 CREATE TABLE pending_blobs (

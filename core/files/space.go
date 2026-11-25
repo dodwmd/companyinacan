@@ -319,6 +319,11 @@ func (s *Store) SetMember(ctx context.Context, p *Principal, spaceID string, m M
 			spaceID, key, m.Role, p.Subject, ts(s.now())); err != nil {
 			return err
 		}
+		if m.Role == "viewer" {
+			if err := s.revokeLinksOf(ctx, tx, p.Subject, spaceID, key); err != nil {
+				return err
+			}
+		}
 		return s.audit(ctx, tx, p.Subject, "member.set", "space:"+spaceID, []string{"member:" + m.Kind, "role:" + m.Role}, "ok")
 	})
 }
@@ -364,6 +369,9 @@ func (s *Store) RemoveMember(ctx context.Context, p *Principal, spaceID, kind, i
 			}
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM space_members WHERE (space_id = ?) AND (principal = ?)`, spaceID, key); err != nil {
+			return err
+		}
+		if err := s.revokeLinksOf(ctx, tx, p.Subject, spaceID, key); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, p.Subject, "member.remove", "space:"+spaceID, []string{"member:" + kind}, "ok")

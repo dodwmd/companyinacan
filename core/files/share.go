@@ -116,6 +116,12 @@ func (s *Store) CreateShare(ctx context.Context, p *Principal, fileID string, re
 			id, fileID, version, nullStr(sealed), ts(exp), one, p.Subject, ts(now)); err != nil {
 			return err
 		}
+		keys := p.memberKeys()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO share_grants (share_id, principal) SELECT ?, principal FROM space_members
+			WHERE (space_id = ?) AND (role IN ('editor','manager')) AND (principal IN (`+placeholders(len(keys))+`))`,
+			append([]any{id, f.spaceID}, anyArgs(keys)...)...); err != nil {
+			return err
+		}
 		if err := s.audit(ctx, tx, p.Subject, "share.create", "file:"+fileID, []string{"share:" + id, "version:" + strconv.Itoa(version)}, "ok"); err != nil {
 			return err
 		}
@@ -271,4 +277,42 @@ func (s *Store) OpenShare(ctx context.Context, token, client string) (*Content, 
 	}
 	c.actor = "share:" + id
 	return c, nil
+}
+
+// revokeLinksOf ends, inside the transaction that withdrew or lowered a grant, every live link in
+// the space that rested on it: the links whose creator had no other grant that still lets them
+// share. A group grant works the same way. (A person leaving a directory group is not seen here:
+// docs/files.md.)
+func (s *Store) revokeLinksOf(ctx context.Context, tx dbq, actor, spaceID, principal string) error {
+	rows, err := tx.QueryContext(ctx, `SELECT sh.id, sh.file_id FROM shares sh
+		JOIN share_grants mine ON (mine.share_id = sh.id) AND (mine.principal = ?)
+		JOIN files f ON (f.id = sh.file_id) AND (f.space_id = ?)
+		WHERE (sh.revoked_at IS NULL) AND NOT EXISTS (SELECT 1 FROM share_grants g
+			JOIN space_members m ON (m.space_id = ?) AND (m.principal = g.principal) AND (m.role IN ('editor','manager'))
+			WHERE (g.share_id = sh.id))`, principal, spaceID, spaceID)
+	if err != nil {
+		return err
+	}
+	type link struct{ id, file string }
+	var links []link
+	for rows.Next() {
+		var l link
+		if err := rows.Scan(&l.id, &l.file); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		links = append(links, l)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, l := range links {
+		if _, err := tx.ExecContext(ctx, `UPDATE shares SET revoked_at = ? WHERE (id = ?)`, ts(s.now()), l.id); err != nil {
+			return err
+		}
+		if err := s.audit(ctx, tx, actor, "share.revoke", "file:"+l.file, []string{"share:" + l.id, "reason:grant_withdrawn"}, "ok"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
