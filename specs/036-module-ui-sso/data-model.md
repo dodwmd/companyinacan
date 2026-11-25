@@ -11,6 +11,8 @@ Migration `core/server/store/migrations/0009_login_tickets.sql`. Only hashes of 
 | `subject` | `user:<username>` of the person who minted it |
 | `module_id` | the audience: the one module that may redeem it |
 | `return_path` | landing path inside the module's UI, relative to its base; `''` for the home page; validated at mint |
+| `binding_hash` | SHA-256 (hex) of the launching browser's nonce (`canb_` + 43 characters; the cookie `__Secure-can_launch_<module>`); peek and redeem require it |
+| `session_not_after` | Unix seconds the module session may not outlive (the launching SSO session's IdP revalidation deadline); 0 = none |
 | `created_at`, `expires_at` | Unix seconds; `expires_at = created_at + 60` at most (`ticket.MaxTicketTTL`) |
 | `used_at` | 0 while unused; set by the atomic redeem |
 
@@ -25,8 +27,8 @@ The server-side handle of a module session that began with a ticket.
 | `handle_hash` | SHA-256 (hex) of the handle (`cans_` + 43 base64url characters); primary key |
 | `ticket_id` | the ticket it came from (an id, not the ticket) |
 | `subject`, `module_id` | the person and the only module that may revalidate it |
-| `created_at`, `expires_at` | Unix seconds; at most 12 hours (`ticket.SessionLifetime`) |
-| `revoked_at` | 0 while valid; set when the account's access is ended (`identity.end`, SSO unlink via `revokeSubjectTokens`) |
+| `created_at`, `expires_at` | Unix seconds; at most 12 hours (`ticket.SessionLifetime`) and never past `session_not_after` |
+| `revoked_at` | 0 while valid; set (with the person's unused tickets spent) by `endLaunchAccess` in the transaction of a password/TOTP change or CLI reset, an admin session revocation, SSO unlink or link replacement, and `identity.end` |
 
 Revalidation does not depend on `revoked_at` alone: it re-reads the account (must exist and not be disabled)
 and RBAC (at least one module permission) on every call.

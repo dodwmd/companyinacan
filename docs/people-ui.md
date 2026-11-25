@@ -54,7 +54,7 @@ block or a route yet (follow-up).
 
 With the module installed under can-core and its address configured
 ([`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c)), **Open** on the admin UI's **Apps** page
-signs a person in without a token (`/login/ticket`, then **Continue**). The same rule as above applies: an
+signs a person in without a token (`/login/ticket`, valid only in the browser that clicked **Open**; check the account, then **Continue**). The same rule as above applies: an
 active person record with `sso_subject` set to `user:<username>` is needed. The session is re-checked with
 can-core every minute for hr and admin, every five minutes otherwise. `ui.token_login: false` (default `true`)
 removes the paste-a-token form. Not verified in a browser or on a cluster.

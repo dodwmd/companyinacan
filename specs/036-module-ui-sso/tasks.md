@@ -30,6 +30,13 @@ work that needs a browser or cluster and is **not** done.
 
 - [x] T015 `test/wiring/sso_test.go`: real ticket service, module API, `modclient`, real manifests and the real tracker end to end (launch, interstitial, redeem, signed in, replay refused)
 
+## Phase 2b: QA findings on the first review
+
+- [x] T016 Login CSRF: browser nonce cookie, `binding_hash`, `POST /v1/tickets/peek`, account on the interstitial, confirmation before replacing another account's session; two-browser tests in all four modules
+- [x] T017 finance party erasure for ticket sessions: recent launch plus live check (`stepUpSSO`); people, jobs and work have no token step-up
+- [x] T018 Credential change/reset, session revocation and unlink end launch sessions and unused tickets; SSO deadline cap
+- [x] T019 Start-up warnings for module UI configuration
+
 ## Phase 3: docs
 
 - [x] T014 `docs/sso.md`, `docs/module-wiring.md`, per-module UI docs, README note, compose note (stays on token login)
@@ -40,5 +47,5 @@ work that needs a browser or cluster and is **not** done.
 - [V] Cluster run: a module UI routed through the ingress with TokenReview-authenticated `/v1/tickets/*`.
 - [ ] The shipped charts do not route work, people, finance (or jobs beyond `/careers`) to a public host, so on a stock install the Apps page is empty until the operator sets `CAN_MODULE_UI_URLS`. A module installed before this change gets `web_login` in can-core's record only at its next upgrade or re-enable (the reconciler compares version and settings, not the manifest).
 - [ ] Extract one tested session package for the four copies (research R16): a refactor with its own risk, better done on its own.
-- [ ] Interstitial cannot say "Continue as <name>" (research R2).
+- [ ] Another host under the company domain can plant a nonce cookie (cookie tossing, research R7): the account name and the confirmation are then the only defence.
 - [ ] Back-channel logout from can-core: modules learn at the next revalidation.

@@ -59,7 +59,7 @@ somebody guessing from your office address cannot lock you out.
 When the tracker is installed under can-core and its address is configured
 ([`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c), for example
 `CAN_MODULE_UI_URLS=work=https://work.acme.example/ui`), people press **Open** on the admin UI's **Apps** page
-instead of pasting a token. The link (`/ui/login/ticket`) shows a **Continue** button; pressing it signs in
+instead of pasting a token. The link (`/ui/login/ticket`, valid only in the browser that clicked Open) names the account and shows a **Continue** button; pressing it signs in
 with the permissions the person holds in `work` at that moment. The session asks can-core again at most every
 30 seconds, so a removed role or a disabled account takes effect that fast. Logging out ends this session only.
 

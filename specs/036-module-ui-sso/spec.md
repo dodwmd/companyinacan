@@ -18,8 +18,10 @@ have to do it all over again for every module.
 2. **Launch ticket.** The POST mints a random 256-bit ticket, bound to that one module, valid for at most 60
    seconds, redeemable once, stored only as a hash, and sends the browser to the module's own sign-in
    address, which can-core builds from configuration (never from the request).
-3. **Module side.** `GET <module UI>/login/ticket?t=...` only shows a *Continue* form (a link scanner or a
-   browser prefetch must not spend the ticket). The form POST redeems the ticket at can-core over the module
+3. **Module side.** The ticket works only together with a nonce cookie can-core set in the launching browser, so
+   a link passed to somebody else signs nobody in. `GET <module UI>/login/ticket?t=...` only shows a *Continue*
+   form naming the account (a link scanner or a browser prefetch must not spend the ticket); a session of another
+   account is replaced only after an explicit confirmation. The form POST redeems the ticket at can-core over the module
    API (the caller's projected token names the audience) and the module starts a **session of its own**, with
    the permissions can-core computed from RBAC at that moment. The browser gets nothing but the module's own
    session cookie; the module gets no long-lived credential, only an opaque session handle that can-core
@@ -81,6 +83,15 @@ keep tokens for scripts only.
 - FR-7 The module session cookie is the module's own random id; the session fixation rules of the existing
   login apply (a presented id is never adopted).
 - FR-8 The admin UI session value is never a module credential and is not accepted anywhere in this flow.
+- FR-9 (login CSRF) Launch sets a `__Secure-` (plain on http development), `HttpOnly`, `SameSite=Strict`,
+  60-second nonce cookie the target module receives, stored hashed with the ticket; peek and redeem require it
+  and fail closed without spending the ticket. The interstitial names the account, and another account's live
+  session is never replaced without confirmation.
+- FR-10 A credential change or reset, an admin session revocation, SSO unlink and ending the account's access
+  revoke launch sessions and unused tickets in the same transaction; a session from an SSO sign-in does not
+  outlive that sign-in's revalidation deadline.
+- FR-11 An irreversible action that asks a token session for its token again (finance party erasure) asks a
+  ticket session for a launch at most 5 minutes old, confirmed live by can-core.
 
 ## Success criteria
 

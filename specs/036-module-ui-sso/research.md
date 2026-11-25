@@ -16,15 +16,15 @@ A ticket in a query string reaches the module as a GET navigation. Email and cha
 prefetch and "open in new tab" previews all issue GETs. If a GET redeemed the ticket, a scanner would spend
 it. So GET renders an interstitial with a **POST form** (no JavaScript, no meta refresh: either would let a
 scanner that renders pages spend it), and only the POST redeems. The ticket travels to the POST in a hidden
-field. Cost: one extra click. The interstitial cannot say "Continue as <name>" because naming the person would
-need a non-consuming lookup, which would turn the ticket into an oracle; it says "Continue".
+field. Cost: one extra click. The interstitial names the account through a non-consuming `peek` that needs
+the launching browser's nonce (R7), so it tells a bare ticket holder nothing.
 
 ## R3. Where the ticket is stored and how it is redeemed
 
-`login_tickets(id, token_hash UNIQUE, subject, module_id, return_path, created_at, expires_at, used_at)` and
+`login_tickets(id, token_hash UNIQUE, subject, module_id, return_path, binding_hash, session_not_after, created_at, expires_at, used_at)` and
 `ui_launch_sessions(handle_hash, ticket_id, subject, module_id, created_at, expires_at, revoked_at)`
 (migration 0009). Redeem is one statement,
-`UPDATE login_tickets SET used_at=? WHERE token_hash=? AND module_id=? AND used_at=0 AND expires_at>? RETURNING ...`,
+`UPDATE login_tickets SET used_at=? WHERE token_hash=? AND module_id=? AND binding_hash=? AND used_at=0 AND expires_at>? RETURNING ...`,
 so two concurrent redeems have exactly one winner (tested with 8 goroutines under `-race`). The lookup is by the
 hash of the secret, so there is no comparison on the secret to time. Unknown, used, expired and foreign tickets
 are the same row-less result.
@@ -59,10 +59,39 @@ Two places carry a URL: the address the browser is sent to, and the landing path
 
 ## R7. Login CSRF and session fixation
 
-Login CSRF (an attacker makes a victim's browser sign in as the attacker): the POST needs the module's
-double-submit login cookie (set by the GET) equal to the form field, plus the existing `Sec-Fetch-Site` /
-`Origin` checks. An attacker's ticket in a victim's browser has no matching cookie. Session fixation: a
-session cookie sent with the login is never adopted; a new random id is issued and the old session is deleted.
+Login CSRF: an attacker launches **their own** account and sends the link to a victim, who ends up signed in as
+the attacker and types data into the attacker's account. The module's double-submit cookie does **not** stop
+this (an earlier version of this document said it did; QA showed it was false): the interstitial GET sets that
+cookie in whatever browser opens the link. It only stops a forged cross-site POST.
+
+What stops it is binding the ticket to the browser that launched. At launch can-core also makes a random nonce
+(`canb_` + 43 characters), stores its hash with the ticket and sets it in the launching browser as a cookie:
+`__Secure-can_launch_<module>`, `HttpOnly`, `Secure`, `SameSite=Strict`, 60 seconds, path
+`<UI base>/login/ticket`, `Domain=<company domain>` so the module's host receives it (admin and module are
+same-site, so Strict is sent on the navigation). The module forwards it with the ticket; `peek` and `redeem`
+require it (`binding_hash` in the `WHERE`), fail closed when it is missing or different, and do not spend the
+ticket. A link opened in any other browser shows only "not accepted". Tested with two browsers in all four
+modules.
+
+On top of that the interstitial names the account (a non-consuming `peek`, which needs the nonce, so a ticket
+alone is no oracle), and a browser that already holds a session of a **different** account is told so and must
+tick a confirmation (409 and nothing redeemed without it).
+
+Cookie scope cases, decided at launch (`BindingCookie`):
+- admin UI and module on the same host (plain-http development on `localhost`; ports do not separate cookies):
+  host-only cookie, named `can_launch_<module>` without the `__Secure-` prefix when the module is on http;
+- different hosts, both under a company domain with a dot: `Domain=<company domain>`;
+- otherwise (admin UI reached by IP or port-forward, `Domain=localhost`): refused with a page that says to use
+  the admin UI's configured address. A module whose UI is secure never reads the unprefixed name.
+
+Residual risk: a `Domain` cookie can also be set by **any other host under the company domain** (cookie
+tossing). Someone who controls such a host (a compromised or hostile upstream app on a subdomain) can plant
+their own nonce in a victim's browser and send their own link; the account name on the interstitial and the
+confirmation are then the only defence. The same host receives the nonce on requests to that exact path, but
+the nonce is useless without the ticket. Host subdomains you do not trust on a different domain.
+
+Session fixation: a session cookie sent with the login is never adopted; a new random id is issued and the old
+session is deleted.
 
 With `Referrer-Policy: no-referrer` a browser posts a form with `Origin: null` (Fetch standard). The work UI
 refused every `null` origin, which would have refused its own forms in a real browser; it now accepts `null`
@@ -114,9 +143,16 @@ failed ticket logins per client address with its existing failed-login limiter.
 ## R14. Disabled or demoted users
 
 Mint checks the account exists and is not disabled and holds a permission. Redeem rechecks all three (a user
-disabled in the 60-second window gets nothing). Revalidate rechecks them every time. `identity.end` and SSO
-unlink also set `revoked_at` on the person's launch sessions, so the cut-off does not depend on the live
-checks alone.
+disabled in the 60-second window gets nothing). Revalidate rechecks them every time.
+
+Ending sign-ins ends module access too, in the same transaction: a password change, TOTP rotation or CLI
+credential reset, revoking one admin session (conservatively: all of that person's module sessions), SSO unlink
+and link replacement, and `identity.end` revoke the person's launch sessions and spend their unused tickets.
+Ordinary admin UI logout and normal session expiry do not.
+
+A module session started from an SSO sign-in expires no later than that admin session's IdP revalidation
+deadline (`sso.revalidate_interval`), and a ticket cannot be minted past it. Local sign-ins are capped at 12
+hours.
 
 ## R15. Why a restricted-token style actor in the module
 
@@ -138,4 +174,14 @@ tests. Recorded as a follow-up in `tasks.md`.
 
 `CAN_INSTALLER=none` (the compose stack) installs no module chart, so there is no module in `modules` state and
 the Apps page is empty; compose keeps the paste-a-token login. `CAN_MODULE_UI_URLS` plus
-`CAN_COOKIE_SECURE=false` allow `http://localhost:<port>/...` for a developer who runs a module by hand.
+`CAN_COOKIE_SECURE=false` allow `http://localhost:<port>/...` for a developer who runs a module by hand; open
+the admin UI on `localhost` too, so the launch cookie is shared (R7). `admin.localhost` with `work.localhost`
+cannot share a cookie. can-core warns at start-up about a missing or single-label `CAN_COMPANY_DOMAIN` and
+about unacceptable `CAN_MODULE_UI_URLS` entries (module id or position only, never the value).
+
+## R18. Step-up in a ticket session
+
+finance's party erasure asks a token session for its token again. A ticket session has none, so the step-up is
+a launch at most 5 minutes old plus a revalidation at that moment that still holds `finance.admin`. It proves
+the admin UI session was usable minutes ago; it does not ask for a password. people, jobs and work have no
+token step-up.
