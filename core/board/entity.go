@@ -689,6 +689,19 @@ func (s *Service) RecordEntry(ctx context.Context, a Actor, entityID, register s
 	return out, err
 }
 
+// registerName maps a validated register to its constant name, so a request value is never echoed.
+func registerName(r string) string {
+	switch r {
+	case RegMembers:
+		return RegMembers
+	case RegDirectors:
+		return RegDirectors
+	case RegCharges:
+		return RegCharges
+	}
+	return ""
+}
+
 func detailKeyOK(k string) bool {
 	if k == "" || len(k) > 32 {
 		return false
@@ -809,15 +822,21 @@ func (s *Service) ViewRegister(ctx context.Context, a Actor, entityID, register,
 	if asOf == "" {
 		asOf = s.today()
 	}
-	if _, err := parseDate(asOf); err != nil {
+	at, err := parseDate(asOf)
+	if err != nil {
 		return nil, err
 	}
+	asOf = at.Format(dateLayout) // re-formatted from the parsed time: only a date can come back
 	rows, err := s.registerRows(ctx, s.db, entityID, register, asOf, knownAt)
 	if err != nil {
 		return nil, err
 	}
 	eff := effectiveEntries(rows)
-	view := &RegisterView{EntityID: entityID, Register: register, AsOf: asOf, KnownAt: knownAt, State: []StateLine{}}
+	view := &RegisterView{EntityID: entityID, Register: registerName(register), AsOf: asOf, State: []StateLine{}}
+	if knownAt != "" {
+		kt, _ := time.Parse(dateLayout, knownAt) // registerRows already refused a bad known_at
+		view.KnownAt = kt.Format(dateLayout)
+	}
 	byID := map[string]*regRow{}
 	for _, r := range rows {
 		byID[r.ID] = r
@@ -934,7 +953,7 @@ func (s *Service) RegisterCSV(ctx context.Context, a Actor, entityID, register, 
 	c := csv.NewWriter(&buf)
 	_ = c.Write([]string{"register", "as_of", "party_ref", "name", "office", "title", "class_ref", "quantity", "since", "attested"})
 	for _, l := range v.State {
-		_ = c.Write([]string{csvSafe(register), v.AsOf, csvSafe(l.PartyRef), csvSafe(l.Name), csvSafe(l.Office), csvSafe(l.Title), csvSafe(l.ClassRef), strconv.FormatInt(l.Quantity, 10), l.Since, strconv.FormatBool(l.Attested)})
+		_ = c.Write([]string{v.Register, v.AsOf, csvSafe(l.PartyRef), csvSafe(l.Name), csvSafe(l.Office), csvSafe(l.Title), csvSafe(l.ClassRef), strconv.FormatInt(l.Quantity, 10), l.Since, strconv.FormatBool(l.Attested)})
 	}
 	c.Flush()
 	if err := c.Error(); err != nil {
