@@ -200,6 +200,9 @@ a module backup hook Job. The numbers are in
   image is not built or published, so these modules' dump runs fail (and no marker is written) until it is. The
   hook Job mechanism was run with a test module and a public curl image.
 - `can-hooks` Jobs against a database module (DB credentials come from the `can-database` Secret).
+- Disk use: one upload is capped at 4 GiB, but there is no total quota on the dumps directory, so a compromised
+  module pod could fill the server's disk during a dump run. Hooks retry with `--retry` only, which does not cover
+  a connection refused while a new pod's network rules are still being programmed.
 - The erasure ledger upload (can-core does not write the ledger yet; `can backup ledger-add` does by hand).
 - The restore-time target (15 minutes) and the effect of data size on dump and backup time.
 - Whether the 35-day retention fits your legal obligations is for you to decide.

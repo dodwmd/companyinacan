@@ -183,7 +183,7 @@ Budget by phase, with what is known:
 
 Two runs of the `make-up-e2e` workflow on a GitHub-hosted `ubuntu-latest` runner (`launch.Run`, the same code
 `can up` runs after the server exists; images imported with `k3d image import`; a fake host for the backup
-timer). Times are the per-phase durations the run reports:
+timer; these two runs predate E08b, which runs the backup for real, see specs/037). Times are the per-phase durations the run reports:
 
 | Phase | Run 1 (s) | Run 2 (s) | What it covers |
 |---|---|---|---|

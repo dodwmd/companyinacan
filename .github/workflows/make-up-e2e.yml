@@ -24,7 +24,7 @@ on:
       - "core/backup/**"
       - "core/server/dumps/**"
       - "core/server/runtime/**"
-      - "test/integration/backup_k3d_test.go"
+      - "test/integration/z_backup_k3d_test.go"
       - "cmd/can-static/**"
       - "deploy/**"
       - "scripts/build-images.sh"
