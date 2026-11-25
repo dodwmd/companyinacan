@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Expenses - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses" aria-current="page">Expenses</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Expenses</h1>
+<p class="actions"><a href="/expenses/new">New expense</a></p>
+
+<form method="get" action="/expenses" class="inline filter">
+<label for="f-status">Status</label>
+<select id="f-status" name="status"><option value="">All</option><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="reimbursed">Reimbursed</option></select>
+<button type="submit">Filter</button>
+</form>
+
+<div class="scroll">
+<table>
+<caption>Expenses</caption>
+<thead><tr><th scope="col">Date</th><th scope="col">Person</th><th scope="col">Description</th><th scope="col">Amount</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/expenses/1">2026-11-20</a></th><td>user:emp</td><td>Train</td><td class="num">45.50 USD</td><td>Submitted</td></tr>
+
+</tbody>
+</table>
+</div>
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

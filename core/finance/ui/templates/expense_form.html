@@ -1,0 +1,33 @@
+{{define "content"}}
+<h1>{{t "expense.new"}}</h1>
+<form method="post" action="/expenses" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="idem" value="{{.Data.Idem}}">
+<p><label for="e-desc">{{t "f.description"}}</label>
+<input id="e-desc" name="description" required maxlength="500"></p>
+<p><label for="e-amount">{{t "f.amount"}}</label>
+<input id="e-amount" name="amount" inputmode="decimal" required maxlength="24"></p>
+<p><label for="e-cur">{{t "f.currency"}}</label>
+<input id="e-cur" name="currency" value="{{.Data.Base}}" required maxlength="3"></p>
+<p><label for="e-cat">{{t "expense.category"}}</label>
+<input id="e-cat" name="category" required maxlength="30" aria-describedby="e-cat-hint"></p>
+<p id="e-cat-hint" class="hint">{{t "expense.category_hint"}}</p>
+<p><label for="e-date">{{t "expense.incurred"}}</label>
+<input id="e-date" name="incurred_on" type="date" value="{{.Data.Today}}" required></p>
+<p><label for="e-project">{{t "f.project"}}</label>
+<input id="e-project" name="project" maxlength="10"></p>
+<fieldset>
+<legend>{{t "receipt.legend"}}</legend>
+<p class="hint">{{t "receipt.hint"}}</p>
+<p><label for="r-name">{{t "receipt.filename"}}</label>
+<input id="r-name" name="receipt_filename" maxlength="255"></p>
+<p><label for="r-type">{{t "receipt.type"}}</label>
+<select id="r-type" name="receipt_type"><option value="">{{t "f.choose"}}</option>{{range .Data.Types}}<option value="{{.}}">{{.}}</option>{{end}}</select></p>
+<p><label for="r-size">{{t "receipt.size"}}</label>
+<input id="r-size" name="receipt_size" inputmode="numeric" maxlength="10"></p>
+<p><label for="r-sha">{{t "receipt.sha256"}}</label>
+<input id="r-sha" name="receipt_sha256" maxlength="64" autocomplete="off"></p>
+</fieldset>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}

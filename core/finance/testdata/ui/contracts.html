@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Contracts - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts" aria-current="page">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Contracts</h1>
+
+
+<div class="scroll">
+<table>
+<caption>Contracts</caption>
+<thead><tr><th scope="col">Title</th><th scope="col">Customer or vendor</th><th scope="col">Status</th><th scope="col">Renewal date</th><th scope="col">End date</th></tr></thead>
+<tbody>
+
+<tr><th scope="row"><a href="/contracts/1">Mutual NDA</a></th><td>Acme Pty</td><td>Draft</td><td>2026-12-15</td><td></td></tr>
+
+</tbody>
+</table>
+</div>
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

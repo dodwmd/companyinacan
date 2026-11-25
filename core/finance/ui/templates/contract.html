@@ -1,0 +1,70 @@
+{{define "content"}}
+<h1>{{.Data.C.Title}}</h1>
+<p><span class="badge">{{st "ct" .Data.C.Status}}</span></p>
+<dl class="facts">
+<dt>{{t "f.party"}}</dt><dd><a href="/parties/{{.Data.C.PartyID}}">{{.Data.Party}}</a></dd>
+<dt>{{t "contract.start"}}</dt><dd>{{with .Data.C.StartDate}}{{deref .}}{{end}}</dd>
+<dt>{{t "contract.end"}}</dt><dd>{{with .Data.C.EndDate}}{{deref .}}{{end}}</dd>
+<dt>{{t "contract.renewal"}}</dt><dd>{{with .Data.C.RenewalDate}}{{deref .}}{{end}}</dd>
+<dt>{{t "contract.reminder"}}</dt><dd>{{.Data.C.ReminderDays}}</dd>
+<dt>{{t "contract.sign_status"}}</dt><dd>{{if .Data.C.SignedAt}}{{t "contract.signed_at" (whenp .Data.C.SignedAt)}}{{else}}{{t "contract.not_signed"}}{{end}}</dd>
+<dt>{{t "contract.hash"}}</dt><dd><code>{{.Data.C.SHA256}}</code></dd>
+{{with .Data.C.SignedSHA256}}<dt>{{t "contract.signed_hash"}}</dt><dd><code>{{.}}</code></dd>{{end}}
+{{with .Data.C.ESignProvider}}<dt>{{t "contract.provider"}}</dt><dd>{{.}}</dd>{{end}}
+</dl>
+<section aria-labelledby="h-text">
+<h2 id="h-text">{{t "contract.text"}}</h2>
+<div class="prose box">{{.Data.Body.Body}}</div>
+</section>
+<section aria-labelledby="h-vers">
+<h2 id="h-vers">{{t "contract.versions"}}</h2>
+<p class="hint">{{t "contract.versions_hint"}}</p>
+<ul class="list">{{range .Data.Versions}}<li><a href="/contracts/{{$.Data.C.ID}}/versions/{{.}}">{{t "contract.version_n" .}}</a></li>
+{{end}}</ul>
+</section>
+{{if .Data.CanSend}}
+<section aria-labelledby="h-send">
+<h2 id="h-send">{{t "contract.send"}}</h2>
+<form method="post" action="/contracts/{{.Data.C.ID}}/send" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.C.Version}}">
+<p><label for="s-mode">{{t "contract.mode"}}</label>
+<select id="s-mode" name="mode"><option value="manual">{{t "contract.mode_manual"}}</option>{{if .Data.CanSign}}<option value="esign">{{t "contract.mode_esign"}}</option>{{end}}</select></p>
+{{if .Data.CanSign}}<p><label for="s-signers">{{t "contract.signers"}}</label>
+<textarea id="s-signers" name="signers" rows="2" maxlength="1000"></textarea></p>{{end}}
+<p class="hint">{{t "contract.send_hint"}}</p>
+<p><button type="submit">{{t "contract.send"}}</button></p>
+</form>
+</section>
+{{end}}
+{{if .Data.CanDates}}
+<section aria-labelledby="h-dates">
+<h2 id="h-dates">{{t "contract.dates"}}</h2>
+<form method="post" action="/contracts/{{.Data.C.ID}}/dates" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.C.Version}}">
+<p><label for="d-start">{{t "contract.start"}}</label>
+<input id="d-start" name="start_date" type="date" value="{{with .Data.C.StartDate}}{{deref .}}{{end}}"></p>
+<p><label for="d-end">{{t "contract.end"}}</label>
+<input id="d-end" name="end_date" type="date" value="{{with .Data.C.EndDate}}{{deref .}}{{end}}"></p>
+<p><label for="d-renew">{{t "contract.renewal"}}</label>
+<input id="d-renew" name="renewal_date" type="date" value="{{with .Data.C.RenewalDate}}{{deref .}}{{end}}"></p>
+<p><label for="d-remind">{{t "contract.reminder"}}</label>
+<input id="d-remind" name="reminder_days" inputmode="numeric" maxlength="3" value="{{.Data.C.ReminderDays}}"></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+</section>
+{{end}}
+{{if .Data.CanEnd}}
+<section aria-labelledby="h-end">
+<h2 id="h-end">{{t "contract.terminate"}}</h2>
+<form method="post" action="/contracts/{{.Data.C.ID}}/terminate" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.C.Version}}">
+<p><label for="t-reason">{{t "f.reason"}}</label>
+<input id="t-reason" name="reason" required maxlength="500"></p>
+<p><button type="submit">{{t "contract.terminate"}}</button></p>
+</form>
+</section>
+{{end}}
+{{end}}

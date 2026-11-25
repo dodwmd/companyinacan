@@ -1,0 +1,28 @@
+{{define "content"}}
+<h1>{{if .Data.New}}{{t "party.new"}}{{else}}{{t "party.edit"}}{{end}}</h1>
+<form method="post" action="{{if .Data.New}}/parties{{else}}/parties/{{.Data.P.ID}}{{end}}" class="card">
+{{template "csrf" .}}
+{{if not .Data.New}}<input type="hidden" name="version" value="{{.Data.Version}}">{{end}}
+<p><label for="p-kind">{{t "f.kind"}}</label>
+<select id="p-kind" name="kind"><option value="customer"{{if eq .Data.P.Kind "customer"}} selected{{end}}>{{t "kind.customer"}}</option><option value="vendor"{{if eq .Data.P.Kind "vendor"}} selected{{end}}>{{t "kind.vendor"}}</option><option value="both"{{if eq .Data.P.Kind "both"}} selected{{end}}>{{t "kind.both"}}</option></select></p>
+<p><label for="p-name">{{t "f.name"}}</label>
+<input id="p-name" name="name" value="{{.Data.P.Name}}" required maxlength="200"></p>
+<p><label for="p-contact">{{t "f.contact"}}</label>
+<input id="p-contact" name="contact_name" value="{{.Data.P.ContactName}}" maxlength="200"></p>
+<p><label for="p-email">{{t "f.email"}}</label>
+<input id="p-email" name="email" type="email" value="{{.Data.P.Email}}" maxlength="254" autocomplete="off"></p>
+<p><label for="p-phone">{{t "f.phone"}}</label>
+<input id="p-phone" name="phone" type="tel" value="{{.Data.P.Phone}}" maxlength="50" autocomplete="off"></p>
+<p><label for="p-address">{{t "f.address"}}</label>
+<textarea id="p-address" name="address" rows="3" maxlength="500">{{.Data.P.Address}}</textarea></p>
+<p><label for="p-tax">{{t "f.tax_id"}}</label>
+<input id="p-tax" name="tax_id" value="{{.Data.P.TaxID}}" maxlength="50"></p>
+<p><label for="p-cur">{{t "f.currency"}}</label>
+<input id="p-cur" name="currency" value="{{.Data.P.Currency}}" maxlength="3" aria-describedby="p-cur-hint"></p>
+<p id="p-cur-hint" class="hint">{{t "party.currency_hint" .Data.Base}}</p>
+<p><label for="p-notes">{{t "f.notes"}}</label>
+<textarea id="p-notes" name="notes" rows="3" maxlength="5000">{{.Data.P.Notes}}</textarea></p>
+<p class="hint">{{t "party.pii_form"}}</p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}

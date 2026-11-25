@@ -13,7 +13,8 @@ library `core/finance`) with a REST API and SQLite storage, and it backs the `in
 > payroll, and does not file returns.
 
 Status: **experimental**. The service is built and tested offline and its idle memory is measured;
-the image has not been built or run on a cluster, there is no web UI, and the payment and
+the image has not been built or run on a cluster, the web UI ([`finance-ui.md`](finance-ui.md)) is
+built offline and not browser-verified, and the payment and
 e-signature adapters are fakes (the real ones are separate, later work). See
 `specs/014-finance-basics/tasks.md` for the known gaps.
 
@@ -247,3 +248,7 @@ at least once, with backoff, dead-lettering after seven days (`GET /v1/events/de
 
 The OpenAPI document is `specs/014-finance-basics/contracts/openapi.yaml`; the capability schemas
 are `schemas/capabilities/{invoices,contracts,timesheets}.v1.json`.
+
+## Web UI
+
+The module can serve a server-rendered web UI next to the API (dashboard, approvals, parties, invoices, contracts, timesheets, expenses, purchase orders, reports): see [`finance-ui.md`](finance-ui.md). It is off unless `ui.enabled` is set.

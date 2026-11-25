@@ -14,7 +14,9 @@ category: finance
 version: 0.1.0
 # experimental: the service and its tests are complete and measured locally, and the chart installs
 # through can-core's installer in unit tests (specs/016-module-wiring); the image has not been built
-# or run on a cluster, there is no web UI and no real payment or e-signature adapter (fakes only).
+# or run on a cluster, there is no real payment or e-signature adapter (fakes only). A server-rendered
+# web UI (E15b, specs/031-finance-ui) ships in the same binary, off by default (ui.enabled), built offline
+# and not browser- or cluster-verified; the chart does not route it yet (no subdomain).
 # can-core generates the secrets, introspects personal access tokens, routes events and decides
 # invoice approvals (tested with fakes, not on a cluster). The public invoice link is not routed
 # (no subdomain, so the installer refuses a route). See specs/014-finance-basics/tasks.md.
@@ -29,10 +31,12 @@ requires:
   database: sqlite
   sso: none
 resources:
-  # Idle RAM target 20 MB. Measured on the static linux/amd64 build: 16.1 MiB RSS idle and 24.8 MiB
-  # after 200 invoice creates and 400 list/aging reads (specs/014-finance-basics/research.md R8).
-  ram_mb: 20
-  ram_limit_mb: 48
+  # RAM target 28 MB (loaded, with the web UI; was 20 idle-only before E15b), limit 64. Measured on the static linux/amd64 build: 16.1 MiB RSS idle and 24.8 MiB
+  # after 200 invoice creates and 400 list/aging reads (specs/014-finance-basics/research.md R8). With the
+  # web UI enabled (templates parse on first use): 17.2 MiB idle (17624 kB), 27.9 MiB (28576 kB) after the same load plus 700
+  # page renders and 100 form posts (specs/031-finance-ui/research.md R2). Loaded RSS 27.9 to 29.9 MiB exceeded 20 x 1.2, so the budget was raised to 28/64, the same as the work UI.
+  ram_mb: 28
+  ram_limit_mb: 64
   disk_mb: 500
 provides:
   - { capability: invoices, schema: invoices.v1, service: finance, port: 8080 }

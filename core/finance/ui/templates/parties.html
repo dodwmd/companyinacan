@@ -1,0 +1,25 @@
+{{define "content"}}
+<h1>{{t "nav.parties"}}</h1>
+<form method="get" action="/parties" class="inline filter">
+<label for="q">{{t "f.search"}}</label>
+<input id="q" name="q" value="{{.Data.Q}}" maxlength="100">
+<label for="kind">{{t "f.kind"}}</label>
+<select id="kind" name="kind"><option value="">{{t "f.all"}}</option><option value="customer"{{if eq .Data.Kind "customer"}} selected{{end}}>{{t "kind.customer"}}</option><option value="vendor"{{if eq .Data.Kind "vendor"}} selected{{end}}>{{t "kind.vendor"}}</option></select>
+<button type="submit">{{t "common.filter"}}</button>
+</form>
+{{if .Caps.Write}}<p class="actions"><a href="/parties/new">{{t "party.new"}}</a></p>{{end}}
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "parties.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.name"}}</th><th scope="col">{{t "f.kind"}}</th><th scope="col">{{t "f.email"}}</th><th scope="col">{{t "f.currency"}}</th></tr></thead>
+<tbody>
+{{range .Data.Items}}<tr><th scope="row"><a href="/parties/{{.ID}}">{{.Name}}</a></th><td>{{st "kind" .Kind}}</td><td>{{.Email}}</td><td>{{.Currency}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "parties.none"}}</p>{{end}}
+<p class="hint">{{t "parties.pii"}}</p>
+{{end}}

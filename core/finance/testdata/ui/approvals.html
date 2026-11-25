@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Approvals - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals" aria-current="page">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Approvals</h1>
+<p class="hint">Records you could decide. Anything you created, edited or own is left out: someone else must approve it.</p>
+
+
+
+<section aria-labelledby="h-inv">
+<h2 id="h-inv">Invoices</h2>
+<div class="scroll"><table>
+<caption>Draft invoices waiting for approval</caption>
+<thead><tr><th scope="col">Document</th><th scope="col">Currency</th><th scope="col">Total</th><th scope="col">Due date</th></tr></thead>
+<tbody><tr><th scope="row"><a href="/invoices/5">Draft #5</a></th><td>USD</td><td class="num">5.00</td><td>2026-12-25</td></tr>
+<tr><th scope="row"><a href="/invoices/4">Draft #4</a></th><td>USD</td><td class="num">1.00</td><td>2026-12-25</td></tr>
+<tr><th scope="row"><a href="/invoices/3">Draft #3</a></th><td>JPY</td><td class="num">4500</td><td>2026-12-25</td></tr>
+<tr><th scope="row"><a href="/invoices/1">Draft #1</a></th><td>USD</td><td class="num">200.00</td><td>2026-12-25</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section aria-labelledby="h-ts">
+<h2 id="h-ts">Timesheets</h2>
+<div class="scroll"><table>
+<caption>Submitted timesheets</caption>
+<thead><tr><th scope="col">Person</th><th scope="col">Week starting</th><th scope="col">Total</th></tr></thead>
+<tbody><tr><th scope="row"><a href="/timesheets/1">user:emp</a></th><td>2026-11-23</td><td class="num">37:30</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section aria-labelledby="h-ex">
+<h2 id="h-ex">Expenses</h2>
+<div class="scroll"><table>
+<caption>Submitted expenses</caption>
+<thead><tr><th scope="col">Person</th><th scope="col">Description</th><th scope="col">Amount</th></tr></thead>
+<tbody><tr><th scope="row"><a href="/expenses/1">user:emp</a></th><td>Train</td><td class="num">45.50 USD</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section aria-labelledby="h-po">
+<h2 id="h-po">Purchase orders</h2>
+<div class="scroll"><table>
+<caption>Draft purchase orders</caption>
+<thead><tr><th scope="col">Document</th><th scope="col">Total</th></tr></thead>
+<tbody><tr><th scope="row"><a href="/purchase-orders/1">Draft PO #1</a></th><td class="num">25.00 USD</td></tr>
+</tbody></table></div>
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

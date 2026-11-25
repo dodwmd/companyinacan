@@ -1,0 +1,46 @@
+{{define "content"}}
+<h1>{{t "nav.home"}}</h1>
+{{if not .Data.Business}}
+<p>{{t "home.own_only"}}</p>
+<ul class="list">
+<li><a href="/timesheets">{{t "nav.timesheets"}}</a></li>
+<li><a href="/expenses">{{t "nav.expenses"}}</a></li>
+</ul>
+{{else}}
+{{if .Caps.Approve}}
+<section aria-labelledby="h-appr">
+<h2 id="h-appr">{{t "home.approvals"}}</h2>
+{{with .Data.Queue}}
+{{if .Total}}<p>{{t "home.approvals_n" .Total}}{{if .More}} {{t "home.more"}}{{end}}</p>
+<p class="actions"><a href="/approvals">{{t "home.open_queue"}}</a></p>
+{{else}}<p class="muted">{{t "home.approvals_none"}}</p>{{end}}
+{{end}}
+</section>
+{{end}}
+{{with .Data.Stats}}
+<section aria-labelledby="h-over">
+<h2 id="h-over">{{t "home.overdue"}}</h2>
+{{if .OverdueCount}}
+<p class="overdue">{{t "home.overdue_n" .OverdueCount}}</p>
+<ul class="list">{{range .Overdue}}<li class="num">{{amt .Minor .Currency}}</li>{{end}}</ul>
+<p class="actions"><a href="/invoices?overdue=1">{{t "home.list_overdue"}}</a> <a href="/reports/aging">{{t "report.aging"}}</a></p>
+{{else}}<p class="muted">{{t "home.overdue_none"}}</p>{{end}}
+</section>
+<section aria-labelledby="h-month">
+<h2 id="h-month">{{t "home.month"}}</h2>
+<dl class="facts">
+<dt>{{t "home.issued"}}</dt><dd>{{range .IssuedThisMonth}}<span class="num">{{amt .Minor .Currency}}</span> {{else}}<span class="muted">{{t "home.nothing"}}</span>{{end}}</dd>
+<dt>{{t "home.received"}}</dt><dd>{{range .ReceivedThisMonth}}<span class="num">{{amt .Minor .Currency}}</span> {{else}}<span class="muted">{{t "home.nothing"}}</span>{{end}}</dd>
+</dl>
+<p class="hint">{{t "home.month_hint" .AsOf}}</p>
+</section>
+{{end}}
+<section aria-labelledby="h-go">
+<h2 id="h-go">{{t "home.shortcuts"}}</h2>
+<p class="actions">
+{{if .Caps.Write}}<a href="/invoices/new">{{t "invoice.new"}}</a><a href="/parties/new">{{t "party.new"}}</a>{{end}}
+<a href="/invoices">{{t "nav.invoices"}}</a><a href="/timesheets">{{t "nav.timesheets"}}</a><a href="/expenses">{{t "nav.expenses"}}</a>
+</p>
+</section>
+{{end}}
+{{end}}

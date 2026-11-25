@@ -1,0 +1,32 @@
+{{define "content"}}
+<h1>{{t "recurring.new"}}</h1>
+{{template "partysearch" (dict "Path" "/recurring/new" "Q" .Data.PQ "More" .Data.More "Hidden" (dict))}}
+<form method="post" action="/recurring" class="card wide">
+{{template "csrf" .}}
+<p><label for="r-name">{{t "f.name"}}</label>
+<input id="r-name" name="name" required maxlength="200"></p>
+<p><label for="r-party">{{t "f.party"}}</label>
+<select id="r-party" name="party_id" required><option value="">{{t "f.choose"}}</option>{{range .Data.Parties}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></p>
+<p><label for="r-cur">{{t "f.currency"}}</label>
+<input id="r-cur" name="currency" value="{{.Data.Base}}" required maxlength="3"></p>
+<p><label for="r-fx">{{t "invoice.fx_label"}}</label>
+<input id="r-fx" name="fx_rate" inputmode="decimal" maxlength="24"></p>
+<p><label for="r-series">{{t "invoice.series"}}</label>
+<input id="r-series" name="series" value="INV" maxlength="6"></p>
+<p><label for="r-project">{{t "f.project"}}</label>
+<input id="r-project" name="project" maxlength="10"></p>
+<p><label for="r-int">{{t "recurring.interval"}}</label>
+<select id="r-int" name="interval"><option value="weekly">{{t "interval.weekly"}}</option><option value="monthly" selected>{{t "interval.monthly"}}</option><option value="quarterly">{{t "interval.quarterly"}}</option><option value="yearly">{{t "interval.yearly"}}</option></select></p>
+<p><label for="r-start">{{t "recurring.start"}}</label>
+<input id="r-start" name="start_date" type="date" value="{{.Data.Today}}" required></p>
+<p><label for="r-end">{{t "recurring.end_date"}}</label>
+<input id="r-end" name="end_date" type="date"></p>
+<p><label for="r-days">{{t "invoice.due_days"}}</label>
+<input id="r-days" name="due_days" inputmode="numeric" maxlength="3" value="30"></p>
+{{template "linerows" .Data}}
+<p><label for="r-notes">{{t "f.notes"}}</label>
+<textarea id="r-notes" name="notes" rows="3" maxlength="5000"></textarea></p>
+<p class="hint">{{t "recurring.draft_hint"}}</p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}

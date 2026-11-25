@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Invoices - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices" aria-current="page">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Invoices</h1>
+<form method="get" action="/invoices" class="card filter">
+<p><label for="f-status">Status</label>
+<select id="f-status" name="status"><option value="">All</option><option value="draft">Draft</option><option value="approved">Approved</option><option value="sent">Sent</option><option value="partially_paid">Partially paid</option><option value="paid">Paid</option><option value="void">Void</option></select></p>
+<p><label for="f-kind">Type</label>
+<select id="f-kind" name="kind"><option value="">All</option><option value="invoice">Invoice</option><option value="credit_note">Credit note</option></select></p>
+<p><label for="f-from">From</label>
+<input id="f-from" name="from" type="date" value=""></p>
+<p><label for="f-to">To</label>
+<input id="f-to" name="to" type="date" value=""></p>
+<p><label for="f-project">Project</label>
+<input id="f-project" name="project" value="" maxlength="10"></p>
+<p><label for="f-overdue">Overdue</label>
+<select id="f-overdue" name="overdue"><option value="">All</option><option value="1">Overdue today (2026-11-25)</option></select></p>
+<p><button type="submit">Filter</button></p>
+</form>
+<p class="actions">
+
+<a href="/exports/invoices.csv?status=&amp;from=&amp;to=">Download invoices (CSV)</a>
+<a href="/exports/payments.csv?from=&amp;to=">Download payments (CSV)</a>
+</p>
+<p class="hint">Downloads follow the filters of dates and status, are limited to your scope, and every download is recorded in the audit log. Text that starts with a formula character is defused.</p>
+
+<div class="scroll">
+<table>
+<caption>Invoices and credit notes</caption>
+<thead><tr><th scope="col">Number</th><th scope="col">Customer or vendor</th><th scope="col">Status</th><th scope="col">Issue date</th><th scope="col">Due date</th><th scope="col">Total</th><th scope="col">Balance</th></tr></thead>
+<tbody>
+
+<tr>
+<th scope="row"><a href="/invoices/5">Draft #5</a></th>
+<td><a href="/parties/1">Acme Pty</a></td>
+<td>Draft</td><td>2026-11-25</td><td>2026-12-25</td>
+<td class="num">5.00 USD</td><td class="num"></td>
+</tr>
+<tr>
+<th scope="row"><a href="/invoices/4">Draft #4</a></th>
+<td><a href="/parties/4">&lt;script&gt;alert(1)&lt;/script&gt; &#34;quoted&#34; &amp; co</a></td>
+<td>Draft</td><td>2026-11-25</td><td>2026-12-25</td>
+<td class="num">1.00 USD</td><td class="num">1.00 USD</td>
+</tr>
+<tr>
+<th scope="row"><a href="/invoices/3">Draft #3</a></th>
+<td><a href="/parties/3">Tokyo KK</a></td>
+<td>Draft</td><td>2026-11-25</td><td>2026-12-25</td>
+<td class="num">4500 JPY</td><td class="num">4500 JPY</td>
+</tr>
+<tr>
+<th scope="row"><a href="/invoices/2">INV-00001</a></th>
+<td><a href="/parties/1">Acme Pty</a></td>
+<td>Partially paid</td><td>2026-11-25</td><td>2026-12-25</td>
+<td class="num">99.00 USD</td><td class="num">59.00 USD</td>
+</tr>
+<tr>
+<th scope="row"><a href="/invoices/1">Draft #1</a></th>
+<td><a href="/parties/1">Acme Pty</a></td>
+<td>Draft</td><td>2026-11-25</td><td>2026-12-25</td>
+<td class="num">200.00 USD</td><td class="num">200.00 USD</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

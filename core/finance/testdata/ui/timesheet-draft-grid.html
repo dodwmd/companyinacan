@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>timesheet.title - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/timesheets" aria-current="page">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Week of 2026-11-16</h1>
+<p><span class="badge">Draft</span> <span class="muted">user:emp</span></p>
+
+
+
+<form method="post" action="/timesheets/2/entries" class="wide">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="1">
+<div class="scroll">
+<table class="grid">
+<caption>Hours per day</caption>
+<thead><tr><th scope="col">Project</th><th scope="col">Task</th><th scope="col">Description</th><th scope="col">Billable</th><th scope="col">2026-11-16</th><th scope="col">2026-11-17</th><th scope="col">2026-11-18</th><th scope="col">2026-11-19</th><th scope="col">2026-11-20</th><th scope="col">2026-11-21</th><th scope="col">2026-11-22</th></tr></thead>
+<tbody>
+<tr>
+<td><input name="project" value="" maxlength="10" aria-label="Project 1"></td>
+<td><input name="task" value="" maxlength="20" aria-label="Task 1"></td>
+<td><input name="desc" value="" maxlength="500" aria-label="Description 1"></td>
+<td><select name="billable" aria-label="Billable 1"><option value="1" selected>Yes</option><option value="0">No</option></select></td>
+<td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 1, 2026-11-16"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 1, 2026-11-17"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 1, 2026-11-18"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 1, 2026-11-19"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 1, 2026-11-20"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 1, 2026-11-21"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 1, 2026-11-22"></td>
+</tr>
+<tr>
+<td><input name="project" value="" maxlength="10" aria-label="Project 2"></td>
+<td><input name="task" value="" maxlength="20" aria-label="Task 2"></td>
+<td><input name="desc" value="" maxlength="500" aria-label="Description 2"></td>
+<td><select name="billable" aria-label="Billable 2"><option value="1" selected>Yes</option><option value="0">No</option></select></td>
+<td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 2, 2026-11-16"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 2, 2026-11-17"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 2, 2026-11-18"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 2, 2026-11-19"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 2, 2026-11-20"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 2, 2026-11-21"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 2, 2026-11-22"></td>
+</tr>
+<tr>
+<td><input name="project" value="" maxlength="10" aria-label="Project 3"></td>
+<td><input name="task" value="" maxlength="20" aria-label="Task 3"></td>
+<td><input name="desc" value="" maxlength="500" aria-label="Description 3"></td>
+<td><select name="billable" aria-label="Billable 3"><option value="1" selected>Yes</option><option value="0">No</option></select></td>
+<td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 3, 2026-11-16"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 3, 2026-11-17"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 3, 2026-11-18"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 3, 2026-11-19"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 3, 2026-11-20"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 3, 2026-11-21"></td><td><input name="h" value="" maxlength="5" size="5" inputmode="numeric" aria-label="Row 3, 2026-11-22"></td>
+</tr>
+
+</tbody>
+</table>
+</div>
+<p class="hint">Type hours as 7:30 or 7. Leave days empty. A row needs a project key such as ACME. Saving replaces the whole week.</p>
+<p><button type="submit">Save</button></p>
+</form>
+
+<p>Total: <strong class="num">0:00</strong> (Billable: <span class="num">0:00</span>)</p>
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

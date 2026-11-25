@@ -1,0 +1,52 @@
+{{define "content"}}
+<h1>{{t "po.title"}} {{if .Data.O.Number}}{{deref .Data.O.Number}}{{else}}{{t "po.draft_n" .Data.O.ID}}{{end}}</h1>
+<p><span class="badge">{{st "po" .Data.O.Status}}</span></p>
+<dl class="facts">
+<dt>{{t "po.vendor"}}</dt><dd><a href="/parties/{{.Data.O.VendorID}}">{{.Data.Vendor}}</a></dd>
+{{with .Data.O.Project}}<dt>{{t "f.project"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.O.Notes}}<dt>{{t "f.notes"}}</dt><dd class="prose">{{.}}</dd>{{end}}
+<dt>{{t "f.created_by"}}</dt><dd>{{.Data.O.CreatedBy}}</dd>
+{{with .Data.O.ApprovedBy}}<dt>{{t "invoice.approved_by"}}</dt><dd>{{deref .}}</dd>{{end}}
+</dl>
+<div class="scroll">
+<table>
+<caption>{{t "lines.caption"}}</caption>
+<thead><tr><th scope="col">{{t "line.desc"}}</th><th scope="col">{{t "line.qty"}}</th><th scope="col">{{t "line.price"}}</th><th scope="col">{{t "f.amount"}}</th></tr></thead>
+<tbody>
+{{$cur := .Data.O.Currency}}
+{{range .Data.O.Lines}}<tr><th scope="row">{{.Description}}</th><td class="num">{{milli .QuantityMilli}}</td><td class="num">{{money .UnitPriceMinor $cur}}</td><td class="num">{{money .TotalMinor $cur}}</td></tr>
+{{end}}
+</tbody>
+<tfoot>
+<tr><th scope="row" colspan="3">{{t "invoice.tax"}}</th><td class="num">{{money .Data.O.TaxMinor $cur}}</td></tr>
+<tr><th scope="row" colspan="3">{{t "invoice.total" $cur}}</th><td class="num">{{money .Data.O.TotalMinor $cur}}</td></tr>
+</tfoot>
+</table>
+</div>
+{{if .Data.CanApprove}}
+{{if .Data.ApproveBlock}}
+<p><button type="button" disabled aria-describedby="sod">{{t "common.approve"}}</button></p>
+<p class="hint" id="sod">{{t "sod.hint"}}</p>
+{{else}}
+<form method="post" action="/purchase-orders/{{.Data.O.ID}}/approve" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "common.approve"}}</button>
+</form>
+{{end}}
+{{end}}
+{{if .Data.CanReceive}}
+<form method="post" action="/purchase-orders/{{.Data.O.ID}}/status" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit" name="status" value="received">{{t "po.receive"}}</button>
+</form>
+{{end}}
+{{if .Data.CanCancel}}
+<form method="post" action="/purchase-orders/{{.Data.O.ID}}/status" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit" name="status" value="cancelled">{{t "po.cancel"}}</button>
+</form>
+{{end}}
+{{end}}

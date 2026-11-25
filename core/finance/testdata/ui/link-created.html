@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Public link - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices" aria-current="page">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Public link created</h1>
+<p class="notice" role="alert">Copy the link now. It is not stored and cannot be shown again.</p>
+<p><code class="link" id="the-link">https://billing.example.test/public/invoices/LINKTOKEN</code></p>
+
+<p>Expires 2026-11-26 10:00 UTC.</p>
+<p class="hint">You can revoke it from the invoice page.</p>
+<p><a href="/invoices/2">Back to the invoice</a></p>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

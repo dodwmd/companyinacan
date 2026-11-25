@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Customer statement - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging" aria-current="page">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Customer statement</h1>
+<p class="actions"><a href="/reports/aging">Receivables aging</a> <a href="/reports/statement">Customer statement</a></p>
+
+<form method="get" action="/reports/statement" class="inline filter">
+
+<label for="pq">Find a party by name</label>
+<input id="pq" name="pq" value="" maxlength="100">
+<button type="submit">Filter</button>
+</form>
+
+
+<form method="get" action="/reports/statement" class="inline filter">
+<label for="st-party">Customer or vendor</label>
+
+<select id="st-party" name="party"><option value="">Choose...</option><option value="1" selected>Acme Pty</option><option value="2">Parts Ltd</option><option value="3">Tokyo KK</option><option value="4">&lt;script&gt;alert(1)&lt;/script&gt; &#34;quoted&#34; &amp; co</option></select>
+<button type="submit">Show</button>
+</form>
+
+<h2>Acme Pty</h2>
+
+<p>Open balance:</p>
+<ul class="list"><li class="num">59.00 USD</li></ul>
+
+
+<div class="scroll">
+<table>
+<caption>Documents and payments</caption>
+<thead><tr><th scope="col">Number</th><th scope="col">Issue date</th><th scope="col">Status</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row"><a href="/invoices/2">INV-00001</a></th><td>2026-11-25</td><td>Partially paid</td>
+<td class="num">99.00 USD</td><td class="num">40.00 USD</td><td class="num">59.00 USD</td>
+</tr>
+<tr class="sub"><td></td><td>2026-11-24</td><td>Payment</td><td></td><td class="num">40.00 USD</td><td>ref-1</td></tr>
+
+
+</tbody>
+</table>
+</div>
+
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

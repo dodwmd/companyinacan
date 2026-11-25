@@ -1,0 +1,34 @@
+{{define "content"}}
+<h1>{{t "nav.timesheets"}}</h1>
+{{if .Data.OwnOnly}}<p class="hint">{{t "ts.own_only"}}</p>{{end}}
+{{if .Data.CanWrite}}
+<section aria-labelledby="h-open">
+<h2 id="h-open">{{t "ts.open"}}</h2>
+<form method="post" action="/timesheets" class="inline">
+{{template "csrf" .}}
+<label for="ts-week">{{t "ts.week_start"}}</label>
+<input id="ts-week" name="week_start" type="date" value="{{.Data.Monday}}" required aria-describedby="ts-week-hint">
+<button type="submit">{{t "ts.open_btn"}}</button>
+</form>
+<p id="ts-week-hint" class="hint">{{t "ts.monday_hint"}}</p>
+</section>
+{{end}}
+<form method="get" action="/timesheets" class="inline filter">
+<label for="f-status">{{t "f.status"}}</label>
+<select id="f-status" name="status"><option value="">{{t "f.all"}}</option>{{$s := .Data.Status}}<option value="draft"{{if eq $s "draft"}} selected{{end}}>{{st "ts" "draft"}}</option><option value="submitted"{{if eq $s "submitted"}} selected{{end}}>{{st "ts" "submitted"}}</option><option value="approved"{{if eq $s "approved"}} selected{{end}}>{{st "ts" "approved"}}</option><option value="rejected"{{if eq $s "rejected"}} selected{{end}}>{{st "ts" "rejected"}}</option></select>
+<button type="submit">{{t "common.filter"}}</button>
+</form>
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "ts.caption"}}</caption>
+<thead><tr><th scope="col">{{t "ts.week"}}</th><th scope="col">{{t "f.person"}}</th><th scope="col">{{t "f.status"}}</th><th scope="col">{{t "ts.total"}}</th><th scope="col">{{t "ts.billable"}}</th></tr></thead>
+<tbody>
+{{range .Data.Items}}<tr><th scope="row"><a href="/timesheets/{{.ID}}">{{.WeekStart}}</a></th><td>{{.Owner}}</td><td>{{st "ts" .Status}}</td><td class="num">{{hm .TotalMinutes}}</td><td class="num">{{hm .BillableMinutes}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "ts.none"}}</p>{{end}}
+{{end}}

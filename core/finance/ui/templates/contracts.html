@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1>{{t "nav.contracts"}}</h1>
+{{if .Data.Write}}<p class="actions"><a href="/contracts/new">{{t "contract.new"}}</a></p>{{end}}
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "contracts.caption"}}</caption>
+<thead><tr><th scope="col">{{t "contract.title"}}</th><th scope="col">{{t "f.party"}}</th><th scope="col">{{t "f.status"}}</th><th scope="col">{{t "contract.renewal"}}</th><th scope="col">{{t "contract.end"}}</th></tr></thead>
+<tbody>
+{{$names := .Data.Names}}
+{{range .Data.Items}}<tr><th scope="row"><a href="/contracts/{{.ID}}">{{.Title}}</a></th><td>{{index $names .PartyID}}</td><td>{{st "ct" .Status}}</td><td>{{with .RenewalDate}}{{deref .}}{{end}}</td><td>{{with .EndDate}}{{deref .}}{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "contracts.none"}}</p>{{end}}
+{{end}}

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Settings - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings" aria-current="page">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Settings</h1>
+<p class="hint">This page is read-only. Settings are changed in the module configuration; tax rates through the API.</p>
+
+<section aria-labelledby="h-series">
+<h2 id="h-series">Number series</h2>
+
+<div class="scroll"><table>
+<caption>Numbering series</caption>
+<thead><tr><th scope="col">Series</th><th scope="col">Last number issued</th></tr></thead>
+<tbody><tr><th scope="row">INV</th><td class="num">1</td></tr>
+</tbody></table></div>
+
+<p class="hint">Numbers are taken only when a document is approved, so they have no gaps.</p>
+</section>
+
+<section aria-labelledby="h-tax">
+<h2 id="h-tax">Tax rates</h2>
+<p class="muted">No tax rate is defined.</p>
+</section>
+<section aria-labelledby="h-gen">
+<h2 id="h-gen">General</h2>
+<dl class="facts">
+<dt>Company currency</dt><dd>USD</dd>
+<dt>Seller on invoices</dt><dd class="prose">Example Seller Pty
+1 Fake Street</dd>
+
+<dt>Payment instructions</dt><dd class="prose">Pay to IBAN XX00 0000 0000 (fake).</dd>
+<dt>Record retention</dt><dd>7 years</dd>
+<dt>Audit log retention</dt><dd>2555 days</dd>
+<dt>Periods locked through</dt><dd>No period is locked</dd>
+<dt>Public link base URL</dt><dd>https://billing.example.test</dd>
+</dl>
+<p class="hint">The period lock is set through the API by a finance administrator.</p>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

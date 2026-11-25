@@ -1,0 +1,43 @@
+{{define "content"}}
+<h1>{{t "nav.invoices"}}</h1>
+<form method="get" action="/invoices" class="card filter">
+<p><label for="f-status">{{t "f.status"}}</label>
+<select id="f-status" name="status"><option value="">{{t "f.all"}}</option>{{$cur := .Data.Filter.Status}}{{range .Data.Statuses}}<option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{st "inv" .}}</option>{{end}}</select></p>
+<p><label for="f-kind">{{t "f.type"}}</label>
+<select id="f-kind" name="kind"><option value="">{{t "f.all"}}</option><option value="invoice"{{if eq .Data.Filter.Kind "invoice"}} selected{{end}}>{{t "kind.invoice"}}</option><option value="credit_note"{{if eq .Data.Filter.Kind "credit_note"}} selected{{end}}>{{t "kind.credit_note"}}</option></select></p>
+<p><label for="f-from">{{t "f.from"}}</label>
+<input id="f-from" name="from" type="date" value="{{.Data.Filter.From}}"></p>
+<p><label for="f-to">{{t "f.to"}}</label>
+<input id="f-to" name="to" type="date" value="{{.Data.Filter.To}}"></p>
+<p><label for="f-project">{{t "f.project"}}</label>
+<input id="f-project" name="project" value="{{.Data.Filter.Project}}" maxlength="10"></p>
+<p><label for="f-overdue">{{t "f.overdue_only"}}</label>
+<select id="f-overdue" name="overdue"><option value="">{{t "f.all"}}</option><option value="1"{{if .Data.Overdue}} selected{{end}}>{{t "f.overdue_as_of" .Data.Today}}</option></select></p>
+<p><button type="submit">{{t "common.filter"}}</button></p>
+</form>
+<p class="actions">
+{{if .Caps.Write}}<a href="/invoices/new">{{t "invoice.new"}}</a>{{end}}
+<a href="/exports/invoices.csv?status={{.Data.Filter.Status}}&amp;from={{.Data.Filter.From}}&amp;to={{.Data.Filter.To}}">{{t "export.invoices"}}</a>
+<a href="/exports/payments.csv?from={{.Data.Filter.From}}&amp;to={{.Data.Filter.To}}">{{t "export.payments"}}</a>
+</p>
+<p class="hint">{{t "export.hint"}}</p>
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "invoices.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.number"}}</th><th scope="col">{{t "f.party"}}</th><th scope="col">{{t "f.status"}}</th><th scope="col">{{t "f.issued"}}</th><th scope="col">{{t "f.due"}}</th><th scope="col">{{t "f.total"}}</th><th scope="col">{{t "f.balance"}}</th></tr></thead>
+<tbody>
+{{$names := .Data.Names}}
+{{range .Data.Items}}<tr>
+<th scope="row"><a href="/invoices/{{.ID}}">{{if .Number}}{{deref .Number}}{{else}}{{t "invoice.draft_n" .ID}}{{end}}</a></th>
+<td><a href="/parties/{{.PartyID}}">{{with index $names .PartyID}}{{.}}{{else}}{{t "party.n" .PartyID}}{{end}}</a></td>
+<td>{{st "inv" .Status}}</td><td>{{.IssueDate}}</td><td>{{.DueDate}}</td>
+<td class="num">{{amt .TotalMinor .Currency}}</td><td class="num">{{if eq .Kind "invoice"}}{{amt .BalanceMinor .Currency}}{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "invoices.none"}}</p>{{end}}
+{{end}}

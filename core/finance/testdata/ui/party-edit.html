@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Edit customer or vendor - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties" aria-current="page">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Edit customer or vendor</h1>
+<form method="post" action="/parties/1" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="1">
+<p><label for="p-kind">Kind</label>
+<select id="p-kind" name="kind"><option value="customer" selected>Customer</option><option value="vendor">Vendor</option><option value="both">Customer and vendor</option></select></p>
+<p><label for="p-name">Name</label>
+<input id="p-name" name="name" value="Acme Pty" required maxlength="200"></p>
+<p><label for="p-contact">Contact person</label>
+<input id="p-contact" name="contact_name" value="Ann Example" maxlength="200"></p>
+<p><label for="p-email">Email</label>
+<input id="p-email" name="email" type="email" value="ap@acme.example" maxlength="254" autocomplete="off"></p>
+<p><label for="p-phone">Phone</label>
+<input id="p-phone" name="phone" type="tel" value="" maxlength="50" autocomplete="off"></p>
+<p><label for="p-address">Address</label>
+<textarea id="p-address" name="address" rows="3" maxlength="500">1 Fake Rd</textarea></p>
+<p><label for="p-tax">Tax id</label>
+<input id="p-tax" name="tax_id" value="TAX-1" maxlength="50"></p>
+<p><label for="p-cur">Currency</label>
+<input id="p-cur" name="currency" value="USD" maxlength="3" aria-describedby="p-cur-hint"></p>
+<p id="p-cur-hint" class="hint">Optional three-letter code such as USD. Empty uses the company currency (USD).</p>
+<p><label for="p-notes">Notes</label>
+<textarea id="p-notes" name="notes" rows="3" maxlength="5000"></textarea></p>
+<p class="hint">Only enter what is needed to invoice this party. Email and phone are personal data when they identify a person.</p>
+<p><button type="submit">Save</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

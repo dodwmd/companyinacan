@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Expense - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses" aria-current="page">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Expense</h1>
+<p><span class="badge">Submitted</span></p>
+<dl class="facts">
+<dt>Person</dt><dd>user:emp</dd>
+<dt>Description</dt><dd>Train</dd>
+<dt>Amount</dt><dd class="num">45.50 USD</dd>
+<dt>Category</dt><dd>travel</dd>
+<dt>Date incurred</dt><dd>2026-11-20</dd>
+
+
+<dt>File name</dt><dd>train.pdf</dd>
+<dt>File type</dt><dd>application/pdf</dd>
+<dt>Size in bytes</dt><dd>1024</dd>
+<dt>SHA-256 of the file</dt><dd><code>abababababababababababababababababababababababababababababababab</code></dd>
+
+
+
+
+</dl>
+
+
+<section aria-labelledby="h-dec">
+<h2 id="h-dec">Decision</h2>
+
+<form method="post" action="/expenses/1/approve" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="2">
+<button type="submit">Approve</button>
+</form>
+<form method="post" action="/expenses/1/reject" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="2">
+<p><label for="rej">Reason</label>
+<input id="rej" name="reason" required maxlength="500"></p>
+<p><button type="submit">Reject</button></p>
+</form>
+
+</section>
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

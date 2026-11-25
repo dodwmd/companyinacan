@@ -141,6 +141,22 @@ ok "jobs UI refuses a wrong token (HTTP 401)"
 rm -f "$jar"
 expect_status "jobs API still answers behind the UI" 401 "http://jobs.localhost:$port/v1/jobs"
 
+# 5d. finance web UI (E15b): login page, anonymous redirect, a wrong token is refused, API unchanged
+expect_status "finance UI login page" 200 "http://finance.localhost:$port/login"
+expect_status "finance UI redirects anonymous users to /login" 303 "http://finance.localhost:$port/"
+expect_status "finance UI stylesheet" 200 "http://finance.localhost:$port/static/finance.css"
+jar="$(mktemp)"
+curlx -c "$jar" -o /dev/null "http://finance.localhost:$port/login"
+fui_csrf="$(awk '$6=="can_finance_login_csrf"{print $7}' "$jar")"
+[ -n "$fui_csrf" ] || die "finance UI: no login csrf cookie"
+code="$(curlx -b "$jar" -o /dev/null -w '%{http_code}' -X POST "http://finance.localhost:$port/login" \
+  -H "Sec-Fetch-Site: same-origin" --data-urlencode "csrf=$fui_csrf" --data-urlencode "token=not-a-real-token")" || die "finance UI login POST: curl failed"
+[ "$code" = 401 ] || die "finance UI: a wrong token should get 401, got $code"
+ok "finance UI refuses a wrong token (HTTP 401)"
+rm -f "$jar"
+expect_status "finance API still answers behind the UI" 401 "http://finance.localhost:$port/v1/parties"
+expect_status "finance public invoice link path stays with the API" 404 "http://finance.localhost:$port/public/invoices/not-a-link"
+
 # 6. OPTIONAL (FINANCE_FLOW=1): the invoice flow. The dev admin token cannot approve an invoice it
 # created (separation of duties), so a second token for another subject with the approve scope is
 # minted through the tokens API.

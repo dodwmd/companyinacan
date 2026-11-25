@@ -1,0 +1,11 @@
+{{define "content"}}
+<h1>{{t "contract.version_of" .Data.V.Version .Data.C.Title}}</h1>
+<p class="hint">{{t "contract.version_readonly"}}</p>
+<dl class="facts">
+<dt>{{t "f.created_by"}}</dt><dd>{{.Data.V.CreatedBy}}</dd>
+<dt>{{t "f.created"}}</dt><dd>{{when .Data.V.CreatedAt}}</dd>
+<dt>{{t "contract.hash"}}</dt><dd><code>{{.Data.V.SHA256}}</code></dd>
+</dl>
+<div class="prose box">{{.Data.V.Body}}</div>
+<p><a href="/contracts/{{.Data.C.ID}}">{{t "contract.back"}}</a></p>
+{{end}}

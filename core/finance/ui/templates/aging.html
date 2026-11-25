@@ -1,0 +1,28 @@
+{{define "content"}}
+<h1>{{t "report.aging"}}</h1>
+<p class="actions"><a href="/reports/aging">{{t "report.aging"}}</a> <a href="/reports/statement">{{t "report.statement"}}</a></p>
+<form method="get" action="/reports/aging" class="inline filter">
+<label for="as-of">{{t "aging.as_of"}}</label>
+<input id="as-of" name="as_of" type="date" value="{{.Data.AsOf}}">
+<button type="submit">{{t "common.filter"}}</button>
+</form>
+<p class="hint">{{t "aging.hint"}}</p>
+{{range .Data.Currencies}}
+<section aria-labelledby="h-{{.Currency}}">
+<h2 id="h-{{.Currency}}">{{.Currency}}</h2>
+<div class="scroll">
+<table>
+<caption>{{t "aging.caption" .Currency}}</caption>
+<thead><tr><th scope="col">{{t "f.party"}}</th><th scope="col">{{t "aging.current"}}</th><th scope="col">{{t "aging.d30"}}</th><th scope="col">{{t "aging.d60"}}</th><th scope="col">{{t "aging.d90"}}</th><th scope="col">{{t "aging.over"}}</th><th scope="col">{{t "aging.total"}}</th></tr></thead>
+<tbody>
+{{$cur := .Currency}}
+{{range .Rows}}<tr><th scope="row"><a href="/reports/statement?party={{.PartyID}}">{{if .Name}}{{.Name}}{{else}}{{t "party.n" .PartyID}}{{end}}</a></th><td class="num">{{money .Current $cur}}</td><td class="num">{{money .Days1to30 $cur}}</td><td class="num">{{money .Days31_60 $cur}}</td><td class="num">{{money .Days61_90 $cur}}</td><td class="num">{{money .Over90 $cur}}</td><td class="num">{{money .Total $cur}}</td></tr>
+{{end}}
+</tbody>
+<tfoot><tr><th scope="row">{{t "aging.all_parties"}}</th><td class="num">{{money .Totals.Current $cur}}</td><td class="num">{{money .Totals.Days1to30 $cur}}</td><td class="num">{{money .Totals.Days31_60 $cur}}</td><td class="num">{{money .Totals.Days61_90 $cur}}</td><td class="num">{{money .Totals.Over90 $cur}}</td><td class="num">{{money .Totals.Total $cur}}</td></tr></tfoot>
+</table>
+</div>
+{{if .Hidden}}<p class="notice">{{t "aging.hidden" .Hidden}}</p>{{end}}
+</section>
+{{else}}<p class="muted">{{t "aging.none"}}</p>{{end}}
+{{end}}

@@ -38,7 +38,7 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://work.localhost:8080/ui/> | work tracker web UI: sign in by pasting the work admin token below ([work-ui.md](work-ui.md)) |
 | <http://people.localhost:8080> | people API (`/v1/...`, bearer token) |
 | <http://jobs.localhost:8080> | recruiting web UI (sign in with a jobs access token, [recruiting-ui.md](recruiting-ui.md)); public careers pages at `/careers`; API under `/v1` (bearer token) |
-| <http://finance.localhost:8080> | finance API (`/v1/...`, bearer token) |
+| <http://finance.localhost:8080> | finance web UI (sign in with a finance token, see `docs/finance-ui.md`) and API (`/v1/...`, bearer token) |
 | <http://forms.localhost:8080> | leads API of the forms gateway (`/v1/leads`, bearer token) |
 
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
@@ -131,6 +131,12 @@ curl -s -X POST $FIN/v1/invoices/<id>/approve -H "Authorization: Bearer cft_..."
 `FINANCE_FLOW=1 dev/compose/smoke.sh` runs this sequence (create party and invoice, creator approval refused,
 approval by the second subject, send). The approver token is stored in the finance database, not in a file, so
 there is no second static secret in `dev/compose/secrets/`.
+
+The finance web UI (`http://finance.localhost:8080/`, turned on by `dev/compose/config/finance.yaml`) signs in with
+the same tokens: paste the dev admin token to act as `bootstrap-admin`, and sign in with the approver token (above)
+in a second browser profile or private window to see the approve button enabled for one subject and disabled for the
+other. Cookies are not `Secure` in dev (plain HTTP). `dev/compose/smoke.sh` checks the login page, the anonymous
+redirect, the stylesheet, a refused wrong token and that `/v1` and `/public/invoices/` still reach the API.
 
 So this is good for exercising each service's own UI/API, the admin login flow, the form-to-lead path through a
 same-origin proxy, and the static site; it cannot tell you whether the modules integrate with can-core.

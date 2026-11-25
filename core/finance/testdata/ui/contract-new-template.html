@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>New contract - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts" aria-current="page">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>New contract</h1>
+
+
+<form method="get" action="/contracts/new" class="inline filter">
+<input type="hidden" name="template" value="1">
+<label for="pq">Find a party by name</label>
+<input id="pq" name="pq" value="" maxlength="100">
+<button type="submit">Filter</button>
+</form>
+
+
+<form method="post" action="/contracts" class="card wide">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="template_id" value="1">
+<p>Template: <strong>NDA</strong></p>
+<p><label for="c-title">Title</label>
+<input id="c-title" name="title" required maxlength="200"></p>
+<p><label for="c-party">Customer or vendor</label>
+<select id="c-party" name="party_id" required><option value="">Choose...</option><option value="1" selected>Acme Pty</option><option value="2">Parts Ltd</option><option value="3">Tokyo KK</option><option value="4">&lt;script&gt;alert(1)&lt;/script&gt; &#34;quoted&#34; &amp; co</option></select></p>
+
+<p><label for="v-party">Value for party</label>
+<input id="v-party" name="var_party" required maxlength="2000"></p>
+
+<p><label for="v-until">Value for until</label>
+<input id="v-until" name="var_until" required maxlength="2000"></p>
+
+<p><label for="c-start">Start date</label>
+<input id="c-start" name="start_date" type="date"></p>
+<p><label for="c-end">End date</label>
+<input id="c-end" name="end_date" type="date"></p>
+<p><label for="c-renew">Renewal date</label>
+<input id="c-renew" name="renewal_date" type="date"></p>
+<p><label for="c-remind">Remind this many days before renewal</label>
+<input id="c-remind" name="reminder_days" inputmode="numeric" maxlength="3" value="30"></p>
+<p class="hint">Values are inserted as plain text. Nothing is interpreted.</p>
+<p><button type="submit">Save</button></p>
+</form>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

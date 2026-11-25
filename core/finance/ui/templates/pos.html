@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1>{{t "nav.pos"}}</h1>
+{{if .Data.Write}}<p class="actions"><a href="/purchase-orders/new">{{t "po.new"}}</a></p>{{end}}
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "pos.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.number"}}</th><th scope="col">{{t "po.vendor"}}</th><th scope="col">{{t "f.status"}}</th><th scope="col">{{t "f.total"}}</th></tr></thead>
+<tbody>
+{{$names := .Data.Names}}
+{{range .Data.Items}}<tr><th scope="row"><a href="/purchase-orders/{{.ID}}">{{if .Number}}{{deref .Number}}{{else}}{{t "po.draft_n" .ID}}{{end}}</a></th><td>{{index $names .VendorID}}</td><td>{{st "po" .Status}}</td><td class="num">{{amt .TotalMinor .Currency}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "pos.none"}}</p>{{end}}
+{{end}}

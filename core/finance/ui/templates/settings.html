@@ -1,0 +1,44 @@
+{{define "content"}}
+<h1>{{t "nav.settings"}}</h1>
+<p class="hint">{{t "settings.readonly"}}</p>
+{{if .Data.ShowSeries}}
+<section aria-labelledby="h-series">
+<h2 id="h-series">{{t "settings.series"}}</h2>
+{{if .Data.Series}}
+<div class="scroll"><table>
+<caption>{{t "settings.series_caption"}}</caption>
+<thead><tr><th scope="col">{{t "settings.series_code"}}</th><th scope="col">{{t "settings.series_last"}}</th></tr></thead>
+<tbody>{{range .Data.Series}}<tr><th scope="row">{{.Code}}</th><td class="num">{{.Last}}</td></tr>
+{{end}}</tbody></table></div>
+{{else}}<p class="muted">{{t "settings.series_none"}}</p>{{end}}
+<p class="hint">{{t "settings.series_hint"}}</p>
+</section>
+{{else}}
+<p class="hint">{{t "settings.series_scoped"}}</p>
+{{end}}
+<section aria-labelledby="h-tax">
+<h2 id="h-tax">{{t "settings.tax"}}</h2>
+{{if .Data.TaxRates}}
+<div class="scroll"><table>
+<caption>{{t "settings.tax_caption"}}</caption>
+<thead><tr><th scope="col">{{t "settings.tax_code"}}</th><th scope="col">{{t "f.name"}}</th><th scope="col">{{t "settings.tax_rate"}}</th><th scope="col">{{t "f.status"}}</th></tr></thead>
+<tbody>{{range .Data.TaxRates}}<tr><th scope="row">{{.Code}}</th><td>{{.Name}}</td><td class="num">{{ppm .RatePPM}}%</td><td>{{if .Active}}{{t "common.active"}}{{else}}{{t "common.inactive"}}{{end}}</td></tr>
+{{end}}</tbody></table></div>
+{{else}}<p class="muted">{{t "settings.tax_none"}}</p>{{end}}
+</section>
+<section aria-labelledby="h-gen">
+<h2 id="h-gen">{{t "settings.general"}}</h2>
+<dl class="facts">
+<dt>{{t "settings.base"}}</dt><dd>{{.Data.Base}}</dd>
+<dt>{{t "settings.seller"}}</dt><dd class="prose">{{.Data.Seller.Name}}
+{{.Data.Seller.Address}}</dd>
+{{with .Data.Seller.TaxID}}<dt>{{t "f.tax_id"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.PayInstr}}<dt>{{t "settings.payment"}}</dt><dd class="prose">{{.}}</dd>{{end}}
+<dt>{{t "settings.retention"}}</dt><dd>{{t "settings.years" .Data.RetentionYr}}</dd>
+<dt>{{t "settings.audit"}}</dt><dd>{{t "settings.days" .Data.AuditDays}}</dd>
+<dt>{{t "settings.lock"}}</dt><dd>{{if .Data.LockedUntil}}{{.Data.LockedUntil}}{{else}}{{t "settings.no_lock"}}{{end}}</dd>
+<dt>{{t "settings.public"}}</dt><dd>{{if .Data.Public}}{{.Data.Public}}{{else}}{{t "settings.not_set"}}{{end}}</dd>
+</dl>
+<p class="hint">{{t "settings.where"}}</p>
+</section>
+{{end}}

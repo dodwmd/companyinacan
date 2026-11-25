@@ -245,8 +245,19 @@ func withMiddleware(log *slog.Logger, next http.Handler) http.Handler {
 					writeError(rec, http.StatusInternalServerError, "internal", "internal error")
 				}
 			}
-			log.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", time.Since(start).Milliseconds())
+			log.Info("request", "method", r.Method, "path", logPath(r.URL.Path), "status", rec.status, "ms", time.Since(start).Milliseconds())
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// logPath keeps bearer-like path segments out of the access log: the signed invoice link is a
+// credential, and anyone who can read the log would otherwise hold a working link.
+func logPath(p string) string {
+	// Anywhere in the path: "//public/invoices/<token>" and "/x/public/invoices/<token>" are not
+	// served as links but must not put the segment in the log either.
+	if strings.Contains(p, "/public/invoices/") {
+		return "/public/invoices/{token}"
+	}
+	return p
 }

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>New expense - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses" aria-current="page">Expenses</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>New expense</h1>
+<form method="post" action="/expenses" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="idem" value="IDEM">
+<p><label for="e-desc">Description</label>
+<input id="e-desc" name="description" required maxlength="500"></p>
+<p><label for="e-amount">Amount</label>
+<input id="e-amount" name="amount" inputmode="decimal" required maxlength="24"></p>
+<p><label for="e-cur">Currency</label>
+<input id="e-cur" name="currency" value="USD" required maxlength="3"></p>
+<p><label for="e-cat">Category</label>
+<input id="e-cat" name="category" required maxlength="30" aria-describedby="e-cat-hint"></p>
+<p id="e-cat-hint" class="hint">A lower-case word such as travel or meals.</p>
+<p><label for="e-date">Date incurred</label>
+<input id="e-date" name="incurred_on" type="date" value="2026-11-25" required></p>
+<p><label for="e-project">Project</label>
+<input id="e-project" name="project" maxlength="10"></p>
+<fieldset>
+<legend>Receipt (optional)</legend>
+<p class="hint">Only the receipt&#39;s name, type, size and SHA-256 are recorded here. The file itself is kept elsewhere.</p>
+<p><label for="r-name">File name</label>
+<input id="r-name" name="receipt_filename" maxlength="255"></p>
+<p><label for="r-type">File type</label>
+<select id="r-type" name="receipt_type"><option value="">Choose...</option><option value="application/pdf">application/pdf</option><option value="image/png">image/png</option><option value="image/jpeg">image/jpeg</option><option value="image/webp">image/webp</option><option value="image/heic">image/heic</option></select></p>
+<p><label for="r-size">Size in bytes</label>
+<input id="r-size" name="receipt_size" inputmode="numeric" maxlength="10"></p>
+<p><label for="r-sha">SHA-256 of the file</label>
+<input id="r-sha" name="receipt_sha256" maxlength="64" autocomplete="off"></p>
+</fieldset>
+<p><button type="submit">Save</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

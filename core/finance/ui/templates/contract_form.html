@@ -1,0 +1,40 @@
+{{define "content"}}
+<h1>{{t "contract.new"}}</h1>
+{{if not .Data.Tmpl}}
+<section aria-labelledby="h-tpl">
+<h2 id="h-tpl">{{t "contract.choose_template"}}</h2>
+{{if .Data.Templates}}
+<ul class="list">
+{{$pid := .Data.PartyID}}
+{{range .Data.Templates}}<li><a href="/contracts/new?template={{.ID}}{{if $pid}}&amp;party={{$pid}}{{end}}">{{.Name}}</a> <span class="muted">{{t "contract.vars" (len .Variables)}}</span></li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "contract.no_templates"}}</p>{{end}}
+</section>
+{{else}}
+{{template "partysearch" (dict "Path" "/contracts/new" "Q" .Data.PQ "More" .Data.More "Hidden" (dict "template" .Data.Tmpl.ID))}}
+<form method="post" action="/contracts" class="card wide">
+{{template "csrf" .}}
+<input type="hidden" name="template_id" value="{{.Data.Tmpl.ID}}">
+<p>{{t "contract.template"}} <strong>{{.Data.Tmpl.Name}}</strong></p>
+<p><label for="c-title">{{t "contract.title"}}</label>
+<input id="c-title" name="title" required maxlength="200"></p>
+<p><label for="c-party">{{t "f.party"}}</label>
+<select id="c-party" name="party_id" required><option value="">{{t "f.choose"}}</option>{{$sel := .Data.PartyID}}{{range .Data.Parties}}<option value="{{.ID}}"{{if eq .ID $sel}} selected{{end}}>{{.Name}}</option>{{end}}</select></p>
+{{range .Data.Tmpl.Variables}}
+<p><label for="v-{{.}}">{{t "contract.variable" .}}</label>
+<input id="v-{{.}}" name="var_{{.}}" required maxlength="2000"></p>
+{{end}}
+<p><label for="c-start">{{t "contract.start"}}</label>
+<input id="c-start" name="start_date" type="date"></p>
+<p><label for="c-end">{{t "contract.end"}}</label>
+<input id="c-end" name="end_date" type="date"></p>
+<p><label for="c-renew">{{t "contract.renewal"}}</label>
+<input id="c-renew" name="renewal_date" type="date"></p>
+<p><label for="c-remind">{{t "contract.reminder"}}</label>
+<input id="c-remind" name="reminder_days" inputmode="numeric" maxlength="3" value="30"></p>
+<p class="hint">{{t "contract.plain_hint"}}</p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}
+{{end}}

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Edit draft invoice - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices" aria-current="page">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Edit draft invoice</h1>
+
+<form method="post" action="/invoices/1" class="card wide">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="1">
+<input type="hidden" name="party_id" value="1">
+<p><label for="i-cur">Currency</label>
+<input id="i-cur" name="currency" value="USD" required maxlength="3" aria-describedby="i-cur-hint"></p>
+<p id="i-cur-hint" class="hint">Three-letter code. The company currency is USD; for another currency give the exchange rate.</p>
+<p><label for="i-fx">Exchange rate to the company currency</label>
+<input id="i-fx" name="fx_rate" value="" inputmode="decimal" maxlength="24"></p>
+
+<p><label for="i-project">Project</label>
+<input id="i-project" name="project" value="" maxlength="10"></p>
+<p><label for="i-issue">Issue date</label>
+<input id="i-issue" name="issue_date" type="date" value="2026-11-25"></p>
+<p><label for="i-due">Due date</label>
+<input id="i-due" name="due_date" type="date" value="2026-12-25"></p>
+
+
+<div class="scroll">
+<table class="lines">
+<caption>Lines</caption>
+<thead><tr><th scope="col">Description</th><th scope="col">Quantity</th><th scope="col">Unit price</th><th scope="col">Discount %</th><th scope="col">Tax</th><th scope="col">Product code</th></tr></thead>
+<tbody>
+<tr>
+<td><input name="desc" value="Consulting" maxlength="500" aria-label="Description 1"></td>
+<td><input name="qty" value="2" inputmode="decimal" maxlength="14" aria-label="Quantity 1"></td>
+<td><input name="price" value="100.00" inputmode="decimal" maxlength="24" aria-label="Unit price 1"></td>
+<td><input name="disc" value="" inputmode="decimal" maxlength="6" aria-label="Discount % 1"></td>
+<td><select name="tax" aria-label="Tax 1"><option value="">No tax</option></select></td>
+<td><input name="sku" value="" maxlength="30" aria-label="Product code 1"></td>
+</tr>
+<tr>
+<td><input name="desc" value="" maxlength="500" aria-label="Description 2"></td>
+<td><input name="qty" value="" inputmode="decimal" maxlength="14" aria-label="Quantity 2"></td>
+<td><input name="price" value="" inputmode="decimal" maxlength="24" aria-label="Unit price 2"></td>
+<td><input name="disc" value="" inputmode="decimal" maxlength="6" aria-label="Discount % 2"></td>
+<td><select name="tax" aria-label="Tax 2"><option value="">No tax</option></select></td>
+<td><input name="sku" value="" maxlength="30" aria-label="Product code 2"></td>
+</tr>
+<tr>
+<td><input name="desc" value="" maxlength="500" aria-label="Description 3"></td>
+<td><input name="qty" value="" inputmode="decimal" maxlength="14" aria-label="Quantity 3"></td>
+<td><input name="price" value="" inputmode="decimal" maxlength="24" aria-label="Unit price 3"></td>
+<td><input name="disc" value="" inputmode="decimal" maxlength="6" aria-label="Discount % 3"></td>
+<td><select name="tax" aria-label="Tax 3"><option value="">No tax</option></select></td>
+<td><input name="sku" value="" maxlength="30" aria-label="Product code 3"></td>
+</tr>
+<tr>
+<td><input name="desc" value="" maxlength="500" aria-label="Description 4"></td>
+<td><input name="qty" value="" inputmode="decimal" maxlength="14" aria-label="Quantity 4"></td>
+<td><input name="price" value="" inputmode="decimal" maxlength="24" aria-label="Unit price 4"></td>
+<td><input name="disc" value="" inputmode="decimal" maxlength="6" aria-label="Discount % 4"></td>
+<td><select name="tax" aria-label="Tax 4"><option value="">No tax</option></select></td>
+<td><input name="sku" value="" maxlength="30" aria-label="Product code 4"></td>
+</tr>
+
+</tbody>
+</table>
+</div>
+<p class="hint">Leave unused rows empty. Prices are tax-exclusive, in the currency above, as plain numbers such as 1234.50. Quantities may have up to three decimals.</p>
+
+<p><label for="i-notes">Notes</label>
+<textarea id="i-notes" name="notes" rows="3" maxlength="5000"></textarea></p>
+<p><button type="submit">Save</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

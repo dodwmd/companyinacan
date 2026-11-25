@@ -1,0 +1,8 @@
+{{define "content"}}
+<h1>{{.Data.Heading}}</h1>
+{{with .Data.Message}}<p>{{.}}</p>{{end}}
+{{with .Data.Problems}}<ul class="problems">{{range .}}<li><strong>{{.Field}}</strong> {{.Message}}</li>{{end}}</ul>
+<p class="hint">{{t "err.go_back"}}</p>{{end}}
+<p>{{t "err.request_id"}} <code>{{.Data.RequestID}}</code></p>
+<p>{{if .Data.Authed}}<a href="/">{{t "err.home"}}</a>{{else}}<a href="/login">{{t "err.login"}}</a>{{end}}</p>
+{{end}}

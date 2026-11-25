@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>{{t "nav.expenses"}}</h1>
+{{if .Data.CanWrite}}<p class="actions"><a href="/expenses/new">{{t "expense.new"}}</a></p>{{end}}
+{{if .Data.CanExp}}<p class="actions"><a href="/exports/expenses.csv?status={{.Data.Status}}">{{t "export.expenses"}}</a></p>{{end}}
+<form method="get" action="/expenses" class="inline filter">
+<label for="f-status">{{t "f.status"}}</label>
+<select id="f-status" name="status"><option value="">{{t "f.all"}}</option>{{$s := .Data.Status}}{{range .Data.Statuses}}<option value="{{.}}"{{if eq . $s}} selected{{end}}>{{st "ex" .}}</option>{{end}}</select>
+<button type="submit">{{t "common.filter"}}</button>
+</form>
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "expenses.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.date"}}</th><th scope="col">{{t "f.person"}}</th><th scope="col">{{t "f.description"}}</th><th scope="col">{{t "f.amount"}}</th><th scope="col">{{t "f.status"}}</th></tr></thead>
+<tbody>
+{{range .Data.Items}}<tr><th scope="row"><a href="/expenses/{{.ID}}">{{.IncurredOn}}</a></th><td>{{.Owner}}</td><td>{{.Description}}</td><td class="num">{{amt .AmountMinor .Currency}}</td><td>{{st "ex" .Status}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "expenses.none"}}</p>{{end}}
+{{end}}

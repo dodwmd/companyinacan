@@ -167,7 +167,7 @@ func (a *api) guard(perm string, ownable bool, next handlerFunc) http.HandlerFun
 			tooMany(w, wait)
 			return
 		}
-		if !p.Can(perm) || (p.OwnOnly && !ownable) {
+		if !allowedBy(p, perm, ownable) {
 			writeError(w, http.StatusForbidden, "forbidden", "missing scope "+perm)
 			return
 		}

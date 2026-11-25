@@ -44,6 +44,26 @@ type Config struct {
 	// them forever). AuditRetentionDays must be at least 365: the database refuses sooner.
 	RetentionYears     int `yaml:"retention_years"`
 	AuditRetentionDays int `yaml:"audit_retention_days"`
+	// UI is the server-rendered web UI (specs/031-finance-ui). Off by default: the module then
+	// serves the JSON API only.
+	UI UIConfig `yaml:"ui"`
+}
+
+// UIConfig turns on the web UI at the root of the listener; /v1/*, /public/* and /healthz stay
+// with the API.
+type UIConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// InsecureCookies drops the Secure attribute (and the __Host- cookie prefix) for plain-HTTP
+	// local development. Cookies are Secure by default.
+	InsecureCookies bool `yaml:"insecure_cookies"`
+	// ForceSecure is the production guard: Secure cookies even when the listener sits behind a
+	// TLS-terminating proxy and sees plain HTTP. It cannot be combined with insecure_cookies.
+	ForceSecure bool `yaml:"force_secure"`
+	// NotificationsURL, when set, adds a Notifications link to the navigation.
+	NotificationsURL string `yaml:"notifications_url"`
+	// IdleMinutes and AbsoluteHours bound a session (defaults 30 minutes and 8 hours).
+	IdleMinutes   int `yaml:"idle_minutes"`
+	AbsoluteHours int `yaml:"absolute_hours"`
 }
 
 // DefaultConfig returns the defaults.
@@ -114,6 +134,20 @@ func (c *Config) Validate() error {
 	}
 	if c.RetentionYears < 0 || (c.AuditRetentionDays != 0 && c.AuditRetentionDays < 365) {
 		errs = append(errs, errors.New("retention_years must be >= 0 and audit_retention_days at least 365 (or 0 to keep everything)"))
+	}
+	if c.UI.InsecureCookies && c.UI.ForceSecure {
+		errs = append(errs, errors.New("ui.insecure_cookies and ui.force_secure contradict each other: pick one"))
+	}
+	if c.UI.InsecureCookies && strings.HasPrefix(strings.ToLower(c.PublicBaseURL), "https://") {
+		errs = append(errs, errors.New("ui.insecure_cookies cannot be set when public_base_url is https: the browser would send session cookies without Secure"))
+	}
+	if c.UI.IdleMinutes < 0 || c.UI.IdleMinutes > 24*60 || c.UI.AbsoluteHours < 0 || c.UI.AbsoluteHours > 24*30 {
+		errs = append(errs, errors.New("ui.idle_minutes and ui.absolute_hours are out of range"))
+	}
+	if u := c.UI.NotificationsURL; u != "" {
+		if p, err := url.Parse(u); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" || p.User != nil {
+			errs = append(errs, errors.New("ui.notifications_url must be an http(s) URL without credentials"))
+		}
 	}
 	return errors.Join(errs...)
 }
