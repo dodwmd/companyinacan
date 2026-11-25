@@ -197,6 +197,10 @@ func revokeSubjectTokens(ctx context.Context, tx *sql.Tx, subject string, now ti
 	if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE subject=? AND revoked_at=0`, now.Unix(), subject); err != nil {
 		return err
 	}
+	// And to module sessions that began with a launch ticket (E11c).
+	if _, err := tx.ExecContext(ctx, `UPDATE ui_launch_sessions SET revoked_at=? WHERE subject=? AND revoked_at=0`, now.Unix(), subject); err != nil {
+		return err
+	}
 	// The same applies to Web Push devices (E19a): they belong to the account being deleted.
 	_, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE subject=?`, subject)
 	return err

@@ -77,6 +77,8 @@ func (u *webUI) routes() []uiRoute {
 	return []uiRoute{
 		{UIRoute{"GET", "/ui/login", false, none}, u.loginPage},
 		{UIRoute{"POST", "/ui/login", false, none}, u.loginPost},
+		{UIRoute{"GET", "/ui/login/ticket", false, none}, u.ticketPage},
+		{UIRoute{"POST", "/ui/login/ticket", false, none}, u.ticketPost},
 		{UIRoute{"POST", "/ui/logout", true, r}, u.logout},
 		{UIRoute{"GET", "/ui/{$}", true, r}, u.projects},
 		{UIRoute{"GET", "/ui/dashboard", true, r}, u.dashboard},
@@ -206,6 +208,14 @@ func (u *webUI) authenticate(r *http.Request) (*Principal, *uiSession, string, b
 	sess, ok := u.sessions.get(c.Value)
 	if !ok {
 		return nil, nil, "", false
+	}
+	if sess.sso != nil {
+		p, ok := u.ssoPrincipal(r, sess)
+		if !ok || !p.Can(PermRead) {
+			u.sessions.delete(c.Value)
+			return nil, nil, "", false
+		}
+		return p, sess, c.Value, true
 	}
 	p, err := u.principalFor(r, sess.token)
 	if err != nil || !p.Can(PermRead) {
@@ -417,6 +427,11 @@ func (c *uiCtx) base(title, current string) *uiBase {
 	b := &uiBase{Lang: "en", Title: title, Current: current}
 	if c.p != nil {
 		b.User, b.CSRF, b.CanWrite = c.p.Subject, c.sess.csrf, c.p.Can(PermWrite)
+		if c.sess.sso != nil { // a launch-ticket session shows the person's name, not their account id
+			if n := c.u.sessions.ssoSnapshot(c.sess).name; n != "" {
+				b.User = n
+			}
+		}
 		b.Nav = []uiNav{
 			{"/ui/", msg("nav.projects"), current == "projects"},
 			{"/ui/dashboard", msg("nav.dashboard"), current == "dashboard"},

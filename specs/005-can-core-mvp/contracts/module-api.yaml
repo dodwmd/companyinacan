@@ -261,6 +261,54 @@ paths:
         "409": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /v1/tickets/redeem:
+    post:
+      operationId: redeemTicket
+      summary: "Exchange a one-time launch ticket for the signed-in person (E11c)"
+      description: "Single sign-on from the admin UI into a module web UI (specs/036-module-ui-sso). The caller is the module the ticket was minted for (the audience is the authenticated caller, never a field of the body). A ticket lives at most 60 seconds, works once and only for its module; every other case (unknown, malformed, used, expired, another module's, the person disabled or without a permission in the module) is the identical answer `{\"active\": false}`. A valid answer carries the subject, a display name (never an email address or groups), the module permissions the person holds right now, the landing path chosen at launch and an opaque `session` handle the module keeps in memory and presents to `/v1/tickets/revalidate`. Failed redeems are slowed per module past a quota; a valid redeem never is. Audited with ids only."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ticket]
+              properties:
+                ticket: { type: string, pattern: "^cant_[A-Za-z0-9_-]{43}$" }
+      responses:
+        "200":
+          description: Active, or the identical inactive answer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /v1/tickets/revalidate:
+    post:
+      operationId: revalidateTicketSession
+      summary: "Is the person behind a ticket-started session still allowed? (E11c)"
+      description: "A module asks with the `session` handle it got at redeem. The answer is computed now: the person must be enabled and hold at least one permission of the calling module, and the handle must belong to the caller, be unrevoked and younger than 12 hours. The returned permissions replace the module session's permissions. Inactive otherwise (`{\"active\": false}`), without saying why."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [session]
+              properties:
+                session: { type: string, pattern: "^cans_[A-Za-z0-9_-]{43}$" }
+      responses:
+        "200":
+          description: Active with current permissions, or inactive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 webhooks:
   event:
     post:
@@ -320,6 +368,17 @@ components:
         title: { type: string }
         status: { type: integer }
         detail: { type: string }
+    TicketSession:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+        subject: { type: string, pattern: "^user:" }
+        name: { type: string, maxLength: 80, description: "Display name; never an email address or groups" }
+        permissions: { type: array, items: { type: string } }
+        return_path: { type: string, pattern: "^/[A-Za-z0-9/_-]{0,100}$", description: "Landing path inside the module's UI, relative to its base; redeem only" }
+        session: { type: string, pattern: "^cans_[A-Za-z0-9_-]{43}$", description: "Opaque handle for revalidation; redeem only" }
+        session_expires_at: { type: string, format: date-time, description: "Redeem only" }
     Self:
       type: object
       required: [id, version, namespace, service_account, state, provides]

@@ -39,6 +39,14 @@ var messagesEN = map[string]string{
 	"login.locked":  "Too many failed attempts from this address. Wait a minute and try again.",
 	"login.csrf":    "The sign-in form expired. Reload the page and try again.",
 
+	"login.sso_only":        "Sign in from the Apps page of the admin UI. Pasting an access token is switched off here.",
+	"login.token_off":       "Pasting an access token is switched off. Open the tracker from the Apps page of the admin UI.",
+	"login.ticket_invalid":  "That sign-in link was not accepted. A link works once and for about a minute. Open the tracker again from the Apps page of the admin UI.",
+	"login.sso_unavailable": "Single sign-on is not available right now. Try again in a moment.",
+	"ticket.title":          "Continue with single sign-on",
+	"ticket.intro":          "You came here from the admin UI. Press Continue to sign in to the work tracker. Nothing happens until you do.",
+	"ticket.submit":         "Continue",
+
 	"projects.title":    "Projects",
 	"projects.caption":  "Projects you can see",
 	"projects.empty":    "There are no projects you can see yet. Ask an administrator to create one or to widen your token.",

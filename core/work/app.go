@@ -101,6 +101,10 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
 	a.forceSecure = cfg.forceSecure(opt.PublicURL)
+	a.tokenLogin = cfg.tokenLogin()
+	if opt.Can != nil {
+		a.sso = opt.Can
+	}
 	if a.ui, err = newWebUI(a, now); err != nil {
 		_ = store.Close()
 		return nil, err

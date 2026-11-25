@@ -21,6 +21,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/ticket"
 )
 
 type pHarness struct {
@@ -31,6 +32,7 @@ type pHarness struct {
 	eng     *approvals.Engine
 	ntf     *notify.Service
 	pats    *pat.Service
+	tickets *ticket.Service
 	now     *time.Time
 	secrets map[string]string
 	pw      string
@@ -61,12 +63,19 @@ func newPHarness(t *testing.T) *pHarness {
 	h.eng = approvals.New(db, al, approvals.Deps{Roles: h.rb, Perms: h.rb, Notifier: h.ntf, Now: clock})
 	m := store.Module{ID: "expenses", Version: "1", Namespace: "mod-expenses", ServiceAccount: "expenses", State: store.StateEnabled, HMACSecret: "s",
 		Manifest: config.Module{ID: "expenses", Permissions: []string{"expenses.approve", "expenses.pay"}, Roles: map[string][]string{"finance": {"expenses.approve"}}}}
+	m.Manifest.Name = "Expenses <b>"
+	m.Manifest.Runtime.Subdomain = "expenses"
+	m.Manifest.Runtime.UI.Service, m.Manifest.Runtime.UI.Port = "expenses", 8080
 	if err := db.UpsertModule(ctx, m, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.eng.SyncPolicies(ctx, map[string]config.ApprovalPolicy{"expense": {Steps: []config.ApprovalStep{{Name: "fin", Approvers: []config.Approver{{User: "user:carol"}}}}}}); err != nil {
 		t.Fatal(err)
 	}
+	h.tickets = &ticket.Service{DB: db, Audit: al, Now: clock, Launcher: ticket.Launcher{Domain: "example.org"},
+		Holds: func(ctx context.Context, subject, perm string) (bool, error) {
+			return h.rb.Check(ctx, subject, perm, "")
+		}}
 	h.pats = pat.New(db, al)
 	h.pats.Now = clock
 	h.pats.Holds = func(ctx context.Context, subject, perm string) (bool, error) {
@@ -75,7 +84,7 @@ func newPHarness(t *testing.T) *pHarness {
 	s := &Server{
 		Auth: auth.NewService(db, al, auth.Options{Now: clock, MinLoginTime: time.Nanosecond, Sleep: func(context.Context, time.Duration) error { return nil }, Policy: auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
 		DB:   db, Audit: al, Registry: registry.New(db, "http://can-core"), Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), Secure: true, Now: clock,
-		RBAC: h.rb, Approvals: h.eng, Notify: h.ntf, PATs: h.pats,
+		RBAC: h.rb, Approvals: h.eng, Notify: h.ntf, PATs: h.pats, Tickets: h.tickets,
 	}
 	h.srv = httptest.NewServer(s.Handler())
 	t.Cleanup(h.srv.Close)

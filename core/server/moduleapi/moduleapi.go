@@ -22,6 +22,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/ticket"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 )
 
@@ -45,6 +46,8 @@ type Server struct {
 	PATs *pat.Service
 	// Identity performs access revocation for offboarded people (E13d); nil answers 503.
 	Identity *identity.Service
+	// Tickets redeems the launch tickets of single sign-on into module UIs (E11c); nil answers 503.
+	Tickets *ticket.Service
 }
 
 type route struct {
@@ -65,6 +68,8 @@ func (s *Server) routes() []route {
 		{"POST /v1/approvals/{id}/cancel", s.authed(s.cancelApproval)},
 		{"POST /v1/notifications", s.authed(s.sendNotification)},
 		{"POST /v1/identity/revoke", s.authed(s.revokeIdentity)},
+		{"POST /v1/tickets/redeem", s.authed(s.redeemTicket)},
+		{"POST /v1/tickets/revalidate", s.authed(s.revalidateSession)},
 	}
 }
 

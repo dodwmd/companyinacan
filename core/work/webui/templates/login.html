@@ -1,6 +1,6 @@
 {{define "content"}}<h1>{{t "login.title"}}</h1>
 {{if .D.Error}}<p class="flash err" role="alert">{{.D.Error}}</p>
-{{end}}<p>{{t "login.intro"}}</p>
+{{end}}{{if .D.TokenLogin}}<p>{{t "login.intro"}}</p>
 <form method="post" action="/ui/login" class="stack narrow" autocomplete="off">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <input type="hidden" name="next" value="{{.D.Next}}">
@@ -9,4 +9,5 @@
 <p id="token-hint" class="hint">{{t "login.hint"}}</p>
 <button type="submit">{{t "login.submit"}}</button>
 </form>
-{{end}}
+{{else}}<p>{{t "login.sso_only"}}</p>
+{{end}}{{end}}

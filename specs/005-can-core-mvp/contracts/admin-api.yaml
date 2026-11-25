@@ -394,6 +394,40 @@ paths:
         "403": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/apps:
+    get:
+      operationId: listApps
+      summary: "Modules with a web UI you may open (E11c)"
+      description: "Enabled modules that declare `runtime.ui`, have an acceptable UI address (https on the company domain, set by configuration, never by the request) and in which you hold at least one of the module's permissions."
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AppList" } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/apps/{id}/launch:
+    post:
+      operationId: launchApp
+      summary: "Single sign-on into a module's web UI (E11c)"
+      description: "Mints a one-time launch ticket for the signed-in user, bound to this module and valid for at most 60 seconds, and returns the URL to open in the browser. The URL is built from configuration; `return_path` is only a place inside the module (a slash then letters, digits, `/`, `_`, `-`). 404 when the app is unknown, has no UI or you hold no permission in it (the same answer). Limited to 30 launches per user and minute (429). Audited with ids only."
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                return_path: { type: string, pattern: "^/[A-Za-z0-9/_-]{0,100}$" }
+      responses:
+        "200": { description: "The URL to open (contains the ticket: do not log or store it)", content: { application/json: { schema: { $ref: "#/components/schemas/AppLaunch" } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/delegations:
     get:
       operationId: listDelegations
@@ -1178,6 +1212,23 @@ components:
         module: { type: string }
         permissions: { type: array, items: { type: string } }
         expires_at: { type: string, format: date-time }
+    AppList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: string }
+              name: { type: string }
+    AppLaunch:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri }
     TokenList:
       type: object
       required: [items]

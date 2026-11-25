@@ -227,6 +227,10 @@ func (s *Service) end(ctx context.Context, tx *sql.Tx, subject string) (Result, 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE subject=?`, subject); err != nil {
 		return Result{}, err
 	}
+	// Module sessions that began with a launch ticket (E11c) end with the account.
+	if _, err := tx.ExecContext(ctx, `UPDATE ui_launch_sessions SET revoked_at=? WHERE subject=? AND revoked_at=0`, now, subject); err != nil {
+		return Result{}, err
+	}
 	n1, _ := r1.RowsAffected()
 	n2, _ := r2.RowsAffected()
 	return Result{Tokens: int(n1), Sessions: int(n2)}, nil

@@ -22,6 +22,13 @@ type Module struct {
 		Chart     string `yaml:"chart"`
 		Values    string `yaml:"values"`
 		Subdomain string `yaml:"subdomain"`
+		// UI marks a module that serves a web UI for people (specs/036-module-ui-sso): can-core
+		// offers it in the Apps launcher at https://<subdomain>.<domain><base_path>.
+		UI struct {
+			Service  string `yaml:"service"`
+			Port     int    `yaml:"port"`
+			BasePath string `yaml:"base_path"`
+		} `yaml:"ui"`
 	} `yaml:"runtime"`
 	Requires struct {
 		Database     string   `yaml:"database"`

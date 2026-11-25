@@ -7,6 +7,8 @@ package fakecore
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -56,6 +58,25 @@ type Core struct {
 	Approvals   []*Approval
 	Introspects int
 	Down        bool // answer 503 to everything
+
+	// Launch tickets (specs/036-module-ui-sso).
+	tickets     map[string]*Grant
+	sessions    map[string]*session
+	Redeems     int
+	Revalidates int
+}
+
+// Grant is a launch ticket the fake knows: one use, for this module only.
+type Grant struct {
+	Subject, Name, ReturnPath string
+	Permissions               []string
+	Module                    string // default: the calling module
+	Used                      bool
+}
+
+type session struct {
+	grant Grant
+	ended bool
 }
 
 // New starts a fake can-core serving the module API for one calling module.
@@ -80,6 +101,8 @@ func New(t *testing.T, moduleID string) *Core {
 		}
 	}
 	mux.HandleFunc("POST /v1/tokens/introspect", guard(c.introspect))
+	mux.HandleFunc("POST /v1/tickets/redeem", guard(c.redeem))
+	mux.HandleFunc("POST /v1/tickets/revalidate", guard(c.revalidate))
 	mux.HandleFunc("POST /v1/events", guard(c.publish))
 	mux.HandleFunc("POST /v1/approvals", guard(c.createApproval))
 	mux.HandleFunc("GET /v1/approvals/{id}", guard(c.getApproval))
@@ -139,6 +162,85 @@ func (c *Core) introspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "kind": "user", "subject": t.Subject, "permissions": t.Permissions, "expires_at": t.Expires.UTC().Format(time.RFC3339)})
+}
+
+// NewTicket registers a launch ticket valid for one redeem by this module and returns its value
+// (the shape can-core mints).
+func (c *Core) NewTicket(g Grant) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if g.Module == "" {
+		g.Module = c.ModuleID
+	}
+	if c.tickets == nil {
+		c.tickets = map[string]*Grant{}
+	}
+	t := modclient.TicketPrefix + randSecret()
+	c.tickets[t] = &g
+	return t
+}
+
+func randSecret() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// SetSessionPermissions changes what revalidation answers for every session of subject.
+func (c *Core) SetSessionPermissions(subject string, perms []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, s := range c.sessions {
+		if s.grant.Subject == subject {
+			s.grant.Permissions = perms
+		}
+	}
+}
+
+// EndSessions makes revalidation answer inactive for every session of subject (disabled user).
+func (c *Core) EndSessions(subject string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, s := range c.sessions {
+		if s.grant.Subject == subject {
+			s.ended = true
+		}
+	}
+}
+
+func (c *Core) redeem(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Ticket string }
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Redeems++
+	g, ok := c.tickets[in.Ticket]
+	if !ok || g.Used || g.Module != c.ModuleID {
+		_, _ = w.Write([]byte(`{"active":false}`))
+		return
+	}
+	g.Used = true
+	handle := modclient.HandlePrefix + randSecret()
+	if c.sessions == nil {
+		c.sessions = map[string]*session{}
+	}
+	c.sessions[handle] = &session{grant: *g}
+	_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "subject": g.Subject, "name": g.Name, "permissions": g.Permissions,
+		"return_path": g.ReturnPath, "session": handle, "session_expires_at": time.Now().Add(12 * time.Hour).UTC().Format(time.RFC3339)})
+}
+
+func (c *Core) revalidate(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Session string }
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Revalidates++
+	s, ok := c.sessions[in.Session]
+	if !ok || s.ended || len(s.grant.Permissions) == 0 {
+		_, _ = w.Write([]byte(`{"active":false}`))
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "subject": s.grant.Subject, "name": s.grant.Name, "permissions": s.grant.Permissions})
 }
 
 func (c *Core) publish(w http.ResponseWriter, r *http.Request) {

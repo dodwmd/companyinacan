@@ -43,7 +43,8 @@
           "required": ["service", "port"],
           "properties": {
             "service": { "$ref": "#/$defs/dnsLabel" },
-            "port": { "$ref": "#/$defs/port" }
+            "port": { "$ref": "#/$defs/port" },
+            "base_path": { "type": "string", "pattern": "^(/[a-z0-9-]{1,32}){0,2}$" }
           }
         },
         "values": { "$ref": "#/$defs/relPath" }
