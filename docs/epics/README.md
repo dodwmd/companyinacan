@@ -16,7 +16,7 @@ Epics are ordered by dependency. Phases refer to the roadmap in `SPEC.md` §9.
 | E03 | can-core MVP (in-cluster control plane, module API, auth, audit) | 1 | E01, E02 | planned |
 | E04 | Site renderer and static server | 1 | E01, E02 | done (PR open; `static` provider deploy and PVC wiring deferred) — `specs/002-site-renderer/` |
 | E05 | Forms gateway and `leads` capability | 1 | E03, E04 | partial: library and contract (integration pending E03/E06) — `specs/003-forms-gateway/` |
-| E06 | Server providers and `make up` (ssh, Hetzner, sslip.io) | 1 | E02, E03 | planned |
+| E06 | Server providers and `make up` (ssh, Hetzner, sslip.io) | 1 | E02, E03 | built offline; real-server checks pending |
 | E07 | Starter modules: support, newsletter, analytics | 1 | E03 | planned |
 | E08 | Backup, restore and recovery kit | 1 | E03, E06 | planned |
 
