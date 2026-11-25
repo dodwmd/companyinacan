@@ -21,11 +21,14 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/adminapi"
 	"github.com/dodwmd/companyinacan/core/server/adminui"
+	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
 	"github.com/dodwmd/companyinacan/core/server/moduleapi"
+	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -35,29 +38,30 @@ import (
 
 // Config is can-core's configuration (all from CAN_* environment variables).
 type Config struct {
-	AdminAddr         string        // CAN_ADMIN_ADDR, default :8080
-	ModuleAddr        string        // CAN_MODULE_ADDR, default :8090
-	DBPath            string        // CAN_DB_PATH
-	SecureCookies     bool          // CAN_COOKIE_SECURE, default true
-	TrustProxy        bool          // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For (set it behind Traefik; see deploy notes)
-	TokenReview       string        // CAN_TOKEN_REVIEW: kubernetes (default) or fake (development only)
-	PlatformURL       string        // CAN_PLATFORM_URL: module-API URL as seen from module namespaces
-	KubeAPI           string        // CAN_KUBE_API
-	SAToken           string        // CAN_SA_TOKEN_FILE
-	SACA              string        // CAN_SA_CA_FILE
-	MemLimitMB        int           // CAN_MEMLIMIT_MB: soft Go memory limit (idle RAM target, see plan.md)
-	LogLevel          string        // CAN_LOG_LEVEL
-	CompanyName       string        // CAN_COMPANY_NAME: shown on the admin dashboard
-	CompanyDomain     string        // CAN_COMPANY_DOMAIN: shown on the admin dashboard
-	LeadsTokenFile    string        // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
-	Installer         string        // CAN_INSTALLER: kubernetes (deploy modules) or none (default; no deploys)
-	CompanyFile       string        // CAN_COMPANY_FILE: the applied company.yaml (mounted ConfigMap)
-	ModulesDir        string        // CAN_MODULES_DIR: module directories baked into the image
-	NodeIP            string        // CAN_NODE_IP: the node address (downward API status.hostIP)
-	ReconcileInterval time.Duration // CAN_RECONCILE_INTERVAL_SECONDS, default 30
-	PostgresAdminURL  string        // CAN_POSTGRES_ADMIN_URL: admin connection used to create module databases
-	PostgresHost      string        // CAN_POSTGRES_HOST: Postgres Service as seen by modules
-	ShutdownTimeout   time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
+	AdminAddr          string        // CAN_ADMIN_ADDR, default :8080
+	ModuleAddr         string        // CAN_MODULE_ADDR, default :8090
+	DBPath             string        // CAN_DB_PATH
+	SecureCookies      bool          // CAN_COOKIE_SECURE, default true
+	TrustProxy         bool          // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For (set it behind Traefik; see deploy notes)
+	TokenReview        string        // CAN_TOKEN_REVIEW: kubernetes (default) or fake (development only)
+	PlatformURL        string        // CAN_PLATFORM_URL: module-API URL as seen from module namespaces
+	KubeAPI            string        // CAN_KUBE_API
+	SAToken            string        // CAN_SA_TOKEN_FILE
+	SACA               string        // CAN_SA_CA_FILE
+	MemLimitMB         int           // CAN_MEMLIMIT_MB: soft Go memory limit (idle RAM target, see plan.md)
+	LogLevel           string        // CAN_LOG_LEVEL
+	CompanyName        string        // CAN_COMPANY_NAME: shown on the admin dashboard
+	CompanyDomain      string        // CAN_COMPANY_DOMAIN: shown on the admin dashboard
+	DirectoryTokenFile string        // CAN_DIRECTORY_TOKEN_FILE: bearer credential for the `directory` capability (reporting-line approval chains); unset = manager steps use their fallback
+	LeadsTokenFile     string        // CAN_LEADS_TOKEN_FILE: bearer credential for the `leads` capability (admin UI leads view); unset = view shows "not available"
+	Installer          string        // CAN_INSTALLER: kubernetes (deploy modules) or none (default; no deploys)
+	CompanyFile        string        // CAN_COMPANY_FILE: the applied company.yaml (mounted ConfigMap)
+	ModulesDir         string        // CAN_MODULES_DIR: module directories baked into the image
+	NodeIP             string        // CAN_NODE_IP: the node address (downward API status.hostIP)
+	ReconcileInterval  time.Duration // CAN_RECONCILE_INTERVAL_SECONDS, default 30
+	PostgresAdminURL   string        // CAN_POSTGRES_ADMIN_URL: admin connection used to create module databases
+	PostgresHost       string        // CAN_POSTGRES_HOST: Postgres Service as seen by modules
+	ShutdownTimeout    time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
 
 	// OnListen is called once both listeners are bound (tests use it to learn ports).
 	OnListen func(admin, module net.Addr)
@@ -99,7 +103,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		SAToken:     str("CAN_SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		SACA:        str("CAN_SA_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
 		LogLevel:    str("CAN_LOG_LEVEL", "info"), ShutdownTimeout: 15 * time.Second,
-		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"),
+		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"),
 		Installer: str("CAN_INSTALLER", "none"), CompanyFile: str("CAN_COMPANY_FILE", "/etc/can/company/company.yaml"), ModulesDir: str("CAN_MODULES_DIR", "/modules"),
 		NodeIP: getenv("CAN_NODE_IP"), PostgresAdminURL: getenv("CAN_POSTGRES_ADMIN_URL"), PostgresHost: str("CAN_POSTGRES_HOST", "postgres.can-data.svc.cluster.local"),
 		ReconcileInterval: 30 * time.Second,
@@ -195,17 +199,26 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	disp := webhook.NewDispatcher(db, webhook.NewHTTPClient(10*time.Second))
 	disp.Log = log
 
+	// Shared platform services (epic E11a).
+	rb := rbac.New(db, al, rbac.Options{})
+	ntf := notify.New(db, notify.Options{Bus: bus, Roles: rb, Log: log, Webhook: notify.HTTPWebhook{}})
+	bus.SubscribeAll(ntf.HandleEvent)
+	lines := &approvals.DirectoryReportingLine{Resolver: reg, Token: adminui.FileToken(cfg.DirectoryTokenFile)}
+	eng := approvals.New(db, al, approvals.Deps{Roles: rb, Perms: rb, Lines: lines, Notifier: ntf, Bus: bus, Log: log})
+
 	adminSrv := &adminapi.Server{
+		RBAC: rb, Approvals: eng, Notify: ntf,
 		Auth: auth.NewService(db, al, auth.Options{Log: log, Policy: loginPolicy(cfg)}), DB: db, Audit: al, Registry: reg,
 		Log: log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
 	uiSrv := &adminui.Server{
+		RBAC: rb, Approvals: eng, Notify: ntf,
 		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
 		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: adminui.FileToken(cfg.LeadsTokenFile)},
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
 		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
-	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log}
+	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf}
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
 	if err != nil {
@@ -249,6 +262,8 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		wg.Add(1)
 		go func() { defer wg.Done(); reconcileLoop(workCtx, cfg, rec, log) }()
 	}
+	wg.Add(1)
+	go func() { defer wg.Done(); platformTimers(workCtx, eng, ntf, log) }()
 
 	errc := make(chan error, len(servers))
 	for _, s := range servers {

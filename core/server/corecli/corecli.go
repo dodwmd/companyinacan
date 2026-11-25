@@ -18,6 +18,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
+	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/runtime"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
@@ -196,6 +197,9 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 	user := boot.Flags().String("username", "admin", "admin username")
 	issuer := boot.Flags().String("issuer", "Company in a Can", "issuer label shown in the authenticator app")
 	boot.RunE = func(c *cobra.Command, _ []string) error {
+		if !rbac.ValidSubject("user:" + *user) {
+			return fail("username %q: use 1 to 64 letters, digits, and _ . @ - (roles and approvals identify people as user:<name>)", *user)
+		}
 		pw, err := readPassword(stdin, getenv)
 		if err != nil {
 			return err
@@ -296,7 +300,7 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		}
 		return nil
 	}
-	cmd.AddCommand(boot, unlock, reset)
+	cmd.AddCommand(boot, unlock, reset, rolesCmd(getenv))
 	return cmd
 }
 

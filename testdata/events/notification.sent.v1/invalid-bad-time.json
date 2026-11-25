@@ -1,0 +1,12 @@
+{
+  "id": "evt_0123456789abcdef0123456789abcdef",
+  "time": "yesterday",
+  "source": "can-core",
+  "type": "notification.sent.v1",
+  "data": {
+    "notification_id": 42,
+    "subject": "user:alice",
+    "type": "approval.requested",
+    "channel": "email"
+  }
+}

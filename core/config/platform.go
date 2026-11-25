@@ -41,8 +41,6 @@ type StepCondition struct {
 
 // NotificationConfig is company.yaml `notifications:`.
 type NotificationConfig struct {
-	// RateLimitPerHour caps external (email, webhook) messages per recipient per hour; 0 = default 30.
-	RateLimitPerHour int `yaml:"rate_limit_per_hour,omitempty"`
 	// Webhooks are outbound channels by name (Slack-style incoming webhooks, https only).
 	Webhooks map[string]string `yaml:"webhooks,omitempty"`
 }

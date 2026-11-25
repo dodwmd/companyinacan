@@ -68,6 +68,21 @@ var GoalUpdatedV1 []byte
 //go:embed checklist.task_completed.v1.json
 var ChecklistTaskCompletedV1 []byte
 
+// ApprovalRequestedV1 is the JSON Schema of the approval.requested.v1 event.
+//
+//go:embed approval.requested.v1.json
+var ApprovalRequestedV1 []byte
+
+// ApprovalDecidedV1 is the JSON Schema of the approval.decided.v1 event.
+//
+//go:embed approval.decided.v1.json
+var ApprovalDecidedV1 []byte
+
+// NotificationSentV1 is the JSON Schema of the notification.sent.v1 event.
+//
+//go:embed notification.sent.v1.json
+var NotificationSentV1 []byte
+
 // PersonErasedV1 is the JSON Schema of the person.erased.v1 event.
 //
 //go:embed person.erased.v1.json

@@ -1,0 +1,12 @@
+{
+  "id": "evt_xyz",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "can-core",
+  "type": "notification.sent.v1",
+  "data": {
+    "notification_id": 42,
+    "subject": "user:alice",
+    "type": "approval.requested",
+    "channel": "email"
+  }
+}

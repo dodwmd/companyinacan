@@ -67,6 +67,11 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 			defer func() { _ = db.Close() }()
 			r := reconcile.New(db, registry.New(db, ""), audit.New(db), reconcile.RecordOnly{})
 			res, applyErr := r.Apply(cmd.Context(), desired, reconcile.Options{DryRun: dryRun})
+			if applyErr == nil && !dryRun {
+				if err := syncPlatform(cmd.Context(), db, desired.Company); err != nil {
+					applyErr = fmt.Errorf("approval policies or notification channels: %w", err)
+				}
+			}
 
 			w := cmd.OutOrStdout()
 			if g.json() {
