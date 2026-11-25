@@ -1,0 +1,322 @@
+openapi: 3.1.0
+info:
+  title: can-core admin API
+  version: 1.0.0
+  summary: Operator-facing API served on the admin listener (reachable only through Traefik).
+  description: |
+    Authentication is a server-side session. `POST /api/v1/login` verifies password and TOTP code and
+    sets the `can_session` cookie (HttpOnly, SameSite=Strict, Secure unless plain-HTTP dev). Unsafe
+    methods must send the session's CSRF token in `X-CSRF-Token`. Request bodies are JSON only.
+    Errors are `application/problem+json` (RFC 9457).
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: https://admin.example.com
+security:
+  - session: []
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness and readiness probe
+      security: []
+      responses:
+        "200":
+          description: can-core is serving
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /api/v1/login:
+    post:
+      operationId: login
+      summary: Log in with password and TOTP code
+      description: |
+        Every failure (unknown user, wrong password, wrong or already-used code) returns the same 401.
+        After repeated failures the user name and the client address are locked out (429 with Retry-After).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Logged in; the session cookie is set
+          headers:
+            Set-Cookie: { schema: { type: string }, description: "can_session; HttpOnly; SameSite=Strict; Secure" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "415": { $ref: "#/components/responses/Problem" }
+        "429":
+          description: Locked out
+          headers:
+            Retry-After: { schema: { type: integer }, description: Seconds until the lock expires }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/logout:
+    post:
+      operationId: logout
+      summary: Destroy the session
+      security: [{ session: [], csrf: [] }]
+      responses:
+        "204": { description: Logged out }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /api/v1/session:
+    get:
+      operationId: getSession
+      summary: Current session and its CSRF token
+      responses:
+        "200":
+          description: The session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/modules:
+    get:
+      operationId: listModules
+      summary: Recorded modules and their state
+      responses:
+        "200":
+          description: Modules ordered by id (never includes signing secrets)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [modules]
+                properties:
+                  modules:
+                    type: array
+                    items: { $ref: "#/components/schemas/Module" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/modules/{id}:
+    get:
+      operationId: getModule
+      summary: One module
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The module
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Module" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+  /api/v1/capabilities:
+    get:
+      operationId: listCapabilities
+      summary: Capabilities with at least one enabled provider
+      responses:
+        "200":
+          description: Resolutions; an exclusive capability with several providers and no primary lists every contender
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [capabilities]
+                properties:
+                  capabilities:
+                    type: array
+                    items: { $ref: "#/components/schemas/Resolution" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/audit:
+    get:
+      operationId: listAudit
+      summary: Audit records, oldest first
+      parameters:
+        - { name: after, in: query, schema: { type: integer, minimum: 0 }, description: Return records with seq greater than this }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200":
+          description: Records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditRecord" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/audit/verify:
+    get:
+      operationId: verifyAudit
+      summary: Verify the audit hash chain
+      parameters:
+        - { name: head, in: query, schema: { type: string, pattern: "^[1-9][0-9]*:[0-9a-f]{64}$" }, description: Externally recorded head (seq:hash) the log must still contain }
+      responses:
+        "200":
+          description: Verification result; `violation` is present when the log was modified, reordered or truncated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditVerification" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/deliveries:
+    get:
+      operationId: listDeliveries
+      summary: Webhook delivery log (newest first)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200":
+          description: Deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveries]
+                properties:
+                  deliveries:
+                    type: array
+                    items: { $ref: "#/components/schemas/Delivery" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/deliveries/{id}/attempts:
+    get:
+      operationId: listDeliveryAttempts
+      summary: Attempts of one delivery
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Attempts in order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [attempts]
+                properties:
+                  attempts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Attempt" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: can_session
+    csrf:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties: { status: { type: string, const: ok } }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password, totp]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        totp: { type: string, pattern: "^[0-9]{6}$" }
+    Session:
+      type: object
+      required: [username, csrf_token, expires_at]
+      properties:
+        username: { type: string }
+        csrf_token: { type: string }
+        expires_at: { type: string, format: date-time }
+    Module:
+      type: object
+      required: [id, version, state, namespace, provides, ram_mb, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        version: { type: string }
+        state: { type: string, enum: [enabled, disabled, failed] }
+        namespace: { type: string }
+        last_error: { type: string }
+        provides: { type: array, items: { type: string } }
+        ram_mb: { type: integer }
+        updated_at: { type: string, format: date-time }
+    Provider:
+      type: object
+      required: [module, url]
+      properties:
+        module: { type: string }
+        service: { type: string }
+        port: { type: integer }
+        schema: { type: string }
+        url: { type: string }
+    Resolution:
+      type: object
+      required: [capability, aggregate, platform, providers]
+      properties:
+        capability: { type: string }
+        aggregate: { type: boolean }
+        platform: { type: boolean }
+        providers: { type: array, items: { $ref: "#/components/schemas/Provider" } }
+    AuditRecord:
+      type: object
+      required: [seq, time, actor, action, target, detail, prev_hash, hash]
+      properties:
+        seq: { type: integer }
+        time: { type: string, format: date-time }
+        actor: { type: string }
+        action: { type: string }
+        target: { type: string }
+        detail: { type: string, description: JSON object serialised as a string (hashed byte for byte) }
+        prev_hash: { type: string }
+        hash: { type: string }
+    AuditVerification:
+      type: object
+      required: [entries, head]
+      properties:
+        entries: { type: integer }
+        head:
+          type: object
+          properties: { seq: { type: integer }, hash: { type: string } }
+        violation:
+          type: object
+          required: [seq, kind, message]
+          properties:
+            seq: { type: integer }
+            kind: { type: string, enum: [hash-mismatch, chain-break, seq-gap, head-mismatch] }
+            message: { type: string }
+    Delivery:
+      type: object
+      required: [id, event_id, event_type, module, status, attempts, next_attempt_at]
+      properties:
+        id: { type: integer }
+        event_id: { type: string }
+        event_type: { type: string }
+        module: { type: string }
+        status: { type: string, enum: [pending, delivered, dead] }
+        attempts: { type: integer }
+        next_attempt_at: { type: string, format: date-time }
+    Attempt:
+      type: object
+      required: [attempt, at, status_code, duration_ms]
+      properties:
+        attempt: { type: integer }
+        at: { type: string, format: date-time }
+        status_code: { type: integer }
+        error: { type: string }
+        duration_ms: { type: integer }

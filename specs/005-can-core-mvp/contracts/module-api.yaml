@@ -1,0 +1,233 @@
+openapi: 3.1.0
+info:
+  title: can-core module API
+  version: 1.0.0
+  summary: Module-facing API served on its own listener (reachable only from module namespaces).
+  description: |
+    Every operation except `/healthz` authenticates the caller with its projected ServiceAccount
+    token (audience `can`) sent as `Authorization: Bearer <token>`. can-core validates it with a
+    Kubernetes TokenReview and maps (namespace, service account) to an installed, enabled module.
+
+    can-core never proxies capability calls: `GET /v1/capabilities/{name}` returns the provider
+    URL(s) and the caller then calls the provider directly. Adapters verify their own callers'
+    tokens with `POST /v1/tokens/introspect`.
+
+    Events are delivered to subscribers as `POST` requests signed with a per-module HMAC secret:
+    see `webhooks.event` below. `email.send` and the `leads` capability are delivered in epic E03
+    part 2 / E05 and are not in this version of the contract.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://can-core.can-system.svc.cluster.local:8081
+security:
+  - serviceAccountToken: []
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness and readiness probe
+      security: []
+      responses:
+        "200":
+          description: can-core is serving
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/self:
+    get:
+      operationId: getSelf
+      summary: The calling module's own record
+      responses:
+        "200":
+          description: Identity and state of the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Self" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "502": { $ref: "#/components/responses/Problem" }
+  /v1/tokens/introspect:
+    post:
+      operationId: introspectToken
+      summary: Verify another module's projected token (performs a TokenReview)
+      description: "Any token that does not belong to an enabled module answers {\"active\": false} without saying why."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IntrospectRequest" }
+      responses:
+        "200":
+          description: Introspection result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntrospectResponse" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "502": { $ref: "#/components/responses/Problem" }
+  /v1/capabilities/{name}:
+    get:
+      operationId: resolveCapability
+      summary: Resolve a capability to its current provider(s)
+      description: |
+        The caller must list the capability under `requires.capabilities` or `consumes` in its manifest.
+        Exclusive capabilities resolve to exactly one provider (the designated `primary` when several
+        modules provide it); aggregate capabilities (`reports`, `portal.view`) resolve to all providers.
+        Platform capabilities (`email.send`, `events`, ...) resolve to can-core itself.
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_.]*$" } }
+      responses:
+        "200":
+          description: Resolution
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resolution" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/events:
+    post:
+      operationId: publishEvent
+      summary: Publish an event
+      description: |
+        The event type must be listed under `publishes` in the caller's manifest; the source is the
+        authenticated module (never client supplied). The event is persisted to the outbox, then
+        delivered at least once to every enabled module whose manifest `subscribes` to the type.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublishRequest" }
+      responses:
+        "202":
+          description: Accepted and persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, time]
+                properties:
+                  id: { type: string }
+                  time: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Problem" }
+webhooks:
+  event:
+    post:
+      operationId: receiveEvent
+      summary: Delivery of an event to a subscribing module (implemented by the module, called by can-core)
+      description: |
+        Headers: `X-Can-Event-Id` (idempotency key, stable across retries), `X-Can-Event-Type`,
+        `X-Can-Attempt`, `X-Can-Timestamp` (unix seconds) and
+        `X-Can-Signature: v1=<hex HMAC-SHA256(secret, "<timestamp>." + body)>`. Receivers must verify the
+        MAC in constant time and reject timestamps more than 5 minutes from their clock.
+        Any 2xx acknowledges. Anything else is retried with exponential backoff (5 s doubling, capped
+        at 1 h) up to 8 attempts, after which the delivery is marked dead in the delivery log.
+        Redirects are not followed.
+      security: []
+      parameters:
+        - { name: X-Can-Event-Id, in: header, required: true, schema: { type: string } }
+        - { name: X-Can-Event-Type, in: header, required: true, schema: { type: string } }
+        - { name: X-Can-Attempt, in: header, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: X-Can-Timestamp, in: header, required: true, schema: { type: integer } }
+        - { name: X-Can-Signature, in: header, required: true, schema: { type: string, pattern: "^v1=[0-9a-f]{64}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Envelope" }
+      responses:
+        "2XX": { description: Acknowledged }
+components:
+  securitySchemes:
+    serviceAccountToken:
+      type: http
+      scheme: bearer
+      description: Projected ServiceAccount token, audience `can`
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing or invalid token
+      headers:
+        WWW-Authenticate: { schema: { type: string } }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties: { status: { type: string, const: ok } }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+    Self:
+      type: object
+      required: [id, version, namespace, service_account, state, provides]
+      properties:
+        id: { type: string }
+        version: { type: string }
+        namespace: { type: string }
+        service_account: { type: string }
+        state: { type: string, enum: [enabled] }
+        provides: { type: array, items: { type: string } }
+    IntrospectRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: { type: string }
+    IntrospectResponse:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+        module_id: { type: string }
+        namespace: { type: string }
+        service_account: { type: string }
+    Provider:
+      type: object
+      required: [module, url]
+      properties:
+        module: { type: string }
+        service: { type: string }
+        port: { type: integer }
+        schema: { type: string }
+        url: { type: string }
+    Resolution:
+      type: object
+      required: [capability, aggregate, platform, providers]
+      properties:
+        capability: { type: string }
+        aggregate: { type: boolean }
+        platform: { type: boolean }
+        providers: { type: array, items: { $ref: "#/components/schemas/Provider" } }
+    PublishRequest:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: { type: string, pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+\\.v[1-9][0-9]*$" }
+        data: { type: object, description: "Event payload, at most 256 KiB" }
+    Envelope:
+      type: object
+      required: [id, type, time, source, data]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        time: { type: string, format: date-time }
+        source: { type: string, description: Publishing module id or can-core }
+        data: { type: object }

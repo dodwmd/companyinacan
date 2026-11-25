@@ -69,8 +69,9 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-func TestApplyIsNotImplemented(t *testing.T) {
-	code, out, errs := run(t, "apply")
+func TestApplyRefusesToDeployWithoutAnInstaller(t *testing.T) {
+	dir := writeCompany(t, "schema: 1\nname: A\ndomain: a.example\nprovider: {type: local}\n")
+	code, out, errs := run(t, "apply", dir, "--modules-dir", "../../modules")
 	if code != ExitNotImplemented || out != "" || !strings.Contains(errs, "E03") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
 	}
