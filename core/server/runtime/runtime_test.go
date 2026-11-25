@@ -16,7 +16,7 @@ func TestConfigFromEnvDefaultsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.AdminAddr != ":8080" || c.ModuleAddr != ":8081" || !c.SecureCookies || c.TrustProxy || c.TokenReview != "kubernetes" || c.DBPath == "" {
+	if c.AdminAddr != ":8080" || c.ModuleAddr != ":8090" || !c.SecureCookies || c.TrustProxy || c.TokenReview != "kubernetes" || c.DBPath == "" {
 		t.Fatalf("%+v", c)
 	}
 	env := map[string]string{"CAN_ADMIN_ADDR": "127.0.0.1:9", "CAN_COOKIE_SECURE": "false", "CAN_TRUST_PROXY": "true", "CAN_DB_PATH": "/x/y.db", "CAN_TOKEN_REVIEW": "fake", "CAN_MEMLIMIT_MB": "32"}

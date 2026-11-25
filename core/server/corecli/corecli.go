@@ -283,7 +283,9 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		if err := d.SetAdminCredentials(c.Context(), u.ID, hash, secret); err != nil {
 			return fail("%v", err)
 		}
-		_, _ = d.ClearLoginAttempts(c.Context(), "")
+		if _, err := d.ClearLoginAttempts(c.Context(), ""); err != nil {
+			return fail("password changed but clearing lockouts failed (run admin unlock): %v", err)
+		}
 		if _, err := audit.New(d).Append(c.Context(), audit.Entry{Actor: "cli", Action: "admin.reset-password", Target: "admin", Detail: map[string]any{"username": *ruser, "totp_rotated": *rotate}}); err != nil {
 			return fail("%v", err)
 		}

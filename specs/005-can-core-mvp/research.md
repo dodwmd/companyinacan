@@ -34,7 +34,7 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
 - **Alternatives**: signed stateless cookies (cannot revoke); double-submit cookie CSRF (needs a second cookie).
 
 ## R5. Throttling
-- **Decision**: counters per (username, client address) pair (5 failures) and per client address (20 failures) in
+- **Decision** (with `CAN_TRUST_PROXY`): counters per (username, client address) pair (5 failures) and per client address (20 failures) in
   SQLite, 15-minute window and lock, updated atomically in one transaction and persisted so restarts do not reset
   them. Keying the user lock on the address as well means a stranger cannot lock the real admin out by failing
   logins for `admin` from elsewhere (QA finding: lockout DoS). In front of that, every attempt counts against a
@@ -46,8 +46,15 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
 - **Recovery**: `can-core admin unlock [--username]` clears lockouts; `can-core admin reset-password [--rotate-totp]`
   sets a new password (and TOTP seed when the device is lost), ends all sessions and clears lockouts. Both run inside
   the pod (`kubectl exec`) and are audited.
-- **Known limit**: distributed guessing is bounded only per address; TOTP plus a strong password is the defence, and an
-  IP allowlist at Traefik (SPEC 3.1) is the follow-up control.
+- **QA pass 2 (default deployment)**: behind Traefik without `CAN_TRUST_PROXY` all clients share one address, so any
+  refusal keyed on it is a lockout DoS. Throttling therefore has two modes (`auth.Policy.HardLock`, set from
+  `CAN_TRUST_PROXY`): with trusted real addresses it refuses as described above; otherwise failures only add a delay
+  (250 ms doubling to 2 s, at most 256 waiting logins) and never refuse. The TOTP code is checked before argon2, so
+  junk logins cost no memory, and every login takes at least 150 ms so the failing step is not observable.
+  Tests simulate all clients on one address while 500 junk logins for the admin's own username run, and require the
+  admin to still log in. See [deployment.md](deployment.md).
+- **Known limit**: in the shared-address mode an attacker who knows the password can guess TOTP codes at a bounded
+  rate; `CAN_TRUST_PROXY=true` plus the Traefik IP allowlist (SPEC 3.1) is the control.
   Client address comes from the last `X-Forwarded-For` entry only when `CAN_TRUST_PROXY=true`.
 - **Rationale**: stops online guessing even with a leaked password (TOTP), survives restarts, and a distinct address
   limit stops username spraying.

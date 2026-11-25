@@ -19,7 +19,7 @@ info:
     name: Apache-2.0
     identifier: Apache-2.0
 servers:
-  - url: http://can-core.can-system.svc.cluster.local:8081
+  - url: http://can-core.can-system.svc.cluster.local:8090
 security:
   - serviceAccountToken: []
 paths:

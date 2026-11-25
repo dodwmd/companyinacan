@@ -86,6 +86,18 @@ func New(db *store.DB) *Log { return &Log{db: db} }
 // Append adds a chained record. Appends are serialised by the store's single connection and a
 // transaction, so concurrent callers cannot fork the chain.
 func (l *Log) Append(ctx context.Context, e Entry) (Record, error) {
+	var rec Record
+	err := l.db.InTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		rec, err = l.AppendTx(ctx, tx, e)
+		return err
+	})
+	return rec, err
+}
+
+// AppendTx appends inside the caller's transaction, so a state change and its audit entry commit
+// or roll back together. The caller must use the single store connection only through tx.
+func (l *Log) AppendTx(ctx context.Context, tx *sql.Tx, e Entry) (Record, error) {
 	detail := "{}"
 	if len(e.Detail) > 0 {
 		b, err := json.Marshal(e.Detail) // map keys are sorted: deterministic
@@ -95,18 +107,15 @@ func (l *Log) Append(ctx context.Context, e Entry) (Record, error) {
 		detail = string(b)
 	}
 	var rec Record
-	err := l.db.InTx(ctx, func(tx *sql.Tx) error {
-		seq, prev := int64(0), Genesis
-		err := tx.QueryRowContext(ctx, `SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1`).Scan(&seq, &prev)
-		if err != nil && err != sql.ErrNoRows {
-			return err
-		}
-		rec = Record{Seq: seq + 1, Time: l.db.Now().Truncate(time.Second), Actor: e.Actor, Action: e.Action, Target: e.Target, Detail: detail, PrevHash: prev}
-		rec.Hash = hashOf(rec)
-		_, err = tx.ExecContext(ctx, `INSERT INTO audit_log(seq,time,actor,action,target,detail,prev_hash,hash) VALUES (?,?,?,?,?,?,?,?)`,
-			rec.Seq, rec.Time.Unix(), rec.Actor, rec.Action, rec.Target, rec.Detail, rec.PrevHash, rec.Hash)
-		return err
-	})
+	seq, prev := int64(0), Genesis
+	err := tx.QueryRowContext(ctx, `SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1`).Scan(&seq, &prev)
+	if err != nil && err != sql.ErrNoRows {
+		return rec, err
+	}
+	rec = Record{Seq: seq + 1, Time: l.db.Now().Truncate(time.Second), Actor: e.Actor, Action: e.Action, Target: e.Target, Detail: detail, PrevHash: prev}
+	rec.Hash = hashOf(rec)
+	_, err = tx.ExecContext(ctx, `INSERT INTO audit_log(seq,time,actor,action,target,detail,prev_hash,hash) VALUES (?,?,?,?,?,?,?,?)`,
+		rec.Seq, rec.Time.Unix(), rec.Actor, rec.Action, rec.Target, rec.Detail, rec.PrevHash, rec.Hash)
 	return rec, err
 }
 

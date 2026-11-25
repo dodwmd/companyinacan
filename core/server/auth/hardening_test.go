@@ -32,7 +32,8 @@ func TestPerIPRateLimitAppliesBeforeAnyHashing(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	pol := DefaultPolicy
-	e.svc = NewService(e.db, audit.New(e.db), Options{Now: func() time.Time { return *e.now }, Policy: pol})
+	pol.HardLock = true
+	e.svc = NewService(e.db, audit.New(e.db), Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, Policy: pol})
 	var locked bool
 	for i := 0; i < pol.AttemptsPerMin+5; i++ {
 		// valid credentials too: the limiter does not look at them
@@ -57,8 +58,8 @@ func TestPerIPRateLimitAppliesBeforeAnyHashing(t *testing.T) {
 func TestHashingConcurrencyIsCapped(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	e.svc = NewService(e.db, audit.New(e.db), Options{Now: func() time.Time { return *e.now }, HashSlots: 1, HashWait: 20 * time.Millisecond,
-		Policy: Policy{MaxUserFailures: 5, MaxIPFailures: 50, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
+	e.svc = NewService(e.db, audit.New(e.db), Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, HashSlots: 1, HashWait: 20 * time.Millisecond,
+		Policy: Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 50, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
 	release, err := e.svc.acquire(ctx) // occupy the only slot
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +77,8 @@ func TestHashingConcurrencyIsCapped(t *testing.T) {
 func TestParallelLoginsNeverExceedSlots(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	e.svc = NewService(e.db, audit.New(e.db), Options{Now: func() time.Time { return *e.now }, HashSlots: 2, HashWait: 5 * time.Second,
-		Policy: Policy{MaxUserFailures: 500, MaxIPFailures: 500, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
+	e.svc = NewService(e.db, audit.New(e.db), Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, HashSlots: 2, HashWait: 5 * time.Second,
+		Policy: Policy{HardLock: true, MaxUserFailures: 500, MaxIPFailures: 500, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
 	var wg sync.WaitGroup
 	for i := 0; i < 12; i++ {
 		wg.Add(1)
@@ -142,8 +143,8 @@ func TestLoginFailsClosedWhenAuditCannotBeWritten(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	var logs strings.Builder
-	svc := NewService(e.db, failingAudit{}, Options{Now: func() time.Time { return *e.now }, Log: slog.New(slog.NewJSONHandler(&logs, nil)),
-		Policy: Policy{MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
+	svc := NewService(e.db, failingAudit{}, Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, Log: slog.New(slog.NewJSONHandler(&logs, nil)),
+		Policy: Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
 	_, err := svc.Login(ctx, LoginRequest{Username: "root", Password: e.pw, Code: e.code(t), IP: "1.1.1.1"})
 	if err == nil || errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("login succeeded or masked without an audit trail: %v", err)

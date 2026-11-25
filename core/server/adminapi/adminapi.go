@@ -3,6 +3,7 @@
 package adminapi
 
 import (
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -297,7 +298,14 @@ func (s *Server) requeue(w http.ResponseWriter, r *http.Request, p principal) {
 		httpx.Problem(w, http.StatusBadRequest, "delivery id must be a number")
 		return
 	}
-	switch err := s.DB.RequeueDelivery(r.Context(), id, s.Now()); {
+	err = s.DB.InTx(r.Context(), func(tx *sql.Tx) error {
+		if err := store.RequeueDeliveryTx(r.Context(), tx, id, s.Now()); err != nil {
+			return err
+		}
+		_, err := s.Audit.AppendTx(r.Context(), tx, audit.Entry{Actor: p.User.Username, Action: "delivery.requeue", Target: strconv.FormatInt(id, 10)})
+		return err // a failed audit write rolls the requeue back
+	})
+	switch {
 	case errors.Is(err, store.ErrNotFound):
 		httpx.Problem(w, http.StatusNotFound, "no such delivery")
 		return
@@ -305,10 +313,6 @@ func (s *Server) requeue(w http.ResponseWriter, r *http.Request, p principal) {
 		httpx.Problem(w, http.StatusConflict, "only dead deliveries can be requeued")
 		return
 	case err != nil:
-		s.internal(w, r, err)
-		return
-	}
-	if _, err := s.Audit.Append(r.Context(), audit.Entry{Actor: p.User.Username, Action: "delivery.requeue", Target: strconv.FormatInt(id, 10)}); err != nil {
 		s.internal(w, r, err)
 		return
 	}

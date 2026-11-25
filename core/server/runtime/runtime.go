@@ -34,10 +34,10 @@ import (
 // Config is can-core's configuration (all from CAN_* environment variables).
 type Config struct {
 	AdminAddr       string        // CAN_ADMIN_ADDR, default :8080
-	ModuleAddr      string        // CAN_MODULE_ADDR, default :8081
+	ModuleAddr      string        // CAN_MODULE_ADDR, default :8090
 	DBPath          string        // CAN_DB_PATH
 	SecureCookies   bool          // CAN_COOKIE_SECURE, default true
-	TrustProxy      bool          // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For
+	TrustProxy      bool          // CAN_TRUST_PROXY: take the client IP from X-Forwarded-For (set it behind Traefik; see deploy notes)
 	TokenReview     string        // CAN_TOKEN_REVIEW: kubernetes (default) or fake (development only)
 	PlatformURL     string        // CAN_PLATFORM_URL: module-API URL as seen from module namespaces
 	KubeAPI         string        // CAN_KUBE_API
@@ -78,9 +78,9 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 	var err error
 	c := Config{
-		AdminAddr: str("CAN_ADMIN_ADDR", ":8080"), ModuleAddr: str("CAN_MODULE_ADDR", ":8081"),
+		AdminAddr: str("CAN_ADMIN_ADDR", ":8080"), ModuleAddr: str("CAN_MODULE_ADDR", ":8090"),
 		DBPath: str("CAN_DB_PATH", "/var/lib/can/state.db"), TokenReview: str("CAN_TOKEN_REVIEW", "kubernetes"),
-		PlatformURL: str("CAN_PLATFORM_URL", "http://can-core.can-system.svc.cluster.local:8081"),
+		PlatformURL: str("CAN_PLATFORM_URL", "http://can-core.can-system.svc.cluster.local:8090"),
 		KubeAPI:     str("CAN_KUBE_API", "https://kubernetes.default.svc"),
 		SAToken:     str("CAN_SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		SACA:        str("CAN_SA_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
@@ -168,7 +168,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	disp.Log = log
 
 	adminSrv := &adminapi.Server{
-		Auth: auth.NewService(db, al, auth.Options{Log: log}), DB: db, Audit: al, Registry: reg,
+		Auth: auth.NewService(db, al, auth.Options{Log: log, Policy: loginPolicy(cfg)}), DB: db, Audit: al, Registry: reg,
 		Log: log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
 	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log}
@@ -249,4 +249,14 @@ func housekeeping(ctx context.Context, db *store.DB, log *slog.Logger) {
 			}
 		}
 	}
+}
+
+// loginPolicy chooses the throttling mode. With CAN_TRUST_PROXY the client address comes from the
+// ingress and is real, so repeated failures refuse attempts (HardLock). Without it every client
+// looks like the ingress, and refusing would let anyone lock the admin out, so failures only slow
+// logins down (see auth.Service.Login).
+func loginPolicy(cfg Config) auth.Policy {
+	p := auth.DefaultPolicy
+	p.HardLock = cfg.TrustProxy
+	return p
 }

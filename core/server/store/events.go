@@ -151,13 +151,19 @@ var ErrNotDead = errors.New("delivery is not dead")
 
 // RequeueDelivery makes a dead delivery pending again with a fresh attempt budget.
 func (db *DB) RequeueDelivery(ctx context.Context, id int64, now time.Time) error {
-	res, err := db.ExecContext(ctx, `UPDATE deliveries SET status='pending', attempts=0, next_attempt_at=? WHERE id=? AND status='dead'`, now.Unix(), id)
+	return db.InTx(ctx, func(tx *sql.Tx) error { return RequeueDeliveryTx(ctx, tx, id, now) })
+}
+
+// RequeueDeliveryTx is RequeueDelivery inside the caller's transaction (so it can be committed
+// together with its audit entry).
+func RequeueDeliveryTx(ctx context.Context, tx *sql.Tx, id int64, now time.Time) error {
+	res, err := tx.ExecContext(ctx, `UPDATE deliveries SET status='pending', attempts=0, next_attempt_at=? WHERE id=? AND status='dead'`, now.Unix(), id)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		var one int
-		if err := db.QueryRowContext(ctx, `SELECT 1 FROM deliveries WHERE id=?`, id).Scan(&one); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM deliveries WHERE id=?`, id).Scan(&one); err != nil {
 			return notFound(err)
 		}
 		return ErrNotDead

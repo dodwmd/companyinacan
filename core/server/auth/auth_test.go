@@ -12,6 +12,8 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
+func noSleep(context.Context, time.Duration) error { return nil }
+
 func init() {
 	// Cheap parameters keep the suite fast; production uses DefaultParams.
 	TestingParams()
@@ -157,7 +159,8 @@ func newEnv(t *testing.T) *env {
 	}
 	pol := DefaultPolicy
 	pol.AttemptsPerMin = 1000 // the per-minute limiter has its own test
-	e.svc = NewService(db, audit.New(db), Options{Now: func() time.Time { return now }, Policy: pol})
+	pol.HardLock = true
+	e.svc = NewService(db, audit.New(db), Options{Now: func() time.Time { return now }, Policy: pol, MinLoginTime: time.Nanosecond, Sleep: noSleep})
 	return e
 }
 
