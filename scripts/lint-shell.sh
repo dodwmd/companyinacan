@@ -11,7 +11,8 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 	echo "lint-shell: shellcheck not installed, skipping"
 	exit 0
 fi
-files=$(git ls-files '*.sh')
+# .specify/ is vendored tooling owned by spec-kit, not edited here.
+files=$(git ls-files '*.sh' | grep -v '^\.specify/' || true)
 [ -n "$files" ] || { echo "lint-shell: no scripts"; exit 0; }
 # shellcheck disable=SC2086
 shellcheck -x $files

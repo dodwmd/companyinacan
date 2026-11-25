@@ -36,7 +36,7 @@ pushes and no deletions of `main`. `REVIEWS` defaults to 0 because a one-maintai
 pull requests; set it to 1 when there is a second maintainer, and `.github/CODEOWNERS` (a draft) then also blocks
 until an owner approves. The script is **not applied** by the repository's automation; a maintainer runs it once.
 
-Also worth enabling in the repository settings (not scriptable here): secret scanning with push protection,
+Also worth enabling in the repository settings (not scriptable here): the dependency graph (the `dependency-review` job answers 403 and is informational until it is on), secret scanning with push protection,
 Dependabot alerts and security updates, private vulnerability reporting, "Require approval for all outside
 contributors" for workflow runs, and a `release` environment with a required reviewer (the publish jobs of
 `release.yml` use it, so a tag alone cannot publish without a maintainer clicking approve).

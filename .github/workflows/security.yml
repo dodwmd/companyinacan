@@ -40,6 +40,9 @@ jobs:
     # The action needs the pull request base and head; it has nothing to compare on other events.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Needs the repository's dependency graph (Settings > Code security; always on for public repos).
+    # Until it is enabled the API answers 403, so this stays informational.
+    continue-on-error: true
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
