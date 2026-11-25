@@ -32,7 +32,7 @@ server) are in [docs/getting-started.md](docs/getting-started.md).
 | Module | What it is | Status | Declared RAM | Notes |
 |---|---|---|---|---|
 | can-core | Control plane: admin UI (password + TOTP, optional OIDC SSO), module registry, RBAC, approvals, notifications, events, audit log, personal access tokens | experimental | 48 MB (soft limit 64) | Runs in compose with module management off; the Kubernetes installer is exercised only on k3d |
-| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: **ready** (its manifest sets no status); the site is rendered by `can` | 15 MB (forms) | Verified end to end in compose; forms has never run on a cluster |
+| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: no status set (treated as stable); the site is rendered by `can` | 15 MB (forms) | Verified end to end in compose; forms has never run on a cluster |
 | `work` | Jira-like tracker with API, CLI and web UI | experimental | 28 MB | Installed through can-core on k3d once (advisory CI) |
 | `people` | Directory, org, 1:1s, goals, reviews, time off, web UI | experimental | 30 MB | Sensitive fields sealed, one policy layer |
 | `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | Board connectors are stubs |
@@ -88,7 +88,7 @@ and iOS apps are out of scope.
 | k3s + Traefik + CoreDNS + local-path, idle | at most about 600 MB | 510 to 563 MiB node total, on a 16 GB CI runner (not a 2 GB VPS); the pods are 50 to 55 MiB of it | [phase0-ci.md](docs/measurements/phase0-ci.md) |
 | can-core, idle | 48 MB declared | 41.9 MiB RSS idle, 60 MiB after 4,000 requests; 49 MiB in a cluster | [module-wiring.md](docs/module-wiring.md) |
 | In-house services, idle | 15 to 30 MB declared each | 13.5 to 16 MiB RSS each (forms 3.2 MiB cgroup working set in CI) | module READMEs, phase0-ci.md |
-| Whole compose stack (11 containers incl. Caddy), after the e2e suite | "under 100 MiB" | about 94 MB by `docker stats` on rootless podman | measured for E23; [local-compose.md](docs/local-compose.md) |
+| Whole compose stack (10 services incl. Caddy and the e2e stub, plus the one-shot init job), after the e2e suite | "under 100 MiB" | about 94 MB by `docker stats` on rootless podman | measured for E23; [local-compose.md](docs/local-compose.md) |
 | "Starter stack fits a 2 GB server" | aim | **not measured**; the wrapped apps (support, newsletter, analytics) were never started | [SPEC.md](SPEC.md) 3.2, 11 |
 
 ## Security posture and limitations

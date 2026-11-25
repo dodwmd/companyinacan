@@ -3,8 +3,11 @@
 package e2e
 
 import (
+	"io"
+	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/test/e2e/harness"
 )
@@ -71,6 +74,28 @@ func TestHostileHostReachesNothingPrivate(t *testing.T) {
 	// And the named hosts still work, so the catch-all did not shadow them.
 	web.Do(t, harness.Req{Host: "work.localhost", Path: "/healthz"}).Expect(t, "work.localhost still routed", 200)
 	web.Do(t, harness.Req{Host: "localhost", Path: "/"}).Expect(t, "localhost still routed to the site", 200)
+}
+
+// A raw HTTP/1.0 request with no Host header must not reach a private surface either.
+func TestMissingHostHeaderReachesNothingPrivate(t *testing.T) {
+	c, err := net.DialTimeout("tcp", "127.0.0.1:"+env.Port, 5*time.Second)
+	if err != nil {
+		t.Fatalf("cannot reach the edge: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	if _, err := c.Write([]byte("GET /v1/people HTTP/1.0\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(c)
+	head := string(b)
+	if i := strings.Index(head, "\r\n"); i > 0 {
+		head = head[:i]
+	}
+	if strings.Contains(head, " 200 ") {
+		t.Fatalf("a request without a Host header got %q", head)
+	}
+	t.Logf("ok   HTTP/1.0 without Host: %s", head)
 }
 
 // Nothing exposes Prometheus-style metrics, or debug endpoints, through the edge.

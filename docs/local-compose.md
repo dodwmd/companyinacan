@@ -210,6 +210,9 @@ is far below the budgets in the module READMEs because `docker stats` reports cg
 
 ## Troubleshooting
 
+- **Only one stack at a time.** Containers have fixed `container_name: can-*` names, so a second compose project
+  name (for example `companyinacan` and `can-e2e`) collides with a running one. Tear one down before starting the other.
+
 - **Port 8080 already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
   in `docker-compose.yml` (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
   test and use that port in the URLs. The jobs and finance URLs configured in `dev/compose/config/*.yaml`
