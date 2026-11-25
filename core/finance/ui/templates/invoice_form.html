@@ -1,0 +1,31 @@
+{{define "content"}}
+<h1>{{if .Data.Edit}}{{t "invoice.edit"}}{{else}}{{t "invoice.new"}}{{end}}</h1>
+<form method="post" action="{{if .Data.Edit}}/invoices/{{.Data.ID}}{{else}}/invoices{{end}}" class="card wide">
+{{template "csrf" .}}
+{{if .Data.Edit}}<input type="hidden" name="version" value="{{.Data.Version}}">{{else}}<input type="hidden" name="idem" value="{{.Data.Idem}}">{{end}}
+{{if .Data.Edit}}<input type="hidden" name="party_id" value="{{.Data.PartyID}}">{{else}}
+<p><label for="i-party">{{t "f.party"}}</label>
+<select id="i-party" name="party_id" required><option value="">{{t "f.choose"}}</option>{{$sel := .Data.PartyID}}{{range .Data.Parties}}<option value="{{.ID}}"{{if eq .ID $sel}} selected{{end}}>{{.Name}}</option>{{end}}</select></p>
+{{end}}
+<p><label for="i-cur">{{t "f.currency"}}</label>
+<input id="i-cur" name="currency" value="{{.Data.Currency}}" required maxlength="3" aria-describedby="i-cur-hint"></p>
+<p id="i-cur-hint" class="hint">{{t "invoice.currency_hint" .Data.Base}}</p>
+<p><label for="i-fx">{{t "invoice.fx_label"}}</label>
+<input id="i-fx" name="fx_rate" value="{{.Data.FXRate}}" inputmode="decimal" maxlength="24"></p>
+{{if not .Data.Edit}}<p><label for="i-series">{{t "invoice.series"}}</label>
+<input id="i-series" name="series" value="{{.Data.Series}}" maxlength="6"></p>{{end}}
+<p><label for="i-project">{{t "f.project"}}</label>
+<input id="i-project" name="project" value="{{.Data.Project}}" maxlength="10"></p>
+<p><label for="i-issue">{{t "f.issued"}}</label>
+<input id="i-issue" name="issue_date" type="date" value="{{.Data.IssueDate}}"></p>
+<p><label for="i-due">{{t "f.due"}}</label>
+<input id="i-due" name="due_date" type="date" value="{{.Data.DueDate}}"></p>
+{{if not .Data.Edit}}<p><label for="i-days">{{t "invoice.due_days"}}</label>
+<input id="i-days" name="due_days" inputmode="numeric" maxlength="3" aria-describedby="i-days-hint"></p>
+<p id="i-days-hint" class="hint">{{t "invoice.due_days_hint"}}</p>{{end}}
+{{template "linerows" .Data}}
+<p><label for="i-notes">{{t "f.notes"}}</label>
+<textarea id="i-notes" name="notes" rows="3" maxlength="5000">{{.Data.Notes}}</textarea></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}

@@ -1,0 +1,142 @@
+{{define "content"}}
+<h1>{{if eq .Data.V.Kind "credit_note"}}{{t "kind.credit_note"}}{{else}}{{t "kind.invoice"}}{{end}} {{if .Data.V.Number}}{{deref .Data.V.Number}}{{else}}{{t "invoice.draft_n" .Data.V.ID}}{{end}}</h1>
+<p><span class="badge status-{{.Data.V.Status}}">{{st "inv" .Data.V.Status}}</span></p>
+<dl class="facts">
+<dt>{{t "f.party"}}</dt><dd><a href="/parties/{{.Data.V.PartyID}}">{{if .Data.Party}}{{.Data.Party}}{{else}}{{t "party.n" .Data.V.PartyID}}{{end}}</a></dd>
+<dt>{{t "f.issued"}}</dt><dd>{{.Data.V.IssueDate}}</dd>
+<dt>{{t "f.due"}}</dt><dd>{{.Data.V.DueDate}}</dd>
+<dt>{{t "f.currency"}}</dt><dd>{{.Data.V.Currency}}{{if ne .Data.V.Currency .Data.V.BaseCurrency}} ({{t "invoice.fx" .Data.V.FXRate .Data.V.BaseCurrency}}){{end}}</dd>
+{{with .Data.V.Project}}<dt>{{t "f.project"}}</dt><dd>{{.}}</dd>{{end}}
+{{if .Data.V.OriginalID}}<dt>{{t "invoice.original"}}</dt><dd><a href="/invoices/{{deref64 .Data.V.OriginalID}}">{{t "invoice.original_link"}}</a></dd>{{end}}
+{{with .Data.V.Reason}}<dt>{{t "f.reason"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.V.Notes}}<dt>{{t "f.notes"}}</dt><dd class="prose">{{.}}</dd>{{end}}
+<dt>{{t "f.created_by"}}</dt><dd>{{.Data.V.CreatedBy}}</dd>
+{{with .Data.V.ApprovedBy}}<dt>{{t "invoice.approved_by"}}</dt><dd>{{deref .}}</dd>{{end}}
+{{with .Data.V.VoidReason}}<dt>{{t "invoice.void_reason"}}</dt><dd>{{.}}</dd>{{end}}
+</dl>
+<div class="scroll">
+<table>
+<caption>{{t "lines.caption"}}</caption>
+<thead><tr><th scope="col">{{t "line.desc"}}</th><th scope="col">{{t "line.qty"}}</th><th scope="col">{{t "line.price"}}</th><th scope="col">{{t "line.disc"}}</th><th scope="col">{{t "line.tax"}}</th><th scope="col">{{t "f.amount"}}</th></tr></thead>
+<tbody>
+{{$cur := .Data.V.Currency}}
+{{range .Data.V.Lines}}<tr><th scope="row">{{.Description}}</th><td class="num">{{milli .QuantityMilli}}</td><td class="num">{{money .UnitPriceMinor $cur}}</td><td class="num">{{bp .DiscountBP}}</td><td class="num">{{ppm .TaxRatePPM}}%</td><td class="num">{{money .TotalMinor $cur}}</td></tr>
+{{end}}
+</tbody>
+<tfoot>
+<tr><th scope="row" colspan="5">{{t "invoice.subtotal"}}</th><td class="num">{{money .Data.V.SubtotalMinor $cur}}</td></tr>
+<tr><th scope="row" colspan="5">{{t "invoice.tax"}}</th><td class="num">{{money .Data.V.TaxMinor $cur}}</td></tr>
+<tr><th scope="row" colspan="5">{{t "invoice.total" $cur}}</th><td class="num">{{money .Data.V.TotalMinor $cur}}</td></tr>
+{{if .Data.V.PaidMinor}}<tr><th scope="row" colspan="5">{{t "invoice.paid"}}</th><td class="num">{{money .Data.V.PaidMinor $cur}}</td></tr>{{end}}
+{{if .Data.V.CreditedMinor}}<tr><th scope="row" colspan="5">{{t "invoice.credited"}}</th><td class="num">{{money .Data.V.CreditedMinor $cur}}</td></tr>{{end}}
+{{if eq .Data.V.Kind "invoice"}}<tr><th scope="row" colspan="5">{{t "invoice.balance"}}</th><td class="num">{{money .Data.V.BalanceMinor $cur}}</td></tr>{{end}}
+</tfoot>
+</table>
+</div>
+<p class="actions">
+<a href="/invoices/{{.Data.V.ID}}/html">{{t "invoice.print"}}</a>
+{{if .Data.CanEdit}}<a href="/invoices/{{.Data.V.ID}}/edit">{{t "common.edit"}}</a>{{end}}
+{{if .Data.CanCredit}}<a href="/invoices/{{.Data.V.ID}}/credit-note">{{t "credit.title"}}</a>{{end}}
+</p>
+{{if or (eq .Data.V.Status "approved") (eq .Data.V.Status "sent") (eq .Data.V.Status "partially_paid") (eq .Data.V.Status "paid")}}<p class="hint">{{t "invoice.immutable"}}</p>{{end}}
+
+{{if .Data.CanApprove}}
+<section aria-labelledby="h-appr">
+<h2 id="h-appr">{{t "invoice.approve"}}</h2>
+{{if .Data.ApproveDisabled}}
+<p><button type="button" disabled aria-describedby="sod">{{t "invoice.approve"}}</button></p>
+<p class="hint" id="sod">{{t "sod.invoice"}}</p>
+{{else}}
+<form method="post" action="/invoices/{{.Data.V.ID}}/approve" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "invoice.approve"}}</button>
+</form>
+<p class="hint">{{t "invoice.approve_hint"}}</p>
+{{end}}
+</section>
+{{end}}
+{{if .Data.CanRequest}}
+<form method="post" action="/invoices/{{.Data.V.ID}}/request-approval" class="inline">
+{{template "csrf" .}}
+<button type="submit">{{t "invoice.request"}}</button>
+</form>
+{{end}}
+{{if .Data.CanEdit}}
+<form method="post" action="/invoices/{{.Data.V.ID}}/delete" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "invoice.delete"}}</button>
+</form>
+{{end}}
+{{if .Data.CanSend}}
+<section aria-labelledby="h-send">
+<h2 id="h-send">{{t "invoice.send"}}</h2>
+<form method="post" action="/invoices/{{.Data.V.ID}}/send" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "invoice.send"}}</button>
+</form>
+<p class="hint">{{t "invoice.send_hint"}}</p>
+</section>
+{{end}}
+
+{{if .Data.Payments}}
+<section aria-labelledby="h-pay">
+<h2 id="h-pay">{{t "payments.title"}}</h2>
+<div class="scroll"><table>
+<caption>{{t "payments.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.date"}}</th><th scope="col">{{t "f.amount"}}</th><th scope="col">{{t "pay.method"}}</th><th scope="col">{{t "pay.reference"}}</th></tr></thead>
+<tbody>{{range .Data.Payments}}<tr><th scope="row">{{.ReceivedOn}}</th><td class="num">{{amt .AmountMinor .Currency}}</td><td>{{.Method}}</td><td>{{.Reference}}</td></tr>
+{{end}}</tbody></table></div>
+</section>
+{{end}}
+{{if .Data.CanPay}}
+<section aria-labelledby="h-rec">
+<h2 id="h-rec">{{t "pay.record"}}</h2>
+<form method="post" action="/invoices/{{.Data.V.ID}}/payments" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="idem" value="{{.Data.PayIdem}}">
+<p><label for="pay-amount">{{t "pay.amount" $cur}}</label>
+<input id="pay-amount" name="amount" inputmode="decimal" required maxlength="24" aria-describedby="pay-hint"></p>
+<p id="pay-hint" class="hint">{{t "pay.hint" (money .Data.V.BalanceMinor $cur)}}</p>
+<p><label for="pay-method">{{t "pay.method"}}</label>
+<input id="pay-method" name="method" maxlength="50" value="bank"></p>
+<p><label for="pay-ref">{{t "pay.reference"}}</label>
+<input id="pay-ref" name="reference" maxlength="200"></p>
+<p><label for="pay-date">{{t "pay.received_on"}}</label>
+<input id="pay-date" name="received_on" type="date"></p>
+<p><button type="submit">{{t "pay.record"}}</button></p>
+</form>
+</section>
+{{end}}
+{{if .Data.CanVoid}}
+<section aria-labelledby="h-void">
+<h2 id="h-void">{{t "invoice.void"}}</h2>
+<form method="post" action="/invoices/{{.Data.V.ID}}/void" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<p><label for="void-reason">{{t "f.reason"}}</label>
+<input id="void-reason" name="reason" required maxlength="500" aria-describedby="void-hint"></p>
+<p id="void-hint" class="hint">{{t "invoice.void_hint"}}</p>
+<p><button type="submit">{{t "invoice.void"}}</button></p>
+</form>
+</section>
+{{end}}
+{{if .Data.CanLink}}
+<section aria-labelledby="h-link">
+<h2 id="h-link">{{t "link.title"}}</h2>
+<p class="hint">{{t "link.hint"}}</p>
+<form method="post" action="/invoices/{{.Data.V.ID}}/link" class="inline">
+{{template "csrf" .}}
+<label for="ttl">{{t "link.ttl"}}</label>
+<input id="ttl" name="ttl_hours" inputmode="numeric" maxlength="5" value="168">
+<button type="submit">{{t "link.create"}}</button>
+</form>
+<form method="post" action="/invoices/{{.Data.V.ID}}/link/revoke" class="inline">
+{{template "csrf" .}}
+<button type="submit">{{t "link.revoke"}}</button>
+</form>
+</section>
+{{end}}
+{{end}}

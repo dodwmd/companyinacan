@@ -1,0 +1,23 @@
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.CSRF}}">{{end}}
+{{define "pager"}}{{if .Next}}<p class="actions"><a href="{{.Next}}" rel="next">{{t "common.older"}}</a></p>{{end}}{{end}}
+{{define "linerows"}}
+<div class="scroll">
+<table class="lines">
+<caption>{{t "lines.caption"}}</caption>
+<thead><tr><th scope="col">{{t "line.desc"}}</th><th scope="col">{{t "line.qty"}}</th><th scope="col">{{t "line.price"}}</th><th scope="col">{{t "line.disc"}}</th><th scope="col">{{t "line.tax"}}</th><th scope="col">{{t "line.sku"}}</th></tr></thead>
+<tbody>
+{{range $i, $r := .Rows}}<tr>
+<td><input name="desc" value="{{$r.Desc}}" maxlength="500" aria-label="{{t "line.desc"}} {{inc $i}}"></td>
+<td><input name="qty" value="{{$r.Qty}}" inputmode="decimal" maxlength="14" aria-label="{{t "line.qty"}} {{inc $i}}"></td>
+<td><input name="price" value="{{$r.Price}}" inputmode="decimal" maxlength="24" aria-label="{{t "line.price"}} {{inc $i}}"></td>
+<td><input name="disc" value="{{$r.Disc}}" inputmode="decimal" maxlength="6" aria-label="{{t "line.disc"}} {{inc $i}}"></td>
+<td><select name="tax" aria-label="{{t "line.tax"}} {{inc $i}}"><option value="">{{t "line.no_tax"}}</option>{{$cur := $r.Tax}}{{range $.Tax}}<option value="{{.Code}}"{{if eq .Code $cur}} selected{{end}}>{{.Name}} ({{ppm .RatePPM}}%)</option>{{end}}</select></td>
+<td><input name="sku" value="{{$r.SKU}}" maxlength="30" aria-label="{{t "line.sku"}} {{inc $i}}"></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p class="hint">{{t "lines.hint"}}</p>
+{{end}}
+{{define "sod_hint"}}<p class="hint" id="{{.}}">{{t "sod.hint"}}</p>{{end}}

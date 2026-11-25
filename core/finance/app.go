@@ -146,6 +146,19 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		mux.Handle("/", h)
 		h = mux
 	}
+	if cfg.UI.Enabled {
+		// The web UI owns the root of the listener; the API, the signed invoice link and the
+		// health check keep their paths (specs/031-finance-ui).
+		ui := &UI{Store: store, Auth: auth, Log: log, Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.TrustProxy, Now: now, Cfg: cfg, Seller: a.seller,
+			LinkSecret: a.linkSecret, ESign: esign, NotificationsURL: cfg.UI.NotificationsURL,
+			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour}
+		top := http.NewServeMux()
+		top.Handle("/v1/", h)
+		top.Handle("GET /healthz", h)
+		top.Handle("GET /public/invoices/{token}", h)
+		top.Handle("/", ui.Handler())
+		h = top
+	}
 	app.handler = withMiddleware(log, h)
 	return app, nil
 }

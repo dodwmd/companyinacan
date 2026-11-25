@@ -1,0 +1,17 @@
+{{define "content"}}
+<h1>{{t "po.new"}}</h1>
+<form method="post" action="/purchase-orders" class="card wide">
+{{template "csrf" .}}
+<input type="hidden" name="idem" value="{{.Data.Idem}}">
+<p><label for="p-vendor">{{t "po.vendor"}}</label>
+<select id="p-vendor" name="vendor_id" required><option value="">{{t "f.choose"}}</option>{{range .Data.Vendors}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></p>
+<p><label for="p-cur">{{t "f.currency"}}</label>
+<input id="p-cur" name="currency" value="{{.Data.Base}}" required maxlength="3"></p>
+<p><label for="p-project">{{t "f.project"}}</label>
+<input id="p-project" name="project" maxlength="10"></p>
+{{template "linerows" .Data}}
+<p><label for="p-notes">{{t "f.notes"}}</label>
+<textarea id="p-notes" name="notes" rows="3" maxlength="5000"></textarea></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}

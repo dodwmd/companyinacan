@@ -1,0 +1,35 @@
+{{define "content"}}
+<h1>{{t "report.statement"}}</h1>
+<p class="actions"><a href="/reports/aging">{{t "report.aging"}}</a> <a href="/reports/statement">{{t "report.statement"}}</a></p>
+<form method="get" action="/reports/statement" class="inline filter">
+<label for="st-party">{{t "f.party"}}</label>
+{{$sel := .Data.P.ID}}
+<select id="st-party" name="party"><option value="">{{t "f.choose"}}</option>{{range .Data.Parties}}<option value="{{.ID}}"{{if eq .ID $sel}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<button type="submit">{{t "common.show"}}</button>
+</form>
+{{if .Data.P.ID}}
+<h2>{{.Data.P.Name}}</h2>
+{{if .Data.Owing}}
+<p>{{t "statement.owing"}}</p>
+<ul class="list">{{range .Data.Owing}}<li class="num">{{amt .Minor .Currency}}</li>{{end}}</ul>
+{{end}}
+{{if .Data.Rows}}
+<div class="scroll">
+<table>
+<caption>{{t "statement.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.number"}}</th><th scope="col">{{t "f.issued"}}</th><th scope="col">{{t "f.status"}}</th><th scope="col">{{t "f.total"}}</th><th scope="col">{{t "invoice.paid"}}</th><th scope="col">{{t "f.balance"}}</th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr>
+<th scope="row"><a href="/invoices/{{.Inv.ID}}">{{deref .Inv.Number}}</a></th><td>{{.Inv.IssueDate}}</td><td>{{st "inv" .Inv.Status}}</td>
+<td class="num">{{amt .Inv.TotalMinor .Inv.Currency}}</td><td class="num">{{amt .Inv.PaidMinor .Inv.Currency}}</td><td class="num">{{if eq .Inv.Kind "invoice"}}{{amt .Inv.BalanceMinor .Inv.Currency}}{{end}}</td>
+</tr>
+{{range .Payments}}<tr class="sub"><td></td><td>{{.ReceivedOn}}</td><td>{{t "statement.payment"}}</td><td></td><td class="num">{{amt .AmountMinor .Currency}}</td><td>{{.Reference}}</td></tr>
+{{end}}
+{{end}}
+</tbody>
+</table>
+</div>
+{{if .Data.More}}<p class="notice">{{t "statement.more"}}</p>{{end}}
+{{else}}<p class="muted">{{t "invoices.none"}}</p>{{end}}
+{{end}}
+{{end}}

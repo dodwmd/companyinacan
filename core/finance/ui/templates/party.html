@@ -1,0 +1,32 @@
+{{define "content"}}
+<h1>{{.Data.P.Name}}</h1>
+{{if .Data.P.Erased}}<p class="notice">{{t "party.erased_notice"}}</p>{{end}}
+<dl class="facts">
+<dt>{{t "f.kind"}}</dt><dd>{{st "kind" .Data.P.Kind}}</dd>
+{{with .Data.P.ContactName}}<dt>{{t "f.contact"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.P.Email}}<dt>{{t "f.email"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.P.Phone}}<dt>{{t "f.phone"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.P.Address}}<dt>{{t "f.address"}}</dt><dd class="prose">{{.}}</dd>{{end}}
+{{with .Data.P.TaxID}}<dt>{{t "f.tax_id"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.P.Currency}}<dt>{{t "f.currency"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.P.Notes}}<dt>{{t "f.notes"}}</dt><dd class="prose">{{.}}</dd>{{end}}
+</dl>
+<p class="actions">
+{{if .Data.CanEdit}}<a href="/parties/{{.Data.P.ID}}/edit">{{t "common.edit"}}</a>{{end}}
+{{if .Caps.Write}}{{if not .Data.P.Erased}}<a href="/invoices/new?party={{.Data.P.ID}}">{{t "invoice.new"}}</a>{{end}}{{end}}
+<a href="/reports/statement?party={{.Data.P.ID}}">{{t "report.statement"}}</a>
+<a href="/invoices?party={{.Data.P.ID}}">{{t "nav.invoices"}}</a>
+{{if .Data.CanErase}}<a href="/parties/{{.Data.P.ID}}/erase">{{t "erase.link"}}</a>{{end}}
+</p>
+<section aria-labelledby="h-inv">
+<h2 id="h-inv">{{t "party.recent"}}</h2>
+{{if .Data.Invoices}}
+<div class="scroll"><table>
+<caption>{{t "party.recent_caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.number"}}</th><th scope="col">{{t "f.status"}}</th><th scope="col">{{t "f.total"}}</th><th scope="col">{{t "f.balance"}}</th></tr></thead>
+<tbody>{{range .Data.Invoices}}<tr><th scope="row"><a href="/invoices/{{.ID}}">{{if .Number}}{{deref .Number}}{{else}}{{t "invoice.draft_n" .ID}}{{end}}</a></th><td>{{st "inv" .Status}}</td><td class="num">{{amt .TotalMinor .Currency}}</td><td class="num">{{amt .BalanceMinor .Currency}}</td></tr>
+{{end}}</tbody></table></div>
+{{if .Data.More}}<p><a href="/invoices?party={{.Data.P.ID}}">{{t "common.all"}}</a></p>{{end}}
+{{else}}<p class="muted">{{t "invoices.none"}}</p>{{end}}
+</section>
+{{end}}

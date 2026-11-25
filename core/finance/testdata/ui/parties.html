@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Customers and vendors - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/parties" aria-current="page">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Customers and vendors</h1>
+<form method="get" action="/parties" class="inline filter">
+<label for="q">Search by name</label>
+<input id="q" name="q" value="" maxlength="100">
+<label for="kind">Kind</label>
+<select id="kind" name="kind"><option value="">All</option><option value="customer">Customer</option><option value="vendor">Vendor</option></select>
+<button type="submit">Filter</button>
+</form>
+
+
+<div class="scroll">
+<table>
+<caption>Customers and vendors</caption>
+<thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Email</th><th scope="col">Currency</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/parties/1">Acme Pty</a></th><td>Customer</td><td>ap@acme.example</td><td>USD</td></tr>
+<tr><th scope="row"><a href="/parties/2">Parts Ltd</a></th><td>Vendor</td><td></td><td>USD</td></tr>
+<tr><th scope="row"><a href="/parties/3">Tokyo KK</a></th><td>Customer</td><td></td><td>JPY</td></tr>
+<tr><th scope="row"><a href="/parties/4">&lt;script&gt;alert(1)&lt;/script&gt; &#34;quoted&#34; &amp; co</a></th><td>Customer</td><td></td><td>USD</td></tr>
+
+</tbody>
+</table>
+</div>
+
+
+<p class="hint">Contact details are personal data. Every listing and every page of a party is recorded in the audit log.</p>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

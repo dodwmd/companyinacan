@@ -44,6 +44,9 @@ config:
   esign_provider: none
   retention_years: 7
   audit_retention_days: 2555
+  # Web UI (specs/031-finance-ui): off by default. To turn it on add `ui: { enabled: true, force_secure: true }` here
+  # and route a host to the service; the UI needs TLS (Secure, __Host- cookies) and a subdomain, which this chart
+  # does not provide yet (docs/finance-ui.md).
 keyring:
   enabled: false
 resources:

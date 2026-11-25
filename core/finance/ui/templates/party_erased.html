@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>{{t "erase.done_title"}}</h1>
+{{if .Data.Warning}}<p class="notice" role="alert">{{t "erase.warning"}}</p>{{end}}
+{{if .Data.Report.AlreadyErased}}<p class="hint">{{t "erase.already"}}</p>{{end}}
+<dl class="facts">
+<dt>{{t "erase.fields"}}</dt><dd>{{range $i, $f := .Data.Report.ErasedFields}}{{if $i}}, {{end}}{{$f}}{{end}}</dd>
+<dt>{{t "erase.deleted"}}</dt><dd>{{.Data.Report.DeletedDrafts}}</dd>
+</dl>
+<section aria-labelledby="h-kept">
+<h2 id="h-kept">{{t "erase.kept"}}</h2>
+{{if .Data.Report.Retained}}
+<div class="scroll"><table>
+<caption>{{t "erase.kept_caption"}}</caption>
+<thead><tr><th scope="col">{{t "erase.class"}}</th><th scope="col">{{t "erase.count"}}</th><th scope="col">{{t "erase.until"}}</th><th scope="col">{{t "erase.reason"}}</th></tr></thead>
+<tbody>{{range .Data.Report.Retained}}<tr><th scope="row">{{.Class}}</th><td class="num">{{.Count}}</td><td>{{if .Until}}{{.Until}}{{else}}{{t "erase.no_end"}}{{end}}</td><td>{{.Reason}}</td></tr>
+{{end}}</tbody></table></div>
+<p class="hint">{{t "erase.kept_hint" .Data.RetentionYears}}</p>
+{{else}}<p class="muted">{{t "erase.nothing_kept"}}</p>{{end}}
+</section>
+<p><a href="/parties/{{.Data.Report.PartyID}}">{{t "erase.back"}}</a></p>
+{{end}}

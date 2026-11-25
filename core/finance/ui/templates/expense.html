@@ -1,0 +1,62 @@
+{{define "content"}}
+<h1>{{t "expense.title"}}</h1>
+<p><span class="badge">{{st "ex" .Data.E.Status}}</span></p>
+<dl class="facts">
+<dt>{{t "f.person"}}</dt><dd>{{.Data.E.Owner}}</dd>
+<dt>{{t "f.description"}}</dt><dd>{{.Data.E.Description}}</dd>
+<dt>{{t "f.amount"}}</dt><dd class="num">{{amt .Data.E.AmountMinor .Data.E.Currency}}</dd>
+<dt>{{t "expense.category"}}</dt><dd>{{.Data.E.Category}}</dd>
+<dt>{{t "expense.incurred"}}</dt><dd>{{.Data.E.IncurredOn}}</dd>
+{{with .Data.E.Project}}<dt>{{t "f.project"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.E.Receipt}}
+<dt>{{t "receipt.filename"}}</dt><dd>{{.Filename}}</dd>
+<dt>{{t "receipt.type"}}</dt><dd>{{.ContentType}}</dd>
+<dt>{{t "receipt.size"}}</dt><dd>{{.SizeBytes}}</dd>
+<dt>{{t "receipt.sha256"}}</dt><dd><code>{{.SHA256}}</code></dd>
+{{end}}
+{{with .Data.E.DecidedBy}}<dt>{{t "expense.decided_by"}}</dt><dd>{{deref .}}</dd>{{end}}
+{{with .Data.E.RejectReason}}<dt>{{t "f.reason"}}</dt><dd>{{.}}</dd>{{end}}
+{{with .Data.E.ReimbursementRef}}<dt>{{t "expense.reference"}}</dt><dd>{{.}}</dd>{{end}}
+</dl>
+{{if .Data.CanSubmit}}
+<form method="post" action="/expenses/{{.Data.E.ID}}/submit" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "expense.submit"}}</button>
+</form>
+{{end}}
+{{if .Data.CanDecide}}
+<section aria-labelledby="h-dec">
+<h2 id="h-dec">{{t "ts.decide"}}</h2>
+{{if .Data.DecideDisabled}}
+<p><button type="button" disabled aria-describedby="sod">{{t "common.approve"}}</button></p>
+<p class="hint" id="sod">{{t "sod.hint"}}</p>
+{{else}}
+<form method="post" action="/expenses/{{.Data.E.ID}}/approve" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "common.approve"}}</button>
+</form>
+<form method="post" action="/expenses/{{.Data.E.ID}}/reject" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<p><label for="rej">{{t "f.reason"}}</label>
+<input id="rej" name="reason" required maxlength="500"></p>
+<p><button type="submit">{{t "common.reject"}}</button></p>
+</form>
+{{end}}
+</section>
+{{end}}
+{{if .Data.CanReimburse}}
+<section aria-labelledby="h-reimb">
+<h2 id="h-reimb">{{t "expense.reimburse"}}</h2>
+<form method="post" action="/expenses/{{.Data.E.ID}}/reimburse" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<p><label for="reimb-ref">{{t "expense.reference"}}</label>
+<input id="reimb-ref" name="reference" maxlength="200"></p>
+<p><button type="submit">{{t "expense.reimburse"}}</button></p>
+</form>
+</section>
+{{end}}
+{{end}}

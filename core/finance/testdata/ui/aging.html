@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Receivables aging - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging" aria-current="page">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Receivables aging</h1>
+<p class="actions"><a href="/reports/aging">Receivables aging</a> <a href="/reports/statement">Customer statement</a></p>
+<form method="get" action="/reports/aging" class="inline filter">
+<label for="as-of">As of</label>
+<input id="as-of" name="as_of" type="date" value="2027-01-31">
+<button type="submit">Filter</button>
+</form>
+<p class="hint">Unpaid balances of issued invoices by days past due, per currency. Credit notes are netted. Currencies are never added together.</p>
+
+<section aria-labelledby="h-USD">
+<h2 id="h-USD">USD</h2>
+<div class="scroll">
+<table>
+<caption>Receivables in USD</caption>
+<thead><tr><th scope="col">Customer or vendor</th><th scope="col">Not yet due</th><th scope="col">1 to 30 days</th><th scope="col">31 to 60 days</th><th scope="col">61 to 90 days</th><th scope="col">Over 90 days</th><th scope="col">Total</th></tr></thead>
+<tbody>
+
+<tr><th scope="row"><a href="/reports/statement?party=1">Acme Pty</a></th><td class="num">0.00</td><td class="num">0.00</td><td class="num">59.00</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">59.00</td></tr>
+
+</tbody>
+<tfoot><tr><th scope="row">All customers</th><td class="num">0.00</td><td class="num">0.00</td><td class="num">59.00</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">59.00</td></tr></tfoot>
+</table>
+</div>
+
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

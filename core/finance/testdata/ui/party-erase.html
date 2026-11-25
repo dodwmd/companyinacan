@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Erase a customer or vendor - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties" aria-current="page">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Erase a customer or vendor</h1>
+<p>Party: Acme Pty</p>
+<section aria-labelledby="h-what">
+<h2 id="h-what">What happens</h2>
+<ul>
+<li>Name, contact person, email, phone, address, tax id and notes are removed from the party record, which is kept as an anonymous placeholder.</li>
+<li>Draft invoices, draft contracts that were never sent, draft purchase orders and recurring schedules of this party are deleted.</li>
+<li>Issued invoices and credit notes, payments, sent or signed contracts and approved purchase orders are NOT deleted: they are legal records kept for the legal retention period (7 years after their own date). They keep the name, address and tax id they were issued with.</li>
+<li>Unpaid invoices are never purged: their retention starts when they are paid or voided.</li>
+<li>This cannot be undone. The result below says exactly what was erased and what is kept.</li>
+</ul>
+</section>
+<form method="post" action="/parties/1/erase" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="confirm">Type ERASE to confirm</label>
+<input id="confirm" name="confirm" required autocomplete="off" maxlength="10" aria-describedby="confirm-hint"></p>
+<p id="confirm-hint" class="hint">Capital letters, nothing else.</p>
+<p><button type="submit">Erase personal data</button></p>
+</form>
+<p><a href="/parties/1">Cancel</a></p>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

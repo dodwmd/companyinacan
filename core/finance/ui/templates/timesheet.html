@@ -1,0 +1,72 @@
+{{define "content"}}
+<h1>{{t "ts.title" .Data.T.WeekStart}}</h1>
+<p><span class="badge">{{st "ts" .Data.T.Status}}</span> <span class="muted">{{.Data.T.Owner}}</span></p>
+{{if .Data.Locked}}<p class="notice" role="status">{{t "ts.locked" .Data.LockedThru}}</p>{{end}}
+{{if .Data.T.RejectReason}}<p class="notice">{{t "ts.rejected_because" .Data.T.RejectReason}}</p>{{end}}
+{{if .Data.CanEdit}}
+<form method="post" action="/timesheets/{{.Data.T.ID}}/entries" class="wide">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<div class="scroll">
+<table class="grid">
+<caption>{{t "ts.grid_caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.project"}}</th><th scope="col">{{t "ts.task"}}</th><th scope="col">{{t "f.description"}}</th><th scope="col">{{t "ts.billable"}}</th>{{range .Data.Days}}<th scope="col">{{.}}</th>{{end}}</tr></thead>
+<tbody>
+{{range $i, $r := .Data.Rows}}<tr>
+<td><input name="project" value="{{$r.Project}}" maxlength="10" aria-label="{{t "f.project"}} {{inc $i}}"></td>
+<td><input name="task" value="{{$r.Task}}" maxlength="20" aria-label="{{t "ts.task"}} {{inc $i}}"></td>
+<td><input name="desc" value="{{$r.Desc}}" maxlength="500" aria-label="{{t "f.description"}} {{inc $i}}"></td>
+<td><select name="billable" aria-label="{{t "ts.billable"}} {{inc $i}}"><option value="1"{{if $r.Billable}} selected{{end}}>{{t "common.yes"}}</option><option value="0"{{if not $r.Billable}} selected{{end}}>{{t "common.no"}}</option></select></td>
+{{range $d, $c := $r.Cells}}<td><input name="h" value="{{$c}}" maxlength="5" size="5" inputmode="numeric" aria-label="{{t "ts.cell" (inc $i) (index $.Data.Days $d)}}"></td>{{end}}
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p class="hint">{{t "ts.grid_hint"}}</p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{else}}
+<div class="scroll">
+<table class="grid">
+<caption>{{t "ts.grid_caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.project"}}</th><th scope="col">{{t "ts.task"}}</th><th scope="col">{{t "f.description"}}</th><th scope="col">{{t "ts.billable"}}</th>{{range .Data.Days}}<th scope="col">{{.}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr><th scope="row">{{.Project}}</th><td>{{.Task}}</td><td>{{.Desc}}</td><td>{{if .Billable}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</td>{{range .Cells}}<td class="num">{{.}}</td>{{end}}</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+<p>{{t "ts.total"}}: <strong class="num">{{hm .Data.T.TotalMinutes}}</strong> ({{t "ts.billable"}}: <span class="num">{{hm .Data.T.BillableMinutes}}</span>)</p>
+{{if .Data.CanSubmit}}
+<form method="post" action="/timesheets/{{.Data.T.ID}}/submit" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "ts.submit"}}</button>
+</form>
+<p class="hint">{{t "ts.save_first"}}</p>
+{{end}}
+{{if .Data.CanDecide}}
+<section aria-labelledby="h-dec">
+<h2 id="h-dec">{{t "ts.decide"}}</h2>
+{{if .Data.Disabled}}
+<p><button type="button" disabled aria-describedby="sod">{{t "common.approve"}}</button></p>
+<p class="hint" id="sod">{{t "sod.hint"}}</p>
+{{else}}
+<form method="post" action="/timesheets/{{.Data.T.ID}}/approve" class="inline">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<button type="submit">{{t "common.approve"}}</button>
+</form>
+<form method="post" action="/timesheets/{{.Data.T.ID}}/reject" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.Version}}">
+<p><label for="rej">{{t "f.reason"}}</label>
+<input id="rej" name="reason" required maxlength="500"></p>
+<p><button type="submit">{{t "common.reject"}}</button></p>
+</form>
+{{end}}
+</section>
+{{end}}
+{{end}}

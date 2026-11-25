@@ -383,10 +383,17 @@ func (a *api) invoiceHTML(w http.ResponseWriter, r *http.Request, p *Principal) 
 }
 
 func (a *api) writeInvoiceHTML(w http.ResponseWriter, v *Invoice) {
-	b, err := RenderInvoiceHTML(v, a.seller)
-	if err != nil {
+	if err := serveInvoiceHTML(w, v, a.seller); err != nil {
 		a.fail(w, err)
-		return
+	}
+}
+
+// serveInvoiceHTML writes the printable invoice. The API and the web UI share it, so there is one
+// renderer, one escaping policy and one set of headers.
+func serveInvoiceHTML(w http.ResponseWriter, v *Invoice, seller Seller) error {
+	b, err := RenderInvoiceHTML(v, seller)
+	if err != nil {
+		return err
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
@@ -394,6 +401,7 @@ func (a *api) writeInvoiceHTML(w http.ResponseWriter, v *Invoice) {
 	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 	h.Set("X-Robots-Tag", "noindex, nofollow")
 	_, _ = w.Write(b)
+	return nil
 }
 
 func (a *api) issueLink(w http.ResponseWriter, r *http.Request, p *Principal) {

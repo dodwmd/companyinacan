@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Customer or vendor - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/parties" aria-current="page">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>&lt;script&gt;alert(1)&lt;/script&gt; &#34;quoted&#34; &amp; co</h1>
+
+<dl class="facts">
+<dt>Kind</dt><dd>Customer</dd>
+
+
+
+
+
+<dt>Currency</dt><dd>USD</dd>
+
+</dl>
+<p class="actions">
+
+
+<a href="/reports/statement?party=4">Customer statement</a>
+<a href="/invoices?party=4">Invoices</a>
+
+</p>
+<section aria-labelledby="h-inv">
+<h2 id="h-inv">Recent invoices</h2>
+
+<div class="scroll"><table>
+<caption>Recent invoices of this party</caption>
+<thead><tr><th scope="col">Number</th><th scope="col">Status</th><th scope="col">Total</th><th scope="col">Balance</th></tr></thead>
+<tbody><tr><th scope="row"><a href="/invoices/4">Draft #4</a></th><td>Draft</td><td class="num">1.00 USD</td><td class="num">1.00 USD</td></tr>
+</tbody></table></div>
+
+
+</section>
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

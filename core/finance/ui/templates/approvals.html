@@ -1,0 +1,46 @@
+{{define "content"}}
+<h1>{{t "nav.approvals"}}</h1>
+<p class="hint">{{t "approvals.hint"}}</p>
+{{if not .Data.Total}}<p class="muted">{{t "home.approvals_none"}}</p>{{end}}
+{{if .Data.More}}<p class="notice">{{t "approvals.more"}}</p>{{end}}
+{{if .Data.Invoices}}
+<section aria-labelledby="h-inv">
+<h2 id="h-inv">{{t "nav.invoices"}}</h2>
+<div class="scroll"><table>
+<caption>{{t "approvals.invoices"}}</caption>
+<thead><tr><th scope="col">{{t "f.id"}}</th><th scope="col">{{t "f.currency"}}</th><th scope="col">{{t "f.total"}}</th><th scope="col">{{t "f.due"}}</th></tr></thead>
+<tbody>{{range .Data.Invoices}}<tr><th scope="row"><a href="/invoices/{{.ID}}">{{t "invoice.draft_n" .ID}}</a></th><td>{{.Currency}}</td><td class="num">{{money .TotalMinor .Currency}}</td><td>{{.DueDate}}</td></tr>
+{{end}}</tbody></table></div>
+</section>
+{{end}}
+{{if .Data.Timesheets}}
+<section aria-labelledby="h-ts">
+<h2 id="h-ts">{{t "nav.timesheets"}}</h2>
+<div class="scroll"><table>
+<caption>{{t "approvals.timesheets"}}</caption>
+<thead><tr><th scope="col">{{t "f.person"}}</th><th scope="col">{{t "ts.week"}}</th><th scope="col">{{t "ts.total"}}</th></tr></thead>
+<tbody>{{range .Data.Timesheets}}<tr><th scope="row"><a href="/timesheets/{{.ID}}">{{.Owner}}</a></th><td>{{.WeekStart}}</td><td class="num">{{hm .TotalMinutes}}</td></tr>
+{{end}}</tbody></table></div>
+</section>
+{{end}}
+{{if .Data.Expenses}}
+<section aria-labelledby="h-ex">
+<h2 id="h-ex">{{t "nav.expenses"}}</h2>
+<div class="scroll"><table>
+<caption>{{t "approvals.expenses"}}</caption>
+<thead><tr><th scope="col">{{t "f.person"}}</th><th scope="col">{{t "f.description"}}</th><th scope="col">{{t "f.amount"}}</th></tr></thead>
+<tbody>{{range .Data.Expenses}}<tr><th scope="row"><a href="/expenses/{{.ID}}">{{.Owner}}</a></th><td>{{.Description}}</td><td class="num">{{amt .AmountMinor .Currency}}</td></tr>
+{{end}}</tbody></table></div>
+</section>
+{{end}}
+{{if .Data.Orders}}
+<section aria-labelledby="h-po">
+<h2 id="h-po">{{t "nav.pos"}}</h2>
+<div class="scroll"><table>
+<caption>{{t "approvals.orders"}}</caption>
+<thead><tr><th scope="col">{{t "f.id"}}</th><th scope="col">{{t "f.total"}}</th></tr></thead>
+<tbody>{{range .Data.Orders}}<tr><th scope="row"><a href="/purchase-orders/{{.ID}}">{{t "po.draft_n" .ID}}</a></th><td class="num">{{amt .TotalMinor .Currency}}</td></tr>
+{{end}}</tbody></table></div>
+</section>
+{{end}}
+{{end}}

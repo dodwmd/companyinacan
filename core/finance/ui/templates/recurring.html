@@ -1,0 +1,29 @@
+{{define "content"}}
+<h1>{{t "nav.recurring"}}</h1>
+<p class="hint">{{t "recurring.hint"}}</p>
+{{if .Data.Write}}<p class="actions"><a href="/recurring/new">{{t "recurring.new"}}</a></p>{{end}}
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "recurring.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.name"}}</th><th scope="col">{{t "f.party"}}</th><th scope="col">{{t "recurring.interval"}}</th><th scope="col">{{t "recurring.next"}}</th><th scope="col">{{t "f.status"}}</th>{{if .Data.Write}}<th scope="col">{{t "common.actions"}}</th>{{end}}</tr></thead>
+<tbody>
+{{$names := .Data.Names}}{{$write := .Data.Write}}
+{{range .Data.Items}}<tr>
+<th scope="row">{{.Name}}</th><td>{{index $names .PartyID}}</td><td>{{st "interval" .Interval}}</td><td>{{.NextDate}}</td><td>{{st "rec" .Status}}</td>
+{{if $write}}<td>
+{{if ne .Status "ended"}}
+<form method="post" action="/recurring/{{.ID}}/status" class="inline">
+{{template "csrf" $}}
+{{if eq .Status "paused"}}<button type="submit" name="status" value="active">{{t "recurring.resume"}}</button>{{else}}<button type="submit" name="status" value="paused">{{t "recurring.pause"}}</button>{{end}}
+<button type="submit" name="status" value="ended">{{t "recurring.end"}}</button>
+</form>
+{{end}}
+</td>{{end}}
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "recurring.none"}}</p>{{end}}
+{{end}}

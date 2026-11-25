@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>timesheet.title - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets" aria-current="page">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Week of 2026-11-23</h1>
+<p><span class="badge">Submitted</span> <span class="muted">user:emp</span></p>
+
+
+
+<div class="scroll">
+<table class="grid">
+<caption>Hours per day</caption>
+<thead><tr><th scope="col">Project</th><th scope="col">Task</th><th scope="col">Description</th><th scope="col">Billable</th><th scope="col">2026-11-23</th><th scope="col">2026-11-24</th><th scope="col">2026-11-25</th><th scope="col">2026-11-26</th><th scope="col">2026-11-27</th><th scope="col">2026-11-28</th><th scope="col">2026-11-29</th></tr></thead>
+<tbody>
+<tr><th scope="row">ACME</th><td>ACME-1</td><td>Build</td><td>Yes</td><td class="num">7:30</td><td class="num">7:30</td><td class="num">7:30</td><td class="num">7:30</td><td class="num">7:30</td><td class="num"></td><td class="num"></td></tr>
+
+</tbody>
+</table>
+</div>
+
+<p>Total: <strong class="num">37:30</strong> (Billable: <span class="num">37:30</span>)</p>
+
+
+<section aria-labelledby="h-dec">
+<h2 id="h-dec">Decision</h2>
+
+<form method="post" action="/timesheets/1/approve" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="3">
+<button type="submit">Approve</button>
+</form>
+<form method="post" action="/timesheets/1/reject" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="3">
+<p><label for="rej">Reason</label>
+<input id="rej" name="reason" required maxlength="500"></p>
+<p><button type="submit">Reject</button></p>
+</form>
+
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

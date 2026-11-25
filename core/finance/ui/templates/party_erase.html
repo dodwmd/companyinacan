@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>{{t "erase.title"}}</h1>
+<p>{{t "erase.party" .Data.P.Name}}</p>
+<section aria-labelledby="h-what">
+<h2 id="h-what">{{t "erase.what"}}</h2>
+<ul>
+<li>{{t "erase.removes"}}</li>
+<li>{{t "erase.drafts"}}</li>
+<li>{{t "erase.keeps" .Data.RetentionYears}}</li>
+<li>{{t "erase.unpaid"}}</li>
+<li>{{t "erase.irreversible"}}</li>
+</ul>
+</section>
+<form method="post" action="/parties/{{.Data.P.ID}}/erase" class="card">
+{{template "csrf" .}}
+<p><label for="confirm">{{t "erase.confirm"}}</label>
+<input id="confirm" name="confirm" required autocomplete="off" maxlength="10" aria-describedby="confirm-hint"></p>
+<p id="confirm-hint" class="hint">{{t "erase.confirm_hint"}}</p>
+<p><button type="submit">{{t "erase.submit"}}</button></p>
+</form>
+<p><a href="/parties/{{.Data.P.ID}}">{{t "common.cancel"}}</a></p>
+{{end}}

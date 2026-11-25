@@ -1,0 +1,9 @@
+{{define "content"}}
+<h1>{{t "link.created_title"}}</h1>
+<p class="notice" role="alert">{{t "link.once"}}</p>
+<p><code class="link" id="the-link">{{.Data.URL}}</code></p>
+{{if .Data.Path}}<p class="hint">{{t "link.no_base"}}</p>{{end}}
+<p>{{t "link.expires" (when .Data.Expires)}}</p>
+<p class="hint">{{t "link.revoke_hint"}}</p>
+<p><a href="/invoices/{{.Data.ID}}">{{t "link.back"}}</a></p>
+{{end}}

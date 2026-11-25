@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Invoice - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices" aria-current="page">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Invoice INV-00001</h1>
+<p><span class="badge status-partially_paid">Partially paid</span></p>
+<dl class="facts">
+<dt>Customer or vendor</dt><dd><a href="/parties/1">Acme Pty</a></dd>
+<dt>Issue date</dt><dd>2026-11-25</dd>
+<dt>Due date</dt><dd>2026-12-25</dd>
+<dt>Currency</dt><dd>USD</dd>
+
+
+
+
+<dt>Created by</dt><dd>user:maker</dd>
+<dt>Approved by</dt><dd>user:boss</dd>
+
+</dl>
+<div class="scroll">
+<table>
+<caption>Lines</caption>
+<thead><tr><th scope="col">Description</th><th scope="col">Quantity</th><th scope="col">Unit price</th><th scope="col">Discount %</th><th scope="col">Tax</th><th scope="col">Amount</th></tr></thead>
+<tbody>
+
+<tr><th scope="row">Hosting</th><td class="num">2</td><td class="num">49.50</td><td class="num">0</td><td class="num">0%</td><td class="num">99.00</td></tr>
+
+</tbody>
+<tfoot>
+<tr><th scope="row" colspan="5">Subtotal</th><td class="num">99.00</td></tr>
+<tr><th scope="row" colspan="5">Tax</th><td class="num">0.00</td></tr>
+<tr><th scope="row" colspan="5">Total USD</th><td class="num">99.00</td></tr>
+<tr><th scope="row" colspan="5">Paid</th><td class="num">40.00</td></tr>
+
+<tr><th scope="row" colspan="5">Balance due</th><td class="num">59.00</td></tr>
+</tfoot>
+</table>
+</div>
+<p class="actions">
+<a href="/invoices/2/html">Printable view</a>
+
+<a href="/invoices/2/credit-note">Credit note</a>
+</p>
+<p class="hint">This invoice is issued and cannot be edited. Void it or issue a credit note.</p>
+
+
+
+
+
+
+
+<section aria-labelledby="h-pay">
+<h2 id="h-pay">Payments</h2>
+<div class="scroll"><table>
+<caption>Payments received</caption>
+<thead><tr><th scope="col">Date</th><th scope="col">Amount</th><th scope="col">Method</th><th scope="col">Reference</th></tr></thead>
+<tbody><tr><th scope="row">2026-11-24</th><td class="num">40.00 USD</td><td>bank</td><td>ref-1</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section aria-labelledby="h-rec">
+<h2 id="h-rec">Record a payment</h2>
+<form method="post" action="/invoices/2/payments" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="idem" value="IDEM">
+<p><label for="pay-amount">Amount (USD)</label>
+<input id="pay-amount" name="amount" inputmode="decimal" required maxlength="24" aria-describedby="pay-hint"></p>
+<p id="pay-hint" class="hint">Open balance: 59.00. A payment cannot exceed it.</p>
+<p><label for="pay-method">Method</label>
+<input id="pay-method" name="method" maxlength="50" value="bank"></p>
+<p><label for="pay-ref">Reference</label>
+<input id="pay-ref" name="reference" maxlength="200"></p>
+<p><label for="pay-date">Received on</label>
+<input id="pay-date" name="received_on" type="date"></p>
+<p><button type="submit">Record a payment</button></p>
+</form>
+</section>
+
+
+
+<section aria-labelledby="h-link">
+<h2 id="h-link">Public link</h2>
+<p class="hint">A signed, expiring link shows the printable invoice without signing in. It is shown once, when created. Revoking invalidates every link of this invoice.</p>
+<form method="post" action="/invoices/2/link" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<label for="ttl">Valid for (hours)</label>
+<input id="ttl" name="ttl_hours" inputmode="numeric" maxlength="5" value="168">
+<button type="submit">Create a link</button>
+</form>
+<form method="post" action="/invoices/2/link/revoke" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Revoke all links</button>
+</form>
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

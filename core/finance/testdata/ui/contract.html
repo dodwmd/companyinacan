@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Title - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts" aria-current="page">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Mutual NDA</h1>
+<p><span class="badge">Draft</span></p>
+<dl class="facts">
+<dt>Customer or vendor</dt><dd><a href="/parties/1">Acme Pty</a></dd>
+<dt>Start date</dt><dd></dd>
+<dt>End date</dt><dd></dd>
+<dt>Renewal date</dt><dd>2026-12-15</dd>
+<dt>Remind this many days before renewal</dt><dd>30</dd>
+<dt>Signature</dt><dd>Not signed yet</dd>
+<dt>Text hash (SHA-256)</dt><dd><code>cc3cc209b930510d39f2a2ab1bb8ee408db8b27494cb3184e5de59624842381c</code></dd>
+
+
+</dl>
+<section aria-labelledby="h-text">
+<h2 id="h-text">Current text</h2>
+<div class="prose box">Agreement with Acme Pty until 2027-01-01.</div>
+</section>
+<section aria-labelledby="h-vers">
+<h2 id="h-vers">Versions</h2>
+<p class="hint">Versions are read-only: the text of a signed contract never changes.</p>
+<ul class="list"><li><a href="/contracts/1/versions/1">Version 1</a></li>
+</ul>
+</section>
+
+<section aria-labelledby="h-send">
+<h2 id="h-send">Send for signature</h2>
+<form method="post" action="/contracts/1/send" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="1">
+<p><label for="s-mode">How it is signed</label>
+<select id="s-mode" name="mode"><option value="manual">Signed outside this system (record later)</option><option value="esign">E-signature provider</option></select></p>
+<p><label for="s-signers">Signer email addresses</label>
+<textarea id="s-signers" name="signers" rows="2" maxlength="1000"></textarea></p>
+<p class="hint">Sending freezes the text. Signer addresses go to the provider and are not stored here.</p>
+<p><button type="submit">Send for signature</button></p>
+</form>
+</section>
+
+
+<section aria-labelledby="h-dates">
+<h2 id="h-dates">Dates and reminders</h2>
+<form method="post" action="/contracts/1/dates" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="1">
+<p><label for="d-start">Start date</label>
+<input id="d-start" name="start_date" type="date" value=""></p>
+<p><label for="d-end">End date</label>
+<input id="d-end" name="end_date" type="date" value=""></p>
+<p><label for="d-renew">Renewal date</label>
+<input id="d-renew" name="renewal_date" type="date" value="2026-12-15"></p>
+<p><label for="d-remind">Remind this many days before renewal</label>
+<input id="d-remind" name="reminder_days" inputmode="numeric" maxlength="3" value="30"></p>
+<p><button type="submit">Save</button></p>
+</form>
+</section>
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

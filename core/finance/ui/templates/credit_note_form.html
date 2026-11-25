@@ -1,0 +1,17 @@
+{{define "content"}}
+<h1>{{t "credit.title"}}</h1>
+<p>{{t "credit.for"}} <a href="/invoices/{{.Data.V.ID}}">{{deref .Data.V.Number}}</a></p>
+<dl class="facts">
+<dt>{{t "invoice.total" .Data.V.Currency}}</dt><dd class="num">{{money .Data.V.TotalMinor .Data.V.Currency}}</dd>
+<dt>{{t "invoice.balance"}}</dt><dd class="num">{{money .Data.V.BalanceMinor .Data.V.Currency}}</dd>
+</dl>
+<p class="hint">{{t "credit.hint" .Data.V.Currency}}</p>
+<form method="post" action="/invoices/{{.Data.V.ID}}/credit-note" class="card wide">
+{{template "csrf" .}}
+<input type="hidden" name="idem" value="{{.Data.Idem}}">
+<p><label for="c-reason">{{t "f.reason"}}</label>
+<input id="c-reason" name="reason" required maxlength="500"></p>
+{{template "linerows" .Data}}
+<p><button type="submit">{{t "credit.create"}}</button></p>
+</form>
+{{end}}

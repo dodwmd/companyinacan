@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Home - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings">Settings</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Home</h1>
+
+
+<section aria-labelledby="h-appr">
+<h2 id="h-appr">Waiting for your approval</h2>
+
+<p>7 records are waiting for your decision.</p>
+<p class="actions"><a href="/approvals">Open the approval queue</a></p>
+
+
+</section>
+
+
+<section aria-labelledby="h-over">
+<h2 id="h-over">Overdue invoices</h2>
+<p class="muted">No invoice is overdue.</p>
+</section>
+<section aria-labelledby="h-month">
+<h2 id="h-month">This month</h2>
+<dl class="facts">
+<dt>Issued this month</dt><dd><span class="num">99.00 USD</span> </dd>
+<dt>Received this month</dt><dd><span class="num">40.00 USD</span> </dd>
+</dl>
+<p class="hint">Totals per currency as of 2026-11-25. Currencies are never added together.</p>
+</section>
+
+<section aria-labelledby="h-go">
+<h2 id="h-go">Go to</h2>
+<p class="actions">
+
+<a href="/invoices">Invoices</a><a href="/timesheets">Timesheets</a><a href="/expenses">Expenses</a>
+</p>
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>
