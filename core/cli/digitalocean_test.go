@@ -198,7 +198,7 @@ func TestDigitalOceanUpPlanTouchesNothing(t *testing.T) {
 	dir := writeCompany(t, doCompanyYAML)
 	do, cf := &cliDO{}, &cliCF{zone: true}
 	doLifecycle(t, do, cf)
-	code, out, errs := run(t, "up", dir, "--plan", "--modules-dir", "../../modules")
+	code, out, errs := run(t, "up", dir, "--plan", "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitOK {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
 	}
@@ -213,7 +213,7 @@ func TestDigitalOceanUpPlanTouchesNothing(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".can")); !os.IsNotExist(err) {
 		t.Fatal("--plan wrote .can/")
 	}
-	code, out, _ = run(t, "up", dir, "--plan", "--output", "json", "--modules-dir", "../../modules")
+	code, out, _ = run(t, "up", dir, "--plan", "--output", "json", "--provision-only", "--modules-dir", "../../modules")
 	var res upResult
 	if code != ExitOK || json.Unmarshal([]byte(out), &res) != nil || res.Provider != "digitalocean" || !res.Planned || len(res.Actions) < 7 {
 		t.Fatalf("json plan: code=%d %q", code, out)
@@ -224,7 +224,7 @@ func TestDigitalOceanUpDownEndToEnd(t *testing.T) {
 	dir := writeCompany(t, doCompanyYAML)
 	do, cf := &cliDO{}, &cliCF{zone: true}
 	doLifecycle(t, do, cf)
-	code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules")
+	code, out, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitOK {
 		t.Fatalf("up: code=%d out=%q err=%q", code, out, errs)
 	}
@@ -264,7 +264,7 @@ func TestCloudflareProblemsStopBeforeAnyServerIsCreated(t *testing.T) {
 	dir := writeCompany(t, doCompanyYAML)
 	do, cf := &cliDO{}, &cliCF{zone: false} // zone missing
 	doLifecycle(t, do, cf)
-	code, _, errs := run(t, "up", dir, "--modules-dir", "../../modules")
+	code, _, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitFailure || !strings.Contains(errs, "no Cloudflare zone") {
 		t.Fatalf("code=%d err=%q", code, errs)
 	}
@@ -274,7 +274,7 @@ func TestCloudflareProblemsStopBeforeAnyServerIsCreated(t *testing.T) {
 		}
 	}
 	// --dns manual overrides company.yaml and needs no Cloudflare at all
-	if code, _, errs = run(t, "up", dir, "--dns", "manual", "--modules-dir", "../../modules"); code != ExitOK {
+	if code, _, errs = run(t, "up", dir, "--dns", "manual", "--provision-only", "--modules-dir", "../../modules"); code != ExitOK {
 		t.Fatalf("manual override: code=%d err=%q", code, errs)
 	}
 }
@@ -297,7 +297,7 @@ func TestDigitalOceanTokenNeverReachesOutput(t *testing.T) {
 		}
 	}, goodResolver())
 	for _, mode := range [][]string{{}, {"--output", "json"}} {
-		code, out, errs := run(t, append([]string{"up", dir, "--modules-dir", "../../modules"}, mode...)...)
+		code, out, errs := run(t, append([]string{"up", dir, "--provision-only", "--modules-dir", "../../modules"}, mode...)...)
 		if code != ExitFailure || strings.Contains(out+errs, doCLIToken) || !strings.Contains(errs, provider.Redacted) {
 			t.Fatalf("code=%d (%v)\nstdout=%q\nstderr=%q", code, mode, out, errs)
 		}
@@ -333,7 +333,7 @@ func TestDownRefusesWhenDNSBlockWasRemovedButRecordsRemain(t *testing.T) {
 	dir := writeCompany(t, doCompanyYAML)
 	do, cf := &cliDO{}, &cliCF{zone: true}
 	doLifecycle(t, do, cf)
-	if code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules"); code != ExitOK {
+	if code, out, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules"); code != ExitOK {
 		t.Fatalf("up: %d %q %q", code, out, errs)
 	}
 	// the operator deletes the dns block, then runs down

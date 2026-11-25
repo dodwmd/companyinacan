@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"net"
 	"os"
@@ -91,5 +93,30 @@ func TestListenFailure(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := run(context.Background(), []string{"-dir", site(t), "-addr", ln.Addr().String()}, &out, &errb); code != 1 {
 		t.Errorf("exit %d, want 1", code)
+	}
+}
+
+func TestExtractFlagUnpacksArchiveAndExits(t *testing.T) {
+	dir := t.TempDir()
+	arc := filepath.Join(t.TempDir(), "site.tar.gz")
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	_ = tw.WriteHeader(&tar.Header{Name: "index.html", Typeflag: tar.TypeReg, Mode: 0o644, Size: 2})
+	_, _ = tw.Write([]byte("hi"))
+	_ = tw.Close()
+	_ = gz.Close()
+	if err := os.WriteFile(arc, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run(context.Background(), []string{"-extract", arc, "-dir", dir}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "index.html")); err != nil || string(b) != "hi" {
+		t.Fatalf("index.html: %q %v", b, err)
+	}
+	if code := run(context.Background(), []string{"-extract", filepath.Join(dir, "missing"), "-dir", dir}, &out, &errb); code == 0 {
+		t.Fatal("a missing archive must fail")
 	}
 }

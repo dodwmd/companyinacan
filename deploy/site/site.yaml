@@ -1,0 +1,92 @@
+# The company site: can-static serving the output of `can site build` (epic E24).
+# `can up` applies this after deploy/base and can-core, together with:
+#   - ConfigMap site-content (key site.tar.gz, written by the CLI from the built site),
+#   - the Traefik IngressRoutes for the company's hosts (generated, see core/launch/routes.go).
+#
+# How the site gets there: an init container runs `can-static -extract` to unpack the ConfigMap's
+# tarball into an emptyDir, the main container serves that directory read-only. There is no shell,
+# no tar and no registry credential involved, and republishing is one ConfigMap update plus a new
+# pod (the CLI stamps the tarball's sha256 into the pod template, so a changed site rolls the pod).
+# The ConfigMap limit (1 MiB) bounds the site; `can up` refuses a bigger one with a clear message.
+#
+# The image reference `can-static:dev` is replaced by `can up` with the release digest or the
+# locally built tag. Port 8081 and the label app.kubernetes.io/name: site match
+# deploy/base/networkpolicies.yaml (allow-ingress-from-traefik).
+apiVersion: v1
+kind: Service
+metadata:
+  name: site
+  namespace: can-system
+  labels: {app.kubernetes.io/name: site, app.kubernetes.io/part-of: companyinacan}
+spec:
+  selector: {app.kubernetes.io/name: site}
+  ports:
+    - {name: http, port: 8081, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site
+  namespace: can-system
+  labels: {app.kubernetes.io/name: site, app.kubernetes.io/part-of: companyinacan}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: site}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: site, app.kubernetes.io/part-of: companyinacan}
+      annotations:
+        can.dev/site-sha256: "none"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: extract
+          image: can-static:dev
+          imagePullPolicy: IfNotPresent
+          args: ["-extract", "/content/site.tar.gz", "-dir", "/srv/site"]
+          resources:
+            requests: {memory: 16Mi, cpu: 5m}
+            limits: {memory: 48Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: content, mountPath: /content, readOnly: true}
+            - {name: site, mountPath: /srv/site}
+      containers:
+        - name: site
+          image: can-static:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8081}
+          env:
+            - {name: CAN_STATIC_ADDR, value: ":8081"}
+            - {name: CAN_STATIC_DIR, value: /srv/site}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          resources:
+            requests: {memory: 16Mi, cpu: 5m}
+            limits: {memory: 32Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: site, mountPath: /srv/site, readOnly: true}
+      volumes:
+        - name: content
+          configMap: {name: site-content}
+        - name: site
+          emptyDir: {sizeLimit: 16Mi}

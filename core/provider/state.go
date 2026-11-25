@@ -38,6 +38,33 @@ type State struct {
 	K3sVersion string `json:"k3s_version,omitempty"`
 	// Issued records ACME issuance attempts for the instant URL (see sslip.go).
 	Issued []Issuance `json:"issued,omitempty"`
+
+	// Launch is the checkpoint record of the in-cluster phases of `can up` (epic E24, core/launch).
+	// Like everything here it never holds a secret: only that something happened, and a digest.
+	Launch *LaunchState `json:"launch,omitempty"`
+}
+
+// LaunchState records which `can up` phases finished, so a run interrupted at any point resumes
+// instead of redoing expensive work, and so `can status` can say where a company stands.
+type LaunchState struct {
+	// Phases maps a phase id to the RFC3339 time it last completed.
+	Phases map[string]string `json:"phases,omitempty"`
+	// ImagesFingerprint identifies the image set loaded onto the server (refs and sha256s).
+	ImagesFingerprint string `json:"images_fingerprint,omitempty"`
+	// AdminUser is the admin account `can up` created; AdminCreated and AdminCredsShown say whether
+	// it exists and whether its one-time credentials were already handed to the operator. Until
+	// they were shown, a re-run issues a fresh password and TOTP secret (nobody has the old ones).
+	AdminUser       string `json:"admin_user,omitempty"`
+	AdminCreated    bool   `json:"admin_created,omitempty"`
+	AdminCredsShown bool   `json:"admin_creds_shown,omitempty"`
+	// SiteSHA256 is the digest of the last published site archive.
+	SiteSHA256 string `json:"site_sha256,omitempty"`
+	// BackupInstalled is true once the host backup timer is installed (`can down` removes it).
+	BackupInstalled bool `json:"backup_installed,omitempty"`
+	// KitShown is true once the recovery kit was handed to the operator (it is shown exactly once).
+	KitShown bool `json:"kit_shown,omitempty"`
+	// Mode is how the public site is exposed: "https" or "http".
+	Mode string `json:"mode,omitempty"`
 }
 
 // ServerState identifies the server.

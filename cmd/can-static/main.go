@@ -32,7 +32,11 @@ type config struct {
 	dir, addr   string
 	accessLog   bool
 	healthcheck bool
+	extract     string
 }
+
+// maxExtractBytes bounds the unpacked site (a ConfigMap carries at most 1 MiB compressed).
+const maxExtractBytes = 64 << 20
 
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -49,6 +53,7 @@ func parseFlags(args []string) (config, error) {
 	fs.StringVar(&c.addr, "addr", envOr("CAN_STATIC_ADDR", ":8080"), "listen address (env CAN_STATIC_ADDR)")
 	fs.BoolVar(&c.accessLog, "access-log", false, "log one line per request to stderr")
 	fs.BoolVar(&c.healthcheck, "healthcheck", false, "probe http://<addr>/healthz and exit 0 when healthy (for exec probes in a distroless image)")
+	fs.StringVar(&c.extract, "extract", "", "unpack this site .tar.gz into -dir and exit (used by the site pod's init container)")
 	return c, fs.Parse(args)
 }
 
@@ -92,6 +97,20 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(stderr, "can-static:", err)
 		return 2
+	}
+	if cfg.extract != "" {
+		f, err := os.Open(cfg.extract)
+		if err != nil {
+			fmt.Fprintln(stderr, "can-static:", err)
+			return 1
+		}
+		defer func() { _ = f.Close() }()
+		if err := staticsrv.Extract(f, cfg.dir, maxExtractBytes); err != nil {
+			fmt.Fprintln(stderr, "can-static:", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "can-static: unpacked %s into %s\n", cfg.extract, cfg.dir)
+		return 0
 	}
 	if cfg.healthcheck {
 		if err := probe(cfg.addr); err != nil {

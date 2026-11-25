@@ -1,0 +1,92 @@
+name: make-up-e2e
+
+# Not a required check (continue-on-error). Epic E24: runs the phases `can up` performs after a
+# server exists (apply the platform base, load the images, deploy can-core, create the admin, push
+# company.yaml, publish the site, route it, install the backup timer on a fake host) against a real
+# k3d cluster, with the production code (core/launch) and a k3d stand-in for the provider. It then
+# asserts: can-core healthy, admin login with the generated password and a computed TOTP code, the
+# site served through Traefik with the example content, a form POST creating a lead, the recovery
+# kit parsing, nothing secret in .can/state.json, and a re-run that changes nothing.
+#
+# The images are built by `scripts/build-images.sh`, the same script as `make images`, so that path
+# is exercised too. No real server, cloud account or registry is involved. Provisioning a real
+# server and the five-minute budget on one remain human-gated (docs/make-up.md).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "core/launch/**"
+      - "core/cli/up*.go"
+      - "core/provider/**"
+      - "core/staticsrv/**"
+      - "cmd/can-static/**"
+      - "deploy/**"
+      - "scripts/build-images.sh"
+      - "test/integration/makeup_test.go"
+      - ".github/workflows/make-up-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: make-up phases on k3d
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster (a stand-in for the provisioned server)
+        run: |
+          start=$(date +%s)
+          make dev
+          echo "cluster_seconds=$(( $(date +%s) - start ))" >> "$RUNNER_TEMP/timings.env"
+      - name: Build the images (make images path)
+        run: |
+          start=$(date +%s)
+          ENGINE=docker sh scripts/build-images.sh build/images
+          echo "images_build_seconds=$(( $(date +%s) - start ))" >> "$RUNNER_TEMP/timings.env"
+          ls -l build/images
+      - name: can up phases against the cluster
+        env:
+          CAN_IT_MAKEUP: "1"
+          CAN_IT_IMAGES: ${{ github.workspace }}/build/images
+          CAN_IT_TIMINGS: ${{ runner.temp }}/phase-timings.md
+        run: go test -tags integration -count=1 -v -timeout 25m -run TestMakeUpPhasesOnK3d ./test/integration/...
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,svc,ingressroute,middleware,netpol -A || true
+          kubectl --context k3d-companyinacan-dev -n can-system describe pod -l app.kubernetes.io/name=can-core || true
+          kubectl --context k3d-companyinacan-dev -n can-system logs deploy/can-core --tail=200 || true
+          kubectl --context k3d-companyinacan-dev -n can-system describe pod -l app.kubernetes.io/name=site || true
+          kubectl --context k3d-companyinacan-dev -n can-system logs deploy/site -c extract || true
+          kubectl --context k3d-companyinacan-dev -n mod-forms get all,ingressroute,middleware || true
+          kubectl --context k3d-companyinacan-dev -n mod-forms logs deploy/forms --tail=80 || true
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### make-up-e2e (advisory)"
+            echo "Measured on a GitHub-hosted runner with k3d; a real server differs (VM boot, k3s install and image upload are not in these numbers)."
+            echo
+            if [ -f "$RUNNER_TEMP/timings.env" ]; then
+              echo '```'; cat "$RUNNER_TEMP/timings.env"; echo '```'
+            fi
+            echo
+            if [ -f "$RUNNER_TEMP/phase-timings.md" ]; then cat "$RUNNER_TEMP/phase-timings.md"; else echo "No phase timings: the test did not finish."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down

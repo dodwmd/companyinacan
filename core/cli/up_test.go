@@ -86,7 +86,7 @@ func TestUpPlanChangesNothing(t *testing.T) {
 	dir := sshCompany(t)
 	r := newRunner()
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
-	code, out, errs := run(t, "up", dir, "--plan", "--modules-dir", "../../modules")
+	code, out, errs := run(t, "up", dir, "--plan", "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitOK {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
 	}
@@ -106,7 +106,7 @@ func TestUpPlanChangesNothing(t *testing.T) {
 func TestUpPlanJSON(t *testing.T) {
 	dir := sshCompany(t)
 	useLifecycle(t, func() provider.Deps { return provider.Deps{} }, goodResolver())
-	code, out, errs := run(t, "up", dir, "--plan", "--output", "json", "--modules-dir", "../../modules")
+	code, out, errs := run(t, "up", dir, "--plan", "--output", "json", "--provision-only", "--modules-dir", "../../modules")
 	var res upResult
 	if code != ExitOK || json.Unmarshal([]byte(out), &res) != nil || !res.Planned || len(res.Actions) != 5 {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
@@ -117,7 +117,7 @@ func TestUpEndToEndWithFakeHost(t *testing.T) {
 	dir := sshCompany(t)
 	r := newRunner()
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
-	code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules")
+	code, out, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitOK {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
 	}
@@ -125,7 +125,7 @@ func TestUpEndToEndWithFakeHost(t *testing.T) {
 		"Server is up.", "203.0.113.7",
 		"https://203-0-113-7.sslip.io", "https://admin.203-0-113-7.sslip.io",
 		"TYPE", "acme.example", "admin.acme.example", "help.acme.example",
-		"epic E03",
+		"--provision-only",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
@@ -142,7 +142,7 @@ func TestUpEndToEndWithFakeHost(t *testing.T) {
 	// second run: idempotent, no second bootstrap upload
 	r.mu["id -u"] = strings.Replace(probeOK, "bootstrapped=", "bootstrapped="+provider.DefaultK3sVersion, 1)
 	r.copied = nil
-	if code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules"); code != ExitOK || len(r.copied) != 0 {
+	if code, out, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules"); code != ExitOK || len(r.copied) != 0 {
 		t.Fatalf("second up: code=%d copied=%d out=%q err=%q", code, len(r.copied), out, errs)
 	}
 }
@@ -151,7 +151,7 @@ func TestUpFallsBackToHTTPWhenSSLIPUnavailable(t *testing.T) {
 	dir := sshCompany(t)
 	r := newRunner()
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, fixedResolver{})
-	code, out, _ := run(t, "up", dir, "--modules-dir", "../../modules")
+	code, out, _ := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitOK || !strings.Contains(out, "http://203.0.113.7") || !strings.Contains(out, "plain HTTP fallback") || !strings.Contains(out, "SSH tunnel") {
 		t.Fatalf("code=%d\n%s", code, out)
 	}
@@ -165,7 +165,7 @@ func TestUpPreflightFailureExitsOne(t *testing.T) {
 	r := newRunner()
 	r.mu["id -u"] = strings.Replace(probeOK, "mem_mb=1950", "mem_mb=400", 1)
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
-	code, _, errs := run(t, "up", dir, "--modules-dir", "../../modules")
+	code, _, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitFailure || !strings.Contains(errs, "ram") {
 		t.Fatalf("code=%d err=%q", code, errs)
 	}
@@ -176,18 +176,18 @@ func TestUpExitCodes(t *testing.T) {
 	// not implemented provider types: 3
 	for typ, epic := range map[string]string{"local": "E02", "static": "E18"} {
 		dir := writeCompany(t, "schema: 1\nname: A\ndomain: a.example\nprovider: {type: "+typ+"}\n")
-		code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules")
+		code, out, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 		if code != ExitNotImplemented || out != "" || !strings.Contains(errs, epic) {
 			t.Errorf("%s: code=%d out=%q err=%q", typ, code, out, errs)
 		}
 	}
 	// invalid company.yaml: 1
 	bad := writeCompany(t, "schema: 2\n")
-	if code, _, _ := run(t, "up", bad, "--modules-dir", "../../modules"); code != ExitFailure {
+	if code, _, _ := run(t, "up", bad, "--provision-only", "--modules-dir", "../../modules"); code != ExitFailure {
 		t.Errorf("invalid company: code=%d", code)
 	}
 	// missing company.yaml: 1
-	if code, _, _ := run(t, "up", t.TempDir(), "--modules-dir", "../../modules"); code != ExitFailure {
+	if code, _, _ := run(t, "up", t.TempDir(), "--provision-only", "--modules-dir", "../../modules"); code != ExitFailure {
 		t.Errorf("missing company: code=%d", code)
 	}
 	// usage errors: 2
@@ -195,14 +195,14 @@ func TestUpExitCodes(t *testing.T) {
 	if code, _, _ := run(t, "up", ok, "--bogus"); code != ExitUsage {
 		t.Errorf("unknown flag: code=%d", code)
 	}
-	if code, _, _ := run(t, "up", ok, "--dns", "route66", "--modules-dir", "../../modules"); code != ExitFailure {
+	if code, _, _ := run(t, "up", ok, "--dns", "route66", "--provision-only", "--modules-dir", "../../modules"); code != ExitFailure {
 		t.Errorf("unknown dns plugin: code=%d", code)
 	}
 	// cloudflare without a token fails before any server work (exit 1, not 3)
-	if code, _, errs := run(t, "up", ok, "--dns", "cloudflare", "--modules-dir", "../../modules"); code != ExitFailure || !strings.Contains(errs, "CLOUDFLARE_API_TOKEN") {
+	if code, _, errs := run(t, "up", ok, "--dns", "cloudflare", "--provision-only", "--modules-dir", "../../modules"); code != ExitFailure || !strings.Contains(errs, "CLOUDFLARE_API_TOKEN") {
 		t.Errorf("cloudflare: code=%d err=%q", code, errs)
 	}
-	if code, _, errs := run(t, "up", ok, "--dns", "provider-native", "--modules-dir", "../../modules"); code != ExitNotImplemented || !strings.Contains(errs, "E12") {
+	if code, _, errs := run(t, "up", ok, "--dns", "provider-native", "--provision-only", "--modules-dir", "../../modules"); code != ExitNotImplemented || !strings.Contains(errs, "E12") {
 		t.Errorf("provider-native: code=%d err=%q", code, errs)
 	}
 	if code, _, _ := run(t, "up", "a", "b"); code != ExitUsage {
@@ -236,7 +236,7 @@ func TestUpStatusDownLifecycle(t *testing.T) {
 	if code, out, _ := run(t, args("status")...); code != ExitFailure || !strings.Contains(out, "absent") {
 		t.Fatalf("status before up: code=%d out=%q", code, out)
 	}
-	if code, out, errs := run(t, args("up")...); code != ExitOK {
+	if code, out, errs := run(t, append(args("up"), "--provision-only")...); code != ExitOK {
 		t.Fatalf("up: %d %q %q", code, out, errs)
 	}
 	code, out, _ := run(t, args("status")...)
@@ -267,7 +267,7 @@ func TestStatusDegradedExitsOne(t *testing.T) {
 	dir := sshCompany(t)
 	r := newRunner()
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
-	_, _, _ = run(t, "up", dir, "--modules-dir", "../../modules")
+	_, _, _ = run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	r.mu["k3s_active"] = "bootstrapped=" + provider.DefaultK3sVersion + "\nk3s_active=failed\nnodes_ready=0\n"
 	code, out, _ := run(t, "status", dir, "--modules-dir", "../../modules")
 	if code != ExitFailure || !strings.Contains(out, "degraded") || !strings.Contains(out, "FAIL") {
@@ -302,7 +302,7 @@ func TestHetznerTokenNeverReachesOutput(t *testing.T) {
 		}
 	}, goodResolver())
 	for _, mode := range [][]string{{}, {"--output", "json"}} {
-		args := append([]string{"up", dir, "--modules-dir", "../../modules"}, mode...)
+		args := append([]string{"up", dir, "--provision-only", "--modules-dir", "../../modules"}, mode...)
 		code, out, errs := run(t, args...)
 		if code != ExitFailure {
 			t.Fatalf("code=%d", code)
@@ -325,7 +325,7 @@ func TestHetznerMissingTokenIsAFailureNotALeak(t *testing.T) {
 	useLifecycle(t, func() provider.Deps {
 		return provider.Deps{Getenv: func(string) string { return "" }, ReadFile: func(string) ([]byte, error) { return []byte("ssh-ed25519 AAAA x"), nil }}
 	}, goodResolver())
-	code, _, errs := run(t, "up", dir, "--modules-dir", "../../modules")
+	code, _, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitFailure || !strings.Contains(errs, "HCLOUD_TOKEN") {
 		t.Fatalf("code=%d err=%q", code, errs)
 	}
@@ -336,7 +336,7 @@ func TestRemoteOutputSecretsAreRedactedInCLI(t *testing.T) {
 	r := newRunner()
 	r.mu["can-bootstrap.sh"] = "k3s token: K10abcdefghijklmnop::server:secretsecret\npassword=hunter2hunter2\n"
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
-	code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules")
+	code, out, errs := run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	if code != ExitOK {
 		t.Fatalf("code=%d %q", code, errs)
 	}
@@ -361,7 +361,7 @@ func TestJSONOutputFlagWorksForAllLifecycleCommands(t *testing.T) {
 	r := newRunner()
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
 	mod := []string{dir, "--modules-dir", "../../modules", "--output", "json"}
-	for _, c := range [][]string{{"up"}, {"status"}, {"down", "--plan"}, {"down", "--yes"}} {
+	for _, c := range [][]string{{"up", "--provision-only"}, {"status"}, {"down", "--plan"}, {"down", "--yes"}} {
 		code, out, errs := run(t, append(c[:1:1], append(c[1:], mod...)...)...)
 		var v map[string]any
 		if code != ExitOK || json.Unmarshal([]byte(out), &v) != nil {
@@ -379,7 +379,7 @@ func TestConcurrentUpIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	for _, c := range [][]string{{"up"}, {"down", "--yes"}} {
+	for _, c := range [][]string{{"up", "--provision-only"}, {"down", "--yes"}} {
 		code, _, errs := run(t, append(c, dir, "--modules-dir", "../../modules")...)
 		if code != ExitFailure || !strings.Contains(errs, "already running") {
 			t.Errorf("%v: code=%d err=%q", c, code, errs)
@@ -402,7 +402,7 @@ func TestDownRemovesKnownHosts(t *testing.T) {
 	dir := sshCompany(t)
 	r := newRunner()
 	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
-	_, _, _ = run(t, "up", dir, "--modules-dir", "../../modules")
+	_, _, _ = run(t, "up", dir, "--provision-only", "--modules-dir", "../../modules")
 	kh := filepath.Join(dir, ".can", "known_hosts")
 	if err := os.WriteFile(kh, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
