@@ -23,10 +23,11 @@ and led to fixes in the tests or code. T15 passed on its first complete run.
 - [x] T13 Manifests: `subscribes`, `approvals`, `notifications`, jobs `subdomain`
 - [x] T14 Charts for the five modules, installer allowlist tests (`installer/modulecharts_test.go`), contract tests updated
 - [x] T15 End-to-end with the real can-core services (`test/wiring`): lead to notification, hire to onboarding, requisition and invoice approvals, leave masked, token bound to its module
-- [x] T16 Advisory k3d job: build the `work` image, install through can-core, token, issue, disable (`.github/workflows/dev-cluster.yml`, `test/integration/work_test.go`). **Written and compiled; not yet seen to pass on a cluster.**
+- [x] T16 Advisory k3d job: build the `work` image, install through can-core, token, issue, disable (`.github/workflows/dev-cluster.yml`, `test/integration/work_test.go`). Passed on k3d in this PR's CI run (`TestWorkModuleThroughCanCore`, one run, advisory job).
 - [x] T17 Docs: `docs/module-wiring.md`, module READMEs, epics table
 - [x] T18 RAM measured (spec FR-8)
-- [ ] T19 Run the k3d job and fix what it finds (needs CI)
+- [x] T19 Run the k3d job: it passed on its first CI run. forms, people, jobs and finance are still never run on a cluster
+- [ ] T19b Extend the k3d job to a second module and to event delivery between modules
 - [ ] T20 forms: durable outbox for events; a route for the public listener (same-origin path or its own host)
 - [ ] T21 finance: timesheets, expenses and purchase orders through the engine; apply the approval when it arrives
 - [ ] T22 people: fetch the new hire's name and contact details through the `ats` capability

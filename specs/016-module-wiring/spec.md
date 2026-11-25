@@ -1,6 +1,6 @@
 # Feature Specification: Module wiring (Epic E03c)
 
-**Feature Branch**: `epic/E03c-module-wiring`  |  **Status**: built offline, advisory k3d check for `work`
+**Feature Branch**: `epic/E03c-module-wiring`  |  **Status**: built offline; advisory k3d check for `work` passed once in CI
 
 **Refines**: SPEC.md section 3.1 (module system, install flow), 3.7 (shared platform services), 4.3
 (module API, introspection, events). Contradicts nothing there; it fills in what the in-house modules

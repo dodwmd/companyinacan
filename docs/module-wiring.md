@@ -2,9 +2,8 @@
 
 How the in-house modules (forms, work, people, jobs, finance) are installed by can-core and how they
 talk to it and to each other. Specification: `specs/016-module-wiring/`. Status: built and tested
-offline with the real can-core services and the real modules; **nothing here has been seen running on
-a cluster except what the advisory dev-cluster workflow does for `work`, and that workflow has not been
-run yet** (see "What ran where").
+offline with the real can-core services and the real modules; **on a cluster, only `work` has run, in
+the advisory dev-cluster workflow** (see "What ran where").
 
 ## Install
 
@@ -135,19 +134,21 @@ approved.
   can-core services (store, registry, events, webhook dispatcher, RBAC, approvals, notifications, tokens,
   module API) and the real modules, with the network and Kubernetes' TokenReview faked, and the
   installer against a fake Kubernetes API.
-* The advisory `dev-cluster` workflow (not yet run when this was written) builds `can-work`, installs it
-  through can-core on k3d from `company.yaml`, issues a personal access token through the admin API,
-  creates a project and an issue with it, revokes the token, disables the module and checks that the
-  volume remains. **It does not run forms, people, jobs or finance, event delivery, approvals or the
-  admin UI page.** A pass shows the chart, the Secrets, the projected token and the introspection work on
-  a real cluster for `work`; it says nothing about the other four.
+* The advisory `dev-cluster` workflow builds `can-work`, installs it through can-core on k3d from
+  `company.yaml`, issues a personal access token through the admin API, creates a project and an issue
+  with it, revokes the token, disables the module and checks that the volume remains. On this epic's pull
+  request it passed (`TestWorkModuleThroughCanCore`, 57 s, one run). **It does not run forms, people,
+  jobs or finance, event delivery between modules, approvals or the admin UI page.** The pass shows the
+  chart, the generated Secrets, the projected token and PAT introspection work on a real cluster for
+  `work`; it says nothing about the other four.
 
 ## Measured
 
 Idle RSS of the can-core binary, started on a throwaway database with fake token review: 41.9 MiB
 before this epic and 41.9 MiB after; after 4,000 requests 60.2 MiB before and 60.9 MiB after
 (declared `ram_mb` 48, limit 96, soft Go limit 64). `can-work` idle: 13.5 MiB before, 13.6 MiB after.
-Measured on a development machine, not on a cluster node.
+Measured on a development machine, not on a cluster node. In the cluster (advisory CI run, after the
+whole integration suite including the `work` install): can-core RSS 49.0 MiB, high-water mark 55.1 MiB.
 
 ## What is not done
 
@@ -160,7 +161,8 @@ Measured on a development machine, not on a cluster node.
   completes the placeholder record.
 * **Manager and reporting-line facts** cannot ride on a personal access token (see the people mapping).
 * company.yaml `settings` are not mapped onto the charts' `config:` blocks.
-* Image digests are placeholders until a release; the images other than `work` have never been built in CI.
+* Image digests are placeholders until a release; the images other than `work` have never been built in CI
+  (`work` is built there with the base image digests of the day).
 * A failed rollout after a secret rotation is rolled back to the old pods, which keep the old values
   until the next successful enable; the Secret already holds the new ones.
 * Nothing here encrypts Kubernetes Secrets at rest or protects against someone with `kubectl` access to
