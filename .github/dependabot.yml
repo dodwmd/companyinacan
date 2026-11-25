@@ -37,6 +37,7 @@ updates:
       - /deploy/can-static
       - /deploy/board
       - /deploy/equity
+      - /deploy/files
       - /deploy/finance
       - /deploy/forms
       - /deploy/hooks

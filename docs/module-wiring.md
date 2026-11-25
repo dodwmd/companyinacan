@@ -183,6 +183,16 @@ call is idempotent, audited in the same transaction as the change (the party id 
 limited to 120 per module and minute, and the caller must be the resolved enabled provider of `identity.provision`. It also disables the account (never the last enabled owner: 409) and drops its push subscriptions. For a termination that cannot wait for the person to be reported offboarded, an administrator with `rbac.manage` uses `POST /api/v1/identity/revoke-now` (an owner is needed to disable an owner; an owner re-enables with `POST /api/v1/identity/enable` or `can-core admin enable`). Refusals: 400 malformed, 403 module or account not allowed, 409 not
 offboarded yet or not yet effective, 429 rate limited. See [`provisioning.md`](provisioning.md).
 
+## The files module (E13e)
+
+can-core generates `CAN_FILES_API_TOKEN`, `CAN_FILES_RESTORE_TOKEN`, `CAN_FILES_LINK_SECRET` and the sealed-field `keyring` for the `files`
+module (`core/server/modsecrets`). Personal access tokens are introspected like the other in-house modules:
+`kind` user, subject `user:<name>`, and the permissions `files.read`, `files.write` and `files.admin`
+become the coarse gate; the role in the space decides the rest. The module publishes `file.uploaded.v1`,
+`file.shared.v1`, `file.deleted.v1` and `file.infected.v1` through can-core and subscribes to nothing.
+Its tombstones (`GET /v1/erasures`) and purge hook (`POST /v1/purge`) follow the erasure-ledger contract of
+the other in-house modules. The S3 credentials are not generated: see [`files.md`](files.md).
+
 ## What ran where
 
 * Unit and end-to-end tests (`make test`, including `test/wiring`): everything above, with the real

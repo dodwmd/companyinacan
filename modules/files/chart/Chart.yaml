@@ -1,0 +1,6 @@
+apiVersion: v2
+name: files
+description: "Document and file storage (can-files) for companyinacan"
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

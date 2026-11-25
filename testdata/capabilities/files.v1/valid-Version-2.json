@@ -1,0 +1,10 @@
+{
+  "n": 1,
+  "size": 2048,
+  "content_type": "application/pdf",
+  "created_at": "2026-06-10T09:00:00Z",
+  "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "scan": "skipped",
+  "created_by": "svc:static",
+  "purged": true
+}

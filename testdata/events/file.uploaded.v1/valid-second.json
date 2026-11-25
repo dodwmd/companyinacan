@@ -1,0 +1,17 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "file.uploaded.v1",
+  "time": "2026-06-10T09:00:00Z",
+  "source": "files",
+  "data": {
+    "file_id": "fil_0123456789abcdef01234567",
+    "space_id": "spc_0123456789abcdef01234567",
+    "version": 3,
+    "size": 1073741824,
+    "content_type": "text/csv; charset=utf-8",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "actor": "svc:static",
+    "uploaded_at": "2026-06-10T09:00:00Z",
+    "ref": "jobs:application-1234"
+  }
+}

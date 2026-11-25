@@ -1,0 +1,78 @@
+# Values for the files module chart (in-house can-files, SQLite plus a blob backend). Rendered by
+# can-core's installer. Secrets are not values: can-core puts CAN_FILES_API_TOKEN,
+# CAN_FILES_LINK_SECRET and the sealed-field `keyring` (all generated once) and the can-core API
+# settings into the can-module Secret, which every container receives as environment. The S3
+# credentials (CAN_FILES_S3_ACCESS_KEY_ID, CAN_FILES_S3_SECRET_ACCESS_KEY) are also read from the
+# environment and are NOT generated: see modules/files/chart/README.md.
+image:
+  repository: ghcr.io/dodwmd/can-files
+  tag: 0.1.0
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+ports:
+  - { name: http, port: 8095 }
+services:                  # ClusterIP only; the `files` capability
+  - { name: files, portName: http, port: 8095 }
+ingress:
+  # Only the share-link download route is public, and only when the manifest declares
+  # runtime.subdomain (host <subdomain>.<domain>, supplied by can-core). /v1 stays cluster-internal.
+  enabled: true
+  host: ""
+  tls: true
+  certResolver: letsencrypt
+  service: files
+  port: 8095
+  pathPrefixes: [/s/]
+  paths: []
+persistence:
+  enabled: true
+  size: 10Gi               # database, staging area and (backend local) the file bytes
+  storageClass: ""
+  mountPath: /data
+configMountPath: /etc/can-files-config
+# Written verbatim to files.yaml; only keys core/files Config accepts (it loads the file strictly).
+config:
+  listen: ":8095"
+  db_path: /data/files.db
+  keyring_path: /etc/can-files/keyring
+  staging_dir: /data/staging
+  trust_proxy: false       # turn on only behind a proxy that appends the client address
+  backend:
+    type: local            # local (the PVC) or s3
+    local: { dir: /data/blobs }
+  limits:
+    max_file_bytes: 26214400
+    quota_bytes_per_owner: 5368709120
+    max_concurrent_uploads: 4
+    allowed_types: [pdf, png, jpg, jpeg, gif, webp, docx, xlsx, pptx, odt, ods, odp, rtf, txt, csv, md]
+  scanner:
+    required: true         # no upload is accepted until a real virus scanner is wired in
+    type: ""               # clamd, with scanner.address, when a ClamAV service exists
+  share: { default_ttl_hours: 24, max_ttl_hours: 720, failures_per_minute: 20, base_url: "" }
+  retention: { trash_days: 30, sweep_interval_hours: 6 }
+  download: { inline: false }
+keyring:
+  enabled: true            # can-core generates it once into the can-module Secret (key `keyring`)
+  mountPath: /etc/can-files/keyring
+  # 0440 with fsGroup: kubelet makes the file root:65532 group-readable. See modules/files/chart/README.md.
+  mode: 288
+resources:
+  requests: { memory: 20Mi, cpu: 5m }
+  limits: { memory: 64Mi }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /readyz, port: http }
+  liveness: { exec: [/can-files, healthcheck, -addr, "127.0.0.1:8095"] }
+networkPolicy:
+  intraNamespace: false

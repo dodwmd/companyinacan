@@ -1,0 +1,9 @@
+{
+  "items": [
+    {
+      "kind": "user",
+      "id": "user:bob",
+      "role": "manager"
+    }
+  ]
+}

@@ -53,6 +53,11 @@ var AtsV1 []byte
 //go:embed identity.provision.v1.json
 var IdentityProvisionV1 []byte
 
+// FilesV1 is the contract of the `files` capability (in-house files module).
+//
+//go:embed files.v1.json
+var FilesV1 []byte
+
 // InvoicesV1 is the contract of the `invoices` capability (in-house finance module).
 //
 //go:embed invoices.v1.json

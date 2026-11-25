@@ -197,3 +197,23 @@ var BoardResolutionPassedV1 []byte
 //
 //go:embed entity.filing.due.v1.json
 var EntityFilingDueV1 []byte
+
+// FileUploadedV1 is the JSON Schema of the file.uploaded.v1 event.
+//
+//go:embed file.uploaded.v1.json
+var FileUploadedV1 []byte
+
+// FileSharedV1 is the JSON Schema of the file.shared.v1 event.
+//
+//go:embed file.shared.v1.json
+var FileSharedV1 []byte
+
+// FileDeletedV1 is the JSON Schema of the file.deleted.v1 event.
+//
+//go:embed file.deleted.v1.json
+var FileDeletedV1 []byte
+
+// FileInfectedV1 is the JSON Schema of the file.infected.v1 event.
+//
+//go:embed file.infected.v1.json
+var FileInfectedV1 []byte

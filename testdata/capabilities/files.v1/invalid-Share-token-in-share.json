@@ -1,0 +1,11 @@
+{
+  "id": "shr_0123456789abcdef01234567",
+  "file_id": "fil_0123456789abcdef01234567",
+  "version": 1,
+  "expires_at": "2026-06-11T09:00:00Z",
+  "one_time": false,
+  "uses": 0,
+  "created_by": "user:alice",
+  "created_at": "2026-06-10T09:00:00Z",
+  "token": "shr_0123456789abcdef01234567.1781000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}
