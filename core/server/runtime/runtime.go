@@ -62,6 +62,7 @@ type Config struct {
 	CompanyName        string            // CAN_COMPANY_NAME: shown on the admin dashboard
 	CompanyDomain      string            // CAN_COMPANY_DOMAIN: shown on the admin dashboard
 	ModuleUIURLs       map[string]string // CAN_MODULE_UI_URLS: id=base URL of a module web UI, comma-separated (E11c); beats the manifest
+	ModuleUIURLsRaw    string            // the unparsed value, for start-up warnings
 	PushEndpointAllow  []string          // CAN_PUSH_ENDPOINT_ALLOW: comma-separated host suffixes Web Push endpoints must match; empty = any public https host
 	VAPIDKeyFile       string            // CAN_VAPID_KEY_FILE: Web Push application server key from a mounted Secret; unset = generated on first use and kept in the state database
 	DirectoryTokenFile string            // CAN_DIRECTORY_TOKEN_FILE: bearer credential for the `directory` capability (reporting-line approval chains); unset = manager steps use their fallback
@@ -124,7 +125,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		SAToken:     str("CAN_SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		SACA:        str("CAN_SA_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
 		LogLevel:    str("CAN_LOG_LEVEL", "info"), ShutdownTimeout: 15 * time.Second,
-		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"), VAPIDKeyFile: getenv("CAN_VAPID_KEY_FILE"), PushEndpointAllow: splitList(getenv("CAN_PUSH_ENDPOINT_ALLOW")), ModuleUIURLs: parseModuleUIURLs(getenv("CAN_MODULE_UI_URLS")),
+		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"), VAPIDKeyFile: getenv("CAN_VAPID_KEY_FILE"), PushEndpointAllow: splitList(getenv("CAN_PUSH_ENDPOINT_ALLOW")), ModuleUIURLs: parseModuleUIURLs(getenv("CAN_MODULE_UI_URLS")), ModuleUIURLsRaw: getenv("CAN_MODULE_UI_URLS"),
 		Installer: str("CAN_INSTALLER", "none"), CompanyFile: str("CAN_COMPANY_FILE", "/etc/can/company/company.yaml"), ModulesDir: str("CAN_MODULES_DIR", "/modules"),
 		NodeIP: getenv("CAN_NODE_IP"), PostgresAdminURL: getenv("CAN_POSTGRES_ADMIN_URL"), PostgresHost: str("CAN_POSTGRES_HOST", "postgres.can-data.svc.cluster.local"),
 		ReconcileInterval: 30 * time.Second, SSOSecretDir: str("CAN_SSO_SECRET_DIR", "/etc/can/sso"),
@@ -269,6 +270,9 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	tickets := &ticket.Service{DB: db, Audit: al, Holds: pats.Holds,
 		Launcher: ticket.Launcher{Domain: cfg.CompanyDomain, Overrides: cfg.ModuleUIURLs, AllowHTTP: !cfg.SecureCookies}}
 	adminSrv.Tickets = tickets
+	for _, w := range moduleUIWarnings(cfg.ModuleUIURLsRaw, cfg.CompanyDomain, !cfg.SecureCookies) {
+		log.Warn("apps: " + w)
+	}
 	uiSrv := &adminui.Server{
 		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, SSO: ssoSvc, Tickets: tickets,
 		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
@@ -494,6 +498,33 @@ func parseModuleUIURLs(v string) map[string]string {
 			continue
 		}
 		out[id] = raw
+	}
+	return out
+}
+
+// moduleUIWarnings says what in the configuration will keep module UIs out of the Apps launcher
+// (E11c), so an operator hears about it at start-up and not from an empty page. Configured values
+// are never repeated: a URL can carry a password.
+func moduleUIWarnings(raw, domain string, allowHTTP bool) []string {
+	var out []string
+	switch {
+	case domain == "":
+		out = append(out, "CAN_COMPANY_DOMAIN is not set: no module web UI can be offered in Apps")
+	case !strings.Contains(domain, "."):
+		out = append(out, "CAN_COMPANY_DOMAIN is a single label: a launch cookie cannot be shared between hosts, so Apps works only when the admin UI and a module are on one host")
+	}
+	l := ticket.Launcher{Domain: domain, AllowHTTP: allowHTTP}
+	for i, entry := range splitList(raw) {
+		parsed := parseModuleUIURLs(entry)
+		if len(parsed) == 0 {
+			out = append(out, "CAN_MODULE_UI_URLS entry "+strconv.Itoa(i+1)+" is not <module id>=<URL> and is ignored")
+			continue
+		}
+		for id, u := range parsed {
+			if domain != "" && !l.Acceptable(u) {
+				out = append(out, "CAN_MODULE_UI_URLS: the address for "+id+" is not acceptable (https on the company domain, not the admin host, no credentials, query or fragment); the module is not offered in Apps")
+			}
+		}
 	}
 	return out
 }

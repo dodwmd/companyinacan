@@ -143,6 +143,12 @@ func (l Launcher) Base(m store.Module) (string, bool) {
 	return l.validate(raw)
 }
 
+// Acceptable reports whether an operator's address for a module UI would be used.
+func (l Launcher) Acceptable(raw string) bool {
+	_, ok := l.validate(strings.TrimSuffix(raw, "/"))
+	return ok
+}
+
 func (l Launcher) validate(raw string) (string, bool) {
 	if strings.ContainsAny(raw, "?#\\ \t\r\n") {
 		return "", false
