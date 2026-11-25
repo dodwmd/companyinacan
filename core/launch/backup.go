@@ -2,6 +2,8 @@ package launch
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path"
@@ -39,40 +41,56 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if err := r.warnBackupLimits(ctx, b.Mods, b.Settings); err != nil {
 		return false, "", err
 	}
+	installed := st.Launch != nil && st.Launch.BackupInstalled
 	shown := st.Launch != nil && st.Launch.KitShown
-	if st.Launch != nil && st.Launch.BackupInstalled && st.Launch.BackupVersion >= BackupInstallVersion {
-		if st.Launch.KitShown {
-			return true, "timer installed and the kit was already shown", nil
-		}
-		out, err := r.d.Host.Run(ctx, "cat "+path.Join(s.ConfigDir, backup.PasswordFileName)+"\n")
-		if err != nil {
-			return false, "", fmt.Errorf("read the restic password from the server: %w", err)
-		}
-		in := b.Input
-		in.Password = strings.TrimSpace(out)
-		kit, err := backup.NewKit(in)
-		if err != nil {
-			return false, "", err
-		}
-		r.noteKit(kit)
-		return true, "timer already installed; kit rebuilt from the server's password", nil
+	pwPath := path.Join(s.ConfigDir, backup.PasswordFileName)
+	// A password already on the host (an installed timer, or a run that stopped after writing it,
+	// possibly after `restic init`) is the repository's: reuse it. If it cannot be read, or an
+	// installed server has none, stop: a new password could not open the existing repository.
+	out, err := r.d.Host.Run(ctx, fmt.Sprintf("if [ -e %[1]s ]; then cat %[1]s; fi\n", pwPath))
+	if err != nil {
+		return false, "", fmt.Errorf("read the restic password from the server (nothing was changed): %w", err)
 	}
-
-	// A password file already on the host means an earlier run stopped after writing the
-	// credentials (possibly after `restic init`): reuse it, a new password would lock the
-	// repository that already exists.
 	in := b.Input
-	in.Password = ""
-	if out, err := r.d.Host.Run(ctx, "cat "+path.Join(s.ConfigDir, backup.PasswordFileName)+" 2>/dev/null || true\n"); err == nil {
-		if pw := strings.TrimSpace(out); validPassword(pw) {
-			in.Password = pw
-		}
+	in.Password = strings.TrimSpace(out)
+	if !validPassword(in.Password) && (installed || in.Password != "") {
+		return false, "", fmt.Errorf("the restic password file %s on the server is missing or not a password: put the one from your recovery kit back; refusing to create a new one, which could not open the repository", pwPath)
 	}
 	kit, err := backup.NewKit(in)
 	if err != nil {
 		return false, "", err
 	}
-	// Redoing an older install must not hand out the (already shown) kit a second time.
+	// Does the operator's kit still match what the server will use?
+	changed := false
+	if installed {
+		old, err := r.d.Host.Run(ctx, fmt.Sprintf("if [ -e %[1]s ]; then grep -m1 '^export RESTIC_REPOSITORY=' %[1]s; fi\n", s.ScriptPath))
+		if err != nil {
+			return false, "", fmt.Errorf("read the installed repository from the server: %w", err)
+		}
+		repo := strings.Trim(strings.TrimPrefix(strings.TrimSpace(old), "export RESTIC_REPOSITORY="), "'")
+		changed = strings.HasPrefix(strings.TrimSpace(old), "export RESTIC_REPOSITORY=") && repo != kit.Restic.Repository
+		if st.Launch.KitFingerprint != "" && st.Launch.KitFingerprint != kitFingerprint(kit) {
+			changed = true
+		}
+	}
+	if changed && shown {
+		shown = false
+		if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).KitShown = false; return nil }); err != nil {
+			return false, "", err
+		}
+		r.res.Warnings = append(r.res.Warnings, "the restic password or repository differs from the recovery kit you hold: store the NEW kit; the old one only opens the old repository")
+	}
+	if installed && !changed && st.Launch.BackupVersion >= BackupInstallVersion {
+		if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).KitFingerprint = kitFingerprint(kit); return nil }); err != nil {
+			return false, "", err
+		}
+		if shown {
+			return true, "timer installed and the kit was already shown", nil
+		}
+		r.noteKit(kit)
+		return true, "timer already installed; kit rebuilt from the server's password", nil
+	}
+	// Redoing an install must not hand out an unchanged, already shown kit a second time.
 	r.noteKit(kit)
 	if shown {
 		r.res.Kit = nil
@@ -82,7 +100,6 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	pwPath := path.Join(s.ConfigDir, backup.PasswordFileName)
 	envPath := path.Join(s.ConfigDir, backup.EnvFileName)
 	// The dumps directory belongs to can-core's user (the can-dumps volume); servers bootstrapped
 	// before E08b have it root-owned.
@@ -116,17 +133,25 @@ systemctl daemon-reload
 systemctl enable --now can-backup.timer
 echo CAN_BACKUP_OK
 `, shq(envPath), shq(kit.Restic.Repository), shq(pwPath))
-	out, err := r.d.Host.Run(ctx, script)
+	out, err = r.d.Host.Run(ctx, script)
 	if err != nil || !strings.Contains(out, "CAN_BACKUP_OK") {
 		return false, "", fmt.Errorf("enable the backup timer: %v: %s", err, strings.TrimSpace(out))
 	}
 	if err := r.d.Store.Mutate(func(s *provider.State) error {
 		launchOf(s).BackupInstalled, launchOf(s).BackupVersion = true, BackupInstallVersion
+		launchOf(s).KitFingerprint = kitFingerprint(kit)
 		return nil
 	}); err != nil {
 		return false, "", err
 	}
 	return false, "", nil
+}
+
+// kitFingerprint identifies the repository and password a kit opens, without holding either
+// (the password is 32 random bytes; its hash does not help guess it).
+func kitFingerprint(k *backup.Kit) string {
+	h := sha256.Sum256([]byte("can-kit\x00" + k.Restic.Repository + "\x00" + k.Restic.Password))
+	return hex.EncodeToString(h[:])
 }
 
 // noteKit hands the kit to the result and teaches the redactor its secrets, so a later error

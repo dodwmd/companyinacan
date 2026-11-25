@@ -69,6 +69,20 @@ func (h *recHost) Run(_ context.Context, script string) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.ran = append(h.ran, script)
+	// reads of files on the host answer with what was copied there
+	if strings.HasPrefix(script, "if [ -e ") {
+		path := strings.Fields(script)[3]
+		body := string(h.copied[path])
+		if strings.Contains(script, "grep ") {
+			for _, l := range strings.Split(body, "\n") {
+				if strings.HasPrefix(l, "export RESTIC_REPOSITORY=") {
+					return l + "\n", nil
+				}
+			}
+			return "", nil
+		}
+		return body, nil
+	}
 	return "CAN_BACKUP_OK\n", nil
 }
 

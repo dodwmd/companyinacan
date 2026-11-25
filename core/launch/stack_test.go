@@ -404,6 +404,19 @@ func (h *hostFake) Run(_ context.Context, script string) (string, error) {
 			return v, nil
 		}
 	}
+	if strings.HasPrefix(script, "if [ -e ") {
+		// what an earlier run copied there
+		body := string(h.copied[strings.Fields(script)[3]])
+		if !strings.Contains(script, "grep ") {
+			return body, nil
+		}
+		for _, l := range strings.Split(body, "\n") {
+			if strings.HasPrefix(l, "export RESTIC_REPOSITORY=") {
+				return l, nil
+			}
+		}
+		return "", nil
+	}
 	return "CAN_BACKUP_OK\nCAN_IMAGE_OK\n", nil
 }
 
