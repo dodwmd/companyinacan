@@ -27,3 +27,13 @@ var WorkV1 []byte
 //
 //go:embed projects.v1.json
 var ProjectsV1 []byte
+
+// DirectoryV1 is the contract of the `directory` capability (in-house people module).
+//
+//go:embed directory.v1.json
+var DirectoryV1 []byte
+
+// PerformanceV1 is the contract of the `performance` capability (in-house people module).
+//
+//go:embed performance.v1.json
+var PerformanceV1 []byte

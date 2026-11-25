@@ -1,0 +1,16 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "goal.updated.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "goal_id": "goal_0123456789abcdef01234567",
+    "scope": "person",
+    "change": "progress",
+    "status": "active",
+    "progress": 50,
+    "owner_party_id": "pers_0123456789abcdef01234567",
+    "parent_goal_id": "goal_89abcdef0123456789abcdef",
+    "given_name": "Ada"
+  }
+}

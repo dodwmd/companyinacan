@@ -1,0 +1,15 @@
+{
+  "id": "mtg_0123456789abcdef01234567",
+  "series_id": "ser_0123456789abcdef01234567",
+  "scheduled_at": "2026-12-03T15:00:00Z",
+  "status": "scheduled",
+  "shared_notes": "Agreed roadmap review",
+  "agenda": [
+    {
+      "id": "agd_0123456789abcdef01234567",
+      "author_id": "pers_0123456789abcdef01234567",
+      "text": "Career growth",
+      "created_at": "2026-12-01T10:00:00Z"
+    }
+  ]
+}

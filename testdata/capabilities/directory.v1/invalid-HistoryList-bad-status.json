@@ -1,0 +1,9 @@
+[
+  {
+    "from": "onboarding",
+    "to": "hired",
+    "effective_date": "2026-12-01",
+    "applied": true,
+    "recorded_at": "2026-11-25T10:00:00Z"
+  }
+]

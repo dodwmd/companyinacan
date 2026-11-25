@@ -1,0 +1,554 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/directory.v1.json",
+  "title": "directory.v1",
+  "description": "Capability `directory` (SPEC.md section 4.3): the company's people as parties with one identity each: records, org structure, employment status with effective dating, and sensitive fields behind per-field access control and audited reads. Provided by the in-house people module. Bodies are JSON over HTTP; callers authenticate with a bearer token. Authorisation is enforced by the provider per caller and per field (roles employee, manager, hr, admin): a caller who may not see a person gets 404, a caller who may see the person but not a field gets 403. Consumers must not depend on anything not in this file.",
+  "x-capability": "directory",
+  "x-verbs": [
+    {
+      "verb": "list",
+      "method": "GET",
+      "path": "/v1/people",
+      "response": "PersonList",
+      "permission": "people.read",
+      "description": "Query: status, department_id, team_id, manager_id, cursor, limit (max 100). Returns only people the caller may see."
+    },
+    {
+      "verb": "get",
+      "method": "GET",
+      "path": "/v1/people/{id}",
+      "response": "Person",
+      "permission": "people.read"
+    },
+    {
+      "verb": "create",
+      "method": "POST",
+      "path": "/v1/people",
+      "request": "CreatePersonRequest",
+      "response": "Person",
+      "write": true,
+      "permission": "people.write",
+      "description": "hr or admin."
+    },
+    {
+      "verb": "update",
+      "method": "PATCH",
+      "path": "/v1/people/{id}",
+      "request": "UpdatePersonRequest",
+      "response": "Person",
+      "write": true,
+      "permission": "people.write",
+      "description": "hr or admin; a person may change only preferred_name and work_phone on their own record."
+    },
+    {
+      "verb": "set_manager",
+      "method": "PUT",
+      "path": "/v1/people/{id}/manager",
+      "request": "SetManagerRequest",
+      "response": "Person",
+      "write": true,
+      "permission": "people.write",
+      "description": "hr or admin. Rejects reporting-line cycles."
+    },
+    {
+      "verb": "change_status",
+      "method": "POST",
+      "path": "/v1/people/{id}/status",
+      "request": "StatusChangeRequest",
+      "response": "Person",
+      "write": true,
+      "permission": "people.write",
+      "description": "hr or admin. A future effective_date records a pending change applied on that date."
+    },
+    {
+      "verb": "history",
+      "method": "GET",
+      "path": "/v1/people/{id}/history",
+      "response": "HistoryList",
+      "permission": "people.read",
+      "description": "The person themself and hr/admin."
+    },
+    {
+      "verb": "get_sensitive",
+      "method": "GET",
+      "path": "/v1/people/{id}/sensitive",
+      "response": "SensitiveFields",
+      "permission": "people.sensitive-read",
+      "description": "Query: fields (comma separated). Every call is audited per field."
+    },
+    {
+      "verb": "put_sensitive",
+      "method": "PUT",
+      "path": "/v1/people/{id}/sensitive",
+      "request": "PutSensitiveRequest",
+      "write": true,
+      "permission": "people.sensitive-write",
+      "description": "All-or-nothing; null clears a field. A person may write only home_address and personal_phone."
+    }
+  ],
+  "$defs": {
+    "Person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "given_name",
+        "family_name",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$",
+          "description": "Directory party id."
+        },
+        "kind": {
+          "enum": [
+            "employee",
+            "contractor"
+          ]
+        },
+        "status": {
+          "enum": [
+            "candidate",
+            "onboarding",
+            "active",
+            "leave",
+            "offboarding",
+            "former"
+          ]
+        },
+        "given_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "family_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "preferred_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "work_email": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "work_phone": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "department_id": {
+          "type": "string",
+          "pattern": "^dep_[0-9a-f]{24}$"
+        },
+        "team_id": {
+          "type": "string",
+          "pattern": "^team_[0-9a-f]{24}$"
+        },
+        "position_id": {
+          "type": "string",
+          "pattern": "^pos_[0-9a-f]{24}$"
+        },
+        "manager_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "sso_subject": {
+          "type": "string",
+          "description": "hr/admin only."
+        },
+        "legal_hold": {
+          "type": "boolean",
+          "description": "hr/admin only."
+        },
+        "erased": {
+          "type": "boolean",
+          "description": "hr/admin only."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "PersonList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/Person"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "CreatePersonRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "given_name",
+        "family_name"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "employee",
+            "contractor"
+          ]
+        },
+        "status": {
+          "enum": [
+            "candidate",
+            "onboarding",
+            "active"
+          ]
+        },
+        "given_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "family_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "preferred_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "work_email": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "work_phone": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "department_id": {
+          "type": "string"
+        },
+        "team_id": {
+          "type": "string"
+        },
+        "position_id": {
+          "type": "string"
+        },
+        "manager_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "sso_subject": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "UpdatePersonRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "given_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "family_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "preferred_name": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "work_email": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "work_phone": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[^\\n\\r\\t]*$"
+        },
+        "department_id": {
+          "type": "string"
+        },
+        "team_id": {
+          "type": "string"
+        },
+        "position_id": {
+          "type": "string"
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "sso_subject": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "SetManagerRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manager_id"
+      ],
+      "properties": {
+        "manager_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^pers_[0-9a-f]{24}$"
+            },
+            {
+              "const": ""
+            }
+          ],
+          "description": "Empty string clears the manager."
+        }
+      }
+    },
+    "StatusChangeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "candidate",
+            "onboarding",
+            "active",
+            "leave",
+            "offboarding",
+            "former"
+          ]
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "HistoryList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to",
+          "effective_date",
+          "applied",
+          "recorded_at"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "enum": [
+              "candidate",
+              "onboarding",
+              "active",
+              "leave",
+              "offboarding",
+              "former"
+            ]
+          },
+          "effective_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recorded_by": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Salary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amount",
+        "currency",
+        "period"
+      ],
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minor currency units."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "period": {
+          "enum": [
+            "year",
+            "month",
+            "hour"
+          ]
+        }
+      }
+    },
+    "SensitiveFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "date_of_birth": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "national_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "home_address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "personal_phone": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "salary": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Salary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "description": "Only the fields the caller may read are present."
+    },
+    "PutSensitiveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "date_of_birth": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "national_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64
+        },
+        "home_address": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "personal_phone": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 40
+        },
+        "salary": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Salary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

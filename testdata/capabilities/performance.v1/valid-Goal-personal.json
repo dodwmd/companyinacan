@@ -1,0 +1,24 @@
+{
+  "id": "goal_0123456789abcdef01234567",
+  "scope": "person",
+  "owner_id": "pers_0123456789abcdef01234567",
+  "title": "Cut p99 latency",
+  "visibility": "manager",
+  "status": "active",
+  "parent_id": "goal_89abcdef0123456789abcdef",
+  "progress": 50,
+  "key_results": [
+    {
+      "id": "kr_0123456789abcdef01234567",
+      "goal_id": "goal_0123456789abcdef01234567",
+      "title": "p99 under 200ms",
+      "unit": "ms",
+      "start_value": 400,
+      "target_value": 200,
+      "current_value": 300,
+      "progress": 50
+    }
+  ],
+  "created_at": "2026-11-25T10:00:00Z",
+  "updated_at": "2026-11-25T10:00:00Z"
+}

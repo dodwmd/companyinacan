@@ -1,0 +1,14 @@
+{
+  "id": "evt_xyz",
+  "type": "oneonone.scheduled.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "meeting_id": "mtg_0123456789abcdef01234567",
+    "series_id": "ser_0123456789abcdef01234567",
+    "manager_party_id": "pers_0123456789abcdef01234567",
+    "report_party_id": "pers_89abcdef0123456789abcdef",
+    "scheduled_at": "2026-12-03T15:00:00Z",
+    "cadence": "weekly"
+  }
+}

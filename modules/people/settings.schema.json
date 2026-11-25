@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/modules/people/settings.schema.json",
+  "title": "people settings",
+  "description": "Operator settings for the people module (company.yaml modules.people). Secrets (API token, webhook secret, encryption keys) are never settings; can-core generates them as Secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per data class retention, counted from the day a person becomes former (1:1 meetings and closed goals also expire by age). Review against local employment and data-protection law; the defaults are not advice.",
+      "properties": {
+        "directory-basic": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "people-sensitive": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "people-checklists": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "performance-oneonone": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "performance-goals": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+      }
+    }
+  }
+}

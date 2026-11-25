@@ -1,0 +1,6 @@
+{
+  "title": "p99 under 200ms",
+  "unit": "ms",
+  "start_value": 400,
+  "target_value": 200
+}

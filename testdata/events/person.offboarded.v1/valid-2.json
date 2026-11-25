@@ -1,0 +1,11 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "person.offboarded.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "party_id": "pers_0123456789abcdef01234567",
+    "kind": "contractor",
+    "effective_date": "2027-01-15"
+  }
+}

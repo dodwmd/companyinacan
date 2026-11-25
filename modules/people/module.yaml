@@ -1,0 +1,65 @@
+# People: in-house Go service (cmd/can-people, library core/people). It holds the directory
+# (people records, org structure, employment lifecycle, onboarding/offboarding checklists) and
+# performance data (1:1s, goals). These are the most sensitive data classes the platform holds, so
+# they live in an in-house module only: per-field access control, audited reads, field-level
+# encryption at rest, retention, legal hold and erasure (SPEC.md sections 3.7 and 5, constitution V).
+# This is a tool, not legal, HR or payroll advice; compliance is the operator's responsibility.
+schema: 1
+id: people
+name: People and performance
+description: Directory (people records, org chart, employment status with effective dating, onboarding and offboarding checklists) and performance (1:1s with shared and private notes, goals and key results). Per-field access control by role, audited sensitive reads, encrypted sensitive fields, retention, legal hold and erasure tombstones. Not payroll.
+category: people
+version: 0.1.0
+# experimental: unit-, contract- and race-tested, but not yet exercised on a cluster; there are no Helm
+# templates yet (values only, like forms), no portal or admin UI, and can-core does not yet inject the
+# keyring Secret or route its introspection endpoint. See modules/people/README.md.
+status: experimental
+provider:
+  type: inhouse
+  name: can-people
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Idle RAM target 30 MB (SPEC.md section 6.1, "~30 MB (target)"); measured idle RSS is recorded in
+  # specs/012-people-directory/measurements.md. The limit leaves room for SQLite page cache and bursts.
+  ram_mb: 30
+  ram_limit_mb: 64
+  disk_mb: 200
+provides:
+  - { capability: directory, schema: directory.v1, service: people-api, port: 8081 }
+  - { capability: performance, schema: performance.v1, service: people-api, port: 8081 }
+publishes:
+  - { event: person.created.v1, schema: ./events/person.created.v1.json }
+  # leave is masked as active in this event (see the schema description)
+  - { event: person.status_changed.v1, schema: ./events/person.status_changed.v1.json }
+  - { event: person.offboarded.v1, schema: ./events/person.offboarded.v1.json }
+  - { event: person.erased.v1, schema: ./events/person.erased.v1.json }
+  - { event: oneonone.scheduled.v1, schema: ./events/oneonone.scheduled.v1.json }
+  - { event: goal.updated.v1, schema: ./events/goal.updated.v1.json }
+  - { event: checklist.task_completed.v1, schema: ./events/checklist.task_completed.v1.json }
+# Coarse permissions gate the capability verbs; the finer rules (self, manager chain, HR, admin, per field)
+# are enforced inside the service by one policy layer (core/people/policy.go).
+permissions: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin, performance.read, performance.write]
+roles:
+  employee: [people.read, people.sensitive-read, people.sensitive-write, performance.read, performance.write]
+  manager: [people.read, performance.read, performance.write]
+  hr: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin]
+  admin: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin]
+data_classes:
+  # Basic directory fields: names, work email and phone, location, reporting line. Visible to colleagues
+  # by role. Kept for the retention period after the person leaves, then purged unless a legal hold applies.
+  - { class: directory-basic, retention: 7y, sensitivity: standard }
+  # Date of birth, national id, home address, personal phone, compensation. Encrypted at rest per field,
+  # every read audited, never in events, search or reports.
+  - { class: people-sensitive, retention: 7y, sensitivity: sensitive }
+  - { class: people-checklists, retention: 2y, sensitivity: standard }
+  # 1:1 agendas, shared notes, manager-private notes, action items.
+  - { class: performance-oneonone, retention: 2y, sensitivity: sensitive }
+  # Goals, key results and progress updates.
+  - { class: performance-goals, retention: 2y, sensitivity: sensitive }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

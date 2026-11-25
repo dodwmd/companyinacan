@@ -1,0 +1,1820 @@
+# OpenAPI 3.1 contract of can-people. A contract test (test/contract/people_test.go) keeps it in step with the routes the service registers.
+openapi: "3.1.0"
+info:
+  title: "can-people API"
+  version: "0.1.0"
+  license:
+    name: "Apache-2.0"
+    identifier: "Apache-2.0"
+  description: "REST JSON API of the in-house people service: the `directory` and `performance` capabilities (people records, org structure, employment lifecycle, onboarding checklists, 1:1s, goals). Deny by default: every route needs a bearer token, and one policy layer decides per caller, per relationship and per field. Callers without visibility get 404 instead of 403 where a 403 would confirm that a record exists. This is a tool, not legal, HR or payroll advice; the operator is responsible for compliance with employment and data-protection law."
+servers:
+  - url: "http://people-api.mod-people.svc:8081"
+    description: "ClusterIP only; there is no public listener"
+security:
+  - bearer: []
+tags:
+  - name: "directory"
+  - name: "performance"
+  - name: "platform"
+paths:
+  "/healthz":
+    get:
+      summary: "Liveness and database check"
+      tags:
+        - "platform"
+      security: []
+      responses:
+        "200":
+          description: "ok"
+        "503":
+          description: "database unavailable"
+  "/v1/people":
+    get:
+      summary: "List the people the caller may see"
+      description: "Who: any staff member (candidates and former people are visible to hr/admin and to the manager chain only)"
+      tags:
+        - "directory"
+      parameters:
+        - name: "status"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Filter"
+        - name: "department_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: ""
+        - name: "team_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: ""
+        - name: "manager_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: ""
+        - name: "cursor"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Opaque cursor"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "1..100"
+      responses:
+        "200":
+          description: "A page"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/PersonList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Create a person"
+      description: "Who: hr or admin"
+      tags:
+        - "directory"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CreatePersonRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Person"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/people/{id}":
+    get:
+      summary: "Get the basic (directory-basic) view"
+      description: "Who: self, hr, admin, the manager chain, or any staff member for active/leave/onboarding people. Others get 404, never 403, so ids cannot be probed."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Person"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Person"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+    patch:
+      summary: "Change basic fields"
+      description: "Who: hr or admin; a person may change only preferred_name and work_phone on their own record"
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/UpdatePersonRequest"
+      responses:
+        "200":
+          description: "Person"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Person"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/people/{id}/sensitive":
+    get:
+      summary: "Read people-sensitive fields"
+      description: "Who: the person themself, hr, admin. Managers (direct or skip-level) never. Each call is audited per field before data is returned; if the audit hook fails the read fails. Query fields= selects fields; a requested field the caller may not read refuses the whole request (403)."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "fields"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Comma separated: date_of_birth, national_id, home_address, personal_phone, salary"
+      responses:
+        "200":
+          description: "Only permitted fields"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/SensitiveFields"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+    put:
+      summary: "Set or clear (null) sensitive fields"
+      description: "Who: hr or admin; a person may write only home_address and personal_phone. All fields are authorised first; all or none are written."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/PutSensitiveRequest"
+      responses:
+        "204":
+          description: "Stored (encrypted)"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/people/{id}/status":
+    post:
+      summary: "Change employment status"
+      description: "Who: hr or admin. Lifecycle candidate -> onboarding -> active <-> leave -> offboarding -> former (terminal). A future effective_date records a pending change; one pending change per person."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/StatusChangeRequest"
+      responses:
+        "200":
+          description: "Person"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Person"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/people/{id}/status/pending":
+    delete:
+      summary: "Cancel the pending future-dated status change"
+      description: "Who: hr or admin"
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "204":
+          description: "Cancelled"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/people/{id}/history":
+    get:
+      summary: "Status history"
+      description: "Who: the person themself, hr, admin"
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "History"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/HistoryList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/people/{id}/manager":
+    put:
+      summary: "Set or clear the manager"
+      description: "Who: hr or admin. Rejects self-management and any cycle in the reporting chain; the manager must be active or on leave."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/SetManagerRequest"
+      responses:
+        "200":
+          description: "Person"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Person"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/people/{id}/reports":
+    get:
+      summary: "Direct reports the caller may see"
+      description: "Who: anyone who can see the person"
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Reports"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/PersonList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/people/{id}/legal-hold":
+    put:
+      summary: "Place or lift a legal hold"
+      description: "Who: hr or admin. A hold blocks erasure and retention purges."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/LegalHoldRequest"
+      responses:
+        "204":
+          description: "Done"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/people/{id}/erasure":
+    post:
+      summary: "Request erasure"
+      description: "Who: hr or admin. Only former people and candidates; blocked (409) by a legal hold. Purges the five data classes, tombstones the subject and writes erasure ledger rows."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Tombstone"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Erasure"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/departments":
+    get:
+      summary: "List departments"
+      description: "Who: any staff member or hr/admin"
+      tags:
+        - "directory"
+      responses:
+        "200":
+          description: "Items"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OrgUnitList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+    post:
+      summary: "Create (department)"
+      description: "Who: hr or admin"
+      tags:
+        - "directory"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/OrgInput"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OrgUnit"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/teams":
+    get:
+      summary: "List teams"
+      description: "Who: any staff member or hr/admin"
+      tags:
+        - "directory"
+      responses:
+        "200":
+          description: "Items"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OrgUnitList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+    post:
+      summary: "Create (team)"
+      description: "Who: hr or admin"
+      tags:
+        - "directory"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/OrgInput"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OrgUnit"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/positions":
+    get:
+      summary: "List positions"
+      description: "Who: any staff member or hr/admin"
+      tags:
+        - "directory"
+      responses:
+        "200":
+          description: "Items"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OrgUnitList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+    post:
+      summary: "Create (position)"
+      description: "Who: hr or admin"
+      tags:
+        - "directory"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/OrgInput"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OrgUnit"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/retention/run":
+    post:
+      summary: "Run the retention sweep now"
+      description: "Who: hr or admin (the service also runs it hourly)"
+      tags:
+        - "directory"
+      responses:
+        "200":
+          description: "Report"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/RetentionReport"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+  "/v1/erasures":
+    get:
+      summary: "Erasure tombstones (subject, class, date) for the E08 ledger"
+      description: "Who: hr or admin (can-core's service account)"
+      tags:
+        - "directory"
+      parameters:
+        - name: "after"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Return entries with seq greater than this"
+      responses:
+        "200":
+          description: "Entries"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ErasureList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+  "/v1/checklist-templates":
+    get:
+      summary: "List checklist templates"
+      description: "Who: hr or admin"
+      tags:
+        - "directory"
+      responses:
+        "200":
+          description: "Templates"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TemplateList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+    post:
+      summary: "Create a checklist template"
+      description: "Who: hr or admin"
+      tags:
+        - "directory"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TemplateInput"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Template"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/people/{id}/checklists":
+    post:
+      summary: "Create a checklist from a template"
+      description: "Who: hr or admin, or the person's direct manager"
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CreateChecklistRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Checklist"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+    get:
+      summary: "List a person's checklists"
+      description: "Who: the person themself, their direct manager, hr, admin"
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Checklists"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ChecklistList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/tasks":
+    get:
+      summary: "My open tasks"
+      description: "Who: any staff member; hr/admin also see unassigned hr/admin tasks"
+      tags:
+        - "directory"
+      responses:
+        "200":
+          description: "Tasks"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TaskList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+  "/v1/tasks/{id}/complete":
+    post:
+      summary: "Complete a task"
+      description: "Who: the assignee, hr or admin; everyone else gets 404. Emits checklist.task_completed.v1 (idempotent)."
+      tags:
+        - "directory"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Task"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Task"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/oneonones":
+    post:
+      summary: "Start a 1:1 series with a direct report"
+      description: "Who: the report's current direct manager (role manager, status active)"
+      tags:
+        - "performance"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CreateSeriesRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Series"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+    get:
+      summary: "My series"
+      description: "Who: participants; a former manager no longer sees a series"
+      tags:
+        - "performance"
+      responses:
+        "200":
+          description: "Series"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/SeriesList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/oneonones/{id}/meetings":
+    get:
+      summary: "Meeting history of a series (schedule only)"
+      description: "Who: the two participants; everyone else (HR and admin included) gets 404"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Meetings"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MeetingList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+    post:
+      summary: "Schedule a meeting"
+      description: "Who: participants. Emits oneonone.scheduled.v1."
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/ScheduleMeetingRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MeetingSummary"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/meetings/{id}":
+    get:
+      summary: "Meeting detail: agenda, shared notes, actions, follow-ups; private notes for the manager only"
+      description: "Who: participants. Audited (fail closed). The report never sees a private_notes field."
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Meeting"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Meeting"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+    patch:
+      summary: "Mark held, cancelled or scheduled"
+      description: "Who: participants"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MeetingStatusRequest"
+      responses:
+        "204":
+          description: "Done"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/meetings/{id}/agenda":
+    post:
+      summary: "Add an agenda item"
+      description: "Who: participants"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TextRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/AgendaItem"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/meetings/{id}/notes":
+    put:
+      summary: "Replace the shared notes"
+      description: "Who: participants"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TextRequest"
+      responses:
+        "204":
+          description: "Stored (encrypted)"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/meetings/{id}/private-notes":
+    put:
+      summary: "Replace the manager's private notes"
+      description: "Who: the manager of the series only; the report gets 404 so the field's existence is not revealed"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TextRequest"
+      responses:
+        "204":
+          description: "Stored (encrypted)"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/meetings/{id}/actions":
+    post:
+      summary: "Add an action item"
+      description: "Who: participants; the assignee must be the manager or the report"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/AddActionRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ActionItem"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/actions/{id}":
+    patch:
+      summary: "Update an action item (status, link to a work issue)"
+      description: "Who: participants"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/UpdateActionRequest"
+      responses:
+        "200":
+          description: "Updated"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ActionItem"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/goals":
+    post:
+      summary: "Create a goal"
+      description: "Who: person scope: the owner or the owner's direct manager; team scope: the team lead or hr/admin; company scope: hr/admin. Alignment (parent_id) is limited to a company goal, the owner's team goal, or a goal of someone in the owner's management chain."
+      tags:
+        - "performance"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CreateGoalRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Goal"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+    get:
+      summary: "List the goals the caller may see"
+      description: "Who: visibility private: owner only; manager: owner, management chain, hr/admin; team: plus teammates; company: all staff. Reads of other people's goals are audited."
+      tags:
+        - "performance"
+      parameters:
+        - name: "owner_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: ""
+        - name: "team_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: ""
+        - name: "parent_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: ""
+        - name: "scope"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: ""
+      responses:
+        "200":
+          description: "Goals"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/GoalList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/goals/{id}":
+    get:
+      summary: "Get a goal"
+      description: "Who: see list; invisible goals are 404"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Goal"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Goal"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+    patch:
+      summary: "Update a goal"
+      description: "Who: owner, the owner's direct manager (not skip-level), team lead, hr/admin per scope. Emits goal.updated.v1."
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/UpdateGoalRequest"
+      responses:
+        "200":
+          description: "Goal"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Goal"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/goals/{id}/key-results":
+    post:
+      summary: "Add a key result"
+      description: "Who: who may update the goal"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CreateKeyResultRequest"
+      responses:
+        "201":
+          description: "Created"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/KeyResult"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+  "/v1/goals/{id}/updates":
+    get:
+      summary: "Progress log"
+      description: "Who: who may read the goal"
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Updates"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/GoalUpdateList"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+  "/v1/key-results/{id}/progress":
+    post:
+      summary: "Record progress"
+      description: "Who: who may update the goal. Emits goal.updated.v1."
+      tags:
+        - "performance"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/RecordProgressRequest"
+      responses:
+        "200":
+          description: "Goal"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Goal"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+components:
+  securitySchemes:
+    bearer:
+      type: "http"
+      scheme: "bearer"
+      description: "User tokens are resolved by can-core introspection to {subject, roles} (roles: employee, manager, hr, admin). The can-core service account holds hr+admin and has no person record. Roles are necessary, not sufficient: relationships (self, direct manager, manager chain) and the caller's own employment status are checked on every call, so a terminated manager's still-valid token gets nothing."
+  responses:
+    Unauthenticated:
+      description: "Missing, invalid or inactive token"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    Forbidden:
+      description: "The caller may see the resource but may not do this"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    NotFound:
+      description: "Not found, or not visible to the caller"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    Invalid:
+      description: "Validation failed"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    Conflict:
+      description: "State conflict, for example an invalid status transition, a pending change, or a legal hold"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+  schemas:
+    Person:
+      type: "object"
+      description: "A directory-basic record (id, kind, status, names, work contact, org references, dates; sso_subject, legal_hold and erased for hr/admin only). Definitive shape: schemas/capabilities/*.v1.json."
+    PersonList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Person"
+        next_cursor:
+          type: "string"
+      required:
+        - "items"
+    CreatePersonRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "kind"
+        - "given_name"
+        - "family_name"
+      properties:
+        kind:
+          enum:
+            - "employee"
+            - "contractor"
+        status:
+          enum:
+            - "candidate"
+            - "onboarding"
+            - "active"
+        given_name:
+          type: "string"
+        family_name:
+          type: "string"
+        preferred_name:
+          type: "string"
+        work_email:
+          type: "string"
+        work_phone:
+          type: "string"
+        location:
+          type: "string"
+        department_id:
+          type: "string"
+        team_id:
+          type: "string"
+        position_id:
+          type: "string"
+        manager_id:
+          type: "string"
+          pattern: "^pers_[0-9a-f]{24}$"
+        start_date:
+          type: "string"
+          format: "date"
+        sso_subject:
+          type: "string"
+    UpdatePersonRequest:
+      type: "object"
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        given_name:
+          type: "string"
+        family_name:
+          type: "string"
+        preferred_name:
+          type: "string"
+        work_email:
+          type: "string"
+        work_phone:
+          type: "string"
+        location:
+          type: "string"
+        department_id:
+          type: "string"
+        team_id:
+          type: "string"
+        position_id:
+          type: "string"
+        sso_subject:
+          type: "string"
+        start_date:
+          type: "string"
+    SensitiveFields:
+      type: "object"
+      description: "Only the fields the caller may read. date_of_birth, national_id, home_address, personal_phone (strings) and salary ({amount in minor units, currency, period}); null when unset."
+    PutSensitiveRequest:
+      type: "object"
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        date_of_birth:
+          type:
+            - "string"
+            - "null"
+          format: "date"
+        national_id:
+          type:
+            - "string"
+            - "null"
+        home_address:
+          type:
+            - "string"
+            - "null"
+        personal_phone:
+          type:
+            - "string"
+            - "null"
+        salary:
+          type:
+            - "object"
+            - "null"
+    StatusChangeRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "status"
+      properties:
+        status:
+          enum:
+            - "candidate"
+            - "onboarding"
+            - "active"
+            - "leave"
+            - "offboarding"
+            - "former"
+        effective_date:
+          type: "string"
+          format: "date"
+        note:
+          type: "string"
+    HistoryList:
+      type: "array"
+      items:
+        type: "object"
+    SetManagerRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "manager_id"
+      properties:
+        manager_id:
+          type: "string"
+          description: "Empty string clears the manager."
+    LegalHoldRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "hold"
+      properties:
+        hold:
+          type: "boolean"
+        reason:
+          type: "string"
+    Erasure:
+      type: "object"
+      properties:
+        subject:
+          type: "string"
+          pattern: "^pers_[0-9a-f]{24}$"
+        classes:
+          type: "array"
+          items:
+            type: "string"
+        date:
+          type: "string"
+          format: "date"
+    ErasureList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              seq:
+                type: "integer"
+              subject:
+                type: "string"
+              class:
+                type: "string"
+              date:
+                type: "string"
+                format: "date"
+    RetentionReport:
+      type: "object"
+      properties:
+        purged:
+          type: "object"
+        skipped_legal_hold:
+          type: "object"
+    OrgInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "name"
+      properties:
+        name:
+          type: "string"
+        department_id:
+          type: "string"
+        lead_id:
+          type: "string"
+    OrgUnit:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        department_id:
+          type: "string"
+        lead_id:
+          type: "string"
+    OrgUnitList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/OrgUnit"
+      required:
+        - "items"
+    TemplateInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "name"
+        - "kind"
+        - "items"
+      properties:
+        name:
+          type: "string"
+        kind:
+          enum:
+            - "onboarding"
+            - "offboarding"
+        auto_status:
+          enum:
+            - ""
+            - "onboarding"
+            - "offboarding"
+        items:
+          type: "array"
+          minItems: 1
+          maxItems: 50
+          items:
+            type: "object"
+            required:
+              - "title"
+              - "assignee_role"
+            properties:
+              title:
+                type: "string"
+              assignee_role:
+                enum:
+                  - "self"
+                  - "manager"
+                  - "hr"
+                  - "admin"
+              due_offset_days:
+                type: "integer"
+              action:
+                type: "string"
+    Template:
+      type: "object"
+    TemplateList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Template"
+      required:
+        - "items"
+    CreateChecklistRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "template_id"
+      properties:
+        template_id:
+          type: "string"
+        anchor_date:
+          type: "string"
+          format: "date"
+    Checklist:
+      type: "object"
+    ChecklistList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Checklist"
+      required:
+        - "items"
+    Task:
+      type: "object"
+    TaskList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Task"
+      required:
+        - "items"
+    CreateSeriesRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "report_id"
+        - "cadence"
+      properties:
+        report_id:
+          type: "string"
+          pattern: "^pers_[0-9a-f]{24}$"
+        cadence:
+          enum:
+            - "weekly"
+            - "biweekly"
+            - "monthly"
+    Series:
+      type: "object"
+    SeriesList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Series"
+      required:
+        - "items"
+    MeetingSummary:
+      type: "object"
+    MeetingList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/MeetingSummary"
+      required:
+        - "items"
+    Meeting:
+      type: "object"
+      description: "private_notes is present only for the manager of the series. Definitive shape: schemas/capabilities/*.v1.json."
+    ScheduleMeetingRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "scheduled_at"
+      properties:
+        scheduled_at:
+          type: "string"
+          format: "date-time"
+    MeetingStatusRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "status"
+      properties:
+        status:
+          enum:
+            - "scheduled"
+            - "held"
+            - "cancelled"
+    TextRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "text"
+      properties:
+        text:
+          type: "string"
+    AgendaItem:
+      type: "object"
+    AddActionRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "text"
+        - "assignee_id"
+      properties:
+        text:
+          type: "string"
+        assignee_id:
+          type: "string"
+          pattern: "^pers_[0-9a-f]{24}$"
+        due_date:
+          type: "string"
+          format: "date"
+    UpdateActionRequest:
+      type: "object"
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        status:
+          enum:
+            - "open"
+            - "done"
+        work_issue_id:
+          type: "string"
+    ActionItem:
+      type: "object"
+    CreateGoalRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "scope"
+        - "title"
+      properties:
+        scope:
+          enum:
+            - "person"
+            - "team"
+            - "company"
+        owner_id:
+          type: "string"
+          pattern: "^pers_[0-9a-f]{24}$"
+        team_id:
+          type: "string"
+        title:
+          type: "string"
+        description:
+          type: "string"
+        period:
+          type: "string"
+        visibility:
+          enum:
+            - "private"
+            - "manager"
+            - "team"
+            - "company"
+        status:
+          enum:
+            - "draft"
+            - "active"
+            - "achieved"
+            - "abandoned"
+        parent_id:
+          type: "string"
+    UpdateGoalRequest:
+      type: "object"
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: "string"
+        description:
+          type: "string"
+        period:
+          type: "string"
+        visibility:
+          enum:
+            - "private"
+            - "manager"
+            - "team"
+            - "company"
+        status:
+          enum:
+            - "draft"
+            - "active"
+            - "achieved"
+            - "abandoned"
+        parent_id:
+          type: "string"
+    Goal:
+      type: "object"
+    GoalList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Goal"
+      required:
+        - "items"
+    GoalUpdateList:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Goal"
+      required:
+        - "items"
+    KeyResult:
+      type: "object"
+    CreateKeyResultRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "title"
+        - "start_value"
+        - "target_value"
+      properties:
+        title:
+          type: "string"
+        unit:
+          type: "string"
+        start_value:
+          type: "number"
+        target_value:
+          type: "number"
+    RecordProgressRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "value"
+      properties:
+        value:
+          type: "number"
+        comment:
+          type: "string"
+    Error:
+      type: "object"
+      required:
+        - "code"
+        - "message"
+      properties:
+        code:
+          enum:
+            - "invalid"
+            - "unauthenticated"
+            - "forbidden"
+            - "not_found"
+            - "conflict"
+            - "internal"
+        message:
+          type: "string"

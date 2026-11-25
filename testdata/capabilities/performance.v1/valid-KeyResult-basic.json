@@ -1,0 +1,9 @@
+{
+  "id": "kr_0123456789abcdef01234567",
+  "goal_id": "goal_0123456789abcdef01234567",
+  "title": "p99 under 200ms",
+  "start_value": 400,
+  "target_value": 200,
+  "current_value": 400,
+  "progress": 0
+}

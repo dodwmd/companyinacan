@@ -1,0 +1,8 @@
+{
+  "salary": {
+    "amount": 9000000,
+    "currency": "USD",
+    "period": "year"
+  },
+  "home_address": "1 Example Street"
+}
