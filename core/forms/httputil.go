@@ -22,6 +22,15 @@ func setSecurityHeaders(w http.ResponseWriter) {
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
 }
 
+// outboundClient is the default client for calls to configured URLs: bounded time and no
+// redirect following (a redirect could point a call carrying a secret at another host).
+func outboundClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

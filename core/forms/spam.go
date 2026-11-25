@@ -194,7 +194,7 @@ func (v *SiteVerify) Verify(ctx context.Context, response, remoteIP string) (boo
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	client := v.Client
 	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Second}
+		client = outboundClient(5 * time.Second)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

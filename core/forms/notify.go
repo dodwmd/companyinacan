@@ -60,7 +60,7 @@ func (m *HTTPMailer) Send(ctx context.Context, e Email) error {
 	}
 	client := m.Client
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = outboundClient(10 * time.Second)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -192,10 +192,7 @@ func (w *WebhookSender) client() *http.Client {
 	if w.Client != nil {
 		return w.Client
 	}
-	return &http.Client{
-		Timeout:       10 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	return outboundClient(10 * time.Second)
 }
 
 func (w *WebhookSender) once(ctx context.Context, ev Event, body []byte) (retry bool, err error) {

@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "trust_proxy": { "type": "boolean", "default": true, "description": "Use the right-most X-Forwarded-For entry (set by Traefik) as the client address." },
+    "trust_proxy": { "type": "boolean", "default": true, "description": "Use the right-most X-Forwarded-For entry (set by Traefik) as the client address. Enable only behind a proxy that appends the client address; never when the service is directly reachable." },
     "max_body_bytes": { "type": "integer", "minimum": 1024, "maximum": 10485760, "default": 65536 },
     "rate_limit_per_minute": { "type": "integer", "minimum": 1, "default": 10 },
     "retention_days": { "type": "integer", "minimum": 1, "default": 730 },

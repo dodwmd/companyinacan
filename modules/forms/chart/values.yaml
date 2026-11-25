@@ -13,6 +13,10 @@ persistence:
 resources:
   requests: { memory: 15Mi, cpu: 5m }
   limits: { memory: 32Mi }
+config:
+  # Safe here because the public Service is reachable only through Traefik, which appends the
+  # client address to X-Forwarded-For. Set false if that ever stops being true.
+  trust_proxy: true
 env:
   # Names only; values come from the module Secret created by can-core.
   secretKeys:

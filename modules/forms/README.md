@@ -44,7 +44,7 @@ listen: ":8080"             # public (default)
 api_listen: ":8081"         # leads capability (default)
 db_path: /data/forms.db
 path_prefix: /_forms        # accepted if Traefik did not strip it
-trust_proxy: true           # use the right-most X-Forwarded-For entry (set by Traefik)
+trust_proxy: true           # ONLY behind Traefik: use the right-most X-Forwarded-For entry; see below
 max_body_bytes: 65536
 cors_allowed_origins: []    # empty = same-origin only
 rate_limit: { per_minute: 10, max_tracked_ips: 10000 }
@@ -69,6 +69,20 @@ forms:
 Unknown fields in a submission are rejected (422), as are unknown keys in this file.
 `can-forms check-config -config forms.yaml` validates a file without starting anything.
 
+### `trust_proxy`
+
+Set it to `true` only when every request reaches the service through a proxy that appends the
+real client address to `X-Forwarded-For` (Traefik in the cluster). If the service is reachable
+directly, leave it `false` (the code default): otherwise clients could spoof the header and
+dodge the rate limit. The chart default is `true` because the public Service is only exposed via
+Traefik.
+
+### Token replay
+
+The timing token is stateless, so one token can be reused for any number of submissions during
+its 24 hour life; it proves "this page was loaded at least N seconds ago", not "one submission
+per page load". Volume is bounded by the per-IP rate limit, not by the token.
+
 ## The `leads` capability (port 8081, bearer token)
 
 | Request | Permission | Notes |
@@ -88,9 +102,9 @@ read-only) are used.
 `X-Can-Event-Id`, `X-Can-Event-Type`, `X-Can-Timestamp` and
 `X-Can-Signature: sha256=hex(HMAC-SHA256(secret, timestamp + "." + body))`. Receivers must verify
 the signature and reject timestamps older than a few minutes (`forms.VerifySignature`).
-Delivery is at least once: network errors, 5xx and 429 are retried with exponential backoff
+Delivery is retried in-process, best effort: network errors, 5xx and 429 are retried with exponential backoff
 (1 s, 2 s, 4 s, ... up to `max_attempts`); other 4xx are permanent. Redirects are not followed.
-This is the interim path until the can-core event bus exists.
+Retries live in memory: if the process stops mid-retry the event is not resent (the outcome so far is in `lead_deliveries`, and the lead is stored). Consumers should still de-duplicate on the event `id`. This is the interim path until the can-core event bus (at-least-once outbox) exists.
 
 ## Privacy and retention
 
@@ -102,7 +116,8 @@ online copies (module backup hook arrives with E08).
 
 ## Footprint
 
-Idle RAM target 15 MB (limit 32 MB). Measured on the static linux/amd64 build: about 12 MB RSS
-idle and 14 MB after 200 requests. Memory-bounded by design: one SQLite connection, a rate
-limiter capped at `max_tracked_ips`, a 256-entry notification queue, request bodies capped at
-`max_body_bytes`.
+Idle RAM target 15 MB (limit 32 MB). Measured on the static linux/amd64 build: 13.9 MiB RSS
+after start and 15.4 MiB after 200 requests (VmRSS), so the idle target is met only
+approximately; the 32 MB limit has wide headroom. Memory-bounded by design: one SQLite
+connection, a rate limiter capped at `max_tracked_ips`, a 256-entry notification queue, request
+bodies capped at `max_body_bytes`.

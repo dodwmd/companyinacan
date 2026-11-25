@@ -164,8 +164,13 @@ func (a *App) Purge(ctx context.Context) (int64, error) {
 // Close drains notifications and closes the database. It is safe to call repeatedly.
 func (a *App) Close(ctx context.Context) error {
 	a.closeOnce.Do(func() {
-		err := a.dispatcher.Shutdown(ctx)
-		a.closeErr = errors.Join(err, a.store.Close())
+		if err := a.dispatcher.Shutdown(ctx); err != nil {
+			// Workers may still be using the database; leave it open for the process exit
+			// rather than failing their in-flight notifications.
+			a.closeErr = fmt.Errorf("notification drain: %w (database left open)", err)
+			return
+		}
+		a.closeErr = a.store.Close()
 	})
 	return a.closeErr
 }
@@ -213,7 +218,10 @@ func (a *App) Serve(ctx context.Context, pub, api net.Listener) error {
 	a.log.Info("shutting down")
 	err := errors.Join(runErr, pubSrv.Shutdown(shutCtx), apiSrv.Shutdown(shutCtx))
 	<-purgeDone
-	err = errors.Join(err, a.Close(shutCtx))
+	// Notifications get their own deadline so slow HTTP shutdown cannot starve the drain.
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelDrain()
+	err = errors.Join(err, a.Close(drainCtx))
 	if err != nil {
 		return err
 	}

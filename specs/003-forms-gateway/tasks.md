@@ -51,7 +51,7 @@ failing (compile error or red) before its implementation task.
 
 - [x] T018 `make test` green (lint, unit, contract, licences); race detector clean
 - [x] T019 Update `docs/epics/README.md` status for E05
-- [ ] T020 CI green on the pull request (recorded after the run)
+- [x] T020 CI green on the pull request
 
 ## Known gaps (recorded, not hidden)
 

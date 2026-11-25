@@ -86,6 +86,7 @@ func OpenStore(path string) (*Store, error) {
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(NORMAL)")
+	q.Add("_pragma", "secure_delete(ON)") // purged personal data is overwritten, not left in free pages
 	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
 	if err != nil {
 		return nil, err

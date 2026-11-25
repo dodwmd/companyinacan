@@ -20,7 +20,7 @@ at both levels). Producer: forms. Subscribers declare it under `subscribes` (for
 }
 ```
 
-- Delivery is at least once; consumers de-duplicate on `id`.
+- Delivery is retried in-process, best effort (not durable across restarts) until the event bus exists; consumers de-duplicate on `id`.
 - `party_id` is optional and only set once a directory party exists (not by this service).
 - Direct webhook (interim until the event bus): `POST` with headers `X-Can-Event-Id`,
   `X-Can-Event-Type`, `X-Can-Timestamp` (unix seconds) and

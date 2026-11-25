@@ -27,7 +27,10 @@ func WriteCSV(w io.Writer, leads []Lead) error {
 	names := map[string]bool{}
 	for _, l := range leads {
 		for k := range l.Fields {
-			names[k] = true
+			// email and name already have fixed columns holding the same values.
+			if k != "email" && k != "name" {
+				names[k] = true
+			}
 		}
 	}
 	extra := make([]string, 0, len(names))

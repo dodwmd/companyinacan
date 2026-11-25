@@ -43,7 +43,7 @@ no cgo; secrets only from environment
 | Principle | Status | Notes |
 |---|---|---|
 | I. Spec-first | PASS | Traces to SPEC.md sections 3 (forms gateway), 4.3 (capabilities, events, module contract), 6.1 (footprint). Added design details (token endpoint, status set) are recorded here and in research.md |
-| II. Footprint | PASS | Idle RSS measured at 12 MB against a 15 MB target; every buffer is bounded; one SQLite connection |
+| II. Footprint | PASS | Idle RSS measured at 13.9 MiB against a 15 MB target; every buffer is bounded; one SQLite connection |
 | III. Test-first | PASS | Tests exist for each unit before the code (tasks.md orders them); contract tests for schema and manifest; no network or container runtime |
 | IV. Stable module contracts | PASS | Manifest validates under module.v1; capability `leads`, event `lead.created.v1`, permissions and roles declared; API behind an `Authenticator` and mail behind a `Mailer` so E03 plugs in without wire changes |
 | V. Secure and private | PASS | Secrets env-only; constant-time token compare; CSV injection neutralised; CRLF and control characters rejected; no redirects followed by webhook; no IP/UA stored, no personal data in logs; retention declared and enforced; same-origin by default, credentials never allowed; security headers; fail-closed captcha |

@@ -61,8 +61,10 @@ Static linux/amd64 build, `-trimpath -ldflags "-s -w"`, Go 1.27, 2026-11-25:
 | Measure | Result |
 |---|---|
 | Binary | 12.2 MB |
-| Idle RSS, after start | 12.2 MB |
-| RSS after 200 token requests | 14.3 MB |
+| Idle RSS, after start (VmRSS) | 13.9 MiB |
+| RSS after 200 token requests | 15.4 MiB |
+
+An earlier reading (12.2 / 14.3) was superseded by QA's re-measurement above. The idle target is met approximately; the limit is 32 MB.
 
 The manifest requests 15 MB with a 32 MB limit. The CI footprint harness (E03) will
 re-measure in a container.

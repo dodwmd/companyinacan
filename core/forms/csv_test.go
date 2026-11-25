@@ -54,6 +54,18 @@ func TestWriteCSV(t *testing.T) {
 	}
 }
 
+func TestWriteCSVNoDuplicateEmailNameColumns(t *testing.T) {
+	var buf bytes.Buffer
+	l := Lead{ID: "x", Email: "a@example.com", Name: "Ada", Fields: map[string]string{"email": "a@example.com", "name": "Ada", "topic": "t"}}
+	if err := WriteCSV(&buf, []Lead{l}); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.SplitN(buf.String(), "\n", 2)[0]
+	if head != "id,form_id,created_at,status,email,name,note,topic" {
+		t.Fatalf("header: %s", head)
+	}
+}
+
 func TestWriteCSVHeaderInjection(t *testing.T) {
 	// A field name comes from operator config, but defend the header anyway.
 	var buf bytes.Buffer
