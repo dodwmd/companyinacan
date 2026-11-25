@@ -259,24 +259,14 @@ func (s *Service) Unlink(ctx context.Context, actor string, identityID int64) er
 		return err
 	}
 	err := s.DB.UnlinkSSOIdentity(ctx, identityID, func(tx *sql.Tx, id store.SSOIdentity) error {
-		if id.UserSource == store.SourceSSO && s.RBAC != nil {
-			var n int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT subject) FROM rbac_assignments WHERE role='owner' AND scope='' AND subject<>?`, "user:"+id.Username).Scan(&n); err != nil {
-				return err
-			}
-			var mine int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments WHERE role='owner' AND scope='' AND subject=?`, "user:"+id.Username).Scan(&mine); err != nil {
-				return err
-			}
-			if mine > 0 && n == 0 {
-				return rbac.ErrLastOwner
-			}
-		}
 		_, aerr := s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "sso.unlink", Target: "user:" + id.Username, Detail: map[string]any{"external_subject": "oidc:" + id.IssuerHash + ":" + id.Subject, "deleted_user": id.UserSource == store.SourceSSO}})
 		return aerr
 	})
 	if errors.Is(err, store.ErrNotFound) {
 		return ErrLinkInvalid
+	}
+	if errors.Is(err, store.ErrLastOwner) {
+		return rbac.ErrLastOwner
 	}
 	if s.RBAC != nil {
 		s.RBAC.Invalidate()
