@@ -93,7 +93,6 @@ func (a Actor) staff() bool {
 }
 
 func (a Actor) selfStaff(f Fact) bool { return a.staff() && f.Self }
-func (a Actor) hr() bool              { return a.has(RoleHR) || a.has(RoleAdmin) }
 func (a Actor) money() bool           { return a.has(RoleFinance) || a.has(RoleBoard) || a.has(RoleAdmin) }
 func (a Actor) any() bool             { return a.has(RoleHR) || a.money() }
 

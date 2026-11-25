@@ -25,7 +25,7 @@ func TestGrantorCannotApproveOwnGrant(t *testing.T) {
 		t.Fatalf("creator approving: %v", err)
 	}
 	// case, width and invisible-character variants of the same subject are the same person
-	for _, subj := range []string{"DUAL-DAN", " dual-dan ", "dual​-dan", "ｄｕａｌ-ｄａｎ"} {
+	for _, subj := range []string{"DUAL-DAN", " dual-dan ", "dual\u200b-dan", "ｄｕａｌ-ｄａｎ"} {
 		v := Actor{Subject: subj, Roles: []string{RoleBoard}}
 		if _, err := e.s.ApproveGrant(e.ctx, v, id); !isErr(err, ErrSeparation) {
 			t.Errorf("variant %q approved: %v", subj, err)
