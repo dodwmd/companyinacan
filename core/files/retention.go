@@ -343,7 +343,7 @@ type RetentionReport struct {
 func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 	rep := &RetentionReport{}
 	now := s.now()
-	if d := s.cfg.Retention.TrashDays; d > 0 {
+	if d := *s.cfg.Retention.TrashDays; d > 0 {
 		cctx, cancel := context.WithTimeout(ctx, dbTimeout)
 		rows, err := s.db.QueryContext(cctx, `SELECT id, legal_hold, retain_until FROM files WHERE (status = 'deleted') AND (deleted_at <= ?) ORDER BY deleted_at LIMIT 500`, ts(now.AddDate(0, 0, -d)))
 		if err != nil {

@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -1116,5 +1118,45 @@ func TestAdminSeesNoNamesAndNeedsThePermission(t *testing.T) {
 	a, err := e.s.ListAudit(ctx, e.root, 0, 1)
 	if err != nil || len(a.Items) != 1 || a.Next == "" {
 		t.Errorf("audit page: %+v %v", a, err)
+	}
+}
+
+func TestOneTimeLinkHasExactlyOneWinnerUnderConcurrency(t *testing.T) {
+	e := newEnv(t)
+	sp := e.space(e.alice, "Docs")
+	f := e.upload(e.alice, sp.ID, "a.pdf", pdf("a"))
+	tok, _, err := e.s.CreateShare(ctx, e.alice, f.ID, ShareRequest{OneTime: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	var wins atomic.Int32
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, err := e.s.OpenShare(ctx, tok, "5.5.5.5")
+			if err == nil {
+				wins.Add(1)
+				_ = c.Body.Close()
+			}
+		}()
+	}
+	wg.Wait()
+	if wins.Load() != 1 {
+		t.Errorf("%d concurrent opens of a one-time link succeeded, want exactly 1", wins.Load())
+	}
+}
+
+func TestUploadHonoursTheDeadline(t *testing.T) {
+	e := newEnv(t)
+	sp := e.space(e.alice, "Docs")
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := e.s.Upload(cctx, e.alice, UploadRequest{SpaceID: sp.ID, Name: "a.pdf", Body: bytes.NewReader(pdf(strings.Repeat("x", 100000)))}); err == nil {
+		t.Error("an upload under a cancelled context succeeded")
+	}
+	if len(e.blobs()) != 0 || e.staged() != 0 {
+		t.Error("a cancelled upload left something behind")
 	}
 }

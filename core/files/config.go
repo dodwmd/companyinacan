@@ -83,8 +83,8 @@ type ShareConfig struct {
 
 // RetentionCfg shapes deletion.
 type RetentionCfg struct {
-	TrashDays          int `yaml:"trash_days"` // a deleted file is purged this many days later (0: never)
-	SweepIntervalHours int `yaml:"sweep_interval_hours"`
+	TrashDays          *int `yaml:"trash_days"` // a deleted file is purged this many days later (default 30; 0: never)
+	SweepIntervalHours int  `yaml:"sweep_interval_hours"`
 }
 
 // DownloadCfg decides how content is served. Default: attachment only.
@@ -170,8 +170,9 @@ func (c *Config) defaults() {
 	if s.FailuresPerMinute == 0 {
 		s.FailuresPerMinute = 20
 	}
-	if c.Retention.TrashDays == 0 {
-		c.Retention.TrashDays = 30
+	if c.Retention.TrashDays == nil {
+		d := 30
+		c.Retention.TrashDays = &d
 	}
 	if c.Retention.SweepIntervalHours == 0 {
 		c.Retention.SweepIntervalHours = 6
@@ -272,7 +273,7 @@ func (c *Config) validate() error {
 			return errors.New("config: share.base_url must be an http(s) origin")
 		}
 	}
-	if c.Retention.TrashDays < 0 || c.Retention.TrashDays > 3650 || c.Retention.SweepIntervalHours < 1 {
+	if *c.Retention.TrashDays < 0 || *c.Retention.TrashDays > 3650 || c.Retention.SweepIntervalHours < 1 {
 		return errors.New("config: retention: trash_days 0..3650 and sweep_interval_hours >= 1")
 	}
 	for _, t := range c.Download.InlineTypes {
@@ -288,7 +289,7 @@ func (c *Config) validate() error {
 	case "s3":
 		s3 := c.Backend.S3
 		u, err := url.Parse(s3.Endpoint)
-		if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && s3.AllowInsecureHTTP)) || u.User != nil || u.RawQuery != "" {
+		if err != nil || u.Host == "" || (u.Scheme != "https" && (u.Scheme != "http" || !s3.AllowInsecureHTTP)) || u.User != nil || u.RawQuery != "" {
 			return errors.New("config: backend.s3.endpoint must be an https URL (http only with allow_insecure_http, for development)")
 		}
 		if !bucketRe.MatchString(s3.Bucket) {

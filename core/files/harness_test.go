@@ -22,7 +22,6 @@ type env struct {
 	be      *LocalBackend
 	dir     string
 	dbPath  string
-	scan    Scanner
 	mu      sync.Mutex
 	clock   time.Time
 	alice   *Principal

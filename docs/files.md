@@ -124,6 +124,7 @@ download when created `one_time`, and stops working when the file is deleted or 
   `trust_proxy` takes the right-most `X-Forwarded-For` entry; leave it off unless a proxy appends it.
 - The token is in the URL path and nowhere else: access metrics and errors carry the route pattern
   (`GET /s/{token}`), never the URL, and the service writes no access log of paths.
+- A `HEAD` request is refused (405) and does not count as a use. A `GET` does: a mail or chat link previewer that fetches a one-time link before the recipient does will use it up, so send one-time links only over channels that do not unfurl them.
 - Rotating `CAN_FILES_LINK_SECRET` ends every live link. Revoking one link is `DELETE /v1/shares/{id}`.
 - Only `/s/` is exposed by the chart's ingress. The recipient needs no account and the response is the
   same attachment as any download.

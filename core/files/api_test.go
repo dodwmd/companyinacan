@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
@@ -333,5 +334,29 @@ func TestRoutesListMatchesTheMux(t *testing.T) {
 		if !seen[must] {
 			t.Errorf("missing %s", must)
 		}
+	}
+}
+
+func TestHeadDoesNotConsumeALinkAndTrashDaysZeroNeverPurges(t *testing.T) {
+	a := newAPIEnv(t, func(c *Config, _ *StoreOptions) { z := 0; c.Retention.TrashDays = &z })
+	sp := a.space(a.alice, "S")
+	f := a.upload(a.alice, sp.ID, "a.pdf", pdf("a"))
+	tok, _, err := a.s.CreateShare(ctx, a.alice, f.ID, ShareRequest{OneTime: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, _ := a.do("HEAD", "/s/"+tok, "", nil); resp.StatusCode != 405 {
+		t.Errorf("HEAD on a link: %d", resp.StatusCode)
+	}
+	if resp, _ := a.do("HEAD", "/v1/files/"+f.ID+"/content", patAlice, nil); resp.StatusCode != 405 {
+		t.Errorf("HEAD on content: %d", resp.StatusCode)
+	}
+	if resp, _ := a.do("GET", "/s/"+tok, "", nil); resp.StatusCode != 200 {
+		t.Errorf("the one-time link was used up by a HEAD: %d", resp.StatusCode)
+	}
+	_ = a.s.DeleteFile(ctx, a.alice, f.ID)
+	a.advance(400 * 24 * time.Hour)
+	if rep, err := a.s.RunRetention(ctx); err != nil || rep.Purged != 0 {
+		t.Errorf("trash_days 0 purged: %+v %v", rep, err)
 	}
 }

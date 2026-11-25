@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -327,11 +326,7 @@ func (a *API) setMember(w http.ResponseWriter, r *http.Request, p *Principal) er
 }
 
 func (a *API) removeMember(w http.ResponseWriter, r *http.Request, p *Principal) error {
-	id, err := url.PathUnescape(r.PathValue("principal"))
-	if err != nil {
-		return invalid("bad principal")
-	}
-	if err := a.Store.RemoveMember(r.Context(), p, r.PathValue("id"), r.PathValue("kind"), id); err != nil {
+	if err := a.Store.RemoveMember(r.Context(), p, r.PathValue("id"), r.PathValue("kind"), r.PathValue("principal")); err != nil {
 		return err
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -490,6 +485,12 @@ func (a *API) listVersions(w http.ResponseWriter, r *http.Request, p *Principal)
 	return nil
 }
 
+func methodNotAllowed(w http.ResponseWriter) error {
+	w.Header().Set("Allow", "GET")
+	problem(w, http.StatusMethodNotAllowed, "use GET")
+	return nil
+}
+
 // serve writes a Content: always an attachment of application/octet-stream, nosniff, sandboxed,
 // not cached. Inline display exists only for the raster image types the operator listed, only when
 // the caller asks, and still sandboxed. If the stored bytes fail their checksum the connection is
@@ -521,6 +522,9 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request, c *Content) error {
 }
 
 func (a *API) content(w http.ResponseWriter, r *http.Request, p *Principal) error {
+	if r.Method == http.MethodHead {
+		return methodNotAllowed(w) // a HEAD must not count as a download
+	}
 	if err := onlyParams(r, "version", "inline"); err != nil {
 		return err
 	}
@@ -535,6 +539,10 @@ func (a *API) content(w http.ResponseWriter, r *http.Request, p *Principal) erro
 // it is never logged (errors and metrics carry the route pattern), never echoed, and the answer
 // to anything wrong with it is the same 404.
 func (a *API) shareDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodHead { // a HEAD (a link previewer) must not use up a one-time link
+		_ = methodNotAllowed(w)
+		return
+	}
 	c, err := a.Store.OpenShare(r.Context(), r.PathValue("token"), clientIP(r, a.TrustProxy))
 	if err == nil {
 		err = a.serve(w, r, c)

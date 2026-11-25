@@ -45,11 +45,12 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://forms.localhost:8080> | leads API of the forms gateway (`/v1/leads`, bearer token) |
 | (not in the stack) | the `board` and `entity` modules (`cmd/can-board`) are not part of this compose stack yet; see `docs/board.md` |
 | <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) |
+| <http://files.localhost:8080> | files API (`/v1/...`, bearer token) and the public share-link route `/s/{token}`; no virus scanner runs here, so `scanner.required` is off and files are stored labelled `skipped` ([files.md](files.md)) |
 
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
 resolvers, older macOS tooling), use `curl --resolve admin.localhost:8080:127.0.0.1 ...`, add the names to
 `/etc/hosts` (`127.0.0.1 admin.localhost work.localhost people.localhost jobs.localhost finance.localhost
-forms.localhost equity.localhost`), or use a resolver such as dnsmasq with `address=/localhost/127.0.0.1`.
+forms.localhost equity.localhost files.localhost`), or use a resolver such as dnsmasq with `address=/localhost/127.0.0.1`.
 
 ### Dev credentials (all fake, all public)
 
@@ -63,8 +64,9 @@ forms.localhost equity.localhost`), or use a resolver such as dnsmasq with `addr
 | Finance admin token | `dev-only-finance-admin-token-0123456789abcdef` |
 | Leads API token | `dev-only-forms-api-token-0123456789abcdef` |
 | Equity service token | `dev-only-equity-api-token-0123456789abcdef` (roles hr, finance, admin; never board) |
+| Files service token | `dev-only-files-api-token-0123456789abcdef` (files.admin, acts as `svc:static`) |
 
-Use tokens as `Authorization: Bearer <token>`. The people, jobs and equity keyrings (field encryption) are random,
+Use tokens as `Authorization: Bearer <token>`. The people, jobs, equity and files keyrings (field encryption) are random,
 generated on the first `up` into the `dev-secrets` volume and never leave it.
 
 ### Logging in to the admin UI
@@ -117,7 +119,7 @@ data and can be repeated against the same stack. The suite covers: the site and 
 project and issue and the web UI board (c); people (1:1, leave request and decision, sensitive-field and leave
 masking) (d); a jobs requisition, careers page with JSON-LD, a public application, the recruiter UI, blind
 feedback (e); finance party, invoice, second-subject approval, public link, payment (f); equity grant from draft to
-board approval and vesting (g); cross-module token refusal, hostile `Host`, no metrics, anonymous refusal (h);
+board approval and vesting (g); a file uploaded, downloaded as an attachment, versioned, shared once by link, held, erased (j); cross-module token refusal, hostile `Host`, no metrics, anonymous refusal (h);
 `down` without `-v` and `up`, with all data and the admin TOTP secret intact (i).
 
 `make e2e-up` adds `dev/compose/e2e.yml`, which starts **introstub** (`dev/compose/introstub`, a 90-line fake of
@@ -206,7 +208,7 @@ Measured with `docker stats --no-stream` on rootless podman: right after the smo
 the edge about 15 MiB and the other services 2 to 5 MiB each; after some use (logins, clicking through the admin
 UI) can-core reaches about 50 MiB and the whole stack stays **under 100 MiB** (an independent check measured
 about 94 MiB; with equity and the e2e stub, after a full e2e run, `docker stats` summed to about 94 MB again: core 35, edge 13, work 9, people 9, jobs 8, finance 6, equity 4, forms 4, site 3, introstub 2). Building needs more: allow
-2 GB of free RAM and about 5 GB of disk while images build (Go compiles ten binaries). Idle RAM of the images
+2 GB of free RAM and about 5 GB of disk while images build (Go compiles eleven binaries). Idle RAM of the images
 is far below the budgets in the module READMEs because `docker stats` reports cgroup memory, not RSS.
 
 ## Troubleshooting

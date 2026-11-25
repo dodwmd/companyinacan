@@ -1,7 +1,7 @@
 # Observability: metrics, health, logs and support bundles
 
 Epic E22. Every in-house service (can-core, can-static, can-forms, can-work, can-people, can-jobs,
-can-finance, can-equity) shares one small package, `core/obs`, so they all answer the same questions the
+can-finance, can-equity, can-files) shares one small package, `core/obs`, so they all answer the same questions the
 same way: is it up, is it ready, how much RAM does it use against what it declared, and what happened. It
 is standard library only, so it adds about 100 KB to a binary and nothing measurable to idle RAM (numbers
 below).

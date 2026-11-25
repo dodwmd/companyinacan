@@ -40,7 +40,7 @@ type S3Backend struct {
 // NewS3Backend validates the options.
 func NewS3Backend(o S3Options) (*S3Backend, error) {
 	base, err := url.Parse(strings.TrimRight(o.Endpoint, "/"))
-	if err != nil || base.Host == "" || base.User != nil || (base.Scheme != "https" && !(base.Scheme == "http" && o.AllowInsecure)) {
+	if err != nil || base.Host == "" || base.User != nil || (base.Scheme != "https" && (base.Scheme != "http" || !o.AllowInsecure)) {
 		return nil, errors.New("s3: the endpoint must be an https URL")
 	}
 	if o.Bucket == "" || !bucketRe.MatchString(o.Bucket) {

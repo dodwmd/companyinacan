@@ -158,7 +158,7 @@ func (f *fakeS3) serve(w http.ResponseWriter, r *http.Request) {
 	date, payload := r.Header.Get("X-Amz-Date"), r.Header.Get("X-Amz-Content-Sha256")
 	if !strings.HasPrefix(auth, "AWS4-HMAC-SHA256 Credential="+f.keyID+"/") || date == "" || payload == "" {
 		f.bad++
-		http.Error(w, "<Error><Code>AccessDenied</Code></Error>", 403)
+		http.Error(w, "<Error><Code>AccessDenied</Code></Error>", http.StatusForbidden)
 		return
 	}
 	day := date[:8]
@@ -172,7 +172,7 @@ func (f *fakeS3) serve(w http.ResponseWriter, r *http.Request) {
 	want := "Signature=" + hex.EncodeToString(hm(k, sts))
 	if !strings.HasSuffix(auth, want) {
 		f.bad++
-		http.Error(w, "<Error><Code>SignatureDoesNotMatch</Code></Error>", 403)
+		http.Error(w, "<Error><Code>SignatureDoesNotMatch</Code></Error>", http.StatusForbidden)
 		return
 	}
 	switch r.Method {
