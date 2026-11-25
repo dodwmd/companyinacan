@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -336,6 +337,63 @@ func TestTicketNeverReachesLogsOrErrors(t *testing.T) {
 	c.get("/login/ticket?t=cant_" + strings.Repeat("Z", 43))
 	if strings.Contains(logs.String(), tk) || strings.Contains(logs.String(), "cant_") {
 		t.Fatalf("a ticket reached the log:\n%s", logs.String())
+	}
+}
+
+// A ticket session has no token to type again. Its step-up for the irreversible erasure is a recent
+// launch from the Apps page plus a live check with can-core at that moment.
+func TestTicketSessionErasureNeedsARecentLaunchAndALiveCheck(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	admin := []string{PermRead, PermWrite, PermApprove, PermAdmin}
+	party := func(name string) string {
+		return "/parties/" + strconv.FormatInt(e.party(adminTok, name, "customer"), 10) + "/erase"
+	}
+	login := func() *client {
+		c := e.client(t)
+		e.land(c, e.ticket(admin...))
+		c.get("/") // picks up the session's CSRF token
+		return c
+	}
+	erase := func() url.Values { return url.Values{"confirm": {"ERASE"}} }
+
+	c := login()
+	first := party("First Ltd")
+	page := c.get(first)
+	if page.Code != 200 || strings.Contains(page.Body.String(), `name="token"`) {
+		t.Fatalf("a ticket session is asked for a token it does not have: %d", page.Code)
+	}
+	if r := c.post(first, erase()); r.Code != 200 || !strings.Contains(r.Body.String(), "Erased fields") {
+		t.Fatalf("erasure just after the launch: %d %.600s", r.Code, r.Body.String())
+	}
+
+	// Older than the step-up window: refused, whatever else is true.
+	c = login()
+	second := party("Second Ltd")
+	e.advance(uiStepUpMaxAge + time.Second)
+	if r := c.post(second, erase()); r.Code != 422 || !strings.Contains(r.Body.String(), "Apps page") {
+		t.Fatalf("a stale launch erased: %d %.600s", r.Code, r.Body.String())
+	}
+	// A pasted token does not stand in for the step-up either.
+	if r := c.post(second, url.Values{"confirm": {"ERASE"}, "token": {adminTok}}); r.Code != 422 {
+		t.Fatalf("a token replaced the step-up: %d", r.Code)
+	}
+
+	// The permission is gone at can-core: refused at once, not at the next periodic check.
+	c = login()
+	e.core.SetSessionPermissions("user:alice", []string{PermRead})
+	if r := c.post(second, erase()); r.Code == 200 {
+		t.Fatalf("erased without finance.admin: %d", r.Code)
+	}
+	e.core.SetSessionPermissions("user:alice", admin)
+	c = login()
+	e.core.SetDown(true)
+	if r := c.post(second, erase()); r.Code == 200 {
+		t.Fatalf("erased with can-core unreachable: %d", r.Code)
+	}
+	e.core.SetDown(false)
+	c = login()
+	if r := c.get(second); r.Code != 200 {
+		t.Fatalf("the party must still be there to erase: %d", r.Code)
 	}
 }
 

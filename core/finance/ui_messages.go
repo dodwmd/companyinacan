@@ -167,6 +167,7 @@ var uiMessagesEN = map[string]string{
 	"erase.confirm":      "Type ERASE to confirm",
 	"erase.confirm_hint": "Capital letters, nothing else.",
 	"erase.token":        "Your sign-in token again", "erase.token_hint": "Erasing cannot be undone, so the token you signed in with is asked for once more.",
+	"erase.sso_hint":     "Erasing cannot be undone. You signed in from the admin UI, so this works only within five minutes of opening finance from the Apps page. If it is refused, open finance from Apps again.",
 	"erase.submit":       "Erase personal data",
 	"erase.done_title":   "Erasure done",
 	"erase.warning":      "The data was erased, but the database log could not be truncated afterwards. Ask your administrator to run the cleanup.",

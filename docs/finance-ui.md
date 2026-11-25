@@ -110,7 +110,10 @@ and every download is written to the audit log. A malformed date is a 422 page, 
 
 ## Erasure and legal retention
 
-An administrator opens **Erase personal data** on a party, reads what will happen, types `ERASE` and enters the sign-in token again (step-up). The result page is the
+An administrator opens **Erase personal data** on a party, reads what will happen, types `ERASE` and enters the sign-in token again (step-up). A person who signed in from the admin UI (no token) is not asked
+for one: erasure works only within five minutes of opening finance from the **Apps** page, and can-core is asked
+at that moment whether they still hold `finance.admin`; otherwise it is refused and they open finance from Apps
+again. This is as strong as the admin UI session they launch from: it does not ask for a password again. The result page is the
 service's own report: the fields that were erased, the number of drafts deleted, and the **retained** list: issued invoices
 and credit notes, payments, sent or signed contracts and approved purchase orders are legal records, kept for
 `retention_years` after their own date with the name, address and tax id they were issued with; unpaid invoices are never

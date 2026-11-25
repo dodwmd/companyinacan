@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
@@ -36,6 +37,26 @@ func (u *UI) revalidateSSO(r *http.Request, handle, subject string) (*Principal,
 		return nil, "", false
 	}
 	return p, v.Name, true
+}
+
+// uiStepUpMaxAge is how recent the launch from the Apps page must be for a launch-ticket session
+// to do something irreversible.
+const uiStepUpMaxAge = 5 * time.Minute
+
+// stepUpSSO is the step-up of a launch-ticket session, which has no token to type again: it began
+// at most uiStepUpMaxAge ago (the person has just come through the admin UI) and can-core is asked
+// now, not at the next periodic check, what they hold; the route's own rule is applied to that
+// answer. Any doubt refuses.
+func (u *UI) stepUpSSO(c *uiCtx) error {
+	if u.Now().Sub(c.ss.created) > uiStepUpMaxAge {
+		return invalid("launch", "open finance again from the Apps page of the admin UI, then erase within %d minutes", int(uiStepUpMaxAge/time.Minute))
+	}
+	p, _, ok := u.revalidateSSO(c.r, c.ss.ssoHandle, c.ss.subject)
+	if !ok || !allowedBy(p, PermAdmin, false) {
+		return invalid("launch", "can-core did not confirm that you may erase; open finance again from the Apps page of the admin UI")
+	}
+	c.p = p
+	return nil
 }
 
 // launchModule is the module id can-core names the launch nonce cookie after.

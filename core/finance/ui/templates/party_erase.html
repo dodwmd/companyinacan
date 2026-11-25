@@ -16,10 +16,11 @@
 <p><label for="confirm">{{t "erase.confirm"}}</label>
 <input id="confirm" name="confirm" required autocomplete="off" maxlength="10" aria-describedby="confirm-hint"></p>
 <p id="confirm-hint" class="hint">{{t "erase.confirm_hint"}}</p>
-<p><label for="erase-token">{{t "erase.token"}}</label>
+{{if .Data.SSO}}<p class="hint">{{t "erase.sso_hint"}}</p>
+{{else}}<p><label for="erase-token">{{t "erase.token"}}</label>
 <input id="erase-token" name="token" type="password" required autocomplete="off" maxlength="4096" aria-describedby="erase-token-hint"></p>
 <p id="erase-token-hint" class="hint">{{t "erase.token_hint"}}</p>
-<p><button type="submit">{{t "erase.submit"}}</button></p>
+{{end}}<p><button type="submit">{{t "erase.submit"}}</button></p>
 </form>
 <p><a href="/parties/{{.Data.P.ID}}">{{t "common.cancel"}}</a></p>
 {{end}}
