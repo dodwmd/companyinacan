@@ -32,5 +32,5 @@ Exit 0 only for phase `ready`.
 
 ## Make targets
 
-`make up|down|status` run `go run ./cmd/can <cmd> $(ARGS)`; e.g. `make up ARGS=--plan`,
-`make down ARGS=--yes`. `make dev` stays a stub (E02).
+`make up`, `make server-down` and `make status` run `go run ./cmd/can up|down|status $(ARGS)` (`make down` stays the local-cluster teardown from E02); e.g. `make up ARGS=--plan`,
+`make server-down ARGS=--yes`. 

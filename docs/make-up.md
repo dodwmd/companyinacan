@@ -1,4 +1,4 @@
-# `make up`, `make down`, `make status`
+# `make up`, `make server-down`, `make status`
 
 Thin wrappers over `can up|down|status` (extra flags go in `ARGS`). Run them in the directory that
 holds `company.yaml`, or pass the directory: `make up ARGS=./my-company`.
@@ -7,8 +7,8 @@ holds `company.yaml`, or pass the directory: `make up ARGS=./my-company`.
 make up ARGS=--plan     # show what would happen, change nothing
 make up                 # provision, bootstrap k3s, print URL and DNS records
 make status             # exit 0 only when the server is ready
-make down ARGS=--plan   # show what would be removed
-make down ARGS=--yes    # tear down (destructive, needs --yes)
+make server-down ARGS=--plan   # show what would be removed
+make server-down ARGS=--yes    # tear down (destructive, needs --yes)
 ```
 
 ## What `make up` does today
@@ -64,7 +64,7 @@ measure it, a human with a fresh Hetzner account does the following. Do not run 
    `free -m`, and the memory line of `systemctl status k3s` (`kubectl top` is unavailable because
    metrics-server is disabled).
 6. Run `make up` a second time and record how long the idempotent re-run takes.
-7. `make down ARGS=--yes`; confirm in the Hetzner console that the server, firewall and key are gone.
+7. `make server-down ARGS=--yes`; confirm in the Hetzner console that the server, firewall and key are gone.
 8. Repeat three times and report median and worst case in `specs/000-*/measurements.md` (E00).
 
 Until the whole stack is deployed (epic E03) the measurement covers only provisioning plus k3s, not
