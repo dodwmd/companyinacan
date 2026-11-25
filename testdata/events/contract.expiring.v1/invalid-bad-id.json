@@ -1,0 +1,12 @@
+{
+  "id": "evt_123",
+  "type": "contract.expiring.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "contract_id": 4,
+    "party_id": 3,
+    "renewal_date": "2027-10-25",
+    "days_left": 28
+  }
+}

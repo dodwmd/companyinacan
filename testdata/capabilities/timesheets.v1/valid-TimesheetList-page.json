@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "owner": "person_17",
+      "week_start": "2026-11-23",
+      "status": "submitted",
+      "entries": [
+        {
+          "day": "2026-11-23",
+          "project": "ACME",
+          "task": "ACME-12",
+          "minutes": 150,
+          "billable": true,
+          "description": "Design",
+          "id": 1,
+          "invoice_id": null
+        }
+      ],
+      "total_minutes": 150,
+      "billable_minutes": 150,
+      "reject_reason": "",
+      "version": 3
+    }
+  ]
+}

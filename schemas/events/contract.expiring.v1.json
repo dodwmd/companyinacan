@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/contract.expiring.v1.json",
+  "title": "contract.expiring.v1",
+  "description": "Published once when an active contract's renewal date is within its reminder lead time (again if the renewal date is changed). Delivered at least once; consumers de-duplicate on `id`. Carries identifiers, numbers and amounts only: no names, addresses, emails or other contact data (fetch the record through the capability if the token allows).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "contract.expiring.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "finance"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_id",
+        "party_id",
+        "renewal_date",
+        "days_left"
+      ],
+      "properties": {
+        "contract_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "party_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "renewal_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "days_left": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

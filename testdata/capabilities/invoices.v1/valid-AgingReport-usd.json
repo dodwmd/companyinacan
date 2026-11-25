@@ -1,0 +1,27 @@
+{
+  "as_of": "2026-11-25",
+  "currencies": [
+    {
+      "currency": "USD",
+      "totals": {
+        "current": 100,
+        "days_1_30": 800,
+        "days_31_60": 400,
+        "days_61_90": 800,
+        "over_90": 1600,
+        "total": 3700
+      },
+      "parties": [
+        {
+          "current": 100,
+          "days_1_30": 800,
+          "days_31_60": 400,
+          "days_61_90": 800,
+          "over_90": 1600,
+          "total": 3700,
+          "party_id": 1
+        }
+      ]
+    }
+  ]
+}

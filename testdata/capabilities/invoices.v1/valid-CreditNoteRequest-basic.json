@@ -1,0 +1,10 @@
+{
+  "reason": "goodwill",
+  "lines": [
+    {
+      "description": "Credit",
+      "quantity_milli": 1000,
+      "unit_price_minor": 3000
+    }
+  ]
+}

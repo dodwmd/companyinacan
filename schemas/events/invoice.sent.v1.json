@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/invoice.sent.v1.json",
+  "title": "invoice.sent.v1",
+  "description": "Published when an approved invoice or credit note is marked sent. Delivered at least once; consumers de-duplicate on `id`. Carries identifiers, numbers and amounts only: no names, addresses, emails or other contact data (fetch the record through the capability if the token allows).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "invoice.sent.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "finance"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoice_id",
+        "number",
+        "kind",
+        "party_id",
+        "currency",
+        "total_minor",
+        "due_date",
+        "sent_at"
+      ],
+      "properties": {
+        "invoice_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "number": {
+          "type": "string",
+          "pattern": "^[A-Z]{1,6}-[0-9]{5,}$"
+        },
+        "kind": {
+          "enum": [
+            "invoice",
+            "credit_note"
+          ]
+        },
+        "party_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "total_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "due_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "sent_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

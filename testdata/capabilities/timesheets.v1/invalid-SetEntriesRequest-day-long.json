@@ -1,0 +1,12 @@
+{
+  "entries": [
+    {
+      "day": "2026-11-23",
+      "project": "ACME",
+      "task": "ACME-12",
+      "minutes": 1441,
+      "billable": true,
+      "description": "Design"
+    }
+  ]
+}

@@ -1,0 +1,308 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/contracts.v1.json",
+  "title": "contracts.v1",
+  "description": "Capability `contracts` (SPEC.md section 3.3 and 4.3): contracts built from templates with {{variables}}, immutable versions with a SHA-256 of the text, e-signature, renewal dates and reminders. Provided by the in-house finance module; the e-signature service behind it is an adapter (a fake for development, Documenso as the documented path). Lifecycle: draft, sent, signed, active, expired or terminated. The text of a signed contract never changes, and a signature whose document hash differs from the current text is refused. Same authentication, scoping, ETag and idempotency conventions as invoices.v1. This is a tool, not legal advice.",
+  "x-capability": "contracts",
+  "x-verbs": [
+    {
+      "verb": "list",
+      "method": "GET",
+      "path": "/v1/contracts",
+      "response": "ContractList",
+      "permission": "finance.read",
+      "description": "Query: status, party_id, cursor, limit."
+    },
+    {
+      "verb": "get",
+      "method": "GET",
+      "path": "/v1/contracts/{id}",
+      "response": "Contract",
+      "permission": "finance.read"
+    },
+    {
+      "verb": "create",
+      "method": "POST",
+      "path": "/v1/contracts",
+      "request": "CreateContractRequest",
+      "response": "Contract",
+      "write": true,
+      "permission": "finance.write",
+      "description": "Version 1 is rendered from the template (or the body) and every placeholder must have a value."
+    },
+    {
+      "verb": "send",
+      "method": "POST",
+      "path": "/v1/contracts/{id}/send",
+      "request": "SendContractRequest",
+      "response": "Contract",
+      "write": true,
+      "permission": "finance.write",
+      "description": "Asks the e-signature service to collect signatures, or records a manual send."
+    },
+    {
+      "verb": "record_signature",
+      "method": "POST",
+      "path": "/v1/contracts/{id}/signature",
+      "request": "RecordSignatureRequest",
+      "response": "Contract",
+      "write": true,
+      "permission": "finance.write",
+      "description": "For signatures collected outside a provider. 422 when the hash is not the current text's. Emits contract.signed.v1."
+    },
+    {
+      "verb": "terminate",
+      "method": "POST",
+      "path": "/v1/contracts/{id}/terminate",
+      "request": "TerminateRequest",
+      "response": "Contract",
+      "write": true,
+      "permission": "finance.write"
+    },
+    {
+      "verb": "verify",
+      "method": "GET",
+      "path": "/v1/contracts/{id}/verify",
+      "response": "VerifyReport",
+      "permission": "finance.read",
+      "description": "Recomputes the hash of every stored version."
+    }
+  ],
+  "$defs": {
+    "Contract": {
+      "type": "object",
+      "required": [
+        "id",
+        "party_id",
+        "title",
+        "status",
+        "current_version",
+        "sha256",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "party_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "template_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "sent",
+            "signed",
+            "active",
+            "expired",
+            "terminated"
+          ]
+        },
+        "current_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "start_date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "renewal_date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reminder_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "esign_provider": {
+          "type": "string"
+        },
+        "signed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signed_sha256": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ContractList": {
+      "type": "object",
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contract"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "CreateContractRequest": {
+      "type": "object",
+      "required": [
+        "party_id",
+        "title"
+      ],
+      "properties": {
+        "party_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "template_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "variables": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "maxProperties": 50
+        },
+        "start_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "end_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "renewal_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "reminder_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        }
+      },
+      "additionalProperties": false
+    },
+    "SendContractRequest": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "signers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 254
+          },
+          "minItems": 1,
+          "maxItems": 10
+        },
+        "manual": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RecordSignatureRequest": {
+      "type": "object",
+      "required": [
+        "sha256"
+      ],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminateRequest": {
+      "type": "object",
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "VerifyReport": {
+      "type": "object",
+      "required": [
+        "contract_id",
+        "ok",
+        "versions",
+        "problems"
+      ],
+      "properties": {
+        "contract_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "versions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

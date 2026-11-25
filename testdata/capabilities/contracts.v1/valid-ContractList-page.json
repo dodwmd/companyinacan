@@ -1,0 +1,21 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "party_id": 3,
+      "template_id": 2,
+      "title": "Services 2026",
+      "status": "sent",
+      "current_version": 2,
+      "sha256": "abababababababababababababababababababababababababababababababab",
+      "start_date": "2026-11-25",
+      "end_date": "2027-11-24",
+      "renewal_date": "2027-10-25",
+      "reminder_days": 30,
+      "esign_provider": "fake",
+      "signed_at": null,
+      "signed_sha256": "",
+      "version": 3
+    }
+  ]
+}

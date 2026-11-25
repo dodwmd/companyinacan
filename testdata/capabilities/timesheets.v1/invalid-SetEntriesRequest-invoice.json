@@ -1,0 +1,13 @@
+{
+  "entries": [
+    {
+      "day": "2026-11-23",
+      "project": "ACME",
+      "task": "ACME-12",
+      "minutes": 150,
+      "billable": true,
+      "description": "Design",
+      "invoice_id": 3
+    }
+  ]
+}

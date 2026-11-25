@@ -1,0 +1,1967 @@
+openapi: 3.1.0
+info:
+  title: can-finance API
+  version: 0.1.0
+  description: >-
+    REST API of the in-house finance module (specs/014-finance-basics). Money is an integer count of
+    the currency's minor unit, never a float. Bearer API tokens with scopes finance.read, finance.write,
+    finance.approve and finance.admin, optionally limited to parties and projects; an out-of-scope record
+    is a 404, like a missing one. Records carry a version (the ETag): send If-Match to detect concurrent
+    edits (412). Creates accept an Idempotency-Key header. The creator of a record cannot approve it (403
+    separation_of_duties). A tool, not accounting, tax or legal advice.
+  license: { name: Apache-2.0, identifier: Apache-2.0 }
+servers:
+  - url: http://finance:8080
+security:
+  - bearer: []
+paths:
+  /v1/me:
+    get:
+      summary: "Who the token is: subject, scopes, parties, projects, own_only"
+      operationId: GET_v1_me
+      x-scope: finance.read
+      x-own-only-allowed: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/parties:
+    get:
+      summary: "List customers and vendors in scope (audited read)"
+      operationId: GET_v1_parties
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Create a party"
+      operationId: POST_v1_parties
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/parties/{id}:
+    get:
+      summary: "Get a party (audited read)"
+      operationId: GET_v1_parties_id
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    patch:
+      summary: "Edit a party (If-Match)"
+      operationId: PATCH_v1_parties_id
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/parties/{id}/erase:
+    post:
+      summary: "Erase personal data of a party; legal retention keeps issued invoices (admin)"
+      operationId: POST_v1_parties_id_erase
+      x-scope: finance.admin
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/tax-rates:
+    get:
+      summary: "List tax rates (data, not code)"
+      operationId: GET_v1_tax_rates
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Create a tax rate in parts per million (admin)"
+      operationId: POST_v1_tax_rates
+      x-scope: finance.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/tax-rates/{code}:
+    patch:
+      summary: "Change a rate for future documents (admin)"
+      operationId: PATCH_v1_tax_rates_code
+      x-scope: finance.admin
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/products:
+    get:
+      summary: "List the product catalogue"
+      operationId: GET_v1_products
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Create a product"
+      operationId: POST_v1_products
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/products/{sku}:
+    get:
+      summary: "Get a product"
+      operationId: GET_v1_products_sku
+      x-scope: finance.read
+      parameters:
+        - { name: sku, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    patch:
+      summary: "Edit a product (If-Match)"
+      operationId: PATCH_v1_products_sku
+      x-scope: finance.write
+      parameters:
+        - { name: sku, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices:
+    get:
+      summary: "List invoices and credit notes in scope"
+      operationId: GET_v1_invoices
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/InvoiceList"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Create a draft invoice (Idempotency-Key)"
+      operationId: POST_v1_invoices
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/CreateInvoiceRequest"
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}:
+    get:
+      summary: "Get an invoice"
+      operationId: GET_v1_invoices_id
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    patch:
+      summary: "Edit a draft (If-Match); issued invoices are immutable"
+      operationId: PATCH_v1_invoices_id
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    delete:
+      summary: "Delete a draft"
+      operationId: DELETE_v1_invoices_id
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: No content
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/approve:
+    post:
+      summary: "Approve: assigns the gap-free number, freezes buyer data (separation of duties)"
+      operationId: POST_v1_invoices_id_approve
+      x-scope: finance.approve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/send:
+    post:
+      summary: "Mark sent; emits invoice.sent.v1"
+      operationId: POST_v1_invoices_id_send
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/void:
+    post:
+      summary: "Void an invoice without payments"
+      operationId: POST_v1_invoices_id_void
+      x-scope: finance.approve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/VoidRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/credit-notes:
+    post:
+      summary: "Draft a credit note against an issued invoice"
+      operationId: POST_v1_invoices_id_credit_notes
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/CreditNoteRequest"
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/html:
+    get:
+      summary: "Print-friendly, escaped HTML rendering"
+      operationId: GET_v1_invoices_id_html
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            text/html:
+              schema:
+                type: string
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/link:
+    post:
+      summary: "Issue a signed, expiring public link (HMAC)"
+      operationId: POST_v1_invoices_id_link
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/link/revoke:
+    post:
+      summary: "Revoke every public link of the invoice"
+      operationId: POST_v1_invoices_id_link_revoke
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/checkout:
+    post:
+      summary: "Ask the payment provider for a hosted payment page"
+      operationId: POST_v1_invoices_id_checkout
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/payments:
+    get:
+      summary: "List payments"
+      operationId: GET_v1_invoices_id_payments
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Record a payment (Idempotency-Key)"
+      operationId: POST_v1_invoices_id_payments
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/RecordPaymentRequest"
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Payment"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/payments/import:
+    post:
+      summary: "Import up to 200 payments, all or none, de-duplicated on external_id"
+      operationId: POST_v1_payments_import
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/recurring:
+    get:
+      summary: "List recurring invoice schedules"
+      operationId: GET_v1_recurring
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Create a schedule that drafts invoices"
+      operationId: POST_v1_recurring
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/recurring/run:
+    post:
+      summary: "Draft the invoices due as of a date (admin; also runs hourly)"
+      operationId: POST_v1_recurring_run
+      x-scope: finance.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/recurring/{id}/status:
+    post:
+      summary: "Pause, resume or end a schedule"
+      operationId: POST_v1_recurring_id_status
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/reports/aging:
+    get:
+      summary: "Receivables aging by currency"
+      operationId: GET_v1_reports_aging
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/AgingReport"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/exports/invoices.csv:
+    get:
+      summary: "CSV export with formula-injection protection (audited)"
+      operationId: GET_v1_exports_invoices_csv
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/exports/payments.csv:
+    get:
+      summary: "CSV export of payments (audited)"
+      operationId: GET_v1_exports_payments_csv
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/exports/expenses.csv:
+    get:
+      summary: "CSV export of expenses (audited)"
+      operationId: GET_v1_exports_expenses_csv
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contract-templates:
+    get:
+      summary: "List contract templates"
+      operationId: GET_v1_contract_templates
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Create a template with {{variables}}"
+      operationId: POST_v1_contract_templates
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts:
+    get:
+      summary: "List contracts in scope"
+      operationId: GET_v1_contracts
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/ContractList"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Create a draft contract (version 1)"
+      operationId: POST_v1_contracts
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/CreateContractRequest"
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/Contract"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/sweep:
+    post:
+      summary: "Apply date-driven transitions and renewal reminders (admin; also runs hourly)"
+      operationId: POST_v1_contracts_sweep
+      x-scope: finance.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}:
+    get:
+      summary: "Get a contract"
+      operationId: GET_v1_contracts_id
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/Contract"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/versions:
+    post:
+      summary: "Add a version of the text (draft or sent only)"
+      operationId: POST_v1_contracts_id_versions
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/Contract"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/versions/{n}:
+    get:
+      summary: "Get one version with its SHA-256"
+      operationId: GET_v1_contracts_id_versions_n
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: n, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/send:
+    post:
+      summary: "Send for signature (e-signature adapter) or record a manual send"
+      operationId: POST_v1_contracts_id_send
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/SendContractRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/Contract"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/signature:
+    post:
+      summary: "Record a signature collected outside a provider; the hash must match"
+      operationId: POST_v1_contracts_id_signature
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/RecordSignatureRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/Contract"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/dates:
+    patch:
+      summary: "Change start, end, renewal date and reminder lead time"
+      operationId: PATCH_v1_contracts_id_dates
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/Contract"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/terminate:
+    post:
+      summary: "Terminate a signed or active contract"
+      operationId: POST_v1_contracts_id_terminate
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/TerminateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/Contract"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/verify:
+    get:
+      summary: "Recompute the hash of every stored version"
+      operationId: GET_v1_contracts_id_verify
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/contracts.v1.json#/$defs/VerifyReport"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/timesheets:
+    get:
+      summary: "List timesheets in scope"
+      operationId: GET_v1_timesheets
+      x-scope: finance.read
+      x-own-only-allowed: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/TimesheetList"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Open a week (201) or return the existing one (200)"
+      operationId: POST_v1_timesheets
+      x-scope: finance.write
+      x-own-only-allowed: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/OpenTimesheetRequest"
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/Timesheet"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/timesheets/billing-draft:
+    post:
+      summary: "Draft an invoice from approved billable time (Idempotency-Key)"
+      operationId: POST_v1_timesheets_billing_draft
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/invoices.v1.json#/$defs/Invoice"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/timesheets/{id}:
+    get:
+      summary: "Get a timesheet"
+      operationId: GET_v1_timesheets_id
+      x-scope: finance.read
+      x-own-only-allowed: true
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/Timesheet"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/timesheets/{id}/entries:
+    put:
+      summary: "Replace the entries of a draft or rejected sheet"
+      operationId: PUT_v1_timesheets_id_entries
+      x-scope: finance.write
+      x-own-only-allowed: true
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/SetEntriesRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/Timesheet"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/timesheets/{id}/submit:
+    post:
+      summary: "Submit for approval"
+      operationId: POST_v1_timesheets_id_submit
+      x-scope: finance.write
+      x-own-only-allowed: true
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/Timesheet"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/timesheets/{id}/approve:
+    post:
+      summary: "Approve (separation of duties; emits timesheet.approved.v1)"
+      operationId: POST_v1_timesheets_id_approve
+      x-scope: finance.approve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/Timesheet"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/timesheets/{id}/reject:
+    post:
+      summary: "Reject with a reason"
+      operationId: POST_v1_timesheets_id_reject
+      x-scope: finance.approve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/RejectRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "../../../schemas/capabilities/timesheets.v1.json#/$defs/Timesheet"
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/period-lock:
+    get:
+      summary: "Read the lock date"
+      operationId: GET_v1_period_lock
+      x-scope: finance.read
+      x-own-only-allowed: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    put:
+      summary: "Lock timesheets and expenses through a date (admin, audited)"
+      operationId: PUT_v1_period_lock
+      x-scope: finance.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/expenses:
+    get:
+      summary: "List expenses in scope"
+      operationId: GET_v1_expenses
+      x-scope: finance.read
+      x-own-only-allowed: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "File an expense with receipt metadata (Idempotency-Key)"
+      operationId: POST_v1_expenses
+      x-scope: finance.write
+      x-own-only-allowed: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/expenses/{id}:
+    get:
+      summary: "Get an expense"
+      operationId: GET_v1_expenses_id
+      x-scope: finance.read
+      x-own-only-allowed: true
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    put:
+      summary: "Edit a draft or rejected expense (owner only)"
+      operationId: PUT_v1_expenses_id
+      x-scope: finance.write
+      x-own-only-allowed: true
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/expenses/{id}/submit:
+    post:
+      summary: "Submit for approval"
+      operationId: POST_v1_expenses_id_submit
+      x-scope: finance.write
+      x-own-only-allowed: true
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/expenses/{id}/approve:
+    post:
+      summary: "Approve (separation of duties; emits expense.approved.v1)"
+      operationId: POST_v1_expenses_id_approve
+      x-scope: finance.approve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/expenses/{id}/reject:
+    post:
+      summary: "Reject with a reason"
+      operationId: POST_v1_expenses_id_reject
+      x-scope: finance.approve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/expenses/{id}/reimburse:
+    post:
+      summary: "Record reimbursement"
+      operationId: POST_v1_expenses_id_reimburse
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/purchase-orders:
+    get:
+      summary: "List purchase orders in scope"
+      operationId: GET_v1_purchase_orders
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Draft a purchase order (Idempotency-Key)"
+      operationId: POST_v1_purchase_orders
+      x-scope: finance.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/purchase-orders/{id}:
+    get:
+      summary: "Get a purchase order"
+      operationId: GET_v1_purchase_orders_id
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    put:
+      summary: "Replace a draft purchase order"
+      operationId: PUT_v1_purchase_orders_id
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/purchase-orders/{id}/approve:
+    post:
+      summary: "Approve and number it (separation of duties)"
+      operationId: POST_v1_purchase_orders_id_approve
+      x-scope: finance.approve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/purchase-orders/{id}/status:
+    post:
+      summary: "Mark received or cancel"
+      operationId: POST_v1_purchase_orders_id_status
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/tokens:
+    get:
+      summary: "List tokens (admin)"
+      operationId: GET_v1_tokens
+      x-scope: finance.admin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Mint a token; the secret is shown once (admin)"
+      operationId: POST_v1_tokens
+      x-scope: finance.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/tokens/{id}:
+    delete:
+      summary: "Revoke a token (admin)"
+      operationId: DELETE_v1_tokens_id
+      x-scope: finance.admin
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: No content
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/audit:
+    get:
+      summary: "Read the append-only audit log (admin)"
+      operationId: GET_v1_audit
+      x-scope: finance.admin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/events/dead:
+    get:
+      summary: "List dead-lettered events (admin)"
+      operationId: GET_v1_events_dead
+      x-scope: finance.admin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/events/{id}/replay:
+    post:
+      summary: "Replay a dead event (admin)"
+      operationId: POST_v1_events_id_replay
+      x-scope: finance.admin
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: No content
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /public/invoices/{token}:
+    get:
+      summary: "Public, signed, expiring invoice view (HTML); every failure is 404"
+      operationId: GET_public_invoices_token
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            text/html:
+              schema:
+                type: string
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/webhooks/payments:
+    post:
+      summary: "Payment provider notification, authenticated by its signature"
+      operationId: POST_v1_webhooks_payments
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/webhooks/esign:
+    post:
+      summary: "E-signature notification, authenticated by its signature"
+      operationId: POST_v1_webhooks_esign
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /healthz:
+    get:
+      summary: "Liveness"
+      operationId: GET_healthz
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }

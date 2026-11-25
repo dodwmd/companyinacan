@@ -9,6 +9,7 @@ Directories starting with `_` are examples and are not enabled or listed in THIR
 | `support` | FreeScout | AGPL-3.0 | 250 MB | MariaDB | `tickets` |
 | `newsletter` | Listmonk | AGPL-3.0 | 50 MB | Postgres | `newsletter` |
 | `analytics` | GoatCounter | EUPL-1.2 | 20 MB | SQLite | `analytics` |
+| `finance` | in-house | Apache-2.0 | 20 MB (16 MB measured idle) | SQLite | `invoices`, `contracts`, `timesheets` |
 | `people` | in-house | Apache-2.0 | 30 MB (14 MB measured idle) | SQLite | `directory`, `performance` |
 | `jobs` | in-house | Apache-2.0 | 30 MB (16 MB measured idle) | SQLite | `jobs`, `ats` |
 

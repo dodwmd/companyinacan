@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/timesheet.approved.v1.json",
+  "title": "timesheet.approved.v1",
+  "description": "Published when a timesheet is approved. `person` is the opaque person id of the owner. Delivered at least once; consumers de-duplicate on `id`. Carries identifiers, numbers and amounts only: no names, addresses, emails or other contact data (fetch the record through the capability if the token allows).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "timesheet.approved.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "finance"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timesheet_id",
+        "person",
+        "week_start",
+        "total_minutes",
+        "billable_minutes",
+        "approved_at"
+      ],
+      "properties": {
+        "timesheet_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "person": {
+          "type": "string",
+          "maxLength": 254,
+          "minLength": 1
+        },
+        "week_start": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "total_minutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "billable_minutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

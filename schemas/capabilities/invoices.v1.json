@@ -1,0 +1,619 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/invoices.v1.json",
+  "title": "invoices.v1",
+  "description": "Capability `invoices` (SPEC.md section 3.3 and 4.3): receivable invoices and credit notes, payments, aging. Provided by the in-house finance module (`can-finance`); an adapter in front of a wrapped invoicer must keep the same immutability rules. All money is an integer count of the currency's minor unit (cents, pence, yen) and never a float; quantities are milli-units (1500 = 1.5), discounts basis points, tax rates parts per million, FX rates decimal strings with at most 8 decimals. Rounding is half away from zero per line, and totals are sums of the rounded lines. Numbers are assigned on approval, gap-free per series. Issued invoices are immutable: void it and issue a credit note. Bodies are JSON over HTTP with a bearer API token (scopes finance.read, finance.write, finance.approve, finance.admin; optionally limited to some parties and projects). Records carry a `version`, also the ETag: send `If-Match: \"<version>\"` to detect concurrent edits (412). Creates accept an `Idempotency-Key` header. The creator of an invoice cannot approve it (403 separation_of_duties). This is a tool, not accounting, tax or legal advice.",
+  "x-capability": "invoices",
+  "x-verbs": [
+    {
+      "verb": "list",
+      "method": "GET",
+      "path": "/v1/invoices",
+      "response": "InvoiceList",
+      "permission": "finance.read",
+      "description": "Query: kind, status, party_id, project, from, to (issue date), overdue_as_of, cursor, limit (max 100)."
+    },
+    {
+      "verb": "get",
+      "method": "GET",
+      "path": "/v1/invoices/{id}",
+      "response": "Invoice",
+      "permission": "finance.read"
+    },
+    {
+      "verb": "create",
+      "method": "POST",
+      "path": "/v1/invoices",
+      "request": "CreateInvoiceRequest",
+      "response": "Invoice",
+      "write": true,
+      "permission": "finance.write",
+      "description": "Creates a draft. Idempotent on the `Idempotency-Key` header (200 with `Idempotent-Replayed: true` on a retry)."
+    },
+    {
+      "verb": "approve",
+      "method": "POST",
+      "path": "/v1/invoices/{id}/approve",
+      "response": "Invoice",
+      "write": true,
+      "permission": "finance.approve",
+      "description": "Assigns the number and freezes the buyer data. 403 separation_of_duties for the creator or last editor."
+    },
+    {
+      "verb": "send",
+      "method": "POST",
+      "path": "/v1/invoices/{id}/send",
+      "response": "Invoice",
+      "write": true,
+      "permission": "finance.write",
+      "description": "Marks an approved invoice sent and emits invoice.sent.v1."
+    },
+    {
+      "verb": "void",
+      "method": "POST",
+      "path": "/v1/invoices/{id}/void",
+      "request": "VoidRequest",
+      "response": "Invoice",
+      "write": true,
+      "permission": "finance.approve",
+      "description": "Only an invoice without payments or credit notes; the number stays used."
+    },
+    {
+      "verb": "create_credit_note",
+      "method": "POST",
+      "path": "/v1/invoices/{id}/credit-notes",
+      "request": "CreditNoteRequest",
+      "response": "Invoice",
+      "write": true,
+      "permission": "finance.write"
+    },
+    {
+      "verb": "record_payment",
+      "method": "POST",
+      "path": "/v1/invoices/{id}/payments",
+      "request": "RecordPaymentRequest",
+      "response": "Payment",
+      "write": true,
+      "permission": "finance.write",
+      "description": "In the invoice currency; 422 on overpayment. Emits invoice.paid.v1 when the balance reaches zero."
+    },
+    {
+      "verb": "aging",
+      "method": "GET",
+      "path": "/v1/reports/aging",
+      "response": "AgingReport",
+      "permission": "finance.read",
+      "description": "Query: as_of (YYYY-MM-DD). Currencies are reported separately."
+    }
+  ],
+  "$defs": {
+    "Line": {
+      "type": "object",
+      "required": [
+        "position",
+        "description",
+        "quantity_milli",
+        "unit_price_minor",
+        "gross_minor",
+        "tax_minor",
+        "total_minor"
+      ],
+      "properties": {
+        "position": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "sku": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "quantity_milli": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unit_price_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "discount_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "tax_code": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "tax_rate_ppm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "gross_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "discount_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "tax_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "total_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        }
+      }
+    },
+    "LineInput": {
+      "type": "object",
+      "required": [
+        "quantity_milli"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "sku": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "quantity_milli": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1099511627776
+        },
+        "unit_price_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "discount_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "tax_code": {
+          "type": "string",
+          "maxLength": 30
+        }
+      },
+      "additionalProperties": false
+    },
+    "Invoice": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "party_id",
+        "currency",
+        "issue_date",
+        "due_date",
+        "lines",
+        "total_minor",
+        "balance_minor",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "enum": [
+            "invoice",
+            "credit_note"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "approved",
+            "sent",
+            "partially_paid",
+            "paid",
+            "void"
+          ]
+        },
+        "series": {
+          "type": "string",
+          "maxLength": 6
+        },
+        "number": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{1,6}-[0-9]{5,}$"
+        },
+        "party_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "project": {
+          "type": "string",
+          "maxLength": 10
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "base_currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "fx_rate": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "issue_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "due_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Line"
+          },
+          "minItems": 1
+        },
+        "subtotal_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "discount_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "tax_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "total_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "base_total_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "paid_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "credited_minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1125899906842624
+        },
+        "balance_minor": {
+          "type": "integer"
+        },
+        "original_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        },
+        "payment_instructions": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "InvoiceList": {
+      "type": "object",
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Invoice"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "CreateInvoiceRequest": {
+      "type": "object",
+      "required": [
+        "party_id",
+        "lines"
+      ],
+      "properties": {
+        "party_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "series": {
+          "type": "string",
+          "maxLength": 6,
+          "pattern": "^[A-Z]{1,6}$"
+        },
+        "project": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "fx_rate": {
+          "type": "string",
+          "maxLength": 20,
+          "pattern": "^[0-9]{1,7}(\\.[0-9]{1,8})?$"
+        },
+        "issue_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "due_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "due_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "payment_instructions": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LineInput"
+          },
+          "minItems": 1,
+          "maxItems": 200
+        }
+      },
+      "additionalProperties": false
+    },
+    "VoidRequest": {
+      "type": "object",
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "CreditNoteRequest": {
+      "type": "object",
+      "required": [
+        "reason",
+        "lines"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "minLength": 1
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LineInput"
+          },
+          "minItems": 1,
+          "maxItems": 200
+        }
+      },
+      "additionalProperties": false
+    },
+    "RecordPaymentRequest": {
+      "type": "object",
+      "required": [
+        "amount_minor"
+      ],
+      "properties": {
+        "amount_minor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1125899906842624
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "method": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "reference": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "received_on": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "additionalProperties": false
+    },
+    "Payment": {
+      "type": "object",
+      "required": [
+        "id",
+        "invoice_id",
+        "amount_minor",
+        "currency",
+        "received_on",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "invoice_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "amount_minor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "method": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "received_on": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "source": {
+          "enum": [
+            "manual",
+            "import",
+            "provider"
+          ]
+        },
+        "external_id": {
+          "type": "string"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "AgingReport": {
+      "type": "object",
+      "required": [
+        "as_of",
+        "currencies"
+      ],
+      "properties": {
+        "as_of": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "currencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "currency",
+              "totals",
+              "parties"
+            ],
+            "properties": {
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "totals": {
+                "$ref": "#/$defs/AgingBuckets"
+              },
+              "parties": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "party_id"
+                  ],
+                  "properties": {
+                    "party_id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "AgingBuckets": {
+      "type": "object",
+      "required": [
+        "current",
+        "days_1_30",
+        "days_31_60",
+        "days_61_90",
+        "over_90",
+        "total"
+      ],
+      "properties": {
+        "current": {
+          "type": "integer"
+        },
+        "days_1_30": {
+          "type": "integer"
+        },
+        "days_31_60": {
+          "type": "integer"
+        },
+        "days_61_90": {
+          "type": "integer"
+        },
+        "over_90": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

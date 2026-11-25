@@ -1,0 +1,38 @@
+{
+  "id": 1,
+  "kind": "invoice",
+  "status": "approved",
+  "series": "INV",
+  "number": "inv 1",
+  "party_id": 3,
+  "project": "ACME",
+  "currency": "EUR",
+  "base_currency": "USD",
+  "fx_rate": "1.085",
+  "issue_date": "2026-11-25",
+  "due_date": "2026-12-25",
+  "lines": [
+    {
+      "position": 1,
+      "description": "Consulting",
+      "quantity_milli": 1500,
+      "unit_price_minor": 10001,
+      "gross_minor": 15002,
+      "discount_minor": 0,
+      "tax_minor": 3000,
+      "total_minor": 18002
+    }
+  ],
+  "subtotal_minor": 15002,
+  "discount_minor": 0,
+  "tax_minor": 3000,
+  "total_minor": 18002,
+  "base_total_minor": 19532,
+  "paid_minor": 0,
+  "credited_minor": 0,
+  "balance_minor": 18002,
+  "original_id": null,
+  "notes": "",
+  "payment_instructions": "Pay to IBAN XX00 (fake).",
+  "version": 2
+}

@@ -47,3 +47,18 @@ var JobsV1 []byte
 //
 //go:embed ats.v1.json
 var AtsV1 []byte
+
+// InvoicesV1 is the contract of the `invoices` capability (in-house finance module).
+//
+//go:embed invoices.v1.json
+var InvoicesV1 []byte
+
+// ContractsV1 is the contract of the `contracts` capability (in-house finance module).
+//
+//go:embed contracts.v1.json
+var ContractsV1 []byte
+
+// TimesheetsV1 is the contract of the `timesheets` capability (in-house finance module).
+//
+//go:embed timesheets.v1.json
+var TimesheetsV1 []byte

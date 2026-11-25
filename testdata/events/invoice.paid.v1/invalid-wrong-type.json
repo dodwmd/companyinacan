@@ -1,0 +1,15 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "other.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "invoice_id": 1,
+    "number": "INV-00001",
+    "party_id": 3,
+    "currency": "EUR",
+    "total_minor": 18002,
+    "paid_minor": 18002,
+    "paid_at": "2026-11-26T10:00:00Z"
+  }
+}
