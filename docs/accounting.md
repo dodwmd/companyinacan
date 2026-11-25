@@ -88,7 +88,7 @@ imported into; the error says nothing about either number.
 - **MT940** is not supported.
 
 **Deduplication.** A transaction is unique per bank account by the bank's own id (`FITID`, `AcctSvcrRef`, the CSV
-`id_col`) or, when the file has none, by a hash of its content plus its occurrence number in the file. The same
+`id_col`; CAMT `NtryRef` is not used because banks restart it in every message) or, when the file has none, by a hash of its content plus its occurrence number in the file. The same
 file twice is recognised by its SHA-256 and changes nothing; an overlapping file adds only the new transactions.
 
 **Matching only suggests.** For an incoming transaction the engine proposes open invoices in the same currency

@@ -527,7 +527,7 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 	var text strings.Builder
 	var cur *ParsedTxn
 	var credit *bool
-	var amtCcy, acctSvcrRef, ntryRef string
+	var amtCcy, acctSvcrRef string
 	inPath := func(suffix ...string) bool {
 		if len(path) < len(suffix) {
 			return false
@@ -559,7 +559,7 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 				if len(ps.Txns) >= maxStatementRows {
 					return nil, parseErr("the statement has more than %d transactions", maxStatementRows)
 				}
-				cur, credit, amtCcy, acctSvcrRef, ntryRef = &ParsedTxn{}, nil, "", "", ""
+				cur, credit, amtCcy, acctSvcrRef = &ParsedTxn{}, nil, "", ""
 			}
 			if t.Name.Local == "Amt" && inEntry() && len(path) > 0 {
 				for _, a := range t.Attr {
@@ -603,8 +603,6 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 				cur.Date = v[:10]
 			case inPath("Ntry", "AcctSvcrRef"):
 				acctSvcrRef = v
-			case inPath("Ntry", "NtryRef"):
-				ntryRef = v
 			case inPath("Ntry", "AddtlNtryInf"):
 				cur.Description = v
 			case inPath("TxDtls", "Refs", "EndToEndId"):
@@ -627,10 +625,10 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 				if !*credit {
 					cur.AmountMinor = -cur.AmountMinor
 				}
+				// Only the account servicer's reference identifies an entry across files. NtryRef is unique at
+				// best inside one message (banks number entries 1, 2, 3 in every statement), so without
+				// AcctSvcrRef the key is a hash of the content, booking date included (deriveKeys).
 				cur.Key = acctSvcrRef
-				if cur.Key == "" {
-					cur.Key = ntryRef
-				}
 				ps.Txns = append(ps.Txns, *cur)
 				cur = nil
 			}

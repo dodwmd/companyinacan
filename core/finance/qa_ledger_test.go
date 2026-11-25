@@ -65,3 +65,19 @@ func TestQADraftPostedAfterAnExportIsStillExported(t *testing.T) {
 		t.Errorf("batch content %s", body)
 	}
 }
+
+// QA 3: NtryRef restarts in every statement, so it is not a deduplication key.
+func TestQACamtNtryRefIsNotADedupKey(t *testing.T) {
+	doc := func(date, amt string) string {
+		return `<Document><BkToCstmrStmt><Stmt><Ntry><NtryRef>1</NtryRef><Amt Ccy="USD">` + amt + `</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>` + date + `</Dt></BookgDt></Ntry></Stmt></BkToCstmrStmt></Document>`
+	}
+	a, err := ParseCAMT053(strings.NewReader(doc("2026-06-01", "10.00")), "USD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := ParseCAMT053(strings.NewReader(doc("2026-07-01", "20.00")), "USD")
+	c, _ := ParseCAMT053(strings.NewReader(doc("2026-07-01", "10.00")), "USD")
+	if a.Txns[0].Key == "1" || a.Txns[0].Key == b.Txns[0].Key || a.Txns[0].Key == c.Txns[0].Key {
+		t.Errorf("keys %q %q %q", a.Txns[0].Key, b.Txns[0].Key, c.Txns[0].Key)
+	}
+}
