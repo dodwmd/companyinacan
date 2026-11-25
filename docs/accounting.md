@@ -113,7 +113,8 @@ over 64 bytes.
 - **OFX / QFX 1.x** (SGML subset): bank statements, tags with or without closing tags. Any `<!` (document type or
   entity declaration) rejects the file; only the five predefined entities are read and are never expanded again.
 - **CAMT.053** (`encoding/xml`, strict, UTF-8 only): a document type declaration is refused before parsing, so there
-  is no entity to expand (no XXE, no billion laughs).
+  is no entity to expand (no XXE, no billion laughs). Only camt.053 is read: camt.052 reports and camt.054
+  notifications, and entries outside a `Stmt`, are refused.
 - **MT940** is not supported.
 
 **Deduplication.** A transaction is unique per bank account by the bank's own id (`FITID`, `AcctSvcrRef`, the CSV

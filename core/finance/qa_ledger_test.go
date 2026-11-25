@@ -300,8 +300,8 @@ func TestQASkippedRowsAreListedAndForceable(t *testing.T) {
 
 // QA 10: remittance lines are capped while they accumulate.
 func TestQACamtManyRemittanceLinesAreLinearAndCapped(t *testing.T) {
-	doc := "<Document><Stmt><Ntry><Amt Ccy=\"USD\">1.00</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>2026-06-01</Dt></BookgDt><NtryDtls><TxDtls><RmtInf>" +
-		strings.Repeat("<Ustrd>\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9</Ustrd>", 60000) + "</RmtInf></TxDtls></NtryDtls></Ntry></Stmt></Document>"
+	doc := "<Document><BkToCstmrStmt><Stmt><Ntry><Amt Ccy=\"USD\">1.00</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>2026-06-01</Dt></BookgDt><NtryDtls><TxDtls><RmtInf>" +
+		strings.Repeat("<Ustrd>\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9</Ustrd>", 60000) + "</RmtInf></TxDtls></NtryDtls></Ntry></Stmt></BkToCstmrStmt></Document>"
 	start := time.Now()
 	ps, err := ParseCAMT053(strings.NewReader(doc), "USD")
 	if err != nil {
@@ -618,5 +618,26 @@ func TestQA2ReversalMemoIsCutByCharacters(t *testing.T) {
 	}
 	if got := truncateRunes(strings.Repeat("\u5e33", 600), 500); utf8.RuneCountInString(got) != 500 || !utf8.ValidString(got) {
 		t.Errorf("%d characters", utf8.RuneCountInString(got))
+	}
+}
+
+// QA round 2, 5: other camt message types, and entries outside a statement, are refused.
+func TestQA2OnlyCamt053StatementsAreRead(t *testing.T) {
+	entry := `<Ntry><Amt Ccy="USD">1.00</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>2026-06-01</Dt></BookgDt></Ntry>`
+	for name, doc := range map[string]string{
+		"camt.052":           `<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.02"><BkToCstmrAcctRpt><Rpt><Acct><Id><IBAN>GB29NWBK60161331926819</IBAN></Id></Acct>` + entry + `</Rpt></BkToCstmrAcctRpt></Document>`,
+		"052 no namespace":   `<Document><BkToCstmrAcctRpt><Rpt>` + entry + `</Rpt></BkToCstmrAcctRpt></Document>`,
+		"052 namespace only": `<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.02"><BkToCstmrStmt><Stmt>` + entry + `</Stmt></BkToCstmrStmt></Document>`,
+		"camt.054":           `<Document><BkToCstmrDbtCdtNtfctn><Ntfctn>` + entry + `</Ntfctn></BkToCstmrDbtCdtNtfctn></Document>`,
+		"entry outside Stmt": `<Document><BkToCstmrStmt>` + entry + `</BkToCstmrStmt></Document>`,
+		"entry in a report":  `<Document><BkToCstmrStmt><Rpt>` + entry + `</Rpt></BkToCstmrStmt></Document>`,
+		"another root":       `<Stmt>` + entry + `</Stmt>`,
+	} {
+		if _, err := ParseCAMT053(strings.NewReader(doc), "USD"); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := ParseCAMT053(strings.NewReader(`<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>`+entry+`</Stmt></BkToCstmrStmt></Document>`), "USD"); err != nil {
+		t.Errorf("camt.053: %v", err)
 	}
 }

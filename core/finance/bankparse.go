@@ -694,6 +694,15 @@ func ParseCAMT053(r io.Reader, currency string) (*ParsedStatement, error) {
 			}
 			path = append(path, t.Name.Local)
 			text.Reset()
+			// Only a camt.053 statement is read. An account report (052) or notification (054) puts its entries
+			// elsewhere, where neither the account they belong to nor their completeness would be checked.
+			switch {
+			case len(path) == 1 && (t.Name.Local != "Document" || (t.Name.Space != "" && !strings.Contains(t.Name.Space, "camt.053"))),
+				len(path) == 2 && t.Name.Local != "BkToCstmrStmt":
+				return nil, parseErr("not a camt.053 bank-to-customer statement (camt.052 and camt.054 are not accepted)")
+			case t.Name.Local == "Ntry" && !(len(path) == 4 && path[2] == "Stmt"):
+				return nil, parseErr("an entry is outside a statement")
+			}
 			if t.Name.Local == "Stmt" {
 				stAccount, stCur = "", ""
 			}

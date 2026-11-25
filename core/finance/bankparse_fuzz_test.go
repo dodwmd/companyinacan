@@ -54,7 +54,7 @@ func FuzzParseOFX(f *testing.F) {
 func FuzzParseCAMT053(f *testing.F) {
 	f.Add(camtSample)
 	f.Add(`<?xml version="1.0"?><!DOCTYPE a [<!ENTITY b "c">]><a>&b;</a>`)
-	f.Add(`<Document><Stmt><Ntry><Amt Ccy="USD">1.00</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>2026-01-01</Dt></BookgDt></Ntry></Stmt></Document>`)
+	f.Add(`<Document><BkToCstmrStmt><Stmt><Ntry><Amt Ccy="USD">1.00</Amt><CdtDtInd>CRDT</CdtDtInd><BookgDt><Dt>2026-01-01</Dt></BookgDt></Ntry></Stmt></BkToCstmrStmt></Document>`)
 	f.Fuzz(func(t *testing.T, in string) {
 		ps, err := ParseCAMT053(strings.NewReader(in), "USD")
 		checkParsed(t, ps, err)
