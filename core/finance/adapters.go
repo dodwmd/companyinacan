@@ -95,15 +95,15 @@ func (csvExporter) Export(_ context.Context, entries []JournalEntry, w io.Writer
 
 // ExportBatch describes an export. Content is never in the JSON: download it by id.
 type ExportBatch struct {
-	ID         int64     `json:"id"`
-	Adapter    string    `json:"adapter"`
+	ID      int64  `json:"id"`
+	Adapter string `json:"adapter"`
 	// FirstNumber and LastNumber are posting numbers (the n of JE-0000n).
-	FirstNumber int64    `json:"first_number"`
-	LastNumber  int64    `json:"last_number"`
-	EntryCount int       `json:"entry_count"`
-	SHA256     string    `json:"sha256"`
-	CreatedBy  string    `json:"created_by"`
-	CreatedAt  time.Time `json:"created_at"`
+	FirstNumber int64     `json:"first_number"`
+	LastNumber  int64     `json:"last_number"`
+	EntryCount  int       `json:"entry_count"`
+	SHA256      string    `json:"sha256"`
+	CreatedBy   string    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // ExportJournal exports, in posting order, the posted entries after the adapter's cursor, at most exportBatchSize, as one

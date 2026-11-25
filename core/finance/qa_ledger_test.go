@@ -130,3 +130,35 @@ func TestQAMultiAccountAndLongIDStatementsAreRefused(t *testing.T) {
 		}
 	}
 }
+
+// QA 5: a bank-matched payment on an invoice that also had a credit note made every later purge fail on the
+// foreign key.
+func TestQAPurgeWithCreditNoteAndMatchedPayment(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	maker, boss := e.token("maker", rw, nil, nil, false), e.token("boss", app, nil, nil, false)
+	acc := e.token("dana", acct, nil, nil, false)
+	party := e.party(maker, "Purge Co", "customer")
+	inv := e.approveInvoice(maker, boss, party, obj{"issue_date": "2026-06-01"}, line("work", 1000, 15000), line("extra", 1000, 500))
+	var cn Invoice
+	e.must(201, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/credit-notes", obj{"reason": "returned", "lines": []obj{line("extra", 1000, 500)}}, &cn)
+	e.must(200, boss, "POST", "/v1/invoices/"+id(cn.ID)+"/approve", nil, nil)
+	b := e.bankAccount(admin)
+	// Booked late, so the bank row itself survives the purge and must be unlinked.
+	e.must(201, acc, "POST", "/v1/bank/accounts/"+id(b.ID)+"/statements"+csvQuery, "date,amount,reference,name,id\n2033-06-10,150.00,r,n,A1\n", nil)
+	var txns struct{ Items []BankTxn }
+	e.must(200, acc, "GET", "/v1/bank/transactions?account_id="+id(b.ID), nil, &txns)
+	e.must(200, acc, "POST", "/v1/bank/transactions/"+id(txns.Items[0].ID)+"/confirm", obj{"invoice_id": inv.ID}, nil)
+	e.advance(8 * 365 * 24 * time.Hour)
+	for i := 0; i < 2; i++ {
+		if _, err := e.app.Purge(context.Background()); err != nil {
+			t.Fatalf("purge %d: %v", i+1, err)
+		}
+	}
+	var invoices, linked int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM invoices`).Scan(&invoices)
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM bank_transactions WHERE matched_payment_id IS NOT NULL`).Scan(&linked)
+	if invoices != 0 || linked != 0 {
+		t.Errorf("%d invoices left, %d bank rows still linked", invoices, linked)
+	}
+}
