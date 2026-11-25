@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -41,6 +40,7 @@ type Dumper struct {
 
 	mu     sync.Mutex
 	active bool
+	cur    *run
 }
 
 // Result describes a finished run.
@@ -81,18 +81,6 @@ func (d *Dumper) end() {
 	d.mu.Unlock()
 }
 
-// Accept stores an uploaded module dump. It is refused outside a run: an upload under a valid
-// marker would change data the backup believes is consistent.
-func (d *Dumper) Accept(module, name string, r io.Reader) error {
-	d.mu.Lock()
-	active := d.active
-	d.mu.Unlock()
-	if !active {
-		return ErrNoRun
-	}
-	return d.Store.Put(module, name, r)
-}
-
 // Active reports whether a run is in progress.
 func (d *Dumper) Active() bool {
 	d.mu.Lock()
@@ -124,6 +112,20 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 	if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Result{}, fmt.Errorf("remove the completion marker: %w", err)
 	}
+	var mods []string
+	if d.Modules != nil {
+		var err error
+		if mods, err = d.Modules(ctx); err != nil {
+			return Result{}, fmt.Errorf("list modules: %w", err)
+		}
+	}
+	if err := d.Store.clean(mods); err != nil {
+		return Result{}, fmt.Errorf("remove stale dumps: %w", err)
+	}
+	if err := d.openRun(runID); err != nil {
+		return Result{}, err
+	}
+	defer d.closeRun()
 	if err := d.dumpState(ctx); err != nil {
 		return Result{}, fmt.Errorf("can-core state: %w", err)
 	}
@@ -131,26 +133,27 @@ func (d *Dumper) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("company.yaml: %w", err)
 	}
 	var failed []error
-	if d.Modules != nil {
-		mods, err := d.Modules(ctx)
+	if len(mods) > 0 && d.Hooks == nil {
+		return Result{}, fmt.Errorf("modules %v need their backup hooks run, but this can-core cannot run Jobs", mods)
+	}
+	for _, m := range mods {
+		d.startTurn(m)
+		hctx, cancel := context.WithTimeout(ctx, d.hookTimeout())
+		err := d.Hooks.RunBackup(hctx, m)
+		cancel()
+		if n := d.endTurn(); err == nil && n == 0 {
+			err = errors.New("the backup hook succeeded but uploaded nothing")
+		}
 		if err != nil {
-			return Result{}, fmt.Errorf("list modules: %w", err)
-		}
-		if len(mods) > 0 && d.Hooks == nil {
-			return Result{}, fmt.Errorf("modules %v need their backup hooks run, but this can-core cannot run Jobs", mods)
-		}
-		for _, m := range mods {
-			hctx, cancel := context.WithTimeout(ctx, d.hookTimeout())
-			err := d.Hooks.RunBackup(hctx, m)
-			cancel()
-			if err != nil {
-				d.log().Error("module backup hook failed", "module", m, "error", err)
-				failed = append(failed, fmt.Errorf("module %s: %w", m, err))
-			}
+			d.log().Error("module backup hook failed", "module", m, "error", err)
+			failed = append(failed, fmt.Errorf("module %s: %w", m, err))
 		}
 	}
 	if err := errors.Join(failed...); err != nil {
 		return Result{}, fmt.Errorf("dump run %s incomplete, no completion marker written: %w", runID, err)
+	}
+	if err := d.publish(); err != nil {
+		return Result{}, fmt.Errorf("publish the dumps: %w", err)
 	}
 	done := d.now()
 	if err := backup.WriteMarker(marker, backup.Marker{RunID: runID, FinishedAt: done}); err != nil {
@@ -291,6 +294,16 @@ func (d *Dumper) Loop(ctx context.Context, hour, min int, startDelay time.Durati
 // Open opens a stored module dump (the restore hook's GET).
 func (d *Dumper) Open(module, name string) (*os.File, error) { return d.Store.Open(module, name) }
 
-// BeginForTest marks a run as in progress without running one; other packages' tests use it to
-// exercise Accept. Production code never calls it.
-func (d *Dumper) BeginForTest() { d.begin() }
+// BeginForTest opens a run with module's hook window open, without running anything; other
+// packages' tests use it to exercise Accept. Production code never calls it.
+func (d *Dumper) BeginForTest(module string) error {
+	d.begin()
+	if err := plainDir(d.Store.Dir); err != nil {
+		return err
+	}
+	if err := d.openRun("test"); err != nil {
+		return err
+	}
+	d.startTurn(module)
+	return nil
+}

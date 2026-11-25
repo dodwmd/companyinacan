@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -66,12 +67,32 @@ func (h *dumpHarness) do(t *testing.T, method, path, token, body string) (int, s
 	return resp.StatusCode, string(b)
 }
 
+// publish puts a file where a finished run would have.
+func publish(t *testing.T, h *dumpHarness, module, name, body string) {
+	t.Helper()
+	dir := filepath.Join(h.d.Store.Dir, "modules", module)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustBegin(t *testing.T, h *dumpHarness, module string) {
+	t.Helper()
+	if err := h.d.BeginForTest(module); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDumpAPIPutAndGetOwnDump(t *testing.T) {
 	h := newDumpHarness(t, true)
-	h.d.BeginForTest()
+	mustBegin(t, h, "wiki")
 	if st, b := h.do(t, "PUT", "/v1/dumps/wiki/storage.tar.gz", "tok-wiki", "archive"); st != http.StatusNoContent {
 		t.Fatalf("PUT: %d %s", st, b)
 	}
+	publish(t, h, "wiki", "storage.tar.gz", "archive")
 	if st, b := h.do(t, "GET", "/v1/dumps/wiki/storage.tar.gz", "tok-wiki", ""); st != http.StatusOK || b != "archive" {
 		t.Fatalf("GET: %d %q", st, b)
 	}
@@ -80,9 +101,17 @@ func TestDumpAPIPutAndGetOwnDump(t *testing.T) {
 	}
 }
 
+func TestDumpAPIOnlyTheModuleWhoseHookRunsMayUpload(t *testing.T) {
+	h := newDumpHarness(t, true)
+	mustBegin(t, h, "wiki")
+	if st, _ := h.do(t, "PUT", "/v1/dumps/support/x", "tok-support", "a"); st != http.StatusConflict {
+		t.Fatalf("got %d, want 409", st)
+	}
+}
+
 func TestDumpAPIModuleCannotTouchAnotherModulesDumps(t *testing.T) {
 	h := newDumpHarness(t, true)
-	h.d.BeginForTest()
+	mustBegin(t, h, "wiki")
 	if st, _ := h.do(t, "PUT", "/v1/dumps/wiki/x", "tok-wiki", "mine"); st != http.StatusNoContent {
 		t.Fatal(st)
 	}
@@ -109,7 +138,7 @@ func TestDumpAPIUploadOutsideARunIsConflict(t *testing.T) {
 
 func TestDumpAPIRejectsBadNames(t *testing.T) {
 	h := newDumpHarness(t, true)
-	h.d.BeginForTest()
+	mustBegin(t, h, "wiki")
 	if st, _ := h.do(t, "PUT", "/v1/dumps/wiki/COMPLETE", "tok-wiki", "a"); st != http.StatusBadRequest {
 		t.Fatalf("overwriting the marker name must be refused, got %d", st)
 	}

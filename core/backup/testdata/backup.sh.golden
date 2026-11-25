@@ -136,7 +136,8 @@ for f in server/token server/cred/encryption-config.json; do
 done
 
 # Manifest of every dump file, so 'can backup verify' and restore can compare hashes.
-(cd "$DUMPS" && find . -type f ! -name 'COMPLETE' -print0 | sort -z | xargs -0 -r sha256sum) >"$HOSTSTATE/MANIFEST.sha256.tmp"
+# Dot entries are can-core's staging directories and temporaries: not part of the dumps.
+(cd "$DUMPS" && find . -mindepth 1 -name '.*' -prune -o -type f ! -name 'COMPLETE' -print0 | sort -z | xargs -0 -r sha256sum) >"$HOSTSTATE/MANIFEST.sha256.tmp"
 mv "$HOSTSTATE/MANIFEST.sha256.tmp" "$HOSTSTATE/MANIFEST.sha256"
 
 # Remove only stale restic locks (restic refuses to remove a live one).
@@ -146,6 +147,7 @@ ATTEMPT="$(date +%s)-$$"
 log "backup starting (run $RUN_ID, attempt $ATTEMPT)"
 brc=0
 restic backup --tag can --tag "run-$RUN_ID" --tag "attempt-$ATTEMPT" \
+  --exclude "$DUMPS/.*" --exclude "$DUMPS/**/.*" \
   --exclude '/var/lib/rancher/k3s/storage/pvc-*_mod-forms_*/**/*.db' \
   '/var/lib/can/dumps' '/var/lib/rancher/k3s/storage' '/var/lib/can/host-state' || brc=$?
 case "$brc" in

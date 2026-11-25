@@ -123,6 +123,31 @@ func TestScriptRunSuccess(t *testing.T) {
 	}
 }
 
+// Staging directories and temporaries (dot entries) are neither listed in the manifest nor backed up.
+func TestScriptRunLeavesTemporariesOut(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	for _, p := range []string{".run-x/tmp/.upload-1", "can-core/.state.db.tmp", "modules/wiki/.upload-2"} {
+		full := e.s.DumpsDir + "/" + p
+		_ = os.MkdirAll(full[:strings.LastIndex(full, "/")], 0o700)
+		if err := os.WriteFile(full, []byte("half"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	m, _ := os.ReadFile(e.s.HostStateDir + "/" + ManifestName)
+	if !strings.Contains(string(m), "./a.dump") || strings.Contains(string(m), "/.") {
+		t.Errorf("manifest: %q", m)
+	}
+	for _, want := range []string{"--exclude " + e.s.DumpsDir + "/.*", "--exclude " + e.s.DumpsDir + "/**/.*"} {
+		if !strings.Contains(e.calledRestic(), want) {
+			t.Errorf("restic not told %q:\n%s", want, e.calledRestic())
+		}
+	}
+}
+
 func TestScriptRunResticFailure(t *testing.T) {
 	e := newScriptEnv(t, "1")
 	_ = WriteMarker(e.s.DumpsDir+"/"+MarkerName, Marker{RunID: "r", FinishedAt: time.Now()})

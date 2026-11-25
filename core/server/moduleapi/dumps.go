@@ -43,7 +43,9 @@ func (s *Server) putDump(w http.ResponseWriter, r *http.Request, m store.Module)
 	case errors.Is(err, dumps.ErrBadName):
 		httpx.Problem(w, http.StatusBadRequest, "not an acceptable dump name")
 	case errors.Is(err, dumps.ErrNoRun):
-		httpx.Problem(w, http.StatusConflict, "no dump run is in progress; dumps are only accepted during one")
+		httpx.Problem(w, http.StatusConflict, "dumps are only accepted while this module's backup hook is running")
+	case errors.Is(err, dumps.ErrTooMany):
+		httpx.Problem(w, http.StatusRequestEntityTooLarge, "too many files for one run")
 	case errors.Is(err, dumps.ErrTooLarge):
 		httpx.Problem(w, http.StatusRequestEntityTooLarge, "the dump exceeds the size limit")
 	default:
