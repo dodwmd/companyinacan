@@ -13,8 +13,8 @@ interfaces and formats in [contracts/](contracts/).
 
 **Language/Version**: Go 1.27 (existing module)
 
-**Primary Dependencies**: adds `golang.org/x/crypto` (argon2, chacha20poly1305, hkdf; BSD-3-Clause). The
-bump pulls `golang.org/x/text` to v0.44.0. Nothing else; S3 is a 100-line SigV4 client over `net/http`.
+**Primary Dependencies**: uses `golang.org/x/crypto` (argon2, chacha20poly1305, hkdf; BSD-3-Clause), already a direct
+dependency on main, so no go.mod change. Nothing else; S3 is a 100-line SigV4 client over `net/http`.
 
 **Storage**: restore progress in `.can/restore.json` (0600); host files under `/etc/can/backup.d` (0600).
 
@@ -36,7 +36,7 @@ via `httptest`; generated script by golden files, `bash -n`, shellcheck, `system
 | VI. Open-source hygiene | New dep is BSD-3 | Signed commits; no real credentials in tests. |
 | VII. Simplicity, measured claims | No restore-time claim is made | The 15-minute target is a human-gated measurement (docs). |
 
-**Result**: pass. Complexity: one extra dependency (justified: stdlib has no argon2/XChaCha20).
+**Result**: pass. Complexity: no new dependency (stdlib has no argon2/XChaCha20; x/crypto is already required).
 
 ## Project Structure
 
@@ -54,5 +54,4 @@ core/backup/
 core/cli/backup.go   can backup ..., can restore
 ```
 
-Shared files touched: `core/config/module.go` (Hooks), `core/cli/root.go` (two lines), `go.mod`/`go.sum`,
-`docs/epics/README.md` (status).
+Shared files touched: `core/config/module.go` (Hooks), `core/cli/root.go` (two lines), `docs/epics/README.md` (status).
