@@ -1,0 +1,11 @@
+{
+  "seq": 1,
+  "id": "led_0123456789abcdef01234567",
+  "entity_id": "ent_0123456789abcdef01234567",
+  "class_id": "cls_0123456789abcdef01234567",
+  "stakeholder_id": "stk_0123456789abcdef01234567",
+  "kind": "issuance",
+  "effective_date": "2026-01-01",
+  "quantity": "1000",
+  "group_id": "led_0123456789abcdef01234567"
+}

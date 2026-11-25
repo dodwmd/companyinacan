@@ -1,0 +1,65 @@
+# Equity: in-house Go service (cmd/can-equity, library core/equity). Legal entities, share classes, option plans and
+# pools, stakeholders, option grants with vesting, exercises, an append-only share ledger, cap-table views as of any
+# date, valuation records and illustrative round modelling. "Stock" here means employee stock options and equity, not
+# inventory. Equity is a sensitive data class (constitution V, SPEC.md sections 3.7 and 5): in-house only, per-field
+# access control, audited reads, sealed sensitive fields, retention, legal hold and erasure.
+# THIS IS A TOOL, NOT LEGAL, TAX OR SECURITIES ADVICE. 409A, ISO/NSO limits, tax treatment, 83(b) and ESOP scheme
+# rules are not implemented; they are data fields and documented limits (docs/equity.md).
+schema: 1
+id: equity
+name: Equity and cap table
+description: Cap table and employee stock options. Entities, share classes, plans and pools, stakeholders, option grants with a vesting calculator, board approval with separation of duties, exercises, an append-only share ledger, cap-table views as of any date (basic and fully diluted), valuation records and illustrative round modelling. Per-field access, audited reads, sealed sensitive fields, retention, legal hold and erasure. Record-keeping and reporting only.
+category: finance
+version: 0.1.0
+# experimental: unit-, contract- and race-tested offline, but not yet run on a cluster; there are no Helm templates yet
+# (values only), no admin UI or portal, and can-core does not yet inject the keyring Secret, route its introspection
+# endpoint or drive the approval engine for this module. See modules/equity/README.md.
+status: experimental
+provider:
+  type: inhouse
+  name: can-equity
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Idle RAM target 16 MB like the sibling in-house services; the measured figure is recorded in the README.
+  ram_mb: 16
+  ram_limit_mb: 64
+  disk_mb: 200
+provides:
+  - { capability: equity, schema: equity.v1, service: equity-api, port: 8081 }
+publishes:
+  # ids and dates only: never names, quantities or prices
+  - { event: equity.grant.approved.v1, schema: ./events/equity.grant.approved.v1.json }
+  - { event: equity.grant.vested.v1, schema: ./events/equity.grant.vested.v1.json }
+  - { event: equity.exercise.recorded.v1, schema: ./events/equity.exercise.recorded.v1.json }
+# Coarse permissions gate the capability verbs; the finer rules (own record only, managers never, board approval,
+# separation of duties, per field) are enforced inside the service by one policy layer (core/equity/policy.go).
+permissions: [equity.read, equity.write, equity.approve, equity.sensitive-read, equity.admin, equity.self-read]
+roles:
+  employee: [equity.self-read]
+  manager: [equity.self-read]   # a manager never sees the equity of their reports: same as employee
+  hr: [equity.read, equity.write, equity.sensitive-read, equity.self-read]
+  finance: [equity.read, equity.write, equity.approve, equity.sensitive-read]
+  board: [equity.read, equity.approve, equity.sensitive-read, equity.admin]
+  admin: [equity.read, equity.write, equity.approve, equity.sensitive-read, equity.admin]
+approvals:
+  - { type: grant, default_chain: [board] }
+  - { type: exercise, default_chain: [finance] }
+data_classes:
+  # Issued shares, transfers, exercises, grant terms and convertibles: the legal record. Legal retention overrides
+  # erasure; rows refer to stakeholders by opaque id only.
+  - { class: equity-ledger, retention: legal, sensitivity: sensitive }
+  # Holder identity: name, email, tax id, directory person link. Sealed per field; erasure pseudonymises it.
+  - { class: equity-stakeholder, retention: 7y, sensitivity: sensitive }
+  # Free-form grant notes, exercise payment references, draft grants.
+  - { class: equity-grants, retention: 7y, sensitivity: sensitive }
+  # 409A and other valuation records (price and notes sealed).
+  - { class: equity-valuation, retention: 7y, sensitivity: sensitive }
+  # Append-only, hash-chained audit trail: ids and field names only.
+  - { class: equity-audit, retention: legal, sensitivity: standard }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

@@ -1,0 +1,13 @@
+{
+  "id": "evt_xyz",
+  "type": "equity.grant.approved.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "equity",
+  "data": {
+    "grant_id": "grt_0123456789abcdef01234567",
+    "stakeholder_id": "stk_0123456789abcdef01234567",
+    "entity_id": "ent_0123456789abcdef01234567",
+    "plan_id": "pln_0123456789abcdef01234567",
+    "approved_on": "2027-03-01"
+  }
+}

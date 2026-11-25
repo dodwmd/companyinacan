@@ -1,0 +1,5128 @@
+# OpenAPI 3.1 contract of can-equity. A contract test (test/contract/equity_test.go) keeps it in step with the routes the service registers.
+"openapi": "3.1.0"
+"info":
+  "title": "can-equity API"
+  "version": "0.1.0"
+  "license":
+    "name": "Apache-2.0"
+    "identifier": "Apache-2.0"
+  "description": "REST JSON API of the in-house equity service: the `equity` capability (legal entities, share classes, plans and pools, stakeholders, option grants with vesting, exercises, an append-only share ledger, cap-table views as of any date, valuation records, illustrative round modelling, audited CSV exports). Equity is a sensitive data class: deny by default, every route needs a bearer token, and one policy layer decides per caller, per record and per field. Callers without visibility get 404 where a 403 would confirm that a record exists. This is a tool, not legal, tax or securities advice. 409A and other valuation rules, ISO/NSO limits, tax treatment, 83(b) elections and ESOP scheme rules are NOT implemented; they exist only as data fields and documented limits. The operator is responsible for compliance with securities, tax and data-protection law."
+"servers":
+  -
+    "url": "http://equity-api.mod-equity.svc:8081"
+    "description": "ClusterIP only; there is no public listener"
+"security":
+  -
+    "bearer": []
+"tags":
+  -
+    "name": "structure"
+  -
+    "name": "stakeholders"
+  -
+    "name": "grants"
+  -
+    "name": "exercises"
+  -
+    "name": "ledger"
+  -
+    "name": "captable"
+  -
+    "name": "self"
+  -
+    "name": "admin"
+  -
+    "name": "platform"
+"paths":
+  "/healthz":
+    "get":
+      "summary": "Liveness and database check"
+      "tags":
+        - "platform"
+      "security": []
+      "responses":
+        "200":
+          "description": "ok"
+        "503":
+          "description": "database unavailable"
+  "/v1/entities":
+    "post":
+      "operationId": "create_entity"
+      "summary": "board or admin"
+      "description": "board or admin. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/EntityInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Entity"
+        "200":
+          "description": "ok"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "get":
+      "operationId": "list_entities"
+      "summary": "hr, finance, board, admin"
+      "description": "hr, finance, board, admin. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/EntityList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}":
+    "get":
+      "operationId": "get_entity"
+      "summary": "get entity"
+      "description": "Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Entity"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/share-classes":
+    "post":
+      "operationId": "create_share_class"
+      "summary": "board or admin"
+      "description": "board or admin. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ShareClassInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ShareClass"
+        "200":
+          "description": "ok"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "get":
+      "operationId": "list_share_classes"
+      "summary": "With issued counts"
+      "description": "With issued counts. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ShareClassList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/share-classes/{id}":
+    "patch":
+      "operationId": "raise_authorised"
+      "summary": "board or admin"
+      "description": "board or admin. Authorised shares can only go up. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/RaiseAuthorisedRequest"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ShareClass"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/plans":
+    "post":
+      "operationId": "create_plan"
+      "summary": "board or admin"
+      "description": "board or admin. The plans of a class cannot reserve more than the class authorises. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/PlanInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Plan"
+        "200":
+          "description": "ok"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "get":
+      "operationId": "list_plans"
+      "summary": "list plans"
+      "description": "Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PlanList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/plans/{id}/pool":
+    "get":
+      "operationId": "get_pool"
+      "summary": "Query: as_of (YYYY-MM-DD, default today)"
+      "description": "Query: as_of (YYYY-MM-DD, default today). Holds no holder identity. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "structure"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "as_of"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/PoolStatus"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/stakeholders":
+    "post":
+      "operationId": "create_stakeholder"
+      "summary": "hr, finance, board or admin"
+      "description": "hr, finance, board or admin. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/StakeholderInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Stakeholder"
+        "200":
+          "description": "ok"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "get":
+      "operationId": "list_stakeholders"
+      "summary": "No identities"
+      "description": "No identities. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/StakeholderList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}":
+    "get":
+      "operationId": "get_stakeholder"
+      "summary": "The holder themself and hr, finance, board, admin; anyone else gets 404"
+      "description": "The holder themself and hr, finance, board, admin; anyone else gets 404. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Stakeholder"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}/identity":
+    "get":
+      "operationId": "get_identity"
+      "summary": "Sealed fields"
+      "description": "Sealed fields. Audited before it is returned. The holder themself and hr, finance, board, admin; anyone else gets 404. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Identity"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "put":
+      "operationId": "set_identity"
+      "summary": "hr, finance, board or admin; never the holder"
+      "description": "hr, finance, board or admin; never the holder. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Identity"
+      "responses":
+        "204":
+          "description": "no content"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}/legal-hold":
+    "put":
+      "operationId": "set_legal_hold"
+      "summary": "admin"
+      "description": "admin. A hold blocks erasure and retention purges. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/LegalHoldRequest"
+      "responses":
+        "204":
+          "description": "no content"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}/attest-external":
+    "post":
+      "operationId": "attest_external_holder"
+      "summary": "hr, finance, board or admin"
+      "description": "Records that a stakeholder with no directory person link is an external holder (not a director or approver). The attester must not be the person who created the stakeholder. A grant cannot leave draft for a holder with neither a person_id nor this attestation. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Stakeholder"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}/erasure":
+    "post":
+      "operationId": "erase_stakeholder"
+      "summary": "admin"
+      "description": "admin. Pseudonymises the identity and clears free text; issued share records stay under legal retention. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Erasure"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/plans/{id}/grants":
+    "post":
+      "operationId": "create_grant"
+      "summary": "hr or admin"
+      "description": "hr or admin. Creates a draft. Honours Idempotency-Key (a replay answers 200). Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "Idempotency-Key"
+          "in": "header"
+          "schema":
+            "type": "string"
+            "maxLength": 128
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/GrantInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "200":
+          "description": "replay of an earlier request with the same Idempotency-Key"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/grants":
+    "get":
+      "operationId": "list_grants"
+      "summary": "hr, finance, board, admin"
+      "description": "hr, finance, board, admin. Query: status, stakeholder_id, cursor, limit (max 100). Each returned grant is audited. Requires permission equity.sensitive-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "status"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "stakeholder_id"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "cursor"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "limit"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/GrantPage"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}":
+    "get":
+      "operationId": "get_grant"
+      "summary": "The holder (once approved) and hr, finance, board, admin"
+      "description": "The holder (once approved) and hr, finance, board, admin. Managers get 404 for their reports. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "patch":
+      "operationId": "update_grant"
+      "summary": "hr or admin; drafts only"
+      "description": "hr or admin; drafts only. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/GrantPatch"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "delete":
+      "operationId": "delete_grant"
+      "summary": "hr or admin; drafts only"
+      "description": "hr or admin; drafts only. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "204":
+          "description": "no content"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/submit":
+    "post":
+      "operationId": "submit_grant"
+      "summary": "hr or admin"
+      "description": "hr or admin. Terms freeze; the pool is checked. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/approve":
+    "post":
+      "operationId": "approve_grant"
+      "summary": "The board step"
+      "description": "The board step. Board role only; the creator, editors, submitter and the grantee are refused (403 separation_of_duties). Requires permission equity.approve (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/reject":
+    "post":
+      "operationId": "reject_grant"
+      "summary": "Board role"
+      "description": "Board role. Sends a pending grant back to draft. Requires permission equity.approve (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ReasonRequest"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/amend":
+    "post":
+      "operationId": "amend_grant"
+      "summary": "hr or admin"
+      "description": "hr or admin. Creates a new draft version; the old grant is cancelled when the new one is approved. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/activate":
+    "post":
+      "operationId": "activate_grant"
+      "summary": "hr or admin"
+      "description": "hr or admin. Exercises need an active grant. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ActivateRequest"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/cancel":
+    "post":
+      "operationId": "cancel_grant"
+      "summary": "hr or admin"
+      "description": "hr or admin. Issued shares stay issued. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ReasonRequest"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/terminate":
+    "post":
+      "operationId": "terminate_grant"
+      "summary": "hr or admin"
+      "description": "hr or admin. Vesting stops on the date; for_cause forfeits at once. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/TerminateRequest"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Grant"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/milestones":
+    "post":
+      "operationId": "record_milestone"
+      "summary": "hr or admin"
+      "description": "hr or admin. Append-only. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/MilestoneRequest"
+      "responses":
+        "204":
+          "description": "no content"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/acceleration":
+    "post":
+      "operationId": "record_acceleration"
+      "summary": "hr or admin"
+      "description": "hr or admin. Append-only record that a trigger happened. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/AccelerationRequest"
+      "responses":
+        "204":
+          "description": "no content"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/vesting":
+    "get":
+      "operationId": "get_vesting"
+      "summary": "Query: as_of"
+      "description": "Query: as_of. Audited. Illustrative: computed from the recorded data. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "grants"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "as_of"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/VestingView"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/grants/{id}/exercises":
+    "post":
+      "operationId": "request_exercise"
+      "summary": "The holder for their own grant; hr and finance on behalf"
+      "description": "The holder for their own grant; hr and finance on behalf. Honours Idempotency-Key. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "Idempotency-Key"
+          "in": "header"
+          "schema":
+            "type": "string"
+            "maxLength": 128
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ExerciseRequest"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Exercise"
+        "200":
+          "description": "replay of an earlier request with the same Idempotency-Key"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/exercises/{id}":
+    "get":
+      "operationId": "get_exercise"
+      "summary": "The holder and hr, finance, board, admin"
+      "description": "The holder and hr, finance, board, admin. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Exercise"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/exercises":
+    "get":
+      "operationId": "list_exercises"
+      "summary": "Query: status"
+      "description": "Query: status. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "status"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ExerciseList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/exercises/{id}/approve":
+    "post":
+      "operationId": "approve_exercise"
+      "summary": "finance, board or admin; never the requester or the holder"
+      "description": "finance, board or admin; never the requester or the holder. Requires permission equity.approve (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Exercise"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/exercises/{id}/reject":
+    "post":
+      "operationId": "reject_exercise"
+      "summary": "reject exercise"
+      "description": "Requires permission equity.approve (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Exercise"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/exercises/{id}/cancel":
+    "post":
+      "operationId": "cancel_exercise"
+      "summary": "The requester, hr, finance or admin, before payment"
+      "description": "The requester, hr, finance or admin, before payment. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Exercise"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/exercises/{id}/payment":
+    "post":
+      "operationId": "record_payment"
+      "summary": "finance or admin, not the requester"
+      "description": "finance or admin, not the requester. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/PaymentInput"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Exercise"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/exercises/{id}/issue":
+    "post":
+      "operationId": "issue_shares"
+      "summary": "finance, admin or hr; not the requester or the person who recorded the payment"
+      "description": "finance, admin or hr; not the requester or the person who recorded the payment. Writes the ledger. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "exercises"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Exercise"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/ledger/issuances":
+    "post":
+      "operationId": "issue_new_shares"
+      "summary": "finance or admin"
+      "description": "finance or admin. Honours Idempotency-Key. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "ledger"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "Idempotency-Key"
+          "in": "header"
+          "schema":
+            "type": "string"
+            "maxLength": 128
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/LedgerInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/LedgerEntry"
+        "200":
+          "description": "replay of an earlier request with the same Idempotency-Key"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/ledger/transfers":
+    "post":
+      "operationId": "transfer_shares"
+      "summary": "finance or admin"
+      "description": "finance or admin. Needs to_stakeholder_id. Returns the outgoing leg. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "ledger"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "Idempotency-Key"
+          "in": "header"
+          "schema":
+            "type": "string"
+            "maxLength": 128
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/LedgerInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/LedgerEntry"
+        "200":
+          "description": "replay of an earlier request with the same Idempotency-Key"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/ledger/cancellations":
+    "post":
+      "operationId": "cancel_shares"
+      "summary": "finance or admin"
+      "description": "finance or admin. Cancellation or repurchase. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "ledger"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "Idempotency-Key"
+          "in": "header"
+          "schema":
+            "type": "string"
+            "maxLength": 128
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/LedgerInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/LedgerEntry"
+        "200":
+          "description": "replay of an earlier request with the same Idempotency-Key"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/ledger":
+    "get":
+      "operationId": "list_ledger"
+      "summary": "Query: as_of, cursor, limit (max 500)"
+      "description": "Query: as_of, cursor, limit (max 500). Each entry audited. Requires permission equity.sensitive-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "ledger"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "as_of"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "cursor"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "limit"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/LedgerPage"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/captable":
+    "get":
+      "operationId": "get_captable"
+      "summary": "Query: as_of, view (basic|fully-diluted), names (true needs identity access)"
+      "description": "Query: as_of, view (basic|fully-diluted), names (true needs identity access). Audited per holder. Requires permission equity.sensitive-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "captable"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "as_of"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "view"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "names"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/CapTable"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/whatif":
+    "post":
+      "operationId": "model_round"
+      "summary": "finance, board or admin"
+      "description": "finance, board or admin. ILLUSTRATIVE; read-only, stores nothing. Requires permission equity.sensitive-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "captable"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/WhatIfRequest"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/RoundResult"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/convertibles":
+    "post":
+      "operationId": "create_convertible"
+      "summary": "finance, board or admin"
+      "description": "finance, board or admin. Recorded as data only; never converted by the service. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "captable"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ConvertibleInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Convertible"
+        "200":
+          "description": "ok"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "get":
+      "operationId": "list_convertibles"
+      "summary": "Terms are sealed; audited"
+      "description": "Terms are sealed; audited. Requires permission equity.sensitive-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "captable"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ConvertibleList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/valuations":
+    "post":
+      "operationId": "create_valuation"
+      "summary": "finance, board or admin"
+      "description": "finance, board or admin. 409A and other valuations as data. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "captable"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ValuationInput"
+      "responses":
+        "201":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Valuation"
+        "200":
+          "description": "ok"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "get":
+      "operationId": "list_valuations"
+      "summary": "Audited"
+      "description": "Audited. Requires permission equity.sensitive-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "captable"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ValuationList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/entities/{id}/exports/{name}":
+    "get":
+      "operationId": "export_csv"
+      "summary": "name is captable, grants or ledger; query as_of"
+      "description": "name is captable, grants or ledger; query as_of. CSV with formula-injection protection; audited per record before any byte is written. Requires permission equity.sensitive-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "captable"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+        -
+          "name": "name"
+          "in": "path"
+          "required": true
+          "schema":
+            "enum":
+              - "captable"
+              - "grants"
+              - "ledger"
+        -
+          "name": "as_of"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "CSV"
+          "content":
+            "text/csv":
+              "schema":
+                "type": "string"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/me/grants":
+    "get":
+      "operationId": "list_my_grants"
+      "summary": "The caller's own approved or later grants"
+      "description": "The caller's own approved or later grants. Needs a linked person id. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "self"
+      "parameters":
+        -
+          "name": "cursor"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "limit"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/GrantPage"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/me/exercises":
+    "get":
+      "operationId": "list_my_exercises"
+      "summary": "The caller's own exercise requests"
+      "description": "The caller's own exercise requests. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "self"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ExerciseList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/retention/run":
+    "post":
+      "operationId": "run_retention"
+      "summary": "admin"
+      "description": "admin. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "admin"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/RetentionReport"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/erasures":
+    "get":
+      "operationId": "list_erasures"
+      "summary": "Query: after"
+      "description": "Query: after. Tombstones for the erasure ledger. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "admin"
+      "parameters":
+        -
+          "name": "after"
+          "in": "query"
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErasureList"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+"components":
+  "securitySchemes":
+    "bearer":
+      "type": "http"
+      "scheme": "bearer"
+      "description": "Service-account token or a user token introspected by can-core."
+  "schemas":
+    "Error":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "code":
+          "type": "string"
+        "message":
+          "type": "string"
+      "required":
+        - "code"
+        - "message"
+    "Entity":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "name":
+          "type": "string"
+          "maxLength": 200
+        "jurisdiction":
+          "type": "string"
+          "maxLength": 100
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+      "required":
+        - "id"
+        - "name"
+        - "currency"
+    "EntityInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 200
+        "jurisdiction":
+          "type": "string"
+          "maxLength": 100
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+      "required":
+        - "name"
+        - "currency"
+    "EntityList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Entity"
+      "required":
+        - "items"
+    "ShareClass":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "name":
+          "type": "string"
+        "kind":
+          "enum":
+            - "common"
+            - "preferred"
+        "par_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "authorised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "issued":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+      "required":
+        - "id"
+        - "entity_id"
+        - "name"
+        - "kind"
+        - "par_minor"
+        - "currency"
+        - "authorised"
+        - "issued"
+    "ShareClassInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 100
+        "kind":
+          "enum":
+            - "common"
+            - "preferred"
+        "par_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "authorised":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+      "required":
+        - "name"
+        - "kind"
+        - "par_minor"
+        - "currency"
+        - "authorised"
+    "ShareClassList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/ShareClass"
+      "required":
+        - "items"
+    "RaiseAuthorisedRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "authorised":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+      "required":
+        - "authorised"
+      "description": "Authorised shares can be raised, never lowered."
+    "Plan":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "pattern": "^pln_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "class_id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "name":
+          "type": "string"
+        "authorised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "adopted_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "status":
+          "enum":
+            - "active"
+            - "closed"
+      "required":
+        - "id"
+        - "entity_id"
+        - "class_id"
+        - "name"
+        - "authorised"
+        - "adopted_on"
+        - "status"
+    "PlanInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 100
+        "class_id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "authorised":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        "adopted_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      "required":
+        - "name"
+        - "class_id"
+        - "authorised"
+        - "adopted_on"
+    "PlanList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Plan"
+      "required":
+        - "items"
+    "PoolStatus":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "plan_id":
+          "type": "string"
+          "pattern": "^pln_[0-9a-f]{24}$"
+        "as_of":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "authorised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "granted_outstanding":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "exercised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "available":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "pending_approval":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+      "required":
+        - "plan_id"
+        - "as_of"
+        - "authorised"
+        - "granted_outstanding"
+        - "exercised"
+        - "available"
+        - "pending_approval"
+    "Stakeholder":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "kind":
+          "enum":
+            - "founder"
+            - "employee"
+            - "investor"
+            - "advisor"
+        "person_id":
+          "type": "string"
+          "pattern": "^pers_[0-9a-f]{24}$"
+        "legal_hold":
+          "type": "boolean"
+        "erased":
+          "type": "boolean"
+        "external_holder_attested":
+          "type": "boolean"
+          "description": "A second person attested the holder as external (not a director or approver); stands in for a directory person link."
+      "required":
+        - "id"
+        - "entity_id"
+        - "kind"
+        - "legal_hold"
+        - "erased"
+      "description": "No personal data: the identity is a separate sealed, audited read."
+    "StakeholderInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "kind":
+          "enum":
+            - "founder"
+            - "employee"
+            - "investor"
+            - "advisor"
+        "person_id":
+          "type": "string"
+          "pattern": "^pers_[0-9a-f]{24}$"
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 200
+        "email":
+          "type": "string"
+          "maxLength": 254
+        "tax_id":
+          "type": "string"
+          "maxLength": 64
+      "required":
+        - "kind"
+        - "name"
+      "description": "An employee stakeholder needs the directory person_id."
+    "StakeholderList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Stakeholder"
+      "required":
+        - "items"
+    "Identity":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 200
+        "email":
+          "type": "string"
+          "maxLength": 254
+        "tax_id":
+          "type": "string"
+          "maxLength": 64
+      "required":
+        - "name"
+    "LegalHoldRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "hold":
+          "type": "boolean"
+        "reason":
+          "type": "string"
+          "maxLength": 500
+      "required":
+        - "hold"
+    "Erasure":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "subject":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "classes":
+          "type": "array"
+          "items":
+            "type": "string"
+        "date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "retained":
+          "type": "array"
+          "items":
+            "type": "object"
+            "additionalProperties": false
+            "properties":
+              "class":
+                "type": "string"
+              "count":
+                "type": "integer"
+                "minimum": 0
+              "reason":
+                "type": "string"
+            "required":
+              - "class"
+              - "count"
+              - "reason"
+      "required":
+        - "subject"
+        - "classes"
+        - "date"
+        - "retained"
+    "Schedule":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "kind":
+          "enum":
+            - "periodic"
+            - "tranches"
+        "months":
+          "type": "integer"
+          "minimum": 1
+          "maximum": 600
+        "cliff_months":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 600
+        "interval":
+          "enum":
+            - "monthly"
+            - "quarterly"
+        "tranches":
+          "type": "array"
+          "maxItems": 50
+          "items":
+            "type": "object"
+            "additionalProperties": false
+            "properties":
+              "label":
+                "type": "string"
+                "minLength": 1
+                "maxLength": 100
+              "basis_points":
+                "type": "integer"
+                "minimum": 1
+                "maximum": 10000
+              "date":
+                "type": "string"
+                "format": "date"
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              "milestone":
+                "type": "boolean"
+            "required":
+              - "label"
+              - "basis_points"
+            "description": "Give either a date or milestone=true."
+        "rounding":
+          "enum":
+            - "floor"
+            - "nearest"
+            - "fractional"
+        "acceleration":
+          "type": "array"
+          "maxItems": 10
+          "items":
+            "type": "object"
+            "additionalProperties": false
+            "properties":
+              "name":
+                "type": "string"
+                "minLength": 1
+                "maxLength": 64
+              "type":
+                "enum":
+                  - "single"
+                  - "double"
+              "triggers":
+                "type": "array"
+                "minItems": 1
+                "maxItems": 2
+                "items":
+                  "type": "string"
+                  "pattern": "^[a-z][a-z0-9_]{0,39}$"
+              "percent_bp":
+                "type": "integer"
+                "minimum": 1
+                "maximum": 10000
+              "applies_after_termination":
+                "type": "boolean"
+            "required":
+              - "name"
+              - "type"
+              - "triggers"
+              - "percent_bp"
+            "description": "Data only: single needs one trigger, double needs two."
+      "required":
+        - "kind"
+    "Grant":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "pattern": "^grt_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "plan_id":
+          "type": "string"
+          "pattern": "^pln_[0-9a-f]{24}$"
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "type":
+          "enum":
+            - "ISO"
+            - "NSO"
+            - "RSU"
+            - "SAR"
+        "status":
+          "enum":
+            - "draft"
+            - "pending_approval"
+            - "approved"
+            - "active"
+            - "cancelled"
+            - "forfeited"
+            - "expired"
+        "version":
+          "type": "integer"
+          "minimum": 1
+        "supersedes_id":
+          "type": "string"
+          "pattern": "^grt_[0-9a-f]{24}$"
+        "quantity":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "strike_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "grant_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "vesting_start":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "schedule":
+          "$ref": "#/components/schemas/Schedule"
+        "expiry_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "post_termination_exercise_days":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 3650
+        "approved_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "activated_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "termination_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "for_cause":
+          "type": "boolean"
+        "terminal_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "terminal_reason":
+          "type": "string"
+        "exercised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "approval_ref":
+          "type": "string"
+        "notes":
+          "type": "string"
+          "description": "Internal free text; only hr, board and admin ever receive it."
+      "required":
+        - "id"
+        - "entity_id"
+        - "plan_id"
+        - "stakeholder_id"
+        - "type"
+        - "status"
+        - "version"
+        - "quantity"
+        - "currency"
+        - "strike_minor"
+        - "grant_date"
+        - "vesting_start"
+        - "schedule"
+        - "expiry_date"
+        - "post_termination_exercise_days"
+        - "exercised"
+    "GrantInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "type":
+          "enum":
+            - "ISO"
+            - "NSO"
+            - "RSU"
+            - "SAR"
+        "quantity":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        "strike_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "grant_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "vesting_start":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "schedule":
+          "$ref": "#/components/schemas/Schedule"
+        "expiry_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "post_termination_exercise_days":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 3650
+        "notes":
+          "type": "string"
+          "maxLength": 2000
+      "required":
+        - "stakeholder_id"
+        - "type"
+        - "quantity"
+        - "strike_minor"
+        - "currency"
+        - "grant_date"
+        - "vesting_start"
+        - "schedule"
+        - "expiry_date"
+        - "post_termination_exercise_days"
+    "GrantPatch":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "type":
+          "enum":
+            - "ISO"
+            - "NSO"
+            - "RSU"
+            - "SAR"
+        "quantity":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        "strike_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "grant_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "vesting_start":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "schedule":
+          "$ref": "#/components/schemas/Schedule"
+        "expiry_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "post_termination_exercise_days":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 3650
+        "notes":
+          "type": "string"
+          "maxLength": 2000
+      "description": "Draft grants only; absent fields are kept. Terms are frozen after submission."
+    "GrantPage":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Grant"
+        "next_cursor":
+          "type": "string"
+      "required":
+        - "items"
+    "ReasonRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "reason":
+          "type": "string"
+          "maxLength": 500
+    "ActivateRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "activated_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    "TerminateRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "termination_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "for_cause":
+          "type": "boolean"
+      "required":
+        - "termination_date"
+    "MilestoneRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "tranche_index":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 49
+        "achieved_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      "required":
+        - "tranche_index"
+        - "achieved_on"
+    "AccelerationRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "trigger":
+          "type": "string"
+          "pattern": "^[a-z][a-z0-9_]{0,39}$"
+        "occurred_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      "required":
+        - "trigger"
+        - "occurred_on"
+    "VestPoint":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "cumulative":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "reason":
+          "enum":
+            - "cliff"
+            - "instalment"
+            - "tranche"
+            - "milestone"
+            - "acceleration"
+      "required":
+        - "date"
+        - "cumulative"
+        - "reason"
+    "VestingView":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "grant_id":
+          "type": "string"
+          "pattern": "^grt_[0-9a-f]{24}$"
+        "as_of":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "status":
+          "enum":
+            - "draft"
+            - "pending_approval"
+            - "approved"
+            - "active"
+            - "cancelled"
+            - "forfeited"
+            - "expired"
+        "type":
+          "enum":
+            - "ISO"
+            - "NSO"
+            - "RSU"
+            - "SAR"
+        "quantity":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "vested":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "unvested":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "exercised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "exercisable":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "strike_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "exercise_window_end":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "timeline":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/VestPoint"
+        "illustrative":
+          "type": "boolean"
+        "notice":
+          "type": "string"
+      "required":
+        - "grant_id"
+        - "as_of"
+        - "status"
+        - "type"
+        - "quantity"
+        - "vested"
+        - "unvested"
+        - "exercised"
+        - "exercisable"
+        - "strike_minor"
+        - "currency"
+        - "exercise_window_end"
+        - "timeline"
+        - "illustrative"
+        - "notice"
+    "ExerciseRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "quantity":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+      "required":
+        - "quantity"
+    "Exercise":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "pattern": "^exr_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "grant_id":
+          "type": "string"
+          "pattern": "^grt_[0-9a-f]{24}$"
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "quantity":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "due_minor":
+          "type": "integer"
+          "minimum": 0
+        "status":
+          "enum":
+            - "requested"
+            - "approved"
+            - "payment_recorded"
+            - "issued"
+            - "rejected"
+            - "cancelled"
+        "paid_minor":
+          "type": "integer"
+          "minimum": 0
+        "paid_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "issued_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "ledger_id":
+          "type": "string"
+          "pattern": "^led_[0-9a-f]{24}$"
+        "approval_ref":
+          "type": "string"
+        "payment_reference":
+          "type": "string"
+          "description": "Sealed field: present only for finance and admin."
+      "required":
+        - "id"
+        - "entity_id"
+        - "grant_id"
+        - "stakeholder_id"
+        - "quantity"
+        - "currency"
+        - "due_minor"
+        - "status"
+    "ExerciseList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Exercise"
+      "required":
+        - "items"
+    "PaymentInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "amount_minor":
+          "type": "integer"
+          "minimum": 0
+        "paid_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "reference":
+          "type": "string"
+          "maxLength": 200
+      "required":
+        - "amount_minor"
+        - "paid_on"
+      "description": "The amount must equal the amount due; partial and net exercises are not modelled."
+    "LedgerInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "class_id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "to_stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "quantity":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        "effective_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "price_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "kind":
+          "enum":
+            - "cancellation"
+            - "repurchase"
+      "required":
+        - "class_id"
+        - "stakeholder_id"
+        - "quantity"
+        - "effective_date"
+      "description": "to_stakeholder_id is for transfers, kind for cancellations."
+    "LedgerEntry":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "seq":
+          "type": "integer"
+          "minimum": 1
+        "id":
+          "type": "string"
+          "pattern": "^led_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "class_id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "kind":
+          "enum":
+            - "issuance"
+            - "exercise"
+            - "transfer_out"
+            - "transfer_in"
+            - "cancellation"
+            - "repurchase"
+        "effective_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "quantity":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "price_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "group_id":
+          "type": "string"
+          "pattern": "^led_[0-9a-f]{24}$"
+        "grant_id":
+          "type": "string"
+          "pattern": "^grt_[0-9a-f]{24}$"
+        "exercise_id":
+          "type": "string"
+          "pattern": "^exr_[0-9a-f]{24}$"
+      "required":
+        - "seq"
+        - "id"
+        - "entity_id"
+        - "class_id"
+        - "stakeholder_id"
+        - "kind"
+        - "effective_date"
+        - "quantity"
+        - "group_id"
+    "LedgerPage":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/LedgerEntry"
+        "next_cursor":
+          "type": "string"
+      "required":
+        - "items"
+    "ClassLine":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "class_id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "name":
+          "type": "string"
+        "kind":
+          "enum":
+            - "common"
+            - "preferred"
+        "authorised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "issued":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+      "required":
+        - "class_id"
+        - "name"
+        - "kind"
+        - "authorised"
+        - "issued"
+    "HolderLine":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "kind":
+          "enum":
+            - "founder"
+            - "employee"
+            - "investor"
+            - "advisor"
+        "name":
+          "type": "string"
+        "shares":
+          "type": "array"
+          "items":
+            "type": "object"
+            "additionalProperties": false
+            "properties":
+              "class_id":
+                "type": "string"
+                "pattern": "^cls_[0-9a-f]{24}$"
+              "shares":
+                "type": "string"
+                "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+                "description": "Exact decimal, at most 4 decimal places, as a string."
+            "required":
+              - "class_id"
+              - "shares"
+        "basic_shares":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "basic_ownership_ppm":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1000000
+        "options_outstanding":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "options_vested":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "fully_diluted_shares":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "fully_diluted_ownership_ppm":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1000000
+      "required":
+        - "stakeholder_id"
+        - "kind"
+        - "shares"
+        - "basic_shares"
+        - "basic_ownership_ppm"
+    "PoolLine":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "plan_id":
+          "type": "string"
+          "pattern": "^pln_[0-9a-f]{24}$"
+        "name":
+          "type": "string"
+        "authorised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "granted_outstanding":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "exercised":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "available":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "fully_diluted_ownership_ppm":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1000000
+      "required":
+        - "plan_id"
+        - "name"
+        - "authorised"
+        - "granted_outstanding"
+        - "exercised"
+        - "available"
+        - "fully_diluted_ownership_ppm"
+    "CapTable":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "as_of":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "view":
+          "enum":
+            - "basic"
+            - "fully-diluted"
+        "classes":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/ClassLine"
+        "holders":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/HolderLine"
+        "pool":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/PoolLine"
+        "totals":
+          "type": "object"
+          "additionalProperties": false
+          "properties":
+            "basic_shares":
+              "type": "string"
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+            "options_outstanding":
+              "type": "string"
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+            "pool_available":
+              "type": "string"
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+            "fully_diluted_shares":
+              "type": "string"
+              "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+              "description": "Exact decimal, at most 4 decimal places, as a string."
+          "required":
+            - "basic_shares"
+        "warnings":
+          "type": "array"
+          "items":
+            "type": "string"
+        "notice":
+          "type": "string"
+      "required":
+        - "entity_id"
+        - "as_of"
+        - "view"
+        - "classes"
+        - "holders"
+        - "totals"
+        - "warnings"
+        - "notice"
+    "WhatIfRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "as_of":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "pre_money_minor":
+          "type": "integer"
+          "minimum": 1
+        "investment_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "pool_top_up":
+          "oneOf":
+            -
+              "type": "string"
+              "pattern": "^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+            -
+              "type": "number"
+              "minimum": 0
+          "description": "Exact decimal (string preferred; a JSON number is parsed textually, never as a float). At most 4 decimal places, at most 100 billion."
+        "conversion_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "use_recorded_convertibles":
+          "type": "boolean"
+        "extra_instruments":
+          "type": "array"
+          "maxItems": 200
+          "items":
+            "type": "object"
+            "additionalProperties": false
+            "properties":
+              "id":
+                "type": "string"
+              "stakeholder_id":
+                "type": "string"
+                "pattern": "^stk_[0-9a-f]{24}$"
+              "kind":
+                "enum":
+                  - "safe_pre_money"
+                  - "safe_post_money"
+                  - "convertible_note"
+              "principal_minor":
+                "type": "integer"
+                "minimum": 1
+              "currency":
+                "type": "string"
+                "pattern": "^[A-Z]{3}$"
+              "cap_minor":
+                "type": "integer"
+                "minimum": 0
+                "maximum": 1125899906842624
+                "description": "Integer minor units of the currency."
+              "discount_bp":
+                "type": "integer"
+                "minimum": 0
+                "maximum": 9999
+              "interest_bp":
+                "type": "integer"
+                "minimum": 0
+                "maximum": 100000
+              "issued_on":
+                "type": "string"
+                "format": "date"
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            "required":
+              - "kind"
+              - "principal_minor"
+              - "currency"
+      "required":
+        - "pre_money_minor"
+      "description": "ILLUSTRATIVE modelling over the current fully diluted cap table. Nothing is stored or written to the ledger."
+    "Conversion":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "kind":
+          "type": "string"
+        "converting_minor":
+          "type": "integer"
+          "minimum": 0
+        "method":
+          "enum":
+            - "cap"
+            - "discount"
+            - "round_price"
+        "conversion_price":
+          "type": "string"
+          "pattern": "^[0-9]+\\.[0-9]{6}$"
+        "shares":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+      "required":
+        - "kind"
+        - "converting_minor"
+        - "method"
+        - "conversion_price"
+        - "shares"
+    "RoundResult":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "illustrative":
+          "const": true
+        "notice":
+          "type": "string"
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "price_per_share":
+          "type": "string"
+          "pattern": "^[0-9]+\\.[0-9]{6}$"
+        "pre_round_shares":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "pool_top_up":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "conversions":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Conversion"
+        "converted_shares":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "new_investor_shares":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "post_round_shares":
+          "type": "string"
+          "pattern": "^-?(0|[1-9][0-9]{0,11})(\\.[0-9]{1,4})?$"
+          "description": "Exact decimal, at most 4 decimal places, as a string."
+        "existing_holders_ownership_ppm":
+          "type": "integer"
+          "minimum": 0
+        "converted_instruments_ownership_ppm":
+          "type": "integer"
+          "minimum": 0
+        "new_investor_ownership_ppm":
+          "type": "integer"
+          "minimum": 0
+        "pool_top_up_ownership_ppm":
+          "type": "integer"
+          "minimum": 0
+        "post_money_minor":
+          "type": "integer"
+          "minimum": 0
+      "required":
+        - "illustrative"
+        - "notice"
+        - "currency"
+        - "price_per_share"
+        - "pre_round_shares"
+        - "pool_top_up"
+        - "conversions"
+        - "converted_shares"
+        - "new_investor_shares"
+        - "post_round_shares"
+        - "existing_holders_ownership_ppm"
+        - "converted_instruments_ownership_ppm"
+        - "new_investor_ownership_ppm"
+        - "pool_top_up_ownership_ppm"
+        - "post_money_minor"
+    "ConvertibleInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "kind":
+          "enum":
+            - "safe_pre_money"
+            - "safe_post_money"
+            - "convertible_note"
+        "issued_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "principal_minor":
+          "type": "integer"
+          "minimum": 1
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "cap_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "discount_bp":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 9999
+        "interest_bp":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 100000
+      "required":
+        - "stakeholder_id"
+        - "kind"
+        - "issued_on"
+        - "principal_minor"
+        - "currency"
+    "Convertible":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "stakeholder_id":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "kind":
+          "enum":
+            - "safe_pre_money"
+            - "safe_post_money"
+            - "convertible_note"
+        "issued_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "principal_minor":
+          "type": "integer"
+          "minimum": 1
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "cap_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "discount_bp":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 9999
+        "interest_bp":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 100000
+        "id":
+          "type": "string"
+          "pattern": "^cvt_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+        "status":
+          "enum":
+            - "outstanding"
+            - "converted"
+            - "cancelled"
+      "required":
+        - "id"
+        - "entity_id"
+        - "status"
+        - "stakeholder_id"
+        - "kind"
+        - "issued_on"
+        - "principal_minor"
+        - "currency"
+    "ConvertibleList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Convertible"
+      "required":
+        - "items"
+    "ValuationInput":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "class_id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "kind":
+          "enum":
+            - "409a"
+            - "independent"
+            - "board"
+            - "other"
+        "effective_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "expires_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "price_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "notes":
+          "type": "string"
+          "maxLength": 2000
+      "required":
+        - "kind"
+        - "effective_date"
+        - "price_minor"
+        - "currency"
+      "description": "A valuation record kept as data. The service computes no valuation and enforces no 409A rule."
+    "Valuation":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "class_id":
+          "type": "string"
+          "pattern": "^cls_[0-9a-f]{24}$"
+        "kind":
+          "enum":
+            - "409a"
+            - "independent"
+            - "board"
+            - "other"
+        "effective_date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "expires_on":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        "price_minor":
+          "type": "integer"
+          "minimum": 0
+          "maximum": 1125899906842624
+          "description": "Integer minor units of the currency."
+        "currency":
+          "type": "string"
+          "pattern": "^[A-Z]{3}$"
+        "notes":
+          "type": "string"
+          "maxLength": 2000
+        "id":
+          "type": "string"
+          "pattern": "^val_[0-9a-f]{24}$"
+        "entity_id":
+          "type": "string"
+          "pattern": "^ent_[0-9a-f]{24}$"
+      "required":
+        - "id"
+        - "entity_id"
+        - "kind"
+        - "effective_date"
+        - "price_minor"
+        - "currency"
+    "ValuationList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Valuation"
+      "required":
+        - "items"
+    "RetentionReport":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "purged":
+          "type": "object"
+          "additionalProperties":
+            "type": "integer"
+            "minimum": 0
+        "skipped_legal_hold":
+          "type": "object"
+          "additionalProperties":
+            "type": "integer"
+            "minimum": 0
+      "required":
+        - "purged"
+        - "skipped_legal_hold"
+    "ErasureList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/ErasureEntry"
+      "required":
+        - "items"
+    "ErasureEntry":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "seq":
+          "type": "integer"
+        "subject":
+          "type": "string"
+          "pattern": "^stk_[0-9a-f]{24}$"
+        "class":
+          "type": "string"
+        "date":
+          "type": "string"
+          "format": "date"
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      "required":
+        - "seq"
+        - "subject"
+        - "class"
+        - "date"

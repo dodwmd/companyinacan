@@ -40,6 +40,7 @@ var Catalogue = []string{
 	"time.approved.v1", "timesheet.approved.v1", "expense.approved.v1",
 	"resolution.passed.v1",
 	"equity.proposed.v1", "equity.approved.v1", "equity.granted.v1",
+	"equity.grant.approved.v1", "equity.grant.vested.v1", "equity.exercise.recorded.v1",
 	"issue.created.v1", "issue.updated.v1", "issue.transitioned.v1", "issue.priority_changed.v1",
 	"one_on_one.action_item.created.v1", "review.cycle.opened.v1",
 	"approval.requested.v1", "approval.approved.v1", "approval.rejected.v1",

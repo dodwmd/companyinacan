@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/modules/equity/settings.schema.json",
+  "title": "equity settings",
+  "description": "Operator settings for the equity module (company.yaml modules.equity). Secrets (API token, webhook secret, encryption keys) are never settings; can-core generates them as Secrets. This module is a tool, not legal, tax or securities advice: review every retention value against local law.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per data class retention. The ledger and the audit trail are the legal record and can only be `legal`.",
+      "properties": {
+        "equity-ledger": { "const": "legal" },
+        "equity-audit": { "const": "legal" },
+        "equity-stakeholder": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "equity-grants": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "equity-valuation": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+      }
+    }
+  }
+}

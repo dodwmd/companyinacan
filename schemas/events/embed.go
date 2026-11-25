@@ -137,3 +137,18 @@ var TimesheetApprovedV1 []byte
 //
 //go:embed expense.approved.v1.json
 var ExpenseApprovedV1 []byte
+
+// EquityGrantApprovedV1 is the JSON Schema of the equity.grant.approved.v1 event.
+//
+//go:embed equity.grant.approved.v1.json
+var EquityGrantApprovedV1 []byte
+
+// EquityGrantVestedV1 is the JSON Schema of the equity.grant.vested.v1 event.
+//
+//go:embed equity.grant.vested.v1.json
+var EquityGrantVestedV1 []byte
+
+// EquityExerciseRecordedV1 is the JSON Schema of the equity.exercise.recorded.v1 event.
+//
+//go:embed equity.exercise.recorded.v1.json
+var EquityExerciseRecordedV1 []byte

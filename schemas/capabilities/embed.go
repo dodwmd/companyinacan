@@ -77,3 +77,8 @@ var CrmV1 []byte
 //
 //go:embed status.v1.json
 var StatusV1 []byte
+
+// EquityV1 is the contract of the `equity` capability (in-house equity module).
+//
+//go:embed equity.v1.json
+var EquityV1 []byte

@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "id": "val_0123456789abcdef01234567",
+      "entity_id": "ent_0123456789abcdef01234567",
+      "kind": "409a",
+      "effective_date": "2026-02-01",
+      "price_minor": 80,
+      "currency": "USD"
+    }
+  ]
+}
