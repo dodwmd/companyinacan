@@ -170,3 +170,25 @@ func (s *Store) Remove() error {
 	}
 	return err
 }
+
+// LockOperation takes an exclusive, non-blocking lock for a whole `can up` or
+// `can down` run (separate from the short state-update lock), so two
+// concurrent runs cannot race on the same company. Call the returned func to
+// release it.
+func (s *Store) LockOperation() (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(s.Path+".op.lock", os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // path derived from the company dir
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { //nolint:gosec // fd fits in int
+		_ = f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, fmt.Errorf("another `can up` or `can down` is already running for this company: %w", ErrLocked)
+		}
+		return nil, err
+	}
+	return func() { unlock(f) }, nil
+}

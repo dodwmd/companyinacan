@@ -16,6 +16,8 @@ type Target struct {
 	User    string // default root
 	Port    int    // default 22
 	KeyFile string // optional identity file
+	// KnownHosts, if set, replaces ~/.ssh/known_hosts (used for cloud servers, whose IPs get recycled).
+	KnownHosts string
 }
 
 func (t Target) user() string {
@@ -81,6 +83,9 @@ func SSHArgs(t Target, extra []string, remote string) ([]string, error) {
 	}
 	if t.KeyFile != "" {
 		args = append(args, "-i", t.KeyFile, "-o", "IdentitiesOnly=yes")
+	}
+	if t.KnownHosts != "" {
+		args = append(args, "-o", "UserKnownHostsFile="+t.KnownHosts)
 	}
 	args = append(args, extra...)
 	args = append(args, t.user()+"@"+t.Host)

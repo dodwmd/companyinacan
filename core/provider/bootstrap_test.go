@@ -97,11 +97,16 @@ func TestBootstrapStructure(t *testing.T) {
 		"/etc/can/backup.d",                 // restic/systemd placeholder
 		"/var/lib/can/bootstrap.done",       // completion marker
 		"CAN_BOOTSTRAP_DONE",
+		"mktemp",                // no predictable /tmp names
+		"systemctl restart k3s", // changed config.yaml is re-applied
 	}
 	for _, m := range must {
 		if !strings.Contains(s, m) {
 			t.Errorf("script missing %q", m)
 		}
+	}
+	if strings.Contains(s, "/tmp/k3s-install.sh") {
+		t.Error("predictable temp path for the installer")
 	}
 	// 6443 must never be opened: the CLI uses an SSH tunnel.
 	if regexp.MustCompile(`ufw allow[^\n]*6443`).MatchString(s) {

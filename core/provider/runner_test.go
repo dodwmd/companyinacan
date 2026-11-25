@@ -124,3 +124,10 @@ func TestSSHRunnerReportsFailure(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+func TestSSHArgsKnownHostsFile(t *testing.T) {
+	args, err := SSHArgs(Target{Host: "h.example", KnownHosts: "/c/.can/known_hosts"}, nil, "")
+	if err != nil || !strings.Contains(strings.Join(args, " "), "-o UserKnownHostsFile=/c/.can/known_hosts") {
+		t.Fatalf("%v %v", args, err)
+	}
+}

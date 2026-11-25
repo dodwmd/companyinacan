@@ -76,9 +76,14 @@ func (c *HetznerClient) do(ctx context.Context, method, path string, in, out any
 		payload = b
 	}
 	var lastErr error
+	var wait time.Duration
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
-			c.Sleep(ctx, time.Duration(1<<attempt)*500*time.Millisecond)
+			if wait <= 0 {
+				wait = time.Duration(1<<attempt) * 500 * time.Millisecond
+			}
+			c.Sleep(ctx, wait)
+			wait = 0
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -113,6 +118,7 @@ func (c *HetznerClient) do(ctx context.Context, method, path string, in, out any
 			return nil
 		}
 		lastErr = c.apiError(resp.StatusCode, body)
+		wait = resetWait(resp.Header.Get("RateLimit-Reset"), time.Now())
 		retry := resp.StatusCode == http.StatusTooManyRequests || (resp.StatusCode >= 500 && method == http.MethodGet)
 		if !retry {
 			return lastErr
@@ -138,9 +144,10 @@ func (c *HetznerClient) apiError(status int, body []byte) error {
 
 // Server is the subset of the API's server object we use.
 type HServer struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
+	ID        int64             `json:"id"`
+	Name      string            `json:"name"`
+	Status    string            `json:"status"`
+	Labels    map[string]string `json:"labels"`
 	PublicNet struct {
 		IPv4 struct {
 			IP string `json:"ip"`
@@ -157,8 +164,24 @@ type HSSHKey struct {
 
 // HFirewall is a cloud firewall.
 type HFirewall struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID     int64             `json:"id"`
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels"`
+}
+
+// OwnedBy reports whether labels mark a resource as created by can for the
+// company slug. can never adopts or deletes a resource without them.
+func OwnedBy(labels map[string]string, companySlug string) bool {
+	return labels["managed-by"] == "can" && labels["company"] == companySlug
+}
+
+// GetFirewall fetches a firewall by id (IsNotFound when gone).
+func (c *HetznerClient) GetFirewall(ctx context.Context, id int64) (HFirewall, error) {
+	var r struct {
+		Firewall HFirewall `json:"firewall"`
+	}
+	err := c.do(ctx, http.MethodGet, "/firewalls/"+strconv.FormatInt(id, 10), nil, &r)
+	return r.Firewall, err
 }
 
 // FirewallRule is one inbound rule.
@@ -242,7 +265,7 @@ func (c *HetznerClient) CreateFirewall(ctx context.Context, name string, rules [
 // server that is being deleted.
 func (c *HetznerClient) DeleteFirewall(ctx context.Context, id int64) error {
 	var err error
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 20; i++ {
 		err = c.do(ctx, http.MethodDelete, "/firewalls/"+strconv.FormatInt(id, 10), nil, nil)
 		if err == nil || IsNotFound(err) {
 			return nil
@@ -316,4 +339,21 @@ func SSHFingerprint(pub string) (string, error) {
 		parts[i] = fmt.Sprintf("%02x", b)
 	}
 	return strings.Join(parts, ":"), nil
+}
+
+// resetWait turns a RateLimit-Reset header (unix seconds) into a wait,
+// capped at one minute; 0 means "use the default backoff".
+func resetWait(h string, now time.Time) time.Duration {
+	secs, err := strconv.ParseInt(strings.TrimSpace(h), 10, 64)
+	if err != nil {
+		return 0
+	}
+	d := time.Unix(secs, 0).Sub(now)
+	if d <= 0 {
+		return 0
+	}
+	if d > time.Minute {
+		d = time.Minute
+	}
+	return d
 }

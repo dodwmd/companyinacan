@@ -55,8 +55,26 @@ provider:
     operator_ip: 198.51.100.9   # optional: restrict SSH on the host firewall
 ```
 
-`can down --yes` uninstalls k3s and can-core and leaves the server (and its firewall and swap) alone.
-Host keys are trusted on first use (`StrictHostKeyChecking=accept-new`).
+`can down --yes` uninstalls k3s and can-core and leaves the server alone. That includes the host
+firewall: ufw stays enabled with default-deny incoming and only 22/80/443 (and the pod/service CIDR)
+allowed, and the swap file stays. Remove them yourself (`ufw disable`) if you want the box back as it
+was.
+
+**`operator_ip` can lock you out.** With it set, SSH is allowed only from that address on the host
+firewall. If your address changes you lose SSH access (use the provider console to fix ufw). Leave it
+unset unless the address is stable.
+
+**Host keys** are trusted on first use (`StrictHostKeyChecking=accept-new`) against your
+`~/.ssh/known_hosts`. If a host is rebuilt, ssh refuses with "host key verification failed"; after
+confirming the rebuild is yours, run `ssh-keygen -R <host>`. For `hetzner`, `can` uses its own
+`.can/known_hosts`, because cloud IPs are recycled between customers: delete that file after
+rebuilding a server on the same address.
+
+**NodePort exposure.** The bootstrap runs `ufw default allow routed`, so forwarded traffic to pods
+is not filtered by ufw. A Service of type NodePort or LoadBalancer you create later on a
+bring-your-own host may therefore be reachable from the internet even though ufw lists only
+22/80/443. The cloud firewall of the `hetzner` provider does not have this gap. Tightening this to
+specific interfaces needs measurement on a real host (epic E00) and is not done yet.
 
 ## hetzner
 
@@ -70,6 +88,17 @@ provider:
     location: fsn1
 ```
 
+`~/` is expanded in `ssh_public_key_file`, `ssh_private_key_file`, `key_file` and `file:` secret
+references. The SSH port is fixed to 22 for `hetzner`: setting `port` to anything else is an error,
+because the cloud firewall only opens 22.
+
+**Adoption and ownership.** Every key, firewall and server `can` creates is labelled
+`managed-by=can` and `company=<slug of the name>`. If a firewall or server with the expected name
+already exists *without* those labels, `can up` stops with an error and does not adopt it; `can down`
+re-checks the labels right before each delete and refuses to delete anything that does not carry
+them. A resource from an interrupted earlier run (labelled) is adopted. An SSH key already uploaded
+with the same fingerprint is reused and never deleted by `can down`.
+
 Create a project and a read/write API token in the Hetzner console, then
 `export HCLOUD_TOKEN=...`. `can up` creates, in order, the SSH key (reused if the fingerprint is
 already uploaded), a firewall (22, 80, 443, icmp) and the server with the bootstrap as cloud-init
@@ -79,6 +108,19 @@ firewall, and the SSH key only if `can` uploaded it. **Deleting the server delet
 
 The defaults for `server_type`, `image` and `location` have not been checked against the live API
 yet (epic E00). Override them if Hetzner has renamed a type.
+
+## Bootstrap caveats
+
+- The k3s installer (`get.k3s.io`) is downloaded over TLS but **not hash-verified**; the k3s
+  version is pinned, the installer script is not.
+- Image tarballs are checksum-verified and placed in `agent/images` in parallel with the install.
+  That k3s imports them after it starts (rather than pulling) is **unverified** until E00.
+- Re-running `can up` with the same pinned version re-applies a changed `config.yaml` by restarting
+  k3s; a version change re-runs the installer.
+- A crash between creating a cloud resource and saving its id in state is recovered by name and
+  labels on the next `can up`. A crash during the bootstrap script leaves a partial host; re-running
+  converges because every step is guarded.
+- `can up` and `can down` take a per-company lock, so a second run fails fast ("already running").
 
 ## DNS
 

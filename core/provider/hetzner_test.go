@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 const testToken = "tok_live_0123456789abcdef"
@@ -42,6 +43,7 @@ type fakeHetzner struct {
 	authSeen []string
 
 	haveKey, haveFW, haveServer bool
+	foreignFW, foreignServer    bool // same-named resource not created by can
 	pollsUntilRunning           int
 	status                      map[string]int // "METHOD /path" -> forced status
 	forced                      map[string]string
@@ -109,7 +111,9 @@ func (f *fakeHetzner) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.haveKey = false
 		f.write(w, 200, "empty")
 	case "GET /firewalls":
-		if f.haveFW {
+		if f.haveFW && f.foreignFW {
+			f.write(w, 200, "firewall_list_foreign")
+		} else if f.haveFW {
 			f.write(w, 200, "firewall_list_one")
 		} else {
 			f.write(w, 200, "firewall_list_empty")
@@ -117,11 +121,22 @@ func (f *fakeHetzner) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "POST /firewalls":
 		f.haveFW = true
 		f.write(w, 201, "firewall_created")
+	case "GET /firewalls/2022":
+		switch {
+		case !f.haveFW:
+			f.write(w, 404, "error_not_found")
+		case f.foreignFW:
+			f.write(w, 200, "firewall_get_foreign")
+		default:
+			f.write(w, 200, "firewall_get")
+		}
 	case "DELETE /firewalls/2022":
 		f.haveFW = false
 		f.write(w, 200, "empty")
 	case "GET /servers":
-		if f.haveServer {
+		if f.haveServer && f.foreignServer {
+			f.write(w, 200, "server_list_foreign")
+		} else if f.haveServer {
 			f.write(w, 200, "server_list_one")
 		} else {
 			f.write(w, 200, "server_list_empty")
@@ -132,6 +147,10 @@ func (f *fakeHetzner) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET /servers/3033":
 		if !f.haveServer {
 			f.write(w, 404, "error_not_found")
+			return
+		}
+		if f.foreignServer {
+			f.write(w, 200, "server_foreign")
 			return
 		}
 		if f.pollsUntilRunning > 0 {
@@ -520,5 +539,155 @@ func TestSSHFingerprint(t *testing.T) {
 		if _, err := SSHFingerprint(bad); err == nil {
 			t.Errorf("%q: want error", bad)
 		}
+	}
+}
+
+func TestHetznerRefusesToAdoptForeignFirewall(t *testing.T) {
+	f := newFakeHetzner(t)
+	f.haveFW, f.foreignFW = true, true
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	err := p.Create(context.Background(), hetznerSpec(), st, &strings.Builder{})
+	if err == nil || !strings.Contains(err.Error(), "not created by can") {
+		t.Fatalf("%v", err)
+	}
+	if f.count("POST /servers") != 0 || f.count("DELETE") != 0 {
+		t.Fatalf("calls: %v", f.calls)
+	}
+	if s, _ := st.Load(); s.FirewallID != 0 {
+		t.Fatal("foreign firewall recorded in state")
+	}
+}
+
+func TestHetznerRefusesToAdoptForeignServer(t *testing.T) {
+	f := newFakeHetzner(t)
+	f.haveServer, f.foreignServer = true, true
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	err := p.Create(context.Background(), hetznerSpec(), st, &strings.Builder{})
+	if err == nil || !strings.Contains(err.Error(), "not created by can") {
+		t.Fatalf("%v", err)
+	}
+	if f.count("POST /servers") != 0 || f.count("DELETE") != 0 {
+		t.Fatalf("calls: %v", f.calls)
+	}
+	if s, _ := st.Load(); s.Server != nil {
+		t.Fatal("foreign server recorded in state")
+	}
+}
+
+func TestHetznerDestroyNeverDeletesForeignResources(t *testing.T) {
+	f := newFakeHetzner(t)
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	if err := p.Create(context.Background(), hetznerSpec(), st, &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	// someone relabelled / replaced the resources after can created them
+	f.foreignServer = true
+	if err := p.Destroy(context.Background(), hetznerSpec(), st, &strings.Builder{}); err == nil || f.count("DELETE /servers") != 0 {
+		t.Fatalf("server delete: err=%v calls=%v", err, f.calls)
+	}
+	f.foreignServer = false
+	f.haveServer = false
+	f.foreignFW = true
+	if err := p.Destroy(context.Background(), hetznerSpec(), st, &strings.Builder{}); err == nil || f.count("DELETE /firewalls") != 0 {
+		t.Fatalf("firewall delete: err=%v calls=%v", err, f.calls)
+	}
+}
+
+func TestHetznerRejectsNonDefaultSSHPort(t *testing.T) {
+	f := newFakeHetzner(t)
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	spec := hetznerSpec()
+	spec.Options["port"] = 2222
+	if err := p.Create(context.Background(), spec, st, &strings.Builder{}); err == nil || !strings.Contains(err.Error(), "port") {
+		t.Fatalf("%v", err)
+	}
+	if _, err := p.Plan(context.Background(), spec, st); err == nil {
+		t.Fatal("plan accepted port")
+	}
+	if len(f.calls) != 0 {
+		t.Fatal("API called")
+	}
+	spec.Options["port"] = 22
+	if _, err := p.Plan(context.Background(), spec, st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHomeExpansion(t *testing.T) {
+	t.Setenv("HOME", "/home/tester")
+	for in, want := range map[string]string{"~/.ssh/id.pub": "/home/tester/.ssh/id.pub", "~": "/home/tester", "/abs/x": "/abs/x", "rel~/x": "rel~/x", "~other/x": "~other/x"} {
+		if got := expandHome(in); got != want {
+			t.Errorf("expandHome(%q)=%q want %q", in, got, want)
+		}
+	}
+	f := newFakeHetzner(t)
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	var read []string
+	inner := p.deps.ReadFile
+	p.deps.ReadFile = func(path string) ([]byte, error) { read = append(read, path); return inner("/keys/id.pub") }
+	spec := hetznerSpec()
+	spec.Options["ssh_public_key_file"] = "~/keys/id.pub"
+	if err := p.Create(context.Background(), spec, st, &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(read) == 0 || read[0] != "/home/tester/keys/id.pub" {
+		t.Fatalf("read %v", read)
+	}
+	// secret refs
+	d := testDeps(nil)
+	d.ReadFile = func(path string) ([]byte, error) { read = append(read, path); return []byte("tok-123456"), nil }
+	if _, err := d.ResolveSecret("file:~/.hcloud"); err != nil || read[len(read)-1] != "/home/tester/.hcloud" {
+		t.Fatalf("%v %v", err, read)
+	}
+}
+
+func TestHetznerRateLimitResetHeader(t *testing.T) {
+	now := time.Unix(1000, 0)
+	if d := resetWait("1007", now); d != 7*time.Second {
+		t.Fatal(d)
+	}
+	if d := resetWait("999", now); d != 0 {
+		t.Fatal(d)
+	}
+	if d := resetWait("99999", now); d != time.Minute {
+		t.Fatal(d)
+	}
+	if d := resetWait("junk", now); d != 0 {
+		t.Fatal(d)
+	}
+}
+
+func TestHetznerBootstrapTimeoutShowsLastSSHError(t *testing.T) {
+	f := newFakeHetzner(t)
+	r := newFakeRunner(fakeRule{contains: "bootstrap.done", err: fmt.Errorf("ssh: connection refused")})
+	p, st, _ := hetznerFixture(t, f, r)
+	spec := hetznerSpec()
+	spec.Options["wait_seconds"] = 1
+	err := p.Create(context.Background(), spec, st, &strings.Builder{})
+	if err == nil || !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestHetznerDestroyWaitsForServerBeforeFirewall(t *testing.T) {
+	f := newFakeHetzner(t)
+	p, st, _ := hetznerFixture(t, f, readyRunner())
+	_ = p.Create(context.Background(), hetznerSpec(), st, &strings.Builder{})
+	_ = p.Destroy(context.Background(), hetznerSpec(), st, &strings.Builder{})
+	di, ds := -1, -1
+	for i, c := range f.calls {
+		if c == "DELETE /servers/3033" {
+			di = i
+		}
+		if c == "DELETE /firewalls/2022" {
+			ds = i
+		}
+	}
+	if di < 0 || ds < di {
+		t.Fatalf("order: %v", f.calls)
+	}
+	// a GET poll sits between them
+	if f.calls[di+1] != "GET /servers/3033" {
+		t.Fatalf("server deletion not polled: %v", f.calls[di:])
 	}
 }

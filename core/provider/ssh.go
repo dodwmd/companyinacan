@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 )
 
@@ -21,7 +22,7 @@ func (p *SSH) target(spec Spec) (Target, error) {
 	if host == "" {
 		return Target{}, fmt.Errorf("provider.options.host is required for the ssh provider")
 	}
-	t := Target{Host: host, User: o.str("user", "root"), Port: o.integer("port", 22), KeyFile: o.str("key_file", "")}
+	t := Target{Host: host, User: o.str("user", "root"), Port: o.integer("port", 22), KeyFile: expandHome(o.str("key_file", ""))}
 	if _, err := SSHArgs(t, nil, ""); err != nil {
 		return Target{}, err
 	}
@@ -218,6 +219,13 @@ func (*SSH) Address(st *Store) (string, error) {
 	return state.Server.IP, nil
 }
 
+func knownHostsPath(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, ".can", "known_hosts")
+}
+
 // TargetFor returns the SSH target of a provisioned company (used by the CLI
 // for the kubeconfig fetch and the tunnel).
 func TargetFor(spec Spec, st *Store, deps Deps) (Target, error) {
@@ -230,7 +238,12 @@ func TargetFor(spec Spec, st *Store, deps Deps) (Target, error) {
 		return Target{}, fmt.Errorf("no server recorded yet; run `can up` first")
 	}
 	o := opts(spec.Options)
-	return Target{Host: state.Server.IP, User: o.str("user", "root"), Port: o.integer("port", 22), KeyFile: o.str("key_file", "")}, nil
+	t := Target{Host: state.Server.IP, User: o.str("user", "root"), Port: o.integer("port", 22), KeyFile: expandHome(o.str("key_file", o.str("ssh_private_key_file", "")))}
+	if state.Provider == "hetzner" {
+		t.Port = 22
+		t.KnownHosts = knownHostsPath(spec.Dir)
+	}
+	return t, nil
 }
 
 func okWord(ok bool) string {

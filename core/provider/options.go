@@ -2,8 +2,22 @@ package provider
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
+
+// expandHome expands a leading "~/" (or a bare "~") to the user's home directory.
+func expandHome(p string) string {
+	if p != "~" && !strings.HasPrefix(p, "~/") {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return p
+	}
+	return filepath.Join(home, strings.TrimPrefix(p, "~"))
+}
 
 // opts is a typed reader over company.yaml provider.options.
 type opts map[string]any
@@ -38,7 +52,7 @@ func (d *Deps) ResolveSecret(ref string) (string, error) {
 			return "", fmt.Errorf("secret reference %q: environment variable is empty or unset", ref)
 		}
 	case strings.HasPrefix(ref, "file:"):
-		b, err := d.ReadFile(strings.TrimPrefix(ref, "file:"))
+		b, err := d.ReadFile(expandHome(strings.TrimPrefix(ref, "file:")))
 		if err != nil {
 			return "", fmt.Errorf("secret reference %q: cannot read file", ref)
 		}

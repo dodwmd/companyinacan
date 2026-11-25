@@ -351,3 +351,37 @@ func TestKubeName(t *testing.T) {
 		t.Errorf("long name: %d", len(got))
 	}
 }
+
+func TestJSONOutputFlagWorksForAllLifecycleCommands(t *testing.T) {
+	dir := sshCompany(t)
+	r := newRunner()
+	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
+	mod := []string{dir, "--modules-dir", "../../modules", "--output", "json"}
+	for _, c := range [][]string{{"up"}, {"status"}, {"down", "--plan"}, {"down", "--yes"}} {
+		code, out, errs := run(t, append(c[:1:1], append(c[1:], mod...)...)...)
+		var v map[string]any
+		if code != ExitOK || json.Unmarshal([]byte(out), &v) != nil {
+			t.Errorf("%v: code=%d out=%q err=%q", c, code, out, errs)
+		}
+	}
+}
+
+func TestConcurrentUpIsRefused(t *testing.T) {
+	dir := sshCompany(t)
+	r := newRunner()
+	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
+	release, err := provider.NewStore(dir).LockOperation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	for _, c := range [][]string{{"up"}, {"down", "--yes"}} {
+		code, _, errs := run(t, append(c, dir, "--modules-dir", "../../modules")...)
+		if code != ExitFailure || !strings.Contains(errs, "already running") {
+			t.Errorf("%v: code=%d err=%q", c, code, errs)
+		}
+	}
+	if len(r.ran) != 0 {
+		t.Fatal("ran despite the lock")
+	}
+}

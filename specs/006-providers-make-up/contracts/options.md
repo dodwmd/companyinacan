@@ -29,6 +29,7 @@ The schema keeps `options` a free map (E01); these keys are validated by the pro
 | `server_name` | `can-<slug of name>` | DNS label |
 | `operator_ip` | any | restricts SSH in the cloud firewall and the host firewall |
 | `wait_seconds` | 600 | budget for server running plus cloud-init |
+| `port` | not allowed | any value other than 22 is an error (the cloud firewall opens only 22) |
 | plus the bootstrap keys above (`k3s_version`, `swap_mb`, `image_tarballs`, `node_name`) | | |
 
 Secret-looking values must be references; plain secrets in `company.yaml` are not read.

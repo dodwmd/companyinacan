@@ -59,7 +59,8 @@ fi
 
 step k3s-config
 install -d -m 0755 /etc/rancher/k3s
-cat > /etc/rancher/k3s/config.yaml <<'CAN_K3S_CONFIG'
+config_new=$(mktemp /etc/rancher/k3s/config.yaml.XXXXXX)
+cat > "$config_new" <<'CAN_K3S_CONFIG'
 node-name: can
 write-kubeconfig-mode: "0600"
 secrets-encryption: true
@@ -71,6 +72,14 @@ service-cidr: 10.43.0.0/16
 kubelet-arg:
   - fail-swap-on=false
 CAN_K3S_CONFIG
+config_changed=0
+if ! cmp -s "$config_new" /etc/rancher/k3s/config.yaml; then
+  config_changed=1
+  chmod 0644 "$config_new"
+  mv "$config_new" /etc/rancher/k3s/config.yaml
+else
+  rm -f "$config_new"
+fi
 
 step images
 # no image tarballs configured: containerd pulls images when first needed
@@ -80,9 +89,15 @@ fetch_pids=()
 step k3s
 current=$(k3s --version 2>/dev/null | awk 'NR==1 {print $3}' || true)
 if [ "$current" != "$K3S_VERSION" ]; then
-  curl -fsSL --retry 5 -o /tmp/k3s-install.sh https://get.k3s.io
-  INSTALL_K3S_VERSION="$K3S_VERSION" sh /tmp/k3s-install.sh
-  rm -f /tmp/k3s-install.sh
+  # The installer script is downloaded over TLS but not hash-verified (the
+  # version it installs is pinned, the script itself is not).
+  installer=$(mktemp)
+  curl -fsSL --retry 5 -o "$installer" https://get.k3s.io
+  INSTALL_K3S_VERSION="$K3S_VERSION" sh "$installer"
+  rm -f "$installer"
+elif [ "$config_changed" -eq 1 ]; then
+  # same version, changed config.yaml: restart so it takes effect
+  systemctl restart k3s
 fi
 
 for pid in ${fetch_pids[@]+"${fetch_pids[@]}"}; do

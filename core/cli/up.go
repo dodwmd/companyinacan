@@ -153,6 +153,13 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	out, flush := t.writers(cmd, g)
 	defer flush()
 	res := upResult{Provider: t.prov.Name(), Planned: planOnly}
+	if !planOnly {
+		release, err := t.store.LockOperation()
+		if err != nil {
+			return t.fail(err)
+		}
+		defer release()
+	}
 
 	acts, err := t.prov.Plan(ctx, t.spec, t.store)
 	if err != nil {
@@ -307,11 +314,19 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 			if plan || !yes {
 				fmt.Fprintln(out, warning)
 				if plan {
+					if g.json() {
+						return t.emitJSON(cmd, map[string]any{"provider": t.prov.Name(), "planned": true, "warning": warning})
+					}
 					return nil
 				}
 				return usage("refusing to continue without --yes")
 			}
 			fmt.Fprintln(out, warning)
+			release, err := t.store.LockOperation()
+			if err != nil {
+				return t.fail(err)
+			}
+			defer release()
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop()
 			if err := t.prov.Destroy(ctx, t.spec, t.store, out); err != nil {
@@ -319,6 +334,9 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 			}
 			_ = os.Remove(provider.KubeconfigPath(dir))
 			fmt.Fprintln(out, "done")
+			if g.json() {
+				return t.emitJSON(cmd, map[string]any{"provider": t.prov.Name(), "destroyed": true})
+			}
 			return nil
 		},
 	}

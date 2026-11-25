@@ -52,6 +52,7 @@ type hetznerConf struct {
 	operator   string
 	wait       time.Duration
 	target     Target
+	slug       string
 }
 
 func (p *Hetzner) conf(spec Spec) (hetznerConf, error) {
@@ -65,10 +66,16 @@ func (p *Hetzner) conf(spec Spec) (hetznerConf, error) {
 		typ:        o.str("server_type", defaultHetznerType),
 		image:      o.str("image", defaultHetznerImage),
 		location:   o.str("location", defaultHetznerLocation),
-		keyFile:    o.str("ssh_public_key_file", ""),
+		keyFile:    expandHome(o.str("ssh_public_key_file", "")),
 		operator:   o.str("operator_ip", ""),
 		wait:       time.Duration(o.integer("wait_seconds", defaultWaitSeconds)) * time.Second,
-		target:     Target{User: "root", Port: 22, KeyFile: o.str("ssh_private_key_file", "")},
+		target:     Target{User: "root", Port: 22, KeyFile: expandHome(o.str("ssh_private_key_file", "")), KnownHosts: knownHostsPath(spec.Dir)},
+		slug:       s,
+	}
+	// The cloud firewall opens only 22 and the target above is fixed to 22, so a
+	// different ssh port (which the host firewall would then enforce) would lock us out.
+	if _, set := o["port"]; set && o.integer("port", 22) != 22 {
+		return c, fmt.Errorf("provider.options.port is not supported for hetzner (SSH stays on 22)")
 	}
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`).MatchString(c.serverName) {
 		return c, fmt.Errorf("provider.options.server_name %q is not a valid hostname label", c.serverName)
@@ -215,6 +222,9 @@ func (p *Hetzner) Create(ctx context.Context, spec Spec, st *Store, out io.Write
 		if err != nil {
 			return err
 		}
+		if found && !OwnedBy(fw.Labels, c.slug) {
+			return fmt.Errorf("a firewall named %q already exists and was not created by can (labels managed-by=can, company=%s are missing); refusing to adopt it. Rename or delete it, or change the company name", c.fwName, c.slug)
+		}
 		if !found {
 			if fw, err = api.CreateFirewall(ctx, c.fwName, c.rules(), labels); err != nil {
 				return err
@@ -238,6 +248,9 @@ func (p *Hetzner) Create(ctx context.Context, spec Spec, st *Store, out io.Write
 		s, err := api.GetServer(ctx, state.Server.ID)
 		switch {
 		case err == nil:
+			if !OwnedBy(s.Labels, c.slug) {
+				return fmt.Errorf("server %d in state is not labelled as created by can; refusing to use it", s.ID)
+			}
 			srv, haveSrv = s, true
 		case !IsNotFound(err):
 			return err
@@ -247,6 +260,9 @@ func (p *Hetzner) Create(ctx context.Context, spec Spec, st *Store, out io.Write
 		s, found, err := api.FindServer(ctx, c.serverName)
 		if err != nil {
 			return err
+		}
+		if found && !OwnedBy(s.Labels, c.slug) {
+			return fmt.Errorf("a server named %q already exists and was not created by can (labels managed-by=can, company=%s are missing); refusing to adopt it. Set provider.options.server_name or remove the server", c.serverName, c.slug)
 		}
 		srv, haveSrv = s, found
 	}
@@ -294,15 +310,23 @@ func (p *Hetzner) Create(ctx context.Context, spec Spec, st *Store, out io.Write
 	t.Host = ip
 	r := p.deps.Runner(t)
 	fmt.Fprintln(out, "bootstrap: waiting for cloud-init (k3s install)")
+	var lastErr error
 	for {
 		o, err := r.Run(ctx, StatusScript())
+		if err != nil {
+			lastErr = err
+		}
 		if err == nil && BootstrappedVersion(o) != "" {
 			ver := BootstrappedVersion(o)
 			fmt.Fprintf(out, "bootstrap: done (k3s %s)\n", ver)
 			return st.Mutate(func(s *State) error { s.K3sVersion = ver; s.Mark("hetzner.bootstrap", st.Time()); return nil })
 		}
 		if time.Now().After(deadline) || ctx.Err() != nil {
-			return fmt.Errorf("cloud-init did not finish the bootstrap within %s; inspect /var/log/can-bootstrap.log on %s", c.wait, ip)
+			detail := ""
+			if lastErr != nil {
+				detail = " (last ssh error: " + p.deps.Redactor.Redact(lastErr.Error()) + ")"
+			}
+			return fmt.Errorf("cloud-init did not finish the bootstrap within %s%s; inspect /var/log/can-bootstrap.log on %s", c.wait, detail, ip)
 		}
 		p.deps.Sleep(ctx, 5*time.Second)
 	}
@@ -328,19 +352,44 @@ func (p *Hetzner) Destroy(ctx context.Context, spec Spec, st *Store, out io.Writ
 		return err
 	}
 	if state.Server != nil && state.Server.ID != 0 {
-		if err := api.DeleteServer(ctx, state.Server.ID); err != nil {
+		// Re-check ownership right before deleting: a server whose id is in
+		// state but whose labels are not ours is never touched.
+		srv, err := api.GetServer(ctx, state.Server.ID)
+		switch {
+		case IsNotFound(err):
+			fmt.Fprintf(out, "server %d already gone\n", state.Server.ID)
+		case err != nil:
 			return err
+		case !OwnedBy(srv.Labels, c.slug):
+			return fmt.Errorf("refusing to delete server %d: it is not labelled managed-by=can, company=%s", srv.ID, c.slug)
+		default:
+			if err := api.DeleteServer(ctx, srv.ID); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "server %d deleting\n", srv.ID)
+			if err := p.waitServerGone(ctx, api, srv.ID); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "server %d deleted\n", srv.ID)
 		}
-		fmt.Fprintf(out, "server %d deleted\n", state.Server.ID)
 		if err := st.Mutate(func(s *State) error { s.Server = nil; return nil }); err != nil {
 			return err
 		}
 	}
 	if state.FirewallID != 0 {
-		if err := api.DeleteFirewall(ctx, state.FirewallID); err != nil {
+		fw, err := api.GetFirewall(ctx, state.FirewallID)
+		switch {
+		case IsNotFound(err):
+		case err != nil:
 			return err
+		case !OwnedBy(fw.Labels, c.slug):
+			return fmt.Errorf("refusing to delete firewall %d: it is not labelled managed-by=can, company=%s", fw.ID, c.slug)
+		default:
+			if err := api.DeleteFirewall(ctx, fw.ID); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "firewall %d deleted\n", fw.ID)
 		}
-		fmt.Fprintf(out, "firewall %d deleted\n", state.FirewallID)
 		if err := st.Mutate(func(s *State) error { s.FirewallID = 0; return nil }); err != nil {
 			return err
 		}
@@ -403,4 +452,23 @@ func (*Hetzner) Address(st *Store) (string, error) {
 		return "", fmt.Errorf("no server recorded yet; run `can up` first")
 	}
 	return state.Server.IP, nil
+}
+
+// waitServerGone polls until the server no longer exists (deletion is
+// asynchronous and a firewall cannot be removed while it is still attached).
+func (p *Hetzner) waitServerGone(ctx context.Context, api *HetznerClient, id int64) error {
+	for i := 0; i < 60; i++ {
+		_, err := api.GetServer(ctx, id)
+		if IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		p.deps.Sleep(ctx, 2*time.Second)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	return fmt.Errorf("server %d still exists after deletion was requested", id)
 }
