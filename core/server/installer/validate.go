@@ -19,9 +19,7 @@ var chartKinds = map[string]bool{
 }
 
 var (
-	dnsRE      = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$`)
-	hostCallRE = regexp.MustCompile(`Host(?:Regexp|SNI)?\(([^)]*)\)`)
-	hostArgRE  = regexp.MustCompile("`([^`]*)`")
+	dnsRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$`)
 )
 
 // hostFor is the one public hostname a module may route: <subdomain>.<domain>.
@@ -48,7 +46,19 @@ func (in *Installer) checkObject(o kube.Object, s reconcile.Spec) error {
 	}
 	spec, _ := o["spec"].(map[string]any)
 	md, _ := o["metadata"].(map[string]any)
+	if av, _ := o["apiVersion"].(string); av != kube.APIVersion(kind) {
+		return fmt.Errorf("%s %s: apiVersion %q is not %q", kind, name, av, kube.APIVersion(kind))
+	}
+	for _, f := range []string{"ownerReferences", "finalizers", "generateName", "deletionTimestamp"} {
+		if _, ok := md[f]; ok {
+			return fmt.Errorf("%s %s: metadata.%s is not allowed", kind, name, f)
+		}
+	}
 	switch kind {
+	case "PersistentVolumeClaim":
+		if err := checkPVCSpec("persistentvolumeclaim "+name, spec); err != nil {
+			return err
+		}
 	case "Secret":
 		if t, _ := o["type"].(string); t != "" && t != "Opaque" {
 			return fmt.Errorf("secret %s: type %q is not allowed (only Opaque)", name, t)
@@ -141,6 +151,11 @@ func (in *Installer) checkIngressRoute(name string, spec map[string]any, s recon
 	if host == "" {
 		return fmt.Errorf("ingressroute %s: the module declares no runtime.subdomain, or can-core has no company domain (CAN_COMPANY_DOMAIN); routing is refused", name)
 	}
+	for _, ep := range asList(spec["entryPoints"]) {
+		if ep != "web" && ep != "websecure" {
+			return fmt.Errorf("ingressroute %s: entryPoint %v is not allowed (web, websecure)", name, ep)
+		}
+	}
 	routes := asList(spec["routes"])
 	if len(routes) == 0 {
 		return fmt.Errorf("ingressroute %s has no routes", name)
@@ -148,21 +163,14 @@ func (in *Installer) checkIngressRoute(name string, spec map[string]any, s recon
 	for _, r := range routes {
 		rt := asMap(r)
 		match, _ := rt["match"].(string)
-		calls := hostCallRE.FindAllStringSubmatch(match, -1)
-		if len(calls) == 0 {
-			return fmt.Errorf("ingressroute %s: every route must match Host(`%s`)", name, host)
-		}
-		if strings.Contains(match, "HostRegexp") || strings.Contains(match, "HostSNI") {
-			return fmt.Errorf("ingressroute %s: HostRegexp/HostSNI matchers are not allowed", name)
-		}
-		for _, c := range calls {
-			args := hostArgRE.FindAllStringSubmatch(c[1], -1)
-			if len(args) != 1 || args[0][1] != host {
-				return fmt.Errorf("ingressroute %s: host %q is not the module's host %q", name, c[1], host)
-			}
+		if err := checkMatch(match, host); err != nil {
+			return fmt.Errorf("ingressroute %s: %w", name, err)
 		}
 		for _, list := range []string{"services", "middlewares"} {
 			for _, e := range asList(rt[list]) {
+				if n, _ := asMap(e)["name"].(string); strings.Contains(n, "@") {
+					return fmt.Errorf("ingressroute %s: %s name %q refers to another provider or namespace (@)", name, list, n)
+				}
 				if ns, _ := asMap(e)["namespace"].(string); ns != "" && ns != s.Namespace {
 					return fmt.Errorf("ingressroute %s: %s may not reference namespace %q", name, list, ns)
 				}

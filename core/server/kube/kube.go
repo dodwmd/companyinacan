@@ -512,3 +512,6 @@ func (f *Fake) MergePatch(_ context.Context, kind, ns, name string, patch Object
 	f.Log = append(f.Log, "patch "+kind+" "+ns+"/"+name)
 	return nil
 }
+
+// APIVersion returns the canonical apiVersion of a supported kind ("" if unknown).
+func APIVersion(kind string) string { return kinds[kind].apiVersion }

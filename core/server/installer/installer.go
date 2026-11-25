@@ -11,8 +11,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -111,7 +111,7 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 		return errors.New("no manifest")
 	}
 	// 1. Render and validate before touching the cluster.
-	objs, err := in.render(s)
+	objs, err := in.renderBounded(ctx, s)
 	if err != nil {
 		return err
 	}
@@ -377,7 +377,7 @@ func (in *Installer) moduleDir(id string) (string, error) {
 	return "", fmt.Errorf("no module directory for %q under %s", id, in.cfg.ModulesDir)
 }
 
-func (in *Installer) values(s reconcile.Spec, dir string) (map[string]any, error) {
+func (in *Installer) values(ctx context.Context, s reconcile.Spec, dir string) (map[string]any, error) {
 	can := map[string]any{
 		"apiUrl": in.cfg.PlatformURL, "namespace": s.Namespace, "serviceAccount": s.ServiceAccount,
 		"moduleSecret": secretModule, "databaseSecret": secretDB, "tokenDir": TokenDir,
@@ -396,9 +396,15 @@ func (in *Installer) values(s reconcile.Spec, dir string) (map[string]any, error
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", vf, err)
 		}
-		t, err := template.New("values").Option("missingkey=zero").Funcs(funcs(nil, nil)).Parse(string(b))
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", vf, err)
+		vst := &renderState{ctx: ctx, deadline: time.Now().Add(renderTimeout)}
+		t := template.New("values").Option("missingkey=zero")
+		t.Funcs(funcs(t, vst))
+		t.Funcs(template.FuncMap{"tick": vst.tick})
+		if _, err := t.Parse(string(b)); err != nil {
+			return nil, fmt.Errorf("%s does not parse", vf)
+		}
+		if err := instrumentRanges(t, vst); err != nil {
+			return nil, err
 		}
 		buf := &limitWriter{max: maxObjectBytes}
 		input := map[string]any{
@@ -434,17 +440,17 @@ func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 	return r
 }
 
-func (in *Installer) render(s reconcile.Spec) ([]kube.Object, error) {
+func (in *Installer) render(ctx context.Context, s reconcile.Spec) ([]kube.Object, error) {
 	dir, err := in.moduleDir(s.ID)
 	if err != nil {
 		return nil, err
 	}
 	chart := filepath.Join(dir, filepath.Clean("/"+s.Manifest.Runtime.Chart))
-	vals, err := in.values(s, dir)
+	vals, err := in.values(ctx, s, dir)
 	if err != nil {
 		return nil, err
 	}
-	objs, err := RenderChart(chart, vals, ReleaseInfo{Name: s.ID, Namespace: s.Namespace})
+	objs, err := RenderChartContext(ctx, chart, vals, ReleaseInfo{Name: s.ID, Namespace: s.Namespace})
 	if err != nil {
 		return nil, fmt.Errorf("rendering chart: %w", err)
 	}
@@ -472,8 +478,11 @@ func (in *Installer) render(s reconcile.Spec) ([]kube.Object, error) {
 		m := o["metadata"].(map[string]any)
 		m["namespace"] = s.Namespace
 		setLabels(o, map[string]string{labelManaged: "can-core", labelModule: s.ID})
-		if err := in.hardenWorkload(o, s); err != nil {
-			return nil, fmt.Errorf("%s %s: %w", kind, name, err)
+	}
+	r := newRefs(objs, mergedValues(chart, vals), s)
+	for _, o := range objs {
+		if err := in.hardenWorkload(o, s, r); err != nil {
+			return nil, fmt.Errorf("%v %s: %w", o["kind"], nameOf(o), err)
 		}
 	}
 	return objs, nil
@@ -501,66 +510,6 @@ func podSpec(o kube.Object) map[string]any {
 	return cur
 }
 
-// hardenWorkload enforces the module contract on every pod template, whatever the chart says:
-// own ServiceAccount, no API token automount, only the projected `can` token, and the can-core
-// Secrets as environment. It also pins replicas/suspend so that disable-then-enable restores them.
-func (in *Installer) hardenWorkload(o kube.Object, s reconcile.Spec) error {
-	ps := podSpec(o)
-	if ps == nil {
-		return nil
-	}
-	for _, f := range []string{"hostNetwork", "hostPID", "hostIPC"} {
-		if ps[f] == true {
-			return fmt.Errorf("%s is not allowed", f)
-		}
-	}
-	if sa, _ := ps["serviceAccountName"].(string); sa != "" && sa != s.ServiceAccount {
-		return fmt.Errorf("serviceAccountName %q: modules run as %q", sa, s.ServiceAccount)
-	}
-	vols, _ := ps["volumes"].([]any)
-	for _, v := range vols {
-		if vm, _ := v.(map[string]any); vm["hostPath"] != nil {
-			return errors.New("hostPath volumes are not allowed")
-		}
-	}
-	ps["serviceAccountName"] = s.ServiceAccount
-	ps["automountServiceAccountToken"] = false
-	vols = append(vols, map[string]any{"name": tokenVolume, "projected": map[string]any{"sources": []any{
-		map[string]any{"serviceAccountToken": map[string]any{"audience": "can", "expirationSeconds": 3600, "path": "token"}}}}})
-	ps["volumes"] = vols
-	envFrom := []any{map[string]any{"secretRef": map[string]any{"name": secretModule}}}
-	if k := s.Manifest.Requires.Database; k == "postgres" || k == "mariadb" {
-		envFrom = append(envFrom, map[string]any{"secretRef": map[string]any{"name": secretDB}})
-	}
-	for _, group := range []string{"containers", "initContainers"} {
-		cs, _ := ps[group].([]any)
-		for _, c := range cs {
-			cm, _ := c.(map[string]any)
-			if cm == nil {
-				continue
-			}
-			if sc, _ := cm["securityContext"].(map[string]any); sc["privileged"] == true {
-				return errors.New("privileged containers are not allowed")
-			}
-			cm["volumeMounts"] = append(asList(cm["volumeMounts"]), map[string]any{"name": tokenVolume, "mountPath": TokenDir, "readOnly": true})
-			cm["envFrom"] = append(asList(cm["envFrom"]), envFrom...)
-		}
-	}
-	switch o["kind"] {
-	case "Deployment", "StatefulSet":
-		spec := o["spec"].(map[string]any)
-		if _, ok := spec["replicas"]; !ok {
-			spec["replicas"] = 1
-		}
-	case "CronJob":
-		spec := o["spec"].(map[string]any)
-		if _, ok := spec["suspend"]; !ok {
-			spec["suspend"] = false
-		}
-	}
-	return nil
-}
-
 func asList(v any) []any {
 	l, _ := v.([]any)
 	return l
@@ -573,7 +522,7 @@ func key(o kube.Object) string { return fmt.Sprint(o["kind"]) + "/" + nameOf(o) 
 func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.Object) error {
 	prev, err := in.loadRelease(ctx, s)
 	if err != nil {
-		return fmt.Errorf("the recorded release in Secret %s is unreadable or fails its checksum (%w); inspect it or delete it to reinstall", secretRelease, err)
+		return fmt.Errorf("the recorded release in Secret %s is unreadable or fails its HMAC check (%w); inspect it or delete it to reinstall", secretRelease, err)
 	}
 	if err := in.applyAll(ctx, objs); err != nil {
 		in.restore(ctx, s, prev, objs)
@@ -721,9 +670,12 @@ func (in *Installer) saveReleaseObjects(ctx context.Context, s reconcile.Spec, o
 	zw := gzip.NewWriter(&buf)
 	_, _ = zw.Write(raw)
 	_ = zw.Close()
-	sum := sha256.Sum256(raw)
+	mac, err := releaseMAC(s, raw)
+	if err != nil {
+		return err
+	}
 	return in.cfg.API.Apply(ctx, secret(s.Namespace, secretRelease, s.ID, map[string]string{
-		"objects": base64.StdEncoding.EncodeToString(buf.Bytes()), "version": s.Version, "sha256": hex.EncodeToString(sum[:]),
+		"objects": base64.StdEncoding.EncodeToString(buf.Bytes()), "version": s.Version, "hmac": mac,
 	}))
 }
 
@@ -744,9 +696,12 @@ func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256(raw)
-	if want := in.existingSecretKey(ctx, s.Namespace, secretRelease, "sha256"); want == "" || want != hex.EncodeToString(sum[:]) {
-		return nil, errors.New("sha256 does not match")
+	want, err := releaseMAC(s, raw)
+	if err != nil {
+		return nil, err
+	}
+	if have := in.existingSecretKey(ctx, s.Namespace, secretRelease, "hmac"); !hmac.Equal([]byte(have), []byte(want)) {
+		return nil, errors.New("HMAC does not match (the record was not written by this can-core for this module)")
 	}
 	var objs []kube.Object
 	if err := json.Unmarshal(raw, &objs); err != nil {

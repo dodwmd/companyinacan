@@ -252,3 +252,35 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   steady-state-under-load measurement.
 - **Evidence status.** The k3d lifecycle test runs in the `dev-cluster` workflow, which is `continue-on-error` and not a
   required check: it is advisory evidence, not a merge gate.
+
+### R18 addendum (QA round 2)
+- **Routing rules** are parsed, not pattern-matched (`installer/match.go`): one `&&` chain of plain matcher calls with
+  backtick arguments and exactly one `Host(`<subdomain>.<domain>`)`; matcher names are case-insensitive and
+  allowlisted (Host, PathPrefix, Path, Method, Headers); `||`, `!`, grouping parentheses, HostRegexp, HostSNI,
+  HeaderRegexp, ClientIP, Query and anything else are refused. entryPoints are limited to `web` and `websecure`;
+  service and middleware names may not contain `@` (other providers) and may not name another namespace.
+- **Render CPU bound**: Go templates cannot be interrupted, so every `range` body (also inside `define`d templates and
+  `values.tmpl.yaml`) is instrumented with a tick that counts iterations (200000 per render, `include` counts too) and
+  checks the 10 s deadline and the caller's context; Enable additionally renders in a goroutine under a 30 s timeout.
+  Test: a nested range over two 200k lists stops with an error, also when hidden behind `include`.
+- **Pod templates** (`installer/pod.go`): volume types limited to configMap, secret, emptyDir, persistentVolumeClaim and
+  the `can` projected token; Secret, ConfigMap and PVC references (volumes, `env.valueFrom`, `envFrom`) must name objects
+  the chart defines, the Secrets can-core creates (`can-module`, `can-db`), or Secret names the chart declares under
+  `.Values.secrets` (the starter charts' contract); the release record can never be read. hostPort, ephemeralContainers,
+  shareProcessNamespace and the `serviceAccount` alias are refused; booleans are read robustly (`"true"`, `"True"`, 1).
+  A chart's own `can-token` volume and mount (the starter charts declare one) is replaced by can-core's, never duplicated.
+- **Claims and metadata**: PVCs and volumeClaimTemplates may not set `volumeName`, `selector`, `dataSource`,
+  `dataSourceRef`, and `storageClassName` is empty or `local-path`; `apiVersion` must be the canonical one for the kind;
+  `ownerReferences`, `finalizers`, `generateName` and `deletionTimestamp` are refused.
+- **Release record** is authenticated with HMAC-SHA256 under the module's signing secret (kept in can-core's database,
+  not in the cluster), so write access to Secrets in the namespace does not allow forging a record that rollback replays.
+- **What the advisory CI run covers.** The `dev-cluster` workflow `integration` job (continue-on-error) runs the E02
+  tests that are not gated, the admission tests, the stub-module lifecycle and the Postgres test. These tests are
+  *skipped* there (`t.Skip`, gated by `CAN_PHASE0_PROOFS=1`): TestModuleTemplateApplies,
+  TestModuleEgressDeniedToNodeAndAPI, TestModuleDNSRewriteFromModuleNamespace, TestModulesIsolatedFromEachOther,
+  TestModuleReachesOnlyTheModuleAPIPort, TestTokenReviewAuthenticatesModule, TestCanCoreRBACScope,
+  TestDiagnosePodToNodeEgress. They are slow and one fails on purpose while issue #13 is open, so the `footprint`
+  workflow's `proofs-networkpolicy-tokenreview` job (also continue-on-error) runs them with the variable set; it passed on
+  this PR's head. So module isolation, module-egress denial, TokenReview and RBAC scope are covered by that job, not by the
+  `integration` job, and neither is a required check. Those proofs run against the E02 templates and not against
+  namespaces created by the new installer; the lifecycle test is what exercises the installer's own namespaces.

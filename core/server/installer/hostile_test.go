@@ -219,8 +219,8 @@ func TestTamperedReleaseRecordIsRefused(t *testing.T) {
 	}
 	rec := api.Objects["Secret/mod-stub/can-release"]
 	data := rec["data"].(map[string]any)
-	data["sha256"] = base64.StdEncoding.EncodeToString([]byte("0000"))
-	if err := in.Enable(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "checksum") {
+	data["hmac"] = base64.StdEncoding.EncodeToString([]byte("0000"))
+	if err := in.Enable(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "HMAC") {
 		t.Fatalf("%v", err)
 	}
 }

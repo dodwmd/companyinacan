@@ -2,6 +2,7 @@ package installer
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -27,6 +28,7 @@ const (
 	maxStringBytes  = 1 << 20 // any single string a template function produces
 	maxObjectBytes  = 1 << 20 // rendered output of one template file
 	maxTotalBytes   = 8 << 20 // rendered output of the whole chart
+	maxTicks        = 200000  // range iterations plus include calls in one render
 	maxFileBytes    = 1 << 20 // any chart file read from disk
 	renderTimeout   = 10 * time.Second
 )
@@ -40,6 +42,8 @@ type ReleaseInfo struct {
 type renderState struct {
 	depth    int
 	deadline time.Time
+	ctx      context.Context
+	ticks    int
 }
 
 // limitWriter fails once more than max bytes were written.
@@ -81,7 +85,12 @@ func readInside(root, path string) ([]byte, error) {
 // Not supported (a chart using them fails with an "undefined function" error): lookup, tpl,
 // subcharts, hooks, .Capabilities, .Files. This is not Helm: see research R16 for the list and the
 // sandbox limits (include depth, output size, string size, indentation, wall-clock).
-func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) (out []map[string]any, err error) {
+func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) ([]map[string]any, error) {
+	return RenderChartContext(context.Background(), chartDir, overrides, rel)
+}
+
+// RenderChartContext is RenderChart bounded by ctx as well as by the renderer's own limits.
+func RenderChartContext(ctx context.Context, chartDir string, overrides map[string]any, rel ReleaseInfo) (out []map[string]any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			out, err = nil, fmt.Errorf("chart rendering panicked: %v", r)
@@ -114,9 +123,10 @@ func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) (ou
 	if rel.Chart == "" {
 		rel.Chart, rel.Version = chartMeta(root)
 	}
-	st := &renderState{deadline: time.Now().Add(renderTimeout)}
+	st := &renderState{ctx: ctx, deadline: time.Now().Add(renderTimeout)}
 	rt := template.New("chart").Option("missingkey=zero")
 	rt.Funcs(funcs(rt, st))
+	rt.Funcs(template.FuncMap{"tick": st.tick})
 	var names []string
 	for _, e := range ents {
 		n := e.Name()
@@ -136,6 +146,9 @@ func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) (ou
 		}
 	}
 	sort.Strings(names)
+	if err := instrumentRanges(rt, st); err != nil {
+		return nil, err
+	}
 	data := map[string]any{
 		"Values":  merged,
 		"Release": map[string]any{"Name": rel.Name, "Namespace": rel.Namespace, "Service": "can-core"},
@@ -320,6 +333,9 @@ func funcs(root *template.Template, st *renderState) template.FuncMap {
 			}
 			if time.Now().After(st.deadline) {
 				return "", fmt.Errorf("rendering took longer than %s", renderTimeout)
+			}
+			if _, err := st.tick(); err != nil {
+				return "", err
 			}
 			st.depth++
 			defer func() { st.depth-- }()
