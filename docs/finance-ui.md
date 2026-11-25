@@ -20,14 +20,14 @@ Off by default. In `finance.yaml`:
 ui:
   enabled: true
   # force_secure: true       # production: Secure, __Host- cookies even if a proxy terminates TLS
-  # insecure_cookies: true   # plain-HTTP development only; refused together with force_secure
+  # insecure_cookies: true   # plain-HTTP development only; refused with force_secure or an https public_base_url
   # notifications_url: https://admin.example.com/notifications
   # idle_minutes: 30
   # absolute_hours: 8
 ```
 
 The UI is served on the module's listener at `/`; `/v1/*`, `GET /public/invoices/{token}` and
-`GET /healthz` stay the API. Cookies are `Secure` with a `__Host-` name unless `insecure_cookies` is set. Behind
+`GET /healthz` stay the API. Unlike the work UI (which decides per request and defaults `force_secure` from its public URL), cookies here are `Secure` with a `__Host-` name **unless** `insecure_cookies` is set, so a forgotten setting fails safe; `force_secure` states the intent and makes a contradicting `insecure_cookies` a configuration error, as does an https `public_base_url`. Behind
 a proxy also set the top-level `trust_proxy: true` so failed sign-ins are throttled per client address. In the dev
 compose stack it is at `http://finance.localhost:8080/` (`dev/compose/config/finance.yaml` turns it on). The Helm chart
 does not expose the `ui` block or a route yet: the module has no subdomain, so can-core's installer cannot route

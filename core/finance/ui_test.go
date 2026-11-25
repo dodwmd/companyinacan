@@ -217,6 +217,18 @@ func TestUIForceSecureRejectsInsecureCookies(t *testing.T) {
 	}
 }
 
+func TestUIInsecureCookiesRefusedForAnHTTPSPublicURL(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.UI.Enabled, cfg.UI.InsecureCookies, cfg.PublicBaseURL = true, true, "https://billing.example.com"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("insecure cookies with an https public_base_url must be refused")
+	}
+	cfg.PublicBaseURL = "http://finance.localhost:8080"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("plain-HTTP development must stay possible: %v", err)
+	}
+}
+
 func TestUITimeoutsAndRecheck(t *testing.T) {
 	u := newUIEnv(t)
 	reader := u.token("user:rita", []string{"finance.read"}, nil, nil, false)

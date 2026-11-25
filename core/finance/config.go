@@ -138,6 +138,9 @@ func (c *Config) Validate() error {
 	if c.UI.InsecureCookies && c.UI.ForceSecure {
 		errs = append(errs, errors.New("ui.insecure_cookies and ui.force_secure contradict each other: pick one"))
 	}
+	if c.UI.InsecureCookies && strings.HasPrefix(strings.ToLower(c.PublicBaseURL), "https://") {
+		errs = append(errs, errors.New("ui.insecure_cookies cannot be set when public_base_url is https: the browser would send session cookies without Secure"))
+	}
 	if c.UI.IdleMinutes < 0 || c.UI.IdleMinutes > 24*60 || c.UI.AbsoluteHours < 0 || c.UI.AbsoluteHours > 24*30 {
 		errs = append(errs, errors.New("ui.idle_minutes and ui.absolute_hours are out of range"))
 	}
