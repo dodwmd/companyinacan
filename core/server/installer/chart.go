@@ -49,7 +49,8 @@ func RenderChart(chartDir string, overrides map[string]any, rel ReleaseInfo) ([]
 	var names []string
 	for _, e := range ents {
 		n := e.Name()
-		if e.IsDir() || !(strings.HasSuffix(n, ".yaml") || strings.HasSuffix(n, ".yml") || strings.HasSuffix(n, ".tpl")) {
+		templated := strings.HasSuffix(n, ".yaml") || strings.HasSuffix(n, ".yml") || strings.HasSuffix(n, ".tpl")
+		if e.IsDir() || !templated {
 			continue
 		}
 		info, err := os.Lstat(filepath.Join(tdir, n))

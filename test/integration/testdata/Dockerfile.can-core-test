@@ -1,0 +1,5 @@
+# Test image: the real can-core image (built from deploy/can-core/Dockerfile) plus the stub module.
+# Build context is test/integration/testdata.
+ARG BASE=can-core:dev
+FROM ${BASE}
+COPY modules/stub /modules/stub

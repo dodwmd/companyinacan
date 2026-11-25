@@ -1,0 +1,77 @@
+# ValidatingAdmissionPolicies that close the two residual risks of can-core's standing RBAC
+# (deploy/base/rbac.yaml): RBAC alone cannot say "bind can-core-module only inside mod-*" or "create
+# namespaces only with these labels". Admission can, and it applies to can-core's ServiceAccount
+# only, so cluster administrators and k3s itself are unaffected.
+#
+# Needs Kubernetes 1.30+ (admissionregistration.k8s.io/v1 GA; k3s v1.31 is pinned in dev/k3d.yaml).
+# can-core has no permission on these objects (no admissionregistration verbs in its ClusterRole), so
+# it cannot weaken them. failurePolicy Fail: if the policy cannot be evaluated, the request is denied.
+#
+# Proven by test/integration/admission_test.go (a RoleBinding into kube-system is denied).
+#
+# What this does NOT cover (see specs/005-can-core-mvp/research.md R17): can-core can still update the
+# two kube-system objects its Role allows (coredns-custom, HelmChartConfig/traefik), and can create
+# any workload inside the mod-* namespaces, which are pod-security `restricted`.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: can-core-rolebindings
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [rbac.authorization.k8s.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [rolebindings]
+  matchConditions:
+    - name: requester-is-can-core
+      expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
+  validations:
+    - expression: "request.namespace.startsWith('mod-')"
+      message: "can-core may only create RoleBindings in module namespaces (mod-*)"
+    - expression: "object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'can-core-module'"
+      message: "can-core may only bind the ClusterRole can-core-module"
+    - expression: "object.subjects.size() == 1 && object.subjects[0].kind == 'ServiceAccount' && object.subjects[0].name == 'can-core' && object.subjects[0].namespace == 'can-system'"
+      message: "the only subject of a can-core RoleBinding is ServiceAccount can-system/can-core"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: can-core-rolebindings
+spec:
+  policyName: can-core-rolebindings
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: can-core-namespaces
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [namespaces]
+  matchConditions:
+    - name: requester-is-can-core
+      expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
+  validations:
+    - expression: "object.metadata.name.startsWith('mod-')"
+      message: "can-core may only create module namespaces (mod-*)"
+    - expression: "has(object.metadata.labels) && 'pod-security.kubernetes.io/enforce' in object.metadata.labels && object.metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted'"
+      message: "module namespaces must enforce the restricted pod security standard"
+    - expression: "has(object.metadata.labels) && 'can.dev/namespace-kind' in object.metadata.labels && object.metadata.labels['can.dev/namespace-kind'] == 'module'"
+      message: "module namespaces must carry can.dev/namespace-kind=module (the NetworkPolicies select on it)"
+    - expression: "!has(object.metadata.labels) || !('pod-security.kubernetes.io/exempt' in object.metadata.labels)"
+      message: "module namespaces cannot opt out of pod security"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: can-core-namespaces
+spec:
+  policyName: can-core-namespaces
+  validationActions: [Deny]

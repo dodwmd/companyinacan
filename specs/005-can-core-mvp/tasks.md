@@ -9,7 +9,7 @@ description: "Task list for Epic E03 — can-core MVP"
 
 **Tests**: Test-first (Constitution III). In every group the test task precedes its implementation task.
 
-**Part 1** is this PR (`epic/E03a-can-core`). **Part 2** is open.
+**Part 1** merged as `epic/E03a-can-core`. **Part 2** is `epic/E03b-k8s-integration`.
 
 ## Part 1
 
@@ -57,13 +57,41 @@ description: "Task list for Epic E03 — can-core MVP"
 - [x] T025 Measure idle RAM ([measurements.md](measurements.md)); `make build` also builds `bin/can-core`
 - [x] T026 `make test` green; push; CI green (see measurements.md)
 
-## Part 2 (open)
+## Part 2 (`epic/E03b-k8s-integration`)
 
-- [ ] T030 Helm-SDK `ModuleInstaller` (`helm upgrade --install --atomic`, values mapping from `values.tmpl.yaml`, namespaces, NetworkPolicies, Secrets incl. webhook HMAC, `automountServiceAccountToken: false`, projected `can` token volume)
-- [ ] T031 Database creation and credential injection from `requires.database`
-- [ ] T032 `email.send` (SMTP relay wrapper) and SMTP credential injection
-- [ ] T033 In-cluster applied `company.yaml` ConfigMap; `can apply` against the cluster; drift warning
+Evidence for the cluster tasks is the `dev-cluster` workflow (a real k3d on the GitHub runner); the PR records which
+steps ran. Nothing below was run against a cluster locally.
+
+### Installer (US7)
+- [x] T030a Research: measure the Helm SDK against client-go and a hand-rolled client; decide (research R16)
+- [x] T030b Test then `core/server/kube`: SSA, create, get, list, delete, merge-patch over `net/http`, a fake API
+- [x] T030c Test then `core/server/installer/chart.go`: Helm-compatible template subset (`include`, `toYaml`, `default`, `required`, ...), `values.tmpl.yaml`
+- [x] T030d Test then `core/server/installer`: namespace `mod-<id>` + NetworkPolicies + quota + RoleBinding from `deploy/templates`; workload hardening (own SA, `automountServiceAccountToken: false`, projected `can` token, Secrets as env); chart guard rails; rollout wait, rollback to the previous release or removal of a failed first install, prune (never PVCs or Secrets); disable scales to zero and deletes nothing
+- [x] T030e Runtime wiring: `CAN_INSTALLER=kubernetes`, reconcile loop over the mounted `company.yaml` (`core/server/runtime/sync.go`)
+- [ ] T030f Upstream-chart support: the full Helm engine for charts that use `lookup`, `tpl`, subcharts or hooks (see R16)
+
+### Databases (US7)
+- [x] T031a Test then `core/server/dbprov`: `Provisioner` interface, fake, `Unconfigured`
+- [x] T031b Postgres implementation (role, database, `REVOKE ... FROM PUBLIC`, password re-assert) and the `can-db` Secret; password reused across enables
+- [x] T031c k3d test against a throw-away Postgres pod (`TestPostgresProvisioner`)
+- [ ] T031d MariaDB implementation
+
+### Identity (US2)
+- [x] T035a `tokenreview.Cached`: positive cache (capped by the token's `exp`), negative cache, global and per-source rate limit, bounded; module API answers 429 (R15)
+- [x] T035b Real TokenReview proven by the stub module's call with a projected token, and a wrong-audience token refused (`TestCanCoreLifecycle`)
+
+### Admission (closes the RBAC residual risk)
+- [x] T038a `deploy/base/admission-policy.yaml`: ValidatingAdmissionPolicy + bindings for can-core's RoleBindings and namespaces
+- [x] T038b Offline contract test (`test/contract/cancore_manifests_test.go`) and k3d tests (`TestAdmissionPolicy*`): a bind into `kube-system` is denied by the policy, a bad namespace is denied, the canonical bind is allowed, administrators are unaffected
+
+### Deployment and the epic's "done when" (US6, US7)
+- [x] T033a `can apply` syncs `company.yaml` into ConfigMap `can-system/company` (kubectl, server-side apply); can-core reconciles it
+- [x] T036a `deploy/can-core` (Deployment, Service, PVC; non-root, read-only rootfs, 48/96 MiB, probes, `CAN_TRUST_PROXY=true`) and `deploy/can-core/Dockerfile`
+- [x] T035c `TestCanCoreLifecycle`: can-core built from this checkout and imported into k3d; `can apply` -> namespace, policies, quota, workload -> injected config -> module API call with the real projected token -> settings upgrade -> disable (PVC and Secrets kept) -> re-enable
+- [ ] T033b `can apply --dry-run` against cluster state (needs a read path into can-core; today `--dry-run` plans against a local state file)
+- [ ] T036b CI footprint check on can-core's cluster RSS (the workflow prints the node-side RSS; it does not fail on it yet)
+
+### Still open
+- [ ] T032 `email.send` and SMTP credential injection
 - [ ] T034 Admin enable/disable endpoints; minimal admin UI
-- [ ] T035 k3d integration tests: real TokenReview, NetworkPolicy enforcement, Helm upgrade/rollback, stub module enable/disable (Constitution III)
-- [ ] T036 can-core chart with declared `ram_mb: 48`, `ram_limit_mb: 96`; CI footprint check
-- [ ] T037 Uninstall with keep/purge
+- [ ] T037 Uninstall with keep/purge (the installer has no code path that deletes a PVC, Secret or namespace)

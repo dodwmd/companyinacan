@@ -9,3 +9,4 @@ resources:
   - rbac.yaml
   - traefik-config.yaml
   - coredns-custom.yaml
+  - admission-policy.yaml

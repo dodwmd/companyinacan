@@ -1,0 +1,115 @@
+# can-core in the can-system namespace (epic E03). Apply after deploy/base:
+#   kubectl apply -k deploy/can-core
+# The image reference is `can-core:dev` for `make dev` (build it with deploy/can-core/Dockerfile and
+# `k3d image import`); a release replaces it with a digest-pinned ghcr.io reference (kustomize `images:`).
+#
+# Why this is not in deploy/base: base is applied by `can dev up` before any image exists, and a
+# Deployment whose image cannot be pulled would sit in ImagePullBackOff on every fresh cluster.
+#
+# Sizing (specs/005-can-core-mvp/measurements.md): 38 MB idle, 55 MB after Argon2 logins. Request
+# 48 MiB (the declared ram_mb), limit 96 MiB (ram_limit_mb), soft Go limit 64 MiB (CAN_MEMLIMIT_MB).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: can-core-data
+  namespace: can-system
+  labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: can-core
+  namespace: can-system
+  labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+spec:
+  selector: {app.kubernetes.io/name: can-core}
+  ports:
+    - {name: admin, port: 8080, targetPort: admin}
+    # The module API; reachable from module namespaces only (allow-module-api-from-modules).
+    - {name: module, port: 8090, targetPort: module}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: can-core
+  namespace: can-system
+  labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+spec:
+  replicas: 1
+  # One writer on the SQLite file: never two pods at once, even during a rollout.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: can-core}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+    spec:
+      serviceAccountName: can-core
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: can-core
+          image: can-core:dev
+          imagePullPolicy: IfNotPresent
+          args: [serve]
+          ports:
+            - {name: admin, containerPort: 8080}
+            - {name: module, containerPort: 8090}
+          env:
+            - {name: CAN_ADMIN_ADDR, value: ":8080"}
+            - {name: CAN_MODULE_ADDR, value: ":8090"}
+            - {name: CAN_DB_PATH, value: /var/lib/can/state.db}
+            - {name: CAN_TOKEN_REVIEW, value: kubernetes}
+            - {name: CAN_PLATFORM_URL, value: "http://can-core.can-system.svc.cluster.local:8090"}
+            # Behind Traefik (the only route to the admin port, externalTrafficPolicy: Local): see
+            # specs/005-can-core-mvp/deployment.md. Without a proxy in front this MUST be false.
+            - {name: CAN_TRUST_PROXY, value: "true"}
+            - {name: CAN_COOKIE_SECURE, value: "true"}
+            - {name: CAN_MEMLIMIT_MB, value: "64"}
+            - {name: CAN_INSTALLER, value: kubernetes}
+            - {name: CAN_COMPANY_FILE, value: /etc/can/company/company.yaml}
+            - {name: CAN_MODULES_DIR, value: /modules}
+            - {name: CAN_RECONCILE_INTERVAL_SECONDS, value: "15"}
+            # The node address, excluded from module egress (deploy/templates/module-namespace.yaml).
+            - name: CAN_NODE_IP
+              valueFrom: {fieldRef: {fieldPath: status.hostIP}}
+            # Optional: admin connection to the shared Postgres in can-data (database creation).
+            - name: CAN_POSTGRES_ADMIN_URL
+              valueFrom: {secretKeyRef: {name: can-postgres-admin, key: url, optional: true}}
+          resources:
+            requests: {memory: 48Mi, cpu: 20m}
+            limits: {memory: 96Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          readinessProbe:
+            httpGet: {path: /healthz, port: admin}
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: {path: /healthz, port: admin}
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/can}
+            - {name: tmp, mountPath: /tmp}
+            # The applied company.yaml, written by `can apply`. Optional: can-core starts without it.
+            - {name: company, mountPath: /etc/can/company, readOnly: true}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: can-core-data}
+        - name: tmp
+          emptyDir: {sizeLimit: 16Mi}
+        - name: company
+          configMap: {name: company, optional: true}

@@ -1,0 +1,17 @@
+# Stub module for the cluster integration tests (epic E03 part 2). Not a product module.
+schema: 1
+id: stub
+name: Stub
+description: A busybox pod that calls the can-core module API with its projected token.
+category: test
+version: 0.1.0
+provider:
+  type: inhouse
+runtime:
+  chart: ./chart
+requires:
+  database: none
+resources:
+  ram_mb: 20
+  ram_limit_mb: 40
+  disk_mb: 10

@@ -94,13 +94,14 @@ upgrades and NetworkPolicies; they are explicitly out of this PR because no clus
 
 ## Follow-ups (part 2 and later)
 
-1. Real `tokenreview` verification against a k3d API server (the `net/http` client is only unit-tested).
-2. `ModuleInstaller` backed by the Helm SDK (`helm upgrade --install --atomic`), values mapping, namespaces,
-   NetworkPolicies, Secrets for the webhook HMAC, DB creation and credential injection (`requires.database`).
-3. `email.send` and SMTP relay credential injection.
-4. In-cluster applied `company.yaml` ConfigMap and `can apply` pushing to the cluster instead of a local state file.
-5. Admin API enable/disable endpoints and the minimal admin UI.
-6. Uninstall with keep/purge; module data export.
-7. Token review caching if the API-server call rate becomes visible.
-8. IP allowlist middleware option; session list/revoke endpoints.
-9. TokenReview negative cache and per-source rate limit; transport security for the module API (see research R15).
+Done in part 2 (tasks.md): real TokenReview proven on k3d, installer (R16: no Helm SDK), DB creation and credential
+injection (Postgres), `company.yaml` ConfigMap and `can apply`, TokenReview caching and rate limit, admission
+policy (R17), can-core manifests and the stub-module lifecycle on k3d.
+
+Still open:
+1. `email.send` and SMTP relay credential injection.
+2. Admin API enable/disable endpoints and the minimal admin UI.
+3. Uninstall with keep/purge; module data export.
+4. IP allowlist middleware option; session list/revoke endpoints.
+5. MariaDB provisioner; the full Helm engine for upstream charts (R16); `can apply --dry-run` against cluster state.
+6. Transport security for the module API (see research R15).

@@ -152,3 +152,57 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
 - Every module-API call performs a TokenReview. A negative cache and a per-source rate limit (so a misbehaving
   module cannot hammer the API server, and an outage degrades gracefully) are part-2 work, together with positive
   caching for the token's remaining lifetime.
+- **Part 2 status**: the negative cache, positive cache (30 s, capped by the token's `exp`) and a global plus per-source
+  rate limit are built (`tokenreview.Cached`); the module API maps a refused review to 429. Trade-off stated in the
+  code: a token revoked by deleting its pod keeps working for up to the positive TTL. mTLS stays out of scope.
+
+## R16. Helm SDK versus a small client (part 2 decision)
+- **Measured** on the author's workstation (Go 1.27.3, CGO off, `-trimpath -s -w`), a program that only imports the
+  package and reads its own RSS at start:
+
+  | Imports | Binary | RSS at start |
+  |---|---|---|
+  | nothing (baseline) | 2.7 MB | about 4 MB |
+  | `client-go/rest` + `client-go/dynamic` | 8.2 MB | 8 MB |
+  | `helm.sh/helm/v3/pkg/engine` + `chart/loader` + client-go dynamic | 26.5 MB | 23.6 MB |
+  | `helm.sh/helm/v3/pkg/action` + client-go rest | 28.7 MB | 27 MB |
+
+  can-core today is 13.3 MB and 38 MB idle (measurements.md) against a declared 48 MB request / 96 MB limit. The
+  Helm template engine alone would add about 15 MB of resident memory at start-up (scheme and sprig registration),
+  the action package about 19 MB: that is the whole headroom, paid by every install forever, to save a few hundred
+  lines.
+- **Decision**: no Helm SDK and no client-go. `core/server/kube` is a net/http client for the 18 kinds the installer
+  needs (server-side apply with a field manager, create, get, list, delete, merge-patch). `installer/chart.go` renders
+  `chart/templates` with `text/template` and a Helm-compatible subset (`.Values`, `.Release`, `.Chart`, `include`,
+  `define`, `toYaml`, `toJson`, `nindent`, `default`, `required`, `quote`, `trunc`, `b64enc`, ...). Atomic semantics
+  are rebuilt: apply, wait for Deployment/StatefulSet readiness, and on failure re-apply the previous rendering
+  (stored gzip+base64 in Secret `can-release`) or, for a first install, delete the new workloads and keep the data.
+  Measured result: binary 16.96 MB (+3.7 MB), idle RSS 41.5 MB (+3.5 MB), both including the Postgres driver.
+- **What this gives up, plainly**: charts that use `lookup`, `tpl`, `.Files`, `.Capabilities`, subcharts, hooks or
+  library charts fail with an "undefined function" error instead of rendering. SPEC 3.1 expects upstream charts as
+  subcharts, so wrapping an upstream chart needs either the full engine (open task T030f; the options are a
+  build-tagged `can-core-helm` variant or rendering with `helm template` at image build time and baking the result in)
+  or a module-owned minimal chart, which SPEC 4.1 already allows. The seam is `chart.RenderChart`.
+- **Guard rails** (tests in `installer_test.go`): chart objects may not target another namespace, be a Namespace,
+  RoleBinding or Pod, or reuse names can-core owns (`can-module`, `can-db`, `can-release`, the module ServiceAccount,
+  the four policies, quota, limit range); pod templates may not use host namespaces, privileged containers, hostPath
+  or another ServiceAccount; every pod template is rewritten to the module's ServiceAccount, no token automount and
+  the projected `can` token. A chart can still add its own NetworkPolicies (additive); modules are reviewed repository
+  code, and a hostile chart is out of the threat model for now.
+- **Disable/enable**: disable merge-patches replicas to 0 and `suspend: true` and deletes running Jobs; the renderer
+  always writes explicit `replicas` and `suspend`, so the next server-side apply (forced, same field manager)
+  restores them. No code path deletes a PVC, Secret or Namespace (tested by scanning the fake's call log).
+- **Alternatives**: Helm SDK in-process (rejected by the numbers); shelling out to `helm` (no shell in the image);
+  client-go dynamic client alone (+4.5 MB binary, +4 MB RSS for what 300 lines do; reconsider with the Helm engine).
+
+## R17. Admission policy for can-core's RoleBinding and Namespace creation
+- **Decision**: two ValidatingAdmissionPolicies with Deny bindings (`deploy/base/admission-policy.yaml`), matched on
+  `request.userInfo.username == system:serviceaccount:can-system:can-core` so administrators and k3s are untouched.
+  RoleBindings: namespace `mod-*`, roleRef the ClusterRole `can-core-module`, one subject (can-core itself).
+  Namespaces: name `mod-*`, `pod-security.kubernetes.io/enforce=restricted`, `can.dev/namespace-kind=module`, no
+  `exempt` label. `failurePolicy: Fail`. Needs Kubernetes 1.30 (k3s v1.31.5 is pinned).
+- **Why it is real**: RBAC grants can-core `create` on rolebindings cluster-wide plus `bind` on one ClusterRole, which
+  without the policy lets a compromised can-core bind into `kube-system`. The k3d test impersonates can-core,
+  attempts exactly that and requires the denial message to come from the policy (RBAC alone would have allowed it).
+- **Still open**: the kube-system Role (`coredns-custom`, `HelmChartConfig/traefik`) is not covered; nor is a
+  compromised can-core creating arbitrary workloads in `mod-*` (pod security `restricted` bounds them).

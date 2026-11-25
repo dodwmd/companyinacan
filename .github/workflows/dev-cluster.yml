@@ -1,15 +1,21 @@
 name: dev-cluster
 
-# Not a required check (continue-on-error). Written without local Docker/k3d; its first run on
-# GitHub brought the cluster up and passed the integration tests, which is the only cluster
-# evidence so far. Kept out of ci.yml so it cannot affect the required job names.
+# Not a required check (continue-on-error). Runs the cluster-backed tests on a real k3d cluster:
+# the E02 platform tests, and (epic E03 part 2) can-core built from this checkout, deployed into the
+# cluster, driving a stub module through enable -> upgrade -> disable -> re-enable with a real
+# projected ServiceAccount token, plus the admission policy and database provisioner tests.
+# Kept out of ci.yml so it cannot affect the required job names.
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - "deploy/**"
       - "dev/**"
-      - "core/cluster/**"
+      - "core/**"
+      - "cmd/**"
+      - "modules/**"
+      - "go.mod"
+      - "go.sum"
       - "test/integration/**"
       - ".github/workflows/dev-cluster.yml"
 
@@ -21,7 +27,7 @@ jobs:
     name: integration
     runs-on: ubuntu-latest
     continue-on-error: true
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -35,13 +41,41 @@ jobs:
           sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
       - name: Create the cluster
         run: make dev
+      - name: Build the can-core image and import it into the cluster
+        # The release Dockerfile pins base images by digest (placeholders until a release); the
+        # throwaway cluster uses plain tags. The test layer adds the stub module under /modules.
+        run: |
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:base .
+          docker build -f test/integration/testdata/Dockerfile.can-core-test \
+            --build-arg BASE=can-core:base -t can-core:dev test/integration/testdata
+          k3d image import can-core:dev -c companyinacan-dev
+      - name: Deploy can-core
+        run: |
+          kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
+          kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
       - name: Integration tests
-        run: go test -tags integration -count=1 -v ./test/integration/...
+        env:
+          CAN_IT_CANCORE: "1"
+        run: go test -tags integration -count=1 -v -timeout 25m ./test/integration/...
+      - name: Measure can-core memory in the cluster
+        if: always()
+        run: |
+          kubectl --context k3d-companyinacan-dev -n can-system get pod -l app.kubernetes.io/name=can-core -o wide || true
+          # the image has no shell: read the process RSS from the node
+          docker exec k3d-companyinacan-dev-server-0 sh -c 'for p in $(pidof can-core); do grep -E "VmRSS|VmHWM" /proc/$p/status; done' || true
       - name: Cluster state on failure
         if: failure()
         run: |
           kubectl --context k3d-companyinacan-dev get pods,svc,networkpolicy -A || true
           kubectl --context k3d-companyinacan-dev -n kube-system logs deployment/coredns --tail=50 || true
+          kubectl --context k3d-companyinacan-dev -n can-system logs deploy/can-core --tail=200 || true
+          kubectl --context k3d-companyinacan-dev -n can-system describe pod -l app.kubernetes.io/name=can-core || true
+          kubectl --context k3d-companyinacan-dev get ns,validatingadmissionpolicy,validatingadmissionpolicybinding || true
+          kubectl --context k3d-companyinacan-dev -n mod-stub get all,netpol,quota -o wide || true
+          kubectl --context k3d-companyinacan-dev -n mod-stub logs deploy/stub --tail=40 || true
       - name: Delete the cluster
         if: always()
         run: go run ./cmd/can dev down
