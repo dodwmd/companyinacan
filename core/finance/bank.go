@@ -22,6 +22,8 @@ import (
 
 const EventBankStatementImported = "bank.statement.imported.v1"
 
+const minBankNumber, maxBankNumber = 5, 40
+
 var bankNumberRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 -]{3,38}[A-Za-z0-9]$`)
 
 // BankAccount is a bank account as the API shows it: the number is never returned, only its mask.
@@ -77,8 +79,10 @@ func (s *Store) CreateBankAccount(ctx context.Context, a *Principal, in BankAcco
 	if _, ok := CurrencyExponent(in.Currency); !ok {
 		p.add("currency", "unknown currency code")
 	}
-	if !bankNumberRE.MatchString(in.Number) {
-		p.add("number", "5 to 40 letters, digits, spaces or dashes")
+	// The length is checked after the spaces and dashes are removed: "1   2" is two characters.
+	num := normalizeNumber(in.Number)
+	if !bankNumberRE.MatchString(in.Number) || len(num) < minBankNumber || len(num) > maxBankNumber {
+		p.add("number", "%d to %d letters or digits, optionally separated by spaces or dashes", minBankNumber, maxBankNumber)
 	}
 	if err := p.err(); err != nil {
 		return nil, err
@@ -86,7 +90,6 @@ func (s *Store) CreateBankAccount(ctx context.Context, a *Principal, in BankAcco
 	if s.sealer == nil {
 		return nil, fmt.Errorf("%w: CAN_FINANCE_SEAL_KEY is not set, so bank account numbers cannot be sealed", ErrNotConfigured)
 	}
-	num := normalizeNumber(in.Number)
 	var out *BankAccount
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		var lid int64

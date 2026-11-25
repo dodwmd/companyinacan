@@ -158,8 +158,10 @@ func (s *Store) inTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	if err != nil {
 		return err
 	}
+	// Deferred so that a panic in fn releases the transaction too: the pool has one writer connection, and
+	// a transaction left open would hang every later write until a restart. A no-op after Commit.
+	defer func() { _ = tx.Rollback() }()
 	if err := fn(tx); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 	if err := tx.Commit(); err != nil {
