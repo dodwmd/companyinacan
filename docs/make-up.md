@@ -13,17 +13,19 @@ make down ARGS=--yes    # tear down (destructive, needs --yes)
 
 `make down` runs `can down`, which depends on `provider.type` in `company.yaml` (so it needs a
 `company.yaml` in the directory): `local` deletes the k3d cluster exactly like `can dev down` (no
-`--yes` needed, `ARGS=--plan` prints the k3d commands); `ssh` and `hetzner` destroy what `make up`
-created and require `--yes`. `make server-down` is kept as an alias.
+`--yes` needed, `ARGS=--plan` prints the k3d commands); `ssh`, `hetzner` and `digitalocean` destroy what `make up`
+created (plus the Cloudflare DNS records it created, if `dns.provider: cloudflare`) and require `--yes`. `make server-down` is kept as an alias.
 
 ## What `make up` does today
 
 1. Validates `company.yaml`.
-2. Runs the provider (`ssh` or `hetzner`, see [providers.md](providers.md)): preflight, bootstrap,
-   wait for k3s to be Ready.
-3. Fetches the kubeconfig to `.can/kubeconfig`.
-4. Prints the address, the instant URL (https on sslip.io, or the plain-HTTP fallback with the
-   reason) and the DNS records to add.
+2. Checks the DNS plugin (Cloudflare: token and zone, read-only), so a bad token fails before a
+   server exists.
+3. Runs the provider (`ssh`, `hetzner` or `digitalocean`, see [providers.md](providers.md)):
+   preflight, bootstrap, wait for k3s to be Ready.
+4. Fetches the kubeconfig to `.can/kubeconfig`.
+5. Prints the address and the instant URL (https on sslip.io, or the plain-HTTP fallback with the
+   reason), then creates the DNS records (Cloudflare) or prints them for you to add (manual).
 
 Not yet part of `make up`: installing can-core and the site (epic E03/E04), generating admin
 credentials, the recovery kit (epic E08). Until then the server runs bare k3s, so the instant URL
@@ -39,15 +41,22 @@ resources are adopted instead of duplicated.
 | 0 | success (`status`: ready) |
 | 1 | failure: invalid `company.yaml`, preflight failed, API or SSH error, status not ready |
 | 2 | usage: unknown flag, too many arguments, `down` without `--yes` |
-| 3 | not implemented: provider `local`, `static`, `digitalocean`, or a DNS plugin other than `manual` |
+| 3 | not implemented: provider `local` or `static`, or the `provider-native` DNS plugin |
 
 ## Troubleshooting
 
 - `preflight failed: ram: ...`: the server is too small; use at least 2 GB.
 - `ssh ...: exit status 255`: SSH could not connect; check `host`, `user`, `key_file`, and that you
   can `ssh user@host` yourself. The first connection trusts the host key.
-- `secret reference "env:HCLOUD_TOKEN": environment variable is empty or unset`: export the token.
-- Hetzner: look at `/var/log/can-bootstrap.log` on the server if the bootstrap wait times out.
+- `secret reference "env:HCLOUD_TOKEN" is not usable (the environment variable is empty or unset)`: export the token.
+- Hetzner and DigitalOcean: look at `/var/log/can-bootstrap.log` on the server if the bootstrap wait times out.
+- DigitalOcean: `a droplet named ... was not created by can`: a Droplet with that name exists without
+  the `managed-by:can` and `company:<slug>` tags; rename it, delete it yourself, or set
+  `provider.options.server_name`. Same for a firewall named `can-<slug>`.
+- Cloudflare: `cannot read DNS records in the zone`: the token can see the zone but lacks DNS edit permission.
+- Cloudflare: `no Cloudflare zone found`: the domain is not a zone in the account the token belongs
+  to, or the token lacks Zone Read for it. `already exists ... not created by can`: see
+  `adopt_existing` in [providers.md](providers.md).
 - `.can/state.json` says something that is no longer true (server deleted by hand): `can status`
   reports `absent`; remove `.can/` to start clean.
 

@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.provider-option
+    path: "/provider/options/datacentre"

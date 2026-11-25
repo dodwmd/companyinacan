@@ -45,11 +45,15 @@ func BootstrapOptionsFrom(spec Spec) (BootstrapOptions, error) {
 	if err != nil {
 		return BootstrapOptions{}, err
 	}
+	opIP, err := operatorIPString(spec.Options)
+	if err != nil {
+		return BootstrapOptions{}, err
+	}
 	bo := BootstrapOptions{
 		K3sVersion:   o.str("k3s_version", ""),
 		NodeName:     o.str("node_name", ""),
 		SSHPort:      port,
-		OperatorCIDR: o.str("operator_ip", ""),
+		OperatorCIDR: opIP,
 		SwapMB:       swap,
 	}
 	if l, ok := spec.Options["image_tarballs"].([]any); ok {
@@ -251,7 +255,7 @@ func TargetFor(spec Spec, st *Store, deps Deps) (Target, error) {
 	}
 	o := opts(spec.Options)
 	t := Target{Host: state.Server.IP, User: o.str("user", "root"), Port: o.integer("port", 22), KeyFile: expandHome(o.str("key_file", o.str("ssh_private_key_file", "")))}
-	if state.Provider == "hetzner" {
+	if state.Provider == "hetzner" || state.Provider == "digitalocean" {
 		t.Port = 22
 		t.KnownHosts = knownHostsPath(spec.Dir)
 	}

@@ -6,6 +6,7 @@ type Company struct {
 	Name     string                 `yaml:"name"`
 	Domain   string                 `yaml:"domain"`
 	Provider Provider               `yaml:"provider"`
+	DNS      map[string]any         `yaml:"dns"`
 	Modules  map[string]ModuleEntry `yaml:"modules"`
 	Primary  map[string]string      `yaml:"primary"`
 	Site     Site                   `yaml:"site"`

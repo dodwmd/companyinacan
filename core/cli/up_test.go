@@ -174,7 +174,7 @@ func TestUpPreflightFailureExitsOne(t *testing.T) {
 func TestUpExitCodes(t *testing.T) {
 	useLifecycle(t, func() provider.Deps { return provider.Deps{} }, goodResolver())
 	// not implemented provider types: 3
-	for typ, epic := range map[string]string{"local": "E02", "static": "E18", "digitalocean": "E12"} {
+	for typ, epic := range map[string]string{"local": "E02", "static": "E18"} {
 		dir := writeCompany(t, "schema: 1\nname: A\ndomain: a.example\nprovider: {type: "+typ+"}\n")
 		code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules")
 		if code != ExitNotImplemented || out != "" || !strings.Contains(errs, epic) {
@@ -198,8 +198,12 @@ func TestUpExitCodes(t *testing.T) {
 	if code, _, _ := run(t, "up", ok, "--dns", "route66", "--modules-dir", "../../modules"); code != ExitFailure {
 		t.Errorf("unknown dns plugin: code=%d", code)
 	}
-	if code, _, errs := run(t, "up", ok, "--dns", "cloudflare", "--modules-dir", "../../modules"); code != ExitNotImplemented || !strings.Contains(errs, "E12") {
+	// cloudflare without a token fails before any server work (exit 1, not 3)
+	if code, _, errs := run(t, "up", ok, "--dns", "cloudflare", "--modules-dir", "../../modules"); code != ExitFailure || !strings.Contains(errs, "CLOUDFLARE_API_TOKEN") {
 		t.Errorf("cloudflare: code=%d err=%q", code, errs)
+	}
+	if code, _, errs := run(t, "up", ok, "--dns", "provider-native", "--modules-dir", "../../modules"); code != ExitNotImplemented || !strings.Contains(errs, "E12") {
+		t.Errorf("provider-native: code=%d err=%q", code, errs)
 	}
 	if code, _, _ := run(t, "up", "a", "b"); code != ExitUsage {
 		t.Errorf("too many args: code=%d", code)

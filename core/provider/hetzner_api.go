@@ -44,10 +44,16 @@ type APIError struct {
 	Status  int
 	Code    string
 	Message string
+	// Service names the API in messages ("hetzner" when empty).
+	Service string
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("hetzner API: %s (%s, HTTP %d)", e.Message, e.Code, e.Status)
+	svc := e.Service
+	if svc == "" {
+		svc = "hetzner"
+	}
+	return fmt.Sprintf("%s API: %s (%s, HTTP %d)", svc, e.Message, e.Code, e.Status)
 }
 
 // IsNotFound reports a 404 from the API.
@@ -277,6 +283,26 @@ func (c *HetznerClient) DeleteFirewall(ctx context.Context, id int64) error {
 		c.Sleep(ctx, 2*time.Second)
 	}
 	return err
+}
+
+// FindServers lists the servers with the given name.
+func (c *HetznerClient) FindServers(ctx context.Context, name string) ([]HServer, error) {
+	var r struct {
+		Servers []HServer `json:"servers"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/servers?name="+url.QueryEscape(name), nil, &r); err != nil {
+		return nil, err
+	}
+	return r.Servers, nil
+}
+
+// GetSSHKey fetches a key by id (IsNotFound when gone).
+func (c *HetznerClient) GetSSHKey(ctx context.Context, id int64) (HSSHKey, error) {
+	var r struct {
+		Key HSSHKey `json:"ssh_key"`
+	}
+	err := c.do(ctx, http.MethodGet, "/ssh_keys/"+strconv.FormatInt(id, 10), nil, &r)
+	return r.Key, err
 }
 
 // FindServer looks a server up by name.

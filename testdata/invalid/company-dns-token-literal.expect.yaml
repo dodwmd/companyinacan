@@ -1,0 +1,3 @@
+problems:
+  - rule: schema.pattern
+    path: "/dns/token_secret_ref"

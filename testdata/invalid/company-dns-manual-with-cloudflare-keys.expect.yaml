@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.dns-option
+    path: "/dns/proxied"

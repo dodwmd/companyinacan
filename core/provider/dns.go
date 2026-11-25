@@ -16,23 +16,101 @@ type Record struct {
 	TTL   int    `json:"ttl"`
 }
 
-// DNS is a DNS plugin. Cloudflare and provider-native plugins arrive in
-// later epics behind the same interface.
+// DNS is a DNS plugin (manual, cloudflare; provider-native is not built yet).
 type DNS interface {
 	Name() string
 	// Apply creates the records, or tells the operator how. Output goes to w.
 	Apply(ctx context.Context, domain string, recs []Record, w io.Writer) error
 }
 
-// NewDNS returns the DNS plugin called name. The default is "manual".
+// DNSRemover is implemented by plugins that created records and can take
+// them down again (`can down`). Plugins that cannot (manual) do not implement it.
+type DNSRemover interface {
+	// Remove deletes only the records the plugin created (never adopted or
+	// foreign ones). It is idempotent.
+	Remove(ctx context.Context, domain string, w io.Writer) error
+}
+
+// DNSPlanner is implemented by plugins that can describe, without any network
+// call, what Apply would do (`can up --plan`).
+type DNSPlanner interface {
+	PlanRecords(domain string, recs []Record) []string
+}
+
+// DNSChecker is implemented by plugins that can verify, read-only, that Apply
+// will work (token resolves and has access, zone exists). `can up` calls it
+// before it creates a server.
+type DNSChecker interface {
+	Preflight(ctx context.Context, domain string) error
+}
+
+// DNSConfig is the `dns` block of company.yaml.
+type DNSConfig struct {
+	Provider      string // manual (default) or cloudflare
+	Zone          string // Cloudflare zone name; default: found from the domain
+	TTL           int    // 0 = DefaultTTL; Cloudflare: 1 (automatic) or 60..86400
+	Proxied       bool   // Cloudflare proxy; default false so ACME HTTP-01 reaches the origin
+	AdoptExisting bool   // take over an existing unproxied record of the same name and type
+	TokenRef      string // env:NAME or file:PATH; default env:CLOUDFLARE_API_TOKEN
+}
+
+// DNSConfigFrom reads a decoded `dns` mapping, rejecting unknown keys and
+// values of the wrong type.
+func DNSConfigFrom(m map[string]any) (DNSConfig, error) {
+	var c DNSConfig
+	for k := range m {
+		switch k {
+		case "provider", "zone", "ttl", "proxied", "adopt_existing", "token_secret_ref":
+		default:
+			return c, fmt.Errorf("dns.%s is not a known setting (known: provider, zone, ttl, proxied, adopt_existing, token_secret_ref)", k)
+		}
+	}
+	o := opts(m)
+	c.Provider = o.str("provider", "")
+	c.Zone = o.str("zone", "")
+	c.TokenRef = o.str("token_secret_ref", "")
+	var err error
+	if c.TTL, err = o.integerE("ttl", 0); err != nil {
+		return c, fmt.Errorf("dns.ttl must be a whole number, got %v", m["ttl"])
+	}
+	for _, f := range []struct {
+		key string
+		dst *bool
+	}{{"proxied", &c.Proxied}, {"adopt_existing", &c.AdoptExisting}} {
+		if v, ok := m[f.key]; ok && v != nil {
+			b, isBool := v.(bool)
+			if !isBool {
+				return c, fmt.Errorf("dns.%s must be true or false, got %v", f.key, v)
+			}
+			*f.dst = b
+		}
+	}
+	return c, nil
+}
+
+// NewDNS returns the DNS plugin called name when it needs no settings. The
+// default is "manual". Use NewDNSWith for plugins that call an API.
 func NewDNS(name string) (DNS, error) {
 	switch name {
 	case "", "manual":
 		return Manual{}, nil
-	case "cloudflare", "provider-native":
+	case "cloudflare":
+		return nil, fmt.Errorf("the cloudflare DNS plugin needs a dns block in company.yaml (provider: cloudflare, token_secret_ref)")
+	case "provider-native":
 		return nil, NotImplemented("the "+name+" DNS plugin", "E12")
 	}
-	return nil, fmt.Errorf("unknown DNS plugin %q (known: manual)", name)
+	return nil, fmt.Errorf("unknown DNS plugin %q (known: manual, cloudflare)", name)
+}
+
+// NewDNSWith returns the DNS plugin called name with its settings. st holds
+// the records a plugin created so `can down` can remove them.
+func NewDNSWith(name string, cfg DNSConfig, deps Deps, st *Store) (DNS, error) {
+	switch name {
+	case "cloudflare":
+		deps.defaults()
+		return newCloudflare(cfg, deps, st)
+	}
+	return NewDNS(name)
 }
 
 // DefaultTTL is used for generated records.

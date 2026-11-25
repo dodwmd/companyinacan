@@ -19,7 +19,20 @@
       "required": ["type"],
       "properties": {
         "type": { "enum": ["local", "ssh", "hetzner", "digitalocean", "static"] },
-        "options": { "type": "object", "description": "Provider-specific options, validated per provider in later epics." }
+        "options": { "type": "object", "description": "Provider-specific options. For digitalocean the keys are checked by `can validate` (unknown keys, port, secret reference); see docs/providers.md." }
+      }
+    },
+    "dns": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "DNS plugin used by `can up` / `can down` (default: manual, which prints the records). See docs/providers.md.",
+      "properties": {
+        "provider": { "enum": ["manual", "cloudflare"] },
+        "zone": { "type": "string", "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", "description": "Cloudflare zone name; default: the zone found for the company domain." },
+        "ttl": { "type": "integer", "minimum": 1, "maximum": 86400, "description": "Record TTL in seconds; 1 means automatic (Cloudflare). Default 300." },
+        "proxied": { "type": "boolean", "description": "Cloudflare proxy (orange cloud). Default false: ACME HTTP-01 must reach the origin." },
+        "adopt_existing": { "type": "boolean", "description": "Take over an existing unproxied record of the same name and type. Adopted records are never deleted by `can down`. Default false." },
+        "token_secret_ref": { "type": "string", "pattern": "^(env:[A-Z_][A-Z0-9_]*|file:[^\\s]+)$", "description": "Where the Cloudflare API token is read from: env:NAME or file:PATH. Never the token itself. Default env:CLOUDFLARE_API_TOKEN." }
       }
     },
     "modules": {
