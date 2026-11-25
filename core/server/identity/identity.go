@@ -28,6 +28,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/events"
+	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -44,6 +45,9 @@ var (
 	ErrNotOffboarded   = errors.New("the person is not recorded as offboarded with a reached effective date")
 	ErrSubjectMismatch = errors.New("the subject is not the account linked to that person")
 	ErrRateLimited     = errors.New("too many revocations")
+	ErrUnknown         = errors.New("no such account")
+	ErrForbidden       = errors.New("only an owner may do that to an owner")
+	ErrLastOwner       = errors.New("that is the last enabled owner")
 )
 
 var (
@@ -204,6 +208,11 @@ func (s *Service) Revoke(ctx context.Context, caller store.Module, req Request) 
 func (s *Service) end(ctx context.Context, tx *sql.Tx, subject string) (Result, error) {
 	username := strings.TrimPrefix(subject, "user:")
 	now := s.now().Unix()
+	if _, last, err := s.ownerState(ctx, tx, subject); err != nil {
+		return Result{}, err
+	} else if last {
+		return Result{}, ErrLastOwner // the platform must keep one enabled owner
+	}
 	r1, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE subject=? AND revoked_at=0`, now, subject)
 	if err != nil {
 		return Result{}, err
@@ -223,17 +232,69 @@ func (s *Service) end(ctx context.Context, tx *sql.Tx, subject string) (Result, 
 	return Result{Tokens: int(n1), Sessions: int(n2)}, nil
 }
 
+// ownerState reports whether the subject holds the owner role and whether they are the last
+// enabled owner (disabling them would leave nobody who can change owners).
+func (s *Service) ownerState(ctx context.Context, tx *sql.Tx, subject string) (isOwner, last bool, err error) {
+	var n int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments WHERE subject=? AND role=? AND scope=''`, subject, rbac.Owner).Scan(&n); err != nil || n == 0 {
+		return false, false, err
+	}
+	var enabled int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_users WHERE username=? AND disabled_at=0`, strings.TrimPrefix(subject, "user:")).Scan(&enabled); err != nil {
+		return true, false, err
+	}
+	if enabled == 0 {
+		return true, false, nil // already disabled: nothing is taken away
+	}
+	var others int
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT a.subject) FROM rbac_assignments a JOIN admin_users u ON a.subject = 'user:' || u.username
+		WHERE a.role=? AND a.scope='' AND a.subject<>? AND u.disabled_at=0`, rbac.Owner, subject).Scan(&others)
+	return true, others == 0, err
+}
+
+// actorIsOwner: an unscoped owner, or the break-glass CLI actor.
+func (s *Service) actorIsOwner(ctx context.Context, tx *sql.Tx, actor string) (bool, error) {
+	if actor == rbac.CLIActor {
+		return true, nil
+	}
+	var n int
+	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments WHERE subject=? AND role=? AND scope=''`, "user:"+strings.TrimPrefix(actor, "user:"), rbac.Owner).Scan(&n)
+	return n > 0, err
+}
+
+func (s *Service) userExists(ctx context.Context, tx *sql.Tx, subject string) (bool, error) {
+	var n int
+	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_users WHERE username=?`, strings.TrimPrefix(subject, "user:")).Scan(&n)
+	return n > 0, err
+}
+
 // RevokeNow is the administrator's action for a termination that cannot wait for the people module
 // to report the person offboarded (someone still "offboarding", flagged urgent): the same effect as
 // Revoke, without the offboarding check, for a subject the administrator names. The caller must have
-// checked the administrator's permission (rbac.manage); it is audited with the actor and the subject.
+// checked rbac.manage. Disabling an owner needs an owner (or the break-glass CLI), the last enabled
+// owner can never be disabled, and an unknown account is refused instead of audited as a no-op.
 func (s *Service) RevokeNow(ctx context.Context, actor, subject string) (Result, error) {
 	if !subjectRe.MatchString(subject) {
 		return Result{}, ErrInvalid
 	}
 	var res Result
 	err := s.DB.InTx(ctx, func(tx *sql.Tx) error {
-		var err error
+		ok, err := s.userExists(ctx, tx, subject)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrUnknown
+		}
+		if isOwner, _, err := s.ownerState(ctx, tx, subject); err != nil {
+			return err
+		} else if isOwner {
+			if ao, err := s.actorIsOwner(ctx, tx, actor); err != nil {
+				return err
+			} else if !ao {
+				return ErrForbidden
+			}
+		}
 		if res, err = s.end(ctx, tx, subject); err != nil {
 			return err
 		}
@@ -242,6 +303,32 @@ func (s *Service) RevokeNow(ctx context.Context, actor, subject string) (Result,
 		return err
 	})
 	return res, err
+}
+
+// Enable re-enables a disabled administrator account: owner only (or the break-glass CLI), audited.
+// It does not restore tokens or sessions; the person signs in again.
+func (s *Service) Enable(ctx context.Context, actor, subject string) error {
+	if !subjectRe.MatchString(subject) {
+		return ErrInvalid
+	}
+	return s.DB.InTx(ctx, func(tx *sql.Tx) error {
+		ao, err := s.actorIsOwner(ctx, tx, actor)
+		if err != nil {
+			return err
+		}
+		if !ao {
+			return ErrForbidden
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE admin_users SET disabled_at=0 WHERE username=?`, strings.TrimPrefix(subject, "user:"))
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrUnknown
+		}
+		_, err = s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "identity.enable", Target: subject})
+		return err
+	})
 }
 
 // Reconcile rebuilds the offboarding facts from the stored events of the people module, so a fact

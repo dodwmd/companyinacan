@@ -360,7 +360,9 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		if verr != nil {
 			return LoginResult{}, verr
 		}
-		if uerr == nil && pwOK {
+		// A disabled account is refused before anything is consumed or cleared: the TOTP step
+		// stays unused and the failure counts like any other bad login.
+		if uerr == nil && pwOK && !s.db.AdminDisabled(ctx, u.ID) {
 			ok, _ = s.db.AdvanceTOTPStep(ctx, u.ID, step) // single use; consumed only once the password is right
 		}
 	}
@@ -374,10 +376,6 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		return finish(LoginResult{}, ErrInvalidCredentials)
 	}
 	_ = s.db.ClearLoginAttempt(ctx, userKey)
-	if s.db.AdminDisabled(ctx, u.ID) {
-		s.recordBestEffort(ctx, u.Username, "admin.login.refused_disabled", r.IP)
-		return finish(LoginResult{}, ErrInvalidCredentials)
-	}
 	if s.opt.LocalPolicy != nil && !s.opt.LocalPolicy(ctx, u) {
 		s.recordBestEffort(ctx, u.Username, "admin.login.refused_local", r.IP)
 		return finish(LoginResult{}, ErrInvalidCredentials)

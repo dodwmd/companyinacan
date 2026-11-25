@@ -18,6 +18,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
+	"github.com/dodwmd/companyinacan/core/server/identity"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/runtime"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -256,6 +257,29 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		return nil
 	}
 
+	enable := &cobra.Command{
+		Use: "enable", Short: "Re-enable a disabled admin account (break-glass, audited)", Args: cobra.NoArgs,
+		Long: "An account is disabled when the person left (revoke) or an administrator ran revoke-now. This undoes it; it\n" +
+			"does not restore tokens or sessions. Run inside the can-core pod.",
+	}
+	edb := dbFlag(enable, getenv)
+	euser := enable.Flags().String("username", "", "admin username to enable")
+	enable.RunE = func(c *cobra.Command, _ []string) error {
+		if *euser == "" {
+			return fail("--username is required")
+		}
+		d, err := openExisting(c.Context(), *edb)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = d.Close() }()
+		if err := (&identity.Service{DB: d, Audit: audit.New(d)}).Enable(c.Context(), rbac.CLIActor, "user:"+*euser); err != nil {
+			return fail("%v", err)
+		}
+		fmt.Fprintf(c.OutOrStdout(), "Account %q enabled. They must sign in again.\n", *euser)
+		return nil
+	}
+
 	reset := &cobra.Command{
 		Use: "reset-password", Short: "Set a new admin password (and optionally a new TOTP secret); ends all sessions", Args: cobra.NoArgs,
 		Long: "The new password comes from $CAN_ADMIN_PASSWORD or the first line of stdin. All sessions of the user are\n" +
@@ -284,6 +308,10 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		if err != nil {
 			return fail("no admin %q", *ruser)
 		}
+		if d.AdminDisabled(c.Context(), u.ID) {
+			// a password reset must never quietly bring back an account that was disabled on purpose
+			return fail("admin %q is disabled (the person left); run `can-core admin enable --username %s` first", *ruser, *ruser)
+		}
 		secret := ""
 		if *rotate {
 			secret = auth.NewTOTPSecret()
@@ -304,7 +332,7 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		}
 		return nil
 	}
-	cmd.AddCommand(boot, unlock, reset, rolesCmd(getenv), secretsCmd(getenv), diagnoseCmd(getenv))
+	cmd.AddCommand(boot, unlock, reset, enable, rolesCmd(getenv), secretsCmd(getenv), diagnoseCmd(getenv))
 	return cmd
 }
 
