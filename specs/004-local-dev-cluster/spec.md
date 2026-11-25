@@ -67,7 +67,7 @@ prints the plan without running anything.
 ## Success Criteria
 
 - **SC-001**: `make test` passes with no cluster, Docker or network (beyond the optional lint download).
-- **SC-002**: On a machine with docker, k3d and kubectl, `make dev` yields a cluster on which `go test -tags integration ./test/integration/...` passes. **Evidence**: the GitHub `dev-cluster` job (k3d v5.8.3, ubuntu runner) created the cluster and passed all integration tests. **Still unverified**: ACME issuance, `externalTrafficPolicy: Local` end to end, can-core RBAC and the module-namespace templates (no can-core yet), local-machine runs, Podman.
+- **SC-002**: On a machine with docker, k3d and kubectl, `make dev` yields a cluster on which `go test -tags integration ./test/integration/...` passes. **Evidence**: the GitHub `dev-cluster` job (k3d v5.8.3, ubuntu runner) created the cluster and passed all integration tests. **Still unverified**: ACME issuance, `externalTrafficPolicy: Local` end to end, can-core RBAC and the module-namespace templates beyond what can-core's lifecycle test (E03b, advisory CI) exercises, local-machine runs, Podman.
 
 ## Assumptions
 

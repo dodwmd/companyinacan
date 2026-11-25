@@ -61,6 +61,12 @@ func CompanyFile(file, modulesDir string) []problem.Problem {
 		if md, ps2 := config.Load(mp); md != nil && len(ps2) == 0 {
 			if m, err := config.DecodeModule(md); err == nil {
 				manifests[id] = m
+				if m.Status == "not-deployable" {
+					// Enabling goes through this validation (`can validate`, `can apply` and the
+					// reconciler's LoadDesired), so refusing here covers every enable path.
+					add("semantic.module-not-deployable", "/modules/"+id,
+						fmt.Sprintf("module %q is not-deployable (known not to run as shipped, see its README) and cannot be enabled; remove it from company.yaml", id))
+				}
 			}
 		}
 	}

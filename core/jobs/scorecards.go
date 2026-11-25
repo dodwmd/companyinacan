@@ -122,6 +122,13 @@ func (s *Store) SubmitScorecard(ctx context.Context, p *Principal, appID string)
 		if _, err := s.loadAppForWrite(ctx, tx, p, appID); err != nil {
 			return err
 		}
+		// Finalising feedback needs an active assignment, or an explicit recruiter or admin
+		// role. Someone removed from the panel keeps their draft but cannot publish it.
+		if ok, err := s.isInterviewer(ctx, tx, appID, p.Subject); err != nil {
+			return err
+		} else if !ok && p.Role != RoleAdmin && p.Role != RoleRecruiter {
+			return ErrNotFound
+		}
 		now := ts(s.now())
 		res, err := tx.ExecContext(ctx, `UPDATE scorecards SET status = 'submitted', submitted_at = ?, updated_at = ? WHERE application_id = ? AND author = ? AND status = 'draft'`, now, now, appID, p.Subject)
 		if err != nil {

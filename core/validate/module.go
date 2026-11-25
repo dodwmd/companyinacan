@@ -67,10 +67,16 @@ func moduleRules(doc *config.Doc, m *config.Module) []problem.Problem {
 		}
 	}
 
+	served := 0
+	for _, p := range m.Provides {
+		if config.ProvidesServed(p.Status) {
+			served++ // a planned provision has no service behind it to receive the webhook
+		}
+	}
 	for i, s := range m.Subscribes {
-		if s.Service == "" && len(m.Provides) == 0 {
+		if s.Service == "" && served == 0 {
 			add("semantic.subscribe-service", fmt.Sprintf("/subscribes/%d/service", i),
-				"a module that provides no capability must name the service that receives the webhook", problem.Error)
+				"a module that serves no capability (planned ones do not count) must name the service that receives the webhook", problem.Error)
 		}
 	}
 

@@ -52,7 +52,7 @@ id, so a redelivered event cannot notify twice.
   escaped in HTML, stripped of control characters in the subject and text.
 - Webhook (Slack-style `{"text": ...}`): named channels in company.yaml, https only, no redirects,
   errors never contain the URL, and the connection is refused at dial time for private, loopback,
-  link-local, multicast, carrier-grade NAT (100.64.0.0/10), 6to4, NAT64 (judged by the embedded IPv4), benchmark and reserved ranges (the URL is operator-trusted; this limits a typo or a poisoned
+  link-local, multicast, carrier-grade NAT (100.64.0.0/10), IETF protocol assignments (192.0.0.0/24), 6to4 (2002::/16 and the 192.88.99.0/24 relay), Teredo (2001::/32), local-use NAT64 (64:ff9b:1::/48), IPv4-compatible (::/96), documentation (including 3fff::/20), benchmark and reserved ranges; IPv4-mapped and NAT64 (64:ff9b::/96) addresses are judged by the embedded IPv4 (the URL is operator-trusted; this limits a typo or a poisoned
   file probing the cluster):
 
   ```yaml

@@ -42,6 +42,13 @@ unmaintained or heavier; see research.md R-status. A sibling module providing `s
 - **Public paths** (`/status`, `/api/status-page`, `/assets`, `/upload`, `/icon.svg`, `/favicon.ico`)
   and the data file name `kuma.db` come from upstream's layout as remembered. If a status page renders
   without styling or data, a path is missing from `ingress.publicPaths`.
-- **Mapping the root.** `/` is routed so a domain-mapped status page can serve there; whether the root
-  shows the page or the login shell depends on the Uptime Kuma settings.
+- **Mapping the root.** Read from upstream's source (`server/server.js`, `server/routers/api-router.js`,
+  master branch, not run here): for `/`, a request whose host is a **domain-mapped** status page is
+  served that page directly; otherwise `/` redirects to the status page chosen as the entry page, or
+  to `/dashboard`. The page then calls the unauthenticated `GET /api/entry-page`, which returns only
+  `{type, statusPageSlug}` or `{type, entryPage}`; it needs no login, so it is in `ingress.publicPaths`
+  (without it the root page cannot resolve its slug). Consequence under `publicOnly`: `/` works only
+  for a domain-mapped or entry-page status page; if neither is set, `/` redirects to `/dashboard`,
+  which is not routed, so the root is unusable and visitors must use `/status/<slug>`. Set the
+  entry page or a domain mapping in the Kuma UI (port-forward) to make `/` useful.
 - **Alerts** use the `can-smtp` relay only if configured by hand in the Kuma UI; nothing is injected.

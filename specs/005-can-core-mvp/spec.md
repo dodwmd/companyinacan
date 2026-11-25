@@ -4,8 +4,10 @@
 
 **Created**: 2026-11-25
 
-**Status**: In progress. Part 1 (this PR) delivers stories 1-6 behind interfaces and fakes; part 2 delivers
-stories 7-8 and the cluster integration test.
+**Status**: Implemented for the platform core. Part 1 delivered stories 1-6 behind interfaces and fakes;
+part 2 (merged) delivered stories 7-8 and the cluster lifecycle test, which runs in the advisory k3d CI job.
+`email.send`, MariaDB provisioning, upstream-Helm-chart support and the admin enable/disable UI are still pending
+(see docs/epics/README.md, E03).
 
 **Input**: Epic E03 in `docs/epics/README.md`: "Go service in `can-system`; SQLite state; admin login
 (password + TOTP); admin and module-API listeners/Services; capability registry; TokenReview-based

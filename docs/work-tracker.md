@@ -223,7 +223,12 @@ outbox, in the same database transaction as the change, then POSTed:
 
 Events carry identifiers and changed fields, never comment or description text. They do carry
 the issue **title** (created event) and any changed title or assignee, so treat the webhook
-receiver as trusted with that much. Headers:
+receiver as trusted with that much. This is a recorded decision, not an oversight: a notification
+or chat consumer needs a human-readable label, and the alternative (identifiers only, so every
+consumer calls back for the title) would need an event schema change and an extra authenticated
+read per event. Titles are one line of plain text (control characters are refused), so they cannot
+split a log line or forge a field in a receiver; description and comment text never leave the
+service. A deployment that must keep titles private should not set a webhook URL. Headers:
 `X-Can-Event-Id`, `X-Can-Event-Type`, `X-Can-Timestamp`, and
 `X-Can-Signature: sha256=hex(HMAC-SHA256(secret, timestamp + "." + body))` (the same scheme as
 the forms gateway). Delivery is at least once, per event, with caveats you should design for:

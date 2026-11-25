@@ -352,6 +352,8 @@ func TestEEOIsSeparateAndAggregateOnly(t *testing.T) {
 	if rows != 1 {
 		t.Errorf("responses are stored per response, not per month: %d counter rows", rows)
 	}
+	// Only closed months are reported (live-polling differencing), so roll the month over.
+	e.clk.Add(45 * 24 * time.Hour)
 	rep := e.want(e.do(adminTok, "GET", "/v1/eeo-report", nil), 200).m(t)
 	if rep["responses"] != float64(7) {
 		t.Errorf("responses = %v", rep["responses"])
@@ -397,6 +399,7 @@ func TestEEOIsSeparateAndAggregateOnly(t *testing.T) {
 	f := goodApplication("one@example.test")
 	f["eeo_gender"] = "female"
 	e2.want(e2.apply(slug2, f), 303)
+	e2.clk.Add(45 * 24 * time.Hour)
 	rep = e2.want(e2.do(adminTok, "GET", "/v1/eeo-report", nil), 200).m(t)
 	if rep["responses"] != nil || strings.Contains(string(mustJSON(rep)), `"count":1`) {
 		t.Errorf("a lone response is visible: %v", rep)
@@ -410,6 +413,7 @@ func TestEEOIsSeparateAndAggregateOnly(t *testing.T) {
 	f = goodApplication("two@example.test")
 	f["eeo_gender"] = "female"
 	off.want(off.apply(slug3, f), 303)
+	off.clk.Add(45 * 24 * time.Hour)
 	if r := off.want(off.do(adminTok, "GET", "/v1/eeo-report", nil), 200).m(t); r["responses"] != nil {
 		t.Errorf("diversity answers stored although collection is off: %v", r)
 	}
@@ -501,4 +505,68 @@ func TestBlindFeedbackSurvivesUnassignAndReassign(t *testing.T) {
 	if r := s.do(s.ivy, "GET", app, nil); r.Code != 404 {
 		t.Errorf("a removed interviewer still reaches the application: %d", r.Code)
 	}
+}
+
+// The report publishes closed months only. Otherwise an admin polling it (or any two reads a
+// few minutes apart) could difference the counters and tie a moved cell to a single new
+// application, which is the link the counter design exists to remove.
+func TestEEOReportCoversClosedMonthsOnly(t *testing.T) {
+	e := newEnv(t, func(c *Config) { c.EEO.MinCell = 1 })
+	_, slug := e.openJob("Engineer", "alice")
+	f := goodApplication("m1@example.test")
+	f["eeo_gender"] = "female"
+	e.want(e.apply(slug, f), 303)
+	rep := e.want(e.do(adminTok, "GET", "/v1/eeo-report", nil), 200).m(t)
+	if rep["responses"] != nil && rep["responses"] != float64(0) {
+		t.Fatalf("the open month is published: %v", rep)
+	}
+	for _, c := range rep["fields"].(map[string]any)["gender"].([]any) {
+		t.Errorf("open-month cell published: %v", c)
+	}
+	// the counters themselves are still being written
+	var n int
+	_ = e.app.store.db.QueryRow(`SELECT COALESCE(SUM(n),0) FROM eeo_counts WHERE field = '_responses'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("counter = %d", n)
+	}
+	e.clk.Add(45 * 24 * time.Hour)
+	f2 := goodApplication("m2@example.test")
+	f2["eeo_gender"] = "male"
+	e.want(e.apply(slug, f2), 303)
+	rep = e.want(e.do(adminTok, "GET", "/v1/eeo-report", nil), 200).m(t)
+	if rep["responses"] != float64(1) {
+		t.Errorf("only the closed month should count: %v", rep["responses"])
+	}
+	for _, c := range rep["fields"].(map[string]any)["gender"].([]any) {
+		if c.(map[string]any)["value"] == "male" {
+			t.Errorf("the new open month leaked: %v", c)
+		}
+	}
+}
+
+// Regression (QA minor): a removed interviewer must not be able to finalise a draft they wrote
+// while assigned; recruiters and admins keep that right through their role.
+func TestSubmitScorecardNeedsActiveAssignmentOrStaffRole(t *testing.T) {
+	s := newScenario(t)
+	app := "/v1/applications/" + s.a1
+	s.want(s.do(s.recruiter, "PUT", app+"/interviewers/ivy", nil), 204)
+	s.want(s.do(s.ivy, "PUT", app+"/scorecards/mine", map[string]any{"rating": 3, "recommendation": "yes"}), 200)
+	s.want(s.do(s.recruiter, "DELETE", app+"/interviewers/ivy", nil), 204)
+	if r := s.do(s.ivy, "POST", app+"/scorecards/mine/submit", nil); r.Code == 200 {
+		t.Errorf("a removed interviewer submitted a scorecard: %d", r.Code)
+	}
+	s.want(s.do(s.recruiter, "PUT", app+"/interviewers/ivy", nil), 204)
+	s.want(s.do(s.ivy, "POST", app+"/scorecards/mine/submit", nil), 200)
+	// a hiring manager (whose job scope still reaches the application) who was removed
+	s.want(s.do(s.recruiter, "PUT", app+"/interviewers/alice", nil), 204)
+	s.want(s.do(s.hmAlice, "PUT", app+"/scorecards/mine", map[string]any{"rating": 2, "recommendation": "no"}), 200)
+	s.want(s.do(s.recruiter, "DELETE", app+"/interviewers/alice", nil), 204)
+	if r := s.do(s.hmAlice, "POST", app+"/scorecards/mine/submit", nil); r.Code == 200 {
+		t.Errorf("a removed hiring manager submitted a scorecard: %d", r.Code)
+	}
+	// a recruiter who was assigned, drafted and removed may still submit
+	s.want(s.do(adminTok, "PUT", app+"/interviewers/rita", nil), 204)
+	s.want(s.do(s.recruiter, "PUT", app+"/scorecards/mine", map[string]any{"rating": 2, "recommendation": "no"}), 200)
+	s.want(s.do(adminTok, "DELETE", app+"/interviewers/rita", nil), 204)
+	s.want(s.do(s.recruiter, "POST", app+"/scorecards/mine/submit", nil), 200)
 }

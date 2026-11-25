@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-25
 
-**Status**: Draft
+**Status**: Built offline (manifests, charts, hooks, contracts, email policy); adapters, images and cluster checks pending
 
 **Input**: Epic E07 in `docs/epics/README.md`: "Module manifests and charts for FreeScout,
 Listmonk and GoatCounter (or Umami), with resource declarations, probes, backup/restore hooks and

@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-25
 
-**Status**: Draft (implemented offline; cluster verification pending)
+**Status**: Implemented offline; cluster verification pending
 
 **Input**: Epics E13 (`directory`/`people`) and E14 (`performance`: 1:1s and goals) in
 `docs/epics/README.md`, and SPEC.md sections 3.7 (RBAC, retention and legal hold, audit, erasure
