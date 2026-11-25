@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/file.infected.v1.json",
+  "title": "file.infected.v1",
+  "description": "Published when the virus scanner flags an upload. The file was refused and nothing was stored; `file_id` is present when the upload was a new version of an existing file. Carries the checksum and size only. Delivered at least once; consumers de-duplicate on `id` (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "file.infected.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "files"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "space_id",
+        "size",
+        "sha256",
+        "actor",
+        "detected_at"
+      ],
+      "properties": {
+        "space_id": {
+          "type": "string",
+          "pattern": "^spc_[0-9a-f]{24}$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "actor": {
+          "type": "string",
+          "pattern": "^(system|(user|svc):[A-Za-z0-9_.@-]{1,64})$"
+        },
+        "detected_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "file_id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        }
+      }
+    }
+  }
+}

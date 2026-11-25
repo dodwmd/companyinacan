@@ -16,7 +16,7 @@ func TestEveryServiceIsObservable(t *testing.T) {
 		}
 		return string(b)
 	}
-	for _, m := range []string{"forms", "work", "jobs", "finance", "people", "equity"} {
+	for _, m := range []string{"forms", "work", "jobs", "finance", "people", "equity", "files"} {
 		cmd := read("core/" + m + "/cmd.go")
 		for _, want := range []string{"obs.Setup(", "obslog.New("} {
 			if !strings.Contains(cmd, want) {

@@ -1,0 +1,14 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "file.shared.v1",
+  "time": "2026-06-10T09:00:00Z",
+  "source": "files",
+  "data": {
+    "file_id": "fil_0123456789abcdef01234567",
+    "share_id": "shr_0123456789abcdef01234567",
+    "version": 1,
+    "expires_at": "2026-06-11T09:00:00Z",
+    "one_time": false,
+    "actor": "user:alice"
+  }
+}

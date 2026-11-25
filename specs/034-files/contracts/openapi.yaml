@@ -1,0 +1,681 @@
+openapi: 3.1.0
+info:
+  title: can-files
+  version: 0.1.0
+  license: { name: Apache-2.0, identifier: Apache-2.0 }
+  description: |
+    The files module (epic E13e): document and file storage with spaces and access lists, immutable
+    versions, share links, a virus-scan hook, retention, legal hold and erasure. Metadata is JSON; file
+    bytes are the raw request or response body. This is a tool, not legal advice: what must be kept, for
+    how long and when it must be erased is the operator's responsibility.
+
+    Every `/v1` route needs a bearer token (a can-core personal access token or the service token) with
+    the permission named in `x-permission` (write includes read, admin includes both) and then a role in
+    the space. What the caller may not see answers 404 with the same body as what does not exist.
+    Errors are `application/problem+json`.
+security:
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      summary: 'Liveness. No token.'
+      operationId: getHealthz
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+  /s/{token}:
+    get:
+      summary: 'Download through a share link. No bearer token: the link is the credential. Always an attachment of application/octet-stream. Every failure (forged, expired, revoked, used, deleted) is the same 404; repeated failures from one address answer 429, a valid link is never throttled.'
+      operationId: getSToken
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '429':
+          description: Too many failed attempts
+        '503':
+          description: A dependency is unavailable (storage, scanner, audit)
+  /v1/spaces:
+    post:
+      summary: 'Create a space; the caller becomes its manager.'
+      operationId: postV1Spaces
+      x-permission: files.write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/CreateSpaceRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/Space' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '413':
+          description: Too large, or a quota or limit is reached
+    get:
+      summary: 'List the spaces the caller has a role in.'
+      operationId: getV1Spaces
+      x-permission: files.read
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/SpaceList' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+  /v1/spaces/{id}:
+    get:
+      summary: 'Get a space. 404 when the caller has no role in it, exactly as for a missing id.'
+      operationId: getV1SpacesId
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/Space' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+  /v1/spaces/{id}/members:
+    get:
+      summary: 'List the access list. Managers only.'
+      operationId: getV1SpacesIdMembers
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/MemberList' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+    put:
+      summary: 'Grant or change a role for a user or a directory group. Managers only; the last manager cannot be demoted.'
+      operationId: putV1SpacesIdMembers
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/Member' }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '409':
+          description: Conflict
+        '413':
+          description: Too large, or a quota or limit is reached
+  /v1/spaces/{id}/members/{kind}/{principal}:
+    delete:
+      summary: 'Withdraw a grant. Managers only; the last manager stays.'
+      operationId: deleteV1SpacesIdMembersKindPrincipal
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: kind, in: path, required: true, schema: { type: string } }
+        - { name: principal, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '409':
+          description: Conflict
+  /v1/spaces/{id}/folders:
+    post:
+      summary: 'Create a folder. Editors and managers.'
+      operationId: postV1SpacesIdFolders
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/CreateFolderRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/Folder' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+    get:
+      summary: 'List the folders of a space.'
+      operationId: getV1SpacesIdFolders
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/FolderList' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+  /v1/folders/{id}:
+    delete:
+      summary: 'Delete an empty folder.'
+      operationId: deleteV1FoldersId
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '409':
+          description: Conflict
+  /v1/spaces/{id}/files:
+    post:
+      summary: 'Upload a file. The body is the raw file, streamed, at most the configured size. The type must be on the allow-list and match the leading bytes; a configured scanner must pass it; the space owner''s quota applies.'
+      operationId: postV1SpacesIdFiles
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: name, in: query, required: true, schema: { type: string } }
+        - { name: description, in: query, required: false, schema: { type: string } }
+        - { name: folder, in: query, required: false, schema: { type: string } }
+        - { name: subject, in: query, required: false, schema: { type: string } }
+        - { name: ref, in: query, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/File' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '413':
+          description: Too large, or a quota or limit is reached
+        '415':
+          description: Unsupported file type
+        '422':
+          description: Refused by the virus scanner
+        '503':
+          description: A dependency is unavailable (storage, scanner, audit)
+    get:
+      summary: 'List the files of a space.'
+      operationId: getV1SpacesIdFiles
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: folder, in: query, required: false, schema: { type: string } }
+        - { name: ref, in: query, required: false, schema: { type: string } }
+        - { name: deleted, in: query, required: false, schema: { type: string } }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/FileList' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+  /v1/files:
+    get:
+      summary: 'List files across the spaces the caller can see, for example by the owning module''s ref.'
+      operationId: getV1Files
+      x-permission: files.read
+      parameters:
+        - { name: ref, in: query, required: false, schema: { type: string } }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/FileList' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+  /v1/files/{id}:
+    get:
+      summary: 'Get a file''s metadata as the caller''s role allows. The read is audited first; if that fails nothing is returned.'
+      operationId: getV1FilesId
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/File' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '503':
+          description: A dependency is unavailable (storage, scanner, audit)
+    patch:
+      summary: 'Rename, describe or move a file. If-Match with the rev makes it conditional (409 when stale). The extension cannot change.'
+      operationId: patchV1FilesId
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/FilePatch' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/File' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '409':
+          description: Conflict
+    delete:
+      summary: 'Move a file to the trash. 409 under a legal hold or before retain_until.'
+      operationId: deleteV1FilesId
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '409':
+          description: Conflict
+  /v1/files/{id}/restore:
+    post:
+      summary: 'Take a file out of the trash.'
+      operationId: postV1FilesIdRestore
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '409':
+          description: Conflict
+  /v1/files/{id}/content:
+    get:
+      summary: 'Download a version. Always an attachment of application/octet-stream with nosniff and a sandboxing CSP; the audit entry is written before any byte, the SHA-256 is verified while streaming and the connection is aborted on a mismatch. ?inline=1 works only for raster image types the operator enabled.'
+      operationId: getV1FilesIdContent
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: version, in: query, required: false, schema: { type: integer } }
+        - { name: inline, in: query, required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '500':
+          description: Stored content failed its checksum
+        '503':
+          description: A dependency is unavailable (storage, scanner, audit)
+  /v1/files/{id}/versions:
+    get:
+      summary: 'List the versions, newest first.'
+      operationId: getV1FilesIdVersions
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/VersionList' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+    post:
+      summary: 'Upload a new immutable version. The body is the raw file.'
+      operationId: postV1FilesIdVersions
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/File' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '409':
+          description: Conflict
+        '413':
+          description: Too large, or a quota or limit is reached
+        '415':
+          description: Unsupported file type
+        '422':
+          description: Refused by the virus scanner
+        '503':
+          description: A dependency is unavailable (storage, scanner, audit)
+  /v1/files/{id}/shares:
+    get:
+      summary: 'List share links: managers see all, editors the ones they made. Never the token.'
+      operationId: getV1FilesIdShares
+      x-permission: files.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/ShareList' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+    post:
+      summary: 'Create a share link. The token is in the answer once and cannot be recovered.'
+      operationId: postV1FilesIdShares
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/CreateShareRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/ShareCreated' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+        '413':
+          description: Too large, or a quota or limit is reached
+  /v1/shares/{id}:
+    delete:
+      summary: 'Revoke a share link at once.'
+      operationId: deleteV1SharesId
+      x-permission: files.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+  /v1/files/{id}/hold:
+    put:
+      summary: 'Place or lift a legal hold and set the retention date. Administrators act on ids and see no content.'
+      operationId: putV1FilesIdHold
+      x-permission: files.admin
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/HoldRequest' }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '404':
+          description: Not found. The same body for a missing id and for one the caller has no role for
+  /v1/admin/files:
+    get:
+      summary: 'Locate files by subject for holds and erasure: ids, state and sizes, no names.'
+      operationId: getV1AdminFiles
+      x-permission: files.admin
+      parameters:
+        - { name: subject, in: query, required: false, schema: { type: string } }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+  /v1/subjects/{subject}/erasure:
+    post:
+      summary: 'Erase every file of a data subject and write tombstones for the backup ledger. 409 under a legal hold. Idempotent.'
+      operationId: postV1SubjectsSubjectErasure
+      x-permission: files.admin
+      parameters:
+        - { name: subject, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/Erasure' }
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+        '409':
+          description: Conflict
+  /v1/erasures:
+    get:
+      summary: 'The tombstones can-core pulls into the erasure ledger.'
+      operationId: getV1Erasures
+      x-permission: files.admin
+      parameters:
+        - { name: after, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/ErasureList' }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+  /v1/purge:
+    post:
+      summary: 'The purge(subject, class) hook a restore replays. Idempotent; ignores holds.'
+      operationId: postV1Purge
+      x-permission: files.admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../../../schemas/capabilities/files.v1.json#/$defs/PurgeRequest' }
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: No valid bearer token
+        '400':
+          description: Invalid request
+        '403':
+          description: The token or the role does not allow it
+  /v1/retention/run:
+    post:
+      summary: 'Run one retention sweep now.'
+      operationId: postV1RetentionRun
+      x-permission: files.admin
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+  /v1/audit:
+    get:
+      summary: 'The hash-chained audit log, newest first (ids and field names only).'
+      operationId: getV1Audit
+      x-permission: files.admin
+      parameters:
+        - { name: before, in: query, required: false, schema: { type: integer } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        '401':
+          description: No valid bearer token
+        '403':
+          description: The token or the role does not allow it
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }

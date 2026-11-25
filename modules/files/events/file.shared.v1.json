@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/file.shared.v1.json",
+  "title": "file.shared.v1",
+  "description": "Published when a share link is created. Never carries the link, its token or its label. Delivered at least once; consumers de-duplicate on `id` (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "file.shared.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "files"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file_id",
+        "share_id",
+        "version",
+        "expires_at",
+        "one_time",
+        "actor",
+        "shared_at"
+      ],
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        },
+        "share_id": {
+          "type": "string",
+          "pattern": "^shr_[0-9a-f]{24}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "one_time": {
+          "type": "boolean"
+        },
+        "actor": {
+          "type": "string",
+          "pattern": "^(system|(user|svc):[A-Za-z0-9_.@-]{1,64})$"
+        },
+        "shared_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

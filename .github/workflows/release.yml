@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGES: "can-core:deploy/can-core can-static:deploy/can-static can-forms:deploy/forms can-work:deploy/work can-people:deploy/people can-jobs:deploy/jobs can-finance:deploy/finance can-equity:deploy/equity can-board:deploy/board can-provision:deploy/provisioning can-hooks:deploy/hooks"
+  IMAGES: "can-core:deploy/can-core can-static:deploy/can-static can-forms:deploy/forms can-work:deploy/work can-people:deploy/people can-jobs:deploy/jobs can-finance:deploy/finance can-equity:deploy/equity can-board:deploy/board can-provision:deploy/provisioning can-files:deploy/files can-hooks:deploy/hooks"
 
 jobs:
   verify:
@@ -196,7 +196,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [can-core, can-static, can-forms, can-work, can-people, can-jobs, can-finance, can-equity, can-board, can-provision, can-hooks]
+        image: [can-core, can-static, can-forms, can-work, can-people, can-jobs, can-finance, can-equity, can-board, can-provision, can-files, can-hooks]
     env:
       VERSION: ${{ needs.verify.outputs.version }}
       IMAGE: ${{ matrix.image }}

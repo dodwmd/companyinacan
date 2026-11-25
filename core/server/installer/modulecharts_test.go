@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/files"
 	"github.com/dodwmd/companyinacan/core/finance"
 	"github.com/dodwmd/companyinacan/core/forms"
 	"github.com/dodwmd/companyinacan/core/jobs"
@@ -36,7 +37,7 @@ func (m inhouse) binary() string {
 }
 
 // subdomains of the modules that have public routes.
-var inhouseSubdomains = map[string]string{"jobs": "careers", "provisioning": "scim"}
+var inhouseSubdomains = map[string]string{"jobs": "careers", "provisioning": "scim", "files": "files"}
 
 func inhouseModules() []inhouse {
 	return []inhouse{
@@ -52,6 +53,7 @@ func inhouseModules() []inhouse {
 			return writeLoad(b, func(p string) error { _, err := finance.LoadConfig(p, true); return err })
 		}},
 		{"provisioning", "provisioning", 20, 64, "8090", func(b []byte) error { _, err := provision.ParseConfig(b); return err }},
+		{"files", "files", 20, 64, "8095", func(b []byte) error { _, err := files.ParseConfig(b); return err }},
 	}
 }
 

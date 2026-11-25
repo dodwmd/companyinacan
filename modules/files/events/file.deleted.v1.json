@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/file.deleted.v1.json",
+  "title": "file.deleted.v1",
+  "description": "Published when a file goes to the trash (`reason` user) or its content is destroyed (`retention`, `erasure`). Consumers holding a reference to the file should drop it. Delivered at least once; consumers de-duplicate on `id` (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "file.deleted.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "files"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file_id",
+        "space_id",
+        "reason",
+        "actor",
+        "deleted_at"
+      ],
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        },
+        "space_id": {
+          "type": "string",
+          "pattern": "^spc_[0-9a-f]{24}$"
+        },
+        "reason": {
+          "enum": [
+            "user",
+            "retention",
+            "erasure"
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "pattern": "^(system|(user|svc):[A-Za-z0-9_.@-]{1,64})$"
+        },
+        "deleted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,846 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/files.v1.json",
+  "title": "files.v1",
+  "description": "Capability `files` (SPEC.md section 4.3): document and file storage with spaces and access lists, immutable versions, share links, a virus-scan hook, retention, legal hold and erasure. Provided by the in-house files module. Metadata is JSON over HTTP; file bytes are the raw request or response body, never JSON or multipart. Callers authenticate with a bearer token (files.read, files.write, files.admin) and then need a role in the space (viewer, editor, manager): what a caller may not see answers 404 exactly like what does not exist. Other modules reference a file by its opaque id (and optionally a `ref` they choose, `<module>:<id>`, and a `subject` for erasure) and never hold its bytes. See specs/034-files/contracts/openapi.yaml. Consumers must not depend on anything not in this file.",
+  "x-capability": "files",
+  "x-verbs": [
+    {
+      "verb": "create_space",
+      "method": "POST",
+      "path": "/v1/spaces",
+      "request": "CreateSpaceRequest",
+      "response": "Space",
+      "write": true,
+      "permission": "files.write",
+      "description": "The caller becomes its manager."
+    },
+    {
+      "verb": "list_spaces",
+      "method": "GET",
+      "path": "/v1/spaces",
+      "response": "SpaceList",
+      "permission": "files.read",
+      "description": "Query: cursor, limit (max 200). Only spaces the caller has a role in."
+    },
+    {
+      "verb": "get_space",
+      "method": "GET",
+      "path": "/v1/spaces/{id}",
+      "response": "Space",
+      "permission": "files.read"
+    },
+    {
+      "verb": "list_members",
+      "method": "GET",
+      "path": "/v1/spaces/{id}/members",
+      "response": "MemberList",
+      "permission": "files.read",
+      "description": "Managers only."
+    },
+    {
+      "verb": "set_member",
+      "method": "PUT",
+      "path": "/v1/spaces/{id}/members",
+      "request": "Member",
+      "write": true,
+      "permission": "files.write",
+      "description": "Managers only. 204. The last manager cannot be demoted."
+    },
+    {
+      "verb": "remove_member",
+      "method": "DELETE",
+      "path": "/v1/spaces/{id}/members/{kind}/{principal}",
+      "write": true,
+      "permission": "files.write",
+      "description": "Managers only. 204."
+    },
+    {
+      "verb": "create_folder",
+      "method": "POST",
+      "path": "/v1/spaces/{id}/folders",
+      "request": "CreateFolderRequest",
+      "response": "Folder",
+      "write": true,
+      "permission": "files.write",
+      "description": "Editors and managers."
+    },
+    {
+      "verb": "list_folders",
+      "method": "GET",
+      "path": "/v1/spaces/{id}/folders",
+      "response": "FolderList",
+      "permission": "files.read"
+    },
+    {
+      "verb": "delete_folder",
+      "method": "DELETE",
+      "path": "/v1/folders/{id}",
+      "write": true,
+      "permission": "files.write",
+      "description": "An empty folder only. 204."
+    },
+    {
+      "verb": "upload_file",
+      "method": "POST",
+      "path": "/v1/spaces/{id}/files",
+      "response": "File",
+      "write": true,
+      "permission": "files.write",
+      "description": "The request body is the raw file (not JSON). Query: name (required), description, folder, subject, ref. Editors and managers. The type must be on the allow-list and match the content; the size is bounded; a configured scanner must pass it. 413 too large or over quota, 415 type, 422 infected, 503 no scanner."
+    },
+    {
+      "verb": "list_files",
+      "method": "GET",
+      "path": "/v1/files",
+      "response": "FileList",
+      "permission": "files.read",
+      "description": "Query: ref (the owning module's reference), cursor, limit. The same listing exists per space at /v1/spaces/{id}/files (query folder, ref, deleted, cursor, limit)."
+    },
+    {
+      "verb": "get_file",
+      "method": "GET",
+      "path": "/v1/files/{id}",
+      "response": "File",
+      "permission": "files.read",
+      "description": "The read is audited. The ETag is the rev."
+    },
+    {
+      "verb": "update_file",
+      "method": "PATCH",
+      "path": "/v1/files/{id}",
+      "request": "FilePatch",
+      "response": "File",
+      "write": true,
+      "permission": "files.write",
+      "description": "If-Match with the rev makes it conditional. The extension cannot change."
+    },
+    {
+      "verb": "delete_file",
+      "method": "DELETE",
+      "path": "/v1/files/{id}",
+      "write": true,
+      "permission": "files.write",
+      "description": "Moves the file to the trash. 409 under a legal hold or before retain_until. 204."
+    },
+    {
+      "verb": "restore_file",
+      "method": "POST",
+      "path": "/v1/files/{id}/restore",
+      "write": true,
+      "permission": "files.write",
+      "description": "204."
+    },
+    {
+      "verb": "download",
+      "method": "GET",
+      "path": "/v1/files/{id}/content",
+      "permission": "files.read",
+      "description": "Query: version (default the latest). Always an attachment of application/octet-stream with nosniff and a sandboxing CSP; the SHA-256 is verified while streaming and the connection is aborted on a mismatch. The download is audited before it starts."
+    },
+    {
+      "verb": "list_versions",
+      "method": "GET",
+      "path": "/v1/files/{id}/versions",
+      "response": "VersionList",
+      "permission": "files.read",
+      "description": "Newest first."
+    },
+    {
+      "verb": "upload_version",
+      "method": "POST",
+      "path": "/v1/files/{id}/versions",
+      "response": "File",
+      "write": true,
+      "permission": "files.write",
+      "description": "The request body is the raw file."
+    },
+    {
+      "verb": "create_share",
+      "method": "POST",
+      "path": "/v1/files/{id}/shares",
+      "request": "CreateShareRequest",
+      "response": "ShareCreated",
+      "write": true,
+      "permission": "files.write",
+      "description": "Editors and managers. The token is shown once."
+    },
+    {
+      "verb": "list_shares",
+      "method": "GET",
+      "path": "/v1/files/{id}/shares",
+      "response": "ShareList",
+      "permission": "files.read",
+      "description": "Managers see all; editors the links they made. Never the token."
+    },
+    {
+      "verb": "revoke_share",
+      "method": "DELETE",
+      "path": "/v1/shares/{id}",
+      "write": true,
+      "permission": "files.write",
+      "description": "204."
+    },
+    {
+      "verb": "set_hold",
+      "method": "PUT",
+      "path": "/v1/files/{id}/hold",
+      "request": "HoldRequest",
+      "write": true,
+      "permission": "files.admin",
+      "description": "Legal hold and retention date. 204."
+    },
+    {
+      "verb": "erase_subject",
+      "method": "POST",
+      "path": "/v1/subjects/{subject}/erasure",
+      "response": "Erasure",
+      "write": true,
+      "permission": "files.admin",
+      "description": "Purges every file of a data subject and writes tombstones; 409 under a legal hold."
+    },
+    {
+      "verb": "list_erasures",
+      "method": "GET",
+      "path": "/v1/erasures",
+      "response": "ErasureList",
+      "permission": "files.admin",
+      "description": "Query: after. The tombstones can-core pulls into the erasure ledger."
+    },
+    {
+      "verb": "purge",
+      "method": "POST",
+      "path": "/v1/purge",
+      "request": "PurgeRequest",
+      "write": true,
+      "permission": "files.admin",
+      "description": "The purge(subject, class) hook the restore replays. Idempotent, ignores holds. 204."
+    }
+  ],
+  "$defs": {
+    "CreateSpaceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      }
+    },
+    "Space": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "role",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^spc_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "owner": {
+          "type": "string",
+          "description": "Managers only."
+        },
+        "role": {
+          "enum": [
+            "viewer",
+            "editor",
+            "manager"
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "SpaceList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Space"
+          }
+        },
+        "next_cursor": {
+          "type": "string",
+          "maxLength": 40
+        }
+      }
+    },
+    "Member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "role"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "user",
+            "group"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "`user:<name>` for a user, an opaque directory group id for a group."
+        },
+        "role": {
+          "enum": [
+            "viewer",
+            "editor",
+            "manager"
+          ]
+        }
+      }
+    },
+    "MemberList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Member"
+          }
+        }
+      }
+    },
+    "CreateFolderRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "parent_id": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{24}$"
+        }
+      }
+    },
+    "Folder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "space_id",
+        "name",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{24}$"
+        },
+        "space_id": {
+          "type": "string",
+          "pattern": "^spc_[0-9a-f]{24}$"
+        },
+        "parent_id": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "FolderList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Folder"
+          }
+        }
+      }
+    },
+    "File": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "space_id",
+        "name",
+        "content_type",
+        "size",
+        "version",
+        "status",
+        "rev",
+        "created_at",
+        "updated_at",
+        "role"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        },
+        "space_id": {
+          "type": "string",
+          "pattern": "^spc_[0-9a-f]{24}$"
+        },
+        "folder_id": {
+          "type": "string",
+          "pattern": "^fld_[0-9a-f]{24}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "content_type": {
+          "type": "string",
+          "description": "The type detected from the content when it was uploaded. Downloads are always served as application/octet-stream attachments."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "deleted"
+          ]
+        },
+        "rev": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "role": {
+          "enum": [
+            "viewer",
+            "editor",
+            "manager"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Editors and managers."
+        },
+        "scan": {
+          "enum": [
+            "clean",
+            "skipped"
+          ],
+          "description": "Editors and managers."
+        },
+        "created_by": {
+          "type": "string",
+          "description": "Editors and managers."
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]{0,31}:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "description": "Managers only."
+        },
+        "subject": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "description": "Managers only."
+        },
+        "legal_hold": {
+          "type": "boolean",
+          "description": "Managers only."
+        },
+        "retain_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Managers only."
+        },
+        "deleted_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Editors and managers, for a file in the trash."
+        }
+      }
+    },
+    "FileList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/File"
+          }
+        },
+        "next_cursor": {
+          "type": "string",
+          "maxLength": 40
+        }
+      }
+    },
+    "FilePatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "folder_id": {
+          "type": "string",
+          "pattern": "^(fld_[0-9a-f]{24})?$",
+          "description": "Empty moves the file to the top level."
+        }
+      },
+      "minProperties": 1
+    },
+    "Version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n",
+        "size",
+        "content_type",
+        "created_at"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "content_type": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scan": {
+          "enum": [
+            "clean",
+            "skipped"
+          ]
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "purged": {
+          "type": "boolean"
+        }
+      }
+    },
+    "VersionList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Version"
+          }
+        }
+      }
+    },
+    "CreateShareRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "expires_in": {
+          "type": "string",
+          "pattern": "^[0-9]+(m|h)$",
+          "description": "A duration of minutes or hours, at least 1m and at most the configured maximum (default 720h)."
+        },
+        "one_time": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Share": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "file_id",
+        "version",
+        "expires_at",
+        "one_time",
+        "uses",
+        "created_by",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^shr_[0-9a-f]{24}$"
+        },
+        "file_id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "one_time": {
+          "type": "boolean"
+        },
+        "uses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revoked_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ShareCreated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "token",
+        "url",
+        "share"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "pattern": "^shr_[0-9a-f]{24}\\.[0-9]{1,12}\\.[A-Za-z0-9_-]{43}$",
+          "description": "Shown once, never stored."
+        },
+        "url": {
+          "type": "string",
+          "pattern": "/s/shr_"
+        },
+        "share": {
+          "$ref": "#/$defs/Share"
+        }
+      }
+    },
+    "ShareList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Share"
+          }
+        }
+      }
+    },
+    "HoldRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "legal_hold"
+      ],
+      "properties": {
+        "legal_hold": {
+          "type": "boolean"
+        },
+        "retain_until": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A date (2027-01-31) or RFC 3339 time; null clears it."
+        }
+      }
+    },
+    "Erasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "classes",
+        "date",
+        "files"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "file-content",
+              "file-metadata"
+            ]
+          }
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ErasureList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "seq",
+              "subject",
+              "class",
+              "date"
+            ],
+            "properties": {
+              "seq": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "subject": {
+                "type": "string"
+              },
+              "class": {
+                "enum": [
+                  "file-content",
+                  "file-metadata"
+                ]
+              },
+              "date": {
+                "type": "string",
+                "format": "date"
+              }
+            }
+          }
+        }
+      }
+    },
+    "PurgeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "class"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "class": {
+          "enum": [
+            "file-content",
+            "file-metadata"
+          ]
+        }
+      }
+    }
+  }
+}

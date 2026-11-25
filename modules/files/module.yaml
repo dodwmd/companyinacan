@@ -1,0 +1,64 @@
+# Files: in-house Go service (cmd/can-files, library core/files). The `files` capability:
+# document and file storage with spaces and access lists (viewer, editor, manager; users and
+# directory groups), immutable versions, share links (signed, expiring, revocable, optionally
+# one-time), a virus-scan hook that fails closed, SHA-256 verified on every download, a quota per
+# owner, retention with a trash period, legal hold and erasure with tombstones for the backup
+# ledger. File bytes live on a local volume or in an S3 bucket; the database holds only sealed
+# metadata. Other modules (jobs resumes, board packs, finance receipts and contract PDFs, people
+# documents) reference a file by its opaque id and never hold its bytes.
+# This is a tool, not legal advice: what must be kept, for how long and when it must be erased is
+# the operator's responsibility (docs/files.md lists what is and is not verified).
+schema: 1
+id: files
+name: Files and documents
+description: Document and file storage with spaces and access lists, immutable versions, signed expiring share links, a fail-closed virus-scan hook, verified checksums, quotas, retention with a trash period, legal hold and erasure with tombstones. Local volume or S3 backend. Downloads are always attachments. An e-signature path is not built.
+category: operations
+version: 0.1.0
+# experimental: unit-, contract- and race-tested offline (a fake S3 that verifies SigV4, a fake
+# clamd, httptest receivers), and the chart installs through can-core's installer in unit tests.
+# The image has not been built or run on a cluster, no real S3 service or ClamAV has been used,
+# directory groups are not yet resolved (only user grants apply), and the blobs are not encrypted
+# at rest by this module (use an encrypted volume or bucket).
+status: experimental
+provider:
+  type: inhouse
+  name: can-files
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  # Only the share-link download route (/s/) is public (see chart/templates/ingressroute.yaml).
+  subdomain: files
+requires:
+  database: sqlite
+  sso: none
+resources:
+  # Idle RAM target 20 MB. Measured on the static linux/amd64 build: see
+  # specs/034-files/research.md R9.
+  ram_mb: 20
+  ram_limit_mb: 64
+  disk_mb: 10000
+provides:
+  - { capability: files, schema: files.v1, service: files, port: 8095 }
+publishes:
+  - { event: file.uploaded.v1, schema: ./events/file.uploaded.v1.json }
+  - { event: file.shared.v1, schema: ./events/file.shared.v1.json }
+  - { event: file.deleted.v1, schema: ./events/file.deleted.v1.json }
+  - { event: file.infected.v1, schema: ./events/file.infected.v1.json }
+# files.read, files.write and files.admin are the coarse gate (write includes read, admin includes
+# both); the role in the space (viewer, editor, manager) decides what a caller may do to what, and a
+# space the caller has no role in does not exist for them. files.admin holds and erases by id and
+# sees no file names or content.
+permissions: [files.read, files.write, files.admin]
+roles:
+  files-reader: [files.read]
+  files-editor: [files.read, files.write]
+  files-admin: [files.read, files.write, files.admin]
+data_classes:
+  # The bytes of every version. Purged after the trash period, on erasure and by the restore-time
+  # ledger replay; never in the database, never in events.
+  - { class: file-content, retention: 30d, sensitivity: sensitive }
+  # File, folder and space names, descriptions and share labels. Sealed per field; every read
+  # audited; never in events.
+  - { class: file-metadata, retention: 30d, sensitivity: sensitive }
+settings_schema: ./settings.schema.json
+healthcheck: /healthz

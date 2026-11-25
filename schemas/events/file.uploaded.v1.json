@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/file.uploaded.v1.json",
+  "title": "file.uploaded.v1",
+  "description": "Published when a file or a new version of a file is stored (after the scan). Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids, the size, the detected content type and the SHA-256 only: never a file name, description or content, so it never outlives an erasure with personal data in it (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "file.uploaded.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "files"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file_id",
+        "space_id",
+        "version",
+        "size",
+        "content_type",
+        "sha256",
+        "actor",
+        "uploaded_at"
+      ],
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "pattern": "^fil_[0-9a-f]{24}$"
+        },
+        "space_id": {
+          "type": "string",
+          "pattern": "^spc_[0-9a-f]{24}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824
+        },
+        "content_type": {
+          "enum": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.oasis.opendocument.text",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "application/vnd.oasis.opendocument.presentation",
+            "application/rtf",
+            "text/plain; charset=utf-8",
+            "text/csv; charset=utf-8",
+            "text/markdown; charset=utf-8"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "actor": {
+          "type": "string",
+          "pattern": "^(system|(user|svc):[A-Za-z0-9_.@-]{1,64})$"
+        },
+        "uploaded_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]{0,31}:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "description": "The opaque reference the owning module gave the file, `<module>:<id>`."
+        }
+      }
+    }
+  }
+}
