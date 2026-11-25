@@ -189,4 +189,4 @@ jobs:
           if-no-files-found: ignore
       - name: Delete the cluster
         if: always()
-        run: make down
+        run: go run ./cmd/can dev down
