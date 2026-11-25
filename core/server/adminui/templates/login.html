@@ -2,7 +2,9 @@
 <section class="narrow">
 <h1>{{t "login.title"}}</h1>
 {{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
-<form method="post" action="/login" class="stack">
+{{if .Data.SSOHref}}<p><a class="button" href="{{.Data.SSOHref}}">{{t "login.sso"}}</a></p>
+<p class="hint">{{t "login.sso_or"}}</p>
+{{end}}<form method="post" action="/login" class="stack">
 <input type="hidden" name="csrf" value="{{.Data.LoginCSRF}}">
 <p><label for="username">{{t "login.username"}}</label>
 <input id="username" name="username" type="text" value="{{.Data.Username}}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></p>

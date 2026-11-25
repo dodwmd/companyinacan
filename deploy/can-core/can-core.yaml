@@ -106,6 +106,9 @@ spec:
             - {name: tmp, mountPath: /tmp}
             # The applied company.yaml, written by `can apply`. Optional: can-core starts without it.
             - {name: company, mountPath: /etc/can/company, readOnly: true}
+            # SSO client secret (docs/sso.md): create the Secret `sso-client` (key client-secret) in
+            # can-system and set `client_secret_ref: sso-client` in company.yaml. Optional.
+            - {name: sso-client, mountPath: /etc/can/sso/sso-client, readOnly: true}
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: can-core-data}
@@ -113,3 +116,5 @@ spec:
           emptyDir: {sizeLimit: 16Mi}
         - name: company
           configMap: {name: company, optional: true}
+        - name: sso-client
+          secret: {secretName: sso-client, optional: true}

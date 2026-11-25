@@ -59,6 +59,8 @@ paths:
         the caller serves; a mismatch answers inactive. Every other case (unknown, expired, revoked,
         another module's, malformed) answers {"active": false} without saying why. Personal access
         tokens do not count against the TokenReview rate limit.
+        The value of an admin UI session cookie is never accepted here: it is the user's login, not a
+        credential for modules. People who sign in through single sign-on use personal access tokens.
       requestBody:
         required: true
         content:

@@ -640,3 +640,132 @@ func (s *Service) Users(ctx context.Context, limit int) ([]UserView, error) {
 	}
 	return out, nil
 }
+
+// SSOActor is the actor of role changes made by the sign-in sync (epic E11b). Assignments it makes
+// carry granted_by = SSOActor, which is what lets a later sync remove exactly those and nothing an
+// administrator assigned by hand.
+const SSOActor = "sso"
+
+// SSOSyncResult is what one sync changed.
+type SSOSyncResult struct {
+	Before, After []string // sso-granted roles before and after
+	Added         []string
+	Removed       []string
+	// Skipped are wanted roles that were not assigned (unknown role, or owner without allowOwner);
+	// Kept are roles that should have been removed but were not (the last owner).
+	Skipped, Kept []string
+}
+
+// SyncSSORoles makes the unscoped roles granted by the sign-in sync for subject equal to want. It
+// only ever touches assignments with granted_by = SSOActor. Roles that do not exist (a module that
+// is not installed) are skipped, owner is only assigned when allowOwner is set (the operator's
+// confirm_owner_mapping), and the last owner is never removed. One audit entry with before and
+// after is written in the same transaction when anything changed.
+func (s *Service) SyncSSORoles(ctx context.Context, subject string, want []string, allowOwner bool) (SSOSyncResult, error) {
+	var res SSOSyncResult
+	if !subjectRe.MatchString(subject) {
+		return res, ErrInvalid
+	}
+	wanted := map[string]bool{}
+	for _, r := range want {
+		if roleRe.MatchString(r) {
+			wanted[r] = true
+		}
+	}
+	known, _, err := s.roleTable(ctx)
+	if err != nil {
+		return res, err
+	}
+	err = s.db.InTx(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, `SELECT role FROM rbac_assignments WHERE subject=? AND scope='' AND granted_by=? ORDER BY role`, subject, SSOActor)
+		if err != nil {
+			return err
+		}
+		have := map[string]bool{}
+		for rows.Next() {
+			var r string
+			if err := rows.Scan(&r); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			have[r] = true
+			res.Before = append(res.Before, r)
+		}
+		_ = rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, r := range sortedKeys(wanted) {
+			if have[r] {
+				continue
+			}
+			if _, ok := known[r]; !ok || (r == Owner && !allowOwner) {
+				res.Skipped = append(res.Skipped, r)
+				continue
+			}
+			ins, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO rbac_assignments(subject, role, scope, granted_by, granted_at) VALUES (?,?,?,?,?)`, subject, r, "", SSOActor, s.db.Now().Unix())
+			if err != nil {
+				return err
+			}
+			if n, _ := ins.RowsAffected(); n > 0 {
+				res.Added = append(res.Added, r)
+			}
+		}
+		for _, r := range sortedKeys(have) {
+			if wanted[r] && (r != Owner || allowOwner) {
+				continue
+			}
+			if r == Owner {
+				var others int
+				if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT subject) FROM rbac_assignments WHERE role=? AND scope='' AND subject<>?`, Owner, subject).Scan(&others); err != nil {
+					return err
+				}
+				if others == 0 {
+					res.Kept = append(res.Kept, r)
+					continue
+				}
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM rbac_assignments WHERE subject=? AND role=? AND scope='' AND granted_by=?`, subject, r, SSOActor); err != nil {
+				return err
+			}
+			res.Removed = append(res.Removed, r)
+		}
+		have2 := map[string]bool{}
+		for r := range have {
+			have2[r] = true
+		}
+		for _, r := range res.Added {
+			have2[r] = true
+		}
+		for _, r := range res.Removed {
+			delete(have2, r)
+		}
+		res.After = sortedKeys(have2)
+		if len(res.Added) == 0 && len(res.Removed) == 0 && len(res.Skipped) == 0 && len(res.Kept) == 0 {
+			return nil
+		}
+		_, err = s.audit.AppendTx(ctx, tx, audit.Entry{Actor: SSOActor, Action: "rbac.sso_sync", Target: subject, Detail: map[string]any{
+			"before": nonNil(res.Before), "after": nonNil(res.After), "added": nonNil(res.Added), "removed": nonNil(res.Removed),
+			"skipped": nonNil(res.Skipped), "kept": nonNil(res.Kept),
+		}})
+		return err
+	})
+	s.Invalidate()
+	return res, err
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}

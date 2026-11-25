@@ -29,6 +29,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
+	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -61,6 +62,8 @@ type Server struct {
 	Mod *modmgr.Service
 	// PATs issues personal access tokens for module APIs; the tokens page answers 503 without it.
 	PATs *pat.Service
+	// SSO is OpenID Connect sign-in (epic E11b); nil hides every trace of it.
+	SSO *sso.Service
 	// Leads reads leads through the `leads` capability; nil means "not configured".
 	Leads   LeadsClient
 	Company Company
@@ -84,7 +87,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...)
+	return append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {
@@ -234,6 +237,7 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 		}
 		p.Nav = append(p.Nav, s.platformNav(r, sc, active)...)
 		p.Nav = append(p.Nav, s.modNav(r, sc, active)...)
+		p.Nav = append(p.Nav, s.ssoNav(r, sc, active)...)
 	}
 	return p
 }

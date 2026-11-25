@@ -14,7 +14,9 @@ framework, no build step. Source: `core/server/adminui`. Specification: `specs/0
 | `/audit` | Audit log, newest first, filter by actor, action prefix and target; **Verify chain**; **Export as JSON lines** (both are POST buttons; only one runs at a time) |
 | `/events`, `/events/{id}` | Event deliveries and the attempt log; requeue for dead deliveries. Event payloads are deliberately not shown (they can hold personal data) |
 | `/leads`, `/leads/{id}` | Read-only list of form submissions with a status filter, and a status change form |
-| `/settings` | Change password, rotate the authentication (TOTP) secret, list and revoke sessions |
+| `/settings` | Change password, rotate the authentication (TOTP) secret, list and revoke sessions. For users who signed in through single sign-on the password and TOTP sections are replaced by a note |
+| `/settings/sso` | **Single sign-on** (E11b, `rbac.manage`): status without secrets (issuer, client id, the *name* of the client secret, redirect URI, policy, group to role table, effective local-login mode), **Test discovery**, and the known identities with **Link** (to an existing local account) and **Unlink** (owners only). Configured in `company.yaml`, see [`sso.md`](sso.md) |
+| `/auth/oidc/login`, `/auth/oidc/callback` | The OpenID Connect sign-in flow. When `sso.enabled`, `/login` also shows **Sign in with single sign-on** above the password form |
 
 | `/catalogue`, `/catalogue/{id}` | **Module catalogue** (E12b): every manifest with status badge (`ready`, `experimental`, `not-deployable`), licence class and a source-available warning, declared RAM request and limit, the footprint total against the server size declared in `company.yaml`, requires/provides (planned capabilities read "not yet served"), exclusive-capability conflicts, and the selection form. The module page generates a settings form from the module's `settings.schema.json` |
 | `/changes/{id}`, `/runs/{id}` | Preview of a change (`company.yaml` diff, reconcile plan, what is created or kept) and the apply progress page |
@@ -26,6 +28,15 @@ framework, no build step. Source: `core/server/adminui`. Specification: `specs/0
 The full route table, with methods and fields, is [`specs/010-admin-ui/contracts/ui-routes.md`](../specs/010-admin-ui/contracts/ui-routes.md).
 Unknown paths show a styled 404; failures show a styled error page with a request id you can look up in
 the can-core log.
+
+## Single sign-on (epic E11b)
+
+With an `sso:` block in `company.yaml` the login page offers sign-in through your OpenID Connect provider;
+the password form stays for the break-glass owner. SSO users are created on first sign-in without any role;
+roles come from the group mapping on every sign-in. The pages above need no JavaScript: the callback and the
+provider logout are pages that move on by `<meta http-equiv="refresh">` (a redirect would not carry the
+SameSite=Strict session cookie after a cross-site navigation, and `form-action 'self'` stops a POST from
+redirecting to the provider). Setup, security properties and what is not verified: [`sso.md`](sso.md).
 
 ## Managing modules (epic E12b)
 

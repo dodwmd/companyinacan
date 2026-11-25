@@ -4,7 +4,8 @@
 <p>{{t "settings.signed_in_as" .User}}</p>
 <p class="hint">{{t "settings.ends_sessions"}}</p>
 
-<section aria-labelledby="h-pw">
+{{if .Data.SSOUser}}<p class="hint">{{t "settings.sso_user"}}</p>
+{{else}}<section aria-labelledby="h-pw">
 <h2 id="h-pw">{{t "settings.password"}}</h2>
 <form method="post" action="/settings/password" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -33,7 +34,7 @@
 </form>
 </section>
 
-<section aria-labelledby="h-sessions">
+{{end}}<section aria-labelledby="h-sessions">
 <h2 id="h-sessions">{{t "settings.sessions"}}</h2>
 <div class="table-wrap" role="region" aria-labelledby="cap-sess" tabindex="0">
 <table>

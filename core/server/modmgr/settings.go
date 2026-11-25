@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	jsch "github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 )
@@ -194,23 +194,9 @@ func (e *Entry) BuildForm(current map[string]any) Form {
 	return f
 }
 
-var secretRefRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?(/[A-Za-z0-9._-]{1,253})?$`)
-
 // validSecretRef accepts the name of a Secret (a DNS subdomain) with an optional key, and refuses the
 // Secrets can-core owns (`can-*`, `kubernetes.io*`), consecutive dots, and `.`/`..` keys.
-func validSecretRef(v string) bool {
-	if !secretRefRe.MatchString(v) || len(v) > 253+1+253 {
-		return false
-	}
-	name, key, _ := strings.Cut(v, "/")
-	if len(name) > 253 || strings.Contains(name, "..") || strings.Contains(name, ".-") || strings.Contains(name, "-.") {
-		return false
-	}
-	if strings.HasPrefix(name, "can-") || name == "can" || strings.HasPrefix(name, "kubernetes.io") {
-		return false
-	}
-	return key != "." && key != ".." && !strings.Contains(key, "..")
-}
+func validSecretRef(v string) bool { return config.ValidSecretRef(v) }
 
 // ParseSettings merges the submitted form into a copy of current and validates the result with the
 // module's JSON Schema. The returned map is only meaningful when the error map is empty; errors are

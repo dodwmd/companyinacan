@@ -20,6 +20,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
+	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -37,7 +38,9 @@ type Server struct {
 	// Mod is module management (epic E12b); nil answers 503 on its endpoints.
 	Mod *modmgr.Service
 	// PATs issues and revokes personal access tokens for module APIs; nil answers 503 on its routes.
-	PATs       *pat.Service
+	PATs *pat.Service
+	// SSO is OpenID Connect sign-in (epic E11b); nil answers 503 on its endpoints.
+	SSO        *sso.Service
 	Log        *slog.Logger
 	Secure     bool // set the Secure cookie attribute (false only for plain-HTTP local dev)
 	TrustProxy bool // take the client address from the ingress's X-Forwarded-For
@@ -56,7 +59,7 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.tokenRoutes()...)
+	return append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {
@@ -172,6 +175,8 @@ type sessionView struct {
 	Username  string    `json:"username"`
 	CSRFToken string    `json:"csrf_token"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// Source is "local" (password and TOTP) or "sso".
+	Source string `json:"source,omitempty"`
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request, p principal) {
@@ -184,7 +189,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request, p principal) {
 }
 
 func (s *Server) session(w http.ResponseWriter, _ *http.Request, p principal) {
-	httpx.WriteJSON(w, http.StatusOK, sessionView{Username: p.User.Username, CSRFToken: p.Session.CSRF, ExpiresAt: p.Session.ExpiresAt})
+	httpx.WriteJSON(w, http.StatusOK, sessionView{Username: p.User.Username, CSRFToken: p.Session.CSRF, ExpiresAt: p.Session.ExpiresAt, Source: p.Session.Source})
 }
 
 type moduleView struct {

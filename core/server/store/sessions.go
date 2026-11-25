@@ -19,7 +19,7 @@ func PublicSessionID(s Session) string {
 
 // ListSessions returns the user's live (unexpired at now) sessions, oldest first.
 func (db *DB) ListSessions(ctx context.Context, userID int64, now time.Time) ([]Session, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id_hash,user_id,csrf_token,ip,created_at,expires_at FROM sessions WHERE user_id=? AND expires_at > ? ORDER BY created_at, id_hash`, userID, now.Unix())
+	rows, err := db.QueryContext(ctx, `SELECT id_hash,user_id,csrf_token,ip,created_at,expires_at,source,revalidate_at FROM sessions WHERE user_id=? AND expires_at > ? ORDER BY created_at, id_hash`, userID, now.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -27,11 +27,14 @@ func (db *DB) ListSessions(ctx context.Context, userID int64, now time.Time) ([]
 	var out []Session
 	for rows.Next() {
 		var s Session
-		var c, e int64
-		if err := rows.Scan(&s.IDHash, &s.UserID, &s.CSRF, &s.IP, &c, &e); err != nil {
+		var c, e, rv int64
+		if err := rows.Scan(&s.IDHash, &s.UserID, &s.CSRF, &s.IP, &c, &e, &s.Source, &rv); err != nil {
 			return nil, err
 		}
 		s.CreatedAt, s.ExpiresAt = time.Unix(c, 0), time.Unix(e, 0)
+		if rv > 0 {
+			s.RevalidateAt = time.Unix(rv, 0)
+		}
 		out = append(out, s)
 	}
 	return out, rows.Err()

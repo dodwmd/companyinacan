@@ -62,6 +62,12 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `GET /tokens` | yes | Your personal access tokens (all with `rbac.manage`) and the issue form; 503 without the service |
 | `POST /tokens` | yes | Fields `module`, `name`, `permissions` (repeated), `ttl_hours`; shows the token once; 403 for a permission you do not hold |
 | `POST /tokens/{id}/revoke` | yes | Revoke; 404 for someone else's token unless `rbac.manage` |
+| `GET /auth/oidc/login` | no | OIDC sign-in (E11b, `specs/021-oidc-sso/contracts/ui-routes.md`): optional query `next` (a local path; anything else becomes `/`). Sets the signed `can_oidc_<flow id>` transaction cookie (HttpOnly, Secure, SameSite=Lax, path `/auth/oidc`, 10 minutes) holding state, nonce and PKCE verifier, then 303 to the provider. 404 when SSO is not enabled; 503 when it cannot start |
+| `GET /auth/oidc/callback` | no | Provider redirect back: query `code`, `state` (or `error`). Verifies state against the cookie in constant time, single use, exchanges the code (PKCE), verifies the ID token, provisions or finds the user by (issuer, sub), syncs roles, and answers 200 with an interstitial page that sets the session cookie and moves on to `next` (a redirect would not carry the SameSite=Strict cookie). 403 for every refusal with one generic message, 429 for a flood of callbacks without a valid transaction, 503 |
+| `GET /settings/sso` | yes (`rbac.manage`) | SSO status (no secrets), group to role table, known identities. 200 also when SSO is not configured |
+| `POST /settings/sso/test` | yes (`rbac.manage`) | Fetches discovery and the signing keys exactly as sign-in does (https, public addresses only, no redirects, size caps). Audited. 409 when SSO is not configured |
+| `POST /settings/sso/identities/{id}/link` | yes (`rbac.manage`, owner) | Field `username`: binds the identity to that existing local account. Never automatic. 403 for a non-owner, 409 for an unknown user, a non-local account or one that already has an identity |
+| `POST /settings/sso/identities/{id}/unlink` | yes (`rbac.manage`, owner) | Removes the identity (a provisioned user is deleted with its sessions; a linked local account stays). 409 for the last owner |
 | `GET /static/{file}` | no | Embedded stylesheet and icons (immutable cache) |
 | `GET /manifest.webmanifest` | no | Web app manifest |
 

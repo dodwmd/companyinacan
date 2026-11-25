@@ -33,6 +33,9 @@ func (s *Service) checkCurrent(ctx context.Context, u store.AdminUser, current, 
 
 // checkCurrentOpt is checkCurrent with control over clearing the failure count on success.
 func (s *Service) checkCurrentOpt(ctx context.Context, u store.AdminUser, current, code string, needCode, clear bool) error {
+	if u.AuthSource != store.SourceLocal {
+		return ErrInvalidCredentials // single sign-on users have no password to confirm
+	}
 	now := s.opt.Now()
 	key := accountKey(u)
 	a, locked, err := s.db.RegisterFailure(ctx, key, accountMaxFailures, s.opt.Policy.Window, accountLockFor, now)

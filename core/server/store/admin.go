@@ -18,10 +18,22 @@ type AdminUser struct {
 	PasswordHash string
 	TOTPSecret   string
 	CreatedAt    time.Time
+	// AuthSource is SourceLocal (password and TOTP) or SourceSSO (OpenID Connect, epic E11b).
+	AuthSource string
 }
 
-// CreateAdmin inserts an admin user.
+// SSOUsernamePrefix is reserved for users provisioned by single sign-on: a local account may not take
+// a name that a future sign-in could be provisioned under.
+const SSOUsernamePrefix = "sso-"
+
+// ErrReservedName is returned when a local account is created with a reserved name.
+var ErrReservedName = errors.New("the user name prefix sso- is reserved for single sign-on users")
+
+// CreateAdmin inserts a local admin user.
 func (db *DB) CreateAdmin(ctx context.Context, username, passwordHash, totpSecret string) (AdminUser, error) {
+	if strings.HasPrefix(strings.ToLower(username), SSOUsernamePrefix) {
+		return AdminUser{}, ErrReservedName
+	}
 	now := db.Now()
 	var id int64
 	// The first admin of an installation is its owner (break-glass role, specs/015); later admins
@@ -49,25 +61,25 @@ func (db *DB) CreateAdmin(ctx context.Context, username, passwordHash, totpSecre
 		}
 		return AdminUser{}, err
 	}
-	return AdminUser{ID: id, Username: username, PasswordHash: passwordHash, TOTPSecret: totpSecret, CreatedAt: now}, nil
+	return AdminUser{ID: id, Username: username, PasswordHash: passwordHash, TOTPSecret: totpSecret, CreatedAt: now, AuthSource: SourceLocal}, nil
 }
 
 func scanAdmin(row interface{ Scan(...any) error }) (AdminUser, error) {
 	var u AdminUser
 	var created int64
-	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.TOTPSecret, &created)
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.TOTPSecret, &created, &u.AuthSource)
 	u.CreatedAt = time.Unix(created, 0)
 	return u, notFound(err)
 }
 
 // AdminByUsername looks an admin up by name.
 func (db *DB) AdminByUsername(ctx context.Context, username string) (AdminUser, error) {
-	return scanAdmin(db.QueryRowContext(ctx, `SELECT id, username, password_hash, totp_secret, created_at FROM admin_users WHERE username=?`, username))
+	return scanAdmin(db.QueryRowContext(ctx, `SELECT id, username, password_hash, totp_secret, created_at, auth_source FROM admin_users WHERE username=?`, username))
 }
 
 // AdminByID looks an admin up by id.
 func (db *DB) AdminByID(ctx context.Context, id int64) (AdminUser, error) {
-	return scanAdmin(db.QueryRowContext(ctx, `SELECT id, username, password_hash, totp_secret, created_at FROM admin_users WHERE id=?`, id))
+	return scanAdmin(db.QueryRowContext(ctx, `SELECT id, username, password_hash, totp_secret, created_at, auth_source FROM admin_users WHERE id=?`, id))
 }
 
 // SetPasswordHash replaces the stored hash (password change or rehash).
@@ -87,6 +99,12 @@ func (db *DB) AdvanceTOTPStep(ctx context.Context, id, step int64) (bool, error)
 	return n == 1, nil
 }
 
+// Authentication sources of an admin user and its sessions.
+const (
+	SourceLocal = "local"
+	SourceSSO   = "sso"
+)
+
 // Session is a server-side admin session; the cookie carries a random token whose hash is IDHash.
 type Session struct {
 	IDHash    string
@@ -95,22 +113,36 @@ type Session struct {
 	IP        string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+	// Source is SourceLocal or SourceSSO. RevalidateAt (zero = never) is when an SSO session stops
+	// being accepted so that sign-in is repeated at the identity provider.
+	Source       string
+	RevalidateAt time.Time
 }
 
 // CreateSession stores a session.
 func (db *DB) CreateSession(ctx context.Context, s Session) error {
-	_, err := db.ExecContext(ctx, `INSERT INTO sessions(id_hash,user_id,csrf_token,ip,created_at,expires_at) VALUES (?,?,?,?,?,?)`,
-		s.IDHash, s.UserID, s.CSRF, s.IP, s.CreatedAt.Unix(), s.ExpiresAt.Unix())
+	if s.Source == "" {
+		s.Source = SourceLocal
+	}
+	var rv int64
+	if !s.RevalidateAt.IsZero() {
+		rv = s.RevalidateAt.Unix()
+	}
+	_, err := db.ExecContext(ctx, `INSERT INTO sessions(id_hash,user_id,csrf_token,ip,created_at,expires_at,source,revalidate_at) VALUES (?,?,?,?,?,?,?,?)`,
+		s.IDHash, s.UserID, s.CSRF, s.IP, s.CreatedAt.Unix(), s.ExpiresAt.Unix(), s.Source, rv)
 	return err
 }
 
 // SessionByHash loads a session.
 func (db *DB) SessionByHash(ctx context.Context, idHash string) (Session, error) {
 	var s Session
-	var c, e int64
-	err := db.QueryRowContext(ctx, `SELECT id_hash,user_id,csrf_token,ip,created_at,expires_at FROM sessions WHERE id_hash=?`, idHash).
-		Scan(&s.IDHash, &s.UserID, &s.CSRF, &s.IP, &c, &e)
+	var c, e, rv int64
+	err := db.QueryRowContext(ctx, `SELECT id_hash,user_id,csrf_token,ip,created_at,expires_at,source,revalidate_at FROM sessions WHERE id_hash=?`, idHash).
+		Scan(&s.IDHash, &s.UserID, &s.CSRF, &s.IP, &c, &e, &s.Source, &rv)
 	s.CreatedAt, s.ExpiresAt = time.Unix(c, 0), time.Unix(e, 0)
+	if rv > 0 {
+		s.RevalidateAt = time.Unix(rv, 0)
+	}
 	return s, notFound(err)
 }
 

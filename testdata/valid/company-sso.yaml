@@ -1,0 +1,23 @@
+schema: 1
+name: Acme Co
+domain: acme.example
+provider:
+  type: local
+sso:
+  enabled: true
+  issuer: https://idp.example.org/realms/acme
+  client_id: can-admin
+  client_secret_ref: acme-sso/client-secret
+  scopes: [openid, email, profile, groups]
+  claims:
+    groups: groups
+  allowed_email_domains: [acme.example]
+  require_email_verified: true
+  require_amr: [mfa]
+  group_roles:
+    can-admins: [owner]
+    can-ops: [operator]
+    finance-team: ["finance:approver"]
+  confirm_owner_mapping: true
+  local_login: owner_only
+  revalidate_interval: 30m

@@ -1,0 +1,75 @@
+{{define "content"}}
+<h1>{{t "sso.title"}}</h1>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+{{with .Data.Status}}
+{{if not .Configured}}<p>{{t "sso.not_configured"}}</p>
+{{else}}
+{{if .Error}}<p class="alert err" role="alert">{{.Error}}</p>{{end}}
+<section aria-labelledby="h-sso-status">
+<h2 id="h-sso-status">{{t "sso.status"}}</h2>
+<dl>
+<dt>{{t "sso.state"}}</dt><dd>{{if .Enabled}}{{t "sso.on"}}{{else}}{{t "sso.failing"}}{{end}}</dd>
+<dt>{{t "sso.issuer"}}</dt><dd>{{.Issuer}}</dd>
+<dt>{{t "sso.client_id"}}</dt><dd>{{.ClientID}}</dd>
+<dt>{{t "sso.secret_ref"}}</dt><dd>{{.ClientSecretRef}} <span class="hint">{{t "sso.secret_hint"}}</span></dd>
+<dt>{{t "sso.redirect"}}</dt><dd>{{.RedirectURI}}</dd>
+<dt>{{t "sso.scopes"}}</dt><dd>{{range .Scopes}}{{.}} {{end}}</dd>
+<dt>{{t "sso.email_verified"}}</dt><dd>{{if .RequireEmailVerified}}{{t "sso.yes"}}{{else}}{{t "sso.no"}}{{end}}</dd>
+<dt>{{t "sso.domains"}}</dt><dd>{{range .AllowedEmailDomains}}{{.}} {{else}}{{t "sso.any"}}{{end}}</dd>
+<dt>{{t "sso.amr"}}</dt><dd>{{range .RequireAMR}}{{.}} {{else}}{{t "sso.not_checked"}}{{end}}</dd>
+<dt>{{t "sso.local_login"}}</dt><dd>{{.LocalLoginEffective}}{{if ne .LocalLogin .LocalLoginEffective}} ({{t "sso.local_safety" .LocalLogin}}){{end}}</dd>
+<dt>{{t "sso.revalidate"}}</dt><dd>{{.RevalidateInterval}}</dd>
+<dt>{{t "sso.rp_logout"}}</dt><dd>{{if .RPLogout}}{{t "sso.yes"}}{{else}}{{t "sso.no"}}{{end}}</dd>
+{{if .InsecureDev}}<dt>{{t "sso.insecure"}}</dt><dd><strong>{{t "sso.yes"}}</strong></dd>{{end}}
+</dl>
+<form method="post" action="/settings/sso/test">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<p><button type="submit">{{t "sso.test"}}</button></p>
+</form>
+{{with $.Data.Test}}<p class="alert {{if .OK}}ok{{else}}err{{end}}" role="status">{{.Message}}{{if .OK}} ({{.Issuer}}, {{.Keys}} {{t "sso.keys"}}){{end}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-sso-map">
+<h2 id="h-sso-map">{{t "sso.mapping"}}</h2>
+<p class="hint">{{t "sso.mapping_help"}}</p>
+{{if .Mappings}}<div class="table-wrap" role="region" aria-labelledby="cap-map" tabindex="0">
+<table>
+<caption id="cap-map" class="sr">{{t "sso.mapping"}}</caption>
+<thead><tr><th scope="col">{{t "sso.group"}}</th><th scope="col">{{t "sso.roles"}}</th></tr></thead>
+<tbody>{{range .Mappings}}<tr><th scope="row">{{.Group}}</th><td>{{range .Roles}}{{.}} {{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>{{else}}<p class="empty">{{t "sso.no_mapping"}}</p>{{end}}
+</section>
+{{end}}
+{{end}}
+
+<section aria-labelledby="h-sso-ids">
+<h2 id="h-sso-ids">{{t "sso.identities"}}</h2>
+<p class="hint">{{t "sso.identities_help"}}</p>
+{{if .Data.Identities}}<div class="table-wrap" role="region" aria-labelledby="cap-ids" tabindex="0">
+<table>
+<caption id="cap-ids" class="sr">{{t "sso.identities"}}</caption>
+<thead><tr><th scope="col">{{t "sso.email"}}</th><th scope="col">{{t "sso.user"}}</th><th scope="col">{{t "sso.roles"}}</th><th scope="col">{{t "sso.last_login"}}</th><th scope="col">{{t "ev.action"}}</th></tr></thead>
+<tbody>
+{{range .Data.Identities}}<tr>
+<th scope="row">{{if .Email}}{{.Email}}{{else}}{{t "sso.no_email"}}{{end}}</th>
+<td>{{.Username}}{{if .Linked}} ({{t "sso.linked"}}){{end}}</td>
+<td>{{range .Roles}}{{.}} {{end}}</td>
+<td>{{.LastLogin}}</td>
+<td>{{if $.Data.CanLink}}
+{{if not .Linked}}<form method="post" action="/settings/sso/identities/{{.ID}}/link" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label class="sr" for="lk-{{.ID}}">{{t "sso.link_to"}}</label>
+<input id="lk-{{.ID}}" name="username" type="text" maxlength="64" required placeholder="{{t "sso.link_to"}}">
+<button type="submit">{{t "sso.link"}}</button></form>{{end}}
+<form method="post" action="/settings/sso/identities/{{.ID}}/unlink" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button type="submit">{{t "sso.unlink"}}</button></form>
+{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>{{else}}<p class="empty">{{t "sso.no_identities"}}</p>{{end}}
+</section>
+{{end}}

@@ -1,0 +1,5 @@
+problems:
+  - rule: semantic.sso-local-login
+    path: "/sso/confirm_disable_local_login"
+  - rule: semantic.sso-local-login
+    path: "/sso/local_login"

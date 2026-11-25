@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.sso-role
+    path: "/sso/group_roles/staff"

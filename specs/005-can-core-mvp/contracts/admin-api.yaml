@@ -660,6 +660,92 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "409": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/sso:
+    get:
+      operationId: getSSO
+      summary: "Single sign-on status without secrets (rbac.manage; E11b)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SSOStatus" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/sso/test:
+    post:
+      operationId: testSSO
+      summary: "Fetch discovery and signing keys the way sign-in does: https, public addresses, no redirects, size caps (rbac.manage). Audited."
+      security: [{ session: [], csrf: [] }]
+      responses:
+        "200":
+          description: Result; ok=false carries a short reason
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SSOTest" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/sso/identities:
+    get:
+      operationId: listSSOIdentities
+      summary: "External identities that have signed in (rbac.manage)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [identities]
+                properties:
+                  identities:
+                    type: array
+                    items: { $ref: "#/components/schemas/SSOIdentity" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/sso/identities/{id}/link:
+    post:
+      operationId: linkSSOIdentity
+      summary: "Bind an identity to an existing local administrator. Owner only; never automatic."
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username]
+              properties:
+                username: { type: string }
+      responses:
+        "204": { description: Linked }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/sso/identities/{id}/unlink:
+    post:
+      operationId: unlinkSSOIdentity
+      summary: "Remove an identity; a provisioned user is deleted with it, a linked local account stays. Owner only."
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Unlinked }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 components:
   securitySchemes:
     session:
@@ -704,6 +790,7 @@ components:
         username: { type: string }
         csrf_token: { type: string }
         expires_at: { type: string, format: date-time }
+        source: { type: string, enum: [local, sso] }
     Module:
       type: object
       required: [id, version, state, namespace, provides, ram_mb, updated_at]
@@ -1090,6 +1177,58 @@ components:
                     scope: { type: string }
                     granted_by: { type: string }
                     granted_at: { type: string, format: date-time }
+    SSOStatus:
+      type: object
+      required: [configured, enabled, group_roles, require_email_verified, require_mapped_role, rp_logout, allow_insecure_dev, identities]
+      properties:
+        configured: { type: boolean }
+        enabled: { type: boolean }
+        error: { type: string }
+        issuer: { type: string }
+        client_id: { type: string }
+        client_secret_ref: { type: string, description: "The Secret's name; the value is never returned." }
+        redirect_uri: { type: string }
+        scopes: { type: array, items: { type: string } }
+        group_roles:
+          type: array
+          items:
+            type: object
+            properties:
+              group: { type: string }
+              roles: { type: array, items: { type: string } }
+        allowed_email_domains: { type: array, items: { type: string } }
+        require_email_verified: { type: boolean }
+        require_amr: { type: array, items: { type: string } }
+        require_mapped_role: { type: boolean }
+        local_login: { type: string, enum: [all, owner_only, disabled] }
+        local_login_effective: { type: string, enum: [all, owner_only, disabled] }
+        revalidate_interval: { type: string }
+        rp_logout: { type: boolean }
+        allow_insecure_dev: { type: boolean }
+        identities: { type: integer }
+    SSOTest:
+      type: object
+      required: [ok, message, keys]
+      properties:
+        ok: { type: boolean }
+        message: { type: string }
+        issuer: { type: string }
+        keys: { type: integer }
+        authorization_host: { type: string }
+    SSOIdentity:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        email: { type: string }
+        name: { type: string }
+        groups: { type: array, items: { type: string } }
+        roles: { type: array, items: { type: string } }
+        linked: { type: boolean, description: "Bound to a local account by an administrator." }
+        linked_by: { type: string }
+        external_subject: { type: string }
+        created_at: { type: string }
+        last_login: { type: string }
     RoleRequest:
       type: object
       additionalProperties: false

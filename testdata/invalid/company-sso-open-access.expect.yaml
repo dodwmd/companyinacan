@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.sso-open-access
+    path: "/sso/allow_any_account"
