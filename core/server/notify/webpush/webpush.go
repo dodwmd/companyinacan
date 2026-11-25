@@ -205,10 +205,17 @@ type Subscription struct {
 // naming a public DNS host: no address literals, userinfo, fragment, single-label or internal names.
 // The connection itself is checked again at connect time (see NewClient). allowInsecure skips the
 // endpoint rules (tests only).
-func (s Subscription) Validate(allowInsecure bool) error {
+func (s Subscription) Validate(allowInsecure bool) error { return s.ValidateWith(allowInsecure, nil) }
+
+// ValidateWith is Validate plus an optional host-suffix allowlist (see HostAllowed); an empty list
+// allows any public host.
+func (s Subscription) ValidateWith(allowInsecure bool, allow []string) error {
 	if !allowInsecure {
 		if err := validEndpoint(s.Endpoint); err != nil {
 			return err
+		}
+		if !HostAllowed(s.Endpoint, allow) {
+			return errors.New("endpoint host is not on this server's push service allowlist")
 		}
 	} else if s.Endpoint == "" || len(s.Endpoint) > MaxEndpoint {
 		return errors.New("endpoint missing or too long")
@@ -224,6 +231,26 @@ func (s Subscription) Validate(allowInsecure bool) error {
 		return errors.New("auth must be 16 bytes, base64url")
 	}
 	return nil
+}
+
+// HostAllowed reports whether the endpoint's host equals or is a subdomain of one of the allowed
+// suffixes (for example "googleapis.com" allows fcm.googleapis.com). An empty list allows every host.
+func HostAllowed(ep string, allow []string) bool {
+	if len(allow) == 0 {
+		return true
+	}
+	u, err := url.Parse(ep)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	for _, a := range allow {
+		a = strings.ToLower(strings.Trim(strings.TrimSpace(a), "."))
+		if a != "" && (host == a || strings.HasSuffix(host, "."+a)) {
+			return true
+		}
+	}
+	return false
 }
 
 func validEndpoint(ep string) error {
@@ -281,6 +308,10 @@ type Client struct {
 	Contact string
 	HTTP    *http.Client
 	Now     func() time.Time
+	// AllowHosts is the optional host-suffix allowlist enforced on every Send; AllowInsecure skips
+	// the endpoint rules (tests with a loopback fake only).
+	AllowHosts    []string
+	AllowInsecure bool
 }
 
 // NewClient returns a Client whose HTTP client never follows redirects, connects only to public
@@ -305,6 +336,11 @@ func NewClient(key *Key, contact string) *Client {
 // Send encrypts payload for sub and posts it. A 404 or 410 returns ErrGone. Errors never contain
 // the endpoint URL (it is the subscription's capability).
 func (c *Client) Send(ctx context.Context, sub Subscription, payload []byte, o Options) (Result, error) {
+	// Validated again here, not only when the subscription was stored: the row may predate a stricter
+	// rule or an allowlist, and nothing but this check stands between a stored URL and a connection.
+	if err := sub.ValidateWith(c.AllowInsecure, c.AllowHosts); err != nil {
+		return Result{}, errors.New("subscription refused: " + err.Error())
+	}
 	p256dh, err1 := b64.DecodeString(sub.P256dh)
 	auth, err2 := b64.DecodeString(sub.Auth)
 	if err1 != nil || err2 != nil {

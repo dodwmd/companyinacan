@@ -78,6 +78,7 @@ func (s *Service) pushSender(ctx context.Context) (PushSender, error) {
 			c.HTTP = s.opt.PushHTTP
 		}
 		c.Now = s.opt.Now
+		c.AllowHosts, c.AllowInsecure = s.opt.PushEndpointAllow, s.opt.AllowInsecurePush
 		s.push.sender = c
 	}
 	return s.push.sender, nil
@@ -183,7 +184,7 @@ func (s *Service) Subscribe(ctx context.Context, subject string, sub webpush.Sub
 	if !rbac.ValidSubject(subject) {
 		return 0, fmt.Errorf("%w: subject", errInvalid)
 	}
-	if err := sub.Validate(s.opt.AllowInsecurePush); err != nil {
+	if err := sub.ValidateWith(s.opt.AllowInsecurePush, s.opt.PushEndpointAllow); err != nil {
 		return 0, fmt.Errorf("%w: %v", errInvalid, err)
 	}
 	label = oneLine(label, 80)

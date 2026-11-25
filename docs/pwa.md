@@ -54,6 +54,22 @@ Rules it follows (same engine as email, see [notifications.md](notifications.md)
   Secret instead, mount a file holding the private key (base64url, 32 bytes) and set `CAN_VAPID_KEY_FILE`
   to its path; nothing is then written to the database, and a missing or bad file fails push loudly rather
   than falling back to a generated key.
+- **Production: use `CAN_VAPID_KEY_FILE`.** A key kept in a mounted Secret never touches the database or its
+  backups and is rotated like any other Secret. The default (a row in the state database) is convenient for
+  trials; there is no master key in can-core to seal it with.
+- **What the database holds in plain text.** Each push device row stores the browser's push `endpoint` (a
+  capability URL: whoever has it can send that browser pushes, though only can-core holds the VAPID key that
+  push services require) and the browser's `auth` secret and public key (with the VAPID private key, enough to
+  read or forge messages for that device). Protect the state database file's permissions and use volume
+  encryption; treat a copy of the database as sensitive. Devices are erased when their user is deleted or
+  unlinked (SSO), so a user provisioned again with the same name starts with none.
+- **Optional endpoint allowlist: `CAN_PUSH_ENDPOINT_ALLOW`.** Comma-separated host suffixes a push endpoint
+  must match (a host equal to a suffix or a subdomain of it). Default empty: any public https host on port 443.
+  It is checked when a device is added and again before every send. Common suffixes: `googleapis.com`
+  (Chrome and Android via FCM, `fcm.googleapis.com`), `push.services.mozilla.com` (Firefox), `push.apple.com`
+  (Safari, not supported here), `notify.windows.com` (Edge via WNS). Example for Chrome and Firefox only:
+  `CAN_PUSH_ENDPOINT_ALLOW=googleapis.com,push.services.mozilla.com`. A self-hosted UnifiedPush server needs its
+  own suffix added. Existing devices that no longer match fail and are dropped after ten failures.
 - Rotating the key (`POST /api/v1/push/vapid-key/rotate`, needs `rbac.manage`, audited) deletes every
   subscription, because browsers bind a subscription to the key; users enable push again on each device.
   With a mounted key, rotate the Secret instead, and expect the same.

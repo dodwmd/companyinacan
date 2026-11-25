@@ -206,7 +206,7 @@ func newFakePush(t *testing.T) *fakePush {
 
 func testClient(t *testing.T, f *fakePush) *Client {
 	k, _ := GenerateKey()
-	return &Client{Key: k, Contact: "mailto:ops@example.com", HTTP: f.srv.Client(), Now: func() time.Time { return time.Unix(1_700_000_000, 0) }}
+	return &Client{Key: k, Contact: "mailto:ops@example.com", HTTP: f.srv.Client(), AllowInsecure: true, Now: func() time.Time { return time.Unix(1_700_000_000, 0) }}
 }
 
 func TestSendHeadersAndStatuses(t *testing.T) {
@@ -276,6 +276,7 @@ func TestSendNeverFollowsRedirects(t *testing.T) {
 	// Keep the default redirect policy; only swap the transport so the test server's certificate
 	// is trusted and loopback is reachable.
 	c.HTTP = &http.Client{Transport: f.srv.Client().Transport, CheckRedirect: c.HTTP.CheckRedirect}
+	c.AllowInsecure = true
 	res, err := c.Send(context.Background(), goodSub(t, f.srv.URL+"/x"), []byte("x"), Options{})
 	if err == nil || hit || res.Status != 307 {
 		t.Fatalf("redirect handling: err=%v hit=%v status=%d", err, hit, res.Status)
@@ -288,6 +289,47 @@ func TestDefaultClientRefusesPrivateDestinations(t *testing.T) {
 	_, err := c.Send(context.Background(), goodSub(t, f.srv.URL+"/x"), []byte("x"), Options{})
 	if err == nil || f.got != nil {
 		t.Fatalf("loopback push service was contacted: %v", err)
+	}
+}
+
+func TestSendRevalidatesStoredEndpoints(t *testing.T) {
+	f := newFakePush(t)
+	c := NewClient(testKey(t), "mailto:a@b.c")
+	for _, ep := range []string{"http://push.example.com/x", "https://203.0.113.9/x", "https://localhost/x", "https://push.example.com:8443/x"} {
+		if _, err := c.Send(context.Background(), goodSub(t, ep), []byte("x"), Options{}); err == nil || !strings.Contains(err.Error(), "refused") {
+			t.Errorf("%s: %v", ep, err)
+		}
+	}
+	if f.got != nil {
+		t.Fatal("a refused subscription was contacted")
+	}
+}
+
+func TestHostAllowlist(t *testing.T) {
+	allow := []string{"googleapis.com", " push.services.mozilla.com ", ""}
+	for ep, want := range map[string]bool{
+		"https://fcm.googleapis.com/fcm/send/x":                true,
+		"https://googleapis.com/x":                             true,
+		"https://updates.push.services.mozilla.com/wpush/v2/x": true,
+		"https://evilgoogleapis.com/x":                         false,
+		"https://googleapis.com.evil.example/x":                false,
+		"https://push.example.com/x":                           false,
+	} {
+		if got := HostAllowed(ep, allow); got != want {
+			t.Errorf("%s = %v, want %v", ep, got, want)
+		}
+	}
+	if !HostAllowed("https://anything.example.com/x", nil) {
+		t.Error("an empty allowlist must allow every public host")
+	}
+	s := goodSub(t, "https://push.example.com/x")
+	if s.ValidateWith(false, allow) == nil || s.ValidateWith(false, nil) != nil {
+		t.Error("ValidateWith does not apply the allowlist")
+	}
+	c := NewClient(testKey(t), "mailto:a@b.c")
+	c.AllowHosts = allow
+	if _, err := c.Send(context.Background(), s, []byte("x"), Options{}); err == nil || !strings.Contains(err.Error(), "allowlist") {
+		t.Errorf("Send ignores the allowlist: %v", err)
 	}
 }
 

@@ -84,7 +84,10 @@ type Options struct {
 	PushSender PushSender
 	// PushHTTP replaces the push client's HTTP client; AllowInsecurePush skips the endpoint rules
 	// of Subscribe. Both are for tests with an httptest push service.
-	PushHTTP          *http.Client
+	PushHTTP *http.Client
+	// PushEndpointAllow is an optional host-suffix allowlist for push endpoints (default empty: any
+	// public https host).
+	PushEndpointAllow []string
 	AllowInsecurePush bool
 	// PushSleep waits between delivery retries (tests); default honours the context.
 	PushSleep func(ctx context.Context, d time.Duration) error
