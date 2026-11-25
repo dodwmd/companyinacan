@@ -22,11 +22,13 @@ requires:
   database: sqlite
   sso: none
 resources:
-  # Idle RAM target 20 MB. Measured on the static linux/amd64 build: 13.6 MiB RSS idle and
-  # 20.4 MiB after 200 issue creates and 200 searches/boards (research.md R7). The limit leaves
-  # room for bursts and the SQLite page cache.
-  ram_mb: 20
-  ram_limit_mb: 48
+  # Declared 28 MB, limit 64 MB. Measured on the static linux/amd64 build (specs/023-work-ui/plan.md):
+  # 16.6 MiB RSS idle with the web UI (13.4 MiB without), 27.7 MiB after 400 UI list and board
+  # renders over 50 issues, 31.0 MiB after 30 renders of a 50 KB description with 30 comments of
+  # 19 KB. The API alone needed 20.4 MiB under load (research.md R7). The limit leaves room for
+  # bursts and the SQLite page cache.
+  ram_mb: 28
+  ram_limit_mb: 64
   disk_mb: 500
 provides:
   - { capability: work, schema: work.v1, service: work, port: 8080 }

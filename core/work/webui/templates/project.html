@@ -1,0 +1,61 @@
+{{define "content"}}<h1>{{.D.Project.Key}} {{.D.Project.Name}}</h1>
+{{if .D.Project.Description}}<div class="prose">{{md .D.Project.Description}}</div>{{end}}
+<section aria-labelledby="filters">
+<h2 id="filters">{{t "filter.title"}}</h2>
+<form method="get" action="/ui/projects/{{.D.Project.Key}}" class="filters">
+<div><label for="f-q">{{t "filter.q"}}</label>
+<input id="f-q" name="q" type="search" value="{{.D.Filter.Q}}" maxlength="500" aria-describedby="f-q-hint"></div>
+<div><label for="f-status">{{t "col.status"}}</label>
+<select id="f-status" name="status"><option value="">{{t "filter.any"}}</option>{{range .D.Statuses}}<option value="{{.Name}}"{{if eq .Name $.D.Filter.Status}} selected{{end}}>{{stat .Name}}</option>{{end}}</select></div>
+<div><label for="f-priority">{{t "col.priority"}}</label>
+<select id="f-priority" name="priority"><option value="">{{t "filter.any"}}</option>{{range .D.Priorities}}<option value="{{.}}"{{if eq . $.D.Filter.Priority}} selected{{end}}>{{.}}</option>{{end}}</select></div>
+<div><label for="f-type">{{t "col.type"}}</label>
+<select id="f-type" name="type"><option value="">{{t "filter.any"}}</option>{{range .D.Types}}<option value="{{.}}"{{if eq . $.D.Filter.Type}} selected{{end}}>{{t (printf "type.%s" .)}}</option>{{end}}<option value="subtask"{{if eq "subtask" $.D.Filter.Type}} selected{{end}}>{{t "type.subtask"}}</option></select></div>
+<div><label for="f-assignee">{{t "col.assignee"}}</label>
+<input id="f-assignee" name="assignee" type="text" value="{{.D.Filter.Assignee}}" maxlength="100" aria-describedby="f-assignee-hint"></div>
+<div><label for="f-label">{{t "filter.label"}}</label>
+<input id="f-label" name="label" type="text" value="{{.D.Filter.Label}}" maxlength="40"></div>
+<div><label for="f-sort">{{t "filter.sort"}}</label>
+<select id="f-sort" name="sort">{{range .D.Sorts}}<option value="{{.}}"{{if eq . $.D.Filter.Sort}} selected{{end}}>{{t (printf "sort.%s" .)}}</option>{{end}}</select></div>
+<div><label for="f-scope">{{t "filter.show"}}</label>
+<select id="f-scope" name="scope"><option value="open"{{if eq .D.Filter.Scope "open"}} selected{{end}}>{{t "filter.open"}}</option><option value="all"{{if eq .D.Filter.Scope "all"}} selected{{end}}>{{t "filter.all"}}</option></select></div>
+<div class="actions"><button type="submit">{{t "filter.apply"}}</button> <a href="/ui/projects/{{.D.Project.Key}}">{{t "filter.clear"}}</a></div>
+</form>
+<p id="f-q-hint" class="hint">{{t "filter.q_hint"}}</p>
+<p id="f-assignee-hint" class="hint">{{t "filter.assignee_hint"}}</p>
+</section>
+{{if .CanWrite}}{{if not .D.Project.Archived}}<section aria-labelledby="create">
+<h2 id="create">{{t "create.title"}}</h2>
+<form method="post" action="/ui/projects/{{.D.Project.Key}}/issues" class="create">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="idem" value="{{.D.Idem}}">
+<div class="wide"><label for="c-title">{{t "issue.title"}}</label>
+<input id="c-title" name="title" type="text" required maxlength="200"></div>
+<div><label for="c-type">{{t "col.type"}}</label>
+<select id="c-type" name="type">{{range .D.Types}}<option value="{{.}}"{{if eq . "task"}} selected{{end}}>{{t (printf "type.%s" .)}}</option>{{end}}</select></div>
+<div><label for="c-priority">{{t "col.priority"}}</label>
+<select id="c-priority" name="priority">{{range .D.Priorities}}<option value="{{.}}"{{if eq . "P2"}} selected{{end}}>{{.}}</option>{{end}}</select></div>
+<div><label for="c-assignee">{{t "col.assignee"}}</label>
+<input id="c-assignee" name="assignee" type="text" maxlength="254"></div>
+<div><label for="c-labels">{{t "col.labels"}}</label>
+<input id="c-labels" name="labels" type="text" maxlength="400" aria-describedby="c-labels-hint"></div>
+<div><label for="c-estimate">{{t "col.estimate"}}</label>
+<input id="c-estimate" name="estimate" type="number" min="0" max="10000" step="any" inputmode="decimal"></div>
+<div><label for="c-due">{{t "col.due"}}</label>
+<input id="c-due" name="due_date" type="date"></div>
+<div class="actions"><button type="submit">{{t "create.submit"}}</button></div>
+</form>
+<p id="c-labels-hint" class="hint">{{t "create.labels_hint"}}</p>
+</section>
+{{end}}{{end}}
+<section aria-labelledby="list">
+<h2 id="list">{{t "backlog.title"}}</h2>
+{{if .D.Issues}}{{template "issuetable" (dict "Caption" (t "backlog.caption") "Issues" .D.Issues "Sprints" .D.Sprints)}}
+<nav class="pager" aria-label="{{t "nav.pages"}}">
+{{if .D.Prev}}<a rel="prev" href="{{.D.Prev}}">{{t "pager.prev"}}</a>{{end}}
+<span>{{t "pager.page" .D.Page}}</span>
+{{if .D.Next}}<a rel="next" href="{{.D.Next}}">{{t "pager.next"}}</a>{{end}}
+</nav>
+{{else}}<p class="empty">{{t "backlog.empty"}}</p>
+{{end}}</section>
+{{end}}

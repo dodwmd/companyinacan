@@ -1,0 +1,32 @@
+{{define "projectnav"}}<nav class="subnav" aria-label="{{t "nav.project"}}">
+<p class="crumb"><a href="/ui/projects/{{.Project}}">{{.Project}}</a></p>
+<ul>
+<li><a href="/ui/projects/{{.Project}}"{{if eq .ProjectTab "backlog"}} aria-current="page"{{end}}>{{t "nav.backlog"}}</a></li>
+<li><a href="/ui/projects/{{.Project}}/board"{{if eq .ProjectTab "board"}} aria-current="page"{{end}}>{{t "nav.board"}}</a></li>
+<li><a href="/ui/projects/{{.Project}}/sprints"{{if eq .ProjectTab "sprints"}} aria-current="page"{{end}}>{{t "nav.sprints"}}</a></li>
+<li><a href="/ui/projects/{{.Project}}/epics"{{if eq .ProjectTab "epics"}} aria-current="page"{{end}}>{{t "nav.epics"}}</a></li>
+</ul>
+</nav>{{end}}
+{{define "prio"}}<span class="prio prio-{{.}}"><span class="sr">{{t "issue.priority"}} </span>{{.}}</span>{{end}}
+{{define "type"}}<span class="type type-{{.}}">{{t (printf "type.%s" .)}}</span>{{end}}
+{{define "status"}}<span class="status status-{{.StatusCategory}}">{{stat .Status}}</span>{{end}}
+{{define "issuetable"}}<div class="scroll">
+<table class="issues">
+<caption>{{.Caption}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.type"}}</th><th scope="col">{{t "col.priority"}}</th><th scope="col">{{t "col.title"}}</th><th scope="col">{{t "col.status"}}</th><th scope="col">{{t "col.assignee"}}</th><th scope="col">{{t "col.labels"}}</th><th scope="col">{{t "col.estimate"}}</th><th scope="col">{{t "col.due"}}</th><th scope="col">{{t "col.sprint"}}</th></tr></thead>
+<tbody>
+{{range .Issues}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/issues/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.type"}}">{{template "type" .Type}}</td>
+<td data-label="{{t "col.priority"}}">{{template "prio" .Priority}}</td>
+<td data-label="{{t "col.title"}}" class="title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></td>
+<td data-label="{{t "col.status"}}">{{template "status" .}}</td>
+<td data-label="{{t "col.assignee"}}">{{if .Assignee}}{{.Assignee}}{{else}}<span class="muted">{{t "issue.unassigned"}}</span>{{end}}</td>
+<td data-label="{{t "col.labels"}}">{{range .Labels}}<span class="label">{{.}}</span> {{end}}</td>
+<td data-label="{{t "col.estimate"}}">{{if .Estimate}}{{.Estimate}}{{end}}</td>
+<td data-label="{{t "col.due"}}">{{if .DueDate}}<span{{if overdue .DueDate .StatusCategory}} class="overdue"{{end}}>{{.DueDate}}{{if overdue .DueDate .StatusCategory}} <span class="sr">{{t "issue.overdue"}}</span>{{end}}</span>{{end}}</td>
+<td data-label="{{t "col.sprint"}}">{{sprintOf $.Sprints .SprintID}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>{{end}}

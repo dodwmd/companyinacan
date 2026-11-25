@@ -1,0 +1,38 @@
+{{define "content"}}<h1>{{.D.Project.Key}} {{t "board.title"}}</h1>
+<nav class="tabs" aria-label="{{t "board.views"}}">
+<ul>
+{{range .D.Tabs}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a></li>
+{{end}}</ul>
+</nav>
+{{if .D.Board.Sprint}}<p class="sprint-line"><strong>{{.D.Board.Sprint.Name}}</strong> <span class="label">{{t (printf "sprint.%s" .D.Board.Sprint.State)}}</span>{{if .D.Board.Sprint.Goal}} {{.D.Board.Sprint.Goal}}{{end}}{{if .D.Board.Sprint.StartsOn}} <span class="muted">{{.D.Board.Sprint.StartsOn}}{{if .D.Board.Sprint.EndsOn}} - {{.D.Board.Sprint.EndsOn}}{{end}}</span>{{end}}</p>
+{{end}}{{if .D.NoActive}}<p class="empty">{{t "board.no_active"}} <a href="/ui/projects/{{.D.Project.Key}}/sprints">{{t "board.plan"}}</a></p>
+{{end}}<p class="hint">{{t "board.hint"}}</p>
+<div class="board">
+{{range .D.Columns}}<section class="column column-{{.Category}}" aria-labelledby="col-{{.Status}}">
+<h2 id="col-{{.Status}}">{{stat .Status}} <span class="count">{{.Count}}</span></h2>
+{{if .Cards}}<ul class="cards">
+{{range .Cards}}{{$card := .}}<li class="card">
+<p class="card-head"><a href="/ui/issues/{{.Key}}">{{.Key}}</a> {{template "type" .Type}} {{template "prio" .Priority}}</p>
+<p class="card-title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></p>
+<p class="card-meta">{{if .Assignee}}{{.Assignee}}{{else}}<span class="muted">{{t "issue.unassigned"}}</span>{{end}}{{if .Estimate}} <span class="label">{{.Estimate}}</span>{{end}}{{range .Labels}} <span class="label">{{.}}</span>{{end}}</p>
+{{if $.CanWrite}}<div class="card-actions">
+{{range .Moves}}<form method="post" action="/ui/issues/{{$card.Key}}/transition">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$card.Version}}"><input type="hidden" name="to" value="{{.To}}"><input type="hidden" name="next" value="{{$.D.Self}}">
+<button type="submit"><span aria-hidden="true">{{if .Back}}&larr;{{else}}&rarr;{{end}}</span> {{stat .To}}<span class="sr"> {{$card.Key}}</span></button>
+</form>
+{{end}}{{if .Up}}<form method="post" action="/ui/issues/{{.Key}}/rank">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="before" value="{{.Up}}"><input type="hidden" name="next" value="{{$.D.Self}}">
+<button type="submit" class="quiet"><span aria-hidden="true">&uarr;</span> {{t "board.up"}}<span class="sr"> {{.Key}}</span></button>
+</form>
+{{end}}{{if .Down}}<form method="post" action="/ui/issues/{{.Key}}/rank">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="after" value="{{.Down}}"><input type="hidden" name="next" value="{{$.D.Self}}">
+<button type="submit" class="quiet"><span aria-hidden="true">&darr;</span> {{t "board.down"}}<span class="sr"> {{.Key}}</span></button>
+</form>
+{{end}}</div>
+{{end}}</li>
+{{end}}</ul>
+{{if gt .Count (len .Cards)}}<p class="hint">{{t "board.truncated" (len .Cards) .Count}}</p>{{end}}
+{{else}}<p class="empty">{{t "board.empty_column"}}</p>
+{{end}}</section>
+{{end}}</div>
+{{end}}

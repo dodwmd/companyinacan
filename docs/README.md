@@ -7,5 +7,6 @@ Project documentation. `epics/` holds the epic breakdown; measurements recorded 
 - [work-tracker.md](work-tracker.md): the in-house work tracker (API tokens, curl examples, `can work` CLI, events).
 - [releasing.md](releasing.md): cutting, verifying, rolling back a release; the security-advisory flow.
 - [maintainers.md](maintainers.md): required checks, branch protection, why the footprint check is advisory.
+- [work-ui.md](work-ui.md): the work tracker web UI (sign-in with a token, backlog, board, sprints, epics, dashboard; security model, accessibility).
 - [equity.md](equity.md): the in-house equity service (cap table and employee stock options; access matrix, vesting rules, retention and erasure, limits). A tool, not legal, tax or securities advice.
 - [module-wiring.md](module-wiring.md): installing the in-house modules through can-core: secrets, personal access tokens, events, approvals, what ran where.

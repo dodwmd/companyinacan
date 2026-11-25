@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Team dashboard - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/">Projects</a></li>
+<li><a href="/ui/dashboard" aria-current="page">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<h1>Team dashboard</h1>
+<p>Open P0 and P1 issues across your team, in every project you can see.</p>
+<form method="get" action="/ui/dashboard" class="stack narrow">
+<label for="d-people">People</label>
+<input id="d-people" name="assignees" type="text" value="ann@example.com,dev@example.com,nobody@example.com" maxlength="4000" aria-describedby="d-hint">
+<p id="d-hint" class="hint">Enter the people on your team as email addresses or user names, separated by commas. The list is kept in the page address, so you can bookmark it.</p>
+<button type="submit">Show issues</button>
+</form>
+<section aria-labelledby="p-ann@example.com">
+<h2 id="p-ann@example.com">ann@example.com <span class="count">0</span></h2>
+<p class="empty">No open P0 or P1 issues.</p>
+</section>
+<section aria-labelledby="p-dev@example.com">
+<h2 id="p-dev@example.com">dev@example.com <span class="count">1</span></h2>
+<div class="scroll">
+<table class="issues">
+<caption>Open P0 and P1 issues assigned to dev@example.com</caption>
+<thead><tr><th scope="col">Key</th><th scope="col">Priority</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Due</th></tr></thead>
+<tbody>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-1">ACME-1</a></td>
+<td data-label="Priority"><span class="prio prio-P1"><span class="sr">Priority </span>P1</span></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-1">Customers can sign up</a></td>
+<td data-label="Status"><span class="status status-todo">To do</span></td>
+<td data-label="Due"></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section aria-labelledby="p-nobody@example.com">
+<h2 id="p-nobody@example.com">nobody@example.com <span class="count">0</span></h2>
+<p class="empty">No open P0 or P1 issues.</p>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

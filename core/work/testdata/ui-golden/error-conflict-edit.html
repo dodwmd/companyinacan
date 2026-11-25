@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>This issue changed - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<h1>This issue changed</h1>
+<p>This issue changed since you opened the page, so your change was not applied. Reload the issue and try again.</p>
+<section aria-labelledby="now">
+<h2 id="now">The issue now</h2>
+<p><a href="/ui/issues/ACME-3">ACME-3</a> Write the welcome email (To do), version 2, updated 2026-11-25 09:00 UTC</p>
+</section>
+<section aria-labelledby="yours">
+<h2 id="yours">Your changes</h2>
+<p class="hint">Copy anything you want to keep, then reload the issue and apply it again.</p>
+<label for="y-title">Title</label>
+<input id="y-title" type="text" readonly value="My edit">
+<label for="y-desc">Description</label>
+<textarea id="y-desc" rows="8" readonly>My long description</textarea>
+</section>
+<p><a href="/ui/issues/ACME-3">Reload the issue</a></p>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

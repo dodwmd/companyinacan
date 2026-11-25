@@ -1,0 +1,146 @@
+{{define "content"}}{{$i := .D.Issue}}<h1><span class="key">{{$i.Key}}</span> {{$i.Title}}</h1>
+<p class="chips">{{template "type" $i.Type}} {{template "prio" $i.Priority}} {{template "status" $i.Issue}}
+{{if $i.Labels}}{{range $i.Labels}}<span class="label">{{.}}</span> {{end}}{{end}}</p>
+{{if .D.Parent}}<p class="crumb">{{t "issue.parent"}}: <a href="/ui/issues/{{.D.Parent.Key}}">{{.D.Parent.Key}}</a> {{.D.Parent.Title}}</p>{{end}}
+<div class="issue-layout">
+<div class="issue-main">
+<section aria-labelledby="desc">
+<h2 id="desc">{{t "issue.description"}}</h2>
+{{if $i.Description}}<div class="prose">{{.D.Description}}</div>{{else}}<p class="empty">{{t "issue.no_description"}}</p>{{end}}
+{{if .CanWrite}}<details>
+<summary>{{t "issue.edit"}}</summary>
+<form method="post" action="/ui/issues/{{$i.Key}}/edit" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="version" value="{{$i.Version}}">
+<label for="e-title">{{t "issue.title"}}</label>
+<input id="e-title" name="title" type="text" required maxlength="200" value="{{$i.Title}}">
+<label for="e-desc">{{t "issue.description"}}</label>
+<textarea id="e-desc" name="description" rows="8" maxlength="50000" aria-describedby="e-desc-hint">{{$i.Description}}</textarea>
+<p id="e-desc-hint" class="hint">{{t "issue.markdown_hint"}}</p>
+<label for="e-labels">{{t "col.labels"}}</label>
+<input id="e-labels" name="labels" type="text" maxlength="400" value="{{.D.Labels}}">
+<label for="e-estimate">{{t "col.estimate"}}</label>
+<input id="e-estimate" name="estimate" type="number" min="0" max="10000" step="any" inputmode="decimal" value="{{if $i.Estimate}}{{$i.Estimate}}{{end}}">
+<label for="e-due">{{t "col.due"}}</label>
+<input id="e-due" name="due_date" type="date" value="{{if $i.DueDate}}{{$i.DueDate}}{{end}}">
+<label for="e-parent">{{t "issue.parent"}}</label>
+<input id="e-parent" name="parent" type="text" maxlength="20" value="{{if $i.Parent}}{{$i.Parent}}{{end}}">
+<button type="submit">{{t "issue.save"}}</button>
+</form>
+</details>{{end}}
+</section>
+{{if .D.Children}}<section aria-labelledby="children">
+<h2 id="children">{{t "issue.children"}}</h2>
+<ul class="tree">
+{{range .D.Children}}<li><a href="/ui/issues/{{.Key}}">{{.Key}}</a> {{template "type" .Type}} {{.Title}} {{template "status" .}}</li>
+{{end}}</ul>
+</section>
+{{end}}<section aria-labelledby="links">
+<h2 id="links">{{t "issue.links"}}</h2>
+{{if .D.Links}}<ul class="plain">
+{{range .D.Links}}<li>{{.Phrase}} <a href="/ui/issues/{{.Key}}">{{.Key}}</a> {{.Title}} <span class="muted">({{stat .Status}})</span>
+{{if $.CanWrite}}<form method="post" action="/ui/issues/{{$i.Key}}/links/{{.ID}}/remove" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="quiet">{{t "issue.unlink"}}<span class="sr"> {{.Key}}</span></button></form>{{end}}</li>
+{{end}}</ul>
+{{else}}<p class="empty">{{t "issue.no_links"}}</p>{{end}}
+{{if .CanWrite}}<form method="post" action="/ui/issues/{{$i.Key}}/links" class="inline">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label for="l-type">{{t "issue.link_type"}}</label>
+<select id="l-type" name="link_type">{{range .D.LinkTypes}}<option value="{{.}}">{{t (printf "linktype.%s" .)}}</option>{{end}}</select>
+<label for="l-target">{{t "issue.link_target"}}</label>
+<input id="l-target" name="target" type="text" required maxlength="20" placeholder="{{$i.Project}}-1">
+<button type="submit">{{t "issue.link_add"}}</button>
+</form>{{end}}
+</section>
+<section aria-labelledby="attachments">
+<h2 id="attachments">{{t "issue.attachments"}}</h2>
+{{if .D.Attachments}}<ul class="plain">
+{{range .D.Attachments}}<li>{{if .Href}}<a href="{{.Href}}" rel="noopener noreferrer nofollow">{{.Filename}}</a>{{else}}{{.Filename}}{{end}} <span class="muted">{{if .ContentType}}{{.ContentType}}, {{end}}{{.SizeBytes}} B, {{.AddedBy}}{{if .SHA256}}, sha256 {{slice .SHA256 0 12}}{{end}}</span></li>
+{{end}}</ul>
+{{else}}<p class="empty">{{t "issue.no_attachments"}}</p>{{end}}
+</section>
+<section aria-labelledby="comments">
+<h2 id="comments">{{t "issue.comments"}}</h2>
+{{range .D.Comments}}<article class="comment" aria-label="{{t "issue.comment_by" .Author}}">
+<p class="meta"><strong>{{.Author}}</strong> <time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{fmtTime .CreatedAt}}</time></p>
+<div class="prose">{{.HTML}}</div>
+</article>
+{{else}}<p class="empty">{{t "issue.no_comments"}}</p>
+{{end}}{{if .D.CommentsMore}}<p><a href="{{.D.CommentsMore}}">{{t "pager.more"}}</a></p>{{end}}
+{{if .CanWrite}}<form method="post" action="/ui/issues/{{$i.Key}}/comments" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label for="c-body">{{t "issue.add_comment"}}</label>
+<textarea id="c-body" name="body" rows="4" required maxlength="20000" aria-describedby="c-hint"></textarea>
+<p id="c-hint" class="hint">{{t "issue.markdown_hint"}}</p>
+<button type="submit">{{t "issue.comment"}}</button>
+</form>{{end}}
+</section>
+<section aria-labelledby="activity">
+<h2 id="activity">{{t "issue.activity"}}</h2>
+<ol class="activity">
+{{range .D.Activity}}<li><strong>{{.Actor}}</strong> {{.Text}} <span class="muted">{{.At}}</span></li>
+{{end}}</ol>
+{{if .D.ActivityMore}}<p><a href="{{.D.ActivityMore}}">{{t "pager.more"}}</a></p>{{end}}
+</section>
+</div>
+<aside class="issue-side" aria-label="{{t "issue.details"}}">
+<h2>{{t "issue.details"}}</h2>
+<dl>
+<dt>{{t "col.status"}}</dt><dd>{{stat $i.Status}}</dd>
+<dt>{{t "col.priority"}}</dt><dd>{{$i.Priority}} <span class="muted">{{t "issue.sla" $i.SLAHint.RespondHours $i.SLAHint.ResolveHours}}</span></dd>
+<dt>{{t "col.assignee"}}</dt><dd>{{if $i.Assignee}}{{$i.Assignee}}{{else}}<span class="muted">{{t "issue.unassigned"}}</span>{{end}}</dd>
+<dt>{{t "issue.reporter"}}</dt><dd>{{$i.Reporter}}</dd>
+<dt>{{t "col.sprint"}}</dt><dd>{{if .D.SprintName}}{{.D.SprintName}}{{else}}<span class="muted">{{t "issue.no_sprint"}}</span>{{end}}</dd>
+<dt>{{t "col.estimate"}}</dt><dd>{{if $i.Estimate}}{{$i.Estimate}}{{else}}-{{end}}</dd>
+<dt>{{t "col.due"}}</dt><dd>{{if $i.DueDate}}<span{{if overdue $i.DueDate $i.StatusCategory}} class="overdue"{{end}}>{{$i.DueDate}}</span>{{else}}-{{end}}</dd>
+<dt>{{t "issue.created"}}</dt><dd>{{fmtTime $i.CreatedAt}}</dd>
+<dt>{{t "issue.updated"}}</dt><dd>{{fmtTime $i.UpdatedAt}} <span class="muted">{{t "conflict.version" $i.Version}}</span></dd>
+</dl>
+{{if .CanWrite}}<section aria-labelledby="move">
+<h3 id="move">{{t "issue.move"}}</h3>
+{{if .D.Allowed}}<div class="stack-buttons">
+{{range .D.Allowed}}<form method="post" action="/ui/issues/{{$i.Key}}/transition"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$i.Version}}"><input type="hidden" name="to" value="{{.}}"><button type="submit">{{stat .}}</button></form>
+{{end}}</div>
+{{else}}<p class="empty">{{t "issue.terminal"}}</p>{{end}}
+</section>
+<section aria-labelledby="setprio">
+<h3 id="setprio">{{t "col.priority"}}</h3>
+<form method="post" action="/ui/issues/{{$i.Key}}/priority" class="inline">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="version" value="{{$i.Version}}">
+<label for="s-prio" class="sr">{{t "col.priority"}}</label>
+<select id="s-prio" name="priority">{{range .D.Priorities}}<option value="{{.}}"{{if eq . $i.Priority}} selected{{end}}>{{.}}</option>{{end}}</select>
+<button type="submit">{{t "issue.set"}}</button>
+</form>
+</section>
+<section aria-labelledby="setassignee">
+<h3 id="setassignee">{{t "col.assignee"}}</h3>
+<form method="post" action="/ui/issues/{{$i.Key}}/assignee" class="inline">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="version" value="{{$i.Version}}">
+<label for="s-assignee" class="sr">{{t "col.assignee"}}</label>
+<input id="s-assignee" name="assignee" type="text" maxlength="254" value="{{if $i.Assignee}}{{$i.Assignee}}{{end}}" aria-describedby="s-assignee-hint">
+<button type="submit">{{t "issue.set"}}</button>
+</form>
+<p id="s-assignee-hint" class="hint">{{t "issue.assignee_hint"}}</p>
+<form method="post" action="/ui/issues/{{$i.Key}}/assignee" class="inline">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="version" value="{{$i.Version}}"><input type="hidden" name="assignee" value="{{.User}}">
+<button type="submit" class="quiet">{{t "issue.assign_me"}}</button>
+</form>
+</section>
+<section aria-labelledby="setsprint">
+<h3 id="setsprint">{{t "col.sprint"}}</h3>
+<form method="post" action="/ui/issues/{{$i.Key}}/sprint" class="inline">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="version" value="{{$i.Version}}">
+<label for="s-sprint" class="sr">{{t "col.sprint"}}</label>
+<select id="s-sprint" name="sprint"><option value="">{{t "issue.no_sprint"}}</option>{{range .D.Sprints}}<option value="{{.ID}}"{{if $i.SprintID}}{{if eq .ID (deref $i.SprintID)}} selected{{end}}{{end}}>{{.Name}}</option>{{end}}</select>
+<button type="submit">{{t "issue.set"}}</button>
+</form>
+</section>
+<section aria-labelledby="watch">
+<h3 id="watch">{{t "issue.watchers"}}</h3>
+<form method="post" action="/ui/issues/{{$i.Key}}/watch"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="on" value="{{if .D.Watching}}0{{else}}1{{end}}"><button type="submit" class="quiet">{{if .D.Watching}}{{t "issue.unwatch"}}{{else}}{{t "issue.watch"}}{{end}}</button></form>
+</section>
+{{else}}<section aria-labelledby="watch">
+<h3 id="watch">{{t "issue.watchers"}}</h3>
+</section>
+{{end}}<ul class="plain">{{range $i.Watchers}}<li>{{.}}</li>{{else}}<li class="empty">{{t "issue.no_watchers"}}</li>{{end}}</ul>
+</aside>
+</div>
+{{end}}

@@ -101,8 +101,8 @@ func TestWorkManifest(t *testing.T) {
 		}
 	}
 	res := asMap(m["resources"])
-	if res["ram_mb"] != 20 || res["ram_limit_mb"] != 48 {
-		t.Errorf("resources %v: keep in step with the measured footprint (research.md R7)", res)
+	if res["ram_mb"] != 28 || res["ram_limit_mb"] != 64 {
+		t.Errorf("resources %v: keep in step with the measured footprint (modules/work/README.md, specs/023-work-ui/plan.md)", res)
 	}
 }
 

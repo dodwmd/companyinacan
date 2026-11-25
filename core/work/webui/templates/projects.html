@@ -1,0 +1,17 @@
+{{define "content"}}<h1>{{t "projects.title"}}</h1>
+{{if .D.Projects}}<div class="scroll">
+<table>
+<caption>{{t "projects.caption"}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.name"}}</th><th scope="col">{{t "col.issues"}}</th><th scope="col">{{t "col.views"}}</th></tr></thead>
+<tbody>
+{{range .D.Projects}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/projects/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.name"}}">{{.Name}}{{if .Archived}} <span class="label">{{t "projects.archived"}}</span>{{end}}</td>
+<td data-label="{{t "col.issues"}}">{{.IssueCount}}</td>
+<td data-label="{{t "col.views"}}"><a href="/ui/projects/{{.Key}}/board">{{t "nav.board"}}</a> <a href="/ui/projects/{{.Key}}/sprints">{{t "nav.sprints"}}</a> <a href="/ui/projects/{{.Key}}/epics">{{t "nav.epics"}}</a></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "projects.empty"}}</p>
+{{end}}{{end}}

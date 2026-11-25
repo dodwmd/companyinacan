@@ -1,0 +1,22 @@
+{{define "content"}}<h1>{{.D.Project.Key}} {{t "epics.title"}}</h1>
+{{if .D.Epics}}<div class="scroll">
+<table class="epics">
+<caption>{{t "epics.caption"}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.title"}}</th><th scope="col">{{t "col.status"}}</th><th scope="col">{{t "col.progress"}}</th></tr></thead>
+<tbody>
+{{range .D.Epics}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/issues/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.title"}}" class="title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></td>
+<td data-label="{{t "col.status"}}">{{template "status" .Issue}}</td>
+<td data-label="{{t "col.progress"}}">{{if .Total}}<progress max="{{.Total}}" value="{{.Done}}" aria-label="{{t "epics.progress_of" .Key}}">{{.Percent}}%</progress> {{t "epics.done_of" .Done .Total}}{{else}}<span class="muted">{{t "epics.no_children"}}</span>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .D.Approx}}<p class="hint">{{t "epics.approx"}}</p>{{end}}
+<nav class="pager" aria-label="{{t "nav.pages"}}">
+{{if .D.Prev}}<a rel="prev" href="{{.D.Prev}}">{{t "pager.prev"}}</a>{{end}}
+{{if .D.Next}}<a rel="next" href="{{.D.Next}}">{{t "pager.next"}}</a>{{end}}
+</nav>
+{{else}}<p class="empty">{{t "epics.empty"}}</p>
+{{end}}{{end}}

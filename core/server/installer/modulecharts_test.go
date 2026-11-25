@@ -29,7 +29,7 @@ type inhouse struct {
 func inhouseModules() []inhouse {
 	return []inhouse{
 		{"forms", "forms,forms-api", 15, 32, "8080", func(b []byte) error { _, err := forms.ParseConfig(b); return err }},
-		{"work", "work", 20, 48, "8080", func(b []byte) error {
+		{"work", "work", 28, 64, "8080", func(b []byte) error {
 			return writeLoad(b, func(p string) error { _, err := work.LoadConfig(p, true); return err })
 		}},
 		{"people", "people-api", 30, 64, "8081", func(b []byte) error { _, err := people.ParseConfig(b); return err }},

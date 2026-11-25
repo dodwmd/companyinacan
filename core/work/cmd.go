@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os/signal"
 	"syscall"
 	"time"
@@ -74,7 +75,12 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "can-core: %v\n", err)
 		return 2
 	}
-	app, err := NewApp(cfg, sec, Options{Logger: log, Can: can})
+	pub := getenv("CAN_WORK_PUBLIC_URL")
+	if pu, err := url.Parse(pub); pub != "" && (err != nil || (pu.Scheme != "https" && pu.Scheme != "http") || pu.Host == "") {
+		fmt.Fprintln(stderr, "CAN_WORK_PUBLIC_URL must be an http(s) URL")
+		return 2
+	}
+	app, err := NewApp(cfg, sec, Options{Logger: log, Can: can, PublicURL: pub})
 	if err != nil {
 		fmt.Fprintf(stderr, "start: %v\n", err)
 		return 2

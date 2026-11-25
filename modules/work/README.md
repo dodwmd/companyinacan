@@ -9,7 +9,7 @@ In-house work tracker: a lean, API-first, Jira-style issue tracker. Library `cor
 **Status: experimental.** Built and tested offline and measured locally. The chart installs through
 can-core's installer in unit tests; the advisory dev-cluster CI job builds the image and installs it
 through can-core on a k3d cluster, creates an issue with a personal access token and disables it again
-(what that proves and does not: [`docs/module-wiring.md`](../../docs/module-wiring.md)). There is no web UI yet. A Plane wrapper for 8 GB+
+(what that proves and does not: [`docs/module-wiring.md`](../../docs/module-wiring.md)). The service also serves a small web UI under `/ui/` ([`docs/work-ui.md`](../../docs/work-ui.md)). A Plane wrapper for 8 GB+
 servers is a later, separate module that provides the same capability.
 
 **Installed under can-core** (`CAN_API_URL` set): can-core generates `CAN_WORK_ADMIN_TOKEN` once;
@@ -57,6 +57,7 @@ an audit log without secrets.
 
 ## Footprint
 
-Idle RAM target 20 MB (limit 48 MB). Measured on the static linux/amd64 build: 13.6 MiB RSS after
-start and 20.4 MiB after 200 issue creates plus 100 searches and 100 board reads (VmRSS). See
-`specs/011-work-tracker/research.md` R7.
+Declared 28 MB (limit 64 MB). Measured on the static linux/amd64 build: 13.4 MiB RSS idle without
+the web UI and 16.6 MiB with it; 27.7 MiB after 400 UI list and board renders, 31.0 MiB after renders
+of an issue with a 50 KB description and 30 large comments (VmRSS, development machine, not a
+cluster). The API alone: `specs/011-work-tracker/research.md` R7 (20.4 MiB under load).

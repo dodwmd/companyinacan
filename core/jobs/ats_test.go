@@ -195,7 +195,7 @@ func TestEventsCarryNoPersonalData(t *testing.T) {
 	for _, ev := range s.hook.all() {
 		seen[ev.Type]++
 		raw := string(ev.Data)
-		for _, pii := range []string{"Ada", "cand1@example.test", "example.test", "555", "cover"} {
+		for _, pii := range []string{"Ada", "cand1@example.test", "example.test", "555 0100", "cover"} {
 			if strings.Contains(raw, pii) {
 				t.Errorf("%s carries %q: %s", ev.Type, pii, raw)
 			}

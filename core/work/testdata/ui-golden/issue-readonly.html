@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>ACME-3 Write the welcome email - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (viewer@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/ACME">ACME</a></p>
+<ul>
+<li><a href="/ui/projects/ACME">Backlog</a></li>
+<li><a href="/ui/projects/ACME/board">Board</a></li>
+<li><a href="/ui/projects/ACME/sprints">Sprints</a></li>
+<li><a href="/ui/projects/ACME/epics">Epics</a></li>
+</ul>
+</nav>
+<h1><span class="key">ACME-3</span> Write the welcome email</h1>
+<p class="chips"><span class="type type-task">Task</span> <span class="prio prio-P2"><span class="sr">Priority </span>P2</span> <span class="status status-todo">To do</span>
+<span class="label">copy</span> <span class="label">email</span> </p>
+<p class="crumb">Parent: <a href="/ui/issues/ACME-2">ACME-2</a> Onboarding</p>
+<div class="issue-layout">
+<div class="issue-main">
+<section aria-labelledby="desc">
+<h2 id="desc">Description</h2>
+<div class="prose"><p>Draft the <strong>welcome</strong> email.</p>
+<ul>
+<li>subject line</li>
+<li>body with a <a href="https://example.com/style" rel="noopener noreferrer nofollow">style guide</a></li>
+</ul>
+</div>
+
+</section>
+<section aria-labelledby="links">
+<h2 id="links">Linked issues</h2>
+<ul class="plain">
+<li>Blocks <a href="/ui/issues/ACME-1">ACME-1</a> Customers can sign up <span class="muted">(To do)</span>
+</li>
+</ul>
+
+
+</section>
+<section aria-labelledby="attachments">
+<h2 id="attachments">Attachments</h2>
+<ul class="plain">
+<li><a href="https://files.example/draft.docx" rel="noopener noreferrer nofollow">draft.docx</a> <span class="muted">application/vnd.openxmlformats-officedocument.wordprocessingml.document, 20480 B, bootstrap-admin, sha256 abababababab</span></li>
+</ul>
+
+</section>
+<section aria-labelledby="comments">
+<h2 id="comments">Comments</h2>
+<article class="comment" aria-label="Comment by bootstrap-admin">
+<p class="meta"><strong>bootstrap-admin</strong> <time datetime="2026-11-25T09:00:00Z">2026-11-25 09:00 UTC</time></p>
+<div class="prose"><p>First draft is in <strong>review</strong>. See <a href="https://example.com/n" rel="noopener noreferrer nofollow">notes</a>.</p>
+<p>&lt;b&gt;not bold&lt;/b&gt;</p>
+</div>
+</article>
+
+
+</section>
+<section aria-labelledby="activity">
+<h2 id="activity">Activity</h2>
+<ol class="activity">
+<li><strong>bootstrap-admin</strong> created this task (P2) <span class="muted">2026-11-25 09:00</span></li>
+<li><strong>bootstrap-admin</strong> commented <span class="muted">2026-11-25 09:00</span></li>
+<li><strong>bootstrap-admin</strong> linked ACME-3 blocks ACME-1 <span class="muted">2026-11-25 09:00</span></li>
+<li><strong>bootstrap-admin</strong> added an attachment <span class="muted">2026-11-25 09:00</span></li>
+<li><strong>bootstrap-admin</strong> changed sprint_id from none to 1 <span class="muted">2026-11-25 09:00</span></li>
+</ol>
+
+</section>
+</div>
+<aside class="issue-side" aria-label="Details">
+<h2>Details</h2>
+<dl>
+<dt>Status</dt><dd>To do</dd>
+<dt>Priority</dt><dd>P2 <span class="muted">(respond in 72h, resolve in 720h)</span></dd>
+<dt>Assignee</dt><dd>ann@example.com</dd>
+<dt>Reporter</dt><dd>bootstrap-admin</dd>
+<dt>Sprint</dt><dd>Sprint 1</dd>
+<dt>Estimate</dt><dd>3</dd>
+<dt>Due</dt><dd><span class="overdue">2026-11-20</span></dd>
+<dt>Created</dt><dd>2026-11-25 09:00 UTC</dd>
+<dt>Updated</dt><dd>2026-11-25 09:00 UTC <span class="muted">version 2, updated</span></dd>
+</dl>
+<section aria-labelledby="watch">
+<h3 id="watch">Watchers</h3>
+</section>
+<ul class="plain"><li>ann@example.com</li><li>bootstrap-admin</li></ul>
+</aside>
+</div>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>
