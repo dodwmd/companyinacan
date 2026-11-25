@@ -143,7 +143,12 @@ func (s *Service) WizardState(ctx context.Context) (WizardState, error) {
 		}
 	}
 	b, _ := json.Marshal(d)
-	if _, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO wizard_state(id, status, data_json, revision, updated_at) VALUES (1, 'open', ?, 0, ?)`, string(b), s.now().Unix()); err != nil {
+	// An installation that already runs modules is not a first login: do not send its owner to the wizard.
+	status := WizardOpen
+	if len(d.Modules) > 0 {
+		status = WizardDismissed
+	}
+	if _, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO wizard_state(id, status, data_json, revision, updated_at) VALUES (1, ?, ?, 0, ?)`, status, string(b), s.now().Unix()); err != nil {
 		return WizardState{}, err
 	}
 	return s.loadWizard(ctx)
@@ -410,8 +415,12 @@ func (s *Service) SetRelay(ctx context.Context, actor string, in RelayInput) err
 	if a, err := mail.ParseAddress(in.From); err != nil || a.Address != in.From {
 		return fmt.Errorf("%w: from must be an email address", ErrInvalid)
 	}
-	if _, err := s.WizardState(ctx); err != nil {
+	ws, err := s.WizardState(ctx)
+	if err != nil {
 		return err
+	}
+	if ws.Status != WizardOpen {
+		return fmt.Errorf("%w: setup is %s, so the relay Secret is not changed from here", ErrInvalid, ws.Status)
 	}
 	if _, err := s.audit(ctx, actor, "email.relay.set", in.Host, map[string]any{"port": in.Port}); err != nil {
 		return err
@@ -422,7 +431,7 @@ func (s *Service) SetRelay(ctx context.Context, actor string, in RelayInput) err
 		_, _ = s.audit(ctx, actor, "email.relay.failed", in.Host, nil)
 		return fmt.Errorf("writing the relay Secret failed: %s", Sanitise(err.Error()))
 	}
-	_, err := s.WizardUpdate(ctx, actor, func(d *WizardData) error {
+	_, err = s.WizardUpdate(ctx, actor, func(d *WizardData) error {
 		d.Relay = RelayInfo{Host: in.Host, Port: in.Port, Username: in.Username, From: in.From, Configured: true}
 		return nil
 	})

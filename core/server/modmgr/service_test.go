@@ -397,3 +397,16 @@ func TestPurgeWithoutAnExecutorFailsClosed(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestSettingsPreviewForADisabledModuleIsRefused(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	_, err := r.svc.Propose(ctx, "root", Proposal{Patch: Patch{Ops: []Op{SetSettings("solo", map[string]any{})}}})
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("settings for a module that is not enabled: %v", err)
+	}
+	s, _ := r.store.Get(ctx)
+	if string(s.Data) != baseCompany {
+		t.Fatal("company.yaml changed")
+	}
+}

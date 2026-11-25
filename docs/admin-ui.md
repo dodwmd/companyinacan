@@ -38,8 +38,11 @@ allow-listed patch (`name`, `domain`, `provider.options.server_ram_mb`, `primary
 `modules.<id>.enabled` and `.settings`). Comments and other keys are kept. A change is stored first, shown as
 a diff, and written only when you press **Apply**. Each stored document has a version; a change prepared against
 an older version is refused (409), so two browsers, or the UI and `can apply`, cannot silently overwrite each
-other. `can apply` from a repository **does** overwrite the stored document: copy `/company` into your
-repository first if you use both.
+other. **`can apply` overwrites everything the UI changed**: it writes the ConfigMap with server-side apply and
+`--force-conflicts`, with no version check, so a `company.yaml` from your repository that predates a UI change
+silently undoes it. If you use both, copy the stored document from `/company` into your repository before every
+`can apply`, or stop using `can apply` for that company. The UI also refuses to edit a document that uses YAML
+aliases or anchors.
 
 **Preview and apply.** The preview lists the diff, the reconcile actions (install, upgrade, enable, disable),
 for each module the namespace `mod-<id>`, its Secrets, ingress host, declared disk and database, and for a
@@ -53,14 +56,14 @@ providers of an exclusive capability without a primary, is refused.
 
 **Settings forms** render strings, integers, booleans, enums and `format: secret-ref` properties. The server
 validates the result with the module's own JSON Schema. Other properties are preserved and listed. A
-secret-ref is the *name* of a Kubernetes Secret, never the secret.
+secret-ref is the *name* of a Kubernetes Secret (optionally `name/key`), never the secret; names starting `can-` or `kubernetes.io` (the Secrets can-core owns) are refused. Settings can only be changed for a module that is enabled, so editing them never turns a module on. An installation that already runs modules is not sent to the wizard.
 
 **Footprint.** Declared figures: 650 MB platform baseline plus declared module RAM plus 150 MB once if a
 module needs Postgres or MariaDB, compared with `provider.options.server_ram_mb`. These are estimates, not
 measurements of your server; without a declared size the page says so instead of claiming a fit.
 
 **Destroying data.** Disabling keeps everything. Purge needs `platform.purge`, typing `purge <id>`, and your
-password; it is audited before and after. This build ships no purge executor, so the page says it is not
+password and a fresh authentication code; it is audited before and after, and a success does not reset the account's failed-attempt count. This build ships no purge executor, so the page says it is not
 available.
 
 **Wizard.** At first login the owner (`platform.setup`) is sent to `/setup`: company, template (starter or

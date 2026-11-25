@@ -13,7 +13,41 @@ func wizRig(t *testing.T) *rig {
 	t.Helper()
 	r := newRig(t)
 	r.svc.Bundles = []Bundle{{ID: "starter", Modules: []string{"web", "desk", "ghost"}}, {ID: "blank"}}
+	forceOpen(t, r)
 	return r
+}
+
+// forceOpen turns the seeded wizard into a fresh install's (the base company already runs web).
+func forceOpen(t *testing.T, r *rig) {
+	t.Helper()
+	if _, err := r.svc.WizardState(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.db.ExecContext(context.Background(), `UPDATE wizard_state SET status='open'`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWizardIsNotOpenedForAnInstallationThatAlreadyRunsModules(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	if need, _ := r.svc.WizardNeeded(ctx); need {
+		t.Fatal("an existing installation was sent to the wizard")
+	}
+	if err := r.svc.SetRelay(ctx, "root", RelayInput{Host: "smtp.example", Port: 587, Username: "a", Password: "p", From: "a@b.example"}); err == nil {
+		t.Fatal("relay Secret overwritten although setup is closed")
+	}
+	if len(r.sec.Data) != 0 {
+		t.Fatal("a Secret was written")
+	}
+	r2 := newRig(t)
+	snap, _ := r2.store.Get(ctx)
+	if _, err := r2.store.Put(ctx, []byte("schema: 1\nname: A\ndomain: a.example\nprovider: {type: local}\n"), snap.Version); err != nil {
+		t.Fatal(err)
+	}
+	if need, _ := r2.svc.WizardNeeded(ctx); !need {
+		t.Fatal("a fresh installation is not sent to the wizard")
+	}
 }
 
 func TestWizardStateIsSeededFromCompanyAndResumable(t *testing.T) {

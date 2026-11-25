@@ -355,6 +355,7 @@ type catModuleData struct {
 	SchemaNote  string
 	CanOperate  bool
 	CanPurge    bool
+	Enabled     bool
 	Settings    string
 	Error       string
 }
@@ -401,6 +402,7 @@ func (s *Server) renderModule(w http.ResponseWriter, r *http.Request, sc *sessio
 	d := catModuleData{Row: s.catRowFor(e, cat, enabled, company.Primary, rec, canPurge), HasSchema: e.Schema != nil}
 	d.CanOperate, _ = s.allowed(r, sc, rbac.PermOperate)
 	d.CanPurge = d.Row.CanPurge
+	d.Enabled = d.Row.Enabled
 	if e.SchemaProblem != "" {
 		d.SchemaNote = modmgr.Sanitise(e.SchemaProblem)
 	}
@@ -447,6 +449,10 @@ func (s *Server) catalogueSettings(w http.ResponseWriter, r *http.Request, sc *s
 	}
 	if e == nil || e.Schema == nil {
 		s.fail(w, r, sc, http.StatusNotFound, "err.module_not_found", "err.module_not_found_msg")
+		return
+	}
+	if !modmgr.EnabledModules(company)[id] {
+		s.renderModule(w, r, sc, http.StatusConflict, id, nil, nil)
 		return
 	}
 	var current map[string]any
@@ -745,7 +751,7 @@ func (s *Server) purgePage(w http.ResponseWriter, r *http.Request, sc *sessionCt
 func (s *Server) purgePost(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 	// Typed confirmation, the current password and a distinct permission: three separate gates for
 	// the one action that cannot be undone.
-	if err := s.Auth.ConfirmPassword(r.Context(), sc.User, r.PostFormValue("password")); err != nil {
+	if err := s.Auth.ConfirmPasswordAndCode(r.Context(), sc.User, r.PostFormValue("password"), strings.TrimSpace(r.PostFormValue("otp"))); err != nil {
 		if status, key, ok := accountError(w, err); ok {
 			s.renderPurge(w, r, sc, status, key)
 			return

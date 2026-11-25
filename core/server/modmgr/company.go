@@ -319,7 +319,18 @@ func ApplyPatch(data []byte, p Patch) ([]byte, error) {
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return nil, errors.New("company.yaml must be a mapping")
 	}
+	if hasAlias(doc.Content[0]) {
+		return nil, errors.New("company.yaml uses YAML aliases or anchors, which the admin UI will not edit; edit it in the repository")
+	}
 	for _, o := range p.Ops {
+		// A settings edit must never create an enabled module: a missing `enabled` key means true.
+		if len(o.Path) == 3 && o.Path[0] == "modules" && o.Path[2] == "settings" {
+			if mods := mapGet(doc.Content[0], "modules"); mods == nil || mapGet(mods, o.Path[1]) == nil {
+				if err := setPath(doc.Content[0], []string{"modules", o.Path[1], "enabled"}, false); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if err := setPath(doc.Content[0], o.Path, o.Value); err != nil {
 			return nil, err
 		}
@@ -335,6 +346,18 @@ func ApplyPatch(data []byte, p Patch) ([]byte, error) {
 		return nil, fmt.Errorf("company.yaml would be larger than %d KiB", MaxCompanyBytes>>10)
 	}
 	return buf.Bytes(), nil
+}
+
+func hasAlias(n *yaml.Node) bool {
+	if n.Kind == yaml.AliasNode || n.Anchor != "" {
+		return true
+	}
+	for _, c := range n.Content {
+		if hasAlias(c) {
+			return true
+		}
+	}
+	return false
 }
 
 func mapGet(m *yaml.Node, key string) *yaml.Node {

@@ -78,6 +78,7 @@ func init() {
 		"cg.need_none":             "no module provides it",
 		"cg.settings":              "Settings",
 		"cg.settings_preview":      "Preview settings change",
+		"cg.settings_need_enabled": "Enable this module first (in the catalogue); settings can only be changed for an enabled module, so editing them never turns a module on.",
 		"cg.no_settings":           "This module has no settings you can change here.",
 		"cg.no_schema":             "This module declares no settings schema.",
 		"cg.unsupported":           "These settings are kept as they are; edit them in company.yaml:",

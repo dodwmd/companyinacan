@@ -181,3 +181,33 @@ func TestKubeStoreRoundTripAndConflict(t *testing.T) {
 		t.Fatalf("missing ConfigMap: %v", err)
 	}
 }
+
+func TestSettingsEditNeverEnablesAnAbsentModule(t *testing.T) {
+	out, err := ApplyPatch([]byte(baseCompany), Patch{Ops: []Op{SetSettings("solo", map[string]any{"a": "b"})}})
+	must(t, err)
+	c, err := ParseCompany(out)
+	must(t, err)
+	if EnabledModules(c)["solo"] {
+		t.Fatalf("a settings edit enabled the module:\n%s", out)
+	}
+}
+
+func TestPatchRefusesDocumentsWithAliases(t *testing.T) {
+	doc := "schema: 1\nname: A\ndomain: a.example\nprovider: {type: local}\nmodules:\n  web: &w {enabled: true}\n  alt: *w\n"
+	if _, err := ApplyPatch([]byte(doc), Patch{Ops: []Op{SetString("name", "B")}}); err == nil {
+		t.Fatal("a document with aliases was edited")
+	}
+}
+
+func TestSecretRefRules(t *testing.T) {
+	for _, bad := range []string{"can-module", "can-db", "can-database", "can-smtp", "can-smtp-relay", "can-release", "can-anything", "kubernetes.io-x", "a..b", "a/..", "a/b..c", "web/.", "UPPER", "a b"} {
+		if validSecretRef(bad) {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	for _, ok := range []string{"web-api-key", "web-api-key/token", "my.secret/key_1"} {
+		if !validSecretRef(ok) {
+			t.Errorf("%q refused", ok)
+		}
+	}
+}

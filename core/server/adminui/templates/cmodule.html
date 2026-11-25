@@ -30,7 +30,7 @@
 <h2 id="h-set">{{t "cg.settings"}}</h2>
 {{if .Data.SchemaNote}}<p class="alert warn">{{.Data.SchemaNote}}</p>{{end}}
 {{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
-{{if .Data.Fields}}{{if .Data.CanOperate}}<form method="post" action="/catalogue/{{.Data.Row.ID}}/settings" class="stack">
+{{if not .Data.Enabled}}<p class="alert warn">{{t "cg.settings_need_enabled"}}</p>{{else if .Data.Fields}}{{if .Data.CanOperate}}<form method="post" action="/catalogue/{{.Data.Row.ID}}/settings" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 {{range $i, $f := .Data.Fields}}<p>
 {{if eq $f.Kind "bool"}}<input type="checkbox" id="f-{{$i}}" name="s.{{$f.Name}}" value="on"{{if $f.Checked}} checked{{end}}> <label class="check" for="f-{{$i}}">{{$f.Name}}</label>

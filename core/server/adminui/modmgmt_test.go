@@ -197,6 +197,13 @@ func newMM(t *testing.T) *mm {
 		Now:     clock, Async: func(f func()) { f() }}
 	m.svc.RecordReconcile(ctx, res, nil)
 	h.ui.Mod = m.svc
+	// the base company already runs web; the wizard tests need a fresh installation's open wizard
+	if _, err := m.svc.WizardState(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.db.ExecContext(ctx, `UPDATE wizard_state SET status='open'`); err != nil {
+		t.Fatal(err)
+	}
 	return m
 }
 
@@ -587,6 +594,24 @@ func TestSettingsFormIsGeneratedValidatedAndRecordedAsAPatch(t *testing.T) {
 	}
 }
 
+func TestSettingsForADisabledModuleAreNotOfferedAndNeverEnableIt(t *testing.T) {
+	m := newMM(t)
+	s := m.loginAs("ops")
+	if page := m.do("GET", "/catalogue/web", nil, s.with()...); !strings.Contains(page.body, `name="s.site_title"`) {
+		t.Fatal("enabled module has no form")
+	}
+	if g := m.do("GET", "/catalogue/evil", nil, s.with()...); strings.Contains(g.body, `name="s.motd"`) || !strings.Contains(g.body, "Enable this module first") {
+		t.Fatalf("form offered for a disabled module:\n%s", g.body)
+	}
+	r := m.do("POST", "/catalogue/evil/settings", url.Values{"csrf": {s.csrf}, "s.motd": {"hi"}}, s.with()...)
+	if r.StatusCode == http.StatusSeeOther {
+		t.Fatalf("settings accepted for a disabled module: %s", r.Header.Get("Location"))
+	}
+	if string(mustRead(t, m.store.Path)) != mmCompany {
+		t.Fatal("company.yaml changed")
+	}
+}
+
 func TestHostileSettingsAndSchemaTextIsEscaped(t *testing.T) {
 	m := newMM(t)
 	s := m.loginAs("ops")
@@ -700,7 +725,11 @@ func TestPurgeIsSeparateTypedAndPermissioned(t *testing.T) {
 		t.Fatalf("%d\n%s", page.StatusCode, page.body)
 	}
 	post := func(confirm, pw string) resp {
-		return m.do("POST", "/catalogue/web/purge", url.Values{"csrf": {root.csrf}, "confirm": {confirm}, "password": {pw}}, root.with()...)
+		*m.now = m.now.Add(31 * time.Second) // a fresh single-use authentication code each time
+		return m.do("POST", "/catalogue/web/purge", url.Values{"csrf": {root.csrf}, "confirm": {confirm}, "password": {pw}, "otp": {m.code()}}, root.with()...)
+	}
+	if r := m.do("POST", "/catalogue/web/purge", url.Values{"csrf": {root.csrf}, "confirm": {"purge web"}, "password": {m.pw}}, root.with()...); r.StatusCode != http.StatusUnauthorized || len(m.purger.calls) != 0 {
+		t.Errorf("purge without an authentication code: %d", r.StatusCode)
 	}
 	if r := post("purge web", "wrong password"); r.StatusCode != http.StatusUnauthorized {
 		t.Errorf("wrong password: %d", r.StatusCode)

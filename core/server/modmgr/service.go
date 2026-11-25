@@ -308,6 +308,8 @@ func (s *Service) build(ctx context.Context, cur Snapshot, patch Patch, acks []s
 			switch {
 			case e == nil:
 				pv.Problems = append(pv.Problems, "module "+o.Path[1]+" is not in the catalogue")
+			case !newSel[o.Path[1]]:
+				pv.Problems = append(pv.Problems, "settings of "+o.Path[1]+" can only be changed while the module is enabled")
 			case e.Schema == nil && len(m) > 0:
 				pv.Problems = append(pv.Problems, "module "+o.Path[1]+" has no settings schema; its settings cannot be changed here")
 			case e.Schema != nil:
