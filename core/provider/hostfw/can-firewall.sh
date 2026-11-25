@@ -138,7 +138,7 @@ rules_intact() {
 
 set_elements() {
   nft list set "$TABLE_FAMILY" "$TABLE_NAME" trusted4 2>/dev/null | tr -d '\n' |
-    sed -n 's/.*elements = {\([^}]*\)}.*/\1/p' | tr ', \t' '\n\n\n' | grep . | sort -u
+    sed -n 's/.*elements = {\([^}]*\)}.*/\1/p' | tr -s ', \t' '\n' | grep . | sort -u
 }
 
 run() {

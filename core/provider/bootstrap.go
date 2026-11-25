@@ -336,7 +336,10 @@ cat > /usr/local/sbin/can-firewall.new <<'CAN_FIREWALL_SCRIPT'
 {{.FirewallScript}}CAN_FIREWALL_SCRIPT
 chmod 0755 /usr/local/sbin/can-firewall.new
 mv /usr/local/sbin/can-firewall.new /usr/local/sbin/can-firewall
-/usr/local/sbin/can-firewall install
+/usr/local/sbin/can-firewall install || {
+  echo "CAN_ERROR: node isolation is not installed. Fix the cause above, then run on the server: bash /usr/local/sbin/can-bootstrap.sh" >&2
+  exit 1
+}
 
 echo "$want_config" > /var/lib/can/k3s-config.applied
 

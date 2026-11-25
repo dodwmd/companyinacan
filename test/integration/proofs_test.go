@@ -265,10 +265,10 @@ func TestModuleEgressDeniedToNodeAndAPI(t *testing.T) {
 		t.Fatalf("control failed: an unpolicied pod could not reach node %s:6443", ip)
 	}
 	// Policy programming is asynchronous, so allow it time before calling a reach a finding.
-	// KNOWN FAILURE, tracked in issue #13: on k3s NetworkPolicy does not cover pod-to-node
-	// traffic, so these two are expected to stay reachable. They are logged and the test is
-	// skipped at the end (visible as SKIP with the reason), not left silently red. When #13 is
-	// fixed the skip disappears and these become hard failures: change the final Skipf to Errorf.
+	// On k3s NetworkPolicy does not cover pod-to-node traffic (issue #13). The host rules of
+	// specs/038-node-isolation do: with them loaded (CAN_HOSTFW_INSTALLED=1, the node-isolation
+	// workflow) reaching either target is a failure. Without them, as in a plain `make dev`
+	// cluster, it is expected and the test ends as a visible SKIP.
 	var known []string
 	if d := blockedWithin(t, "mod-stuba", "to-node", ip, 6443, 90*time.Second); d < 0 {
 		known = append(known, fmt.Sprintf("module pod still reached node %s:6443 90s after namespace creation", ip))
@@ -283,6 +283,9 @@ func TestModuleEgressDeniedToNodeAndAPI(t *testing.T) {
 	// Positive control for the egress allow itself: the internet is reachable.
 	if !pollReachPort(t, "mod-stuba", "to-internet", "1.1.1.1", 443) {
 		t.Errorf("module egress to the internet (1.1.1.1:443) is blocked; the 0.0.0.0/0 allow does not work")
+	}
+	if len(known) > 0 && os.Getenv("CAN_HOSTFW_INSTALLED") == "1" {
+		t.Fatalf("node isolation is installed but: %s", strings.Join(known, "; "))
 	}
 	if len(known) > 0 {
 		t.Skipf("KNOWN FAILURE (issue #13), other proofs in this test passed: %s", strings.Join(known, "; "))
