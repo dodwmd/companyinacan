@@ -1,0 +1,3 @@
+problems:
+  - rule: schema.pattern
+    path: "/provides/0/service"

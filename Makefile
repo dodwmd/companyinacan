@@ -14,9 +14,10 @@ GOLANGCI_LINT_VERSION := v2.15.0
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
-build: ## build bin/can and bin/can-static
+build: ## build bin/can, bin/can-static and bin/can-core
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/can ./cmd/can
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-static ./cmd/can-static
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-core ./cmd/can-core
 
 unit: ## unit tests
 	$(GO) test ./cmd/... ./core/...
