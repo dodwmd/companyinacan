@@ -59,9 +59,12 @@ type LimitsConfig struct {
 	MaxFolderDepth     int   `yaml:"max_folder_depth"`
 	MaxMembersPerSpace int   `yaml:"max_members_per_space"`
 	// MaxConcurrentUploads bounds the uploads in progress (staging disk, scanner load).
-	MaxConcurrentUploads int      `yaml:"max_concurrent_uploads"`
-	AllowedTypes         []string `yaml:"allowed_types"` // extensions, checked against the magic bytes
-	UploadTimeout        string   `yaml:"upload_timeout"`
+	MaxConcurrentUploads int `yaml:"max_concurrent_uploads"`
+	// MaxConcurrentUploadsPerSubject bounds one subject's share of them, so that one cannot take
+	// every slot. Below MaxConcurrentUploads (unless that is 1); default half of it.
+	MaxConcurrentUploadsPerSubject int      `yaml:"max_concurrent_uploads_per_subject"`
+	AllowedTypes                   []string `yaml:"allowed_types"` // extensions, checked against the magic bytes
+	UploadTimeout                  string   `yaml:"upload_timeout"`
 }
 
 // ScannerConfig is the virus-scan hook.
@@ -151,6 +154,9 @@ func (c *Config) defaults() {
 	}
 	if l.MaxConcurrentUploads == 0 {
 		l.MaxConcurrentUploads = 4
+	}
+	if l.MaxConcurrentUploadsPerSubject == 0 {
+		l.MaxConcurrentUploadsPerSubject = max(1, l.MaxConcurrentUploads/2)
 	}
 	if l.UploadTimeout == "" {
 		l.UploadTimeout = "2m"
@@ -242,6 +248,9 @@ func (c *Config) validate() error {
 		if f.v < 1 || f.v > f.max {
 			return fmt.Errorf("config: limits.%s must be between 1 and %d", f.name, f.max)
 		}
+	}
+	if per, all := l.MaxConcurrentUploadsPerSubject, l.MaxConcurrentUploads; per < 1 || per > max(1, all-1) {
+		return fmt.Errorf("config: limits.max_concurrent_uploads_per_subject must be at least 1 and below max_concurrent_uploads (%d)", all)
 	}
 	if l.QuotaBytesPerOwner < l.MaxFileBytes {
 		return errors.New("config: limits.quota_bytes_per_owner must be at least max_file_bytes")

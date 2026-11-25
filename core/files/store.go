@@ -61,6 +61,8 @@ type Store struct {
 	shareFails *failLimiter
 	stageDir   string
 	uploads    chan struct{} // one slot per upload in progress
+	uploadMu   sync.Mutex
+	uploadsBy  map[string]int // subject -> slots held
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.
@@ -103,6 +105,7 @@ func OpenStore(path string, o StoreOptions) (*Store, error) {
 	s := &Store{db: db, keys: o.Keyring, backend: o.Backend, scanner: o.Scanner, linkSecret: o.LinkSecret, cfg: o.Config, now: o.Now,
 		events: o.EventsOn, kick: make(chan struct{}, 1), shareFails: newFailLimiter(o.Config.Share.FailuresPerMinute, o.Now)}
 	s.uploads = make(chan struct{}, o.Config.Limits.MaxConcurrentUploads)
+	s.uploadsBy = map[string]int{}
 	if err := s.migrate(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)

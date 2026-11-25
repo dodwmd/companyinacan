@@ -81,7 +81,9 @@ file (100), spaces per owner (100), members per space (500), folder depth (8), s
 owner (5 GiB, counted over the versions that have not been purged), live share links per file (20).
 Refusals are 413 (too large, quota, caps), 415 (type), 422 (infected), 503 (no scanner, scanner failed).
 There is no resumable or chunked upload: a failed upload is repeated. At most
-`limits.max_concurrent_uploads` (4) uploads run at once (503 beyond that, nothing read), and an upload the
+`limits.max_concurrent_uploads` (4) uploads run at once, at most `limits.max_concurrent_uploads_per_subject`
+(half of that, always below it unless it is 1; the static API token is one subject) of them for one subject
+(503 beyond either, nothing read), and an upload the
 owner's quota cannot take is refused before it is staged (the final check is in the recording transaction).
 
 **What the type check does not do.** It looks at the extension and the leading bytes only. For the Office
@@ -121,7 +123,8 @@ An infected upload is refused, deleted from staging, audited (`file.infected`) a
 A token is `shr_<id>.<expiry>.<mac>`, the mac an HMAC-SHA-256 over the id and expiry under
 `CAN_FILES_LINK_SECRET`. The database keeps the id, the pinned version and the state (uses, revoked)
 and **never the token**; the label is sealed. A link works until it expires or is revoked, or for one
-download when created `one_time`, and stops working when the file is deleted or purged.
+download when created `one_time`. Deleting a file revokes its live links (in the same transaction, audited);
+restoring the file does not bring them back: make new ones.
 
 - Lifetime: at least 1 minute, at most `share.max_ttl_hours` (30 days by default); the default is 24 hours.
 - The use is counted and audited in one transaction **before** the content is opened, so a one-time link
@@ -144,11 +147,13 @@ download when created `one_time`, and stops working when the file is deleted or 
 
 ## Retention, legal hold, erasure
 
-- **Delete** moves a file to the trash (`deleted`, hidden from viewers, restorable by editors). A legal
-  hold, or a retention date that has not passed, makes it a 409.
+- **Delete** moves a file to the trash (`deleted`, hidden from viewers, restorable by editors) and revokes its
+  share links. A legal hold, or a retention date that has not passed, makes it a 409.
 - **Retention sweep** (every `sweep_interval_hours`, or `can-files sweep`) purges files that have been in
   the trash `trash_days` (30 by default; 0 never purges), skipping held files and files before their
-  retention date, finishes interrupted purges, removes pending blobs older than an hour and drops old outbox rows. Purging deletes
+  retention date, finishes interrupted purges, removes pending blobs older than an hour and drops old outbox rows.
+  A blob that cannot be deleted does not stop the rest: its file stays marked for purging, the other work is
+  done, and every failure is reported together (and retried by the next sweep). Purging deletes
   every blob (zeroed first on a plain filesystem), blanks the sealed names, the version references and
   checksums, deletes the share links, writes tombstones and an audit entry per file and queues
   `file.deleted.v1` (`reason` `retention`). The row stays as an empty shell so ids never come back.
