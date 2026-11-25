@@ -108,7 +108,7 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `GET /ledger/journals/{id}` | yes | ledger.read | `GetJournal` | E15c: one entry with its lines and the link to its reversal; read-only |
 | `GET /ledger/trial-balance` | yes | ledger.read | `TrialBalanceAsOf` | E15c: trial balance as of `as_of`, per currency, never converted |
 | `GET /bank/reconciliation` | yes | ledger.read | `ListBankAccounts`, `Reconciliation`, `ListBankTransactions`, `SuggestMatchesFor` | E15c: the months of one bank account and its oldest 25 unmatched transactions with suggestions; the read is audited before the page is rendered |
-| `POST /bank/transactions/{id}/confirm` | yes | ledger.write | `ConfirmMatch` | E15c: fields `invoice_id`, `account`, `idem`; records the payment through the payment path. Money out is refused. No record `version` (a transaction is decided once: a second post is `409`) |
+| `POST /bank/transactions/{id}/confirm` | yes | ledger.write | `ConfirmMatch` | E15c: fields `invoice_id`, `account`, `idem`, optional `payment_id` (link a payment already recorded) and `record_new`; records the payment through the payment path. Money out is refused. No record `version` (a transaction is decided once: a second post is `409`) |
 | `POST /bank/transactions/{id}/ignore` | yes | ledger.write | `IgnoreTransaction` | E15c: fields `reason`, `account`; final, like confirm |
 | `GET /reports/statement` | yes | read | `ListParties`, `GetParty`, `ListInvoices`, `ListPayments` | One customer's documents and payments (newest 100) |
 | `GET /settings` | yes | read | `ListSeries`, `ListTaxRates`, `PeriodLock` | Read-only: series (unscoped tokens only: the counters are company-wide), tax rates, company settings |

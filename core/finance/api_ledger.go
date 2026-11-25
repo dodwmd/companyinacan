@@ -497,13 +497,11 @@ func (a *api) confirmMatch(w http.ResponseWriter, r *http.Request, p *Principal)
 	if !ok {
 		return
 	}
-	var in struct {
-		InvoiceID int64 `json:"invoice_id"`
-	}
+	var in ConfirmInput
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	v, replayed, err := a.store.ConfirmMatch(r.Context(), p, id, in.InvoiceID, idem)
+	v, replayed, err := a.store.ConfirmMatch(r.Context(), p, id, in, idem)
 	if err != nil {
 		a.fail(w, err)
 		return

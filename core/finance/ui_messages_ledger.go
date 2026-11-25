@@ -84,6 +84,8 @@ func init() {
 		"bank.sg_both":      "amount and reference",
 		"bank.confirm":      "Confirm match",
 		"bank.invoice_id":   "Invoice id",
+		"bank.payment_id":   "Existing payment id (to link, optional)",
+		"bank.record_new":   "Record a new payment anyway",
 		"bank.ignore":       "Ignore",
 		"bank.reason":       "Reason to ignore",
 		"bank.no_sugg":      "No suggestion",

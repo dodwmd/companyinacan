@@ -396,3 +396,48 @@ func TestQAMonthCanBeSignedOffAgain(t *testing.T) {
 	}
 	e.must(409, approver, "POST", base+"/reconciliation", obj{"period": "2026-06"}, nil)
 }
+
+// QA 14 and 15: a payment already recorded is linked instead of recorded again, the reserved external id cannot
+// be planted, and no bank text reaches the payment or the idempotency cache.
+func TestQAConfirmLinksInsteadOfDoubleRecording(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	maker, boss := e.token("maker", rw, nil, nil, false), e.token("boss", app, nil, nil, false)
+	acc := e.token("dana", acct, nil, nil, false)
+	party := e.party(maker, "Link Co", "customer")
+	inv := e.approveInvoice(maker, boss, party, obj{"issue_date": "2026-06-01"}, line("work", 1000, 10000))
+	if code := e.do(maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 100, "external_id": "bank:1:1"}, nil); code != 422 {
+		t.Errorf("planting the reserved external id = %d", code)
+	}
+	var manualPay Payment
+	e.must(201, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 4000}, &manualPay)
+	b := e.bankAccount(admin)
+	e.must(201, acc, "POST", "/v1/bank/accounts/"+id(b.ID)+"/statements"+csvQuery, "d,a,r,n,i\n2026-06-10,40.00,secret words,Jane Private,A\n2026-06-11,40.00,more,Jane Private,B\n", nil)
+	var txns struct{ Items []BankTxn }
+	e.must(200, acc, "GET", "/v1/bank/transactions", nil, &txns)
+	confirm := func(i int, body obj) int {
+		return e.do(acc, "POST", "/v1/bank/transactions/"+id(txns.Items[i].ID)+"/confirm", body, nil, "Idempotency-Key", "qa14-key-"+toJSON(body)+id(int64(i)))
+	}
+	if code := confirm(0, obj{"invoice_id": inv.ID}); code != 409 {
+		t.Fatalf("a confirm over an unlinked payment = %d, want 409", code)
+	}
+	if code := confirm(0, obj{"invoice_id": inv.ID, "payment_id": manualPay.ID}); code != 200 {
+		t.Fatalf("link = %d", code)
+	}
+	if code := confirm(1, obj{"invoice_id": inv.ID, "payment_id": manualPay.ID}); code != 422 {
+		t.Errorf("linking one payment twice = %d", code)
+	}
+	var count int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM payments`).Scan(&count)
+	if count != 1 {
+		t.Errorf("%d payments after linking, want 1", count)
+	}
+	if code := confirm(1, obj{"invoice_id": inv.ID, "record_new": true}); code != 200 {
+		t.Fatalf("record a new payment = %d", code)
+	}
+	var dump string
+	_ = e.app.store.db.QueryRow(`SELECT COALESCE((SELECT group_concat(reference) FROM payments), '') || COALESCE((SELECT group_concat(response) FROM idempotency WHERE response LIKE '%Jane%' OR response LIKE '%secret%'), '')`).Scan(&dump)
+	if strings.Contains(dump, "Jane") || strings.Contains(dump, "secret") {
+		t.Errorf("bank text was copied: %s", dump)
+	}
+}

@@ -69,6 +69,9 @@ func (in *PaymentInput) check() error {
 	if in.ReceivedOn != "" && !validDate(in.ReceivedOn) {
 		p.add("received_on", "use YYYY-MM-DD")
 	}
+	if strings.HasPrefix(in.ExternalID, externalBankPrefix) {
+		p.add("external_id", "%q is reserved for bank reconciliation", externalBankPrefix)
+	}
 	if !oneLineText(in.ExternalID, 200) {
 		p.add("external_id", "one line, at most 200 characters")
 	}

@@ -187,7 +187,13 @@ func (u *UI) bankConfirm(c *uiCtx) error {
 	if err != nil || inv < 1 {
 		return invalid("invoice_id", "give the invoice id")
 	}
-	if _, _, err := u.Store.ConfirmMatch(c.ctx(), c.p, id, inv, idem); err != nil {
+	in := ConfirmInput{InvoiceID: inv, RecordNew: c.form("record_new") == "1"}
+	if v := c.form("payment_id"); v != "" {
+		if in.PaymentID, err = strconv.ParseInt(v, 10, 64); err != nil || in.PaymentID < 1 {
+			return invalid("payment_id", "give the payment id, or leave it empty")
+		}
+	}
+	if _, _, err := u.Store.ConfirmMatch(c.ctx(), c.p, id, in, idem); err != nil {
 		return err
 	}
 	return c.redirect(reconBack(c, "flash.paid"), "")

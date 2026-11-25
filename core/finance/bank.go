@@ -540,51 +540,103 @@ func (s *Store) suggestFor(ctx context.Context, a *Principal, t *BankTxn) ([]Sug
 	return out, nil
 }
 
-// ConfirmMatch records the payment for a bank transaction and marks it matched, in one transaction. It
-// goes through recordPaymentTx, so every payment rule applies (currency, no overpayment, the invoice's
-// status) and the payment posts to the ledger of the bank account the money arrived in.
-func (s *Store) ConfirmMatch(ctx context.Context, a *Principal, txnID, invoiceID int64, idemKey string) (*BankTxn, bool, error) {
+// ConfirmInput is a confirmation: the invoice, and either the payment already recorded for this money
+// (PaymentID: it is linked, nothing new is recorded) or nothing, which records a payment.
+type ConfirmInput struct {
+	InvoiceID int64 `json:"invoice_id"`
+	PaymentID int64 `json:"payment_id"`
+	// RecordNew records a payment even though the invoice already has an unlinked payment of this amount.
+	RecordNew bool `json:"record_new"`
+}
+
+// externalBankPrefix is reserved for the external id of payments made by confirming a bank transaction; the
+// payment API refuses it, and a confirm never adopts an existing payment through it.
+const externalBankPrefix = "bank:"
+
+// ConfirmMatch records the payment for a bank transaction (or links the one already recorded) and marks it
+// matched, in one transaction. A new payment goes through recordPaymentTx, so every payment rule applies
+// (currency, no overpayment, the invoice's status) and it posts to the ledger of the bank account the money
+// arrived in. Linking records and posts nothing: the existing payment already did. The payment's reference
+// names the bank transaction by id only; the bank's text (which can name people) stays in the bank data, which
+// party-scoped readers and payment exports never see.
+func (s *Store) ConfirmMatch(ctx context.Context, a *Principal, txnID int64, in ConfirmInput, idemKey string) (*BankTxn, bool, error) {
 	if !a.Can(PermWrite) {
 		return nil, false, ErrForbidden // a match records a payment: it needs finance.write as well
 	}
 	var out *BankTxn
 	var replayed bool
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		out, replayed, err = idemRun(ctx, s, tx, a.Subject, idemKey, fmt.Sprintf("bank.confirm.%d", txnID), map[string]any{"invoice_id": invoiceID}, func() (*BankTxn, error) {
-			t, err := s.loadTxn(ctx, tx, txnID)
-			if err != nil {
-				return nil, err
-			}
-			switch {
-			case t.Status != "unmatched":
-				return nil, fmt.Errorf("%w: the transaction is already %s", ErrConflict, t.Status)
-			case t.AmountMinor <= 0:
-				return nil, fmt.Errorf("%w: only money received can be matched to an invoice; ignore the transaction instead", ErrConflict)
-			}
-			var ledgerAcct int64
-			if err := tx.QueryRowContext(ctx, `SELECT ledger_account_id FROM bank_accounts WHERE id = ?`, t.BankAccountID).Scan(&ledgerAcct); err != nil {
-				return nil, err
-			}
-			pay, _, err := s.recordPaymentTx(ctx, tx, a, a.Subject, invoiceID, PaymentInput{
-				AmountMinor: t.AmountMinor, Currency: t.Currency, Method: "bank", Reference: t.Reference, ReceivedOn: t.BookedOn,
-				ExternalID: fmt.Sprintf("bank:%d:%d", t.BankAccountID, t.ID), cashAccount: ledgerAcct,
-			}, "import")
-			if err != nil {
-				return nil, err
-			}
-			now := ts(s.now())
-			if _, err := tx.ExecContext(ctx, `UPDATE bank_transactions SET status = 'matched', matched_payment_id = ?, decided_by = ?, decided_at = ? WHERE id = ?`, pay.ID, a.Subject, now, txnID); err != nil {
-				return nil, err
-			}
-			if err := s.audit(ctx, tx, a.Subject, "bank.match.confirm", fmt.Sprint(txnID), map[string]any{"invoice_id": invoiceID, "payment_id": pay.ID, "amount_minor": t.AmountMinor, "currency": t.Currency}); err != nil {
-				return nil, err
-			}
-			return s.loadTxn(ctx, tx, txnID)
+		// The cached idempotent response is the transaction's id only: never a copy of the bank's text.
+		id, again, err := idemRun(ctx, s, tx, a.Subject, idemKey, fmt.Sprintf("bank.confirm.%d", txnID), in, func() (int64, error) {
+			return txnID, s.confirmTx(ctx, tx, a, txnID, in)
 		})
+		if err != nil {
+			return err
+		}
+		replayed = again
+		out, err = s.loadTxn(ctx, tx, id)
 		return err
 	})
 	return out, replayed, err
+}
+
+func (s *Store) confirmTx(ctx context.Context, tx dbq, a *Principal, txnID int64, in ConfirmInput) error {
+	t, err := s.loadTxn(ctx, tx, txnID)
+	if err != nil {
+		return err
+	}
+	switch {
+	case t.Status != "unmatched":
+		return fmt.Errorf("%w: the transaction is already %s", ErrConflict, t.Status)
+	case t.AmountMinor <= 0:
+		return fmt.Errorf("%w: only money received can be matched to an invoice; ignore the transaction instead", ErrConflict)
+	}
+	inv, err := s.loadInvoice(ctx, tx, a, in.InvoiceID)
+	if err != nil {
+		return err
+	}
+	const unlinked = `NOT EXISTS (SELECT 1 FROM bank_transactions b WHERE b.matched_payment_id = payments.id)`
+	payID := in.PaymentID
+	if payID != 0 {
+		var one int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM payments WHERE id = ? AND invoice_id = ? AND amount_minor = ? AND currency = ? AND `+unlinked, payID, inv.ID, t.AmountMinor, t.Currency).Scan(&one)
+		if errors.Is(err, sql.ErrNoRows) {
+			return invalid("payment_id", "not an unlinked payment of this invoice with the transaction's amount and currency")
+		}
+		if err != nil {
+			return err
+		}
+	} else {
+		if !in.RecordNew {
+			var existing int64
+			err := tx.QueryRowContext(ctx, `SELECT id FROM payments WHERE invoice_id = ? AND amount_minor = ? AND currency = ? AND `+unlinked+` ORDER BY id LIMIT 1`, inv.ID, t.AmountMinor, t.Currency).Scan(&existing)
+			if err == nil {
+				return fmt.Errorf("%w: payment %d of the same amount is already recorded on this invoice; link it (payment_id) or, if this is other money, set record_new", ErrConflict, existing)
+			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
+		var ledgerAcct int64
+		if err := tx.QueryRowContext(ctx, `SELECT ledger_account_id FROM bank_accounts WHERE id = ?`, t.BankAccountID).Scan(&ledgerAcct); err != nil {
+			return err
+		}
+		pay, existed, err := s.recordPaymentTx(ctx, tx, a, a.Subject, inv.ID, PaymentInput{
+			AmountMinor: t.AmountMinor, Currency: t.Currency, Method: "bank", Reference: fmt.Sprintf("bank transaction %d", t.ID), ReceivedOn: t.BookedOn,
+			ExternalID: fmt.Sprintf("%s%d:%d", externalBankPrefix, t.BankAccountID, t.ID), cashAccount: ledgerAcct,
+		}, "import")
+		if err != nil {
+			return err
+		}
+		if existed {
+			return fmt.Errorf("%w: a payment already carries this transaction's external id; link it with payment_id after checking it", ErrConflict)
+		}
+		payID = pay.ID
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE bank_transactions SET status = 'matched', matched_payment_id = ?, decided_by = ?, decided_at = ? WHERE id = ?`, payID, a.Subject, ts(s.now()), txnID); err != nil {
+		return err
+	}
+	return s.audit(ctx, tx, a.Subject, "bank.match.confirm", fmt.Sprint(txnID), map[string]any{"invoice_id": inv.ID, "payment_id": payID, "linked_existing": in.PaymentID != 0, "amount_minor": t.AmountMinor, "currency": t.Currency})
 }
 
 // IgnoreTransaction marks a transaction as not needing a match (a fee, a transfer), with a reason.

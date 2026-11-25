@@ -133,6 +133,12 @@ the ledger account of the bank account the money arrived in. Money out cannot be
 with a reason. A decided transaction cannot be changed. A reconciliation month can be signed off only when nothing
 in it is unmatched; a later import that brings new rows makes the month unsigned again, and once nothing is unmatched it can be signed off anew.
 
+**Money already recorded is linked, not recorded twice.** If the invoice already has an unlinked payment of the same
+amount, a plain confirm answers 409 and names it: pass `payment_id` to link it (nothing new is recorded or posted; its
+entry stays on whatever cash account it was posted to), or `record_new` if this is other money. A payment backs at most one
+bank transaction. The `bank:` external id prefix is reserved. The recorded payment's reference is `bank transaction <id>`:
+the bank's own text is never copied to the payment, so party-scoped readers and the payments CSV do not see it.
+
 **Reads of bank data are audited before they are returned**, and fail closed: if the audit entry cannot be
 written, the request fails and nothing is shown.
 

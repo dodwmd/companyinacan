@@ -46,6 +46,10 @@
 <input type="hidden" name="account" value="{{$.Data.Account.ID}}">
 <label for="inv-{{.Txn.ID}}">{{t "bank.invoice_id"}}</label>
 <input id="inv-{{.Txn.ID}}" name="invoice_id" inputmode="numeric" required maxlength="18"{{if .Suggestions}}{{with index .Suggestions 0}} value="{{.InvoiceID}}"{{end}}{{end}}>
+<label for="pay-{{.Txn.ID}}">{{t "bank.payment_id"}}</label>
+<input id="pay-{{.Txn.ID}}" name="payment_id" inputmode="numeric" maxlength="18">
+<label for="new-{{.Txn.ID}}">{{t "bank.record_new"}}</label>
+<input id="new-{{.Txn.ID}}" name="record_new" type="checkbox" value="1">
 <button type="submit">{{t "bank.confirm"}}</button>
 </form>
 {{else}}<p class="hint">{{t "bank.money_out"}}</p>{{end}}

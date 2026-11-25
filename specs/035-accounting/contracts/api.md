@@ -35,7 +35,7 @@ whatever the permission, and the same `403` for an id that exists or not).
 | `GET`, `POST /v1/bank/accounts/{id}/reconciliation` | read, approve | `{period: "YYYY-MM"}` |
 | `GET /v1/bank/transactions` | read | `account_id`, `status`, `from`, `to`, `cursor`; audited |
 | `GET /v1/bank/transactions/{id}/suggestions` | read | advice only; audited |
-| `POST /v1/bank/transactions/{id}/confirm` | write (+ `finance.write`) | `{invoice_id}`; `Idempotency-Key` |
+| `POST /v1/bank/transactions/{id}/confirm` | write (+ `finance.write`) | `{invoice_id, payment_id?, record_new?}`; `Idempotency-Key` |
 | `POST /v1/bank/transactions/{id}/ignore` | write | `{reason}` |
 
 ## Errors

@@ -198,6 +198,8 @@ CREATE TABLE bank_transactions (
     UNIQUE (bank_account_id, txn_key)
 );
 CREATE INDEX bank_transactions_queue ON bank_transactions (bank_account_id, status, booked_on);
+-- A payment is the money of at most one bank transaction.
+CREATE UNIQUE INDEX bank_transactions_payment ON bank_transactions (matched_payment_id) WHERE matched_payment_id IS NOT NULL;
 CREATE TRIGGER bank_transactions_keep_facts BEFORE UPDATE OF bank_account_id, statement_id, txn_key, booked_on, amount_minor, currency, reference, counterparty, description ON bank_transactions
 BEGIN
     SELECT RAISE(ABORT, 'a bank transaction keeps what the bank reported');
