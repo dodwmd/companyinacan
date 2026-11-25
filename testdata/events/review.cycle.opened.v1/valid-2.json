@@ -1,0 +1,11 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "review.cycle.opened.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "cycle_id": "cyc_fedcba98765432100123abcd",
+    "opened_on": "2027-06-01",
+    "participants": 1
+  }
+}

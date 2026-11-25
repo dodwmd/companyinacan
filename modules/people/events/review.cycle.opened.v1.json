@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/review.cycle.opened.v1.json",
+  "title": "review.cycle.opened.v1",
+  "description": "Published when a review cycle is opened. Carries opaque ids, a date and a count only: no names, ratings, feedback or free text. Delivered at least once; consumers de-duplicate on `id`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "review.cycle.opened.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "people"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cycle_id",
+        "opened_on",
+        "participants"
+      ],
+      "properties": {
+        "cycle_id": {
+          "type": "string",
+          "pattern": "^cyc_[0-9a-f]{24}$"
+        },
+        "opened_on": {
+          "type": "string",
+          "format": "date"
+        },
+        "participants": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

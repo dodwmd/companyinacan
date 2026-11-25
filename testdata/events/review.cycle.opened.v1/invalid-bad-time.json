@@ -1,0 +1,11 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "review.cycle.opened.v1",
+  "time": "yesterday",
+  "source": "people",
+  "data": {
+    "cycle_id": "cyc_0123456789abcdef01234567",
+    "opened_on": "2027-01-11",
+    "participants": 12
+  }
+}

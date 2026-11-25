@@ -458,9 +458,12 @@ func (a *API) Handler() http.Handler {
 		return http.StatusOK, g, err
 	})
 
+	a.routesE14b(route)
+
 	if a.Can != nil {
 		mux.Handle("POST /v1/can/events", a.Can)
 	}
+
 	return withMiddleware(a.Log, mux)
 }
 

@@ -1,0 +1,12 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "review.released.v1",
+  "time": "yesterday",
+  "source": "people",
+  "data": {
+    "cycle_id": "cyc_0123456789abcdef01234567",
+    "review_id": "rev_0123456789abcdef01234567",
+    "person_id": "pers_0123456789abcdef01234567",
+    "released_on": "2027-02-01"
+  }
+}

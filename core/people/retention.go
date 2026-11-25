@@ -2,10 +2,13 @@ package people
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // Data classes held by this module (modules/people/module.yaml). Class names follow the
@@ -16,10 +19,12 @@ const (
 	ClassChecklists = "people-checklists"
 	ClassOneOnOne   = "performance-oneonone"
 	ClassGoals      = "performance-goals"
+	ClassReviews    = "performance-reviews" // review cycles' per-person content: self, manager, calibration, feedback
+	ClassTimeOff    = "people-timeoff"      // leave requests, balances ledger
 )
 
 // Classes lists every data class in purge order.
-var Classes = []string{ClassSensitive, ClassOneOnOne, ClassGoals, ClassChecklists, ClassBasic}
+var Classes = []string{ClassSensitive, ClassOneOnOne, ClassGoals, ClassReviews, ClassTimeOff, ClassChecklists, ClassBasic}
 
 // RetentionRule is a parsed retention period. Legal means "as required by law": never purged
 // automatically. Zero Days with !Legal means purge as soon as the trigger (leaving) happens.
@@ -58,6 +63,8 @@ func DefaultRetention() map[string]RetentionRule {
 		ClassChecklists: {Days: 2 * 365},
 		ClassOneOnOne:   {Days: 2 * 365},
 		ClassGoals:      {Days: 2 * 365},
+		ClassReviews:    {Days: 2 * 365},
+		ClassTimeOff:    {Days: 7 * 365},
 	}
 }
 
@@ -87,9 +94,44 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 			`UPDATE goals SET created_by='erased' WHERE created_by=?`,
 			`UPDATE action_items SET created_by='erased' WHERE created_by=?`,
 			`UPDATE agenda_items SET author_id='erased' WHERE author_id=?`,
+			`UPDATE review_participants SET mgr_author='erased' WHERE mgr_author=?`,
+			`UPDATE review_participants SET calibrated_by='erased' WHERE calibrated_by=?`,
+			`UPDATE review_participants SET release_requested_by='erased' WHERE release_requested_by=?`,
+			`UPDATE review_participants SET release_decided_by='erased' WHERE release_decided_by=?`,
+			`UPDATE review_requests SET proposed_by='erased' WHERE proposed_by=?`,
+			`UPDATE review_requests SET decided_by='erased' WHERE decided_by=?`,
+			`UPDATE leave_requests SET submitted_by='erased' WHERE submitted_by=?`,
+			`UPDATE leave_requests SET decided_by='erased' WHERE decided_by=?`,
+			`UPDATE leave_requests SET cancelled_by='erased' WHERE cancelled_by=?`,
+			`UPDATE leave_ledger SET created_by='erased' WHERE created_by=?`,
+			`UPDATE review_templates SET created_by='erased' WHERE created_by=?`,
+			`UPDATE review_cycles SET created_by='erased' WHERE created_by=?`,
+			`UPDATE blackouts SET created_by='erased' WHERE created_by=?`,
 		}
 	case ClassSensitive:
 		stmts = []string{`UPDATE people SET sens_dob=NULL, sens_national_id=NULL, sens_address=NULL, sens_phone=NULL, sens_salary=NULL WHERE id=?`}
+	case ClassReviews:
+		if err := s.dropTouched(ctx, q, id); err != nil {
+			return err
+		}
+		// What the person wrote as a reviewer (attributed feedback) and the requests addressed to
+		// them go; reviews about them go with their rows. Anonymous feedback they gave is not linked
+		// to them and stays (it names nobody): see docs/people.md.
+		stmts = []string{
+			`DELETE FROM review_responses WHERE reviewer_id=?`,
+			`DELETE FROM review_requests WHERE reviewer_id=?`,
+			`DELETE FROM review_participants WHERE person_id=?`,
+			// derived copies: the outbox keeps an event for a week after delivery
+			`DELETE FROM outbox WHERE type = 'review.released.v1' AND instr(payload, '"person_id":"' || ? || '"') > 0`,
+		}
+	case ClassTimeOff:
+		stmts = []string{
+			`UPDATE ledger_guard SET open=1`,
+			`DELETE FROM leave_ledger WHERE person_id=?`,
+			`UPDATE ledger_guard SET open=0`,
+			`DELETE FROM leave_requests WHERE person_id=?`,
+			`DELETE FROM outbox WHERE type IN ('timeoff.approved.v1', 'timeoff.cancelled.v1') AND instr(payload, '"person_id":"' || ? || '"') > 0`,
+		}
 	case ClassChecklists:
 		stmts = []string{`UPDATE checklist_tasks SET assignee_id=NULL WHERE assignee_id=?`, `DELETE FROM checklists WHERE person_id=?`}
 	case ClassOneOnOne:
@@ -104,8 +146,8 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 		return invalid("unknown data class %q", class)
 	}
 	for _, st := range stmts {
-		args := []any{id}
-		if class == ClassOneOnOne {
+		var args []any
+		for range strings.Count(st, "?") {
 			args = append(args, id)
 		}
 		if _, err := q.ExecContext(ctx, st, args...); err != nil {
@@ -298,6 +340,14 @@ func (s *Service) RunRetention(ctx context.Context) (*RetentionReport, error) {
 				return rep, err
 			}
 			rep.Purged[class] += n
+		case ClassReviews:
+			// Reviews of a closed cycle expire by age, unless their subject is under legal hold.
+			n, err := s.execCount(ctx, `DELETE FROM review_participants WHERE cycle_id IN (SELECT id FROM review_cycles WHERE state = 'closed' AND closed_at <= ?)
+				AND person_id NOT IN (SELECT id FROM people WHERE legal_hold = 1)`, cutoff)
+			if err != nil {
+				return rep, err
+			}
+			rep.Purged[class] += n
 		case ClassGoals:
 			n, err := s.execCount(ctx, `DELETE FROM goals WHERE status IN ('achieved','abandoned') AND updated_at <= ? AND (owner_id IS NULL OR owner_id NOT IN (SELECT id FROM people WHERE legal_hold = 1))
 				AND id NOT IN (SELECT parent_id FROM goals WHERE parent_id IS NOT NULL)`, cutoff)
@@ -428,6 +478,11 @@ func (s *Service) rotateOnce(ctx context.Context) (n, missed int, _ error) {
 			n++
 		}
 	}
+	en, em, err := s.rotateE14b(ctx)
+	n, missed = n+en, missed+em
+	if err != nil {
+		return n, missed, err
+	}
 	// status history notes (keyed by row sequence)
 	rows, err := s.db.QueryContext(ctx, `SELECT seq, person_id, note FROM status_history WHERE note != ''`)
 	if err != nil {
@@ -470,4 +525,144 @@ func (s *Service) rotateOnce(ctx context.Context) (n, missed int, _ error) {
 		n++
 	}
 	return n, missed, nil
+}
+
+// e14bSealed lists the sealed columns added by E14b: table, column, and the AAD around the row id.
+var e14bSealed = []struct{ table, col, prefix, suffix string }{
+	{"review_participants", "self_sealed", "review:", ":self"},
+	{"review_participants", "mgr_sealed", "review:", ":mgr"},
+	{"review_participants", "calib_sealed", "review:", ":calib"},
+	{"review_participants", "final_sealed", "review:", ":final"},
+	{"review_participants", "ack_sealed", "review:", ":ack"},
+	{"review_participants", "release_note_sealed", "review:", ":relnote"},
+	{"review_responses", "answers_sealed", "review_response:", ""},
+	{"leave_requests", "note_sealed", "leave:", ":note"},
+}
+
+// rotateE14b re-seals the review and time-off columns with the same compare-and-swap as the rest.
+func (s *Service) rotateE14b(ctx context.Context) (n, missed int, _ error) {
+	for _, c := range e14bSealed {
+		rows, err := s.db.QueryContext(ctx, `SELECT id, `+c.col+` FROM `+c.table+` WHERE `+c.col+` IS NOT NULL`) //nolint:gosec // names from a fixed list
+		if err != nil {
+			return n, missed, err
+		}
+		type item struct{ id, sealed string }
+		var items []item
+		for rows.Next() {
+			var it item
+			if err := rows.Scan(&it.id, &it.sealed); err != nil {
+				_ = rows.Close()
+				return n, missed, err
+			}
+			if s.keys.NeedsRotation(it.sealed) {
+				items = append(items, it)
+			}
+		}
+		_ = rows.Close()
+		for _, it := range items {
+			aad := c.prefix + it.id + c.suffix
+			plain, err := s.keys.Open(it.sealed, aad)
+			if err != nil {
+				return n, missed, fmt.Errorf("rotate %s: %w", aad, err)
+			}
+			sealed, err := s.keys.Seal(plain, aad)
+			if err != nil {
+				return n, missed, err
+			}
+			res, err := s.db.ExecContext(ctx, `UPDATE `+c.table+` SET `+c.col+` = ? WHERE id = ? AND `+c.col+` = ?`, sealed, it.id, it.sealed) //nolint:gosec // names from a fixed list
+			if err != nil {
+				return n, missed, err
+			}
+			if k, _ := res.RowsAffected(); k == 0 {
+				missed++
+				continue
+			}
+			n++
+		}
+	}
+	// manual adjustment reasons in the ledger are keyed by their ref
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, ref, note_sealed FROM leave_ledger WHERE note_sealed IS NOT NULL`)
+	if err != nil {
+		return n, missed, err
+	}
+	type adj struct {
+		seq             int64
+		ref, sealedNote string
+	}
+	var adjs []adj
+	for rows.Next() {
+		var x adj
+		if err := rows.Scan(&x.seq, &x.ref, &x.sealedNote); err != nil {
+			_ = rows.Close()
+			return n, missed, err
+		}
+		if s.keys.NeedsRotation(x.sealedNote) {
+			adjs = append(adjs, x)
+		}
+	}
+	_ = rows.Close()
+	for _, x := range adjs {
+		aad := "leave_ledger:" + x.ref + ":note"
+		plain, err := s.keys.Open(x.sealedNote, aad)
+		if err != nil {
+			return n, missed, fmt.Errorf("rotate %s: %w", aad, err)
+		}
+		sealed, err := s.keys.Seal(plain, aad)
+		if err != nil {
+			return n, missed, err
+		}
+		res, err := s.db.ExecContext(ctx, `UPDATE leave_ledger SET note_sealed = ? WHERE seq = ? AND note_sealed = ?`, sealed, x.seq, x.sealedNote)
+		if err != nil {
+			return n, missed, err
+		}
+		if k, _ := res.RowsAffected(); k == 0 {
+			missed++
+			continue
+		}
+		n++
+	}
+	return n, missed, nil
+}
+
+// dropTouched removes a person's identity hashes from every review's separation-of-duties history
+// when they are erased, so the history keeps no trace of them (the hashes are unkeyed).
+func (s *Service) dropTouched(ctx context.Context, q querier, id string) error {
+	mine := map[string]bool{hashID(id): true}
+	var subj sql.NullString
+	if err := q.QueryRowContext(ctx, `SELECT sso_subject FROM people WHERE id = ?`, id).Scan(&subj); err == nil && subj.Valid && subj.String != "" {
+		mine[hashID(subj.String)] = true
+	}
+	rows, err := q.QueryContext(ctx, `SELECT id, touched_by FROM review_participants WHERE touched_by != '[]'`)
+	if err != nil {
+		return err
+	}
+	type row struct{ id, touched string }
+	var rs []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.touched); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		rs = append(rs, r)
+	}
+	_ = rows.Close()
+	for _, r := range rs {
+		var hs []string
+		if json.Unmarshal([]byte(r.touched), &hs) != nil {
+			continue
+		}
+		kept := hs[:0:0]
+		for _, h := range hs {
+			if !mine[h] {
+				kept = append(kept, h)
+			}
+		}
+		if len(kept) != len(hs) {
+			if _, err := q.ExecContext(ctx, `UPDATE review_participants SET touched_by = ? WHERE id = ?`, touchedJSON(kept), r.id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

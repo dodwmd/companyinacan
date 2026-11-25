@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/timeoff.cancelled.v1.json",
+  "title": "timeoff.cancelled.v1",
+  "description": "Published when an approved leave request is cancelled, so consumers of timeoff.approved.v1 can undo what they did. SENSITIVE BY NATURE like timeoff.approved.v1: ids and dates only, never the leave type or reason; subscribe deliberately. Delivered at least once; consumers de-duplicate on `id`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "timeoff.cancelled.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "people"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "person_id",
+        "start_date",
+        "end_date"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "pattern": "^lvr_[0-9a-f]{24}$"
+        },
+        "person_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}

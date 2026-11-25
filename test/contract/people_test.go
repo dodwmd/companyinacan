@@ -34,6 +34,10 @@ var peopleEvents = map[string][]byte{
 	"oneonone.scheduled.v1":       events.OneOnOneScheduledV1,
 	"goal.updated.v1":             events.GoalUpdatedV1,
 	"checklist.task_completed.v1": events.ChecklistTaskCompletedV1,
+	"review.cycle.opened.v1":      events.ReviewCycleOpenedV1,
+	"review.released.v1":          events.ReviewReleasedV1,
+	"timeoff.approved.v1":         events.TimeOffApprovedV1,
+	"timeoff.cancelled.v1":        events.TimeOffCancelledV1,
 }
 
 func TestPeopleManifest(t *testing.T) {
@@ -70,7 +74,7 @@ func TestPeopleManifest(t *testing.T) {
 	if strings.Join(code, ",") != strings.Join(man, ",") {
 		t.Errorf("manifest data classes %v differ from core/people Classes %v", man, code)
 	}
-	for _, c := range []string{"people-sensitive", "performance-oneonone", "performance-goals"} {
+	for _, c := range []string{"people-sensitive", "performance-oneonone", "performance-goals", "performance-reviews", "people-timeoff"} {
 		if classes[c] != "sensitive" {
 			t.Errorf("class %s must be sensitive", c)
 		}
@@ -313,14 +317,54 @@ func TestServiceEventsMatchSchemas(t *testing.T) {
 	}
 	_, err = s.CompleteTask(ctx, hr, cls[0].Tasks[0].ID)
 	must(err)
+	// reviews: open a cycle, write, calibrate, request and approve the release (two hr identities)
+	tpl, err := s.CreateReviewTemplate(ctx, hr, people.TemplateIn{Name: "annual", Questions: []people.Question{{ID: "q1", Text: "Results", Type: "rating", Audience: "all"}}})
+	must(err)
+	cy, err := s.CreateCycle(ctx, hr, people.CycleIn{Name: "2026", TemplateID: tpl.ID, Anonymity: "anonymous"})
+	must(err)
+	rids, err := s.AddParticipants(ctx, hr, cy.ID, []string{rep.ID})
+	must(err)
+	_, err = s.SetCycleState(ctx, hr, cy.ID, "open")
+	must(err)
+	three := 3
+	must(s.SaveManager(ctx, mgrA, rids[0], people.ManagerIn{Rating: &three, Summary: "ok", Submit: true}))
+	_, err = s.SetCycleState(ctx, hr, cy.ID, "calibration")
+	must(err)
+	must(s.RequestRelease(ctx, hr, rids[0]))
+	hr2 := people.Actor{Subject: "svc2", Roles: []string{people.RoleHR}}
+	must(s.DecideRelease(ctx, hr2, rids[0], true, ""))
+	// time off: a type, the accrual job, a request approved by the manager, then cancelled
+	lt, err := s.CreateLeaveType(ctx, hr, people.LeaveTypeIn{Key: "vacation", Name: "Vacation", AccrualMode: "annual", GrantHalves: 50})
+	must(err)
+	_, err = s.RunAccruals(ctx, hr)
+	must(err)
+	lr, err := s.CreateLeaveRequest(ctx, repA, people.LeaveRequestIn{TypeID: lt.ID, StartDate: "2026-03-23", EndDate: "2026-03-24"})
+	must(err)
+	_, err = s.SubmitLeaveRequest(ctx, repA, lr.ID)
+	must(err)
+	_, err = s.DecideLeaveRequest(ctx, mgrA, lr.ID, true)
+	must(err)
+	_, err = s.CancelLeaveRequest(ctx, repA, lr.ID)
+	must(err)
 	for _, st := range []people.Status{people.StOffboarding, people.StFormer} {
 		_, err = s.ChangeStatus(ctx, hr, rep.ID, st, "", "")
 		must(err)
 	}
+	// Erasure also purges the person's review and leave events from the outbox, so read them first.
+	before, err := s.AllEvents(ctx)
+	must(err)
 	_, err = s.RequestErasure(ctx, hr, rep.ID)
 	must(err)
-	evs, err := s.AllEvents(ctx)
+	after, err := s.AllEvents(ctx)
 	must(err)
+	have := map[string]bool{}
+	var evs []people.Event
+	for _, ev := range append(before, after...) {
+		if !have[ev.ID] {
+			have[ev.ID] = true
+			evs = append(evs, ev)
+		}
+	}
 	seen := map[string]int{}
 	for _, ev := range evs {
 		raw, ok := peopleEvents[ev.Type]

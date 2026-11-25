@@ -21,6 +21,14 @@ type Config struct {
 	Webhook     WebhookConfig     `yaml:"webhook"`
 	Introspect  IntrospectConfig  `yaml:"introspect"`
 	Retention   map[string]string `yaml:"retention"`
+	Reviews     ReviewsConfig     `yaml:"reviews"`
+}
+
+// ReviewsConfig holds the review defaults.
+type ReviewsConfig struct {
+	// MinResponses is the default number of feedback answers needed before any feedback about a
+	// person is shown (at least 3: fewer could identify the authors). A cycle can raise it.
+	MinResponses int `yaml:"min_responses"`
 }
 
 // WebhookConfig is where outbox events are delivered (can-core's event endpoint).
@@ -87,6 +95,9 @@ func ParseConfig(data []byte) (*Config, error) {
 		c.DBPath = "/data/people.db"
 	}
 	var errs []error
+	if c.Reviews.MinResponses != 0 && (c.Reviews.MinResponses < minAnonymity || c.Reviews.MinResponses > 50) {
+		errs = append(errs, fmt.Errorf("reviews.min_responses must be between %d and 50", minAnonymity))
+	}
 	if c.KeyringFile == "" {
 		errs = append(errs, errors.New("keyring_file is required: sensitive fields are always encrypted"))
 	}

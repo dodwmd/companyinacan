@@ -1,0 +1,15 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "timeoff.approved.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "people",
+  "data": {
+    "request_id": "lvr_fedcba98765432100123abcd",
+    "person_id": "pers_fedcba98765432100123abcd",
+    "start_date": "2027-05-03",
+    "end_date": "2027-05-04",
+    "start_part": "pm",
+    "end_part": "am",
+    "halves": 2
+  }
+}

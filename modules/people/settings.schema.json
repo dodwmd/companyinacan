@@ -15,7 +15,17 @@
         "people-sensitive": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
         "people-checklists": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
         "performance-oneonone": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "performance-goals": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+        "performance-goals": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "performance-reviews": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
+        "people-timeoff": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+      }
+    },
+    "reviews": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Review defaults. Leave entitlements and statutory rules vary by jurisdiction: leave types, accruals, holidays and blackouts are data entered through the API, not settings, and no legal rule is built in. This is a tool, not legal or HR advice.",
+      "properties": {
+        "min_responses": { "type": "integer", "minimum": 3, "maximum": 50, "description": "Default number of feedback answers needed before any feedback about a person is shown. Never below 3: fewer could identify the authors. A cycle can raise it." }
       }
     }
   }

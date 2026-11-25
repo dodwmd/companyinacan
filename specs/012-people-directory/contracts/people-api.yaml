@@ -2,11 +2,11 @@
 openapi: "3.1.0"
 info:
   title: "can-people API"
-  version: "0.1.0"
+  version: "0.2.0"
   license:
     name: "Apache-2.0"
     identifier: "Apache-2.0"
-  description: "REST JSON API of the in-house people service: the `directory` and `performance` capabilities (people records, org structure, employment lifecycle, onboarding checklists, 1:1s, goals). Deny by default: every route needs a bearer token, and one policy layer decides per caller, per relationship and per field. Callers without visibility get 404 instead of 403 where a 403 would confirm that a record exists. This is a tool, not legal, HR or payroll advice; the operator is responsible for compliance with employment and data-protection law."
+  description: "REST JSON API of the in-house people service: the `directory` and `performance` capabilities (people records, org structure, employment lifecycle, onboarding checklists, 1:1s, goals), performance reviews (cycles, self, manager and peer feedback, calibration, approved release) and time off (leave types and accruals as data, requests, balances ledger, holiday calendars, team calendar). Deny by default: every route needs a bearer token, and one policy layer decides per caller, per relationship and per field. Callers without visibility get 404 instead of 403 where a 403 would confirm that a record exists. Leave entitlements and statutory rules vary by jurisdiction: they are modelled as data the operator enters, with no legal rule engine. This is a tool, not legal, HR or payroll advice; the operator is responsible for compliance with employment and data-protection law."
 servers:
   - url: "http://people-api.mod-people.svc:8081"
     description: "ClusterIP only; there is no public listener"
@@ -15,6 +15,8 @@ security:
 tags:
   - name: "directory"
   - name: "performance"
+  - name: "reviews"
+  - name: "timeoff"
   - name: "platform"
 paths:
   "/healthz":
@@ -1247,6 +1249,1002 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         "404":
           "$ref": "#/components/responses/NotFound"
+  "/v1/review-templates":
+    get:
+      summary: "List review templates"
+      description: "Who: hr or admin"
+      tags:
+        - "reviews"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/ReviewTemplate" } } } }
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Create a review template"
+      description: "Who: hr or admin. Questions have a type (rating or text) and an audience (all, self, manager, peer, upward)."
+      tags:
+        - "reviews"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/ReviewTemplate" }
+      responses:
+        "201":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/ReviewTemplate" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/review-cycles":
+    get:
+      summary: "List the review cycles the caller takes part in (hr: all)"
+      description: "Who: hr, or a participant (subject, their manager, a chosen reviewer)"
+      tags:
+        - "reviews"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/Cycle" } } } }
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Create a draft review cycle"
+      description: "Who: hr or admin. The template's questions are copied. anonymity is anonymous or attributed (peer and upward feedback). min_responses is at least 3."
+      tags:
+        - "reviews"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/CycleIn" }
+      responses:
+        "201":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/Cycle" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/review-cycles/{id}":
+    get:
+      summary: "Get a review cycle"
+      description: "Who: hr, or a participant; others get 404"
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/Cycle" }
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/review-cycles/{id}/participants":
+    post:
+      summary: "Add people to a draft or open cycle"
+      description: "Who: hr or admin. Idempotent per person; returns the review ids."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/PersonIds" }
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/ReviewIds" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/review-cycles/{id}/state":
+    post:
+      summary: "Move a cycle forward: draft, open, calibration, closed"
+      description: "Who: hr or admin. One step at a time, never back. Opening publishes review.cycle.opened.v1. Closing needs no release waiting for a decision."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/CycleState" }
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/Cycle" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews":
+    get:
+      summary: "List the reviews the caller may know about"
+      description: "The caller's own, their direct reports' (live reporting line), released ones further down their chain, and for hr all. No content. Optional cycle_id."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "cycle_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/ReviewSummary" } } } }
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}":
+    get:
+      summary: "Get one review, filtered for the caller"
+      description: "Parts the caller may not see are absent. The subject sees nothing of the manager part, outcome or feedback before release, never calibration notes or peer comments; the manager sees the self-assessment once submitted; a skip-level manager sees the released outcome only; hr sees all except for their own review. Peer feedback is shown only after the cycle leaves open and from min_responses answers (upward: at least 5), and never attributed in an anonymous cycle. Every read is audited before it is returned. No ETag or Last-Modified."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/Review" }
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}/self":
+    put:
+      summary: "Save or submit the self-assessment"
+      description: "Who: the subject, while the cycle is open and before submitting"
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/SelfIn" }
+      responses:
+        "204":
+          description: "done"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}/manager":
+    put:
+      summary: "Save or submit the manager review"
+      description: "Who: the live direct manager, while the cycle is open and before submitting. Submitting needs an overall rating."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/ManagerIn" }
+      responses:
+        "204":
+          description: "done"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}/calibration":
+    put:
+      summary: "Set the calibrated rating and the calibration notes"
+      description: "Who: hr or admin (never for their own review), in the calibration stage and before release. The notes are never visible to the subject."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/CalibrationIn" }
+      responses:
+        "204":
+          description: "done"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}/nominations":
+    get:
+      summary: "List the feedback nominations of a review"
+      description: "The subject sees only the nominations they proposed; the manager and hr see all, with who proposed"
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/Nomination" } } } }
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Propose or add a peer or upward reviewer"
+      description: "The subject proposes peers (the manager approves); the manager or hr add directly. Upward reviewers must be direct reports of the subject."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/NominationIn" }
+      responses:
+        "201":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/Nomination" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/review-nominations/{id}/decision":
+    post:
+      summary: "Approve or decline a proposed reviewer"
+      description: "Who: the subject's manager, or hr; never the subject"
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/ApproveIn" }
+      responses:
+        "204":
+          description: "done"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}/release-request":
+    post:
+      summary: "Ask for the review to be released to the subject"
+      description: "Who: hr or admin (not for their own review), in calibration, with a submitted manager review. Freezes the outcome. With an approval engine configured a review-release approval is requested."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "204":
+          description: "done"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}/release-decision":
+    post:
+      summary: "Approve or reject a requested release"
+      description: "Who: hr or admin, and not anyone who wrote, calibrated or requested the release of this review, nor its subject (separation of duties; rejecting and re-requesting does not clear that history). Approving publishes review.released.v1."
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/ReleaseDecisionIn" }
+      responses:
+        "204":
+          description: "done"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/reviews/{id}/acknowledge":
+    post:
+      summary: "Acknowledge a released review"
+      description: "Who: the subject, once"
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/AckIn" }
+      responses:
+        "204":
+          description: "done"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/feedback-requests":
+    get:
+      summary: "List the feedback requests addressed to the caller"
+      description: "Who the caller reviews and the questions. Nothing about who nominated them or who else was asked."
+      tags:
+        - "reviews"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/FeedbackRequest" } } } }
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/feedback-requests/{id}/answers":
+    post:
+      summary: "Answer a feedback request, once"
+      description: "In an anonymous cycle the stored answer carries no reviewer and no timestamp"
+      tags:
+        - "reviews"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/AnswersIn" }
+      responses:
+        "204":
+          description: "done"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/leave-types":
+    get:
+      summary: "List the leave types"
+      description: "Who: any staff member"
+      tags:
+        - "timeoff"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/LeaveType" } } } }
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Define a leave type and its accrual policy"
+      description: "Who: hr or admin. Units are half days. Entitlements and statutory rules vary by jurisdiction: this is data the operator enters, not a rule engine."
+      tags:
+        - "timeoff"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/LeaveTypeIn" }
+      responses:
+        "201":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveType" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/leave-types/{id}":
+    patch:
+      summary: "Change the policy of a leave type"
+      description: "Who: hr or admin. Existing ledger entries are not rewritten."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/LeaveTypePatch" }
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveType" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/holiday-calendars":
+    get:
+      summary: "List the public holiday calendars"
+      description: "Who: any staff member"
+      tags:
+        - "timeoff"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/HolidayCalendar" } } } }
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Create or replace the calendar of a location"
+      description: "Who: hr or admin. Matched to a person's location (case-folded). Includes the work week."
+      tags:
+        - "timeoff"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/HolidayCalendarIn" }
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/HolidayCalendar" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/blackouts":
+    get:
+      summary: "List blackout periods"
+      description: "Who: any staff member"
+      tags:
+        - "timeoff"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/Blackout" } } } }
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Add a blackout period (company or team)"
+      description: "Who: hr or admin"
+      tags:
+        - "timeoff"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/BlackoutIn" }
+      responses:
+        "201":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/Blackout" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/blackouts/{id}":
+    delete:
+      summary: "Remove a blackout period"
+      description: "Who: hr or admin"
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "204":
+          description: "done"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/leave-requests":
+    get:
+      summary: "List leave requests"
+      description: "The caller's own (drafts included), their direct reports' (live reporting line; no drafts) and, for hr, everyone's. Notes are not part of a list. Reads of other people's requests are audited."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "person_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "status"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/LeaveRequest" } } } }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    post:
+      summary: "Create a draft leave request for oneself"
+      description: "Who: the person themself. Half days: start_part pm, end_part am."
+      tags:
+        - "timeoff"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/LeaveRequestIn" }
+      responses:
+        "201":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveRequest" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/leave-requests/{id}":
+    get:
+      summary: "Get a leave request"
+      description: "Who: the person, their direct manager, hr. Colleagues, skip-level managers and everyone else get 404; a draft is the person's alone. Audited."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveRequest" }
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+    patch:
+      summary: "Edit a draft"
+      description: "Who: the person"
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/LeaveRequestIn" }
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveRequest" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/leave-requests/{id}/submit":
+    post:
+      summary: "Submit a draft"
+      description: "Computes working days from the person's holiday calendar; refuses overlaps, blackouts (except types that ignore them) and an insufficient balance, in one transaction."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveRequest" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/leave-requests/{id}/decision":
+    post:
+      summary: "Approve or reject a pending request"
+      description: "Who: the live direct manager, or hr when there is none; never the requester (separation of duties, NFKC/casefold on subjects, also applied to an approval engine's decider). Approving appends a use entry to the ledger and publishes timeoff.approved.v1."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/ApproveIn" }
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveRequest" }
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/leave-requests/{id}/cancel":
+    post:
+      summary: "Cancel a request"
+      description: "Who: the person until the leave starts; hr after. An approved cancellation appends a reversal entry for the days not yet taken and publishes timeoff.cancelled.v1."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LeaveRequest" }
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/people/{id}/leave-balances":
+    get:
+      summary: "Balances of a person as of a date"
+      description: "Who: the person, their direct manager, hr. Others get 404. Audited. Query: as_of (default today)."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "as_of"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/Balance" } } } }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/people/{id}/leave-ledger":
+    get:
+      summary: "The append-only balance ledger of a person"
+      description: "Who: the person, their direct manager, hr. Audited. Query: type_id."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "type_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/LedgerEntry" } } } }
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/people/{id}/leave-adjustments":
+    post:
+      summary: "Append a manual adjustment to the ledger"
+      description: "Who: hr or admin, never for their own record. A reason is required (sealed)."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema: { "$ref": "#/components/schemas/AdjustIn" }
+      responses:
+        "201":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/LedgerEntry" }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "404":
+          "$ref": "#/components/responses/NotFound"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/timeoff/calendar":
+    get:
+      summary: "Who is out between two dates"
+      description: "Colleagues see only that someone is out (no type, reason, request id or status; pending requests are invisible to them). The person, their direct manager and hr also see the type and status. At most 92 days. Query: from, to, team_id (default the caller's team; hr may pass all)."
+      tags:
+        - "timeoff"
+      parameters:
+        - name: "from"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+        - name: "to"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+        - name: "team_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { type: "object", properties: { items: { type: "array", items: { "$ref": "#/components/schemas/CalendarEntry" } } } }
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+  "/v1/timeoff/accruals/run":
+    post:
+      summary: "Run the accrual and carry-over job now"
+      description: "Who: hr or admin. Idempotent; also runs hourly."
+      tags:
+        - "timeoff"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema: { "$ref": "#/components/schemas/EntriesCount" }
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
 components:
   securitySchemes:
     bearer:
@@ -1818,3 +2816,286 @@ components:
             - "internal"
         message:
           type: "string"
+    Question:
+      type: "object"
+      required: ["id", "text", "type", "audience"]
+      properties:
+        id: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,31}$" }
+        text: { type: "string", maxLength: 300 }
+        type: { enum: ["rating", "text"] }
+        audience: { enum: ["all", "self", "manager", "peer", "upward"] }
+    Answers:
+      type: "object"
+      description: "question id to answer. A rating question takes rating (1..rating_max of the cycle), a text question takes text."
+      additionalProperties:
+        type: "object"
+        properties:
+          rating: { type: "integer" }
+          text: { type: "string", maxLength: 4000 }
+    ReviewTemplate:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        name: { type: "string" }
+        questions: { type: "array", items: { "$ref": "#/components/schemas/Question" } }
+    CycleIn:
+      type: "object"
+      required: ["name", "template_id", "anonymity"]
+      properties:
+        name: { type: "string" }
+        template_id: { type: "string" }
+        anonymity: { enum: ["anonymous", "attributed"] }
+        min_responses: { type: "integer", minimum: 3, maximum: 50 }
+        rating_max: { type: "integer", minimum: 3, maximum: 10 }
+        due_date: { type: "string", format: "date" }
+    Cycle:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        name: { type: "string" }
+        state: { enum: ["draft", "open", "calibration", "closed"] }
+        anonymity: { enum: ["anonymous", "attributed"] }
+        min_responses: { type: "integer" }
+        rating_max: { type: "integer" }
+        questions: { type: "array", items: { "$ref": "#/components/schemas/Question" } }
+    CycleState:
+      type: "object"
+      required: ["state"]
+      properties:
+        state: { enum: ["open", "calibration", "closed"] }
+    PersonIds:
+      type: "object"
+      required: ["person_ids"]
+      properties:
+        person_ids: { type: "array", items: { type: "string" }, maxItems: 500 }
+    ReviewIds:
+      type: "object"
+      properties:
+        review_ids: { type: "array", items: { type: "string" } }
+    ReviewSummary:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        cycle_id: { type: "string" }
+        person_id: { type: "string" }
+        cycle_state: { type: "string" }
+        status: { enum: ["in_progress", "self_submitted", "manager_submitted", "release_requested", "released", "acknowledged"] }
+    Review:
+      type: "object"
+      description: "One review, filtered for the caller: parts the caller may not see are absent. peer_feedback and upward_feedback carry aggregates, and comments only for the manager and hr, only from min_responses answers, never attributed in an anonymous cycle."
+      properties:
+        id: { type: "string" }
+        cycle_id: { type: "string" }
+        person_id: { type: "string" }
+        status: { type: "string" }
+        self: { type: "object" }
+        manager: { type: "object" }
+        calibration: { type: "object", description: "hr only, never the subject" }
+        outcome: { type: "object", properties: { rating: { type: "integer" }, summary: { type: "string" }, released: { type: "boolean" } } }
+        peer_feedback: { "$ref": "#/components/schemas/FeedbackView" }
+        upward_feedback: { "$ref": "#/components/schemas/FeedbackView" }
+        goals: { type: "array", description: "read-only references to the subject's goals the caller may see", items: { type: "object" } }
+    FeedbackView:
+      type: "object"
+      properties:
+        kind: { enum: ["peer", "upward"] }
+        shown: { type: "boolean" }
+        required_responses: { type: "integer" }
+        responses: { type: "integer" }
+        ratings: { type: "array", items: { type: "object" } }
+        comments: { type: "array", items: { type: "object" } }
+    SelfIn:
+      type: "object"
+      properties:
+        answers: { "$ref": "#/components/schemas/Answers" }
+        submit: { type: "boolean" }
+    ManagerIn:
+      type: "object"
+      properties:
+        answers: { "$ref": "#/components/schemas/Answers" }
+        rating: { type: "integer" }
+        summary: { type: "string", maxLength: 2000 }
+        submit: { type: "boolean" }
+    CalibrationIn:
+      type: "object"
+      required: ["rating"]
+      properties:
+        rating: { type: "integer" }
+        notes: { type: "string", maxLength: 4000 }
+    NominationIn:
+      type: "object"
+      required: ["reviewer_id", "kind"]
+      properties:
+        reviewer_id: { type: "string" }
+        kind: { enum: ["peer", "upward"] }
+    Nomination:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        review_id: { type: "string" }
+        reviewer_id: { type: "string" }
+        kind: { enum: ["peer", "upward"] }
+        status: { enum: ["proposed", "approved", "declined", "submitted"] }
+        proposed_by: { type: "string", description: "manager and hr only" }
+    ApproveIn:
+      type: "object"
+      properties:
+        approve: { type: "boolean" }
+    ReleaseDecisionIn:
+      type: "object"
+      properties:
+        approve: { type: "boolean" }
+        reason: { type: "string", maxLength: 500 }
+    AckIn:
+      type: "object"
+      properties:
+        comment: { type: "string", maxLength: 1000 }
+    FeedbackRequest:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        cycle_id: { type: "string" }
+        subject_id: { type: "string" }
+        kind: { enum: ["peer", "upward"] }
+        anonymous: { type: "boolean" }
+        questions: { type: "array", items: { "$ref": "#/components/schemas/Question" } }
+    AnswersIn:
+      type: "object"
+      required: ["answers"]
+      properties:
+        answers: { "$ref": "#/components/schemas/Answers" }
+    LeaveTypeIn:
+      type: "object"
+      required: ["key", "name"]
+      properties:
+        key: { type: "string", pattern: "^[a-z][a-z0-9-]{0,31}$" }
+        name: { type: "string" }
+        paid: { type: "boolean" }
+        sensitive: { type: "boolean" }
+        accrual_mode: { enum: ["none", "annual", "monthly"] }
+        grant_halves: { type: "integer", description: "half days per year (annual) or per month (monthly)" }
+        carryover_cap_halves: { type: "integer", description: "omit for unlimited carry-over" }
+        allow_negative: { type: "boolean" }
+        negative_floor_halves: { type: "integer" }
+        ignores_blackouts: { type: "boolean" }
+        sets_leave_status: { type: "boolean" }
+        leave_status_min_halves: { type: "integer" }
+    LeaveTypePatch:
+      type: "object"
+      properties:
+        name: { type: "string" }
+        grant_halves: { type: "integer" }
+        carryover_cap_halves: { type: "integer" }
+        allow_negative: { type: "boolean" }
+        negative_floor_halves: { type: "integer" }
+        ignores_blackouts: { type: "boolean" }
+        sets_leave_status: { type: "boolean" }
+        leave_status_min_halves: { type: "integer" }
+        active: { type: "boolean" }
+    LeaveType:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        key: { type: "string" }
+        name: { type: "string" }
+        tracked: { type: "boolean" }
+        accrual_mode: { type: "string" }
+        grant_halves: { type: "integer" }
+        active: { type: "boolean" }
+    HolidayCalendarIn:
+      type: "object"
+      required: ["location", "name"]
+      properties:
+        location: { type: "string" }
+        name: { type: "string" }
+        work_days: { type: "array", items: { enum: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] } }
+        holidays: { type: "array", items: { type: "object", properties: { date: { type: "string", format: "date" }, name: { type: "string" } } } }
+    HolidayCalendar:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        location: { type: "string" }
+        name: { type: "string" }
+        work_days: { type: "array", items: { type: "string" } }
+        holidays: { type: "array", items: { type: "object" } }
+    BlackoutIn:
+      type: "object"
+      required: ["name", "start_date", "end_date"]
+      properties:
+        name: { type: "string" }
+        start_date: { type: "string", format: "date" }
+        end_date: { type: "string", format: "date" }
+        team_id: { type: "string" }
+    Blackout:
+      type: "object"
+      properties:
+        id: { type: "string" }
+        name: { type: "string" }
+        start_date: { type: "string" }
+        end_date: { type: "string" }
+        team_id: { type: "string" }
+    LeaveRequestIn:
+      type: "object"
+      required: ["type_id", "start_date", "end_date"]
+      properties:
+        type_id: { type: "string" }
+        start_date: { type: "string", format: "date" }
+        end_date: { type: "string", format: "date" }
+        start_part: { enum: ["full", "pm"] }
+        end_part: { enum: ["full", "am"] }
+        note: { type: "string", maxLength: 1000 }
+    LeaveRequest:
+      type: "object"
+      description: "type and note are present only for the person, their manager and hr."
+      properties:
+        id: { type: "string" }
+        person_id: { type: "string" }
+        type: { type: "string" }
+        status: { enum: ["draft", "pending", "approved", "rejected", "cancelled"] }
+        start_date: { type: "string" }
+        end_date: { type: "string" }
+        halves: { type: "integer" }
+        days: { type: "number" }
+        note: { type: "string" }
+    Balance:
+      type: "object"
+      properties:
+        type_id: { type: "string" }
+        type: { type: "string" }
+        halves: { type: "integer" }
+        days: { type: "number" }
+        pending_halves: { type: "integer" }
+        as_of: { type: "string" }
+    LedgerEntry:
+      type: "object"
+      properties:
+        seq: { type: "integer" }
+        type_id: { type: "string" }
+        entry_date: { type: "string" }
+        kind: { enum: ["grant", "accrual", "expire", "use", "reversal", "adjust"] }
+        halves: { type: "integer" }
+        ref: { type: "string" }
+    AdjustIn:
+      type: "object"
+      required: ["type_id", "halves", "reason"]
+      properties:
+        type_id: { type: "string" }
+        halves: { type: "integer", description: "half days, positive or negative" }
+        reason: { type: "string", maxLength: 500 }
+    CalendarEntry:
+      type: "object"
+      description: "A colleague gets out only. request_id, type and status are for the person, their direct manager and hr."
+      properties:
+        person_id: { type: "string" }
+        start_date: { type: "string" }
+        end_date: { type: "string" }
+        start_part: { type: "string" }
+        end_part: { type: "string" }
+        out: { type: "boolean" }
+        request_id: { type: "string" }
+        type: { type: "string" }
+        status: { type: "string" }
+    EntriesCount:
+      type: "object"
+      properties:
+        entries: { type: "integer" }

@@ -57,6 +57,40 @@ const (
 	ActGoalListOwn     Action = "goal.list_own" // list goals the caller owns
 )
 
+// Actions. Performance reviews (E14b). Fact.CycleState, SelfDone, MgrDone, Released and
+// ReleaseRequested carry the state of the cycle and of the one review being acted on.
+const (
+	ActRevManage           Action = "rev.manage"            // templates, cycles, participants, state changes
+	ActRevMeta             Action = "rev.meta"              // that a review exists, and its status
+	ActRevSelfRead         Action = "rev.self.read"         // the self-assessment
+	ActRevSelfWrite        Action = "rev.self.write"        //
+	ActRevMgrRead          Action = "rev.manager.read"      // the manager review: answers, rating, summary
+	ActRevMgrWrite         Action = "rev.manager.write"     //
+	ActRevCalibRead        Action = "rev.calibration.read"  // calibration notes: hr only, never the subject
+	ActRevCalibWrite       Action = "rev.calibration.write" //
+	ActRevOutcomeRead      Action = "rev.outcome.read"      // released final rating and summary
+	ActRevPeerRead         Action = "rev.peer.read"         // aggregated peer and upward feedback
+	ActRevPeerRaw          Action = "rev.peer.raw"          // individual feedback comments (manager and hr)
+	ActRevNominate         Action = "rev.nominate"          // propose or add a reviewer
+	ActRevNominationDecide Action = "rev.nomination.decide" // approve or decline a nomination
+	ActRevFeedbackGive     Action = "rev.feedback.give"     // the assigned reviewer answers
+	ActRevRelease          Action = "rev.release.request"   // ask for a review to be released
+	ActRevReleaseDecide    Action = "rev.release.decide"    // approve or reject the release
+	ActRevAck              Action = "rev.ack"               // the subject acknowledges a released review
+)
+
+// Actions. Time off (E14b).
+const (
+	ActLeaveConfig   Action = "leave.config"   // leave types, holiday calendars, blackouts, accrual runs
+	ActLeaveAdjust   Action = "leave.adjust"   // manual balance adjustment (never one's own)
+	ActLeaveWrite    Action = "leave.write"    // create, edit and submit one's own request
+	ActLeaveRead     Action = "leave.read"     // a request with its type and note
+	ActLeaveDecide   Action = "leave.decide"   // approve or reject
+	ActLeaveCancel   Action = "leave.cancel"   //
+	ActLeaveBalance  Action = "leave.balance"  // a person's balances and ledger
+	ActLeaveCalendar Action = "leave.calendar" // the "who is out" calendar (only "out", never why)
+)
+
 // Fact is what the service knows about the relationship between the actor and the thing
 // acted on (a person, or the owner/report of a goal or 1:1).
 type Fact struct {
@@ -70,6 +104,12 @@ type Fact struct {
 
 	Scope      string // goal scope: person | team | company
 	Visibility string // goal visibility: private | manager | team | company
+
+	CycleState       string // review cycle state: draft | open | calibration | closed
+	SelfDone         bool   // the self-assessment has been submitted
+	MgrDone          bool   // the manager review has been submitted
+	Released         bool   // the review has been released to the subject
+	ReleaseRequested bool   // a release is waiting for a decision
 }
 
 // Actor is the authenticated caller after the service resolved their own person record.
@@ -108,6 +148,18 @@ var actionPerm = map[Action]string{
 	ActOneOnOneRead: "performance.read", ActGoalRead: "performance.read",
 	ActOneOnOneCreate: "performance.write", ActOneOnOneWrite: "performance.write", ActOneOnOnePrivate: "performance.write",
 	ActGoalCreate: "performance.write", ActGoalWrite: "performance.write",
+
+	// E14b. A restricted token needs the matching reviews or time-off permission on top of its role.
+	ActRevManage: "people.reviews.admin", ActRevCalibRead: "people.reviews.admin", ActRevCalibWrite: "people.reviews.admin",
+	ActRevRelease: "people.reviews.admin", ActRevReleaseDecide: "people.reviews.admin",
+	ActRevMeta: "people.reviews.read", ActRevSelfRead: "people.reviews.read", ActRevMgrRead: "people.reviews.read",
+	ActRevOutcomeRead: "people.reviews.read", ActRevPeerRead: "people.reviews.read", ActRevPeerRaw: "people.reviews.read",
+	ActRevSelfWrite: "people.reviews.write", ActRevMgrWrite: "people.reviews.write", ActRevNominate: "people.reviews.write",
+	ActRevNominationDecide: "people.reviews.write", ActRevFeedbackGive: "people.reviews.write", ActRevAck: "people.reviews.write",
+	ActLeaveConfig: "people.timeoff.admin", ActLeaveAdjust: "people.timeoff.admin",
+	ActLeaveWrite: "people.timeoff.write", ActLeaveCancel: "people.timeoff.write",
+	ActLeaveRead: "people.timeoff.read", ActLeaveBalance: "people.timeoff.read", ActLeaveCalendar: "people.timeoff.read",
+	ActLeaveDecide: "people.timeoff.approve",
 }
 
 func (a Actor) has(role string) bool {
@@ -167,6 +219,9 @@ func (a Actor) hrWriter() bool { return a.hrAdmin() && a.permits("people.write")
 func (a Actor) managerOf(f Fact) bool { return a.elevated(RoleManager) && f.Direct }
 func (a Actor) chainOf(f Fact) bool   { return a.elevated(RoleManager) && f.Chain }
 func (a Actor) selfStaff(f Fact) bool { return a.staff() && f.Self }
+
+// hrOther is hr or admin acting on someone else: hr has no review or leave power over their own record.
+func (a Actor) hrOther(f Fact) bool { return a.hrAdmin() && !f.Self }
 
 func visibleStatus(s Status) bool { return s == StActive || s == StLeave || s == StOnboarding }
 
@@ -239,6 +294,61 @@ func Decide(a Actor, act Action, f Fact) bool {
 			return a.staff() || a.hrAdmin()
 		}
 		return false
+	}
+	return decideE14b(a, act, f)
+}
+
+// decideE14b holds the review and time-off rules (specs/022-reviews-timeoff/spec.md).
+func decideE14b(a Actor, act Action, f Fact) bool {
+	open := f.CycleState == "open"
+	switch act {
+	case ActRevManage, ActLeaveConfig:
+		return a.hrAdmin()
+	case ActRevMeta:
+		return a.selfStaff(f) || a.managerOf(f) || a.hrOther(f) || (a.chainOf(f) && f.Released)
+	case ActRevSelfRead:
+		return a.selfStaff(f) || (a.managerOf(f) && f.SelfDone) || a.hrOther(f)
+	case ActRevSelfWrite:
+		return a.selfStaff(f) && open && !f.SelfDone
+	case ActRevMgrRead:
+		return a.managerOf(f) || (a.selfStaff(f) && f.Released) || a.hrOther(f)
+	case ActRevMgrWrite:
+		return a.managerOf(f) && open && !f.MgrDone
+	case ActRevCalibRead:
+		return a.hrOther(f)
+	case ActRevCalibWrite:
+		return a.hrOther(f) && f.CycleState == "calibration" && !f.Released && !f.ReleaseRequested
+	case ActRevOutcomeRead:
+		return ((a.selfStaff(f) || a.managerOf(f) || a.chainOf(f)) && f.Released) || a.hrOther(f)
+	case ActRevPeerRead:
+		return (a.selfStaff(f) && f.Released) || a.managerOf(f) || a.hrOther(f)
+	case ActRevPeerRaw:
+		return a.managerOf(f) || a.hrOther(f)
+	case ActRevNominate:
+		return open && (a.selfStaff(f) || a.managerOf(f) || a.hrOther(f))
+	case ActRevNominationDecide:
+		return open && (a.managerOf(f) || a.hrOther(f))
+	case ActRevFeedbackGive:
+		return open && a.staff() && f.Assigned && !f.Self
+	case ActRevRelease:
+		return a.hrOther(f) && f.CycleState == "calibration" && f.MgrDone && !f.Released && !f.ReleaseRequested
+	case ActRevReleaseDecide:
+		return a.hrOther(f) && f.CycleState == "calibration" && f.ReleaseRequested && !f.Released
+	case ActRevAck:
+		return a.selfStaff(f) && f.Released
+
+	case ActLeaveAdjust:
+		return a.hrOther(f)
+	case ActLeaveWrite:
+		return a.selfStaff(f)
+	case ActLeaveRead, ActLeaveBalance:
+		return a.selfStaff(f) || a.managerOf(f) || a.hrAdmin()
+	case ActLeaveDecide:
+		return a.managerOf(f) || a.hrOther(f)
+	case ActLeaveCancel:
+		return a.selfStaff(f) || a.hrOther(f)
+	case ActLeaveCalendar:
+		return a.staff() || a.hrAdmin()
 	}
 	return false
 }
