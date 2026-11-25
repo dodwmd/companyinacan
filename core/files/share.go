@@ -265,9 +265,7 @@ func (s *Store) OpenShare(ctx context.Context, token, client string) (*Content, 
 	if err != nil {
 		return nil, errors.Join(ErrUnavailable, errors.New("the link could not be served"))
 	}
-	cctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-	c, err := s.openVersion(cctx, f, version)
+	c, err := s.openVersion(ctx, f, version)
 	if err != nil {
 		return nil, err
 	}

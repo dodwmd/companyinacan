@@ -672,11 +672,16 @@ func (c *Content) Stream(ctx context.Context, w io.Writer) error {
 	return err
 }
 
+// openVersion resolves a version and opens its object. ctx is the request's context and must live as
+// long as the returned Body is read: only the database query is bounded here, because a backend's
+// reader (S3) dies with the context it was opened with.
 func (s *Store) openVersion(ctx context.Context, f *fileRow, version int) (*Content, error) {
 	var key string
 	c := &Content{FileID: f.id, store: s, ContentType: "application/octet-stream", Ext: f.ext}
 	var purged sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT n, blob_key, size, sha256, content_type, purged_at FROM versions WHERE (file_id = ?) AND (n = CASE WHEN ? = 0 THEN ? ELSE ? END)`,
+	qctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	err := s.db.QueryRowContext(qctx, `SELECT n, blob_key, size, sha256, content_type, purged_at FROM versions WHERE (file_id = ?) AND (n = CASE WHEN ? = 0 THEN ? ELSE ? END)`,
 		f.id, version, f.cur, version).Scan(&c.Version, &key, &c.Size, &c.SHA256, &c.StoredType, &purged)
 	if errors.Is(err, sql.ErrNoRows) || purged.Valid {
 		return nil, ErrNotFound
@@ -723,9 +728,7 @@ func (s *Store) OpenContent(ctx context.Context, p *Principal, id string, versio
 	if err := s.auditRead(ctx, p.Subject, "file.download", "file:"+id); err != nil {
 		return nil, err
 	}
-	cctx, cancel = context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-	c, err := s.openVersion(cctx, f, version)
+	c, err := s.openVersion(ctx, f, version)
 	if err != nil {
 		return nil, err
 	}
