@@ -1,0 +1,31 @@
+# k3d cluster for `make dev` (epic E02). Used as: k3d cluster create companyinacan-dev --config dev/k3d.yaml
+# Targets k3d v5.x (config schema k3d.io/v1alpha5).
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: companyinacan-dev
+# Pinned k3s image: bump deliberately and record the reason in docs/dev-cluster.md. Production
+# k3s (epic E06) must install the same minor version so dev matches it.
+image: rancher/k3s:v1.31.5-k3s1
+servers: 1
+agents: 0
+ports:
+  - port: 80:80
+    nodeFilters: [loadbalancer]
+  - port: 443:443
+    nodeFilters: [loadbalancer]
+options:
+  k3d:
+    wait: true
+    timeout: 180s
+  k3s:
+    extraArgs:
+      # Footprint (SPEC 3.2): no metrics-server. Traefik, CoreDNS, local-path and ServiceLB stay.
+      - arg: --disable=metrics-server
+        nodeFilters: [server:*]
+      # Secrets encrypted at rest, as in production (SPEC 3.1).
+      - arg: --secrets-encryption
+        nodeFilters: [server:*]
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: false

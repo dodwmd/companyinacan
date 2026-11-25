@@ -9,7 +9,7 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev up
+.PHONY: help build test unit contract lint licences dev down doctor up
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -35,8 +35,14 @@ licences: ## regenerate THIRD_PARTY_LICENSES
 test: lint unit contract ## full local check suite
 	$(GO) run ./cmd/can licences --modules-dir modules --check
 
-dev: ## local k3s cluster (not implemented yet, epic E02)
-	@$(GO) run ./cmd/can dev
+dev: ## create the local k3d cluster and apply the base manifests (epic E02)
+	@$(GO) run ./cmd/can dev up
+
+down: ## delete the local k3d cluster
+	@$(GO) run ./cmd/can dev down
+
+doctor: ## check the prerequisites for `make dev`
+	@$(GO) run ./cmd/can dev doctor
 
 up: ## provision a server and deploy (not implemented yet, epic E06)
 	@$(GO) run ./cmd/can up

@@ -1,0 +1,36 @@
+# Configures the Traefik chart bundled with k3s (SPEC 3.1): ACME resolver whose acme.json is
+# persisted on a PVC (restarts must not re-issue certificates), and externalTrafficPolicy
+# Local so client IPs survive ServiceLB (admin IP allowlist). The ACME e-mail and CA server
+# are set per environment by can-core / the bootstrap; local dev uses plain HTTP and never
+# requests certificates (localtest.me cannot pass a public challenge).
+#
+# Caveats for E06: (1) the ReadWriteOnce PVC and a RollingUpdate strategy can deadlock a
+# Traefik upgrade (new pod cannot mount the volume until the old one exits); on a single node
+# this works, but if it hangs switch the chart's update strategy to Recreate. (2) The resolver
+# has no `email`; the bootstrap must add `certificatesResolvers.letsencrypt.acme.email` (and a
+# staging `caServer` for tests) before any certificate is requested. Neither is exercised in dev.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    persistence:
+      enabled: true
+      name: data
+      path: /data
+      size: 128Mi
+    podSecurityContext:
+      fsGroup: 65532
+    certificatesResolvers:
+      letsencrypt:
+        acme:
+          storage: /data/acme.json
+          tlsChallenge: true
+    service:
+      spec:
+        externalTrafficPolicy: Local
+    resources:
+      requests: {cpu: 50m, memory: 48Mi}
+      limits: {cpu: 500m, memory: 128Mi}

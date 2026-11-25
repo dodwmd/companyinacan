@@ -28,9 +28,9 @@ var checks = []check{
 	{"go", []string{"go"}, true, "install Go from https://go.dev/dl/"},
 	{"git", []string{"git"}, true, "install git from your package manager"},
 	{"make", []string{"make"}, true, "install make (for example the build-essential package)"},
-	{"docker or podman", []string{"docker", "podman"}, false, "needed for `make dev` (epic E02): install Docker or Podman"},
-	{"k3d", []string{"k3d"}, false, "needed for `make dev` (epic E02): https://k3d.io"},
-	{"kubectl", []string{"kubectl"}, false, "optional, handy for debugging: https://kubernetes.io/docs/tasks/tools/"},
+	{"docker or podman", []string{"docker", "podman"}, false, "needed for `make dev`: install Docker or Podman"},
+	{"k3d", []string{"k3d"}, false, "needed for `make dev`: https://k3d.io"},
+	{"kubectl", []string{"kubectl"}, false, "needed for `make dev`: https://kubernetes.io/docs/tasks/tools/"},
 	{"helm", []string{"helm"}, false, "optional, handy for debugging: https://helm.sh/docs/intro/install/"},
 }
 

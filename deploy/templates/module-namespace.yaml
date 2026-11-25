@@ -1,0 +1,135 @@
+# Template for a module namespace, instantiated by can-core (epic E03) by substituting
+# ${MODULE_NAMESPACE} (mod-<id>), ${NODE_IP} (the node address) and the resource figures.
+# Not part of deploy/base: module namespaces only exist while the module is enabled.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${MODULE_NAMESPACE}
+  labels:
+    can.dev/namespace-kind: module
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: ${MODULE_NAMESPACE}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# default-deny also blocks traffic between pods of the SAME module namespace (it selects every
+# pod, and no policy allows pod-to-pod ingress inside the namespace); a module whose pods must
+# talk to each other (app and worker, app and cache) needs an explicit intra-namespace allow.
+# Module UIs and public webhooks are reached through Traefik (any port: ports vary per module).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: ${MODULE_NAMESPACE}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: traefik}
+---
+# can-core delivers webhooks and health checks to modules (see allow-can-core-egress in base).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-can-core
+  namespace: ${MODULE_NAMESPACE}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: can-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: can-core}
+---
+# Residual risk (E06): the egress allow to Traefik below lets a module pod send a request with
+# `Host: admin.<domain>` straight to Traefik, bypassing the CoreDNS pin of admin.*. The only
+# control is the admin router's Traefik middleware that rejects pod-CIDR sources (SPEC 3.1),
+# which E03/E06 must add and test.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: module-egress
+  namespace: ${MODULE_NAMESPACE}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # can-core module API only (never the admin port)
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: can-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: can-core}
+      ports:
+        - {protocol: TCP, port: 8090}
+    # Traefik, for public hostnames rewritten by CoreDNS (auth.<domain>, own webhook host)
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: traefik}
+      ports:
+        - {protocol: TCP, port: 8000}
+        - {protocol: TCP, port: 8443}
+    # Database ports in can-data. NOTE: this selects the namespace, not the module's own
+    # database: every module namespace can reach every database in can-data, and only DB
+    # authentication (one user per module) separates them. Residual risk; per-module isolation
+    # needs per-database pod labels, added with the databases in E03.
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: can-data}
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 3306}
+    # The internet (SMTP, API calls), but not the node, the cluster CIDRs or link-local
+    # (cloud metadata), which also blocks the Kubernetes API server.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - ${NODE_IP}/32
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+              - 169.254.0.0/16
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: ${MODULE_NAMESPACE}
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 10m, memory: 32Mi}
+      default: {cpu: 500m, memory: 192Mi}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ceiling
+  namespace: ${MODULE_NAMESPACE}
+spec:
+  hard:
+    requests.memory: ${QUOTA_REQUESTS_MEMORY}
+    limits.memory: ${QUOTA_LIMITS_MEMORY}

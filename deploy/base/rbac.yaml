@@ -1,0 +1,150 @@
+# can-core is highly privileged by design (SPEC 3.1), but its cluster-wide grant is kept tiny:
+#
+#   ClusterRole can-core         (ClusterRoleBinding, whole cluster)
+#     create/get/list/watch namespaces, create TokenReviews, create RoleBindings and `bind`
+#     restricted to the one ClusterRole below. No secrets, no workloads, no pods/exec.
+#   ClusterRole can-core-module  (only ever bound with RoleBindings, per namespace)
+#     secrets, workloads, NetworkPolicies, quotas, ... inside ONE namespace.
+#
+# Flow when enabling a module: can-core creates namespace mod-<id>, then the RoleBinding from
+# deploy/templates/module-rbac.yaml, and from then on can manage that namespace only. Base binds
+# can-core-module in can-system and can-data. No wildcards, no escalate/impersonate, never
+# cluster-admin.
+#
+# This is a REDUCED STANDING GRANT, not least privilege. Residual risks (cannot be expressed in
+# RBAC; to be closed by a ValidatingAdmissionPolicy in E03). A compromised can-core can:
+#  (1) create RoleBindings cluster-wide and bind can-core-module into any namespace, including
+#      kube-system, so it is effectively cluster-admin until that policy exists;
+#  (2) create namespaces with relaxed pod-security labels;
+#  (3) via the kube-system Role below: update HelmChartConfig/traefik (arbitrary chart values,
+#      e.g. extra containers, volumes, args) and ConfigMap/coredns-custom (hijack any cluster
+#      DNS name, for example point auth.<domain> at an attacker).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: can-core
+  namespace: can-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: can-core
+rules:
+  # Module namespaces (mod-<id>). No update/patch (cannot relax pod-security labels later) and
+  # no delete: removal of a module namespace needs an E03 decision (see research R6).
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch, create]
+  # Module identity: validate projected ServiceAccount tokens.
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+  # Grant itself the per-namespace role in namespaces it creates, and nothing else.
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [get, list, watch, create]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    resourceNames: [can-core-module]
+    verbs: [bind]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: can-core
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: can-core
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system
+---
+# Permissions inside a single namespace. Bind ONLY with a RoleBinding, never a ClusterRoleBinding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: can-core-module
+rules:
+  - apiGroups: [""]
+    resources: [resourcequotas, limitranges, serviceaccounts, services, configmaps, persistentvolumeclaims, secrets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [traefik.io, traefik.containo.us]
+    resources: [ingressroutes, middlewares]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+# can-system (can-core state, the site) and can-data (databases) exist from the start.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: can-core-module
+  namespace: can-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: can-core-module
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: can-core-module
+  namespace: can-data
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: can-core-module
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system
+---
+# kube-system is not default-denied and not ours: can-core may only touch the two objects
+# it manages there (coredns-custom rewrites, Traefik HelmChartConfig).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: can-core-kube-system
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [coredns-custom]
+    verbs: [get, update, patch]
+  - apiGroups: [helm.cattle.io]
+    resources: [helmchartconfigs]
+    resourceNames: [traefik]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: can-core-kube-system
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: can-core-kube-system
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system

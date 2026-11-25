@@ -1,4 +1,4 @@
 # deploy
 
 Cluster bootstrap assets: cloud-init, k3s configuration, base manifests, NetworkPolicies, Traefik config.
-Populated by epics E02 and E06.
+`base/` (kustomize: namespaces, NetworkPolicies, quotas, RBAC, Traefik, CoreDNS) and `templates/` are from epic E02; see `docs/dev-cluster.md`. Bootstrap assets are added by E06.

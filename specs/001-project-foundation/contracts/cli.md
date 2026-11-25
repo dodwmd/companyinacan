@@ -29,8 +29,11 @@ when a **required** tool is missing (`go`, `git`, `make`). JSON: array of
 Stub: prints `can apply is not implemented yet (planned in epic E03: can-core MVP)` and exits `3`.
 No side effects.
 
-## `can dev`, `can up`
-Stubs: print `can <cmd> is not implemented yet (planned in epic <E..>: <name>)` to stderr, exit `3`, no side effects.
+## `can dev`
+Implemented in epic E02; see `specs/004-local-dev-cluster/contracts/cli.md`.
+
+## `can up`
+Stub: prints `can up is not implemented yet (planned in epic E06: server providers and make up)` to stderr, exit `3`, no side effects.
 
 ## `can licences` (also `make licences`)
 Flags: `--modules-dir`, `--write` (regenerate `THIRD_PARTY_LICENSES`), `--check` (CI mode:
@@ -45,8 +48,8 @@ fail if the committed file differs). Violations are named per module with rule i
 | `make test` | `lint` + unit + contract + `licences --check`; no network required except an optional first-time lint download |
 | `make lint` | golangci-lint (pinned), falls back to `go vet` with a notice offline |
 | `make licences` | regenerate `THIRD_PARTY_LICENSES` |
-| `make dev` | runs `can dev`: not implemented (epic E02); make reports failure (status 2), `can dev` itself exits 3 |
-| `make up` | runs `can up`: not implemented (epic E06); same |
+| `make dev`, `make down`, `make doctor` | run `can dev up`, `can dev down`, `can dev doctor` (epic E02) |
+| `make up` | runs `can up`: not implemented (epic E06); make reports failure (status 2), `can up` itself exits 3 |
 
 ## CI contract (`.github/workflows/ci.yml`)
 Jobs with exactly these names: `lint`, `unit`, `contract`, `licences`, `dco`. Trigger: pull

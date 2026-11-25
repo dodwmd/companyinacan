@@ -1,0 +1,17 @@
+# Instantiated by can-core (epic E03) right after it creates a module namespace
+# (deploy/templates/module-namespace.yaml), substituting ${MODULE_NAMESPACE}. Gives can-core the
+# namespaced permissions of ClusterRole can-core-module in this namespace only; it is allowed to
+# create this binding by the narrowly-scoped `bind` grant in deploy/base/rbac.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: can-core-module
+  namespace: ${MODULE_NAMESPACE}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: can-core-module
+subjects:
+  - kind: ServiceAccount
+    name: can-core
+    namespace: can-system

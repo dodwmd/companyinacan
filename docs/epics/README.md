@@ -12,7 +12,7 @@ Epics are ordered by dependency. Phases refer to the roadmap in `SPEC.md` §9.
 |---|---|---|---|---|
 | E00 | Phase 0 measurements (k3s baseline, footprint harness, timing) | 0 | — | planned |
 | E01 | Foundation: repo layout, `can` CLI skeleton, schemas, CI | 1 | — | done — `specs/001-project-foundation/` |
-| E02 | Local dev cluster (`make dev`, k3d provider, base manifests) | 1 | E01 | planned |
+| E02 | Local dev cluster (`make dev`, k3d provider, base manifests) | 1 | E01 | in review |
 | E03 | can-core MVP (in-cluster control plane, module API, auth, audit) | 1 | E01, E02 | planned |
 | E04 | Site renderer and static server | 1 | E01, E02 | planned |
 | E05 | Forms gateway and `leads` capability | 1 | E03, E04 | planned |

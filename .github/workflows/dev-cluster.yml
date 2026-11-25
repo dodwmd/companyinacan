@@ -1,0 +1,47 @@
+name: dev-cluster
+
+# Not a required check (continue-on-error). Written without local Docker/k3d; its first run on
+# GitHub brought the cluster up and passed the integration tests, which is the only cluster
+# evidence so far. Kept out of ci.yml so it cannot affect the required job names.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "dev/**"
+      - "core/cluster/**"
+      - "test/integration/**"
+      - ".github/workflows/dev-cluster.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Integration tests
+        run: go test -tags integration -count=1 -v ./test/integration/...
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,svc,networkpolicy -A || true
+          kubectl --context k3d-companyinacan-dev -n kube-system logs deployment/coredns --tail=50 || true
+      - name: Delete the cluster
+        if: always()
+        run: make down

@@ -1,0 +1,28 @@
+# Platform namespaces (SPEC 3.1). `mod-<id>` namespaces are created by can-core from
+# deploy/templates/module-namespace.yaml. kube-system belongs to k3s and is not declared.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: can-system
+  labels:
+    can.dev/namespace-kind: system
+    # can-core mounts a hostPath (backup dumps), so this namespace cannot be `restricted`.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: can-data
+  labels:
+    can.dev/namespace-kind: data
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: can-portal
+  labels:
+    can.dev/namespace-kind: portal
+    pod-security.kubernetes.io/enforce: restricted

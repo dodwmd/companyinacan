@@ -102,8 +102,8 @@ func TestDoctorExitCodes(t *testing.T) {
 	}
 }
 
-func TestDevAndUpAreNotImplemented(t *testing.T) {
-	for cmd, epic := range map[string]string{"dev": "E02", "up": "E06"} {
+func TestUpIsNotImplemented(t *testing.T) {
+	for cmd, epic := range map[string]string{"up": "E06"} {
 		code, out, errs := run(t, cmd)
 		if code != ExitNotImplemented || out != "" || !strings.Contains(errs, epic) {
 			t.Fatalf("%s: code=%d out=%q err=%q", cmd, code, out, errs)
