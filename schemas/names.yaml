@@ -13,6 +13,7 @@ capabilities:
   - { name: contracts }
   - { name: invoices }
   - { name: time }
+  - { name: timesheets }
   - { name: equity }
   - { name: work }
   - { name: projects }

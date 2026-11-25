@@ -28,7 +28,7 @@ import (
 var Catalogue = []string{
 	"lead.created.v1",
 	"deal.won.v1",
-	"invoice.issued.v1", "invoice.paid.v1", "bill.received.v1", "bill.approved.v1", "bill.paid.v1",
+	"invoice.issued.v1", "invoice.sent.v1", "invoice.paid.v1", "bill.received.v1", "bill.approved.v1", "bill.paid.v1",
 	"vendor.created.v1", "po.approved.v1",
 	"job.published.v1", "application.received.v1", "offer.accepted.v1",
 	"person.hired.v1", "person.left.v1",
@@ -37,7 +37,7 @@ var Catalogue = []string{
 	"job.opened.v1", "application.stage_changed.v1", "candidate.hired.v1",
 	"document.signed.v1",
 	"contract.requested.v1", "contract.signed.v1", "contract.expiring.v1",
-	"time.approved.v1",
+	"time.approved.v1", "timesheet.approved.v1", "expense.approved.v1",
 	"resolution.passed.v1",
 	"equity.proposed.v1", "equity.approved.v1", "equity.granted.v1",
 	"issue.created.v1", "issue.updated.v1", "issue.transitioned.v1", "issue.priority_changed.v1",

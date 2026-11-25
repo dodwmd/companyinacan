@@ -1,0 +1,14 @@
+{
+  "party_id": 3,
+  "currency": "eur",
+  "fx_rate": "1.0850",
+  "due_days": 14,
+  "lines": [
+    {
+      "description": "Consulting",
+      "quantity_milli": 1500,
+      "unit_price_minor": 10001,
+      "tax_code": "VAT20"
+    }
+  ]
+}

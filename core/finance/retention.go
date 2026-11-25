@@ -32,7 +32,11 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		// The triggers refuse deletes of issued records; open the gate for this transaction
 		// only. It is closed again before commit, and a rollback restores it too.
-		if _, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 1`); err != nil {
+		var auditBefore int64 // 0 means no audit entry may be deleted
+		if auditDays > 0 {
+			auditBefore = ts(now.AddDate(0, 0, -max(auditDays, 365)))
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 1, audit_before = ?`, auditBefore); err != nil {
 			return err
 		}
 		if retentionYears > 0 {
@@ -91,7 +95,7 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			}
 		}
 		if auditDays > 0 {
-			res, err := tx.ExecContext(ctx, `DELETE FROM audit_log WHERE at < ?`, ts(now.AddDate(0, 0, -auditDays)))
+			res, err := tx.ExecContext(ctx, `DELETE FROM audit_log WHERE at < ?`, auditBefore)
 			if err != nil {
 				return err
 			}
@@ -103,7 +107,7 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 		if err := s.purgeOutbox(ctx, tx, now); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 0`)
+		_, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 0, audit_before = 0`)
 		return err
 	})
 	if err == nil && (rep.Invoices+rep.Expenses+rep.Timesheets+rep.Contracts+rep.PurchaseOrders+rep.ErasedParties+rep.AuditEntries) > 0 {

@@ -1,0 +1,13 @@
+{
+  "party_id": 3,
+  "currency": "EUR",
+  "fx_rate": "1.0850",
+  "due_days": 14,
+  "lines": [
+    {
+      "description": "x",
+      "quantity_milli": 1000,
+      "unit_price_minor": 10.5
+    }
+  ]
+}

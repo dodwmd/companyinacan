@@ -130,7 +130,7 @@ type obj = map[string]any
 func (e *env) party(tok, name, kind string) int64 {
 	e.t.Helper()
 	var p Party
-	e.must(201, tok, "POST", "/v1/parties", obj{"name": name, "kind": kind, "email": strings.ToLower(strings.ReplaceAll(name, " ", "."))+"@example.test", "address": "1 Fake Road"}, &p)
+	e.must(201, tok, "POST", "/v1/parties", obj{"name": name, "kind": kind, "email": emailOf(name), "address": "1 Fake Road"}, &p)
 	return p.ID
 }
 
@@ -175,3 +175,16 @@ var (
 	rw  = []string{"finance.write"}
 	app = []string{"finance.approve"}
 )
+
+func emailOf(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ' && b.Len() > 0 && !strings.HasSuffix(b.String(), "."):
+			b.WriteByte('.')
+		}
+	}
+	return strings.Trim(b.String(), ".") + "@example.test"
+}

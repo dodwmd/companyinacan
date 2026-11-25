@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Finance settings",
+  "description": "Operator settings of the finance module; rendered into finance.yaml by the chart. Secrets are never settings (they come from the module's Secret).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "base_currency": { "type": "string", "pattern": "^[A-Z]{3}$", "default": "USD", "description": "Reporting currency. Every document stores its FX rate to it; change it only before the first invoice." },
+    "payment_instructions": { "type": "string", "maxLength": 5000, "default": "", "description": "Default 'how to pay' text printed on invoices (bank details, payment link text)." },
+    "seller": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "maxLength": 200 },
+        "address": { "type": "string", "maxLength": 500 },
+        "tax_id": { "type": "string", "maxLength": 50 }
+      }
+    },
+    "public_base_url": { "type": "string", "pattern": "^$|^https?://[^/]+.*[^/]$", "description": "Prefix of the signed invoice links, for example https://billing.example.com (no trailing slash). Only /public/invoices/* should be routed to the internet." },
+    "payment_provider": { "enum": ["none", "fake"], "default": "none", "description": "fake is for development only; real adapters are separate modules." },
+    "esign_provider": { "enum": ["none", "fake"], "default": "none" },
+    "retention_years": { "type": "integer", "minimum": 0, "default": 7, "description": "Years financial records are kept after their own date; 0 keeps them forever. Check your jurisdiction: this is not legal advice." },
+    "audit_retention_days": { "type": "integer", "minimum": 0, "default": 2555, "description": "At least 365, or 0 to keep everything." },
+    "trust_proxy": { "type": "boolean", "default": false, "description": "Use the right-most X-Forwarded-For entry (set by Traefik) as the client address for rate limiting. Enable only behind a proxy that appends the client address." },
+    "max_body_bytes": { "type": "integer", "minimum": 1024, "maximum": 16777216, "default": 1048576 },
+    "rate_limit_per_minute": { "type": "integer", "minimum": 0, "default": 600, "description": "Requests per API token per minute; 0 disables." },
+    "auth_failures_per_minute": { "type": "integer", "minimum": 0, "default": 30, "description": "Failed authentications and bad invoice links per client address per minute before the address is throttled; 0 disables. Valid credentials are never throttled by this." },
+    "webhook_url": { "type": "string", "pattern": "^$|^https?://", "description": "Where signed finance events are POSTed. Needs CAN_FINANCE_WEBHOOK_SECRET." }
+  }
+}

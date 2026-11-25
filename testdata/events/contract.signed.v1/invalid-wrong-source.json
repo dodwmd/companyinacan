@@ -1,0 +1,13 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "contract.signed.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "work",
+  "data": {
+    "contract_id": 4,
+    "party_id": 3,
+    "version": 2,
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "signed_at": "2026-11-25T10:00:00Z"
+  }
+}

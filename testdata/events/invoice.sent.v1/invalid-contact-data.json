@@ -1,0 +1,17 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "invoice.sent.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "invoice_id": 1,
+    "number": "INV-00001",
+    "kind": "invoice",
+    "party_id": 3,
+    "currency": "EUR",
+    "total_minor": 18002,
+    "due_date": "2026-12-25",
+    "sent_at": "2026-11-25T10:00:00Z",
+    "customer_name": "Acme Fake Ltd"
+  }
+}

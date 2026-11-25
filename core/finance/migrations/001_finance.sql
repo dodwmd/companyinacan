@@ -4,8 +4,8 @@
 -- contract versions and the audit log are append-only) even if a bug or a manual SQL session
 -- tries. The retention purge opens the gate for the length of its own transaction.
 
-CREATE TABLE retention_gate (open INTEGER NOT NULL);
-INSERT INTO retention_gate (open) VALUES (0);
+CREATE TABLE retention_gate (open INTEGER NOT NULL, audit_before INTEGER NOT NULL DEFAULT 0);
+INSERT INTO retention_gate (open, audit_before) VALUES (0, 0);
 
 -- Customers and vendors share one party model.
 CREATE TABLE parties (
@@ -404,10 +404,10 @@ CREATE TRIGGER audit_no_update BEFORE UPDATE ON audit_log
 BEGIN
     SELECT RAISE(ABORT, 'the audit log is append-only');
 END;
--- Entries may be deleted only after a year, and only by the retention purge (config enforces
--- a retention of at least 365 days).
+-- Entries are deleted only by the retention purge, which opens the gate and names the cut-off
+-- (never less than a year old: the purge enforces that floor).
 CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit_log
-    WHEN OLD.at > CAST(strftime('%s', 'now') AS INTEGER) - 365 * 86400 OR (SELECT open FROM retention_gate) = 0
+    WHEN (SELECT open FROM retention_gate) = 0 OR OLD.at >= (SELECT audit_before FROM retention_gate)
 BEGIN
     SELECT RAISE(ABORT, 'the audit log is append-only');
 END;

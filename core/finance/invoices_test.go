@@ -199,12 +199,12 @@ func TestPaymentsStatusAndEvents(t *testing.T) {
 	var got Invoice
 	e.must(201, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 4000, "method": "bank", "reference": "R1"}, &pay, "Idempotency-Key", "pay-key-0001")
 	e.must(200, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 4000, "method": "bank", "reference": "R1"}, &pay, "Idempotency-Key", "pay-key-0001") // replay
-	e.must(422, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 4000}, nil, "Idempotency-Key", "pay-key-0001")                                          // key reused, other body... same body hash differs? currency empty vs method
+	e.must(422, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 4000}, nil, "Idempotency-Key", "pay-key-0001")                                       // key reused, other body... same body hash differs? currency empty vs method
 	e.must(200, maker, "GET", "/v1/invoices/"+id(inv.ID), nil, &got)
 	if got.Status != "partially_paid" || got.PaidMinor != 4000 || got.BalanceMinor != 6000 {
 		t.Fatalf("after first payment %+v", got)
 	}
-	e.must(422, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 6001}, nil)             // overpayment
+	e.must(422, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 6001}, nil)                   // overpayment
 	e.must(422, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": 100, "currency": "EUR"}, nil) // wrong currency
 	e.must(422, maker, "POST", "/v1/invoices/"+id(inv.ID)+"/payments", obj{"amount_minor": -5}, nil)
 	if len(e.outbox("invoice.paid.v1")) != 0 {

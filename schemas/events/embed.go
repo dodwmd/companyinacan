@@ -107,3 +107,33 @@ var ApplicationStageChangedV1 []byte
 //
 //go:embed candidate.hired.v1.json
 var CandidateHiredV1 []byte
+
+// InvoiceSentV1 is the JSON Schema of the invoice.sent.v1 event.
+//
+//go:embed invoice.sent.v1.json
+var InvoiceSentV1 []byte
+
+// InvoicePaidV1 is the JSON Schema of the invoice.paid.v1 event.
+//
+//go:embed invoice.paid.v1.json
+var InvoicePaidV1 []byte
+
+// ContractSignedV1 is the JSON Schema of the contract.signed.v1 event.
+//
+//go:embed contract.signed.v1.json
+var ContractSignedV1 []byte
+
+// ContractExpiringV1 is the JSON Schema of the contract.expiring.v1 event.
+//
+//go:embed contract.expiring.v1.json
+var ContractExpiringV1 []byte
+
+// TimesheetApprovedV1 is the JSON Schema of the timesheet.approved.v1 event.
+//
+//go:embed timesheet.approved.v1.json
+var TimesheetApprovedV1 []byte
+
+// ExpenseApprovedV1 is the JSON Schema of the expense.approved.v1 event.
+//
+//go:embed expense.approved.v1.json
+var ExpenseApprovedV1 []byte

@@ -1,0 +1,10 @@
+{
+  "party_id": 1,
+  "lines": [
+    {
+      "description": "x",
+      "quantity_milli": 1000,
+      "unit_price_minor": 100
+    }
+  ]
+}

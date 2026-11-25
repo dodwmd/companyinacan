@@ -1,0 +1,11 @@
+{
+  "party_id": 3,
+  "title": "Services 2026",
+  "template_id": 2,
+  "variables": {
+    "customer": "Acme Fake Ltd",
+    "fee": "$1,000"
+  },
+  "start_date": "soon",
+  "renewal_date": "2027-10-25"
+}
