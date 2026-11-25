@@ -198,7 +198,8 @@ func (s *Store) runByKey(ctx context.Context, key string) (Run, bool, error) {
 func (s *Store) activeRunIDs(ctx context.Context, limit int) ([]string, error) {
 	ctx, cancel := s.read(ctx)
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM runs WHERE state IN ('pending','running','scheduled','awaiting_approval','compensating') ORDER BY updated_at, id LIMIT ?`, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM runs WHERE state IN ('pending','running','scheduled','awaiting_approval','compensating') AND wake_at<=?
+		ORDER BY examined_at, id LIMIT ?`, s.now().Unix(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -302,4 +303,12 @@ func (s *Store) isUrgent(ctx context.Context, party string) (bool, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM urgent WHERE party_id=?`, party).Scan(&n)
 	return n > 0, err
+}
+
+// touchRun records that a run was examined and when it is next worth examining.
+func (s *Store) touchRun(ctx context.Context, id string, wake int64) error {
+	ctx, cancel := s.read(ctx)
+	defer cancel()
+	_, err := s.db.ExecContext(ctx, `UPDATE runs SET examined_at=?, wake_at=? WHERE id=?`, s.now().UnixNano(), wake, id)
+	return err
 }

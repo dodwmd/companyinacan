@@ -29,6 +29,9 @@ type scimEnv struct {
 
 func newSCIMEnv(t *testing.T, cfg SCIMConfig) *scimEnv {
 	t.Helper()
+	if cfg.RequireIfMatch == nil {
+		cfg.RequireIfMatch = boolPtr(false) // most tests write without a version; the default is tested below
+	}
 	e := &scimEnv{t: t, dir: newFakeDir(), clk: &clock{t: time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)}}
 	st, err := OpenStore(":memory:", e.clk.now)
 	if err != nil {
@@ -431,7 +434,7 @@ func TestSCIMUserETagAndPatch(t *testing.T) {
 }
 
 func TestSCIMRequireIfMatch(t *testing.T) {
-	e := newSCIMEnv(t, SCIMConfig{RequireIfMatch: true})
+	e := newSCIMEnv(t, SCIMConfig{RequireIfMatch: boolPtr(true)})
 	resp, m, _ := e.do("PATCH", "/scim/v2/Users/"+alice, e.write, "", patchBody(map[string]any{"op": "replace", "path": "displayName", "value": "A"}))
 	e.wantError(resp, m, 428, "")
 }

@@ -358,80 +358,6 @@ func TestFlagUrgentRefusesActivePeople(t *testing.T) {
 	}
 }
 
-func TestPrivilegedLeaverNeedsASecondPerson(t *testing.T) {
-	h := newHarness(t, nil)
-	p := person(alice, "former", "alice@example.com")
-	h.dir.put(p)
-	h.linkAccounts(alice, "app-a")
-	h.addGroup("admins", alice)
-	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
-	h.settle()
-	r := h.onlyRun()
-	if r.State != RunAwaiting {
-		t.Fatalf("state %s", r.State)
-	}
-	if h.a.count("disable_account") != 0 {
-		t.Fatal("a privileged account was disabled without a second person")
-	}
-	h.settle()
-	h.tick()
-	if len(h.appr.created) != 1 {
-		t.Fatalf("approvals requested: %d", len(h.appr.created))
-	}
-	ap := h.appr.created[0]
-	if ap.Type != "privileged-leaver" || ap.Requester != "party:"+alice || strings.Contains(ap.Title, "alice@") {
-		t.Fatalf("approval %+v", ap)
-	}
-	var aprID string
-	for _, s := range h.onlyRun().Steps {
-		if s.State == StepAwaiting {
-			aprID = s.ApprovalID
-		}
-	}
-	decide := func(approvers ...string) error {
-		return h.event(EventApprovalDecided, map[string]any{"request_id": aprID, "module_id": "provisioning", "type": "privileged-leaver", "requester": "party:" + alice, "outcome": "approved", "approvers": approvers})
-	}
-	// the person's own account cannot approve their removal
-	if err := decide("user:sso-aaaa"); err != nil {
-		t.Fatal(err)
-	}
-	h.settle()
-	if h.a.count("disable_account") != 0 {
-		t.Fatal("the leaver approved their own offboarding")
-	}
-	if got := h.onlyRun(); got.State != RunFailed {
-		t.Fatalf("state %s", got.State)
-	}
-}
-
-func TestPrivilegedLeaverProceedsOnSecondPersonApproval(t *testing.T) {
-	h := newHarness(t, nil)
-	h.dir.put(person(alice, "former", "alice@example.com"))
-	h.linkAccounts(alice, "app-a")
-	h.addGroup("admins", alice)
-	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
-	h.settle()
-	var aprID string
-	for _, s := range h.onlyRun().Steps {
-		if s.State == StepAwaiting {
-			aprID = s.ApprovalID
-		}
-	}
-	// a decision for a request that is not ours, or a different type, changes nothing
-	h.mustEvent(EventApprovalDecided, map[string]any{"request_id": "apr_unknown", "type": "privileged-leaver", "outcome": "approved", "approvers": []string{"user:boss"}})
-	if h.a.count("disable_account") != 0 {
-		t.Fatal("unknown approval released a step")
-	}
-	h.mustEvent(EventApprovalDecided, map[string]any{"request_id": aprID, "type": "privileged-leaver", "outcome": "approved", "approvers": []string{"user:boss"}})
-	h.settle()
-	if h.a.count("disable_account") != 1 || h.onlyRun().State != RunSucceeded {
-		t.Fatalf("disables %d state %s", h.a.count("disable_account"), h.onlyRun().State)
-	}
-	if err := h.st.VerifyAudit(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestRejectedApprovalFailsClosed(t *testing.T) {
 	h := newHarness(t, nil)
 	h.dir.put(person(alice, "active", "alice@example.com"))
@@ -445,6 +371,7 @@ func TestRejectedApprovalFailsClosed(t *testing.T) {
 		t.Fatalf("state %s ops %v", r.State, h.a.ops())
 	}
 	h.appr.status["apr_"+strings.Repeat("0", 24)] = "rejected"
+	h.clk.add(time.Minute) // a waiting run is polled every 30 s, not on every pass
 	h.tick()
 	h.settle()
 	if got := h.onlyRun(); got.State != RunCompensated {
@@ -452,19 +379,6 @@ func TestRejectedApprovalFailsClosed(t *testing.T) {
 	}
 	if h.a.count("add_group:admins") != 0 {
 		t.Fatal("privileged group granted after rejection")
-	}
-}
-
-func TestNoApprovalsEngineMeansNoSensitiveSteps(t *testing.T) {
-	h := newHarness(t, nil)
-	h.eng.Approvals = nil
-	h.dir.put(person(alice, "former", "alice@example.com"))
-	h.linkAccounts(alice, "app-a")
-	h.addGroup("admins", alice)
-	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
-	h.settle()
-	if h.a.count("disable_account") != 0 {
-		t.Fatal("sensitive step ran without an approvals engine")
 	}
 }
 

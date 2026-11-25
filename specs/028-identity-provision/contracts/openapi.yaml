@@ -303,7 +303,7 @@ paths:
     patch:
       operationId: scimPatchUser
       summary: PATCH displayName and the work phone only
-      description: Operations add, replace and remove on `displayName` and `phoneNumbers` (also `phoneNumbers[type eq "work"].value` and the pathless object form). Every other attribute is managed in the people directory and answers 400 mutability. If-Match is honoured (412 when stale), and required when `scim.require_if_match` is set (428). The change is audited with ids only.
+      description: Operations add, replace and remove on `displayName` and `phoneNumbers` (also `phoneNumbers[type eq "work"].value` and the pathless object form). Every other attribute is managed in the people directory and answers 400 mutability. If-Match is required unless `scim.require_if_match` is false (428 without it, 412 when stale). The change is audited with ids only.
       x-scim-scope: scim.write
       security: [{ scim: [] }]
       parameters: [{ name: If-Match, in: header, schema: { type: string } }]

@@ -33,15 +33,23 @@ joiner. Subscribing to both would start two joiners.
 
 ### Effective dating
 
-A leaver's steps carry a `not_before`: the **start of the last day** (`effective_date`, in the
+A leaver's steps carry a `not_before`: by default the **start of the last day** (`workflows.leaver_cutoff:
+end_of_day` makes it the start of the next day) (`effective_date`, in the
 configured time zone). Nothing is disabled before it. For a person in `offboarding` with an `end_date`
 on record the run waits (state `scheduled`); with no end date it waits indefinitely for the
 `person.offboarded.v1` event, which is emitted when people applies the change to `former`. If
 offboarding is called off (status back to `active`) a run in which nothing happened yet is cancelled.
 
+**Terminations that cannot wait for `former`**: can-core refuses the kill switch until the people module
+reports the person offboarded, so someone still `offboarding` and flagged urgent keeps their can-core
+tokens and sessions until then. An administrator with `rbac.manage` can end them at once with
+`POST /api/v1/identity/revoke-now {"subject": "user:..."}` on the can-core admin API (audited with the
+actor; not for your own account). There is no CLI wrapper and no API to re-enable a disabled account
+yet: that needs database access by the owner.
+
 **Urgent terminations**: `POST /v1/provision/people/{id}/urgent` (`provision.admin`, never for
 yourself, only for someone who is offboarding or former) releases every access-removal step at once and
-lifts the approval gate for access removal (not for deletion). The flag is audited.
+releases the run at once (removal was never gated; deletion still is). The flag is audited.
 
 ### Steps, retries, dead letters, compensation
 
@@ -60,14 +68,19 @@ lifts the approval gate for access removal (not for deletion). The flag is audit
 ### Approvals and separation of duties
 
 A step is **sensitive** when it grants a privileged group (`workflows.privileged_groups`), creates an
-account on a `privileged: true` connector, deletes an account, or disables the accounts of a person who
-belongs to a privileged group or a privileged connector. A sensitive step opens a can-core approval
-(`privileged-access`, or `privileged-leaver`) whose requester is the person the run is about, so
-can-core's separation of duties keeps them from approving their own access or removal. The module then
-checks again on the signed `approval.decided.v1`: it rejects the decision if any approver is the
-person, their linked account, or whoever started the run. Without an approvals engine a sensitive step
-is rejected (fail closed). A rejected step fails a joiner or mover; for a leaver the other accounts are
-still disabled.
+account on a `privileged: true` connector, or **deletes** the account of a leaver who is privileged (or
+whose connector is). A sensitive step opens a can-core approval (`privileged-access`, or
+`privileged-leaver` for a deletion) whose requester is the person the run is about, so can-core's
+separation of duties keeps them from approving their own access or removal. The module checks again on
+the signed `approval.decided.v1`: it rejects the decision if any approver is the person, their linked
+account, or whoever started the run. Without an approvals engine a sensitive step is rejected (fail
+closed).
+
+**Access removal is never gated.** A leaver's group removals, account disables and the can-core kill
+switch run on the last day whatever the state of any approval: a pending, refused or expired approval can
+only ever stop an *irreversible* step (deleting the account, planned last, after `delete_after_days`),
+never leave access enabled. A rejected deletion leaves the account disabled. For joiners and movers a
+rejected grant fails the run and compensates what it created.
 
 The module never completes a checklist task and never assigns one to the person it concerns; the
 checklist templates carry the assignees (the people module refuses an `identity.*` action assigned to
@@ -87,7 +100,12 @@ projected token. can-core allows it only when
   the subject or anything personal being in an event.
 
 It is idempotent, audited in the same transaction as the change (party id and counts), and rate limited
-to 30 calls per module and minute. It cannot revoke anyone else. The person's `sso_subject` must be
+to 120 calls per module and minute (a mass offboarding is many calls; the module treats a 429 or any
+outage of can-core as "wait", which never uses up a step's attempts). It also disables the person's
+administrator account (a disabled account cannot start a session, by password or by SSO) and removes
+their push subscriptions, in the same transaction. The caller must be the resolved provider of
+`identity.provision` and enabled. can-core rebuilds its offboarding facts from the stored events at
+start. It cannot revoke anyone else. The person's `sso_subject` must be
 the can-core subject (`user:<name>`, for SSO users `user:sso-...`) for the revocation to apply; a
 person with any other `sso_subject` is skipped.
 
@@ -116,8 +134,9 @@ workflows:
   dry_run: false            # the chart ships true: record plans, call nothing
   delete_after_days: 0
   timezone: Australia/Sydney
+  leaver_cutoff: start_of_day   # or end_of_day: access lasts through the last day
 retry: { max_attempts: 5, base_delay: 30s, max_delay: 1h, step_timeout: 30s }
-scim: { max_scan: 5000, require_if_match: false }
+scim: { max_scan: 5000, require_if_match: true }
 connectors:
   - { name: wiki, type: scim-client, url: "https://wiki.example.com/scim/v2", token_env: CAN_PROVISIONING_CONN_WIKI_TOKEN, default_groups: [all-staff] }
   - { name: hooks, type: webhook, url: "https://hooks.example.com/provision", secret_env: CAN_PROVISIONING_CONN_HOOKS_SECRET, privileged: true }
@@ -149,9 +168,12 @@ Base path `/scim/v2` (public through the `scim` subdomain). It implements `/Serv
   characters and 8 terms, parsed in one linear pass and matched in memory (nothing is built into a
   query). Everything else is `400 invalidFilter`.
 * **Pagination**: `startIndex`, `count` (at most 100). A listing reads at most `scim.max_scan` people
-  (`400 tooMany` beyond that unless the filter is `id eq`) and at most four listings run at once.
-* **ETag / If-Match**: every user and group has a weak ETag; `If-Match` is honoured (`412`), and
-  required with `scim.require_if_match` (`428`).
+  (`400 tooMany` beyond that unless the filter is `id eq`, or `userName eq` / `emails.value eq`, which stop
+  at the match and may read up to 50,000) and at most four listings run at once.
+* **ETag / If-Match**: every user and group has a weak ETag; `If-Match` is **required by default** on PATCH and
+  DELETE (`428` without it, `412` when stale); set `scim.require_if_match: false` to make it optional. A user
+  PATCH checks the version and writes under one lock, but the directory has no conditional update, so
+  this holds for writes through one instance of this module only.
 * **Users are owned by the directory.** They cannot be created, replaced or deleted through SCIM
   (`403 mutability`). `PATCH` accepts `add`, `replace` and `remove` on `displayName` (the preferred
   name) and the work phone only; `active`, `userName`, `name`, `emails` and the rest answer
@@ -161,7 +183,10 @@ Base path `/scim/v2` (public through the `scim` subdomain). It implements `/Serv
   personal phone, compensation, `sso_subject`, legal-hold or erasure flags. `active` is true for
   `onboarding`, `active`, `leave` and `offboarding`: **leave is masked** because it can reveal health or
   family circumstances. Candidates are not shown.
-* **Groups** are this module's access groups (up to 500, up to 1000 members each; members must be
+* **Groups** are this module's access groups. **`scim.write` on a group is a downstream grant** when a
+  connector has `sync_groups: true`; the default is `false` (only the connector's `default_groups` are
+  applied), so give `sync_groups` only to connectors whose groups you want the IdP to drive.
+  Groups are this module's access groups (up to 500, up to 1000 members each; members must be
   visible directory users). A membership change starts a mover run for the people affected who already
   have a downstream account.
 
@@ -225,6 +250,12 @@ that never include a downstream response, a token or personal data.
 * **The kill switch needs `sso_subject` to be the can-core subject** (`user:...`). For urgent
   terminations the can-core revocation still waits for the people module to report the person
   `former` (can-core refuses before that), so it retries and, if the status is never set, dead-letters.
+* **Time zones.** The provisioning module compares the last day in `workflows.timezone`; can-core
+  compares the `effective_date` with the UTC date, so the kill switch can lag by up to a day where the
+  zone is ahead of UTC (it answers 409 and the step retries). The two are not unified.
+* **Re-hire.** The people module's `former` status is terminal, so a returning person is a new record
+  with a new id and a new offboarding fact is not cleared by anything; nothing needs clearing.
+* **Disabled administrator accounts** have no re-enable action in the product.
 * **Mover triggers.** The people module has no "department changed" event; movers start from SCIM
   group changes or the API, not from directory edits.
 * **No UI.** Operators use the API; there is no portal or admin UI page.

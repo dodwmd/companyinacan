@@ -49,6 +49,12 @@ kB in two runs (about 14.0 and 14.2 MiB); after 300 authenticated API requests a
 with a bad token 19,148 and 19,444 kB (about 18.7 and 19.0 MiB). Not measured with live connectors, a
 large directory or concurrent runs.
 
+**R11 (QA follow-up).** Access removal is never gated by an approval (an unanswered approval would leave a
+leaver enabled and, being sequential, block every later account and the kill switch): only deletion is,
+and it is planned last. The worker selects only due runs (`wake_at`), oldest examination first, so runs
+that can only wait cannot starve due work. can-core's revocation also disables the administrator
+account, and an administrator `revoke-now` covers a person still `offboarding`.
+
 **R10. Secrets and egress are platform gaps.** can-core's installer generates only its own keys into
 `can-module` and refuses references to other Secrets; the module namespace policy allows egress only to
 DNS, can-core, Traefik and the databases. Both are recorded as gaps rather than worked around with

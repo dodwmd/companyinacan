@@ -77,6 +77,7 @@ func (p Policy) plan(conns *ConnectorSet, in planInput) ([]Step, error) {
 		s.State = StepPending
 		out = append(out, s)
 	}
+	var deletes []Step
 	nb := int64(0)
 	if !in.NotBefore.IsZero() && !in.Urgent {
 		nb = in.NotBefore.Unix()
@@ -119,15 +120,18 @@ func (p Policy) plan(conns *ConnectorSet, in planInput) ([]Step, error) {
 			for _, g := range in.Applied[name] {
 				add(Step{Op: opRemoveGroup, Connector: name, Arg: g, NotBefore: ts(nb), notBefore: nb})
 			}
-			gate := (cc.Privileged || in.Privileged) && !in.Urgent
-			add(Step{Op: opDisableAccount, Connector: name, Sensitive: gate, NotBefore: ts(nb), notBefore: nb})
+			// Access REMOVAL is never gated: a pending or refused approval must never leave a
+			// leaver's access enabled. Only the irreversible step (deleting the account) waits
+			// for a second person, and only for privileged accounts; it is planned last so it
+			// can never hold up a disable or the can-core kill switch.
+			add(Step{Op: opDisableAccount, Connector: name, NotBefore: ts(nb), notBefore: nb})
 			if p.DeleteAfterDays > 0 {
 				base := in.NotBefore
 				if base.IsZero() {
 					base = time.Now()
 				}
 				at := base.AddDate(0, 0, p.DeleteAfterDays).Unix()
-				add(Step{Op: opDeleteAccount, Connector: name, Sensitive: true, NotBefore: ts(at), notBefore: at})
+				deletes = append(deletes, Step{Op: opDeleteAccount, Connector: name, Sensitive: cc.Privileged || in.Privileged, NotBefore: ts(at), notBefore: at})
 			}
 		}
 	}
@@ -143,6 +147,9 @@ func (p Policy) plan(conns *ConnectorSet, in planInput) ([]Step, error) {
 	}
 	if tpl != "" && in.Kind != KindMover {
 		add(Step{Op: opCreateTasks, Connector: connTasks, Arg: tpl, Optional: true})
+	}
+	for _, d := range deletes {
+		add(d)
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%w: nothing to do for this person (no connectors with an account)", ErrConflict)

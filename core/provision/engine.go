@@ -123,8 +123,14 @@ func (e *Engine) verify(ctx context.Context, kind Kind, party string) (Person, e
 	return p, nil
 }
 
+// dayStart is when a leaver's access may be removed: the start of the last day in the configured
+// time zone, or (leaver_cutoff: end_of_day) the start of the day after it.
 func (e *Engine) dayStart(date string) (time.Time, error) {
-	return time.ParseInLocation("2006-01-02", date, e.Policy.TZ)
+	d, err := time.ParseInLocation("2006-01-02", date, e.Policy.TZ)
+	if err == nil && e.Policy.EndOfDay {
+		d = d.AddDate(0, 0, 1)
+	}
+	return d, err
 }
 
 // buildPlan assembles planner input from the directory person and the module's own state.
@@ -321,6 +327,18 @@ func (e *Engine) Tick(ctx context.Context) (int, error) {
 
 // advance runs the next due steps of one run, at most max, and reports how many executed.
 func (e *Engine) advance(ctx context.Context, id string, max int) (int, error) {
+	var wake int64 // when the run is next worth examining; 0 = as soon as the worker is free
+	used, err := e.advanceRun(ctx, id, max, &wake)
+	// Every pass records that the run was examined, and a run that can only wait (an effective
+	// date, a backoff, an approval) is not selected again until then: waiting runs can never
+	// crowd due ones out of the worker's window.
+	if terr := e.Store.touchRun(ctx, id, wake); terr != nil && err == nil {
+		err = terr
+	}
+	return used, err
+}
+
+func (e *Engine) advanceRun(ctx context.Context, id string, max int, wake *int64) (int, error) {
 	used := 0
 	for used < max {
 		run, steps, err := e.Store.getRunRows(ctx, id)
@@ -334,6 +352,9 @@ func (e *Engine) advance(ctx context.Context, id string, max int) (int, error) {
 		if run.State == RunCompensating {
 			done, ran, err := e.compensateOne(ctx, run, steps, now)
 			used += ran
+			if ran == 0 && !done {
+				*wake = now + 5
+			}
 			if err != nil || done || ran == 0 {
 				return used, err
 			}
@@ -344,13 +365,20 @@ func (e *Engine) advance(ctx context.Context, id string, max int) (int, error) {
 			return used, e.finish(ctx, run, steps)
 		}
 		if st.notBefore > now {
+			*wake = st.notBefore
 			return used, e.setRunState(ctx, run, RunScheduled)
 		}
 		if st.nextAt > now {
+			*wake = st.nextAt
 			return used, nil
 		}
 		if e.needsApproval(run, *st) && !st.approved {
-			return used, e.gate(ctx, run, st)
+			gerr := e.gate(ctx, run, st)
+			// still waiting: the decision arrives as an event, polling only catches a missed refusal
+			if r2, err := e.Store.GetRun(ctx, id); err == nil && r2.State == RunAwaiting {
+				*wake = now + 30
+			}
+			return used, gerr
 		}
 		if run.State != RunRunning {
 			if err := e.setRunState(ctx, run, RunRunning); err != nil {
@@ -379,14 +407,14 @@ func nextStep(steps []stepRow) *stepRow {
 	return nil
 }
 
-// needsApproval: a sensitive step waits for a second person, except access removal for an urgent
-// termination (speed matters more) and dry runs (nothing is executed).
+// needsApproval: a sensitive step waits for a second person, except dry runs (nothing is
+// executed). The planner marks only grants and deletions sensitive: removal never waits.
 func (e *Engine) needsApproval(run Run, st stepRow) bool {
 	if !st.Sensitive || run.DryRun {
 		return false
 	}
-	if run.Urgent && run.Kind == KindLeaver && st.Op != opDeleteAccount {
-		return false
+	if run.Kind == KindLeaver && st.Op != opDeleteAccount {
+		return false // belt and braces: nothing but deletion of a leaver's account is ever gated
 	}
 	return true
 }
@@ -557,6 +585,12 @@ func (e *Engine) execute(ctx context.Context, run Run, st *stepRow) (bool, error
 	if errors.Is(err, ErrUnavailable) {
 		code = "dependency_unavailable"
 	}
+	if !perm && (code == "dependency_unavailable" || code == "core_unavailable") {
+		// can-core or the directory being down, slow or rate limiting (429) is not the step's
+		// fault: it never uses up an attempt (so a mass offboarding cannot dead-letter itself) and
+		// is retried with the capped backoff for as long as it lasts.
+		attempt = st.Attempts
+	}
 	if perm || attempt >= e.Policy.MaxAttempts {
 		reason := "retries_exhausted"
 		if perm {
@@ -587,7 +621,7 @@ func (e *Engine) execute(ctx context.Context, run Run, st *stepRow) (bool, error
 	}
 	delay := e.Policy.backoff(attempt)
 	return false, e.Store.tx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE steps SET state='pending', error_code=?, next_at=? WHERE run_id=? AND ord=?`, code, now.Add(delay).Unix(), run.ID, st.Ord); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE steps SET state='pending', attempts=?, error_code=?, next_at=? WHERE run_id=? AND ord=?`, attempt, code, now.Add(delay).Unix(), run.ID, st.Ord); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE runs SET state='running', updated_at=? WHERE id=?`, now.Unix(), run.ID); err != nil {

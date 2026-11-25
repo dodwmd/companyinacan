@@ -13,7 +13,7 @@ person ids, tokens in clear, or downstream responses.
 
 | Table | Purpose |
 |---|---|
-| `runs` | `id` (`run_` + 24 hex, time-prefixed), `kind` (joiner, mover, leaver), `party_id`, `state`, `trigger`, `idem_key` (unique), `urgent`, `dry_run`, `privileged`, `effective_date`, `initiator`; a partial unique index allows one live run per (`party_id`, `kind`) |
+| `runs` | `wake_at` and `examined_at` (migration 002: a run that can only wait is not selected again until `wake_at`; a state change resets it by trigger), `id` (`run_` + 24 hex, time-prefixed), `kind` (joiner, mover, leaver), `party_id`, `state`, `trigger`, `idem_key` (unique), `urgent`, `dry_run`, `privileged`, `effective_date`, `initiator`; a partial unique index allows one live run per (`party_id`, `kind`) |
 | `steps` | (`run_id`, `ord`), `op`, `connector`, `arg` (a group name), `state`, `sensitive`, `optional`, `comp_op`, `attempts`, `not_before`, `next_at`, `approval_id`, `approved`, `external_id`, `error_code` (a machine code), `completed_at` |
 | `accounts` | (`party_id`, `connector`) -> `external_id`, `state` (active, disabled, deleted) |
 | `applied_groups` | (`party_id`, `connector`, `grp`): the memberships this module added |

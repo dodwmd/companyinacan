@@ -288,7 +288,7 @@ func testPolicy() Policy {
 	return Policy{TZ: time.UTC, MaxAttempts: 3, BaseDelay: 10 * time.Second, MaxDelay: time.Minute, StepTimeout: 5 * time.Second,
 		MaxStepsPerRun: 200, MaxStepsPerTick: 100, JoinerTemplate: "tpl_join", LeaverTemplate: "tpl_leave",
 		PrivilegedGroups: []string{"admins"},
-		Conn:             map[string]ConnConfig{"app-a": {Name: "app-a", DefaultGroups: []string{"all-staff"}}, "app-b": {Name: "app-b", Privileged: false}}}
+		Conn:             map[string]ConnConfig{"app-a": {Name: "app-a", DefaultGroups: []string{"all-staff"}, SyncGroups: boolPtr(true)}, "app-b": {Name: "app-b", Privileged: false}}}
 }
 
 func newHarness(t *testing.T, mod func(*Policy)) *harness {

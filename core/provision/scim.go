@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
@@ -68,8 +69,9 @@ type SCIM struct {
 	// group membership changed, so the engine can start a mover run for them.
 	OnMembership func(ctx context.Context, partyIDs []string)
 
-	scan   chan struct{}
-	routes []string
+	scan    chan struct{}
+	routes  []string
+	patchMu sync.Mutex // serialises the check-and-update of a user PATCH (one instance; see docs)
 }
 
 func (s *SCIM) now() time.Time {
@@ -258,7 +260,7 @@ func etagOf(v any) string {
 func (s *SCIM) checkIfMatch(r *http.Request, current string) error {
 	im := strings.TrimSpace(r.Header.Get("If-Match"))
 	if im == "" {
-		if s.Cfg.RequireIfMatch {
+		if s.Cfg.RequireIfMatch == nil || *s.Cfg.RequireIfMatch {
 			return &SCIMError{Status: 428, Detail: "an If-Match header is required"}
 		}
 		return nil
@@ -437,6 +439,15 @@ func (s *SCIM) listUsers(w http.ResponseWriter, r *http.Request, _ *scimPrincipa
 	if scanLimit <= 0 {
 		scanLimit = 5000
 	}
+	// userName and emails.value identify one person: such a filter stops at the first match and may
+	// read further than max_scan (still bounded), so a large directory can be searched by login.
+	unique := false
+	for _, t := range lp.filter {
+		unique = unique || t.Attr == "username" || t.Attr == "emails.value"
+	}
+	if unique {
+		scanLimit = max(scanLimit, 50000)
+	}
 	var (
 		total   int
 		window  []any
@@ -458,7 +469,7 @@ func (s *SCIM) listUsers(w http.ResponseWriter, r *http.Request, _ *scimPrincipa
 				window = append(window, s.userResource(p))
 			}
 		}
-		if next == "" || len(people) == 0 {
+		if next == "" || len(people) == 0 || (unique && total > 0) {
 			break
 		}
 		if scanned >= scanLimit {
@@ -675,6 +686,13 @@ func (s *SCIM) patchUser(w http.ResponseWriter, r *http.Request, pr *scimPrincip
 	}
 	p, err := s.getPerson(r.Context(), r.PathValue("id"))
 	if err != nil {
+		return err
+	}
+	// The directory has no conditional update, so the version check and the write are made one
+	// step here: no second PATCH through this module can slip between them.
+	s.patchMu.Lock()
+	defer s.patchMu.Unlock()
+	if p, err = s.getPerson(r.Context(), p.ID); err != nil {
 		return err
 	}
 	res := s.userResource(p)

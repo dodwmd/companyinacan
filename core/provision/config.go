@@ -51,8 +51,11 @@ type WorkflowConfig struct {
 	// CompensateWithDelete makes the compensation of a failed joiner delete the accounts it
 	// created (default: disable them, which loses nothing).
 	CompensateWithDelete bool `yaml:"compensate_with_delete"`
-	// Timezone decides when a leaver's last day ends (default UTC).
+	// Timezone decides when a leaver's last day starts and ends (default UTC).
 	Timezone string `yaml:"timezone"`
+	// LeaverCutoff is when access ends on the last day: start_of_day (default, the safe choice:
+	// the person has no access on their last day) or end_of_day (access lasts through the last day).
+	LeaverCutoff string `yaml:"leaver_cutoff"`
 }
 
 // RetryConfig bounds retries: per-step attempts, backoff and the deadline of one connector call.
@@ -66,8 +69,9 @@ type RetryConfig struct {
 // SCIMConfig shapes the SCIM server.
 type SCIMConfig struct {
 	Disabled bool `yaml:"disabled"`
-	// RequireIfMatch makes every write demand an If-Match header (optimistic concurrency).
-	RequireIfMatch bool `yaml:"require_if_match"`
+	// RequireIfMatch makes every write demand an If-Match header (optimistic concurrency). It is ON
+	// unless set to false: a PATCH made from a stale copy answers 412 instead of overwriting.
+	RequireIfMatch *bool `yaml:"require_if_match"`
 	// MaxScan bounds how many directory records one list request reads (default 5000).
 	MaxScan int `yaml:"max_scan"`
 }
@@ -179,6 +183,7 @@ type Policy struct {
 	PrivilegedGroups     []string
 	DryRun               bool
 	DeleteAfterDays      int
+	EndOfDay             bool // leaver access ends at the end of the last day, not its start
 	CompensateWithDelete bool
 	JoinerTemplate       string
 	LeaverTemplate       string
@@ -202,6 +207,13 @@ func (c *Config) Policy() (Policy, error) {
 		p.Conn[cc.Name] = cc
 	}
 	var err error
+	switch c.Workflows.LeaverCutoff {
+	case "", "start_of_day":
+	case "end_of_day":
+		p.EndOfDay = true
+	default:
+		return p, errors.New("config: workflows.leaver_cutoff must be start_of_day or end_of_day")
+	}
 	if p.TZ, err = time.LoadLocation(firstNonEmpty(c.Workflows.Timezone, "UTC")); err != nil {
 		return p, fmt.Errorf("config: workflows.timezone: %w", err)
 	}
@@ -276,5 +288,6 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// syncGroups reports whether a connector receives group memberships (default yes).
-func (c ConnConfig) syncGroups() bool { return c.SyncGroups == nil || *c.SyncGroups }
+// syncGroups reports whether a connector receives the person's SCIM groups as downstream group
+// memberships. Default NO: scim.write on a group is otherwise a grant of downstream access.
+func (c ConnConfig) syncGroups() bool { return c.SyncGroups != nil && *c.SyncGroups }
