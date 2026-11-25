@@ -43,11 +43,15 @@ func (s *Store) SetHold(ctx context.Context, p *Principal, fileID string, hold b
 		h = 1
 	}
 	return s.txFor(ctx, p, "file.hold", "file:"+fileID, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE files SET legal_hold = ?, retain_until = ?, rev = rev + 1, updated_at = ? WHERE (id = ?) AND (status != 'purged')`, h, until, ts(s.now()), fileID)
+		res, err := tx.ExecContext(ctx, `UPDATE files SET legal_hold = ?, retain_until = ?, rev = rev + 1, updated_at = ? WHERE (id = ?) AND (status IN ('active','deleted'))`, h, until, ts(s.now()), fileID)
 		if err != nil {
 			return err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
+			var st string
+			if err := tx.QueryRowContext(ctx, `SELECT status FROM files WHERE (id = ?)`, fileID).Scan(&st); err == nil && st == "purging" {
+				return conflict("the file is being purged: it is too late to hold it")
+			}
 			return ErrNotFound
 		}
 		fields := []string{"retain_until"}
@@ -113,91 +117,158 @@ func (s *Store) AdminFiles(ctx context.Context, p *Principal, subject, cursor st
 	return out, rows.Err()
 }
 
-// purgeFiles destroys the content and metadata of files: the blobs first (so a failure leaves
-// every reference in place and the whole step can be retried), then, in one transaction, the
-// sealed names, the version references, the share links, the tombstones and the audit entries.
-// It ignores holds: callers decide whether a hold applies.
-func (s *Store) purgeFiles(ctx context.Context, ids []string, actor, action, reason string) (int, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	type fileInfo struct{ id, space, tomb string }
-	var infos []fileInfo
-	var keys []string
-	if err := func() error {
-		cctx, cancel := context.WithTimeout(ctx, dbTimeout)
-		defer cancel()
-		for _, id := range ids {
-			var fi fileInfo
-			var subject string
-			if err := s.db.QueryRowContext(cctx, `SELECT id, space_id, subject FROM files WHERE (id = ?) AND (status != 'purged')`, id).Scan(&fi.id, &fi.space, &subject); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					continue
-				}
-				return err
-			}
-			fi.tomb = fi.id
-			if subject != "" {
-				fi.tomb = subject
-			}
-			infos = append(infos, fi)
-			rows, err := s.db.QueryContext(cctx, `SELECT blob_key FROM versions WHERE (file_id = ?) AND (purged_at IS NULL)`, id)
-			if err != nil {
-				return err
-			}
-			for rows.Next() {
-				var k string
-				if err := rows.Scan(&k); err != nil {
-					_ = rows.Close()
-					return err
-				}
-				keys = append(keys, k)
-			}
-			if err := rows.Close(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return 0, err
-	}
-	for _, k := range keys {
-		if err := s.backend.Delete(ctx, k); err != nil {
-			return 0, fmt.Errorf("%w: a stored object could not be deleted; nothing was recorded as purged, repeat the request", ErrUnavailable)
-		}
-	}
-	now, date := s.now(), s.now().UTC().Format(time.DateOnly)
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		for _, fi := range infos {
-			if _, err := tx.ExecContext(ctx, `UPDATE files SET status = 'purged', name_sealed = NULL, description_sealed = NULL, folder_id = NULL, legal_hold = 0, retain_until = NULL,
-				erased_at = ?, rev = rev + 1, updated_at = ? WHERE (id = ?)`, ts(now), ts(now), fi.id); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE versions SET blob_key = '', sha256 = '', purged_at = ? WHERE (file_id = ?) AND (purged_at IS NULL)`, ts(now), fi.id); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `DELETE FROM shares WHERE (file_id = ?)`, fi.id); err != nil {
-				return err
-			}
-			for _, class := range Classes {
-				if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?)`, fi.tomb, class, date, ts(now)); err != nil {
-					return err
-				}
-			}
-			if err := s.audit(ctx, tx, actor, action, "file:"+fi.id, nil, "ok"); err != nil {
-				return err
-			}
-			if err := s.emit(ctx, tx, EventDeleted, deletedEvent(fi.id, fi.space, reason, actor, now)); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+// ---- purging -------------------------------------------------------------------------------------
+//
+// A purge has two halves. The decision is one transaction: it re-checks holds, retention dates and
+// state, marks the files `purging` and writes the tombstones. From then on nothing can hold,
+// restore, version or share them. The destruction follows: delete exactly the blobs the claimed
+// versions name, then record it. A crash or a storage failure in between leaves files `purging`,
+// which the next sweep (or a repeat of the request) finishes.
+
+const (
+	purgeBatch = 200
+	// heldOrLocked matches a file a purge decided by policy must not touch. Its one argument is now.
+	heldOrLocked = `((legal_hold = 1) OR ((retain_until IS NOT NULL) AND (retain_until > ?)))`
+	ofSubject    = `((subject = ?) OR (id = ?))`
+)
+
+type purgeIntent struct{ reason, actor, action string }
+
+// markPurging claims the active and deleted files matching where, inside tx.
+func (s *Store) markPurging(ctx context.Context, tx dbq, in purgeIntent, where string, args ...any) (int64, error) {
+	all := append([]any{in.reason, in.actor, in.action, ts(s.now())}, args...)
+	res, err := tx.ExecContext(ctx, `UPDATE files SET status = 'purging', purge_reason = ?, purge_actor = ?, purge_action = ?, rev = rev + 1, updated_at = ?
+		WHERE (status IN ('active','deleted')) AND `+where, all...) //nolint:gosec // fixed clauses
 	if err != nil {
 		return 0, err
 	}
-	s.wake()
-	return len(infos), nil
+	return res.RowsAffected()
+}
+
+// tombstoneClaimed writes one tombstone per class for every file claimed by action. The subject is
+// the file's own id: purging one file must never take the data subject's other files with it on a
+// restore.
+func (s *Store) tombstoneClaimed(ctx context.Context, tx dbq, action string) error {
+	for _, class := range Classes {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) SELECT id, ?, ?, ? FROM files WHERE (status = 'purging') AND (purge_action = ?)`,
+			class, s.now().UTC().Format(time.DateOnly), ts(s.now()), action); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// finishPurges destroys every claimed file matching where, in batches until none is left.
+func (s *Store) finishPurges(ctx context.Context, where string, args ...any) (int, error) {
+	total := 0
+	last := ""
+	for {
+		ids, err := s.claimedIDs(ctx, last, where, args...)
+		if err != nil || len(ids) == 0 {
+			if total > 0 {
+				s.wake()
+			}
+			return total, err
+		}
+		for _, id := range ids {
+			done, err := s.finishPurge(ctx, id)
+			if err != nil {
+				return total, err
+			}
+			if done {
+				total++
+			}
+		}
+		last = ids[len(ids)-1]
+	}
+}
+
+func (s *Store) claimedIDs(ctx context.Context, after, where string, args ...any) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	all := append(append([]any{after}, args...), purgeBatch)
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM files WHERE (status = 'purging') AND (id > ?) AND `+where+` ORDER BY id LIMIT ?`, all...) //nolint:gosec // fixed clauses
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// claimedBlobs reads what finishPurge needs about one claimed file.
+func (s *Store) claimedBlobs(ctx context.Context, id string) (space string, in purgeIntent, keys []string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	if err = s.db.QueryRowContext(ctx, `SELECT space_id, purge_reason, purge_actor, purge_action FROM files WHERE (id = ?) AND (status = 'purging')`, id).
+		Scan(&space, &in.reason, &in.actor, &in.action); err != nil {
+		return
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT blob_key FROM versions WHERE (file_id = ?) AND (purged_at IS NULL)`, id)
+	if err != nil {
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var k string
+		if err = rows.Scan(&k); err != nil {
+			return
+		}
+		keys = append(keys, k)
+	}
+	err = rows.Err()
+	return
+}
+
+// finishPurge deletes the blobs of one claimed file and then, in one transaction, blanks its
+// sealed names and those version references, drops its share links and records the audit entry and
+// the event. It reports false when someone else finished it first.
+func (s *Store) finishPurge(ctx context.Context, id string) (bool, error) {
+	space, in, keys, err := s.claimedBlobs(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, k := range keys {
+		if err := s.backend.Delete(ctx, k); err != nil {
+			return false, fmt.Errorf("%w: a stored object could not be deleted; the file stays marked for purging, repeat the request or let the sweep finish it", ErrUnavailable)
+		}
+	}
+	done := false
+	now := s.now()
+	err = s.inTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE files SET status = 'purged', name_sealed = NULL, description_sealed = NULL, folder_id = NULL, legal_hold = 0, retain_until = NULL,
+			erased_at = ?, rev = rev + 1, updated_at = ? WHERE (id = ?) AND (status = 'purging')`, ts(now), ts(now), id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil
+		}
+		for _, k := range keys {
+			if _, err := tx.ExecContext(ctx, `UPDATE versions SET blob_key = '', sha256 = '', purged_at = ? WHERE (file_id = ?) AND (blob_key = ?)`, ts(now), id, k); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM shares WHERE (file_id = ?)`, id); err != nil {
+			return err
+		}
+		if err := s.audit(ctx, tx, in.actor, in.action, "file:"+id, nil, "ok"); err != nil {
+			return err
+		}
+		done = true
+		return s.emit(ctx, tx, EventDeleted, deletedEvent(id, space, in.reason, in.actor, now))
+	})
+	return done && err == nil, err
 }
 
 // Erasure is the result of an erasure request: an opaque subject id and the classes purged.
@@ -208,34 +279,10 @@ type Erasure struct {
 	Files   int      `json:"files"`
 }
 
-func (s *Store) subjectFileIDs(ctx context.Context, subject string, includeHeld bool) (ids []string, held int, err error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT id, legal_hold FROM files WHERE ((subject = ?) OR (id = ?)) AND (status != 'purged') ORDER BY id LIMIT 5000`, subject, subject)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var id string
-		var h int
-		if err := rows.Scan(&id, &h); err != nil {
-			return nil, 0, err
-		}
-		if h == 1 {
-			held++
-			if !includeHeld {
-				continue
-			}
-		}
-		ids = append(ids, id)
-	}
-	return ids, held, rows.Err()
-}
-
-// EraseSubject purges every file of a data subject on request and records tombstones the backup
-// ledger takes. files.admin only; a legal hold on any of them blocks the request. Idempotent: a
-// repeat retries the scrub of the database files, which is the last step.
+// EraseSubject purges every file of a data subject on request and records the subject's tombstones
+// for the backup ledger. files.admin only; a legal hold or an unpassed retention date on any of
+// the files blocks the whole request. Idempotent: a repeat finishes an interrupted erasure and
+// retries the scrub of the database files, which is the last step.
 func (s *Store) EraseSubject(ctx context.Context, p *Principal, subject string) (*Erasure, error) {
 	if !p.Has(PermAdmin) {
 		return nil, ErrForbidden
@@ -243,30 +290,38 @@ func (s *Store) EraseSubject(ctx context.Context, p *Principal, subject string) 
 	if !subjectRe.MatchString(subject) {
 		return nil, invalid("the subject must be an opaque id")
 	}
-	ids, held, err := s.subjectFileIDs(ctx, subject, false)
-	if err != nil {
-		return nil, err
-	}
-	if held > 0 {
-		s.auditDeny(ctx, p.Subject, "file.erase", "subject:"+subject)
-		return nil, conflict("erasure is blocked by a legal hold")
-	}
-	n, err := s.purgeFiles(ctx, ids, p.Subject, "file.erase", "erasure")
-	if err != nil {
-		return nil, err
-	}
 	date := s.now().UTC().Format(time.DateOnly)
-	if err := s.inTx(ctx, func(tx *sql.Tx) error {
+	blocked := false
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM files WHERE `+ofSubject+` AND (status IN ('active','deleted')) AND `+heldOrLocked, subject, subject, ts(s.now())).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			blocked = true
+			return conflict("erasure is blocked by a legal hold or a retention date")
+		}
+		if _, err := s.markPurging(ctx, tx, purgeIntent{"erasure", p.Subject, "file.erase"}, ofSubject, subject, subject); err != nil {
+			return err
+		}
 		for _, c := range Classes {
 			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?)`, subject, c, date, ts(s.now())); err != nil {
 				return err
 			}
 		}
 		return s.audit(ctx, tx, p.Subject, "subject.erase", "subject:"+subject, nil, "ok")
-	}); err != nil {
+	})
+	if blocked {
+		s.auditDeny(ctx, p.Subject, "file.erase", "subject:"+subject)
+	}
+	if err != nil {
 		return nil, err
 	}
-	// The erasure and its audit record are committed; now remove it from the file's free pages
+	n, err := s.finishPurges(ctx, ofSubject, subject, subject)
+	if err != nil {
+		return nil, err
+	}
+	// The erasure and its audit records are committed; now remove it from the file's free pages
 	// and the write-ahead log. A failure is reported and the request can be repeated.
 	if err := s.scrub(ctx, true); err != nil {
 		return nil, fmt.Errorf("the files are erased and audited, but scrubbing the database files failed (repeat the request: it is idempotent and retries the scrub): %w", err)
@@ -307,8 +362,8 @@ func (s *Store) ListErasures(ctx context.Context, p *Principal, after int64) ([]
 
 // PurgeSubject is the purge(subject, class) hook the backup restore replays: idempotent, it
 // ignores legal holds (the erasure was authorised when the tombstone was written), and an unknown
-// subject is a no-op. The subject is a data subject id or a file id (retention tombstones use the
-// file id of files that have no subject).
+// subject is a no-op. The subject is a data subject id (an erasure) or a file id (a retention
+// purge).
 func (s *Store) PurgeSubject(ctx context.Context, p *Principal, subject, class string) error {
 	if !p.Has(PermAdmin) {
 		return ErrForbidden
@@ -319,11 +374,16 @@ func (s *Store) PurgeSubject(ctx context.Context, p *Principal, subject, class s
 	if class != ClassContent && class != ClassMetadata {
 		return invalid("class must be one of %v", Classes)
 	}
-	ids, _, err := s.subjectFileIDs(ctx, subject, true)
-	if err != nil {
+	if err := s.inTx(ctx, func(tx *sql.Tx) error {
+		n, err := s.markPurging(ctx, tx, purgeIntent{"erasure", p.Subject, "file.purge"}, ofSubject, subject, subject)
+		if err != nil || n == 0 {
+			return err
+		}
+		return s.tombstoneClaimed(ctx, tx, "file.purge")
+	}); err != nil {
 		return err
 	}
-	if _, err := s.purgeFiles(ctx, ids, p.Subject, "file.purge", "erasure"); err != nil {
+	if _, err := s.finishPurges(ctx, ofSubject, subject, subject); err != nil {
 		return err
 	}
 	return s.scrub(ctx, false)
@@ -337,45 +397,64 @@ type RetentionReport struct {
 	Orphans       int `json:"orphan_blobs_removed"`
 }
 
+// sweepTrash finishes interrupted purges, then claims and purges the files whose trash period has
+// ended. Held and retention-locked files are excluded in the query, so they can never fill a batch
+// and starve the others.
+func (s *Store) sweepTrash(ctx context.Context, rep *RetentionReport) error {
+	n, err := s.finishPurges(ctx, `(1 = 1)`)
+	rep.Purged += n
+	if err != nil {
+		return err
+	}
+	d := *s.cfg.Retention.TrashDays
+	if d <= 0 {
+		return nil
+	}
+	const due = `(status = 'deleted') AND (deleted_at <= ?)`
+	cutoff := ts(s.now().AddDate(0, 0, -d))
+	if err := s.countSkipped(ctx, rep, due, cutoff); err != nil {
+		return err
+	}
+	for {
+		var claimed int64
+		if err := s.inTx(ctx, func(tx *sql.Tx) error {
+			var err error
+			claimed, err = s.markPurging(ctx, tx, purgeIntent{"retention", "system", "file.retention_purge"},
+				`(id IN (SELECT id FROM files WHERE `+due+` AND NOT `+heldOrLocked+` ORDER BY deleted_at LIMIT ?))`, cutoff, ts(s.now()), purgeBatch)
+			if err != nil || claimed == 0 {
+				return err
+			}
+			return s.tombstoneClaimed(ctx, tx, "file.retention_purge")
+		}); err != nil {
+			return err
+		}
+		if claimed == 0 {
+			return nil
+		}
+		n, err := s.finishPurges(ctx, `(1 = 1)`)
+		rep.Purged += n
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (s *Store) countSkipped(ctx context.Context, rep *RetentionReport, due string, cutoff int64) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	return s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(legal_hold = 1), 0), COALESCE(SUM((legal_hold = 0) AND (retain_until IS NOT NULL) AND (retain_until > ?)), 0) FROM files WHERE `+due, //nolint:gosec // fixed clause
+		ts(s.now()), cutoff).Scan(&rep.SkippedHold, &rep.SkippedLocked)
+}
+
 // RunRetention enforces the retention rules: files in the trash for trash_days are purged (a hold
-// or an unpassed retention date skips them), blobs that were written but never recorded are
-// removed, and old outbox rows are dropped. Safe to run at any time and repeatedly.
+// or an unpassed retention date skips them), interrupted purges are finished, blobs that were
+// written but never recorded are removed, and old outbox rows are dropped. Safe to run at any time
+// and repeatedly.
 func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 	rep := &RetentionReport{}
 	now := s.now()
-	if d := *s.cfg.Retention.TrashDays; d > 0 {
-		cctx, cancel := context.WithTimeout(ctx, dbTimeout)
-		rows, err := s.db.QueryContext(cctx, `SELECT id, legal_hold, retain_until FROM files WHERE (status = 'deleted') AND (deleted_at <= ?) ORDER BY deleted_at LIMIT 500`, ts(now.AddDate(0, 0, -d)))
-		if err != nil {
-			cancel()
-			return rep, err
-		}
-		var due []string
-		for rows.Next() {
-			var id string
-			var hold int
-			var retain sql.NullInt64
-			if err := rows.Scan(&id, &hold, &retain); err != nil {
-				_ = rows.Close()
-				cancel()
-				return rep, err
-			}
-			switch {
-			case hold == 1:
-				rep.SkippedHold++
-			case retain.Valid && retain.Int64 > ts(now):
-				rep.SkippedLocked++
-			default:
-				due = append(due, id)
-			}
-		}
-		_ = rows.Close()
-		cancel()
-		n, err := s.purgeFiles(ctx, due, "system", "file.retention_purge", "retention")
-		rep.Purged = n
-		if err != nil {
-			return rep, err
-		}
+	if err := s.sweepTrash(ctx, rep); err != nil {
+		return rep, err
 	}
 	cctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	rows, err := s.db.QueryContext(cctx, `SELECT blob_key FROM pending_blobs WHERE (created_at <= ?) LIMIT 500`, ts(now.Add(-pendingBlobGrace)))

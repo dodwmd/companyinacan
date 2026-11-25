@@ -43,7 +43,11 @@ CREATE TABLE files (
     -- opaque ids that let other modules and erasure find a file: never names or contact details
     subject            TEXT NOT NULL DEFAULT '',
     ref                TEXT NOT NULL DEFAULT '',
-    status             TEXT NOT NULL CHECK (status IN ('active','deleted','purged')),
+    status             TEXT NOT NULL CHECK (status IN ('active','deleted','purging','purged')),
+    -- set when a purge is claimed, so an interrupted one can be finished
+    purge_reason       TEXT NOT NULL DEFAULT '',
+    purge_actor        TEXT NOT NULL DEFAULT '',
+    purge_action       TEXT NOT NULL DEFAULT '',
     current_version    INTEGER NOT NULL,
     rev                INTEGER NOT NULL DEFAULT 1,
     legal_hold         INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +63,7 @@ CREATE INDEX files_folder ON files (folder_id);
 CREATE INDEX files_ref ON files (ref) WHERE ref != '';
 CREATE INDEX files_subject ON files (subject) WHERE subject != '';
 CREATE INDEX files_deleted ON files (deleted_at) WHERE status = 'deleted';
+CREATE INDEX files_purging ON files (id) WHERE status = 'purging';
 
 -- Versions are immutable: a new upload is a new row; nothing rewrites an old one except a purge,
 -- which blanks the blob reference and checksum.

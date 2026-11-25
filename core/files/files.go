@@ -69,7 +69,7 @@ func (s *Store) getFile(ctx context.Context, q dbq, p *Principal, id string, min
 	if err != nil {
 		return nil, RoleNone, err
 	}
-	if role == RoleNone || f.status == "purged" || (f.status == "deleted" && role < RoleEditor) {
+	if role == RoleNone || f.status == "purged" || f.status == "purging" || (f.status == "deleted" && role < RoleEditor) {
 		return nil, RoleNone, ErrNotFound
 	}
 	if role < min {
