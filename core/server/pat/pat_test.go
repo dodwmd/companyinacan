@@ -27,6 +27,11 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(func() { _ = db.Close() })
 	e := &env{db: db, now: time.Unix(1_700_000_000, 0)}
 	db.Now = func() time.Time { return e.now }
+	for _, u := range []string{"alice", "bob"} {
+		if _, err := db.CreateAdmin(ctx, u, "x", "y"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	e.s = New(db, audit.New(db))
 	e.s.Now = func() time.Time { return e.now }
 	for _, id := range []string{"work", "people"} {
@@ -162,11 +167,11 @@ func TestLiveTokenCapPerModule(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	for i := 0; i < MaxLivePerModule; i++ {
-		if _, err := e.s.Issue(ctx, "user:alice", IssueRequest{Name: "t", Module: "work", Permissions: []string{"work.read"}, TTL: time.Hour}); err != nil {
+		if _, err := e.s.Issue(ctx, "user:u"+string(rune('a'+i/MaxLivePerIssuer)), IssueRequest{Name: "t", Module: "work", Permissions: []string{"work.read"}, TTL: time.Hour}); err != nil {
 			t.Fatal(i, err)
 		}
 	}
-	if _, err := e.s.Issue(ctx, "user:alice", IssueRequest{Name: "t", Module: "work", Permissions: []string{"work.read"}, TTL: time.Hour}); err == nil {
+	if _, err := e.s.Issue(ctx, "user:zed", IssueRequest{Name: "t", Module: "work", Permissions: []string{"work.read"}, TTL: time.Hour}); err == nil {
 		t.Fatal("no cap on live tokens")
 	}
 }

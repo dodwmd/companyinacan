@@ -54,8 +54,8 @@ func (s *Server) issueToken(w http.ResponseWriter, r *http.Request, p principal)
 	if !httpx.DecodeJSON(w, r, &b) {
 		return
 	}
-	if b.TTLHours < 1 || b.TTLHours > int(pat.MaxTTL/time.Hour) {
-		httpx.Problem(w, http.StatusBadRequest, "ttl_hours must be between 1 and 8760")
+	if b.TTLHours < 1 {
+		httpx.Problem(w, http.StatusBadRequest, "ttl_hours must be at least 1 (the maximum is set by can-core, 90 days by default)")
 		return
 	}
 	iss, err := s.PATs.Issue(r.Context(), p.Subject(), pat.IssueRequest{Name: b.Name, Module: b.Module, Permissions: b.Permissions, TTL: time.Duration(b.TTLHours) * time.Hour})

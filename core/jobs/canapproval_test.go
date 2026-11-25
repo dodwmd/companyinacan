@@ -117,6 +117,16 @@ func TestEventsOfOtherTypesAndForeignRequestsAreIgnored(t *testing.T) {
 	}
 }
 
+func TestManualDecisionIsClosedWhileCanCoreDecides(t *testing.T) {
+	e, _, id, _ := requisition(t)
+	if r := e.do(adminTok, "POST", "/v1/jobs/"+id+"/approval", map[string]any{"decision": "approve"}); r.Code != 409 {
+		t.Fatalf("an admin approved by hand behind can-core's back: %d %s", r.Code, r.Body)
+	}
+	if got := e.want(e.do(jobsPAT, "GET", "/v1/jobs/"+id, nil), 200).m(t)["approval"]; got != "pending" {
+		t.Fatalf("%v", got)
+	}
+}
+
 func TestBootstrapTokenCannotRequestACanCoreApproval(t *testing.T) {
 	e, _ := canEnv(t)
 	r := e.want(e.do(adminTok, "POST", "/v1/jobs", jobBody("Engineer", "user:bob")), 201)

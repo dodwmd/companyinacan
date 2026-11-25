@@ -12,6 +12,12 @@ RBAC and approvals use. A token can grant only permissions the issuer holds (che
 later are dropped at introspection. List and revoke are own-only unless the caller holds `rbac.manage`.
 A foreign token answers 404 on revoke, like an unknown one.
 
+**R2b Rights at use, not only at issue.** Introspection re-checks that the issuer exists and intersects
+the stored permissions with what the issuer holds now (fail closed). Revocation on role removal or user
+deletion is therefore implicit, within the module cache TTL of 30 s. Lifetime defaults to at most 90
+days, 10 live tokens per issuer and module. Permissions also restrict the module's role (people
+`Actor.Restricted`); a role is not granted for less than the whole role (jobs).
+
 **R3 Introspection answers.** Extends `POST /v1/tokens/introspect`: a `canpat_` token is answered
 before any TokenReview (so it never counts against the review rate limit) and only to the module it is
 bound to; unknown, expired, revoked, malformed, wrong audience and another module's token produce the

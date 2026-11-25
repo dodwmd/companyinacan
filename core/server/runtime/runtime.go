@@ -222,6 +222,9 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	eng := approvals.New(db, al, approvals.Deps{Roles: rb, Perms: rb, Lines: lines, Notifier: ntf, Bus: bus, Log: log})
 
 	pats := pat.New(db, al)
+	if d, err := strconv.Atoi(os.Getenv("CAN_PAT_MAX_TTL_DAYS")); err == nil && d >= 1 && d <= 365 {
+		pats.MaxTTL = time.Duration(d) * 24 * time.Hour // default 90 days
+	}
 	pats.Holds = func(ctx context.Context, subject, perm string) (bool, error) { return rb.Check(ctx, subject, perm, "") }
 
 	adminSrv := &adminapi.Server{

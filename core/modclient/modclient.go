@@ -21,6 +21,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -260,7 +261,10 @@ const (
 
 // Receiver is the http.Handler of a module's event endpoint. It verifies can-core's HMAC signature
 // and replay window before the body is parsed, drops redelivered event ids, and answers 5xx for a
-// handler failure so can-core retries.
+// handler failure so can-core retries. The set of seen event ids is per process and bounded
+// (4,096): after a restart, or past that many events, a redelivered event reaches the handler again,
+// so handlers must be idempotent on their own (the hire hand-off keys on the candidate id, the
+// approval handlers on the request id and a pending state).
 type Receiver struct {
 	// Secret is CAN_WEBHOOK_SECRET. Shorter than 16 characters (or empty) refuses everything.
 	Secret string
@@ -270,6 +274,7 @@ type Receiver struct {
 	// MaxBody bounds the request body (default 1 MiB).
 	MaxBody int64
 
+	once sync.Once
 	seen *idSet
 }
 
@@ -311,9 +316,7 @@ func (rc *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "malformed event", http.StatusBadRequest)
 		return
 	}
-	if rc.seen == nil {
-		rc.seen = newIDSet(4096)
-	}
+	rc.once.Do(func() { rc.seen = newIDSet(4096) })
 	if rc.seen.has(ev.ID) {
 		w.WriteHeader(http.StatusNoContent)
 		return

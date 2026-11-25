@@ -68,7 +68,7 @@ cluster setting that can-core does not assert.
 
 A signed-in administrator opens **API tokens** in the admin UI (or `POST /api/v1/tokens`), picks an
 enabled module, a name, the permissions (only ones the module declares in its manifest and that the
-administrator holds through their own roles) and a lifetime of 1 hour to 365 days. The token
+administrator holds through their own roles) and a lifetime of 1 hour up to the maximum (90 days by default; `CAN_PAT_MAX_TTL_DAYS`, at most 365, changes it). One administrator can hold 10 live tokens per module, and a module 50. The token
 (`canpat_...`) is shown once; only its hash is stored. The administrator can revoke it at any time;
 anyone with `rbac.manage` can list and revoke all.
 
@@ -80,10 +80,23 @@ from a made-up one. The module then maps the permissions to its own model:
 | Module | Mapping |
 |---|---|
 | work, finance, forms | the module's own permissions, directly |
-| jobs | the strongest role the permissions fully cover: `jobs.admin` admin; `jobs.read`, `jobs.write`, `ats.read`, `ats.write`, `ats.hire` recruiter; `jobs.read`, `ats.read`, `ats.write`, `ats.interview` hiring manager; `ats.interview` interviewer. Otherwise refused. |
+| jobs | the strongest role the permissions fully cover: every jobs permission including `jobs.admin`: admin (`jobs.admin` alone is refused); `jobs.read`, `jobs.write`, `ats.read`, `ats.write`, `ats.hire` recruiter; `jobs.read`, `ats.read`, `ats.write`, `ats.interview` hiring manager; `ats.interview` interviewer. Otherwise refused. |
 | people | `people.read` employee; plus `performance.write` without `people.sensitive-write` manager; `people.write` hr; `people.admin` admin. A person is linked to a token by setting their `sso_subject` to `user:<username>`. Manager access cannot be told apart from a plain employee set by permissions alone beyond that rule: SSO sessions are the proper answer. |
 
-Behaviour to rely on: revocation reaches a module within 30 seconds (its cache); an expired token stops
+A token never outlives its issuer's rights: at every introspection can-core checks that the issuing
+administrator still exists and intersects the token's permissions with what that administrator holds
+now (removing a role takes the permission off their tokens; deleting the account makes them inactive;
+a failure of the check drops the permission). Tokens are not revoked in the database by those events,
+they simply stop being answered.
+
+A token's permissions also restrict what the module lets its role do: in people a token with
+`people.write` but not `people.sensitive-read` / `-write` cannot reach date of birth, national id,
+home address, personal phone or salary, `people.admin` alone cannot create or edit people, and
+erasure, legal hold and retention need `people.admin`; performance data needs `performance.read` /
+`.write`. A role is never granted to a token that holds less than the role (jobs: `jobs.admin` alone
+is refused; admin is the whole set).
+
+Behaviour to rely on: revocation, a removed role and a deleted user reach a module within 30 seconds (its cache; the RBAC answer behind it is invalidated at once); an expired token stops
 at expiry even inside that window; when can-core cannot be reached a personal token is refused (the
 module's static bootstrap token still works); a flood of bad tokens never slows a valid one (bad tokens
 are refused locally by shape, cached negatively for 5 seconds, and the modules' failure limiters count
@@ -106,14 +119,18 @@ through can-core only.
 
 Delivery is at least once. can-core retries with backoff (8 attempts, then dead, visible in the admin
 UI under Events); receivers verify the signature and a 5-minute replay window and ignore ids they have
-seen.
+seen. The seen-set is per process and bounded (4,096 ids): after a restart a redelivered event reaches
+the handler again, so handlers are idempotent by themselves (people: per candidate id; jobs and finance:
+only a pending request changes, once). Handlers also check the event's source (`jobs` for a hire,
+`can-core` for an approval decision).
 
 ## Approvals
 
 Both flows go through can-core's approvals engine; the module code depends on an interface
 (`modclient.Approvals`), not on the engine.
 
-* **Jobs requisitions** (`POST /v1/jobs/{id}/approval-requests`): needs a personal access token (the
+* **Jobs requisitions** (manual approval through `POST /v1/jobs/{id}/approval` is closed while
+  can-core decides: it answers 409, so nobody can approve behind the engine's back) (`POST /v1/jobs/{id}/approval-requests`): needs a personal access token (the
   requester must be a person; the bootstrap and service tokens are refused). The engine routes to the
   chain `[admin]` (people holding `jobs:admin`); when it decides, jobs sets the requisition approved or,
   for rejected, cancelled or expired, back to rejected so it can be asked again. If can-core lists the
@@ -151,6 +168,11 @@ Measured on a development machine, not on a cluster node. In the cluster (adviso
 whole integration suite including the `work` install): can-core RSS 49.0 MiB, high-water mark 55.1 MiB.
 
 ## What is not done
+
+* **Approvals are partly wired**: jobs requisitions and finance invoices only. Finance timesheets,
+  expenses, purchase orders and voiding, and every other module's approvals, still use their own rule.
+* Invalid token lookups from one module beyond 300 a minute are delayed 200 ms each; valid tokens never.
+* equity (merged separately) has its own authenticator and is not wired here.
 
 * **forms has no route to the internet through can-core.** The installer only routes
   `<subdomain>.<domain>`; forms' public form post is meant to be a same-origin path of the company site.

@@ -20,7 +20,8 @@ func TestRoleFromPermissions(t *testing.T) {
 		perms []string
 		want  string
 	}{
-		{[]string{"jobs.admin"}, RoleAdmin},
+		{[]string{"jobs.admin"}, ""}, // admin is the whole set, not one permission
+		{[]string{"jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire", "ats.interview", "jobs.admin"}, RoleAdmin},
 		{[]string{"jobs.read", "jobs.write", "ats.read", "ats.write", "ats.hire", "ats.interview"}, RoleRecruiter},
 		{[]string{"jobs.read", "ats.read", "ats.write", "ats.interview"}, RoleHiringManager},
 		{[]string{"ats.interview"}, RoleInterviewer},

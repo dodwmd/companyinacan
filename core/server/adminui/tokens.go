@@ -45,7 +45,7 @@ type tokensData struct {
 	TTLs    []int
 }
 
-var tokenTTLChoices = []int{24, 24 * 7, 24 * 30, 24 * 90, 24 * 365}
+var tokenTTLChoices = []int{24, 24 * 7, 24 * 30, 24 * 90}
 
 func (s *Server) tokenData(r *http.Request, sc *sessionCtx) (tokensData, error) {
 	d := tokensData{TTLs: tokenTTLChoices}

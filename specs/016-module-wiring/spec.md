@@ -45,7 +45,7 @@ invoices) used placeholder approvers.
   are placeholders that `make release-check` rejects.
 - **FR-2 Tokens.** can-core issues personal access tokens (`canpat_...`) scoped to one module and to a
   subset of the permissions that module declares, limited to what the issuer holds, hashed at rest,
-  expiring (1 hour to 365 days), revocable, capped per module. `POST /v1/tokens/introspect` answers a
+  expiring (1 hour to 90 days by default), revocable, capped per module. `POST /v1/tokens/introspect` answers a
   module for its own tokens only (subject and permissions), `{"active": false}` for everything else,
   with the same body for every failure.
 - **FR-3 Module side.** Each module has an `Authenticator` that asks can-core, caches boundedly, never

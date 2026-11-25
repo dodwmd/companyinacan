@@ -152,7 +152,7 @@ func (c *CoreApprover) CanApprove(ctx context.Context, a *Principal, req Approva
 // CanEventHandler handles the events can-core delivers to this module (manifest `subscribes`).
 func (s *Store) CanEventHandler() func(context.Context, modclient.Event) error {
 	return func(ctx context.Context, ev modclient.Event) error {
-		if ev.Type != "approval.decided.v1" {
+		if ev.Type != "approval.decided.v1" || ev.Source != "can-core" {
 			return nil
 		}
 		var d struct {

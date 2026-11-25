@@ -361,6 +361,9 @@ func (s *Store) DecideApproval(ctx context.Context, p *Principal, id string, app
 	if !p.Can(ActApprove) {
 		return nil, ErrForbidden
 	}
+	if _, core := s.approver.(CoreApprover); core {
+		return nil, conflict("requisitions are decided in can-core's approvals engine on this installation; decide the request there")
+	}
 	j, err := s.GetJob(ctx, p, id)
 	if err != nil {
 		return nil, err

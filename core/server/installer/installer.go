@@ -341,19 +341,28 @@ func secret(ns, name, module string, data map[string]string) kube.Object {
 	return o
 }
 
-// existingSecretKey reads one key of a Secret as the API returns it (base64 under data).
-func (in *Installer) existingSecretKey(ctx context.Context, ns, name, key string) string {
+// secretKey reads one key of a Secret as the API returns it (base64 under data). A Secret or a key
+// that does not exist is ("", nil); any other failure (5xx, timeout, forbidden, a value that is not
+// base64) is an error, so that a failed read is never mistaken for "not there yet": generating a
+// new value over an existing one would make sealed data undecryptable.
+func (in *Installer) secretKey(ctx context.Context, ns, name, key string) (string, error) {
 	o, err := in.cfg.API.Get(ctx, "Secret", ns, name)
+	if kube.IsNotFound(err) {
+		return "", nil
+	}
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("reading Secret %s/%s: %w", ns, name, err)
 	}
 	d, _ := o["data"].(map[string]any)
 	enc, _ := d[key].(string)
+	if enc == "" {
+		return "", nil
+	}
 	b, err := base64.StdEncoding.DecodeString(enc)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("secret %s/%s key %s is not valid base64", ns, name, key)
 	}
-	return string(b)
+	return string(b), nil
 }
 
 // secretVersionAnnotation on a pod template changes whenever the module's Secrets change, which
@@ -419,7 +428,10 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 		if prov == nil {
 			prov = dbprov.Unconfigured{}
 		}
-		pw := in.existingSecretKey(ctx, s.Namespace, secretDB, "DB_PASSWORD")
+		pw, err := in.secretKey(ctx, s.Namespace, secretDB, "DB_PASSWORD")
+		if err != nil {
+			return "", err
+		}
 		if pw == "" {
 			pw = randomPassword()
 		}
@@ -468,7 +480,10 @@ func (in *Installer) generatedSecrets(ctx context.Context, s reconcile.Spec, dat
 		rotate[k] = true
 	}
 	for _, sp := range in.cfg.SecretsFor(s.ID) {
-		cur := in.existingSecretKey(ctx, s.Namespace, secretModule, sp.Key)
+		cur, err := in.secretKey(ctx, s.Namespace, secretModule, sp.Key)
+		if err != nil {
+			return err
+		}
 		switch {
 		case cur != "" && rotate[sp.Key] && sp.Kind == modsecrets.Keyring:
 			next, err := modsecrets.RotateKeyring(cur)
@@ -747,7 +762,10 @@ func (in *Installer) saveReleaseObjects(ctx context.Context, s reconcile.Spec, o
 }
 
 func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.Object, error) {
-	enc := in.existingSecretKey(ctx, s.Namespace, secretRelease, "objects")
+	enc, err := in.secretKey(ctx, s.Namespace, secretRelease, "objects")
+	if err != nil {
+		return nil, err
+	}
 	if enc == "" {
 		return nil, nil
 	}
@@ -767,7 +785,11 @@ func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.
 	if err != nil {
 		return nil, err
 	}
-	if have := in.existingSecretKey(ctx, s.Namespace, secretRelease, "hmac"); !hmac.Equal([]byte(have), []byte(want)) {
+	have, herr := in.secretKey(ctx, s.Namespace, secretRelease, "hmac")
+	if herr != nil {
+		return nil, herr
+	}
+	if !hmac.Equal([]byte(have), []byte(want)) {
 		return nil, errors.New("HMAC does not match (the record was not written by this can-core for this module)")
 	}
 	var objs []kube.Object

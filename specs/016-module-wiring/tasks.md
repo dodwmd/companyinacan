@@ -27,6 +27,7 @@ and led to fixes in the tests or code. T15 passed on its first complete run.
 - [x] T17 Docs: `docs/module-wiring.md`, module READMEs, epics table
 - [x] T18 RAM measured (spec FR-8)
 - [x] T19 Run the k3d job: it passed on its first CI run. forms, people, jobs and finance are still never run on a cluster
+- [x] T26 QA round 1: people tokens restricted by permission, secret reads fail closed, token rights re-checked at introspection, 90-day default lifetime, per-issuer cap, failure penalty, manual requisition approval closed, receiver race, event source checks (`people/restricted_test.go`, `installer/secretread_test.go`, `pat/live_test.go`)
 - [ ] T19b Extend the k3d job to a second module and to event delivery between modules
 - [ ] T20 forms: durable outbox for events; a route for the public listener (same-origin path or its own host)
 - [ ] T21 finance: timesheets, expenses and purchase orders through the engine; apply the approval when it arrives

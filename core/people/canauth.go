@@ -53,5 +53,6 @@ func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
 	if len(roles) == 0 {
 		return nil, ErrUnauthenticated
 	}
-	return &Principal{Subject: id.Subject, Roles: roles}, nil
+	perms := append([]string{}, id.Permissions...) // non-nil: the token is restricted to them
+	return &Principal{Subject: id.Subject, Roles: roles, Perms: perms}, nil
 }

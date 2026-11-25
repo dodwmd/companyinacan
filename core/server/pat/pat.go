@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -27,10 +28,15 @@ const (
 	TokenPrefix      = "canpat_"
 	maxTokenLen      = 128 // anything longer cannot be one of ours; rejected before any lookup
 	MaxLivePerModule = 50
-	MaxTTL           = 365 * 24 * time.Hour
-	MinTTL           = time.Hour
-	MaxPermissions   = 20
-	maxNameLen       = 80
+	// MaxLivePerIssuer bounds one administrator's live tokens per module, so one person cannot use
+	// up the module's quota.
+	MaxLivePerIssuer = 10
+	// DefaultMaxTTL is the longest lifetime unless Service.MaxTTL says otherwise: a token is a
+	// credential that must be reissued now and then, not a permanent key.
+	DefaultMaxTTL  = 90 * 24 * time.Hour
+	MinTTL         = time.Hour
+	MaxPermissions = 20
+	maxNameLen     = 80
 )
 
 // ErrInvalid is returned for a request that cannot be honoured (the message is safe to show).
@@ -48,12 +54,35 @@ type Service struct {
 	db    *store.DB
 	audit *audit.Log
 	Now   func() time.Time
+	// MaxTTL is the longest token lifetime issued (default DefaultMaxTTL).
+	MaxTTL time.Duration
+	// FailFree is how many invalid token lookups per module and minute are answered at full speed
+	// (default 300); past it each invalid lookup waits FailPenalty (default 200 ms). A valid token
+	// is never delayed. Sleep replaces the wait in tests.
+	FailFree    int
+	FailPenalty time.Duration
+	Sleep       func(context.Context, time.Duration)
+
+	failMu sync.Mutex
+	fails  map[string]*failWindow
 	// Holds, when set, reports whether the issuing subject holds a module permission itself. A
 	// token can then never grant more than its issuer has.
 	Holds func(ctx context.Context, subject, permission string) (bool, error)
 }
 
 // New returns a Service.
+type failWindow struct {
+	start time.Time
+	n     int
+}
+
+func (s *Service) maxTTL() time.Duration {
+	if s.MaxTTL > 0 {
+		return s.MaxTTL
+	}
+	return DefaultMaxTTL
+}
+
 func New(db *store.DB, al *audit.Log) *Service { return &Service{db: db, audit: al, Now: time.Now} }
 
 // IssueRequest is what an administrator asks for.
@@ -127,8 +156,8 @@ func (s *Service) Issue(ctx context.Context, actor string, req IssueRequest) (Is
 	if err != nil {
 		return Issued{}, err
 	}
-	if req.TTL < MinTTL || req.TTL > MaxTTL {
-		return Issued{}, invalid("expiry must be between %s and %s", MinTTL, MaxTTL)
+	if req.TTL < MinTTL || req.TTL > s.maxTTL() {
+		return Issued{}, invalid("expiry must be between %s and %s", MinTTL, s.maxTTL())
 	}
 	if n := len(req.Permissions); n == 0 || n > MaxPermissions {
 		return Issued{}, invalid("between 1 and %d permissions are required", MaxPermissions)
@@ -158,9 +187,16 @@ func (s *Service) Issue(ctx context.Context, actor string, req IssueRequest) (Is
 		}
 	}
 	now := s.Now()
-	live, err := s.countLive(ctx, mod.ID, now)
+	live, err := s.countLive(ctx, mod.ID, "", now)
 	if err != nil {
 		return Issued{}, err
+	}
+	mine, err := s.countLive(ctx, mod.ID, actor, now)
+	if err != nil {
+		return Issued{}, err
+	}
+	if mine >= MaxLivePerIssuer {
+		return Issued{}, invalid("you already have %d live tokens for module %s; revoke some first", MaxLivePerIssuer, mod.ID)
 	}
 	if live >= MaxLivePerModule {
 		return Issued{}, invalid("module %s already has %d live tokens; revoke some first", mod.ID, MaxLivePerModule)
@@ -182,9 +218,9 @@ func (s *Service) Issue(ctx context.Context, actor string, req IssueRequest) (Is
 	return Issued{ID: rec.ID, Token: token, ExpiresAt: rec.ExpiresAt}, nil
 }
 
-func (s *Service) countLive(ctx context.Context, module string, now time.Time) (int, error) {
+func (s *Service) countLive(ctx context.Context, module, issuer string, now time.Time) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM api_tokens WHERE module_id=? AND revoked_at=0 AND expires_at > ?`, module, now.Unix()).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM api_tokens WHERE module_id=? AND revoked_at=0 AND expires_at > ? AND (?='' OR created_by=?)`, module, now.Unix(), issuer, issuer).Scan(&n)
 	return n, err
 }
 
@@ -234,6 +270,55 @@ func LooksLikeToken(s string) bool {
 // failure (unknown, malformed, expired, revoked, another module's) and the caller cannot tell them
 // apart. Permissions the module's current manifest no longer declares are dropped.
 func (s *Service) Introspect(ctx context.Context, callerModule, token string) (Result, bool) {
+	res, ok := s.introspect(ctx, callerModule, token)
+	if !ok && LooksLikeToken(token) {
+		s.penalise(ctx, callerModule)
+	}
+	return res, ok
+}
+
+// penalise slows invalid lookups of one module past a per-minute quota. It never runs for a valid
+// token.
+func (s *Service) penalise(ctx context.Context, module string) {
+	free, pen := s.FailFree, s.FailPenalty
+	if free <= 0 {
+		free = 300
+	}
+	if pen <= 0 {
+		pen = 200 * time.Millisecond
+	}
+	now := s.Now()
+	s.failMu.Lock()
+	if s.fails == nil {
+		s.fails = map[string]*failWindow{}
+	}
+	w := s.fails[module]
+	if w == nil || now.Sub(w.start) >= time.Minute {
+		if len(s.fails) > 256 {
+			s.fails = map[string]*failWindow{}
+		}
+		w = &failWindow{start: now}
+		s.fails[module] = w
+	}
+	w.n++
+	over := w.n > free
+	s.failMu.Unlock()
+	if !over {
+		return
+	}
+	if s.Sleep != nil {
+		s.Sleep(ctx, pen)
+		return
+	}
+	t := time.NewTimer(pen)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}
+
+func (s *Service) introspect(ctx context.Context, callerModule, token string) (Result, bool) {
 	if !LooksLikeToken(token) {
 		return Result{}, false
 	}
@@ -245,11 +330,23 @@ func (s *Service) Introspect(ctx context.Context, callerModule, token string) (R
 	if err != nil || mod.State != store.StateEnabled {
 		return Result{}, false
 	}
+	// The issuer must still exist, and the token carries only what the issuer still holds: a token
+	// never outlives the rights of the person who made it.
+	if _, err := s.db.AdminByUsername(ctx, strings.TrimPrefix(t.Subject, "user:")); err != nil {
+		return Result{}, false
+	}
 	var perms []string
 	for _, p := range t.Permissions {
-		if slices.Contains(mod.Manifest.Permissions, p) {
-			perms = append(perms, p)
+		if !slices.Contains(mod.Manifest.Permissions, p) {
+			continue
 		}
+		if s.Holds != nil {
+			ok, err := s.Holds(ctx, t.Subject, p)
+			if err != nil || !ok {
+				continue
+			}
+		}
+		perms = append(perms, p)
 	}
 	if len(perms) == 0 {
 		return Result{}, false

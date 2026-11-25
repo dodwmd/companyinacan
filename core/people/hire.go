@@ -72,8 +72,8 @@ func (s *Service) StartOnboardingFromHire(ctx context.Context, hireRef, employme
 // Errors are returned only for failures worth retrying; a malformed event is dropped.
 func (s *Service) CanEventHandler() func(context.Context, modclient.Event) error {
 	return func(ctx context.Context, ev modclient.Event) error {
-		if ev.Type != "candidate.hired.v1" {
-			return nil
+		if ev.Type != "candidate.hired.v1" || ev.Source != "jobs" {
+			return nil // only the jobs module can hand off a hire
 		}
 		var d struct {
 			CandidateID    string `json:"candidate_id"`

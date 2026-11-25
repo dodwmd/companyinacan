@@ -535,7 +535,9 @@ func (s *Store) scrub(ctx context.Context, vacuum bool) error {
 type Approver interface {
 	// Request starts an approval for a job and returns a reference. When the decision is
 	// immediate it returns ApprovalApproved; otherwise ApprovalPending and the decision
-	// arrives later through Store.DecideApproval (the can-core webhook, or an admin).
+	// arrives later: from can-core as approval.decided.v1 (Store.ApplyApprovalDecision), or, for
+	// approvers that decide by hand, through Store.DecideApproval. With CoreApprover the manual
+	// route is closed: the decision belongs to can-core's engine.
 	Request(ctx context.Context, j *Job, requestedBy string) (ref, state string, err error)
 }
 

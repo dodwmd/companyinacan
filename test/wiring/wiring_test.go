@@ -152,6 +152,11 @@ func (w *world) pump() {
 
 func (w *world) token(user, module string, perms ...string) string {
 	w.t.Helper()
+	if _, err := w.db.AdminByUsername(w.ctx, user); err != nil {
+		if _, err := w.db.CreateAdmin(w.ctx, user, "x", "y"); err != nil {
+			w.t.Fatal(err)
+		}
+	}
 	iss, err := w.pats.Issue(w.ctx, "user:"+user, pat.IssueRequest{Name: user + " in tests", Module: module, Permissions: perms, TTL: time.Hour})
 	if err != nil {
 		w.t.Fatal(err)

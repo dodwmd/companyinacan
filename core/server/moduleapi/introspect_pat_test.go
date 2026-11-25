@@ -30,6 +30,9 @@ func patHarness(t *testing.T) (*harness, *pat.Service) {
 	t.Cleanup(func() { _ = db.Close() })
 	tr := tokenreview.NewFake()
 	reg := registry.New(db, "http://can-core.can-system.svc:8090")
+	if _, err := db.CreateAdmin(ctx, "alice", "x", "y"); err != nil {
+		t.Fatal(err)
+	}
 	ps := pat.New(db, audit.New(db))
 	for _, id := range []string{"work", "people"} {
 		m := config.Module{ID: id, Version: "1.0.0", Permissions: []string{id + ".read", id + ".write"}}
