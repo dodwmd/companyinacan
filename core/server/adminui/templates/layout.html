@@ -17,7 +17,7 @@
 <p class="brand">{{t "app.name"}}</p>
 {{if .User}}<nav aria-label="{{t "nav.label"}}">
 <ul>
-{{range .Nav}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a></li>
+{{range .Nav}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}{{if .Count}} <span class="count"><span class="sr">{{t "nav.unread"}} </span>{{.Count}}</span>{{end}}</a></li>
 {{end}}</ul>
 </nav>
 <form class="logout" method="post" action="/logout">

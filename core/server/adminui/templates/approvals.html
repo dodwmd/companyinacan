@@ -1,0 +1,67 @@
+{{define "approvalTable"}}{{if .Rows}}<div class="table-wrap" role="region" aria-labelledby="cap-{{.ID}}" tabindex="0">
+<table>
+<caption id="cap-{{.ID}}" class="sr">{{.Caption}}</caption>
+<thead><tr><th scope="col">{{t "ap.col_request"}}</th><th scope="col">{{t "ap.col_type"}}</th><th scope="col">{{t "ap.col_requester"}}</th><th scope="col">{{t "ap.col_amount"}}</th><th scope="col">{{t "ap.col_status"}}</th><th scope="col">{{t "ap.col_created"}}</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr>
+<th scope="row"><a href="/approvals/{{.ID}}">{{.Title}}</a></th>
+<td>{{.Type}}</td><td>{{.Requester}}</td><td>{{.Amount}}</td>
+<td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+<td><time datetime="{{iso .Created}}">{{ts .Created}}</time></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{.Empty}}</p>{{end}}{{end}}
+{{define "content"}}
+<h1>{{t "ap.title"}}</h1>
+
+<section aria-labelledby="h-waiting">
+<h2 id="h-waiting">{{t "ap.waiting"}}</h2>
+{{template "approvalTable" .Data.WaitingT}}
+</section>
+
+<section aria-labelledby="h-mine">
+<h2 id="h-mine">{{t "ap.requested"}}</h2>
+{{template "approvalTable" .Data.RequestedT}}
+</section>
+{{if .Data.IsAdmin}}
+<section aria-labelledby="h-all">
+<h2 id="h-all">{{t "ap.all"}}</h2>
+<form method="get" action="/approvals" class="filters">
+<p><label for="f-status">{{t "ap.filter_status"}}</label>
+<select id="f-status" name="status">
+{{range .Data.Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+{{end}}</select></p>
+<p><button type="submit">{{t "ap.apply"}}</button></p>
+</form>
+{{template "approvalTable" .Data.AllT}}
+</section>
+{{end}}
+<section aria-labelledby="h-deleg">
+<h2 id="h-deleg">{{t "ap.delegations"}}</h2>
+<p class="hint">{{t "ap.delegate_help"}}</p>
+{{if .Data.Delegations}}<div class="table-wrap" role="region" aria-labelledby="cap-deleg" tabindex="0">
+<table>
+<caption id="cap-deleg" class="sr">{{t "ap.delegations"}}</caption>
+<thead><tr><th scope="col">{{t "ap.delegate_to"}}</th><th scope="col">{{t "ap.deleg_from"}}</th><th scope="col">{{t "ap.deleg_to"}}</th><th scope="col"><span class="sr">{{t "ap.delegate_end"}}</span></th></tr></thead>
+<tbody>
+{{range .Data.Delegations}}<tr>
+<th scope="row">{{if .Mine}}{{.Delegate}}{{else}}{{.Delegator}}{{end}}</th>
+<td><time datetime="{{iso .From}}">{{ts .From}}</time></td><td><time datetime="{{iso .To}}">{{ts .To}}</time></td>
+<td>{{if .Mine}}<form method="post" action="/approvals/delegations/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">{{t "ap.delegate_end"}}</button></form>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "ap.no_delegations"}}</p>{{end}}
+<form method="post" action="/approvals/delegate" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="dg-to">{{t "ap.delegate_to"}}</label>
+<input id="dg-to" name="delegate" type="text" maxlength="64" pattern="[A-Za-z0-9_.@\-]+" required></p>
+<p><label for="dg-until">{{t "ap.delegate_until"}}</label>
+<input id="dg-until" name="until" type="date" required></p>
+<p><button type="submit">{{t "ap.delegate_save"}}</button></p>
+</form>
+</section>
+{{end}}

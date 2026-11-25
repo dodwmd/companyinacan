@@ -148,6 +148,24 @@ func (e *Engine) CanView(ctx context.Context, d Detail, viewer string) bool {
 	return false
 }
 
+// CanAct reports whether actor could vote on the request right now (pending, not the requester, an
+// active step names them directly or through a delegation, and they have not voted). Errors deny.
+func (e *Engine) CanAct(ctx context.Context, d Detail, actor string) bool {
+	if d.Request.Status != "pending" || actor == "" || actor == d.Request.Requester {
+		return false
+	}
+	_, onBehalf, err := e.route(ctx, d.Request, d.Steps, actor)
+	if err != nil {
+		return false
+	}
+	for _, dec := range d.Decisions {
+		if (dec.Kind == "approve" || dec.Kind == "reject") && (dec.Actor == actor || dec.OnBehalfOf == actor || (onBehalf != "" && (dec.Actor == onBehalf || dec.OnBehalfOf == onBehalf))) {
+			return false
+		}
+	}
+	return true
+}
+
 func (e *Engine) listRequests(ctx context.Context, q string, args ...any) ([]Request, error) {
 	rows, err := e.db.QueryContext(ctx, q, args...)
 	if err != nil {

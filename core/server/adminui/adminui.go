@@ -20,9 +20,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
+	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
@@ -45,6 +48,12 @@ type Server struct {
 	DB       *store.DB
 	Audit    *audit.Log
 	Registry *registry.Registry
+	// Shared platform services (epic E11a, platform.go). RBAC nil enforces no permissions (the
+	// single-admin behaviour of earlier versions); the approval and notification pages answer 503
+	// without their service.
+	RBAC      *rbac.Service
+	Approvals *approvals.Engine
+	Notify    *notify.Service
 	// Leads reads leads through the `leads` capability; nil means "not configured".
 	Leads   LeadsClient
 	Company Company
@@ -68,22 +77,26 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
+	return append(s.coreRoutes(), s.platformRoutes()...)
+}
+
+func (s *Server) coreRoutes() []route {
 	return []route{
 		{"GET /login", s.loginPage},
 		{"POST /login", s.loginPost},
 		{"POST /logout", s.authed(s.logout)},
-		{"GET /{$}", s.authed(s.dashboard)},
-		{"GET /modules", s.authed(s.modules)},
-		{"GET /modules/{id}", s.authed(s.module)},
-		{"GET /audit", s.authed(s.auditPage)},
-		{"POST /audit/verify", s.authed(s.auditVerify)},
-		{"POST /audit/export", s.authed(s.auditExport)},
-		{"GET /events", s.authed(s.events)},
-		{"GET /events/{id}", s.authed(s.event)},
-		{"POST /events/{id}/requeue", s.authed(s.requeue)},
-		{"GET /leads", s.authed(s.leads)},
-		{"GET /leads/{id}", s.authed(s.lead)},
-		{"POST /leads/{id}/status", s.authed(s.leadStatus)},
+		{"GET /{$}", s.authed(s.homeGate(s.dashboard))},
+		{"GET /modules", s.authedPerm(rbac.PermView, s.modules)},
+		{"GET /modules/{id}", s.authedPerm(rbac.PermView, s.module)},
+		{"GET /audit", s.authedPerm(rbac.PermAudit, s.auditPage)},
+		{"POST /audit/verify", s.authedPerm(rbac.PermAudit, s.auditVerify)},
+		{"POST /audit/export", s.authedPerm(rbac.PermAudit, s.auditExport)},
+		{"GET /events", s.authedPerm(rbac.PermView, s.events)},
+		{"GET /events/{id}", s.authedPerm(rbac.PermView, s.event)},
+		{"POST /events/{id}/requeue", s.authedPerm(rbac.PermOperate, s.requeue)},
+		{"GET /leads", s.authedPerm(rbac.PermView, s.leads)},
+		{"GET /leads/{id}", s.authedPerm(rbac.PermView, s.lead)},
+		{"POST /leads/{id}/status", s.authedPerm(rbac.PermOperate, s.leadStatus)},
 		{"GET /settings", s.authed(s.settings)},
 		{"POST /settings/password", s.authed(s.changePassword)},
 		{"POST /settings/totp", s.authed(s.totpStart)},
@@ -183,6 +196,8 @@ type navItem struct {
 	Href    string
 	Label   string
 	Current bool
+	// Count is an unread badge shown next to the label ("99+" when capped); empty for none.
+	Count string
 }
 
 // sessionCtx is an authenticated request.
@@ -207,6 +222,7 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 		} {
 			p.Nav = append(p.Nav, navItem{Href: n.href, Label: s.msg(n.label), Current: n.key == active})
 		}
+		p.Nav = append(p.Nav, s.platformNav(r, sc, active)...)
 	}
 	return p
 }
