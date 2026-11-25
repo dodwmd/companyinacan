@@ -44,9 +44,13 @@ password-only path. Repeated failures lock the account and the client address ou
    a session cookie (HttpOnly, SameSite=Strict, Secure) and a CSRF token are issued and an audit entry is written.
 2. **Given** an unknown user, a wrong password, a wrong code or a code already used, **When** login is attempted,
    **Then** the response is the same 401 in every case and no information distinguishes them.
-3. **Given** five failures for a username (or twenty from one address) within fifteen minutes, **When** the next
-   attempt arrives even with valid credentials, **Then** it is refused with 429 and `Retry-After` and the
-   credentials are not evaluated; after the lock expires login works again.
+3. **Given** five failures for a (username, address) pair (or twenty from one address) within fifteen minutes, **When**
+   the next attempt from that address arrives even with valid credentials, **Then** it is refused with 429 and
+   `Retry-After` and the credentials are not evaluated; after the lock expires login works again. Failures from
+   another address never lock the real admin out. More than ten attempts a minute from one address are refused before
+   any hashing, and password hashing runs under a concurrency cap.
+7. **Given** a locked-out admin or a lost authenticator, **Then** `can-core admin unlock` and
+   `can-core admin reset-password [--rotate-totp]` recover access from inside the pod.
 4. **Given** a logged-in session, **When** an unsafe request lacks the CSRF header, **Then** it is rejected with 403.
 5. **Given** a TOTP code that was accepted once, **When** it is replayed within its validity window, **Then** it is rejected.
 6. **Given** the stored password hash, **Then** it is argon2id with at least the OWASP minimum parameters.
@@ -109,7 +113,7 @@ the modules whose manifest `subscribes` to the type, signed with a per-module HM
 2. **Given** a delivery, **Then** the request carries `X-Can-Event-Id`, `X-Can-Timestamp` and
    `X-Can-Signature: v1=HMAC-SHA256(secret, "<ts>." + body)`, and a receiver can verify it and reject replays older
    than five minutes.
-3. **Given** a failing subscriber, **Then** deliveries are retried with exponential backoff (5 s doubling, capped
+3. **Given** a failing subscriber, **Then** (delivery is at least once; receivers deduplicate on `X-Can-Event-Id`) deliveries are retried with exponential backoff (5 s doubling, capped
    at 1 h) up to 8 attempts, every attempt is recorded in the delivery log, and exhausted deliveries are `dead`.
 4. **Given** a module with no signing secret, **Then** nothing is sent unsigned.
 5. **Given** a disabled subscriber, **Then** nothing is queued for it.
@@ -155,6 +159,7 @@ state and installs, upgrades, enables or disables modules through a `ModuleInsta
 - **FR-005** The registry MUST implement exclusive/aggregate/platform resolution and `primary:` as in SPEC 4.5.
 - **FR-006** The audit log MUST be append-only by construction, hash-chained, and verifiable offline from the
   database file (`can-core audit verify|head|export`). Entries MUST hold ids, not personal data.
+- **FR-013** Service names taken from manifests MUST be DNS-1123 labels and URLs built from them MUST round-trip (SSRF).
 - **FR-007** Webhooks MUST be signed with HMAC-SHA256 over timestamp and body, delivered at least once with
   backoff and a delivery log, and never follow redirects.
 - **FR-008** The event bus MUST validate versioned event names, persist before delivering, and match subscribers on

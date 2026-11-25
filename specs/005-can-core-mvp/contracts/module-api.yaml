@@ -121,7 +121,7 @@ webhooks:
       operationId: receiveEvent
       summary: Delivery of an event to a subscribing module (implemented by the module, called by can-core)
       description: |
-        Headers: `X-Can-Event-Id` (idempotency key, stable across retries), `X-Can-Event-Type`,
+        Headers: `X-Can-Event-Id` (idempotency key, stable across retries and requeues; delivery is at least once, so receivers MUST deduplicate on it), `X-Can-Event-Type`,
         `X-Can-Attempt`, `X-Can-Timestamp` (unix seconds) and
         `X-Can-Signature: v1=<hex HMAC-SHA256(secret, "<timestamp>." + body)>`. Receivers must verify the
         MAC in constant time and reject timestamps more than 5 minutes from their clock.

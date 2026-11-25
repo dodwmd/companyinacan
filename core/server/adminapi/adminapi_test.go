@@ -286,6 +286,20 @@ func TestDeliveryLogEndpoints(t *testing.T) {
 	if resp, _ := h.do("GET", "/api/v1/deliveries/abc/attempts", nil, l.with(false)); resp.StatusCode != 400 {
 		t.Fatalf("%d", resp.StatusCode)
 	}
+	// requeue: CSRF required; only dead deliveries; 404 for unknown
+	if resp, _ := h.do("POST", "/api/v1/deliveries/1/requeue", nil, l.with(false)); resp.StatusCode != 403 {
+		t.Fatalf("requeue without CSRF: %d", resp.StatusCode)
+	}
+	if resp, _ := h.do("POST", "/api/v1/deliveries/1/requeue", nil, l.with(true)); resp.StatusCode != 409 {
+		t.Fatalf("pending delivery requeue: %d", resp.StatusCode)
+	}
+	if resp, _ := h.do("POST", "/api/v1/deliveries/99/requeue", nil, l.with(true)); resp.StatusCode != 404 {
+		t.Fatalf("unknown delivery: %d", resp.StatusCode)
+	}
+	_ = h.db.RecordAttempt(ctx, 1, store.Attempt{At: *h.now, Error: "x"}, store.StatusDead, *h.now)
+	if resp, _ := h.do("POST", "/api/v1/deliveries/1/requeue", nil, l.with(true)); resp.StatusCode != 204 {
+		t.Fatalf("dead delivery requeue: %d", resp.StatusCode)
+	}
 }
 
 func TestLogsNeverContainCredentials(t *testing.T) {

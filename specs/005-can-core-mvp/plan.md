@@ -103,3 +103,4 @@ upgrades and NetworkPolicies; they are explicitly out of this PR because no clus
 6. Uninstall with keep/purge; module data export.
 7. Token review caching if the API-server call rate becomes visible.
 8. IP allowlist middleware option; session list/revoke endpoints.
+9. TokenReview negative cache and per-source rate limit; transport security for the module API (see research R15).

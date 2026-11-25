@@ -52,6 +52,7 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/audit/verify", s.authed(s.verifyAudit)},
 		{"GET /api/v1/deliveries", s.authed(s.listDeliveries)},
 		{"GET /api/v1/deliveries/{id}/attempts", s.authed(s.listAttempts)},
+		{"POST /api/v1/deliveries/{id}/requeue", s.authed(s.requeue)},
 	}
 }
 
@@ -288,6 +289,30 @@ func (s *Server) listDeliveries(w http.ResponseWriter, r *http.Request, _ princi
 		out = append(out, deliveryView{ID: d.ID, EventID: d.Event.ID, Type: d.Event.Type, Module: d.ModuleID, Status: d.Status, Attempts: d.Attempts, NextAt: d.NextAttemptAt})
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"deliveries": out})
+}
+
+func (s *Server) requeue(w http.ResponseWriter, r *http.Request, p principal) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpx.Problem(w, http.StatusBadRequest, "delivery id must be a number")
+		return
+	}
+	switch err := s.DB.RequeueDelivery(r.Context(), id, s.Now()); {
+	case errors.Is(err, store.ErrNotFound):
+		httpx.Problem(w, http.StatusNotFound, "no such delivery")
+		return
+	case errors.Is(err, store.ErrNotDead):
+		httpx.Problem(w, http.StatusConflict, "only dead deliveries can be requeued")
+		return
+	case err != nil:
+		s.internal(w, r, err)
+		return
+	}
+	if _, err := s.Audit.Append(r.Context(), audit.Entry{Actor: p.User.Username, Action: "delivery.requeue", Target: strconv.FormatInt(id, 10)}); err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type attemptView struct {

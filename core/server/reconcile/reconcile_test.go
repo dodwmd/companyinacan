@@ -157,6 +157,36 @@ func TestUpgradeOnVersionOrSettingsChange(t *testing.T) {
 	}
 }
 
+func TestFailedUpgradeKeepsTheWorkingModuleRegistered(t *testing.T) {
+	ctx := context.Background()
+	g := newRig(t)
+	d := desired(nil, nil, mf("a", "1.0.0", nil, "tickets"))
+	if _, err := g.r.Apply(ctx, d, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	d.Manifests["a"] = mf("a", "1.1.0", nil, "tickets")
+	g.fk.FailEnable["a"] = errors.New("helm: upgrade failed, rolled back")
+	if _, err := g.r.Apply(ctx, d, Options{}); err == nil {
+		t.Fatal("expected the upgrade error")
+	}
+	rec, _ := g.db.GetModule(ctx, "a")
+	if rec.State != store.StateEnabled || rec.Version != "1.0.0" || !strings.Contains(rec.LastError, "rolled back") {
+		t.Fatalf("working module's record was clobbered: %+v", rec)
+	}
+	if _, err := g.reg.Resolve(ctx, "tickets"); err != nil {
+		t.Fatalf("capability lost after a failed upgrade: %v", err)
+	}
+	// the next apply retries and succeeds
+	delete(g.fk.FailEnable, "a")
+	res, err := g.r.Apply(ctx, d, Options{})
+	if err != nil || kinds(res.Actions) != "upgrade:a" {
+		t.Fatalf("%q %v", kinds(res.Actions), err)
+	}
+	if rec, _ := g.db.GetModule(ctx, "a"); rec.Version != "1.1.0" || rec.LastError != "" {
+		t.Fatalf("%+v", rec)
+	}
+}
+
 func TestRemovedFromCompanyIsDisabledNotUninstalled(t *testing.T) {
 	ctx := context.Background()
 	g := newRig(t)

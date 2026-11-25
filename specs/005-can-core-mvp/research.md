@@ -34,8 +34,20 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
 - **Alternatives**: signed stateless cookies (cannot revoke); double-submit cookie CSRF (needs a second cookie).
 
 ## R5. Throttling
-- **Decision**: counters per username (5 failures) and per client address (20 failures) in SQLite, 15-minute window
-  and lock, persisted so restarts do not reset them. Locked keys are refused before credentials are evaluated.
+- **Decision**: counters per (username, client address) pair (5 failures) and per client address (20 failures) in
+  SQLite, 15-minute window and lock, updated atomically in one transaction and persisted so restarts do not reset
+  them. Keying the user lock on the address as well means a stranger cannot lock the real admin out by failing
+  logins for `admin` from elsewhere (QA finding: lockout DoS). In front of that, every attempt counts against a
+  per-address limit of 10 a minute **before** any hashing, usernames over 64 and passwords over 1024 characters never
+  reach argon2 or create per-name state, and argon2 itself runs under a semaphore (default 1 slot, 3 s wait, then 503) so
+  unauthenticated parallel logins cannot exhaust the 96 MB pod (each verify holds 19 MiB). One audit entry is written
+  per lock, not per refused attempt; an audit failure fails a successful login closed (no session) and is logged on
+  the failure paths. Expired counters are pruned hourly. Locked keys are refused before credentials are evaluated.
+- **Recovery**: `can-core admin unlock [--username]` clears lockouts; `can-core admin reset-password [--rotate-totp]`
+  sets a new password (and TOTP seed when the device is lost), ends all sessions and clears lockouts. Both run inside
+  the pod (`kubectl exec`) and are audited.
+- **Known limit**: distributed guessing is bounded only per address; TOTP plus a strong password is the defence, and an
+  IP allowlist at Traefik (SPEC 3.1) is the follow-up control.
   Client address comes from the last `X-Forwarded-For` entry only when `CAN_TRUST_PROXY=true`.
 - **Rationale**: stops online guessing even with a leaked password (TOTP), survives restarts, and a distinct address
   limit stops username spraying.
@@ -100,3 +112,32 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   only with unknown fields rejected and a 1 MiB cap. Two `http.Server`s with timeouts on separate listeners.
 - **Contract test**: OpenAPI 3.1 files parsed in `test/contract`; served routes and documented routes must be the
   same set, `$ref`s must resolve, webhook headers must match the dispatcher's constants.
+
+## R13. Service addresses (SSRF)
+- **Decision**: `provides[].service`, `subscribes[].service` (and `runtime.ui.service`) are DNS-1123 labels (at most 63
+  characters) in `module.v1`, with invalid fixtures. Independently, `registry.ServiceURL` re-validates service,
+  namespace and port, builds the URL with `net/url` and rejects anything that does not round-trip to exactly
+  `<service>.<namespace>.svc.cluster.local:<port>`; registration, reconciliation (before the installer runs), the
+  event fan-out and capability resolution all go through it. A value such as `169.254.169.254#`, `evil.com/` or
+  `x@evil.com` can therefore never redirect a signed webhook or a consumer call.
+- **Why twice**: the schema stops it at validation time; the Go check protects can-core when a manifest reaches it
+  by any other route (a future registry, a hand-edited database).
+
+## R14. Delivery semantics and failed upgrades
+- Deliveries to modules that are not enabled are skipped (they stay pending and resume if the module is re-enabled;
+  they do not block outbox pruning). Dead deliveries can be requeued from the admin API
+  (`POST /api/v1/deliveries/{id}/requeue`) with a fresh attempt budget. Delivery is **at least once**: receivers MUST
+  deduplicate on `X-Can-Event-Id`, which is stable across retries and requeues.
+- A failed **upgrade** of a module that was working keeps its recorded state, token identity, capabilities and
+  subscriptions (Helm `--atomic` rolled the release back, so the previous version is still running); only
+  `last_error` is set and the next apply retries. A failed first install is recorded as `failed`, provides nothing and
+  is retried.
+
+## R15. Transport and token-review follow-ups (documented, not built)
+- The module API listener is plain HTTP inside the cluster. It is reachable only from module namespaces by
+  NetworkPolicy and every call carries a bearer token that is valid only for audience `can`; a token leaked on the
+  wire is usable against can-core until it rotates. mTLS or a service mesh is out of scope for v1 (SPEC 3.1 relies
+  on NetworkPolicy); revisit with the k3d tests.
+- Every module-API call performs a TokenReview. A negative cache and a per-source rate limit (so a misbehaving
+  module cannot hammer the API server, and an outage degrades gracefully) are part-2 work, together with positive
+  caching for the token's remaining lifetime.

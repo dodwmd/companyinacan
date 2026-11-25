@@ -282,6 +282,14 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		State: store.StateEnabled, SettingsHash: settingsHash(man, settings), HMACSecret: secret, Manifest: *man,
 	}
 	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret})
+	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
+		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
+		// recorded state (token identity, capabilities, subscriptions) and only note the error.
+		// The next apply sees the unchanged version/settings hash and retries the upgrade.
+		_ = r.db.SetModuleState(ctx, a.Module, store.StateEnabled, ierr.Error())
+		r.log(ctx, "module.upgrade-failed", a, map[string]any{"error": ierr.Error(), "kept_version": prev.Version})
+		return ierr
+	}
 	if ierr != nil {
 		rec.State, rec.LastError = store.StateFailed, ierr.Error()
 	}

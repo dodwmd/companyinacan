@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -70,8 +71,8 @@ func (db *DB) InsertEvent(ctx context.Context, e Event, targets []DeliveryTarget
 func (db *DB) DueDeliveries(ctx context.Context, now time.Time, limit int) ([]Delivery, error) {
 	rows, err := db.QueryContext(ctx, `SELECT d.id,d.module_id,d.url,d.status,d.attempts,d.next_attempt_at,
 		e.id,e.type,e.time,e.source,e.data_json, COALESCE(m.hmac_secret,'')
-		FROM deliveries d JOIN events e ON e.id=d.event_id LEFT JOIN modules m ON m.id=d.module_id
-		WHERE d.status='pending' AND d.next_attempt_at <= ? ORDER BY d.next_attempt_at, d.id LIMIT ?`, now.Unix(), limit)
+		FROM deliveries d JOIN events e ON e.id=d.event_id JOIN modules m ON m.id=d.module_id
+		WHERE d.status='pending' AND m.state='enabled' AND d.next_attempt_at <= ? ORDER BY d.next_attempt_at, d.id LIMIT ?`, now.Unix(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -145,11 +146,31 @@ func (db *DB) Attempts(ctx context.Context, deliveryID int64) ([]Attempt, error)
 	return out, rows.Err()
 }
 
+// ErrNotDead is returned by RequeueDelivery for a delivery that is not dead.
+var ErrNotDead = errors.New("delivery is not dead")
+
+// RequeueDelivery makes a dead delivery pending again with a fresh attempt budget.
+func (db *DB) RequeueDelivery(ctx context.Context, id int64, now time.Time) error {
+	res, err := db.ExecContext(ctx, `UPDATE deliveries SET status='pending', attempts=0, next_attempt_at=? WHERE id=? AND status='dead'`, now.Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var one int
+		if err := db.QueryRowContext(ctx, `SELECT 1 FROM deliveries WHERE id=?`, id).Scan(&one); err != nil {
+			return notFound(err)
+		}
+		return ErrNotDead
+	}
+	return nil
+}
+
 // PruneEvents deletes events (and cascading deliveries) older than before whose deliveries are
 // all finished. The outbox is a derived store with a TTL (SPEC §3.7).
 func (db *DB) PruneEvents(ctx context.Context, before time.Time) (int64, error) {
 	res, err := db.ExecContext(ctx, `DELETE FROM events WHERE time < ? AND NOT EXISTS
-		(SELECT 1 FROM deliveries d WHERE d.event_id=events.id AND d.status='pending')`, before.Unix())
+		(SELECT 1 FROM deliveries d JOIN modules m ON m.id=d.module_id
+		 WHERE d.event_id=events.id AND d.status='pending' AND m.state='enabled')`, before.Unix())
 	if err != nil {
 		return 0, err
 	}

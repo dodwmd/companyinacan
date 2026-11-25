@@ -20,9 +20,9 @@ import (
 type openAPI struct {
 	OpenAPI string `yaml:"openapi"`
 	Paths   map[string]map[string]struct {
-		OperationID string         `yaml:"operationId"`
-		Responses   map[string]any `yaml:"responses"`
-		Security    *[]any         `yaml:"security"`
+		OperationID string              `yaml:"operationId"`
+		Responses   map[string]any      `yaml:"responses"`
+		Security    *[]map[string][]any `yaml:"security"`
 		Parameters  []struct {
 			Name string `yaml:"name"`
 			In   string `yaml:"in"`
@@ -94,6 +94,42 @@ func TestCanCoreAPIContracts(t *testing.T) {
 						if _, ok := op.Responses["401"]; !ok && !isLogin {
 							t.Errorf("%s %s: protected operation does not document 401", method, path)
 						}
+					}
+					// every operation documents a success response and only known status codes
+					hasOK := false
+					for code := range op.Responses {
+						switch code[0] {
+						case '2':
+							hasOK = true
+						case '4', '5':
+						default:
+							t.Errorf("%s %s: unexpected response code %q", method, path, code)
+						}
+					}
+					if !hasOK {
+						t.Errorf("%s %s: no 2xx response", method, path)
+					}
+					// admin API: session-authenticated unsafe methods carry the csrf scheme and document 403;
+					// safe methods do not.
+					if file == "admin-api.yaml" && path != "/healthz" && path != "/api/v1/login" {
+						needsCSRF := strings.ToUpper(method) != "GET"
+						hasCSRF := false
+						if op.Security != nil {
+							for _, req := range *op.Security {
+								_, c := req["csrf"]
+								hasCSRF = hasCSRF || c
+							}
+						}
+						if needsCSRF != hasCSRF {
+							t.Errorf("%s %s: csrf security scheme present=%v, want %v", method, path, hasCSRF, needsCSRF)
+						}
+						if _, has403 := op.Responses["403"]; needsCSRF && !has403 {
+							t.Errorf("%s %s: unsafe operation does not document 403 (CSRF)", method, path)
+						}
+					}
+					// open operations declare it explicitly with security: []
+					if (path == "/healthz" || (file == "admin-api.yaml" && path == "/api/v1/login")) && (op.Security == nil || len(*op.Security) != 0) {
+						t.Errorf("%s %s: must declare `security: []`", method, path)
 					}
 					for _, p := range op.Parameters {
 						if p.In == "path" && !strings.Contains(path, "{"+p.Name+"}") {
