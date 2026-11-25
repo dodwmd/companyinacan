@@ -71,8 +71,8 @@ passed: namespaces and default-deny, the Traefik PVC and `externalTrafficPolicy:
 `*.localtest.me` resolving to Traefik from a pod, and default-deny blocking pod traffic.
 
 Still unverified: certificate issuance (ACME) and `acme.json` persistence; the effect of
-`externalTrafficPolicy: Local` on client IPs; can-core's RBAC (there is no can-core yet) and the
-module-namespace and RBAC templates; whether the CoreDNS restart is needed; egress denial to the
+`externalTrafficPolicy: Local` on client IPs; can-core's RBAC and the module-namespace and RBAC
+templates beyond what can-core's own lifecycle test (E03b, advisory CI) exercises; whether the CoreDNS restart is needed; egress denial to the
 node IP; the later-added positive-control and cross-namespace default-deny probes and the anchored
 CoreDNS regex until CI runs them; runs on a developer machine or with Podman. The workflow is
 `continue-on-error`, so read its log rather than the green tick.

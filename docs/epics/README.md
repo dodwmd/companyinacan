@@ -33,7 +33,7 @@ Backlog (broken down into epics when the previous phase is done):
 | E15 | `invoices`, `contracts`, expenses, vendors, accounting/payroll adapters | 3b |
 | E15a | first slice of E15: in-house `finance` (parties, invoices and credit notes, payments, contracts, timesheets, expenses, purchase orders) | 3b — built offline, experimental: `specs/014-finance-basics/` |
 | E16 | `jobs` (careers page, feeds, ATS, board connectors) | 3b |
-| E16a | first slice of E16: in-house `jobs` (requisitions, careers pages with JobPosting data, feeds, application intake, ATS pipeline, talent pool, consent/retention/erasure); board connectors are stubs (partner access needed) | 3b — built offline, experimental: `specs/013-jobs-recruiting/` |
+| E16a | first slice of E16: in-house `jobs` (requisitions, careers pages with JobPosting data, feeds, application intake, ATS pipeline, talent pool, consent/retention/erasure); board connectors are stubs (partner access needed) | 3b — built offline, experimental; QA follow-ups applied (EEO report publishes closed months only, scorecard submit needs an active assignment or staff role): `specs/013-jobs-recruiting/` |
 | E17 | `equity`, `board`, `entity`; investor and other portals; search, reporting, import | 3b |
 | E18 | Registry, more providers, hibernation, multi-company on one server | 3c |
 | E19 | Android companion app (approvals, notifications, timesheets, 1:1s, work items) on the public API; PWA hardening for the web UI | 3a |

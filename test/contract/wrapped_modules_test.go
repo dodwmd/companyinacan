@@ -108,6 +108,10 @@ func TestStatusRoutesPublicPathsOnly(t *testing.T) {
 	if !strings.Contains(flat, "PathPrefix(`/status`)") {
 		t.Errorf("the public status pages must be routed: %s", flat)
 	}
+	// the root page asks this unauthenticated endpoint which status page the host maps to
+	if !strings.Contains(flat, "PathPrefix(`/api/entry-page`)") {
+		t.Errorf("/api/entry-page must be routed so the root page can resolve: %s", flat)
+	}
 	for _, r := range asList(irs[0].get("spec", "routes")) {
 		m := asStr(asMap(r)["match"])
 		if !regexp.MustCompile("^Host\\(`status\\.example\\.com`\\) && (Path|PathPrefix)\\(").MatchString(m) {

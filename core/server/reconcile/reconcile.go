@@ -160,6 +160,19 @@ func newSecret() string {
 	return hex.EncodeToString(b)
 }
 
+// ErrNotDeployable is returned when a module whose manifest says status: not-deployable is
+// asked to be enabled.
+var ErrNotDeployable = errors.New("module is not-deployable (known not to run as shipped) and cannot be enabled")
+
+func sortedIDs(ms map[string]*config.Module) []string {
+	ids := make([]string, 0, len(ms))
+	for id := range ms {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 // Plan lists the actions Apply would take, in execution order.
 func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 	recorded, err := r.db.ListModules(ctx)
@@ -171,6 +184,13 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 		have[m.ID] = m
 	}
 	want := d.enabled()
+	// Defence in depth: validation already refuses these, but a Desired built another way must
+	// not install a module the manifest says cannot run.
+	for _, id := range sortedIDs(want) {
+		if want[id].Status == "not-deployable" {
+			return nil, fmt.Errorf("%w: %s", ErrNotDeployable, id)
+		}
+	}
 	var disables, enables []Action
 	for _, m := range recorded { // ordered by id
 		if _, wanted := want[m.ID]; !wanted && (m.State == store.StateEnabled || m.State == store.StateFailed) {

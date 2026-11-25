@@ -207,7 +207,8 @@ names or addresses.
   address and tax id they were issued with, and sent or signed contracts and approved purchase
   orders, until the retention period ends;
 * returns a report listing what was erased, what was kept (unpaid invoices separately as
-  `finance-invoice-unpaid`, since their retention clock starts when they are settled), how many records and until when
+  `finance-invoice-unpaid` with an empty `until`, since their retention clock starts when they are paid
+  or voided), how many records and until when
   (`retained[].until`), so the data subject can be told;
 * truncates the SQLite write-ahead log so the erased values do not linger in it
   (`secure_delete` already zeroes freed pages).

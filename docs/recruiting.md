@@ -54,6 +54,14 @@ removing yourself, reading and re-assigning does not work; you cannot remove you
 before submitting, and assign and unassign are audited. Until then the response says only that
 other feedback is hidden (`others_hidden`), not how many colleagues have finished.
 
+Two edge cases, stated plainly. A **removed interviewer who never submitted stays blind for good**
+on that application: removal does not release them, by design. Staff who were **never assigned**
+(and never wrote a scorecard row) are **not blind**: a recruiter, hiring manager or admin who
+reads an application without sitting on its panel sees every submitted scorecard, so assign people
+to the panel before they start reading if independence matters. Finalising a scorecard
+(`POST .../scorecards/mine/submit`) needs an active assignment, or the `recruiter` or `admin`
+role; a removed interviewer keeps the draft but cannot publish it.
+
 **Diversity (EEO) data.** Off by default (`collect_eeo`). Whether to collect it is a legal decision
 that varies by country: required or encouraged in some, restricted in others. When on, the answers
 are voluntary and stored only as **counters** per month, field and answer (`eeo_counts`): no
@@ -61,13 +69,23 @@ per-response row, no id, no job, no timestamp finer than a month, `WITHOUT ROWID
 insertion sequence. (A first design stored one row per response; its row order tracked application
 order and could be lined up with candidates by anyone holding the file or a backup.) The answers
 are never shown to interviewers or in any candidate view and are read only as organisation-wide
-aggregates by an admin. If any answer of a question has fewer than `eeo.min_cell` (default 5)
+aggregates by an admin, and the report covers **closed months only** (months before the current
+UTC month). The open month is counted but not reported: otherwise polling the report, or reading
+it twice a few minutes apart, would let the reader subtract the reads and see which cell one new
+application moved. So the report is empty until the first month ends. If any answer of a question has fewer than `eeo.min_cell` (default 5)
 responses, the whole question is suppressed, so a hidden cell cannot be recovered from the total;
 per-job reports are not offered, so a global and a per-job report cannot be subtracted.
 **Residual risk:** this is not formal anonymisation. Someone who can read the database file before
 and after a single submission (for example two backups taken minutes apart) can see which counters
 moved. Because the answers are not linked to a person, an erasure request cannot remove one
 person's answers; the counters are deleted after `eeo_days`.
+
+**Upgrading from the first design.** Migration 003 drops the per-response `eeo_responses` table.
+Its rows are **discarded, not migrated** into counters (they were the linkable data), so diversity
+figures collected before the upgrade are gone; export them from a backup first if you need them.
+The store then runs `VACUUM` and `wal_checkpoint(TRUNCATE)` so the dropped rows do not linger in
+the database file or its write-ahead log. Backups taken before the upgrade still contain them
+until they expire.
 
 ## Candidate data, consent and retention
 

@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-25
 
-**Status**: Draft
+**Status**: Partly implemented: library and contract; integration with can-core and `make up` pending (epic E05)
 
 **Input**: User description: "Epic E05: working lead capture. In-house Go service as a module; same-origin `/_forms` route with prefix stripping; honeypot, timing check, optional Turnstile/hCaptcha; SQLite storage; `leads` capability; email notification via `email.send`; direct webhook until the event bus exists; `lead.created.v1` event schema defined."
 

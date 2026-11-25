@@ -167,6 +167,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	scrubAfter := false
 	for _, m := range migs {
 		if m.version <= cur {
 			continue
@@ -190,6 +191,14 @@ func (s *Store) migrate(ctx context.Context) error {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		if m.version == 3 {
+			scrubAfter = true // see migrations/003: dropped diversity rows must not linger in the file
+		}
+	}
+	if scrubAfter {
+		// VACUUM cannot run inside the migration transaction, so it follows the commit. It, and
+		// the WAL truncation, remove the dropped per-response diversity rows from the file.
+		return s.scrub(ctx, true)
 	}
 	return nil
 }

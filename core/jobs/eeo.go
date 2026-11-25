@@ -80,7 +80,13 @@ type EEOReport struct {
 	MinCell   int                  `json:"min_cell"`
 }
 
-// EEOAggregate returns counts per answer. If any answer of a question has fewer than min_cell
+// EEOAggregate returns counts per answer, for CLOSED months only (months before the current UTC
+// month). Publishing the open month would let anyone polling the report, or reading it twice a
+// few minutes apart, subtract the two reads and see which cell a single new application moved.
+// Closed months are frozen, so successive reads differ only when a month rolls over and many
+// applications land at once. The counters are still written live; they are just not reported.
+//
+// Original doc: EEOAggregate returns counts per answer. If any answer of a question has fewer than min_cell
 // responses the WHOLE question is suppressed (complementary suppression: a single hidden cell
 // could otherwise be recovered from the total). Admin only and audited.
 func (s *Store) EEOAggregate(ctx context.Context, p *Principal) (*EEOReport, error) {
@@ -89,15 +95,16 @@ func (s *Store) EEOAggregate(ctx context.Context, p *Principal) (*EEOReport, err
 	}
 	min := s.cfg.EEO.MinCell
 	rep := &EEOReport{MinCell: min, Fields: map[string][]EEOCell{}}
+	closed := s.now().UTC().Format("2006-01")
 	var total int
-	if err := s.rdb.QueryRowContext(ctx, `SELECT COALESCE(SUM(n), 0) FROM eeo_counts WHERE field = ?`, eeoResponses).Scan(&total); err != nil {
+	if err := s.rdb.QueryRowContext(ctx, `SELECT COALESCE(SUM(n), 0) FROM eeo_counts WHERE field = ? AND month < ?`, eeoResponses, closed).Scan(&total); err != nil {
 		return nil, err
 	}
 	if total >= min {
 		rep.Responses = &total
 	}
 	for _, f := range EEOFields {
-		rows, err := s.rdb.QueryContext(ctx, `SELECT value, SUM(n) FROM eeo_counts WHERE field = ? GROUP BY value`, f)
+		rows, err := s.rdb.QueryContext(ctx, `SELECT value, SUM(n) FROM eeo_counts WHERE field = ? AND month < ? GROUP BY value`, f, closed)
 		if err != nil {
 			return nil, err
 		}

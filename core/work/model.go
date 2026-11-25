@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -236,6 +237,10 @@ func validSubject(s string) bool {
 	return s != "" && utf8.RuneCountInString(s) <= maxSubject && !strings.ContainsAny(s, "\x00\r\n\t") && strings.TrimSpace(s) == s
 }
 
+// hasControl reports whether s contains a control character (newlines, bells, escapes...). A title
+// is one line of plain text: it is echoed into logs, webhook receivers and terminals.
+func hasControl(s string) bool { return strings.ContainsFunc(s, unicode.IsControl) }
+
 func validText(s string, max int) bool {
 	return utf8.ValidString(s) && utf8.RuneCountInString(s) <= max && !strings.ContainsRune(s, 0)
 }
@@ -273,7 +278,7 @@ func (c *CreateIssue) validate() error {
 	if !slices.Contains(IssueTypes, c.Type) {
 		p.add("type", "must be one of %s", strings.Join(IssueTypes, ", "))
 	}
-	if strings.TrimSpace(c.Title) == "" || !validText(c.Title, maxTitle) || strings.ContainsAny(c.Title, "\r\n") {
+	if strings.TrimSpace(c.Title) == "" || !validText(c.Title, maxTitle) || hasControl(c.Title) {
 		p.add("title", "required, one line, at most %d characters", maxTitle)
 	}
 	if !validText(c.Description, maxDescription) {
@@ -306,7 +311,7 @@ func (c *CreateIssue) validate() error {
 
 func (pt *Patch) validate() error {
 	var p problems
-	if pt.Title.Set && (pt.Title.Null || strings.TrimSpace(pt.Title.V) == "" || !validText(pt.Title.V, maxTitle) || strings.ContainsAny(pt.Title.V, "\r\n")) {
+	if pt.Title.Set && (pt.Title.Null || strings.TrimSpace(pt.Title.V) == "" || !validText(pt.Title.V, maxTitle) || hasControl(pt.Title.V)) {
 		p.add("title", "required, one line, at most %d characters", maxTitle)
 	}
 	if pt.Description.Set && (pt.Description.Null || !validText(pt.Description.V, maxDescription)) {

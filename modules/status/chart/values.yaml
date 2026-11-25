@@ -24,6 +24,7 @@ ingress:
   publicPaths:
     - /status
     - /api/status-page
+    - /api/entry-page   # unauthenticated; the page at / asks it which status page the host maps to
     - /assets
     - /upload
     - /icon.svg

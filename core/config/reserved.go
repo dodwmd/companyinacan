@@ -60,6 +60,11 @@ func PlatformViolations(m *Module) []Violation {
 		}
 	}
 	for r, ps := range m.Roles {
+		// Roles are namespaced "<module>:<role>" downstream, so a ':' in a manifest role name could
+		// spell another module's namespace.
+		if strings.Contains(r, ":") {
+			out = append(out, Violation{"/roles/" + r, "role name " + r + " may not contain ':' (it is the namespace separator)"})
+		}
 		if IsBuiltinRole(r) {
 			out = append(out, Violation{"/roles/" + r, "role " + r + " is built into can-core; choose another name"})
 		}

@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-24
 
-**Status**: Draft
+**Status**: Implemented (epic E01 is done)
 
 **Input**: User description: "Epic E01 Foundation: the buildable, tested skeleton everything else plugs into — repo layout, `can` CLI skeleton and thin Makefile, validated `company.yaml` and `module.yaml` schemas with contract tests and fake-data examples, a licence check with generated third-party licence notices, CI, and open-source hygiene files. No Kubernetes, provider, can-core service or module implementation."
 

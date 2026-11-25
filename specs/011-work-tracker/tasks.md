@@ -79,6 +79,8 @@ same sessions as the code in small increments (see plan.md, Constitution Check I
 - **No attachment storage.** Metadata only, until `files` (E13) exists.
 - **Event titles.** Events carry issue titles (not descriptions or comments); a receiver must be trusted
   with them. Omitting them would need a schema change and is a decision for the event-bus work.
+  Recorded as a deliberate decision (see docs/work-tracker.md, Webhooks): titles are included, are single-line
+  plain text, and the hostile-input test `TestHostileTextIsLiteralAndEventsStayValidJSON` covers them.
 - **Events: no `issue.priority_changed` event and no manager notifications.** `work.issue.updated.v1`
   carries `changes.priority`; `notify` integration and ageing views come with the notification
   and reporting work. Webhooks go to one URL; the can-core bus replaces the dispatcher later.

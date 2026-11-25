@@ -238,14 +238,32 @@ Idle RAM was measured locally: **13.8 MiB RSS idle, 22.3 MiB after 100 creates a
 (Linux, static binary, pure-Go SQLite). The manifest declares 30 MB requested and 64 MB limit.
 Details and method: `specs/012-people-directory/measurements.md`. Not measured on k3d.
 
+## Reporting-line approvals seam
+
+The seam between this module and the approval engine (`docs/approvals.md`, can-core) is narrow and
+one-directional. Everything below is read from the code, not run on a cluster.
+
+- **Engine side.** `core/server/approvals.DirectoryReportingLine` resolves the `directory` capability
+  and calls `GET /v1/people/{id}` with can-core's credential (`CAN_DIRECTORY_TOKEN_FILE`), reading only
+  `manager_id`. A step whose approver is "manager of requester" gets `party:<manager_id>`. No provider,
+  no credential, an unknown person or an empty `manager_id` mean "no manager" (the step falls back or
+  refuses); any other failure is an error, never a silent fallback.
+- **This module's side.** It serves that read and exposes the manager link and `GET /v1/people/{id}/reports`
+  (direct reports only). The engine uses neither the report list nor a multi-level chain: one hop per step.
+- **Not wired yet.** Only `party:<person id>` requesters have a manager. Requesters that arrive as SSO
+  users or admin tokens are `user:<name>`, and nothing maps `sso_subject` to a person id until SSO (E11)
+  lands, so today they take the fallback. Leave masking does not apply to the lookup (can-core's service
+  account is hr and admin, so it sees the true manager), and the lookup does not check whether that manager is
+  active: a former manager has no `manager_id` link on their reports (see Fail closed), but one on leave is still named.
+
 ## Gaps
 
 - No Helm templates yet (values only, as for forms), no image build or digest pin, no k3d or integration
   tests: the module is marked `experimental`.
 - can-core does not yet create the keyring Secret, route `introspect`, accept the webhook, or append the
   tombstones to the E08 ledger (this module exposes the feed and the purge hook).
-- Reporting-line approval chains (SPEC.md section 3.7) are not wired: `GET /v1/people/{id}/reports` and the
-  manager link exist, the approval engine does not consume them yet.
+- Reporting-line approval chains (SPEC.md section 3.7) are only half wired, see "Reporting-line approvals
+  seam" below: the directory side exists, the identity mapping and multi-level chains do not.
 - No UI, no portal, no time off, no reviews/360, no feedback, no `identity.provision` consumer, no
   `work` issue creation from action items (the link field exists).
 - Write auditing is after the commit (see Audit); search indexing of sensitive classes is out by design.

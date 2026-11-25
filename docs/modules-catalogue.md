@@ -7,8 +7,12 @@ disagrees with its manifest. RAM figures are the manifest's `ram_mb` (a request 
 says "measured", they are **estimates, not measurements** (constitution II and VII).
 
 Status markers: `ready` (no marker), `experimental` (not verified on a cluster, or needs manual steps)
-and `not-deployable` (known not to run as shipped). `can validate` warns for the last two. A
-capability marked `planned` is declared but nothing serves it yet (adapter not built).
+and `not-deployable` (known not to run as shipped). `can validate` warns for `experimental`; for
+`not-deployable` it is an **error** (`semantic.module-not-deployable`) when the module is enabled in
+`company.yaml`, so `can validate`, `can apply` and the reconciler all refuse it; there is no override.
+A capability marked `planned` is declared but nothing serves it yet (adapter not built): it is not a
+provider, not counted for subscription defaults (the default webhook port is the first served
+provision's), not listed by the admin or module API and cannot be a `primary`.
 
 ## Core and in-house modules (Apache-2.0)
 

@@ -1,6 +1,6 @@
 # Feature Specification: Wiki, CRM and Status Page Modules (Epic E10, first slice)
 
-**Feature Branch**: `epic/E10a-wiki-crm-status` | **Created**: 2026-11-25 | **Status**: Draft (built offline)
+**Feature Branch**: `epic/E10a-wiki-crm-status` | **Created**: 2026-11-25 | **Status**: Built offline (wiki and status experimental, crm not-deployable); adapters and cluster verification pending
 **Input**: SPEC.md section 4.3 (capabilities), section 5 (catalogue, footprints, licences),
 docs/epics/README.md E10, specs/007-starter-modules (the pattern), constitution principles II and VI.
 

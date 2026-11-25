@@ -77,7 +77,7 @@ func ServiceURL(namespace, service string, port int) (string, error) {
 }
 
 // FromManifest derives the provider and subscription rows of a manifest. A subscription without
-// `service` defaults to the module id; without `port`, to the port of its first provision, else 80.
+// `service` defaults to the module id; without `port`, to the port of its first served (not planned) provision, else 80.
 // Every service must be a valid DNS label; otherwise the manifest is rejected.
 func FromManifest(m *config.Module) ([]store.Provider, []store.Subscription, error) {
 	var ps []store.Provider
@@ -94,9 +94,16 @@ func FromManifest(m *config.Module) ([]store.Provider, []store.Subscription, err
 		}
 		ps = append(ps, store.Provider{Capability: p.Capability, ModuleID: m.ID, Service: svc, Port: p.Port, Schema: p.Schema})
 	}
+	// The default port is the first SERVED provision's: a planned one has no adapter behind it,
+	// so its port must not steer a subscription's webhook.
 	defPort := 80
-	if len(m.Provides) > 0 && m.Provides[0].Port != 0 {
-		defPort = m.Provides[0].Port
+	for _, p := range m.Provides {
+		if config.ProvidesServed(p.Status) {
+			if p.Port != 0 {
+				defPort = p.Port
+			}
+			break
+		}
 	}
 	var ss []store.Subscription
 	for _, s := range m.Subscribes {
