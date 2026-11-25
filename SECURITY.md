@@ -91,10 +91,11 @@ gh attestation verify oci://ghcr.io/dodwmd/can-core@sha256:<digest> --repo dodwm
 modules compiled into the binary. It is covered by the checksums and by the provenance attestation.
 `THIRD_PARTY_LICENSES` is attached to every release too.
 
-**Reproducibility.** The release workflow builds every archive twice and refuses to publish if the
-checksums differ. To check it yourself, check out the tag and run
-`SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) scripts/build-release.sh vX.Y.Z out` with the Go version in
-`go.mod`; the archive checksums should equal those in `SHA256SUMS`.
+**Reproducibility.** The release workflow builds every archive twice and refuses to publish if the checksums
+differ. To check it yourself, check out the tag, install the **same Go toolchain**, and run
+`SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) scripts/build-release.sh vX.Y.Z out`; the archive checksums should equal
+those in `SHA256SUMS`. The exact toolchain is recorded at the end of the release notes ("Built with `go version ...`")
+and as a component of every SBOM; a different patch release of Go can produce different bytes.
 
 Signing and attestation are keyless (Sigstore): there is no long-lived signing key to steal or rotate. The
 trust root is the identity of the release workflow in this repository, which is why the commands above pin it.

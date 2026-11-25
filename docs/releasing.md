@@ -19,12 +19,22 @@ tag starts `.github/workflows/release.yml`, which, in order:
 3. **images-check**: builds the nine container images (`deploy/*/Dockerfile`) with the base-image digests
    resolved right then by `scripts/resolve-base-digests.sh` (`docker buildx imagetools inspect`), without pushing.
 4. **publish-images** and **publish-release** (only for a real release, only these two jobs hold write
-   permissions, behind the `release` environment): push to GHCR, sign each image by digest with keyless cosign,
+   permissions, behind the `release` environment, which must have required reviewers: the publish jobs abort before any login or push if it does not): push to GHCR, sign each image by digest with keyless cosign,
    attach a build-provenance attestation to each image and to the archives/SBOMs, sign `SHA256SUMS`, and create
    the GitHub release with everything attached.
 
 `can version` reports the tag, the short commit and the commit date (the build date is the commit time, which is
 what makes the build reproducible).
+
+## Before the first release (checklist)
+
+- [ ] The **`release` environment exists** with required reviewers and deployments limited to `v*` tags
+      (`scripts/gh-protect-main.sh --apply`, see [maintainers.md](maintainers.md)). Without it GitHub creates an
+      unprotected environment on first use and the publish jobs refuse to run (`scripts/check-release-env.sh`).
+- [ ] The **tag ruleset** `release-tags` is active: only admins can create, update or delete `v*` tags.
+- [ ] Branch protection on `main` applied; the five required checks are green on `main`.
+- [ ] Dependency graph, secret scanning and private vulnerability reporting enabled.
+- [ ] A dry run of this workflow succeeded and its artifacts were inspected.
 
 ## Cutting a release
 

@@ -58,6 +58,16 @@ manifests and charts) is already checked by contract tests. Conditions for promo
 that token. The script is dry-run by default and a contract test ties its check list to `ci.yml`. `REVIEWS` defaults
 to 0 because the project has one maintainer; CODEOWNERS is a draft that routes reviews until a second maintainer exists.
 
+**R14 The tag-on-main check is not a boundary.** A pushed tag can carry a commit that edits `release.yml`. The
+boundaries are the tag ruleset (who may create `v*` tags) and the `release` environment (required reviewers, tag-only
+deployments); GitHub creates an unprotected environment silently, so the publish jobs first run
+`scripts/check-release-env.sh`, which fails closed (needs `actions: read`; falls back to the maintainer-set variable
+`RELEASE_ENV_PROTECTED=true` only when the API is unreadable). Unverified: whether the workflow token may read the
+environment's protection rules.
+
+**R15 Toolchain.** `go.mod` has no `toolchain` line and CI runs with `GOTOOLCHAIN=local`; a pin would force a
+download on every developer machine. Instead the exact `go version` goes into the release notes and the SBOM.
+
 **R11 Arm64 images not built.** The Dockerfiles compile inside the build stage for the build platform; an arm64
 image would build under QEMU (slow, another pinned action) or need `--platform=$BUILDPLATFORM` plus `GOARCH` in nine
 Dockerfiles. Deferred; arm64 binaries are shipped.

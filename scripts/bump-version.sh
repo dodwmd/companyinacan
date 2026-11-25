@@ -26,7 +26,7 @@ major) next="v$((major + 1)).0.0" ;;
 minor) next="v$major.$((minor + 1)).0" ;;
 patch) next="v$major.$minor.$((patch + 1))" ;;
 v*)
-	echo "$what" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "bump-version: not a semantic version: $what" >&2; exit 2; }
+	echo "$what" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$' || { echo "bump-version: not a semantic version: $what" >&2; exit 2; }
 	next="$what"
 	;;
 *) echo "bump-version: expected major, minor, patch or vX.Y.Z, got: $what" >&2; exit 2 ;;

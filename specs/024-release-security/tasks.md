@@ -30,7 +30,7 @@
 - [ ] Run `release` via workflow_dispatch with `dry_run=true` on GitHub and read the artifacts
 - [ ] Cut `v0.1.0-rc.1` as the first real rehearsal: GHCR push, cosign, attestations, `gh release create`
 - [ ] Check CodeQL supports the Go version in `go.mod`; check dependency review and Dependabot accept the config
-- [ ] Maintainer actions: create the `release` environment with a required reviewer, run `scripts/gh-protect-main.sh --apply`, enable secret scanning push protection and private vulnerability reporting, make the GHCR packages public when releasing
+- [ ] Maintainer actions: create the `release` environment (MANDATORY: required reviewers, `v*` tags only) and the tag ruleset, run `scripts/gh-protect-main.sh --apply`, enable secret scanning push protection and private vulnerability reporting, make the GHCR packages public when releasing
 - [ ] arm64 container images (QEMU or `--platform=$BUILDPLATFORM` in the Dockerfiles)
 - [ ] Promote selected `security.yml` jobs to required after they are stable; add them to `REQUIRED_CHECKS`
 - [ ] Footprint gate: promote only under the conditions in docs/maintainers.md

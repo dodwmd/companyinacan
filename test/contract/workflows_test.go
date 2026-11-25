@@ -26,6 +26,7 @@ type wfStep struct {
 
 type wfJob struct {
 	Name        string         `yaml:"name"`
+	Environment string         `yaml:"environment"`
 	If          string         `yaml:"if"`
 	Uses        string         `yaml:"uses"`
 	Permissions map[string]any `yaml:"permissions"`
@@ -130,6 +131,19 @@ var unsafeExpr = regexp.MustCompile(`\$\{\{[^}]*(github\.event\.|github\.head_re
 // lintRun reports attacker-influenced expressions interpolated into a shell script.
 func lintRun(script string) []string {
 	return unsafeExpr.FindAllString(script, -1)
+}
+
+// actions/checkout must not leave the token in .git/config for later steps (or a compromised action) to reuse.
+func TestCheckoutDoesNotPersistCredentials(t *testing.T) {
+	for _, w := range loadWorkflows(t) {
+		for jn, j := range w.Jobs {
+			for i, st := range j.Steps {
+				if strings.HasPrefix(st.Uses, "actions/checkout@") && st.With["persist-credentials"] != false {
+					t.Errorf("%s: job %s step %d: actions/checkout needs `persist-credentials: false`", w.file, jn, i+1)
+				}
+			}
+		}
+	}
 }
 
 func TestWorkflowNoScriptInjection(t *testing.T) {
@@ -276,6 +290,29 @@ func TestReleaseWorkflowShape(t *testing.T) {
 			if !writes {
 				t.Errorf("release.yml: publish job %s declares no write permission", jn)
 			}
+			// The `release` environment (required reviewers, tag-only deployments) is the real barrier:
+			// a pushed tag can carry a commit that edits this file. docs/maintainers.md makes it mandatory.
+			if j.Environment != "release" {
+				t.Errorf("release.yml: publish job %s must use environment: release, has %q", jn, j.Environment)
+			}
+			// The fail-closed guard must run before anything that logs in, pushes, signs or releases.
+			guard := -1
+			for i, st := range j.Steps {
+				if strings.Contains(st.Run, "scripts/check-release-env.sh") {
+					guard = i
+					break
+				}
+			}
+			if guard < 0 {
+				t.Errorf("release.yml: publish job %s has no check-release-env.sh step", jn)
+			}
+			for i, st := range j.Steps {
+				risky := strings.Contains(st.Uses, "docker/login-action") || strings.Contains(st.Uses, "attest-build-provenance") ||
+					strings.Contains(st.Run, "--push") || strings.Contains(st.Run, "cosign sign") || strings.Contains(st.Run, "gh release create")
+				if risky && (guard < 0 || i < guard) {
+					t.Errorf("release.yml: publish job %s step %d publishes before the environment guard", jn, i+1)
+				}
+			}
 		}
 		// Publishing verbs must live only in the gated jobs.
 		for i, s := range j.Steps {
@@ -291,6 +328,10 @@ func TestReleaseWorkflowShape(t *testing.T) {
 		if _, ok := w.Jobs[need]; !ok {
 			t.Errorf("release.yml: job %s missing", need)
 		}
+	}
+	// Tags are strict semver without leading zeros.
+	if !strings.Contains(w.raw, `(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)`) {
+		t.Error("release.yml version check must reject leading zeros")
 	}
 	for _, snippet := range []string{"CGO_ENABLED=0", "check-reproducible.sh", "gen-sbom.sh", "licences", "resolve-base-digests.sh", "release-notes.sh", "THIRD_PARTY_LICENSES", "cosign", "attest-build-provenance"} {
 		if !strings.Contains(w.raw+readScript(t, "build-release.sh"), snippet) {

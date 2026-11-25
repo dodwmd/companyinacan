@@ -21,25 +21,53 @@ Dockerfile lint), `footprint.yml`, `dev-cluster.yml`. Promote a job to required 
 `main` for a few weeks; `security.yml` jobs run on every pull request, so they can be required without the
 "pending forever" problem path-filtered workflows have.
 
-## Applying branch protection
+## Applying the protections
 
-`scripts/gh-protect-main.sh` prints the exact API call and payload (default is a dry run, no network):
+`scripts/gh-protect-main.sh` prints the exact API calls and payloads (default is a dry run, no network) for three
+things: branch protection of `main`, a tag ruleset, and the `release` environment.
 
 ```sh
 scripts/gh-protect-main.sh                 # prints; changes nothing
-scripts/gh-protect-main.sh --apply         # applies it; needs a token with admin rights on the repository
-REVIEWS=1 scripts/gh-protect-main.sh --apply   # also require one approving review (needs a second maintainer)
+scripts/gh-protect-main.sh --apply         # applies all three; needs a token with admin rights on the repository
+RELEASE_REVIEWERS=alice,bob scripts/gh-protect-main.sh --apply   # reviewers of a release (default: the repo owner)
 ```
 
-It requires the five checks above (up to date with `main`), linear history, resolved conversations, no force
-pushes and no deletions of `main`. `REVIEWS` defaults to 0 because a one-maintainer project cannot approve its own
-pull requests; set it to 1 when there is a second maintainer, and `.github/CODEOWNERS` (a draft) then also blocks
-until an owner approves. The script is **not applied** by the repository's automation; a maintainer runs it once.
+Branch protection requires the five checks above (up to date with `main`), resolved conversations, no force pushes
+and no deletions of `main`. Two things are **opt-in** on purpose, and the dry run says so:
 
-Also worth enabling in the repository settings (not scriptable here): the dependency graph (the `dependency-review` job answers 403 and is informational until it is on), secret scanning with push protection,
-Dependabot alerts and security updates, private vulnerability reporting, "Require approval for all outside
-contributors" for workflow runs, and a `release` environment with a required reviewer (the publish jobs of
-`release.yml` use it, so a tag alone cannot publish without a maintainer clicking approve).
+- `LINEAR_HISTORY=1` requires linear history. It is off because this repository merges with merge commits.
+- `REVIEWS=n` (default 0) requires n approving reviews **and** code-owner review (`.github/CODEOWNERS`, a draft).
+  With one maintainer this locks everyone out of merging, since nobody can approve their own pull request. Raise it
+  only when a second maintainer exists.
+
+The script is **not applied** by the repository's automation; a maintainer runs it once.
+
+## The `release` environment and tag ruleset are MANDATORY
+
+`release.yml` checks that a release tag is on `main`, but that check is not a security boundary: a pushed tag can
+point at a commit that edits `release.yml` itself. What actually stops an unauthorised publish is:
+
+1. **A tag ruleset** for `refs/tags/v*` that only repository admins can bypass, so nobody else can create, move or
+   delete a release tag (the script creates it as `release-tags`).
+2. **The `release` environment** with **required reviewers**, deployments limited to a custom policy that allows
+   only `v*` **tags** (not branches), and `prevent_self_review` on as soon as there are two reviewers. The publish
+   jobs (`publish-images`, `publish-release`) name this environment, so they wait for a reviewer to approve. With one
+   reviewer, self-review has to stay allowed or that person could never release; add a second reviewer and the
+   script turns the prevention on.
+
+**Naming an environment that does not exist silently creates an unprotected one**, so `environment: release` alone
+protects nothing. Create and configure it before the first tag is pushed. As a safety net the publish jobs run
+`scripts/check-release-env.sh` before logging in or pushing and abort unless the API shows required reviewers and a
+custom deployment policy. That needs the workflow token to read the environment (the jobs request `actions: read`); if
+GitHub answers 403/404 the job aborts, unless a maintainer has set the repository variable `RELEASE_ENV_PROTECTED` to
+`true`, which they must do only after configuring the environment by hand. The guard protects against a
+misconfigured repository, not against an attacker who can already push a workflow change, which is why the tag
+ruleset and the reviewers are the primary controls.
+
+Also worth enabling in the repository settings (not scriptable here): the dependency graph (the `dependency-review`
+job answers 403 and is informational until it is on), secret scanning with push protection, Dependabot alerts and
+security updates, private vulnerability reporting, and "Require approval for all outside contributors" for workflow
+runs.
 
 ## Why the footprint check stays advisory
 

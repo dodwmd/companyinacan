@@ -21,6 +21,7 @@ sh "$here/bump-version.sh" minor | grep -qx 'next:    v1.3.0' || { echo "FAIL: m
 sh "$here/bump-version.sh" major | grep -qx 'next:    v2.0.0' || { echo "FAIL: major"; exit 1; }
 if sh "$here/bump-version.sh" v1.2.3 >/dev/null 2>&1; then echo "FAIL: existing tag accepted"; exit 1; fi
 if sh "$here/bump-version.sh" 1.2 >/dev/null 2>&1; then echo "FAIL: bad version accepted"; exit 1; fi
+if sh "$here/bump-version.sh" v01.2.3 >/dev/null 2>&1; then echo "FAIL: leading zero accepted"; exit 1; fi
 # a pre-release tag does not move the base of the next bump
 sh "$here/bump-version.sh" v9.0.0-rc.1 --tag >/dev/null
 sh "$here/bump-version.sh" patch | grep -qx 'current: v1.2.3' || { echo "FAIL: pre-release counted as latest"; exit 1; }

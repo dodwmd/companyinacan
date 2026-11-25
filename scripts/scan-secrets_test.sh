@@ -34,4 +34,12 @@ rm "$tmp/repo/c.conf"
 # shellcheck disable=SC2016
 printf 'password = "%s"\n' '${PASSWORD}' >"$tmp/repo/t.conf"
 sh "$here/scan-secrets.sh" "$tmp/repo" >/dev/null || { echo "FAIL: template reference rejected"; exit 1; }
+# a file name with spaces is still scanned
+printf 'k = %s\n' "AKIA""ABCDEFGHIJKLMNOP" >"$tmp/repo/my secrets.txt"
+if sh "$here/scan-secrets.sh" "$tmp/repo" >/dev/null 2>&1; then echo "FAIL: file with spaces skipped"; exit 1; fi
+# a line-level marker silences one reviewed fake, and only that line
+printf 'k = %s # scan-secrets:allow test fake\n' "AKIA""ABCDEFGHIJKLMNOP" >"$tmp/repo/my secrets.txt"
+sh "$here/scan-secrets.sh" "$tmp/repo" >/dev/null || { echo "FAIL: marked line rejected"; exit 1; }
+printf 'k = %s\n' "AKIA""ABCDEFGHIJKLMNOP" >>"$tmp/repo/my secrets.txt"
+if sh "$here/scan-secrets.sh" "$tmp/repo" >/dev/null 2>&1; then echo "FAIL: marker silenced an unmarked line"; exit 1; fi
 echo "scan-secrets_test: ok"

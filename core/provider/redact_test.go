@@ -16,7 +16,7 @@ func TestRedactKnownSecretsAndPatterns(t *testing.T) {
 		"Authorization: Bearer abcdefghijklmnop1234": "Authorization: Bearer " + Redacted,
 		"token=hunter2hunter2 next":                  "token=" + Redacted + " next",
 		`{"password": "p4ssw0rd!!"}`:                 `{"password": "` + Redacted + `"}`,
-		"-----BEGIN OPENSSH PRIVATE KEY-----\nAAA\nBBB\n-----END OPENSSH PRIVATE KEY-----": "-----BEGIN OPENSSH PRIVATE KEY----- " + Redacted + " -----END OPENSSH PRIVATE KEY-----",
+		"-----BEGIN OPENSSH PRIVATE KEY-----\nAAA\nBBB\n-----END OPENSSH PRIVATE KEY-----": "-----BEGIN OPENSSH PRIVATE KEY----- " + Redacted + " -----END OPENSSH PRIVATE KEY-----", // scan-secrets:allow fake key text proving the redactor works
 		"nothing secret here, ab": "nothing secret here, ab",
 	}
 	for in, want := range cases {
