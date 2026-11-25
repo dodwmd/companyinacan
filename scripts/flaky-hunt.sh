@@ -41,7 +41,11 @@ cleanup() {
 	# shellcheck disable=SC2086
 	[ -z "$pids" ] || kill $pids 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+# A signal must end the run (128 + signal number), not just clean up and carry on; exiting runs the
+# EXIT trap.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 i=0
 while [ "$i" -lt "$LOAD" ]; do
@@ -57,14 +61,22 @@ flags="-count=1 -shuffle=on -json"
 n=1
 while [ "$n" -le "$ITER" ]; do
 	log="$OUT/iter-$n.json"
+	status=0
 	# shellcheck disable=SC2086
-	go test $flags $PKGS >"$log" 2>"$OUT/iter-$n.err" || true
+	go test $flags $PKGS >"$log" 2>"$OUT/iter-$n.err" || status=$?
+	before=$(wc -l <"$OUT/raw-failures.txt")
 	# A failing test is a JSON line with "Action":"fail" and a "Test" field.
 	grep '"Action":"fail"' "$log" | grep '"Test":"' |
 		sed -e 's/.*"Package":"\([^"]*\)".*"Test":"\([^"]*\)".*/\1 \2/' >>"$OUT/raw-failures.txt" || true
 	# Packages that failed to build or that crashed have a package-level fail and no test line.
 	grep '"Action":"fail"' "$log" | grep -v '"Test":"' |
 		sed -e 's/.*"Package":"\([^"]*\)".*/\1 (package)/' >>"$OUT/raw-failures.txt" || true
+	# go test failed but nothing above says why (bad package pattern, setup or build error, killed):
+	# that is a failure too, never a clean iteration.
+	if [ "$status" -ne 0 ] && [ "$(wc -l <"$OUT/raw-failures.txt")" -eq "$before" ]; then
+		echo "go-test (exit-status-$status)" >>"$OUT/raw-failures.txt"
+		cat "$OUT/iter-$n.err" >&2
+	fi
 	echo "flaky-hunt: iteration $n/$ITER done ($(wc -l <"$OUT/raw-failures.txt" | tr -d ' ') failures so far)"
 	rm -f "$log"
 	[ -s "$OUT/iter-$n.err" ] || rm -f "$OUT/iter-$n.err"

@@ -210,6 +210,8 @@ type VerifyOptions struct {
 	Expected *Head
 	// Chunk is the page size (default DefaultVerifyChunk); tests use small values.
 	Chunk int
+	// afterPage, when set by a test, runs after each page has been read and its rows closed.
+	afterPage func()
 }
 
 // Result is the outcome of Verify.
@@ -248,6 +250,9 @@ func (l *Log) Verify(ctx context.Context, opt VerifyOptions) (Result, error) {
 		recs, err := l.page(ctx, after, chunk)
 		if err != nil {
 			return res, err
+		}
+		if opt.afterPage != nil {
+			opt.afterPage()
 		}
 		for _, r := range recs {
 			if r.Seq != want {

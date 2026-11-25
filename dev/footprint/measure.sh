@@ -55,6 +55,13 @@ if [ "$use_can_dev" = 1 ]; then
 else
   # k3d occasionally fails with "could not start a docker container" (runner/docker hiccup): clean up
   # the half-created cluster and retry a bounded number of times instead of failing the whole job.
+  # Never delete a cluster that was there before this run: refuse up front, and do not let the
+  # EXIT trap remove it either.
+  if k3d cluster list "$name" >/dev/null 2>&1; then
+    keep=1
+    echo "k3d cluster $name already exists; delete it or choose another --name" >&2
+    exit 1
+  fi
   attempt=1
   until k3d cluster create "$name" --config "$cfg" --wait --timeout 180s; do
     [ "$attempt" -lt 3 ] || { echo "k3d cluster create failed $attempt times" >&2; exit 1; }

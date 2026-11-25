@@ -20,7 +20,7 @@ small factor of their limit under contention. Tests over 5 s on the unloaded bas
 
 | Test | Unloaded | Contended | Action |
 | --- | --- | --- | --- |
-| core/server/audit `TestVerifyReleasesTheConnectionBetweenChunks` | 17.0 s | n/a | Rewritten: 3000 entries, chunk 100, asserts a concurrent query on the single connection is served while Verify walks (a count, no 100 ms threshold). About 1.7 s. |
+| core/server/audit `TestVerifyReleasesTheConnectionBetweenChunks` | 17.0 s | n/a | Rewritten: 3000 entries, chunk 100, asserts after every page that the single connection is free (no 100 ms threshold). About 1.7 s. |
 | core/work `TestSearchNeverLeavesTokenScope` | 16.6 s | 22-35 s | 2000 seeded random queries instead of 6000 (the exhaustive pool is unchanged); `CAN_TEST_THOROUGH=1` restores 6000. About 5 s. |
 | core/server/installer `TestUnguardedDAGUseCannotKillTheParent`, `TestGoroutinesReturnToBaselineAfterChildFailures`, `TestRepeatedReconcilesDoNotStackRenders` | 10-11 s | 13-22 s | Spawn real render children; inherent. Hang guards widened (see below). |
 | core/people `TestFieldAccessInvariantsExhaustive`, `TestPolicyInvariantsExhaustive` | 5.8 s | 8-13 s | Exhaustive by design, left as is. |
@@ -30,16 +30,26 @@ small factor of their limit under contention. Tests over 5 s on the unloaded bas
 Wall-clock assertions replaced or loosened (all were asserting "does not hang" or "is linear", not a
 specific speed):
 
-- core/work `TestFailuresFromAnAddressOverTheLimitAreSlowedNotValidTokens`: "valid token under 150 ms"
-  became "the fastest of 5 valid requests is under the 300 ms penalty" (a delayed request always costs
-  at least the penalty, so the minimum does not depend on load).
-- core/obs `TestHealthCallerWhoGivesUpGetsAnAnswerQuickly`: the check now blocks on a channel, so Check can
-  only return by honouring the caller's context; the 150 ms bound is gone. `TestHealthConcurrentCallersShareOneRun`
-  lost its 400 ms bound (the run count is the assertion) and its run is longer so all callers join it.
-- core/obs 1 s to 10 s, core/equity 2 s to 30 s, core/provision 3 s to 30 s, core/forms 3 s to 30 s
-  (backoff is `time.Hour`, so a hang is unmistakable), core/server/installer 10 s and 15 s to 60 s,
-  core/work markdown render 500 ms to 10 s per case and 1 s to 20 s for the page (the inputs are hostile
-  and quadratic behaviour would take minutes).
+- core/work `TestFailuresFromAnAddressOverTheLimitAreSlowedNotValidTokens`: the test now sets a 2 s
+  penalty through an unexported config field (production stays at 300 ms) and requires a failure to take
+  at least 2 s and a valid request under 1 s. It fails when valid requests are delayed.
+- core/obs `TestHealthCallerWhoGivesUpGetsAnAnswerQuickly`: the check blocks on a channel and the per-check
+  timeout is one hour, so Check can only return by honouring the caller's context; the 150 ms bound is
+  gone. It fails when Check ignores the context. (Without the one hour timeout, the default 2 s per-check
+  timeout ended the call anyway and the test could not fail.)
+- core/obs `TestHealthCheckTimeoutAndPanic`: asserts the deadline the check was given is at most the 30 ms
+  set, so it fails when `SetTimeout` is ignored, without measuring elapsed time.
+- core/obs `TestHealthConcurrentCallersShareOneRun` lost its 400 ms bound (the run count is the assertion)
+  and its run is longer so all callers join it.
+- core/server/audit `TestVerifyReleasesTheConnectionBetweenChunks`: an unexported per-page hook checks
+  that no connection is in use after each page. A mutant that pins one `db.Conn` for the whole pass failed
+  200 of 200 runs (`-race -cpu=4`); the real code passed 40 of 40.
+- core/work markdown rendering: fastest of 3 under 250 ms per case (a few milliseconds when linear) and
+  1 s for the issue page (about 30 ms). A byte-by-byte quadratic scan fails it. A quadratic whose inner
+  step is the assembly `strings.Index` costs only about 10 ms at these sizes and is not detected by timing.
+- Guards widened where the test only means "does not hang": core/equity 2 s to 30 s, core/provision 3 s to
+  30 s, core/forms 3 s to 30 s (backoff is `time.Hour`, so a hang is unmistakable), core/server/installer
+  10 s and 15 s to 60 s.
 - core/server/runtime `TestRunServesTwoSeparateListenersAndShutsDownGracefully`: code shutdown bound 30 s,
   test guard 120 s (a guard against a hang, not a measurement).
 

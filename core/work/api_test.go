@@ -861,27 +861,21 @@ func TestDeadEventsArePaginated(t *testing.T) {
 }
 
 func TestFailuresFromAnAddressOverTheLimitAreSlowedNotValidTokens(t *testing.T) {
-	h := newHarness(t, func(c *Config) { c.RateLimit.AuthFailuresPerMin = 2 })
+	// A 2 s penalty (production: 300 ms) puts a wide margin on both sides: a valid request takes
+	// milliseconds even on a loaded machine, a delayed one at least 2 s.
+	const penalty = 2 * time.Second
+	h := newHarness(t, func(c *Config) { c.RateLimit.AuthFailuresPerMin = 2; c.authPenalty = penalty })
 	for i := 0; i < 2; i++ {
 		h.mustDo(401, "GET", "/v1/me", "bad-token-bad-token-bad-token-bad", nil)
 	}
 	start := time.Now()
 	h.mustDo(429, "GET", "/v1/me", "bad-token-bad-token-bad-token-bad", nil)
-	if time.Since(start) < 200*time.Millisecond {
-		t.Fatalf("a failure from an address over the limit must cost something: %v", time.Since(start))
+	if d := time.Since(start); d < penalty {
+		t.Fatalf("a failure from an address over the limit must cost something: %v", d)
 	}
-	// A delayed request always costs at least the 300 ms penalty, so the fastest of several valid
-	// requests is below it unless valid tokens are being delayed. The minimum, unlike a single
-	// timing, does not depend on how loaded the machine is.
-	fastest := time.Hour
-	for i := 0; i < 5; i++ {
-		start = time.Now()
-		h.mustDo(200, "GET", "/v1/me", bootstrap, nil)
-		if d := time.Since(start); d < fastest {
-			fastest = d
-		}
-	}
-	if fastest >= 300*time.Millisecond {
-		t.Fatalf("a valid token must not be delayed: fastest of 5 took %v", fastest)
+	start = time.Now()
+	h.mustDo(200, "GET", "/v1/me", bootstrap, nil)
+	if d := time.Since(start); d >= penalty/2 {
+		t.Fatalf("a valid token must not be delayed: %v", d)
 	}
 }

@@ -76,8 +76,9 @@ func TestHealthConcurrentCallersShareOneRun(t *testing.T) {
 
 func TestHealthCallerWhoGivesUpGetsAnAnswerQuickly(t *testing.T) {
 	hl := NewHealth()
-	// The check blocks until the test releases it, so the only way Check can return is by giving up on
-	// the caller's context: no timing threshold is involved.
+	// The check blocks until the test releases it and the per-check timeout is an hour, so the only way
+	// Check can return is by giving up on the caller's context: no timing threshold is involved.
+	hl.SetTimeout(time.Hour)
 	release := make(chan struct{})
 	defer close(release)
 	hl.Add("slow", true, func(ctx context.Context) error { <-release; return nil })
