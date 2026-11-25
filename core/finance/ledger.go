@@ -998,6 +998,17 @@ func (s *Store) reverseEntry(ctx context.Context, a *Principal, id int64, date, 
 	return out, err
 }
 
+// truncateRunes keeps at most n characters of s.
+func truncateRunes(s string, n int) string {
+	for i := range s {
+		if n == 0 {
+			return s[:i]
+		}
+		n--
+	}
+	return s
+}
+
 // reverseTx posts the mirror image of a posted entry and links the two.
 func (s *Store) reverseTx(ctx context.Context, tx dbq, orig *JournalEntry, date, memo, by string) (int64, error) {
 	switch {
@@ -1014,9 +1025,7 @@ func (s *Store) reverseTx(ctx context.Context, tx dbq, orig *JournalEntry, date,
 	for i, l := range orig.Lines {
 		lines[i] = lineSpec{AccountID: l.AccountID, Debit: l.CreditMinor, Credit: l.DebitMinor, Memo: l.Memo}
 	}
-	if len(memo) > 500 {
-		memo = memo[:500]
-	}
+	memo = truncateRunes(memo, 500) // memo limits count characters: cutting bytes would split one
 	rid, err := s.postEntryTx(ctx, tx, postSpec{Source: "reversal", Date: date, Currency: orig.Currency, Memo: strings.ReplaceAll(memo, "\n", " "), By: by, Lines: lines, ReversalOf: orig.ID, AllowInactive: true})
 	if err != nil {
 		return 0, err

@@ -603,3 +603,20 @@ func TestQA2ForcedRowIsNotImportedAgainByACumulativeFile(t *testing.T) {
 		t.Errorf("%d coffee rows for 2 real, %+v", coffee, r)
 	}
 }
+
+// QA round 2, 4: a long reason in a multibyte script is cut between characters.
+func TestQA2ReversalMemoIsCutByCharacters(t *testing.T) {
+	e := newEnv(t)
+	ledgerOn(t, e)
+	drafter, alex, bea := e.token("dana", acct, nil, nil, false), e.token("alex", ledApp, nil, nil, false), e.token("bea", ledApp, nil, nil, false)
+	var j, rev JournalEntry
+	e.must(201, drafter, "POST", "/v1/ledger/journals", manual("2026-05-01", "USD", "5000", "1000", 100), &j)
+	e.must(200, alex, "POST", "/v1/ledger/journals/"+id(j.ID)+"/post", nil, nil)
+	e.must(201, bea, "POST", "/v1/ledger/journals/"+id(j.ID)+"/reverse", obj{"date": "2026-05-02", "reason": strings.Repeat("\u5e33", 300)}, &rev)
+	if !utf8.ValidString(rev.Memo) || strings.ContainsRune(rev.Memo, utf8.RuneError) || !strings.HasSuffix(rev.Memo, "\u5e33") {
+		t.Errorf("memo %q", rev.Memo)
+	}
+	if got := truncateRunes(strings.Repeat("\u5e33", 600), 500); utf8.RuneCountInString(got) != 500 || !utf8.ValidString(got) {
+		t.Errorf("%d characters", utf8.RuneCountInString(got))
+	}
+}
