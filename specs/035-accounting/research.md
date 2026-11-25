@@ -53,6 +53,6 @@ Against the budget 28 MB: 31.7 MiB is under 28 x 1.2 = 33.6, so `ram_mb: 28`, `r
 later balance. Decided bank transactions are deleted with the retention period of their booking date, after being unlinked from the payment the
 invoice purge deletes; unmatched ones are kept. Documented as a decision for the operator and their accountant, not as legal advice.
 
-**R11 Known weaknesses.** Documents approved before the mappings are set are not back-filled (the first period's opening balances must be entered as a manual journal).
+**R11 Known weaknesses.** Documents approved before the mappings are set are not back-filled: the cut-over posts their open balances (`docs/accounting.md`); other opening balances are a manual journal.
 `period_locks` (timesheets and expenses) and `ledger_closes` are separate on purpose (a payroll cut-off and an accounting close are different decisions) but a person must set both.
 An approval into a closed period fails rather than moving the date.

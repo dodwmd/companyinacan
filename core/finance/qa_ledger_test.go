@@ -162,3 +162,51 @@ func TestQAPurgeWithCreditNoteAndMatchedPayment(t *testing.T) {
 		t.Errorf("%d invoices left, %d bank rows still linked", invoices, linked)
 	}
 }
+
+// QA 6: turning the ledger on over existing documents posts what they still owe, and every later hook relieves
+// it: receivable and claim payable end at zero, never negative.
+func TestQACutOverCoversEveryHook(t *testing.T) {
+	e := newEnv(t)
+	maker, boss := e.token("maker", rw, nil, nil, false), e.token("boss", app, nil, nil, false)
+	emp := e.token("person_9", rw, nil, nil, true)
+	party := e.party(maker, "Old Co", "customer")
+	paid := e.approveInvoice(maker, boss, party, obj{"issue_date": "2026-06-01"}, line("a", 1000, 10000), line("b", 1000, 1000))
+	voided := e.approveInvoice(maker, boss, party, obj{"issue_date": "2026-06-01"}, line("c", 1000, 3000))
+	e.must(201, maker, "POST", "/v1/invoices/"+id(paid.ID)+"/payments", obj{"amount_minor": 2000}, nil)
+	var ex Expense
+	e.must(201, emp, "POST", "/v1/expenses", obj{"description": "Train", "amount_minor": 4500, "currency": "USD", "category": "travel", "incurred_on": "2026-06-02"}, &ex)
+	e.must(200, emp, "POST", "/v1/expenses/"+id(ex.ID)+"/submit", nil, nil)
+	e.must(200, boss, "POST", "/v1/expenses/"+id(ex.ID)+"/approve", nil, nil)
+
+	ledgerOn(t, e)
+	bal := func(code string) int64 {
+		var n int64
+		_ = e.app.store.db.QueryRow(`SELECT COALESCE(SUM(l.debit_minor - l.credit_minor), 0) FROM journal_lines l JOIN ledger_accounts a ON a.id = l.account_id JOIN journal_entries j ON j.id = l.entry_id WHERE a.code = ? AND j.status = 'posted'`, code).Scan(&n)
+		return n
+	}
+	if bal("1100") != 9000+3000 || bal("2200") != -4500 || bal("3000") != -(12000-4500) {
+		t.Fatalf("opening: ar %d claims %d equity %d", bal("1100"), bal("2200"), bal("3000"))
+	}
+	// A credit note, a back-dated payment, a void and a reimbursement of old documents.
+	var cn Invoice
+	e.must(201, maker, "POST", "/v1/invoices/"+id(paid.ID)+"/credit-notes", obj{"reason": "r", "lines": []obj{line("b", 1000, 1000)}}, &cn)
+	e.must(200, boss, "POST", "/v1/invoices/"+id(cn.ID)+"/approve", nil, nil)
+	e.must(201, maker, "POST", "/v1/invoices/"+id(paid.ID)+"/payments", obj{"amount_minor": 8000, "received_on": "2026-06-05"}, nil)
+	e.must(200, boss, "POST", "/v1/invoices/"+id(voided.ID)+"/void", obj{"reason": "mistake"}, nil)
+	e.must(200, maker, "POST", "/v1/expenses/"+id(ex.ID)+"/reimburse", obj{"reference": "TX"}, nil)
+	if bal("1100") != 0 || bal("2200") != 0 {
+		t.Errorf("after settling: receivable %d claims %d, want 0 and 0", bal("1100"), bal("2200"))
+	}
+	var early int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM journal_entries WHERE source = 'payment' AND entry_date < '2026-11-25'`).Scan(&early)
+	if early != 0 {
+		t.Error("a follow-on posting of an old document is dated before the cut-over")
+	}
+	// The cut-over happens once.
+	e.must(200, adminTok, "PUT", "/v1/ledger/mappings", obj{"mappings": map[string]string{"cash": "1000"}}, nil)
+	var n int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM journal_entries WHERE source = 'opening'`).Scan(&n)
+	if n != 1 {
+		t.Errorf("%d opening entries", n)
+	}
+}

@@ -231,7 +231,7 @@ func TestMappingsAreValidated(t *testing.T) {
 	e.must(200, admin, "POST", "/v1/ledger/accounts/template", nil, nil)
 	var m Mappings
 	e.must(200, admin, "GET", "/v1/ledger/mappings", nil, &m)
-	if m.Enabled || len(m.Missing) != 6 {
+	if m.Enabled || len(m.Missing) != 7 {
 		t.Fatalf("a fresh ledger has mappings: %+v", m)
 	}
 	// Without mappings nothing posts: finance behaves as before.
@@ -240,6 +240,7 @@ func TestMappingsAreValidated(t *testing.T) {
 	e.approveInvoice(maker, boss, party, nil, line("x", 1000, 5000))
 	var js struct{ Items []JournalEntry }
 	e.must(200, admin, "GET", "/v1/ledger/journals", nil, &js)
+	// (the cut-over, tested in TestQACutOver..., posts only once every key is mapped)
 	if len(js.Items) != 0 {
 		t.Fatalf("posted with no mappings: %+v", js.Items)
 	}
@@ -253,7 +254,7 @@ func TestMappingsAreValidated(t *testing.T) {
 			t.Errorf("%s: %d, want 422", name, code)
 		}
 	}
-	all := map[string]string{"cash": "1000", "ar": "1100", "tax_payable": "2100", "expense_payable": "2200", "income": "4000", "expense": "5000"}
+	all := map[string]string{"cash": "1000", "ar": "1100", "tax_payable": "2100", "expense_payable": "2200", "income": "4000", "expense": "5000", "opening_equity": "3000"}
 	e.must(200, admin, "PUT", "/v1/ledger/mappings", obj{"mappings": all}, &m)
 	if !m.Enabled {
 		t.Fatalf("not enabled: %+v", m)

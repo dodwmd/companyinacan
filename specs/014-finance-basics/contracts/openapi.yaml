@@ -2093,7 +2093,7 @@ paths:
         "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
         "503": { description: "Not configured (for example no seal key) or timed out" }
     put:
-      summary: "Set mapping keys (ar, cash, income, tax_payable, expense, expense_payable) to account codes; each is validated (exists, active, right type)"
+      summary: "Set mapping keys (ar, cash, income, tax_payable, expense, expense_payable, opening_equity); setting the last one posts the cut-over opening entry to account codes; each is validated (exists, active, right type)"
       operationId: PUT_v1_ledger_mappings
       x-scope: finance.ledger.admin
       requestBody:

@@ -43,7 +43,7 @@ description: "Task list for Epic E15c: accounting interfaces"
 - [ ] G03 MT940 and bank feeds
 - [ ] G04 Accounts payable (bills, purchase orders posting) and matching of money out
 - [ ] G05 Multi-currency conversion, revaluation and exchange differences; consolidation across currencies
-- [ ] G06 Back-fill of documents approved before the mappings were set; opening balances are a manual journal
+- [ ] G06 No back-fill of history: the cut-over posts open receivables and claims only; bank, tax and equity openings are a manual journal
 - [ ] G07 Year-end closing entries; comparatives, budgets and cash flow reports
 - [ ] G08 UI for chart and mapping edits, manual journals, closing and reopening, statement upload and exports (API only today)
 - [ ] G09 Archiving of old journal entries (the purge keeps them on purpose)

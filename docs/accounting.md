@@ -17,12 +17,36 @@ with fakes; never run against a real bank or accounting service and never on a c
 |---|---|---|
 | Chart of accounts | Accounts with a code, name, type (asset, liability, equity, income, expense), an optional tax code mapping and an active flag. A minimal default chart shipped as data (`ledger_template.json`) that you can apply and edit. An account that carries a posting keeps its code, type and tax code. | Jurisdiction rules, statutory account numbering, tax treatment. The template is a starting point, not a recommendation. |
 | Automatic posting | Inside the same transaction as the event: invoice approved (receivable debit, income credit, tax payable credit per tax code), credit note approved (the mirror), payment recorded (bank or cash debit, receivable credit), invoice voided (reversal), expense approved (expense debit, payable credit), expense reimbursed. Totals come from the document's own rounded lines, so an entry always equals its document. | Purchase orders are not bills and do not post. There is no accounts-payable ledger, no bank charges, no inventory, no fixed assets. |
-| Account mapping | Six keys (`ar`, `cash`, `income`, `tax_payable`, `expense`, `expense_payable`) each pointing at an account. Each is validated when set (exists, active, the right type). Automatic posting is on only when all six are set, and an account that is mapped cannot be deactivated. | Per-product or per-category income accounts. Tax codes route to a liability account carrying that `tax_code`, else to `tax_payable`. |
+| Account mapping | Seven keys (`ar`, `cash`, `income`, `tax_payable`, `expense`, `expense_payable`, `opening_equity`) each pointing at an account. Each is validated when set (exists, active, the right type). Automatic posting is on only when all seven are set, and an account that is mapped cannot be deactivated. | Per-product or per-category income accounts. Tax codes route to a liability account carrying that `tax_code`, else to `tax_payable`. |
 | Manual journals | Balanced, one currency, drafted by a person and posted by another (see Separation of duties). | Recurring journals, allocations. |
 | Reports | Trial balance, general ledger (paged, with running balances), profit and loss, balance sheet, as of a date, per currency, in integer minor units. Bounded queries (5 second deadline, at most 2000 rows, reported as truncated). | Comparatives, budgets, cash flow, consolidation. |
 | Period close | Close the ledger through a date. Nothing dated on or before it can be posted (the database refuses too). Reopening needs `finance.ledger.admin` and a reason, and is audited; the close history is append-only. | Year-end closing entries. The balance sheet shows earnings to date instead. |
 | Bank | Bank accounts with a sealed number, statement import (CSV, OFX 1.x, CAMT.053), suggestions, confirm (records a payment) and ignore (with a reason), reconciliation status per month with a sign-off. | Bank feeds, payment initiation, MT940, foreign-currency accounts converting to your base currency, outgoing payments or bill matching. Matching is for money received against invoices. |
 | Adapters | `AccountingExporter` interface with a generic CSV journal export (cursor, idempotent batches, audited). `xero`, `quickbooks` and `wave` are documented stubs. `PayrollAdapter` interface with a CSV payroll journal import. | A working Xero, QuickBooks or Wave connection. Payroll calculation. |
+
+## Cut-over: turning the ledger on for an existing company
+
+There is no back-fill of old documents. Instead, the moment the last mapping key is set, the module posts **one opening
+entry per currency**, dated that day, in the same transaction (source `opening`):
+
+| Line | Amount |
+|---|---|
+| debit `ar` | the sum of `total - paid - credited` over invoices that are approved, sent or partially paid |
+| credit `expense_payable` | the sum of approved expense claims not yet reimbursed |
+| credit `opening_equity` (debit when negative) | the first amount less the second |
+
+From then on every hook posts for every document, old or new: a payment, credit note, void or reimbursement of a document
+that predates the cut-over relieves the balance the opening entry carried (a void posts the mirror of the entry the
+invoice would have had, against income and tax in the current period). Such follow-on postings are never dated before the
+cut-over, even if the payment date you enter is earlier.
+
+**What the opening entry does not contain**, because the module cannot know it: your bank and cash balances, tax already
+owed, equity, loans, assets, payables to suppliers, and any history. Enter those as a manual journal (approved by a second
+person) against the `opening_equity` account, from your accountant's figures at the cut-over date, for example: debit
+bank for its statement balance, credit tax payable for tax collected and not yet remitted, and the difference to opening
+equity. If tax on pre-cut-over open invoices is owed, that tax is part of that figure. Money already received before the
+cut-over must be recorded as a payment **before** you set the last mapping, otherwise it is counted twice (once in your
+opening bank balance, once when recorded). Changing a mapping later does not move balances.
 
 ## Money and currencies
 
@@ -143,7 +167,7 @@ separate decision for you and your accountant). Data classes in the manifest: `f
 1. Add `CAN_FINANCE_SEAL_KEY` (can-core generates it for new installs; for an existing install add it to the module Secret once and keep it).
 2. As `finance.ledger.admin`: `POST /v1/ledger/accounts/template` with `{"apply_mappings": true}`, review the chart and the mapping, adjust.
 3. From that moment finance events post automatically. Approvals that would post into a closed period fail with `period_locked`:
-   open the period (audited) or date the document in an open one. Documents approved before the mappings were set are not back-filled.
+   open the period (audited) or date the document in an open one. Documents approved before the mappings were set are not back-filled: see Cut-over.
 4. Add a bank account, import statements, work the queue (UI: Bank), sign off months, close periods, export the journal.
 
 Limits worth knowing: one currency per entry and no conversion; single ledger (no entities or tracking categories); the journal

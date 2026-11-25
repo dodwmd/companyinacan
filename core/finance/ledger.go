@@ -41,7 +41,7 @@ var accountTypes = []string{AcAsset, AcLiability, AcEquity, AcIncome, AcExpense}
 // Mapping keys and the account type each must point at.
 var mappingTypes = map[string]string{
 	"ar": AcAsset, "cash": AcAsset, "income": AcIncome, "tax_payable": AcLiability,
-	"expense": AcExpense, "expense_payable": AcLiability,
+	"expense": AcExpense, "expense_payable": AcLiability, "opening_equity": AcEquity,
 }
 
 //go:embed ledger_template.json
@@ -406,10 +406,23 @@ func (s *Store) setMappingsTx(ctx context.Context, tx dbq, a *Principal, in map[
 	if err := p.err(); err != nil {
 		return err
 	}
+	_, wasOn, err := s.loadMappings(ctx, tx)
+	if err != nil {
+		return err
+	}
 	now := ts(s.now())
 	for k, id := range ids {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO ledger_mappings (key, account_id, updated_by, updated_at) VALUES (?, ?, ?, ?)
 			ON CONFLICT (key) DO UPDATE SET account_id = excluded.account_id, updated_by = excluded.updated_by, updated_at = excluded.updated_at`, k, id, a.Subject, now); err != nil {
+			return err
+		}
+	}
+	mapped, on, err := s.loadMappings(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if on && !wasOn {
+		if err := s.postOpeningTx(ctx, tx, mapped, a.Subject); err != nil {
 			return err
 		}
 	}

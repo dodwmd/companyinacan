@@ -69,7 +69,7 @@ func init() {
 		"account.asset": "Asset", "account.liability": "Liability", "account.equity": "Equity", "account.income": "Income", "account.expense": "Expense",
 		"jsource.manual": "Manual journal", "jsource.payroll": "Payroll import", "jsource.invoice": "Invoice", "jsource.credit_note": "Credit note",
 		"jsource.invoice_void": "Invoice voided", "jsource.payment": "Payment", "jsource.expense": "Expense approved", "jsource.expense_reimbursed": "Expense reimbursed",
-		"jsource.reversal":  "Reversal",
+		"jsource.reversal": "Reversal", "jsource.opening": "Opening balances",
 		"bank.queue":        "Unmatched transactions",
 		"bank.queue_cap":    "Unmatched bank transactions, oldest first",
 		"bank.queue_none":   "Nothing is waiting to be matched.",

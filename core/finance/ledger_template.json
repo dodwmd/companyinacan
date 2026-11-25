@@ -11,5 +11,5 @@
     { "code": "4000", "name": "Sales", "type": "income" },
     { "code": "5000", "name": "General expenses", "type": "expense" }
   ],
-  "mappings": { "cash": "1000", "ar": "1100", "tax_payable": "2100", "expense_payable": "2200", "income": "4000", "expense": "5000" }
+  "mappings": { "cash": "1000", "ar": "1100", "tax_payable": "2100", "expense_payable": "2200", "income": "4000", "expense": "5000", "opening_equity": "3000" }
 }

@@ -38,7 +38,7 @@ type ledgerJournalsData struct {
 	Pager  pager
 }
 
-var journalSources = []string{"manual", "payroll", "invoice", "credit_note", "invoice_void", "payment", "expense", "expense_reimbursed", "reversal"}
+var journalSources = []string{"opening", "manual", "payroll", "invoice", "credit_note", "invoice_void", "payment", "expense", "expense_reimbursed", "reversal"}
 
 func (u *UI) ledgerJournals(c *uiCtx) error {
 	before, err := c.cursor()

@@ -29,7 +29,7 @@ a migration for existing finance databases; manifest permissions `finance.ledger
 Out (recorded in tasks.md as gaps): real Xero, QuickBooks, Wave or bank connections; payroll calculation; bank feeds and MT940;
 accounts payable and bills (purchase orders do not post); multi-currency revaluation and conversion; tax calculation and
 filing; year-end closing entries; budgets, cash flow, multi-entity ledgers; back-filling documents approved before the
-mappings were set; a UI for chart editing, manual journals, closing and uploads (API only); archiving old journal entries;
+mappings were set (a cut-over opening entry carries what they still owe); a UI for chart editing, manual journals, closing and uploads (API only); archiving old journal entries;
 cluster and image checks.
 
 ## User Scenarios & Testing

@@ -31,7 +31,8 @@ BEGIN
 END;
 
 -- Which account each automatic posting uses (keys: ar, income, tax_payable, cash, expense,
--- expense_payable). Automatic posting is on only when every key is mapped.
+-- expense_payable, opening_equity). Automatic posting is on only when every key is mapped; the moment it
+-- first turns on is the cut-over, recorded as one 'opening' entry per currency.
 CREATE TABLE ledger_mappings (
     key        TEXT    PRIMARY KEY,
     account_id INTEGER NOT NULL REFERENCES ledger_accounts (id),
@@ -63,7 +64,7 @@ END;
 CREATE TABLE journal_entries (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     status      TEXT    NOT NULL CHECK (status IN ('draft', 'posted')),
-    source      TEXT    NOT NULL CHECK (source IN ('manual', 'payroll', 'invoice', 'credit_note', 'invoice_void', 'payment', 'expense', 'expense_reimbursed', 'reversal')),
+    source      TEXT    NOT NULL CHECK (source IN ('opening', 'manual', 'payroll', 'invoice', 'credit_note', 'invoice_void', 'payment', 'expense', 'expense_reimbursed', 'reversal')),
     source_ref  TEXT    NOT NULL DEFAULT '',
     entry_date  TEXT    NOT NULL,
     currency    TEXT    NOT NULL,

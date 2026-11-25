@@ -52,6 +52,7 @@
         },
         "source": {
           "enum": [
+            "opening",
             "manual",
             "payroll",
             "invoice",
