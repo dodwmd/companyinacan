@@ -59,16 +59,18 @@ type Timesheet struct {
 	CreatedBy       string     `json:"created_by"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+
+	updatedBy, submittedBy string
 }
 
-const tsCols = `id, owner, week_start, status, submitted_at, decided_by, decided_at, reject_reason, version, created_by, created_at, updated_at`
+const tsCols = `id, owner, week_start, status, submitted_at, decided_by, decided_at, reject_reason, version, created_by, created_at, updated_at, updated_by, submitted_by`
 
 func scanTimesheet(sc scanner) (*Timesheet, error) {
 	var t Timesheet
 	var sub, dat sql.NullInt64
 	var dby sql.NullString
 	var c, u int64
-	if err := sc.Scan(&t.ID, &t.Owner, &t.WeekStart, &t.Status, &sub, &dby, &dat, &t.RejectReason, &t.Version, &t.CreatedBy, &c, &u); err != nil {
+	if err := sc.Scan(&t.ID, &t.Owner, &t.WeekStart, &t.Status, &sub, &dby, &dat, &t.RejectReason, &t.Version, &t.CreatedBy, &c, &u, &t.updatedBy, &t.submittedBy); err != nil {
 		return nil, err
 	}
 	t.SubmittedAt, t.DecidedBy, t.DecidedAt = nullTime(sub), nullStr(dby), nullTime(dat)
@@ -83,10 +85,11 @@ func isMonday(s string) bool { return validDate(s) && parseDate(s).Weekday() == 
 // lockedThrough returns the latest locked date ("" when no period is locked).
 func (s *Store) lockedThrough(ctx context.Context, q dbq) (string, error) {
 	var d sql.NullString
-	if err := q.QueryRowContext(ctx, `SELECT MAX(through_date) FROM period_locks`).Scan(&d); err != nil {
-		return "", err
+	err := q.QueryRowContext(ctx, `SELECT through_date FROM period_locks ORDER BY id DESC LIMIT 1`).Scan(&d)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
 	}
-	return d.String, nil
+	return d.String, err
 }
 
 func (s *Store) checkUnlocked(ctx context.Context, q dbq, date string) error {
@@ -101,8 +104,8 @@ func (s *Store) checkUnlocked(ctx context.Context, q dbq, date string) error {
 }
 
 // LockPeriod locks all timesheet weeks that start, and expenses incurred, on or before a
-// date. Only a later date than the current lock extends it; moving the lock back (reopening
-// a period) is allowed for finance.admin and is audited.
+// date. The most recent lock is the one in force: setting an earlier date reopens the
+// periods after it. Only finance.admin may, and every change is audited.
 func (s *Store) LockPeriod(ctx context.Context, a *Principal, through, note string) error {
 	if !validDate(through) || !oneLineText(note, 200) {
 		return invalid("through_date", "use YYYY-MM-DD; note is one line")
@@ -274,7 +277,7 @@ func (s *Store) CreateTimesheet(ctx context.Context, a *Principal, owner, weekSt
 			return err
 		}
 		now := ts(s.now())
-		res, err := tx.ExecContext(ctx, `INSERT INTO timesheets (owner, week_start, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (owner, week_start) DO NOTHING`, owner, weekStart, a.Subject, now, now)
+		res, err := tx.ExecContext(ctx, `INSERT INTO timesheets (owner, week_start, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (owner, week_start) DO NOTHING`, owner, weekStart, a.Subject, a.Subject, now, now)
 		if err != nil {
 			return err
 		}
@@ -366,7 +369,7 @@ func (s *Store) SetEntries(ctx context.Context, a *Principal, id int64, ifMatch 
 				return err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = 'draft', version = version + 1, updated_at = ? WHERE id = ?`, ts(s.now()), id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = 'draft', updated_by = ?, version = version + 1, updated_at = ? WHERE id = ?`, a.Subject, ts(s.now()), id); err != nil {
 			return err
 		}
 		out, err = s.loadTimesheet(ctx, tx, a, id)
@@ -390,7 +393,7 @@ func (s *Store) SubmitTimesheet(ctx context.Context, a *Principal, id int64, ifM
 		if err := s.checkUnlocked(ctx, tx, t.WeekStart); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = 'submitted', submitted_at = ?, reject_reason = '', version = version + 1, updated_at = ? WHERE id = ?`, ts(s.now()), ts(s.now()), t.ID)
+		_, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = 'submitted', submitted_at = ?, submitted_by = ?, reject_reason = '', version = version + 1, updated_at = ? WHERE id = ?`, ts(s.now()), a.Subject, ts(s.now()), t.ID)
 		return err
 	})
 }
@@ -439,7 +442,7 @@ func (s *Store) decideTimesheet(ctx context.Context, a *Principal, id int64, ifM
 				return ErrNotFound
 			}
 		}
-		if err := s.authorizeApproval(ctx, a, ApprovalRequest{Kind: "timesheet", Owner: t.Owner}, t.CreatedBy); err != nil {
+		if err := s.authorizeApproval(ctx, a, ApprovalRequest{Kind: "timesheet", Owner: t.Owner}, t.CreatedBy, t.updatedBy, t.submittedBy); err != nil {
 			return err
 		}
 		if t.Status != TsSubmitted {

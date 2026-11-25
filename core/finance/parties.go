@@ -329,6 +329,25 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 		}
 		n, _ := res.RowsAffected()
 		rep.DeletedDrafts += int(n)
+		// Draft contracts were never sent: no legal record yet, and their text and variables
+		// carry the party's data. Their versions are immutable, so the purge gate is opened for
+		// exactly this delete (the audit cut-off stays 0: no audit entry can go).
+		if _, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 1, audit_before = 0`); err != nil {
+			return err
+		}
+		for _, q := range []string{`DELETE FROM contract_versions WHERE contract_id IN (SELECT id FROM contracts WHERE party_id = ? AND status = 'draft')`, `DELETE FROM contracts WHERE party_id = ? AND status = 'draft'`} {
+			res, err := tx.ExecContext(ctx, q, id)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(q, "FROM contracts") {
+				n, _ := res.RowsAffected()
+				rep.DeletedDrafts += int(n)
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 0, audit_before = 0`); err != nil {
+			return err
+		}
 		for _, q := range []string{`DELETE FROM purchase_orders WHERE vendor_id = ? AND status = 'draft'`, `DELETE FROM recurring WHERE party_id = ?`} {
 			res, err := tx.ExecContext(ctx, q, id)
 			if err != nil {

@@ -142,7 +142,7 @@ func (f *FakePayments) ParseWebhook(h http.Header, body []byte) (*PaymentNotice,
 	if err := json.Unmarshal(body, &ev); err != nil {
 		return nil, fmt.Errorf("bad webhook body: %w", err)
 	}
-	if ev.Type != "payment.succeeded" || ev.ID == "" || ev.InvoiceID < 1 || ev.AmountMinor < 1 {
+	if _, ok := CurrencyExponent(ev.Currency); !ok || ev.Type != "payment.succeeded" || ev.ID == "" || ev.InvoiceID < 1 || ev.AmountMinor < 1 {
 		return nil, errors.New("not a usable payment.succeeded event")
 	}
 	return &PaymentNotice{EventID: ev.ID, InvoiceID: ev.InvoiceID, AmountMinor: ev.AmountMinor, Currency: ev.Currency}, nil

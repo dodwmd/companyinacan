@@ -428,8 +428,10 @@ func (in *NewInvoice) check(now time.Time) error {
 	if in.PartyID < 1 {
 		p.add("party_id", "required")
 	}
-	if in.Series != "" && !seriesRE.MatchString(in.Series) {
-		p.add("series", "1 to 6 capital letters")
+	if in.Series != "" {
+		if err := validInvoiceSeries(in.Series); err != nil {
+			p.add("series", "1 to 6 capital letters, not CN or PO (reserved)")
+		}
 	}
 	if in.Project != "" && !projectRE.MatchString(in.Project) {
 		p.add("project", "not a project key")
@@ -525,10 +527,14 @@ func (s *Store) insertDraft(ctx context.Context, tx dbq, a *Principal, createdBy
 		return 0, invalid("due_date", "must not be before issue_date")
 	}
 	series := in.Series
-	if series == "" {
+	switch {
+	case kind == KindCreditNote:
+		series = "CN" // fixed: credit notes have their own counter
+	case series == "":
 		series = "INV"
-		if kind == KindCreditNote {
-			series = "CN"
+	default:
+		if err := validInvoiceSeries(series); err != nil {
+			return 0, err
 		}
 	}
 	instr := s.payInstr
@@ -749,13 +755,10 @@ func (s *Store) authorizeApproval(ctx context.Context, a *Principal, req Approva
 	if !a.Can(PermApprove) {
 		return ErrForbidden
 	}
-	for _, who := range involved {
-		if who != "" && who == a.Subject {
+	for _, who := range append(involved, req.Owner) {
+		if who != "" && sameSubject(who, a.Subject) {
 			return ErrSeparation
 		}
-	}
-	if req.Owner != "" && req.Owner == a.Subject {
-		return ErrSeparation
 	}
 	ok, err := s.approver.CanApprove(ctx, a, req)
 	if err != nil {
@@ -790,16 +793,19 @@ func (s *Store) ApproveInvoice(ctx context.Context, a *Principal, id int64, ifMa
 			return err
 		}
 		if v.Kind == KindCreditNote {
-			var origTotal, origCredited int64
+			var origTotal, origCredited, origPaid int64
 			var origStatus string
-			if err := tx.QueryRowContext(ctx, `SELECT total_minor, credited_minor, status FROM invoices WHERE id = ?`, v.OriginalID).Scan(&origTotal, &origCredited, &origStatus); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT total_minor, credited_minor, paid_minor, status FROM invoices WHERE id = ?`, v.OriginalID).Scan(&origTotal, &origCredited, &origPaid, &origStatus); err != nil {
 				return err
 			}
 			if origStatus == StVoid || origStatus == StDraft {
 				return fmt.Errorf("%w: the original invoice is %s", ErrConflict, origStatus)
 			}
-			if t.total > origTotal-origCredited {
-				return invalid("lines", "the credit note (%s) exceeds what can still be credited on the invoice (%s)", FormatMinor(t.total, v.Currency), FormatMinor(origTotal-origCredited, v.Currency))
+			// A credit note reduces what the customer still owes. Money already received is not
+			// credited here (refunds are not modelled): the cap is the unpaid balance, so a balance
+			// can never go negative.
+			if open := origTotal - origPaid - origCredited; t.total > open {
+				return invalid("lines", "the credit note (%s) exceeds the unpaid balance of the invoice (%s); money already paid is refunded outside this module", FormatMinor(t.total, v.Currency), FormatMinor(open, v.Currency))
 			}
 		}
 		if err := s.writeLines(ctx, tx, v.ID, lines); err != nil {
@@ -893,8 +899,11 @@ func (s *Store) VoidInvoice(ctx context.Context, a *Principal, id int64, ifMatch
 		return nil, invalid("reason", "required, one line, at most 500 characters")
 	}
 	return s.withInvoice(ctx, a, id, ifMatch, func(tx *sql.Tx, v *Invoice) error {
-		if !a.Can(PermApprove) {
-			return ErrForbidden
+		// Voiding undoes an approval, so it follows the same rules: the person who drafted the
+		// invoice cannot void it (after approval the "last editor" is whoever approved or sent it,
+		// so only the creator is compared).
+		if err := s.authorizeApproval(ctx, a, ApprovalRequest{Kind: "invoice"}, v.CreatedBy); err != nil {
+			return err
 		}
 		switch {
 		case v.Kind == KindCreditNote:

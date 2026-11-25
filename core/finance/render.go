@@ -161,7 +161,7 @@ th.n,td.n{text-align:right;font-variant-numeric:tabular-nums}
 @media print{body{margin:0;max-width:none}.noprint{display:none}}
 </style></head><body>
 <h1>{{if eq .Kind "credit_note"}}Credit note{{else}}Invoice{{end}} {{if .Number}}{{.Number}}{{end}}</h1>
-{{if eq .Status "void"}}<p class="void">VOID{{if .VoidReason}}: {{.VoidReason}}{{end}}</p>{{end}}
+{{if eq .Status "void"}}<p class="void">VOID</p>{{end}}
 {{if eq .Status "draft"}}<p class="void">DRAFT</p>{{end}}
 <div class="meta">
 <div><strong>From</strong>

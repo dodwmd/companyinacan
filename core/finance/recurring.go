@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// systemActor creates the drafts a schedule generates. Because it is not the person who
-// set the schedule up, that person (or anyone) can approve the drafts without breaking
-// separation of duties; the schedule's own creator is in the audit log.
+// systemActor names the housekeeping job in audit entries. The drafts a schedule generates
+// are created in the name of the person who set the schedule up, so they cannot approve them:
+// a schedule is not a way around maker-checker.
 const systemActor = "system:recurring"
 
 // Recurring is a schedule that drafts an invoice every period. Drafts are never approved or
@@ -109,8 +109,10 @@ func (s *Store) CreateRecurring(ctx context.Context, a *Principal, in NewRecurri
 	if in.End != nil && (!validDate(*in.End) || *in.End < in.Start) {
 		p.add("end_date", "use YYYY-MM-DD, not before start_date")
 	}
-	if in.Series != "" && !seriesRE.MatchString(in.Series) {
-		p.add("series", "1 to 6 capital letters")
+	if in.Series != "" {
+		if err := validInvoiceSeries(in.Series); err != nil {
+			p.add("series", "1 to 6 capital letters, not CN or PO (reserved)")
+		}
 	}
 	if in.Project != "" && !projectRE.MatchString(in.Project) {
 		p.add("project", "not a project key")
@@ -272,7 +274,7 @@ func (s *Store) RunRecurring(ctx context.Context, asOf string) ([]int64, error) 
 				due := r.DueDays
 				in := NewInvoice{PartyID: r.PartyID, Series: r.Series, Project: r.Project, Currency: r.Currency, FXRate: r.FXRate,
 					IssueDate: r.NextDate, DueDays: &due, Notes: r.Notes, Lines: r.Lines}
-				invID, err := s.insertDraft(ctx, tx, nil, systemActor, KindInvoice, nil, in)
+				invID, err := s.insertDraft(ctx, tx, nil, r.CreatedBy, KindInvoice, nil, in)
 				if err != nil {
 					// A schedule that cannot draft (erased party, retired tax code) is paused, not retried forever.
 					var ie *InvalidError

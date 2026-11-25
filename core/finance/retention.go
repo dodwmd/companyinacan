@@ -16,7 +16,10 @@ type PurgeReport struct {
 	Contracts      int64 `json:"contracts"`
 	PurchaseOrders int64 `json:"purchase_orders"`
 	ErasedParties  int64 `json:"erased_parties"`
-	AuditEntries   int64 `json:"audit_entries"`
+	// ErasedPartiesKept counts erased parties that cannot be deleted yet because a record (an
+	// invoice not yet past retention, an unpaid invoice, a contract) still refers to them.
+	ErasedPartiesKept int64 `json:"erased_parties_kept"`
+	AuditEntries      int64 `json:"audit_entries"`
 }
 
 // Purge enforces retention. Financial records are kept for retentionYears from their own
@@ -93,6 +96,9 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 				AND NOT EXISTS (SELECT 1 FROM recurring r WHERE r.party_id = parties.id)`); err != nil {
 				return err
 			}
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM parties WHERE erased_at IS NOT NULL`).Scan(&rep.ErasedPartiesKept); err != nil {
+			return err
 		}
 		if auditDays > 0 {
 			res, err := tx.ExecContext(ctx, `DELETE FROM audit_log WHERE at < ?`, auditBefore)

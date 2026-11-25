@@ -98,3 +98,26 @@ func TestAddMinorOverflow(t *testing.T) {
 		t.Error("add")
 	}
 }
+
+// FuzzCalcLine checks the invariants of a line for any input: either an error, or amounts that
+// are non-negative, ordered and add up exactly.
+func FuzzCalcLine(f *testing.F) {
+	f.Add(int64(1500), int64(333), int64(0), int64(0))
+	f.Add(int64(1000), int64(105), int64(3333), int64(200000))
+	f.Add(int64(1<<40), int64(1<<49), int64(10000), int64(1000000))
+	f.Fuzz(func(t *testing.T, qty, unit, bp, ppm int64) {
+		r, err := CalcLine(qty, unit, bp, ppm)
+		if err != nil {
+			return
+		}
+		if r.Gross < 0 || r.Discount < 0 || r.Tax < 0 || r.Discount > r.Gross {
+			t.Fatalf("out of order: %+v", r)
+		}
+		if r.Taxable != r.Gross-r.Discount || r.Total != r.Taxable+r.Tax {
+			t.Fatalf("does not add up: %+v", r)
+		}
+		if r.Total > 1<<62 {
+			t.Fatalf("overflow risk: %+v", r)
+		}
+	})
+}

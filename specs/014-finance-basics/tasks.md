@@ -35,6 +35,15 @@ description: "Task list for Epic E15a: Finance basics, first slice"
 - [x] T016 Contract tests (`test/contract/finance_test.go`), including a live instance against a signed webhook receiver
 - [x] T017 `docs/finance.md`; footprint measured (research R8); mutation checks that the tests bite
 
+## QA round 1 (PR #21)
+
+- [x] Q1 purchase-order and credit-note counters reserved (invoices cannot use `PO` or `CN`)
+- [x] Q2 credit notes capped at the unpaid balance
+- [x] Q3 timesheet updated_by and submitted_by join the separation-of-duties check
+- [x] Q4 erasure deletes draft contracts and versions; purge reports erased parties it could not delete
+- [x] Q5 generated invoices carry the schedule creator as creator
+- [x] Q6-Q14 subject normalisation, void maker-checker, throttle comment, provider webhook acks, public view fields, lock reopening, `FuzzCalcLine` and a sum-of-lines invariant test, documented idempotency TTL, backdating and no year rollover
+
 ## Known gaps (not hidden)
 
 - [ ] G01 Image build and cluster checks: the Dockerfile is a fragment with digest placeholders; no Helm templates; module status stays `experimental`

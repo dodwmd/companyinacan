@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Errors the store returns; the API maps them to HTTP statuses.
@@ -81,7 +83,27 @@ var (
 	filenameRE = regexp.MustCompile(`^[^/\\\x00-\x1f]{1,255}$`)
 )
 
+// reservedSeries are the counters of other document classes. An invoice cannot use them, so a
+// purchase order or credit note number can never be burned (or duplicated) through an invoice.
+var reservedSeries = []string{"CN", "PO"}
+
+func validInvoiceSeries(s string) error {
+	if !seriesRE.MatchString(s) {
+		return invalid("series", "1 to 6 capital letters")
+	}
+	if slices.Contains(reservedSeries, s) {
+		return invalid("series", "%s is reserved for credit notes and purchase orders", s)
+	}
+	return nil
+}
+
 type scanner interface{ Scan(...any) error }
+
+// canonSubject folds a subject for comparison: Unicode compatibility normalisation, trimmed,
+// case-folded, so "Alice", "alice" and "ALICE " are one person for separation of duties.
+func canonSubject(s string) string { return strings.ToLower(strings.TrimSpace(norm.NFKC.String(s))) }
+
+func sameSubject(a, b string) bool { return canonSubject(a) == canonSubject(b) }
 
 func validSubject(s string) bool {
 	return s != "" && utf8.RuneCountInString(s) <= maxSubject && !strings.ContainsAny(s, "\x00\r\n\t") && strings.TrimSpace(s) == s

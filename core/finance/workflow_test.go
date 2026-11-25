@@ -501,9 +501,11 @@ func TestRecurringInvoices(t *testing.T) {
 	// generated drafts need a person's approval, and the schedule's creator can approve them
 	var inv Invoice
 	e.must(200, maker, "GET", "/v1/invoices/"+id(out.Drafted[0]), nil, &inv)
-	if inv.Status != "draft" || inv.CreatedBy != systemActor || inv.IssueDate != "2026-12-30" {
+	if inv.Status != "draft" || inv.CreatedBy != "maker" || inv.IssueDate != "2026-12-30" {
 		t.Fatalf("generated %+v", inv)
 	}
+	// maker-checker holds for generated drafts: the person who set the schedule up cannot approve them
+	e.must(403, maker2(e), "POST", "/v1/invoices/"+id(inv.ID)+"/approve", nil, nil)
 	e.must(200, boss, "POST", "/v1/invoices/"+id(inv.ID)+"/approve", nil, nil)
 	// month arithmetic clamps
 	for in, want := range map[string]string{"2027-01-31": "2027-02-28", "2028-01-31": "2028-02-29", "2026-11-30": "2026-12-30"} {
@@ -590,4 +592,8 @@ func TestEventsHaveNoContactData(t *testing.T) {
 			}
 		}
 	}
+}
+
+func maker2(e *env) string {
+	return e.token("maker", []string{"finance.write", "finance.approve"}, nil, nil, false)
 }

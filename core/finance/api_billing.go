@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -528,6 +529,20 @@ func (a *api) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	pay, dup, err := a.store.RecordProviderPayment(r.Context(), a.payments, n)
 	if err != nil {
+		// A verified notification that cannot be applied (unknown or void invoice, overpayment, wrong
+		// currency) will never succeed on retry. Answer 200 so the provider stops, and keep a record
+		// for a person to reconcile instead of dropping it.
+		var ie *InvalidError
+		if errors.As(err, &ie) || errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) {
+			if aerr := a.store.auditRead(r.Context(), &Principal{Subject: "provider:" + a.payments.Name()}, "payment.unmatched", n.EventID,
+				map[string]any{"invoice_id": n.InvoiceID, "amount_minor": n.AmountMinor, "currency": n.Currency, "reason": err.Error()}); aerr != nil {
+				a.fail(w, aerr)
+				return
+			}
+			a.log.Warn("provider payment could not be applied", "event_id", n.EventID, "invoice_id", n.InvoiceID)
+			writeJSON(w, http.StatusOK, map[string]any{"status": "unmatched"})
+			return
+		}
 		a.fail(w, err)
 		return
 	}

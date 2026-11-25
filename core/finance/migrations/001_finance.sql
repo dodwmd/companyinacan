@@ -222,6 +222,8 @@ CREATE TABLE timesheets (
     reject_reason TEXT    NOT NULL DEFAULT '',
     version       INTEGER NOT NULL DEFAULT 1,
     created_by    TEXT    NOT NULL,
+    updated_by    TEXT    NOT NULL DEFAULT '',  -- last person to change the entries
+    submitted_by  TEXT    NOT NULL DEFAULT '',  -- who submitted it (the owner or an admin on their behalf)
     created_at    INTEGER NOT NULL,
     updated_at    INTEGER NOT NULL,
     UNIQUE (owner, week_start)

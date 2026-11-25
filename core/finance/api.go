@@ -144,9 +144,10 @@ func (a *api) handler() http.Handler {
 type handlerFunc func(w http.ResponseWriter, r *http.Request, p *Principal)
 
 // guard authenticates, rate-limits, checks the permission and caps the body before the
-// handler runs. Every request is authenticated, so a valid token always works: an attacker
-// behind a shared address (an ingress, a NAT) cannot lock legitimate callers out. Only
-// failures are counted per client address; past the limit a failure is answered 429 after a
+// handler runs. Every request is authenticated first, so failures from a shared address (an
+// ingress, a NAT) never lock out a caller who has a valid token; a valid token is limited only
+// by its own per-token budget (rate_limit_per_minute, 600 by default). Only failures are
+// counted per client address; past the limit a failure is answered 429 after a
 // short delay, which makes a flood of guesses slow and costly without affecting valid callers.
 // An own-only token (given to an employee for their timesheets and expenses) is refused on
 // every route that is not marked ownable.

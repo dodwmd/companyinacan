@@ -151,6 +151,29 @@ func (s *Store) CreateToken(ctx context.Context, a *Principal, in NewToken) (*To
 		expUnix = ts(*exp)
 	}
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		// Two spellings of one subject (case, spaces, compatibility forms) would let one person
+		// hold two identities and approve their own work; refuse the second spelling.
+		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT subject FROM api_tokens`)
+		if err != nil {
+			return err
+		}
+		var clash string
+		for rows.Next() {
+			var sub string
+			if err := rows.Scan(&sub); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			if sub != in.Subject && sameSubject(sub, in.Subject) {
+				clash = sub
+			}
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		if clash != "" {
+			return invalid("subject", "differs only in case or form from the existing subject %q; use exactly that spelling", clash)
+		}
 		for _, id := range parties {
 			var one int
 			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM parties WHERE id = ?`, id).Scan(&one); err != nil {
