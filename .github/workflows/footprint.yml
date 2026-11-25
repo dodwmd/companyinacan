@@ -77,7 +77,7 @@ jobs:
           echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
           sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
       - run: go build -o bin/can ./cmd/can
-      - name: Measure idle RAM with deploy/base applied (can dev up: dev/k3d.yaml + deploy/base)
+      - name: Measure idle RAM with deploy/base applied (can dev up, i.e. dev/k3d.yaml plus deploy/base)
         run: dev/footprint/measure.sh --label deploy-base --name fp-base --use-can-dev --out out/base
       - name: Summary
         if: always()
