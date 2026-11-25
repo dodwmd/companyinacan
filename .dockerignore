@@ -1,0 +1,7 @@
+# Keeps the build context small for dev/compose/Dockerfile (context is the repo root).
+.git
+.claude
+bin
+.can
+.env*
+*.local

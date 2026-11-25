@@ -1,0 +1,4 @@
+# DEV ONLY can-work config for docker-compose.yml.
+listen: ":8080"
+db_path: /data/work.db
+trust_proxy: true

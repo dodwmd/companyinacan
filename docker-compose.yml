@@ -1,0 +1,154 @@
+# Company in a Can: the whole stack on one machine WITHOUT Kubernetes. DEV ONLY.
+#
+#   docker compose up --build        (or: make compose-up)
+#
+# Works with docker compose v2 and podman-compose. See docs/local-compose.md.
+#
+# WARNING: insecure dev defaults (public fake tokens in dev/compose/secrets/, plain HTTP, no
+# TLS, fake token review in can-core, unpinned base-image tags). Never expose this stack. The
+# edge listens on 127.0.0.1 only; keep it that way.
+#
+# Rootless podman note: every container is configured by files baked into its image (no bind
+# mounts), so SELinux relabelling (:z) is not needed.
+
+name: companyinacan
+
+x-build-args: &build-args
+  GO_IMAGE: ${GO_IMAGE:-docker.io/library/golang:1.27}
+  RUNTIME_IMAGE: ${RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+  EDGE_IMAGE: ${EDGE_IMAGE:-docker.io/library/caddy:2.8-alpine}
+
+services:
+  # One-shot: dev keyrings for people/jobs and the can-core admin account. Prints the TOTP secret.
+  init:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: init, args: *build-args }
+    container_name: can-init
+    env_file: [dev/compose/secrets/core.env]
+    volumes:
+      - dev-secrets:/secrets
+      - core-data:/var/lib/can
+    restart: "no"
+
+  site:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: site, args: *build-args }
+    container_name: can-site
+    healthcheck:
+      test: ["CMD", "/can-static", "-healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  forms:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: forms, args: *build-args }
+    container_name: can-forms
+    env_file: [dev/compose/secrets/forms.env]
+    volumes:
+      - forms-data:/data
+    healthcheck:
+      test: ["CMD", "/can-forms", "healthcheck", "-addr", "127.0.0.1:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  core:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: core, args: *build-args }
+    container_name: can-core
+    environment:
+      CAN_INSTALLER: none          # record state only: no cluster, no module deploys
+      CAN_TOKEN_REVIEW: fake       # DEV ONLY: module tokens are not verified against Kubernetes
+      CAN_COOKIE_SECURE: "false"   # plain HTTP on localhost
+      CAN_TRUST_PROXY: "true"      # behind the Caddy edge
+      CAN_COMPANY_NAME: Acme Co
+      CAN_COMPANY_DOMAIN: acme.example
+    volumes:
+      - core-data:/var/lib/can
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    # No healthcheck of its own (distroless, no probe flag): the smoke test checks it via the edge.
+    restart: unless-stopped
+
+  work:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: work, args: *build-args }
+    container_name: can-work
+    env_file: [dev/compose/secrets/work.env]
+    volumes:
+      - work-data:/data
+    healthcheck:
+      test: ["CMD", "/can-work", "healthcheck", "-addr", "127.0.0.1:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  people:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: people, args: *build-args }
+    container_name: can-people
+    env_file: [dev/compose/secrets/people.env]
+    volumes:
+      - people-data:/data
+      - dev-secrets:/secrets:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/can-people", "healthcheck", "-addr", "127.0.0.1:8081"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  jobs:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: jobs, args: *build-args }
+    container_name: can-jobs
+    env_file: [dev/compose/secrets/jobs.env]
+    volumes:
+      - jobs-data:/data
+      - dev-secrets:/secrets:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/can-jobs", "healthcheck", "-addr", "127.0.0.1:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  finance:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: finance, args: *build-args }
+    container_name: can-finance
+    env_file: [dev/compose/secrets/finance.env]
+    volumes:
+      - finance-data:/data
+    healthcheck:
+      test: ["CMD", "/can-finance", "healthcheck", "-addr", "127.0.0.1:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  edge:
+    build: { context: ., dockerfile: dev/compose/Dockerfile, target: edge, args: *build-args }
+    container_name: can-edge
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on: [site, forms, core, work, people, jobs, finance]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/_edge/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# Named volumes: `down` keeps them, `down -v` deletes them.
+volumes:
+  dev-secrets:
+  core-data:
+  forms-data:
+  work-data:
+  people-data:
+  jobs-data:
+  finance-data:
