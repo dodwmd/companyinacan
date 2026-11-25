@@ -229,6 +229,38 @@ paths:
         "400": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /v1/identity/revoke:
+    post:
+      operationId: revokeIdentity
+      summary: "End the tokens and sessions of one offboarded person (E13d)"
+      description: "Only for a module that provides `identity.provision`. Allowed only when the people module reported party_id as offboarded with a reached effective date and `subject` is the account the directory linked to that person (checked against the SHA-256 prefix carried by person.offboarded.v1). Idempotent, audited with ids and counts only, rate limited per module."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [party_id, subject]
+              properties:
+                party_id: { type: string, pattern: "^pers_[0-9a-f]{24}$" }
+                subject: { type: string, pattern: "^user:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" }
+      responses:
+        "200":
+          description: Revoked (counts are zero on a repeat)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens: { type: integer }
+                  sessions: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
 webhooks:
   event:
     post:

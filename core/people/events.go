@@ -195,3 +195,10 @@ func (s *Service) queryEvents(ctx context.Context, q string) ([]Event, error) {
 	}
 	return out, rows.Err()
 }
+
+// SubjectRef is the reference to an account subject carried by person.offboarded.v1: the first 32
+// hex characters of its SHA-256. It must equal identity.SubjectRef in can-core (tested there).
+func SubjectRef(subject string) string {
+	h := sha256.Sum256([]byte(subject))
+	return hex.EncodeToString(h[:16])
+}

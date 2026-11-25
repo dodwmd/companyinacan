@@ -242,6 +242,34 @@ func (c *Client) CancelApproval(ctx context.Context, id, reason string) error {
 	return nil
 }
 
+// ErrRevokeRefused means can-core will not revoke this subject now: the person is not recorded as
+// offboarded yet, the subject is not their linked account, or this module may not ask.
+var ErrRevokeRefused = errors.New("can-core refused the revocation")
+
+// RevokeResult counts what a revocation ended.
+type RevokeResult struct {
+	Tokens   int `json:"tokens"`
+	Sessions int `json:"sessions"`
+}
+
+// RevokeIdentity asks can-core to end the personal access tokens and sessions of an offboarded
+// person (POST /v1/identity/revoke). Idempotent: repeating it ends nothing more and still succeeds.
+// can-core checks the offboarding itself; this call cannot revoke an arbitrary subject.
+func (c *Client) RevokeIdentity(ctx context.Context, partyID, subject string) (RevokeResult, error) {
+	status, b, err := c.do(ctx, http.MethodPost, "/v1/identity/revoke", map[string]string{"party_id": partyID, "subject": subject}, nil)
+	if err != nil {
+		return RevokeResult{}, err
+	}
+	if status != http.StatusOK {
+		return RevokeResult{}, fmt.Errorf("%w: HTTP %d %s", ErrRevokeRefused, status, problemDetail(b))
+	}
+	var r RevokeResult
+	if err := json.Unmarshal(b, &r); err != nil {
+		return RevokeResult{}, errors.New("revocation answer is not valid")
+	}
+	return r, nil
+}
+
 // ---- webhook receiver --------------------------------------------------------------------------
 
 // Event is a can-core event as delivered to a subscriber.

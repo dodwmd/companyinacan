@@ -51,6 +51,11 @@
         "effective_date": {
           "type": "string",
           "format": "date"
+        },
+        "subject_ref": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "First 32 hex characters of the SHA-256 of the person's linked account subject (sso_subject), present when the person has one. Lets can-core check an access revocation names the right account; it is not the subject and not reversible."
         }
       }
     }
