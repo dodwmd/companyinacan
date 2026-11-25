@@ -19,6 +19,21 @@ const (
 	PermAdmin   = "finance.admin"
 )
 
+// Accounting permissions (E15c). They are held by an accounting role, never implied by finance.read or
+// finance.write, and only an unscoped principal may use them (see allowedBy): the journal, the reports
+// and the bank data span every party and project, so a token limited to some of them gets none of it.
+// ledger.write implies ledger.read; ledger.admin (chart, mappings, bank accounts, period close) implies
+// both; ledger.approve (post a manual journal, reverse an entry) implies read but not write, so the person
+// who drafts a journal is never the person who posts it. finance.admin implies all of them.
+const (
+	PermLedgerRead    = "finance.ledger.read"
+	PermLedgerWrite   = "finance.ledger.write"
+	PermLedgerApprove = "finance.ledger.approve"
+	PermLedgerAdmin   = "finance.ledger.admin"
+)
+
+var ledgerPerms = []string{PermLedgerRead, PermLedgerWrite, PermLedgerApprove, PermLedgerAdmin}
+
 // ErrUnauthenticated means no valid credentials were presented.
 var ErrUnauthenticated = errors.New("unauthenticated")
 
@@ -42,6 +57,12 @@ func (p *Principal) Can(perm string) bool {
 	}
 	if perm == PermRead && (slices.Contains(p.Permissions, PermWrite) || slices.Contains(p.Permissions, PermApprove)) {
 		return true
+	}
+	switch perm {
+	case PermLedgerRead:
+		return slices.ContainsFunc(p.Permissions, func(x string) bool { return slices.Contains(ledgerPerms, x) })
+	case PermLedgerWrite:
+		return slices.Contains(p.Permissions, PermLedgerWrite) || slices.Contains(p.Permissions, PermLedgerAdmin)
 	}
 	return slices.Contains(p.Permissions, perm)
 }

@@ -32,6 +32,10 @@ type PaymentInput struct {
 	Reference   string `json:"reference"`
 	ReceivedOn  string `json:"received_on"`
 	ExternalID  string `json:"external_id"`
+
+	// cashAccount is the ledger account of the bank account a confirmed bank transaction arrived in
+	// (E15c); not part of the request body.
+	cashAccount int64
 }
 
 const paymentCols = `id, invoice_id, amount_minor, currency, method, reference, received_on, source, external_id, created_by, created_at`
@@ -140,6 +144,9 @@ func (s *Store) recordPaymentTx(ctx context.Context, tx dbq, a *Principal, actor
 		return nil, false, err
 	}
 	pid, _ := res.LastInsertId()
+	if err := s.postPaymentTx(ctx, tx, pid, inv, in.AmountMinor, received, in.cashAccount, actor); err != nil {
+		return nil, false, err
+	}
 	paid := inv.PaidMinor + in.AmountMinor
 	status, paidAt := StPartiallyPaid, any(nil)
 	if inv.TotalMinor-paid-inv.CreditedMinor <= 0 {

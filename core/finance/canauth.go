@@ -43,7 +43,7 @@ func personalPrincipal(subject string, in []string) (*Principal, bool) {
 	}
 	var perms []string
 	for _, p := range in {
-		if (p == PermRead || p == PermWrite || p == PermApprove || p == PermAdmin) && !slices.Contains(perms, p) {
+		if (p == PermRead || p == PermWrite || p == PermApprove || p == PermAdmin || slices.Contains(ledgerPerms, p)) && !slices.Contains(perms, p) {
 			perms = append(perms, p)
 		}
 	}

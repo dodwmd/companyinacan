@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -388,6 +389,10 @@ func (u *UI) authedFunc(perm string, own bool, fn uiHandler) http.HandlerFunc {
 // own-only token (an employee's) only reaches the routes marked for it.
 func allowedBy(p *Principal, perm string, own bool) bool {
 	if perm != "" && !p.Can(perm) {
+		return false
+	}
+	// Accounting data spans every party and project: a scoped or own-only token never reaches it.
+	if slices.Contains(ledgerPerms, perm) && (!p.Unscoped() || p.OwnOnly) {
 		return false
 	}
 	return !p.OwnOnly || own

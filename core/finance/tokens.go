@@ -35,7 +35,7 @@ const (
 // claim it, so audit entries and activity never confuse the two.
 const bootstrapSubject = "bootstrap-admin"
 
-var allScopes = []string{PermRead, PermWrite, PermApprove, PermAdmin}
+var allScopes = []string{PermRead, PermWrite, PermApprove, PermAdmin, PermLedgerRead, PermLedgerWrite, PermLedgerApprove, PermLedgerAdmin}
 
 // TokenInfo describes a token. The secret is shown once, at creation, and never stored.
 type TokenInfo struct {

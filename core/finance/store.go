@@ -44,6 +44,8 @@ type Store struct {
 	approver Approver
 	// core is can-core's approvals engine when the module runs installed (nil standalone).
 	core modclient.Approvals
+	// sealer seals bank account numbers (nil when CAN_FINANCE_SEAL_KEY is not set).
+	sealer *Sealer
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.
