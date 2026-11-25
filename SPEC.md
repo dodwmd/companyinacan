@@ -85,7 +85,7 @@ Every capability is a **module**. Modules are switched on and off individually. 
 - Secrets are Kubernetes Secrets with k3s secrets-encryption at rest enabled. can-core injects `CAN_API_URL`, database credentials and SMTP relay credentials into each module as environment from those Secrets.
 - The bundled Traefik is configured through a `HelmChartConfig` (in `deploy/`) that adds the ACME resolver and **persists `acme.json`** on a PVC, so restarts don't re-issue certificates and hit Let's Encrypt rate limits. It also sets `externalTrafficPolicy: Local` on Traefik's Service so the real client IP survives ServiceLB (needed for the admin IP allowlist).
 - Public webhooks (e.g. inbound-email parse) are received by a pod in the owning module, routed by Traefik on a public path and verified by a shared secret or signature. can-core's module API is never exposed publicly.
-- The host firewall allows only 22 (restricted to the operator's IP where possible), 80 and 443. The bootstrap configures it on the host (ufw/nftables), since the `ssh` provider has no cloud firewall, and adds the allow rules k3s needs for pod-to-host traffic (pod CIDR 10.42.0.0/16, service CIDR 10.43.0.0/16, the CNI interface) so a default-deny host firewall doesn't break the API server, CoreDNS or kubelet; provider plugins additionally set the provider firewall. Phase 0 verifies this. The k3s API server (6443) is not exposed; the CLI reaches it through an SSH tunnel.
+- The host firewall allows only 22 (restricted to the operator's IP where possible), 80 and 443. The bootstrap configures it on the host (ufw/nftables), since the `ssh` provider has no cloud firewall, and adds the allow rules k3s needs for pod-to-host traffic (pod CIDR 10.42.0.0/16, service CIDR 10.43.0.0/16, the CNI interface) so a default-deny host firewall doesn't break the API server, CoreDNS or kubelet; provider plugins additionally set the provider firewall. **Phase 0 (CI, k3d) found that NetworkPolicy alone does not stop pod-to-node traffic on k3s: a pod under default-deny still reached the node's API server and kubelet ports (issue #13, `docs/measurements/phase0-ci.md`), so these host rules are required and must drop, not merely allow, pod-CIDR traffic to the node; confirming this on a real host is still open.** The k3s API server (6443) is not exposed; the CLI reaches it through an SSH tunnel.
 
 ### 3.2 Footprint budget
 
@@ -93,8 +93,8 @@ Footprint is a design constraint, not an afterthought.
 
 | Layer | Target (idle) | How |
 |---|---|---|
-| k3s server + Traefik + CoreDNS + local-path | ≤ ~600 MB | single node, SQLite datastore (no etcd), `--disable metrics-server`, no cloud-controller, no HA. **Phase 0 measures the real number; this is the biggest risk to the "2 GB" goal.** |
-| can-core + site + forms | ≤ ~100 MB | Go binaries, static server |
+| k3s server + Traefik + CoreDNS + local-path | ≤ ~600 MB | single node, SQLite datastore (no etcd), `--disable metrics-server`, no cloud-controller, no HA. **Measured in CI (2026-11-25, 16 GB runner, not a 2 GB VPS): 510-563 MiB for the whole node, of which the pods are ~50-55 MiB and the k3s server, containerd and kernel the rest; metrics-server off saves ~26 MiB. See `docs/measurements/phase0-ci.md`. The 2 GB-box figure is still unmeasured and remains the biggest risk to the "2 GB" goal.** |
+| can-core + site + forms | ≤ ~100 MB | Go binaries, static server. Measured idle (CI, working set): forms 3.2 MiB, can-static 2.2 MiB; can-core does not exist yet |
 | Shared databases | ~150–400 MB | Postgres only if a Postgres module (Listmonk, Umami…) is enabled; MariaDB only if a MariaDB-only module is enabled; tuned small buffer sizes. Phase 0 checks whether FreeScout can use Postgres, which would let the starter stack run a single engine |
 | Each module | per §5 | declared `ram_mb` is the idle **request**; the **limit** is `ram_limit_mb` (default 1.5×). CI measures idle RAM and fails if it exceeds `ram_mb` by >20% |
 
