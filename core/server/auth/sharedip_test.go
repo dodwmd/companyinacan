@@ -72,7 +72,6 @@ func TestJunkLoginsNeverTouchArgon2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer release()
 	for i := 0; i < 50; i++ {
 		_, err := e.svc.Login(ctx, LoginRequest{Username: "root", Password: e.pw, Code: "000000", IP: "10.42.0.7"})
 		if !errors.Is(err, ErrInvalidCredentials) {
@@ -84,7 +83,6 @@ func TestJunkLoginsNeverTouchArgon2(t *testing.T) {
 	if _, err := e.svc.Login(ctx, LoginRequest{Username: "root", Password: e.pw, Code: e.code(t), IP: "10.42.0.7"}); err != nil {
 		t.Fatal(err)
 	}
-	release, _ = e.svc.acquire(ctx)
 }
 
 func TestWrongTOTPAndValidLoginTakeTheSameFloorTime(t *testing.T) {
