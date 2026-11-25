@@ -135,7 +135,7 @@ fixture produces exactly the problems in its `.expect.yaml`.
 - [x] T039 [P] Time `make test` on a clean checkout and record the result in `specs/001-project-foundation/measurements.md` (SC-001, Constitution VII); fix anything over 2 minutes
 - [x] T040 [P] Scan the diff for secrets, real names/emails, non-reserved domains (FR-015) and confirm examples use only fake data
 - [x] T044 [P] Run `make test` with networking disabled (`unshare -rn` or equivalent) after dependencies are cached and record the result in `specs/001-project-foundation/measurements.md` (FR-016, spec edge case: doctor offline)
-- [ ] T045 Trial the CI attribution (SC-004) on a throwaway branch/PR: missing sign-off, failing test, bad fixture, licence violation each fail only their named job; needs maintainer approval to push, record the result in `measurements.md`
+- [x] T045 Trial the CI attribution (SC-004) on a throwaway branch/PR: missing sign-off, failing test, bad fixture, licence violation each fail only their named job; needs maintainer approval to push, record the result in `measurements.md`
 - [x] T041 Run the whole `quickstart.md` end to end and tick every scenario; update `docs/epics/README.md` status for E01
 - [x] T042 Constitution compliance pass over the final tree (I–VII) and record it at the end of `plan.md`
 
@@ -175,6 +175,6 @@ Phase 1 ─► Phase 2 ─► US1 ─┬─► US2 ─┐
 - `go-spdx` was dropped: a ~150-line SPDX expression evaluator in `core/licence` covers AND/OR/WITH/parentheses with no extra dependency (Constitution VII). `golang.org/x/term` was added for correct terminal detection (`/dev/null` is a character device).
 - Make cannot propagate a recipe's exit status (it reports 2), so `can dev` and `can up` are real stub commands exiting 3, and `make dev|up` call them (spec FR-009 updated).
 - `company.yaml` secrets are prevented by schema (`secret_ref` pattern, unknown keys rejected) instead of a heuristic warning (T018).
-- T045 (CI attribution trial) needs a push and a throwaway PR; it waits for maintainer approval. macOS was dropped from the CI matrix (T043) because there are no macOS build hosts.
+- T045 (CI attribution trial) ran on four throwaway PRs; results in `measurements.md`. macOS was dropped from the CI matrix (T043) because there are no macOS build hosts.
 
 **Totals**: 45 tasks — Setup 4, Foundational 4, US1 11, US2 8, US3 5, US4 7, Polish 6.

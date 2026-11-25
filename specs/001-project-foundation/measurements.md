@@ -15,4 +15,21 @@ Notes:
   in `.golangci.yml` (writes to user-facing writers). An earlier Makefile fallback would have
   hidden them by falling back to `go vet` on any lint failure; it now falls back only when the
   linter cannot be fetched.
-- SC-004 (CI attributes each failure to the right job) is pending T045, which needs a push.
+
+## CI results (GitHub Actions, public repo, ubuntu-latest)
+
+- First run on `main` (`f29bfc2`) was blocked while the repository was private (account billing
+  prevented jobs from starting). After the repo became public the rerun exposed one real lint
+  finding (unchecked `Close` in a test added after the last local lint run), fixed in `01dc9f5`.
+- Run on `01dc9f5`: `lint`, `unit`, `contract`, `licences`, `dco` all green.
+- **SC-004 attribution trial (T045)**, four throwaway draft PRs, each with one defect; each failed
+  exactly one job and passed the other four:
+
+| Defect | Job that failed | Others |
+|---|---|---|
+| commit without `Signed-off-by` | `dco` | pass |
+| deliberately failing unit test | `unit` | pass |
+| fixture whose expectation does not match | `contract` | pass |
+| module with an unaccepted licence (`Elastic-2.0`) | `licences` | pass |
+
+The PRs were closed and their branches deleted afterwards.
