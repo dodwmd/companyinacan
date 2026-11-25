@@ -169,7 +169,7 @@ See [data-model.md](data-model.md): Form, Field, Lead, Delivery, Event.
 
 ## Assumptions
 
-- The `email.send` endpoint and token introspection are provided by can-core (epic E04); until
+- The `email.send` endpoint and token introspection are provided by can-core (epic E03); until
   then the mailer URL is configured and the API uses static bearer tokens behind the same
   interfaces.
 - Traefik routing, the chart templates and the admin leads view belong to E03/E06/E12; this epic

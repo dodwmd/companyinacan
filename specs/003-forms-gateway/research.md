@@ -52,7 +52,7 @@
   and replay protection. Notifications run on two workers behind a 256-entry queue; the lead is
   committed first, so a notification failure never loses data. Outcomes are stored in
   `lead_deliveries`.
-- **Open question for E04**: the exact `email.send` request shape. The `Email` struct is the
+- **Open question for E03**: the exact `email.send` request shape. The `Email` struct is the
   adapter point; changing the wire format is confined to `HTTPMailer`.
 
 ## R7. Footprint measurement (SPEC.md section 6.1: forms about 15 MB)
@@ -64,14 +64,14 @@ Static linux/amd64 build, `-trimpath -ldflags "-s -w"`, Go 1.27, 2026-11-25:
 | Idle RSS, after start | 12.2 MB |
 | RSS after 200 token requests | 14.3 MB |
 
-The manifest requests 15 MB with a 32 MB limit. The CI footprint harness (E00/E03) will
+The manifest requests 15 MB with a 32 MB limit. The CI footprint harness (E03) will
 re-measure in a container.
 
 ## R8. Authentication
 - **Decision**: `Authenticator` interface returning a `Principal` with permissions. Default
   implementation: static bearer tokens compared by SHA-256 digest with `ConstantTimeCompare`
   against every entry. Switching to can-core token introspection means one new implementation.
-- **Rationale**: E04 (can-core) is not built yet; the interface keeps the API stable.
+- **Rationale**: E03 (can-core) is not built yet; the interface keeps the API stable.
 
 ## R9. Event schema location
 - `schemas/events/lead.created.v1.json` is the source of truth ("next to the capability schemas").

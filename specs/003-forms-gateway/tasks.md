@@ -51,13 +51,13 @@ failing (compile error or red) before its implementation task.
 
 - [x] T018 `make test` green (lint, unit, contract, licences); race detector clean
 - [x] T019 Update `docs/epics/README.md` status for E05
-- [ ] T020 CI green on the pull request
+- [ ] T020 CI green on the pull request (recorded after the run)
 
 ## Known gaps (recorded, not hidden)
 
 - Helm templates, Traefik `IngressRoute` priority and the `NetworkPolicy` for this module belong to
-  E03/E06; `chart/values.yaml` fixes the contract only.
+  E03 (can-core module deploy) and E06; `chart/values.yaml` fixes the contract only.
 - Admin leads view is E12; the capability it needs is complete.
-- Token introspection against can-core (E04) is not wired; `Authenticator` is the seam.
+- Token introspection against can-core (E03) is not wired; `Authenticator` is the seam.
 - Backup/restore hook scripts are E08; the manifest does not declare them yet.
-- `email.send` request shape is provisional until E04 defines it (`HTTPMailer` is the only code to change).
+- `email.send` request shape is provisional until E03 defines it (`HTTPMailer` is the only code to change).
