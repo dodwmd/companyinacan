@@ -1,0 +1,39 @@
+{{define "content"}}
+{{with .Data}}
+<h1>{{t "reveal.title"}}</h1>
+<p class="notice">{{t "reveal.audited"}}</p>
+<h2>{{.Name}}</h2>
+<dl class="facts">
+<dt>{{t "cand.email"}}</dt><dd>{{if .Candidate.Email}}{{.Candidate.Email}}{{else}}<span class="muted">{{t "reveal.unavailable"}}</span>{{end}}</dd>
+<dt>{{t "cand.phone"}}</dt><dd>{{if .Candidate.Phone}}{{.Candidate.Phone}}{{else}}<span class="muted">{{t "reveal.unavailable"}}</span>{{end}}</dd>
+<dt>{{t "cand.address"}}</dt><dd class="prose">{{if .Candidate.Address}}{{.Candidate.Address}}{{else}}<span class="muted">{{t "reveal.unavailable"}}</span>{{end}}</dd>
+<dt>{{t "cand.salary_expectation"}}</dt><dd>{{if .Candidate.SalaryExpectation}}{{.Candidate.SalaryExpectation}}{{else}}<span class="muted">{{t "reveal.unavailable"}}</span>{{end}}</dd>
+<dt>{{t "cand.cover_letter"}}</dt><dd class="prose">{{if .CoverLetter}}{{.CoverLetter}}{{else}}<span class="muted">{{t "reveal.unavailable"}}</span>{{end}}</dd>
+{{if .RejectNote}}<dt>{{t "app.reject_note"}}</dt><dd class="prose">{{.RejectNote}}</dd>{{end}}
+</dl>
+<h2>{{t "cand.notes"}}</h2>
+{{if .CanEdit}}
+<form method="post" action="/applications/{{.AppID}}/notes" class="card">
+{{template "csrf" $}}
+<input type="hidden" name="version" value="{{.Version}}">
+<p><label for="cn-notes">{{t "cand.notes"}}</label>
+<textarea id="cn-notes" name="notes" rows="6" maxlength="5000">{{.Candidate.Notes}}</textarea></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{else}}
+<p class="prose">{{if .Candidate.Notes}}{{.Candidate.Notes}}{{else}}<span class="muted">{{t "reveal.unavailable"}}</span>{{end}}</p>
+{{end}}
+<h2>{{t "app.history"}}</h2>
+<div class="scroll">
+<table>
+<caption>{{t "reveal.history_caption"}}</caption>
+<thead><tr><th scope="col">{{t "hist.when"}}</th><th scope="col">{{t "hist.who"}}</th><th scope="col">{{t "hist.change"}}</th><th scope="col">{{t "hist.note"}}</th></tr></thead>
+<tbody>
+{{range .History}}<tr><th scope="row">{{.At}}</th><td>{{.Actor}}</td><td>{{if .From}}{{.From}} &rarr; {{end}}{{.To}} ({{t (printf "astatus.%s" .Status)}})</td><td class="prose">{{.Note}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p><a href="/applications/{{.AppID}}">{{t "reveal.back"}}</a></p>
+{{end}}
+{{end}}

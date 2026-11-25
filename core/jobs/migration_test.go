@@ -16,7 +16,8 @@ func TestMigration003ScrubsDroppedDiversityRows(t *testing.T) {
 		`DROP TABLE eeo_counts`,
 		`CREATE TABLE eeo_responses (id INTEGER PRIMARY KEY AUTOINCREMENT, gender TEXT)`,
 		`INSERT INTO eeo_responses (gender) VALUES ('OLD-DIVERSITY-MARKER-ROW')`,
-		`DELETE FROM schema_migrations WHERE version = 3`,
+		`ALTER TABLE stage_history DROP COLUMN note_sealed`,
+		`DELETE FROM schema_migrations WHERE version >= 3`,
 	} {
 		if _, err := st.db.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)

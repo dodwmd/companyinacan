@@ -1,0 +1,6 @@
+{{define "content"}}
+<h1>{{t "interviews.title"}}</h1>
+<p class="hint">{{t "interviews.hint"}}</p>
+{{template "interview_list" .Data.Items}}
+{{if .Data.Next}}<p><a href="/interviews?cursor={{.Data.Next}}">{{t "common.more"}}</a></p>{{end}}
+{{end}}

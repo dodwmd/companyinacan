@@ -294,7 +294,7 @@ var sealedCols = []sealedCol{
 	{"candidates", "id", "email_sealed"}, {"candidates", "id", "phone_sealed"}, {"candidates", "id", "address_sealed"},
 	{"candidates", "id", "salary_exp_sealed"}, {"candidates", "id", "notes_sealed"},
 	{"applications", "id", "reject_note_sealed"}, {"applications", "id", "cover_letter_sealed"},
-	{"scorecards", "id", "comments_sealed"},
+	{"scorecards", "id", "comments_sealed"}, {"stage_history", "seq", "note_sealed"},
 }
 
 // RotateKeys re-seals every value written with a retired key under the active key and returns

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<meta name="robots" content="noindex, nofollow">
+<title>Requisition - Company in a Can: Recruiting</title>
+<link rel="stylesheet" href="/static/jobs.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Recruiting</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/jobs" aria-current="page">Requisitions</a></li>
+<li><a href="/interviews">My interviews</a></li>
+<li><a href="/talent">Talent pool</a></li>
+<li><a href="/settings">Settings</a></li>
+
+</ul>
+</nav>
+<p class="who">Signed in as rita</p>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+
+<h1>Engineer</h1>
+<p class="actions">
+<span class="badge">Open</span>
+<span class="badge">Approval: Not requested</span>
+<a href="/jobs/ID/edit">Edit</a>
+</p>
+<dl class="facts">
+<dt>Department</dt><dd>Engineering</dd>
+<dt>Location</dt><dd>Austin TX US</dd>
+<dt>Work arrangement</dt><dd>Hybrid</dd>
+<dt>Employment type</dt><dd>Full time</dd>
+<dt>Headcount</dt><dd>1</dd>
+<dt>Hiring manager (login)</dt><dd>alice</dd>
+<dt>Salary range</dt><dd>100000 to 140000 USD per year</dd>
+<dt>Salary shown publicly</dt><dd>No</dd>
+<dt>Valid through</dt><dd>19 Jan 2027</dd>
+
+<dt>Careers page</dt><dd><a href="https://example.test/careers/SLUG">Open the public posting</a></dd>
+</dl>
+
+
+<section aria-labelledby="h-state">
+<h2 id="h-state">Lifecycle</h2>
+
+<form method="post" action="/jobs/ID/transition" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" name="to" value="paused">Pause</button>
+</form>
+
+
+
+<form method="post" action="/jobs/ID/transition" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="to" value="closed">
+<label for="close-reason">Reason for closing</label>
+<select id="close-reason" name="reason"><option value="filled">Filled</option><option value="cancelled">Cancelled</option><option value="expired">Expired</option><option value="other">Other</option></select>
+<button type="submit">Close requisition</button>
+</form>
+
+</section>
+
+
+<section aria-labelledby="h-board">
+<h2 id="h-board">Pipeline</h2>
+<p class="hint">Move a candidate with a reason; the reason is stored with the history and shown only to recruiters and administrators.</p>
+
+<section aria-labelledby="col-applied" class="card">
+<h3 id="col-applied">Applied (2)</h3>
+
+<ul class="list">
+
+<li>
+<a href="/applications/ID">Ada Example</a>
+
+<form method="post" action="/applications/ID/move" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="return" value="/jobs/ID">
+<input type="hidden" name="from" value="applied">
+<label for="n-ID" class="visually-hidden">Reason for the move</label>
+<input id="n-ID" name="note" required maxlength="500" placeholder="Reason for the move">
+
+<button type="submit" name="to" value="screen">Forward to Screen</button>
+</form>
+
+</li>
+
+<li>
+<a href="/applications/ID">Ada Example</a>
+
+<form method="post" action="/applications/ID/move" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="return" value="/jobs/ID">
+<input type="hidden" name="from" value="applied">
+<label for="n-ID" class="visually-hidden">Reason for the move</label>
+<input id="n-ID" name="note" required maxlength="500" placeholder="Reason for the move">
+
+<button type="submit" name="to" value="screen">Forward to Screen</button>
+</form>
+
+</li>
+
+</ul>
+
+
+</section>
+
+<section aria-labelledby="col-screen" class="card">
+<h3 id="col-screen">Screen (0)</h3>
+<p class="muted">Nobody in this stage.</p>
+</section>
+
+<section aria-labelledby="col-interview" class="card">
+<h3 id="col-interview">Interview (0)</h3>
+<p class="muted">Nobody in this stage.</p>
+</section>
+
+<section aria-labelledby="col-offer" class="card">
+<h3 id="col-offer">Offer (0)</h3>
+<p class="muted">Nobody in this stage.</p>
+</section>
+
+<p class="muted">Hired: 0. Rejected: 0. Withdrawn: 0.</p>
+</section>
+
+<section aria-labelledby="h-desc">
+<h2 id="h-desc">Description</h2>
+
+<h3>About</h3>
+<p class="prose">Do good work.
+
+With good people.</p>
+
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can recruiting. Apache-2.0. A tool, not legal advice: candidate data is personal data.</p>
+</footer>
+</body>
+</html>

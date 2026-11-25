@@ -1,0 +1,27 @@
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.CSRF}}">{{end}}
+{{define "interview_list"}}
+{{if .}}
+<div class="scroll">
+<table>
+<caption>{{t "interviews.caption"}}</caption>
+<thead><tr><th scope="col">{{t "interviews.candidate"}}</th><th scope="col">{{t "interviews.job"}}</th><th scope="col">{{t "interviews.stage"}}</th><th scope="col">{{t "interviews.scorecard"}}</th></tr></thead>
+<tbody>
+{{range .}}<tr><th scope="row"><a href="/applications/{{.ApplicationID}}">{{.CandidateName}}</a></th><td>{{.JobTitle}}</td><td>{{.Stage}}</td><td>{{if .Scorecard}}{{t (printf "sc.%s" .Scorecard)}}{{else}}{{t "sc.none"}}{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "interviews.none"}}</p>{{end}}
+{{end}}
+{{define "funnel"}}
+<div class="scroll">
+<table>
+<caption>{{t "funnel.caption"}}</caption>
+<thead><tr><th scope="col">{{t "funnel.stage"}}</th><th scope="col">{{t "funnel.count"}}</th></tr></thead>
+<tbody>
+{{range .}}<tr><th scope="row">{{.Name}}</th><td>{{.Count}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}

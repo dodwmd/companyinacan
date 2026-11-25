@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<meta name="robots" content="noindex, nofollow">
+<title>Application - Company in a Can: Recruiting</title>
+<link rel="stylesheet" href="/static/jobs.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Recruiting</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/jobs">Requisitions</a></li>
+<li><a href="/interviews">My interviews</a></li>
+<li><a href="/talent">Talent pool</a></li>
+<li><a href="/settings">Settings</a></li>
+
+</ul>
+</nav>
+<p class="who">Signed in as rita</p>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+
+<h1>Ada Example</h1>
+<dl class="facts">
+<dt>Requisition</dt><dd><a href="/jobs/ID">Engineer</a></dd>
+<dt>Stage</dt><dd>Applied</dd>
+<dt>Status</dt><dd><span class="badge">Active</span></dd>
+
+
+<dt>Applied</dt><dd>Fri 20 Nov 2026 09:00 UTC</dd>
+</dl>
+
+
+<section aria-labelledby="h-cand">
+<h2 id="h-cand">Candidate</h2>
+<p class="notice">Contact details, notes and the cover letter are not shown on this page. Showing them is recorded in the audit log.</p>
+<p class="actions"><a href="/candidates/ID">Candidate profile</a></p>
+<form method="post" action="/applications/ID/reveal">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Show contact details and notes</button>
+</form>
+</section>
+
+
+<section aria-labelledby="h-resume">
+<h2 id="h-resume">Resume</h2>
+
+<dl class="facts">
+<dt>File name</dt><dd>ada.pdf</dd>
+<dt>Type</dt><dd>application/pdf</dd>
+<dt>Size</dt><dd>45 bytes</dd>
+<dt>Virus scan</dt><dd><span class="badge">Clean</span></dd>
+</dl>
+<p><a href="/applications/ID/resume">Download the resume</a> <span class="hint">It downloads as a file and is never opened in the browser. Open it only on a device you trust.</span></p>
+
+
+</section>
+
+
+<section aria-labelledby="h-move">
+<h2 id="h-move">Move or reject</h2>
+<form method="post" action="/applications/ID/move" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="from" value="applied">
+<p><label for="mv-note">Reason for the move</label>
+<input id="mv-note" name="note" required maxlength="500"></p>
+<p>
+
+<button type="submit" name="to" value="screen">Forward to Screen</button>
+</p>
+</form>
+<h3>Reject</h3>
+<form method="post" action="/applications/ID/reject" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="rj-reason">Reason</label>
+<select id="rj-reason" name="reason"><option value="not_a_fit">Not a fit</option><option value="unqualified">Unqualified</option><option value="position_filled">Position filled</option><option value="no_response">No response</option><option value="compensation">Compensation</option><option value="withdrew">Withdrew</option><option value="other">Other</option></select></p>
+<p><label for="rj-note">Note (kept sealed, at most 2000 characters)</label>
+<textarea id="rj-note" name="note" rows="3" maxlength="2000"></textarea></p>
+<p><button type="submit">Reject</button></p>
+</form>
+
+</section>
+
+
+
+<section aria-labelledby="h-panel">
+<h2 id="h-panel">Interview panel</h2>
+
+<ul class="list">
+<li>ian
+<form method="post" action="/applications/ID/interviewers/remove" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="subject" value="ian">
+<button type="submit">Remove</button>
+</form></li>
+<li>ivy
+<form method="post" action="/applications/ID/interviewers/remove" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="subject" value="ivy">
+<button type="submit">Remove</button>
+</form></li>
+
+</ul>
+
+<form method="post" action="/applications/ID/interviewers" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="as-subject">Login of the interviewer</label>
+<input id="as-subject" name="subject" required maxlength="128" autocomplete="off"></p>
+<p><button type="submit">Assign</button></p>
+</form>
+</section>
+
+
+
+<section aria-labelledby="h-fb">
+<h2 id="h-fb">Interview feedback</h2>
+
+
+
+<h3>Colleagues&#39; scorecards</h3>
+
+<div class="card">
+<p><strong>ian</strong>: 4 - excellent, Strong yes</p>
+<p class="prose">Great systems thinking.</p>
+</div>
+
+
+</section>
+
+
+<section aria-labelledby="h-hist">
+<h2 id="h-hist">History</h2>
+<div class="scroll">
+<table>
+<caption>Stage changes</caption>
+<thead><tr><th scope="col">When</th><th scope="col">By</th><th scope="col">Change</th><th scope="col">Reason</th></tr></thead>
+<tbody>
+<tr><th scope="row">Fri 20 Nov 2026 09:00 UTC</th><td>applicant</td><td>Applied (Active)</td><td></td></tr>
+
+</tbody>
+</table>
+</div>
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can recruiting. Apache-2.0. A tool, not legal advice: candidate data is personal data.</p>
+</footer>
+</body>
+</html>

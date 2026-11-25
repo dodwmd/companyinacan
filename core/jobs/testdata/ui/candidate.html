@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<meta name="robots" content="noindex, nofollow">
+<title>Candidate - Company in a Can: Recruiting</title>
+<link rel="stylesheet" href="/static/jobs.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Recruiting</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/jobs">Requisitions</a></li>
+<li><a href="/interviews">My interviews</a></li>
+<li><a href="/talent">Talent pool</a></li>
+<li><a href="/settings">Settings</a></li>
+
+</ul>
+</nav>
+<p class="who">Signed in as rita</p>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+
+<h1>Ada Example</h1>
+<dl class="facts">
+
+<dt>In the talent pool</dt><dd>Yes</dd>
+<dt>Tags</dt><dd><span class="muted">No tags.</span></dd>
+</dl>
+<p class="hint">Contact details and notes are shown only from an application page, on request.</p>
+<h2>Applications</h2>
+
+<div class="scroll">
+<table>
+<caption>Applications of this candidate</caption>
+<thead><tr><th scope="col">Requisition</th><th scope="col">Stage</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/applications/ID">Engineer</a></th><td>Applied</td><td>Active</td></tr>
+
+</tbody>
+</table>
+</div>
+
+
+<h2>Tags</h2>
+<form method="post" action="/candidates/ID/tags" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="ct-tags">Tags</label>
+<input id="ct-tags" name="tags" maxlength="400" value="" aria-describedby="ct-hint"></p>
+<p id="ct-hint" class="hint">Lowercase words separated by commas, at most 20.</p>
+<p><button type="submit">Save</button></p>
+</form>
+
+
+<h2>In the talent pool</h2>
+<form method="post" action="/candidates/ID/talent-pool" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p class="hint">Record that the candidate agreed to be kept in the talent pool. Removing them returns them to the normal retention period.</p>
+<p><input id="ct-pool" name="member" type="checkbox" checked> <label for="ct-pool" class="inline">Candidate agreed to be kept in the talent pool</label></p>
+<p><button type="submit">Save</button></p>
+</form>
+
+
+
+</main>
+<footer>
+<p>Company in a Can recruiting. Apache-2.0. A tool, not legal advice: candidate data is personal data.</p>
+</footer>
+</body>
+</html>

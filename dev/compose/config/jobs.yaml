@@ -10,3 +10,7 @@ company:
 apply:
   allowed_origins: ["http://jobs.localhost:8080"]
   scanner_required: false    # no virus scanner ships; dev accepts resumes unscanned
+# Recruiting web UI (specs/027-jobs-ui), at http://jobs.localhost:8080/. Plain HTTP in dev, so cookies are not Secure.
+ui:
+  enabled: true
+  insecure_cookies: true

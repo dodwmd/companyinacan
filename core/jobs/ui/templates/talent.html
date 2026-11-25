@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>{{t "talent.title"}}</h1>
+<form method="get" action="/talent" role="search" class="card">
+<p><label for="t-q">{{t "talent.name"}}</label>
+<input id="t-q" name="q" type="search" value="{{.Data.Q}}" maxlength="100"></p>
+<p><label for="t-tag">{{t "talent.tag"}}</label>
+<input id="t-tag" name="tag" value="{{.Data.Tag}}" maxlength="30"></p>
+<p><button type="submit">{{t "talent.search"}}</button></p>
+</form>
+{{if .Data.Rows}}
+<div class="scroll">
+<table>
+<caption>{{t "talent.caption"}}</caption>
+<thead><tr><th scope="col">{{t "talent.name"}}</th><th scope="col">{{t "cand.tags"}}</th><th scope="col">{{t "app.source"}}</th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr><th scope="row"><a href="/candidates/{{.ID}}">{{.Name}}</a></th><td>{{range .Tags}}<span class="badge">{{.}}</span> {{end}}</td><td>{{.Source}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "talent.none"}}</p>{{end}}
+{{if .Data.Next}}<p><a href="/talent?q={{.Data.Q}}&amp;tag={{.Data.Tag}}&amp;cursor={{.Data.Next}}">{{t "common.more"}}</a></p>{{end}}
+{{end}}

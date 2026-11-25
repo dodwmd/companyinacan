@@ -69,6 +69,7 @@ type App struct {
 	store      *Store
 	dispatcher *Dispatcher
 	handler    http.Handler
+	ui         *UI // nil unless ui.enabled
 	log        *slog.Logger
 	now        func() time.Time
 	closeOnce  sync.Once
@@ -163,13 +164,34 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		// can-core's signed webhooks (approval decisions). Authenticated by the HMAC signature, not by a token.
 		mux.Handle("POST /v1/can/events", &modclient.Receiver{Secret: sec.CanSecret, Handle: store.CanEventHandler(), Now: now})
 	}
+	var uiHandler http.Handler
+	if cfg.UI.Enabled {
+		app.ui = &UI{Store: store, Auth: auth, Log: log, Site: cfg.Site(), Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.TrustProxy, Now: now, Timeout: timeout,
+			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour}
+		uiHandler = app.ui.Handler()
+	}
 	app.handler = withMiddleware(log, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/") {
 			setSecurityHeaders(w)
 		}
+		// The recruiter web UI owns every path the API, the careers pages, the feeds and the
+		// health check do not: it is served on the same listener when ui.enabled is set.
+		if uiHandler != nil && !reservedPath(r.URL.Path) {
+			uiHandler.ServeHTTP(w, r)
+			return
+		}
 		mux.ServeHTTP(w, r)
 	}))
 	return app, nil
+}
+
+// reservedPath reports whether a path belongs to the API or the public pages rather than the UI.
+func reservedPath(p string) bool {
+	switch {
+	case strings.HasPrefix(p, "/v1/"), p == "/careers", strings.HasPrefix(p, "/careers/"), strings.HasPrefix(p, "/feeds/"), p == "/healthz", p == "/robots.txt":
+		return true
+	}
+	return false
 }
 
 // Handler serves the API and the public pages.

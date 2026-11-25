@@ -1,0 +1,43 @@
+{{define "content"}}
+{{with .Data}}
+<h1>{{.C.Name}}</h1>
+<dl class="facts">
+{{if .C.Source}}<dt>{{t "app.source"}}</dt><dd>{{.C.Source}}</dd>{{end}}
+<dt>{{t "cand.talent_pool"}}</dt><dd>{{if .C.TalentPool}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</dd>
+<dt>{{t "cand.tags"}}</dt><dd>{{range .C.Tags}}<span class="badge">{{.}}</span> {{else}}<span class="muted">{{t "cand.no_tags"}}</span>{{end}}</dd>
+</dl>
+<p class="hint">{{t "cand.reveal_via_application"}}</p>
+<h2>{{t "cand.applications"}}</h2>
+{{if .Apps}}
+<div class="scroll">
+<table>
+<caption>{{t "cand.applications_caption"}}</caption>
+<thead><tr><th scope="col">{{t "app.job"}}</th><th scope="col">{{t "app.stage"}}</th><th scope="col">{{t "app.status"}}</th></tr></thead>
+<tbody>
+{{range .Apps}}<tr><th scope="row"><a href="/applications/{{.ID}}">{{.Job}}</a></th><td>{{.Stage}}</td><td>{{t (printf "astatus.%s" .Status)}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "cand.no_applications"}}</p>{{end}}
+{{if .CanEdit}}
+<h2>{{t "cand.tags"}}</h2>
+<form method="post" action="/candidates/{{.C.ID}}/tags" class="card">
+{{template "csrf" $}}
+<p><label for="ct-tags">{{t "cand.tags"}}</label>
+<input id="ct-tags" name="tags" maxlength="400" value="{{.Tags}}" aria-describedby="ct-hint"></p>
+<p id="ct-hint" class="hint">{{t "cand.tags_hint"}}</p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}
+{{if .CanPool}}
+<h2>{{t "cand.talent_pool"}}</h2>
+<form method="post" action="/candidates/{{.C.ID}}/talent-pool" class="card">
+{{template "csrf" $}}
+<p class="hint">{{t "cand.pool_hint"}}</p>
+<p><input id="ct-pool" name="member" type="checkbox"{{if .C.TalentPool}} checked{{end}}> <label for="ct-pool" class="inline">{{t "cand.pool_member"}}</label></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}
+{{end}}
+{{end}}

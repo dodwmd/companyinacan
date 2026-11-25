@@ -1,0 +1,25 @@
+{{define "content"}}
+<h1>{{t "settings.title"}}</h1>
+<p class="hint">{{t "settings.readonly"}}</p>
+<div class="scroll">
+<table>
+<caption>{{t "settings.stages"}}</caption>
+<thead><tr><th scope="col">{{t "settings.position"}}</th><th scope="col">{{t "settings.stage_name"}}</th><th scope="col">{{t "settings.key"}}</th><th scope="col">{{t "settings.kind"}}</th></tr></thead>
+<tbody>
+{{range .Data.Stages}}<tr><td>{{.Position}}</td><th scope="row">{{.Name}}</th><td>{{.Key}}</td><td>{{t (printf "kind.%s" .Kind)}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<div class="scroll">
+<table>
+<caption>{{t "settings.boards"}}</caption>
+<thead><tr><th scope="col">{{t "settings.board"}}</th><th scope="col">{{t "settings.board_status"}}</th><th scope="col">{{t "settings.board_note"}}</th></tr></thead>
+<tbody>
+{{range .Data.Boards}}<tr><th scope="row">{{.Name}}</th><td>{{.Status}}</td><td>{{.Note}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p class="hint">{{t "settings.templates"}}</p>
+{{end}}

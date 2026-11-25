@@ -1,0 +1,31 @@
+{{define "content"}}
+<h1>{{t "home.title"}}</h1>
+{{if .Data.Jobsboard}}
+<section aria-labelledby="h-funnel">
+<h2 id="h-funnel">{{t "home.funnel"}}</h2>
+{{template "funnel" .Data.Funnel}}
+<p class="muted">{{t "home.outcomes" .Data.Hired .Data.Rejected}}</p>
+</section>
+<section aria-labelledby="h-jobs">
+<h2 id="h-jobs">{{t "home.jobs"}}</h2>
+{{if .Data.Jobs}}
+<div class="scroll">
+<table>
+<caption>{{t "home.jobs_caption"}}</caption>
+<thead><tr><th scope="col">{{t "job.title_col"}}</th><th scope="col">{{t "job.status"}}</th><th scope="col">{{t "home.active"}}</th></tr></thead>
+<tbody>
+{{range .Data.Jobs}}<tr><th scope="row"><a href="/jobs/{{.Job.ID}}">{{.Job.Title}}</a></th><td>{{t (printf "jstatus.%s" .Job.Status)}}</td><td>{{.Active}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "home.no_jobs"}}</p>{{end}}
+<p class="actions"><a href="/jobs">{{t "home.all_jobs"}}</a>{{if .Caps.WriteJobs}} <a href="/jobs/new">{{t "jobs.new"}}</a>{{end}}</p>
+</section>
+{{else}}
+<section aria-labelledby="h-iv">
+<h2 id="h-iv">{{t "interviews.title"}}</h2>
+{{template "interview_list" .Data.Interviews}}
+</section>
+{{end}}
+{{end}}

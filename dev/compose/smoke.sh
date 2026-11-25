@@ -126,6 +126,21 @@ ok "people UI refuses a wrong token (HTTP 401)"
 rm -f "$jar"
 expect_status "people API still answers behind the UI" 401 "http://people.localhost:$port/v1/people"
 
+# 5c. jobs web UI (E16b): login page, anonymous redirect, a wrong token is refused, careers and API unchanged
+expect_status "jobs UI login page" 200 "http://jobs.localhost:$port/login"
+expect_status "jobs UI redirects anonymous users to /login" 303 "http://jobs.localhost:$port/"
+expect_status "jobs UI stylesheet" 200 "http://jobs.localhost:$port/static/jobs.css"
+jar="$(mktemp)"
+curlx -c "$jar" -o /dev/null "http://jobs.localhost:$port/login"
+jobs_csrf="$(awk '$6=="can_jobs_login_csrf"{print $7}' "$jar")"
+[ -n "$jobs_csrf" ] || die "jobs UI: no login csrf cookie"
+code="$(curlx -b "$jar" -o /dev/null -w '%{http_code}' -X POST "http://jobs.localhost:$port/login" \
+  -H "Sec-Fetch-Site: same-origin" --data-urlencode "csrf=$jobs_csrf" --data-urlencode "token=not-a-real-token")" || die "jobs UI login POST: curl failed"
+[ "$code" = 401 ] || die "jobs UI: a wrong token should get 401, got $code"
+ok "jobs UI refuses a wrong token (HTTP 401)"
+rm -f "$jar"
+expect_status "jobs API still answers behind the UI" 401 "http://jobs.localhost:$port/v1/jobs"
+
 # 6. OPTIONAL (FINANCE_FLOW=1): the invoice flow. The dev admin token cannot approve an invoice it
 # created (separation of duties), so a second token for another subject with the approve scope is
 # minted through the tokens API.

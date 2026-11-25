@@ -1,0 +1,54 @@
+{{define "content"}}
+{{with .Data}}
+<h1>{{if .Edit}}{{t "jobform.edit"}}{{else}}{{t "jobform.title"}}{{end}}</h1>
+<form method="post" action="{{if .Edit}}/jobs/{{.ID}}{{else}}/jobs{{end}}" class="card">
+{{template "csrf" $}}
+{{if .Edit}}<input type="hidden" name="version" value="{{.Version}}">{{end}}
+<p><label for="f-title">{{t "job.title_col"}}</label>
+<input id="f-title" name="title" required maxlength="120" value="{{.Title}}"></p>
+<p><label for="f-dept">{{t "job.department"}}</label>
+<input id="f-dept" name="department" maxlength="80" value="{{.Department}}"></p>
+<p><label for="f-city">{{t "job.city"}}</label>
+<input id="f-city" name="city" maxlength="80" value="{{.City}}"></p>
+<p><label for="f-region">{{t "job.region"}}</label>
+<input id="f-region" name="region" maxlength="80" value="{{.Region}}"></p>
+<p><label for="f-country">{{t "job.country"}}</label>
+<input id="f-country" name="country" maxlength="2" value="{{.Country}}" aria-describedby="f-country-hint"></p>
+<p id="f-country-hint" class="hint">{{t "job.country_hint"}}</p>
+<p><label for="f-postal">{{t "job.postal"}}</label>
+<input id="f-postal" name="postal_code" maxlength="20" value="{{.Postal}}"></p>
+<p><label for="f-remote">{{t "job.remote"}}</label>
+<select id="f-remote" name="remote">{{$cur := .Remote}}{{range .Remotes}}<option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{human .}}</option>{{end}}</select></p>
+<p><label for="f-countries">{{t "job.applicant_countries"}}</label>
+<input id="f-countries" name="applicant_countries" maxlength="300" value="{{.Countries}}" aria-describedby="f-countries-hint"></p>
+<p id="f-countries-hint" class="hint">{{t "job.applicant_countries_hint"}}</p>
+<p><label for="f-emp">{{t "job.employment"}}</label>
+<select id="f-emp" name="employment_type">{{$emp := .Employment}}{{range .Employments}}<option value="{{.}}"{{if eq . $emp}} selected{{end}}>{{human .}}</option>{{end}}</select></p>
+<p><label for="f-smin">{{t "job.salary_min"}}</label>
+<input id="f-smin" name="salary_min" inputmode="decimal" maxlength="12" value="{{.SalaryMin}}"></p>
+<p><label for="f-smax">{{t "job.salary_max"}}</label>
+<input id="f-smax" name="salary_max" inputmode="decimal" maxlength="12" value="{{.SalaryMax}}"></p>
+<p><label for="f-scur">{{t "job.salary_currency"}}</label>
+<input id="f-scur" name="salary_currency" maxlength="3" value="{{.Currency}}"></p>
+<p><label for="f-sper">{{t "job.salary_period"}}</label>
+<select id="f-sper" name="salary_period">{{$per := .Period}}{{range .Periods}}<option value="{{.}}"{{if eq . $per}} selected{{end}}>{{human .}}</option>{{end}}</select></p>
+<p><input id="f-pub" name="publish_salary" type="checkbox"{{if .PublishSalary}} checked{{end}}> <label for="f-pub" class="inline">{{t "job.publish_salary"}}</label></p>
+<p><label for="f-hm">{{t "job.manager"}}</label>
+<input id="f-hm" name="hiring_manager" maxlength="128" value="{{.HiringManager}}"></p>
+<p><label for="f-head">{{t "job.headcount"}}</label>
+<input id="f-head" name="headcount" inputmode="numeric" maxlength="4" value="{{.Headcount}}"></p>
+<p><label for="f-valid">{{t "job.valid_through"}}</label>
+<input id="f-valid" name="valid_through" maxlength="10" value="{{.ValidThrough}}" aria-describedby="f-valid-hint"></p>
+<p id="f-valid-hint" class="hint">{{t "job.valid_hint"}}</p>
+<h2>{{t "job.description"}}</h2>
+<p class="hint">{{t "job.description_hint"}}</p>
+{{range .Sections}}
+<p><label for="sh-{{.N}}">{{t "job.section_heading" .N}}</label>
+<input id="sh-{{.N}}" name="section_heading_{{.N}}" maxlength="100" value="{{.Heading}}"></p>
+<p><label for="sb-{{.N}}">{{t "job.section_body" .N}}</label>
+<textarea id="sb-{{.N}}" name="section_body_{{.N}}" rows="6" maxlength="10000">{{.Body}}</textarea></p>
+{{end}}
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{end}}
+{{end}}
