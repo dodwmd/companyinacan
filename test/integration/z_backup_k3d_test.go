@@ -63,9 +63,10 @@ func TestBackupHookJobOnK3d(t *testing.T) {
 	}
 	prepareDumpsDir(t)
 	canApply(t, company("backup", true))
-	eventually(t, 180*time.Second, "the stub to be rolled out", func() (bool, string) {
+	eventually(t, 180*time.Second, "the stub to run the new configuration", func() (bool, string) {
 		out, err := kubectl("-n", "mod-stub", "rollout", "status", "deploy/stub", "--timeout=5s")
-		return err == nil, out
+		l := stubLogs() // the logs prove can-core has reconciled, not merely that an old Deployment exists
+		return err == nil && strings.Contains(l, "GREETING=backup") && strings.Contains(l, `"id":"stub"`), out + "\n" + l
 	})
 	took := requestDump(t)
 	t.Logf("dump run with one module hook Job: %s", took.Round(100*time.Millisecond))
