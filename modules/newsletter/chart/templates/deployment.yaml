@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # ReadWriteOnce uploads volume, single writer
+  selector:
+    matchLabels:
+      {{- include "mod.selector" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        {{- include "mod.labels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- $env := include "newsletter.env" . }}
+      initContainers:
+        # Idempotent schema install, then migrations for upgrades; the app itself never mutates
+        # the schema, so a failed upgrade stops here and Helm rolls the release back.
+        - name: migrate
+          image: {{ include "mod.image" .Values.image | quote }}
+          command: ["/bin/sh", "-c", "/listmonk/listmonk --install --idempotent --yes --config '' && /listmonk/listmonk --upgrade --yes --config ''"]
+          env:
+            {{- $env | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrateResources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: true
+      containers:
+        - name: app
+          image: {{ include "mod.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Bypasses the image entrypoint (which drops privileges with su-exec): we already run non-root.
+          command: ["/listmonk/listmonk", "--config", ""]
+          ports:
+            - {name: http, containerPort: {{ .Values.service.port }}}
+          env:
+            {{- $env | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: true
+          readinessProbe:
+            httpGet: {path: {{ .Values.probes.readiness.path }}, port: {{ .Values.probes.readiness.port }}}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: {{ .Values.probes.liveness.path }}, port: {{ .Values.probes.liveness.port }}}
+            periodSeconds: 30
+            failureThreshold: 4
+          volumeMounts:
+            - {name: data, mountPath: {{ .Values.persistence.mountPath }}}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ .Chart.Name }}-data}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}

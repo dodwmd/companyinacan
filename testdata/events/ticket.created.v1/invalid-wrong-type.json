@@ -1,0 +1,17 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "ticket.created.v2",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "support",
+  "data": {
+    "ticket_id": "tk_1042",
+    "mailbox": "support",
+    "subject": "Cannot log in",
+    "channel": "email",
+    "customer": {
+      "email": "ada@example.com",
+      "name": "Ada"
+    },
+    "created_at": "2026-11-25T09:59:58Z"
+  }
+}

@@ -1,0 +1,9 @@
+# Two modules declare the exclusive capability `tickets`, but both are planned (no adapter
+# serves it), so no primary is required: only the warnings remain.
+schema: 1
+name: Acme
+domain: acme.example
+provider: { type: local }
+modules:
+  epsilon: {}
+  zeta: {}

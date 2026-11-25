@@ -17,6 +17,8 @@ capabilities:
   - { name: performance }
   - { name: leads }
   - { name: content }
+  - { name: newsletter }
+  - { name: analytics }
   - { name: auth.oidc }
   - { name: identity.provision }
   - { name: reports, aggregate: true }

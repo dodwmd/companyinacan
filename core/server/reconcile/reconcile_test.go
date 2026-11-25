@@ -42,6 +42,7 @@ func mf(id, version string, requires []string, provides ...string) *config.Modul
 			Schema     string `yaml:"schema"`
 			Service    string `yaml:"service"`
 			Port       int    `yaml:"port"`
+			Status     string `yaml:"status"`
 		}{Capability: c, Service: id, Port: 9000 + i})
 	}
 	return m

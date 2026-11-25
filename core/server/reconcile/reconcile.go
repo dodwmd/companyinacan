@@ -207,6 +207,9 @@ func installOrder(ms map[string]*config.Module) []string {
 	provider := map[string][]string{}
 	for _, id := range ids {
 		for _, p := range ms[id].Provides {
+			if !config.ProvidesServed(p.Status) {
+				continue
+			}
 			provider[p.Capability] = append(provider[p.Capability], id)
 		}
 	}

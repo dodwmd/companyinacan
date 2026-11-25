@@ -70,6 +70,16 @@ func moduleRules(doc *config.Doc, m *config.Module) []problem.Problem {
 		}
 	}
 
+	if m.Status == "experimental" || m.Status == "not-deployable" {
+		add("semantic.module-status", "/status", fmt.Sprintf("module %q is %s: it is not ready to enable on a real server (see its README)", m.ID, m.Status), problem.Warning)
+	}
+	for i, p := range m.Provides {
+		if !config.ProvidesServed(p.Status) {
+			add("semantic.provides-adapter-disabled", fmt.Sprintf("/provides/%d/status", i),
+				fmt.Sprintf("capability %q is planned: nothing serves it yet, so it is ignored for provider resolution and consumers must not rely on it", p.Capability), problem.Warning)
+		}
+	}
+
 	known := Capabilities()
 	warn := func(name, path string) {
 		if _, ok := known[name]; !ok {

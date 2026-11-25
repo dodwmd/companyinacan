@@ -302,6 +302,8 @@ Modules must not call each other's internals. They talk through **capabilities**
 | `email.send` | Send via the shared SMTP relay | any |
 | `events` | Publish/subscribe webhook events | any |
 | `leads` | List/read captured form submissions (the admin UI's leads view reads this) | forms gateway → in-house CRM |
+| `newsletter` | Lists and subscribers; subscribing requires recorded consent (double opt-in by default) (`subscriber.added.v1`) | Listmonk → in-house |
+| `analytics` | Privacy-friendly site statistics, read-only aggregates plus the tracking snippet | GoatCounter → Umami |
 | `auth.oidc` | Identity | Authelia → in-house |
 | `content` | Public pages/articles | wiki → CMS |
 | `directory` | The company's **people**: employees, candidates, contacts, vendors as typed parties with one identity each | in-house `people` → HR suite |

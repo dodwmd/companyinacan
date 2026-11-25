@@ -1,6 +1,8 @@
 # SPDX identifiers accepted for wrapped third-party apps (Constitution VI).
 # Anything else must be marked `licence_class: source-available` in the module
-# manifest, which makes it opt-in and flagged. Changes here are reviewed like code.
+# manifest, which makes it opt-in and flagged. AGPL-3.0 and EUPL-1.2 are network copyleft: wrapped
+# unmodified they do not reach this repository's Apache-2.0 code, but a modified fork we ship must
+# offer its source to the users of the running service (see modules/README.md). Changes here are reviewed like code.
 schema: 1
 accepted:
   - id: Apache-2.0
@@ -21,3 +23,6 @@ accepted:
   - id: GPL-3.0-or-later
   - id: AGPL-3.0-only
   - id: AGPL-3.0-or-later
+  # EUPL-1.2 (GoatCounter): OSI-approved copyleft whose "Distribution or Communication" (Art. 1) includes online access to the work (not legal advice); its appendix
+  # lists AGPL-3.0 as a compatible licence.
+  - id: EUPL-1.2

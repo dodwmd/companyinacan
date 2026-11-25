@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # ReadWriteOnce volume, single writer
+  selector:
+    matchLabels:
+      {{- include "mod.selector" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        {{- include "mod.labels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: app
+          image: {{ include "mod.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: {{ .Values.app.nginxListenPort }}}
+          env:
+            - {name: DB_TYPE, value: mysql}
+            - name: DB_HOST
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: host}}
+            - name: DB_PORT
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: port}}
+            - name: DB_NAME
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: name}}
+            - name: DB_USER
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: user}}
+            - name: DB_PASS
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: password}}
+            - name: ADMIN_EMAIL
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: admin-email}}
+            - name: ADMIN_PASS
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: admin-password}}
+            - {name: SITE_URL, value: "{{ include "mod.scheme" . }}://{{ .Values.ingress.host }}"}
+            - {name: APPLICATION_NAME, value: {{ .Values.app.applicationName | quote }}}
+            - {name: NGINX_LISTEN_PORT, value: {{ .Values.app.nginxListenPort | quote }}}
+            {{- if .Values.email.injectRelay }}
+            # SMTP relay credentials (SPEC 4.3 email.send): optional so the pod starts without a relay.
+            - {name: MAIL_DRIVER, value: smtp}
+            - name: MAIL_HOST
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: host, optional: true}}
+            - name: MAIL_PORT
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: port, optional: true}}
+            - name: MAIL_USERNAME
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: user, optional: true}}
+            - name: MAIL_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: password, optional: true}}
+            - name: MAIL_ENCRYPTION
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: encryption, optional: true}}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: false   # PHP writes its cache and compiled views
+          startupProbe:
+            httpGet: {path: {{ .Values.probes.startup.path }}, port: {{ .Values.probes.startup.port }}}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+          readinessProbe:
+            httpGet: {path: {{ .Values.probes.readiness.path }}, port: {{ .Values.probes.readiness.port }}}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: {{ .Values.probes.liveness.path }}, port: {{ .Values.probes.liveness.port }}}
+            periodSeconds: 30
+            failureThreshold: 4
+          volumeMounts:
+            - {name: data, mountPath: {{ .Values.persistence.mountPath }}}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ .Chart.Name }}-data}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}

@@ -18,6 +18,7 @@ func manifest(id string, provides ...string) *config.Module {
 			Schema     string `yaml:"schema"`
 			Service    string `yaml:"service"`
 			Port       int    `yaml:"port"`
+			Status     string `yaml:"status"`
 		}{Capability: c, Service: id, Port: 8080 + i})
 	}
 	return m
@@ -124,6 +125,7 @@ func TestFromManifestDefaults(t *testing.T) {
 		Service string `yaml:"service"`
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
+		Status  string `yaml:"status"`
 	}{Event: "lead.created.v1", Webhook: "/hooks/lead"})
 	_, subs, err := FromManifest(m)
 	if err != nil {
@@ -174,5 +176,26 @@ func TestRegisterRejectsMaliciousServiceInManifest(t *testing.T) {
 	}
 	if ms, _ := db.ListModules(context.Background()); len(ms) != 0 {
 		t.Fatal("rejected module was still recorded")
+	}
+}
+
+// A provision or subscription marked planned (declared for the contract, adapter not deployed)
+// must not become a provider or a delivery target.
+func TestFromManifestSkipsPlanned(t *testing.T) {
+	m := manifest("support", "tickets")
+	m.Provides[0].Status = "planned"
+	m.Subscribes = append(m.Subscribes, struct {
+		Event   string `yaml:"event"`
+		Service string `yaml:"service"`
+		Port    int    `yaml:"port"`
+		Webhook string `yaml:"webhook"`
+		Status  string `yaml:"status"`
+	}{Event: "lead.created.v1", Webhook: "/hooks/lead", Status: "planned"})
+	ps, subs, err := FromManifest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ps) != 0 || len(subs) != 0 {
+		t.Fatalf("planned entries were registered: %+v %+v", ps, subs)
 	}
 }

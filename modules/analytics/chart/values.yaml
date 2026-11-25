@@ -1,0 +1,54 @@
+# Values for the analytics module chart (GoatCounter, SQLite). can-core supplies ingress.host
+# (<subdomain>.<domain>); see specs/007-starter-modules/contracts/module-charts.md.
+image:
+  repository: docker.io/arp242/goatcounter
+  tag: v2.6.0              # verify the newest release when pinning (research.md R4)
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+service:
+  port: 8080
+ingress:
+  enabled: true
+  host: ""                 # supplied by can-core
+  tls: true                # false on local dev (plain HTTP, no certificate resolver)
+  certResolver: letsencrypt
+  adapterRoutes: []
+goatcounter:
+  tlsMode: proxy           # value of the -tls flag behind Traefik
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  mountPath: /data         # goatcounter.sqlite3
+resources:
+  requests: { memory: 14Mi, cpu: 10m }
+  limits: { memory: 64Mi }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities: { drop: [ALL] }
+secrets:
+  database: can-database   # unused (SQLite); kept so every starter chart has the same contract
+  smtp: can-smtp           # unused: GoatCounter sends no mail by default
+  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+probes:
+  readiness: { path: /status, port: http }
+  liveness: { path: /status, port: http }
+adapter:
+  enabled: false           # needs the can-adapter-analytics image (deferred, see tasks.md)
+  port: 8081
+  image:
+    repository: ghcr.io/dodwmd/can-adapter-analytics
+    tag: 0.1.0
+    digest: sha256:REPLACE_WITH_DIGEST
+  env: {}
+  resources:
+    requests: { memory: 6Mi, cpu: 5m }
+    limits: { memory: 32Mi }

@@ -1,0 +1,3 @@
+problems:
+  - rule: schema.enum
+    path: "/provides/0/status"

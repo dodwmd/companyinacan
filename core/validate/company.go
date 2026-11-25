@@ -89,6 +89,9 @@ func CompanyFile(file, modulesDir string) []problem.Problem {
 	providers := map[string][]string{}
 	for _, id := range enabled {
 		for _, p := range manifests[id].Provides {
+			if !config.ProvidesServed(p.Status) {
+				continue // planned: no adapter serves it yet
+			}
 			providers[p.Capability] = append(providers[p.Capability], id)
 		}
 	}
