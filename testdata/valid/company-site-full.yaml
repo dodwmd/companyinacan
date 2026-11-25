@@ -1,0 +1,59 @@
+schema: 1
+name: Acme Co
+domain: acme.example
+provider:
+  type: local
+site:
+  tagline: Anvils, delivered.
+  description: Acme Co ships industrial-grade anvils to your door, fast.
+  lang: en
+  og_image: /assets/share.png
+  same_as:
+    - https://github.com/acme-example
+    - https://www.linkedin.com/company/acme-example
+  brand:
+    colours: ["#b4440e", "#1f2937"]
+    logo: logo.svg
+  hero:
+    headline: Heavy things, handled.
+    subheadline: Next-day anvil delivery for roadrunners, cartoon coyotes and serious blacksmiths.
+    cta: { label: Get a quote, href: "#pricing" }
+    secondary_cta: { label: Read the FAQ, href: "#faq" }
+  features:
+    - title: Next-day delivery
+      description: Order by noon and we drop it at your door tomorrow.
+    - title: Forged in-house
+      description: Every anvil is cast and tested on our own floor.
+    - title: Fair returns
+      description: Not happy? Send it back within 30 days.
+  pricing:
+    title: Simple pricing
+    subtitle: Pick the weight class that suits you.
+    plans:
+      - name: Light
+        price: $49
+        period: per anvil
+        description: For hobbyists.
+        features: ["25 kg", "Standard delivery"]
+        cta: { label: Order Light, href: "mailto:sales@acme.example?subject=Light" }
+      - name: Heavy
+        price: $149
+        period: per anvil
+        description: For professionals.
+        features: ["100 kg", "Next-day delivery", "Lifetime warranty"]
+        cta: { label: Order Heavy, href: "https://acme.example/order" }
+        highlighted: true
+  faq:
+    - question: Do you ship internationally?
+      answer: Yes, to most countries. Customs fees may apply.
+    - question: What if the anvil is too heavy?
+      answer: We offer a free lifting consultation with every Heavy order.
+  cta:
+    headline: Ready to drop one?
+    text: Talk to a human about your anvil needs.
+    button: { label: Contact sales, href: "mailto:sales@acme.example" }
+  footer:
+    text: "Copyright Acme Co. All values on this page are fake."
+    links:
+      - { label: Privacy, href: /privacy }
+      - { label: GitHub, href: https://github.com/acme-example }

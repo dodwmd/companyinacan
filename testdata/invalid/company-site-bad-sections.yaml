@@ -1,0 +1,13 @@
+schema: 1
+name: Acme Co
+domain: acme.example
+provider:
+  type: local
+site:
+  features:
+    - title: Fast
+      icon: rocket
+  pricing:
+    plans: []
+  faq:
+    - question: Why?

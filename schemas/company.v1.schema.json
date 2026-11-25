@@ -53,6 +53,224 @@
             "colours": { "type": "array", "items": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" } },
             "logo": { "type": "string" }
           }
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Meta description; defaults to the tagline."
+        },
+        "lang": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+          "description": "BCP 47 language tag of the page (default en)."
+        },
+        "og_image": {
+          "type": "string",
+          "pattern": "^(https://[^\\s]+|/[^\\s]*)$",
+          "maxLength": 500,
+          "description": "Open Graph image: https URL or site-relative path."
+        },
+        "noindex": {
+          "type": "boolean",
+          "description": "Emit noindex and a disallow-all robots.txt (for staging)."
+        },
+        "same_as": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "pattern": "^https://[^\\s]+$"
+          },
+          "description": "Profile URLs for the JSON-LD Organization (sameAs)."
+        },
+        "hero": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "headline"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "subheadline": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "cta": {
+              "$ref": "#/$defs/button"
+            },
+            "secondary_cta": {
+              "$ref": "#/$defs/button"
+            }
+          }
+        },
+        "features": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "title"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 400
+              }
+            }
+          }
+        },
+        "pricing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "plans"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "subtitle": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "plans": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "price"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "price": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  },
+                  "period": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "features": {
+                    "type": "array",
+                    "maxItems": 12,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    }
+                  },
+                  "cta": {
+                    "$ref": "#/$defs/button"
+                  },
+                  "highlighted": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "faq": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "question",
+              "answer"
+            ],
+            "properties": {
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "answer": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            }
+          }
+        },
+        "cta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "headline",
+            "button"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "button": {
+              "$ref": "#/$defs/button"
+            }
+          }
+        },
+        "footer": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "links": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "label",
+                  "href"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "href": {
+                    "$ref": "#/$defs/href"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -93,6 +311,31 @@
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._/-]*$",
       "description": "Name of a secret stored outside this file. Never the secret value itself."
+    },
+    "href": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^(https?://[^\\s]+|mailto:[^\\s]+|/[^\\s]*|#[^\\s]*)$",
+      "description": "http(s) URL, mailto: link, site-relative path or fragment."
+    },
+    "button": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "href"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "href": {
+          "$ref": "#/$defs/href"
+        }
+      }
     }
   }
 }

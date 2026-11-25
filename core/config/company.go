@@ -8,6 +8,7 @@ type Company struct {
 	Provider Provider               `yaml:"provider"`
 	Modules  map[string]ModuleEntry `yaml:"modules"`
 	Primary  map[string]string      `yaml:"primary"`
+	Site     Site                   `yaml:"site"`
 }
 
 // Provider selects where the company runs.

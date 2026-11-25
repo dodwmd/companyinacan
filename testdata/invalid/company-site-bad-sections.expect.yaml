@@ -1,0 +1,7 @@
+problems:
+  - rule: schema.unknown-field
+    path: "/site/features/0/icon"
+  - rule: schema.minItems
+    path: "/site/pricing/plans"
+  - rule: schema.required
+    path: "/site/faq/0/answer"
