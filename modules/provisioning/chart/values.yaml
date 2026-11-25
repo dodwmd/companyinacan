@@ -64,7 +64,7 @@ securityContext:
   readOnlyRootFilesystem: true
   capabilities: { drop: [ALL] }
 probes:
-  readiness: { path: /healthz, port: http }
+  readiness: { path: /readyz, port: http }
   liveness: { exec: [/can-provision, healthcheck, -addr, "127.0.0.1:8090"] }
 networkPolicy:
   intraNamespace: false

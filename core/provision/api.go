@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/obs"
 )
 
 // Permissions of the provisioning API (modules/provisioning/module.yaml). write includes read and
@@ -269,7 +270,7 @@ func (a *API) Handler() http.Handler {
 	route("POST /v1/provision/scim-tokens", a.guard(PermAdmin, a.createToken))
 	route("DELETE /v1/provision/scim-tokens/{id}", a.guard(PermAdmin, a.revokeToken))
 	route("GET /v1/provision/audit", a.guard(PermAdmin, a.audit))
-	return securityHeaders(mux)
+	return obs.Instrument(securityHeaders(mux)) // request metrics and /readyz (epic E22)
 }
 
 // Routes lists the "METHOD /path" patterns the service serves (with SCIM and the can-core event

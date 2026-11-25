@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/obs"
 )
 
 const defaultConfigPath = "/etc/can-provision/provision.yaml"
@@ -118,6 +119,10 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if err := obs.Setup(ctx, getenv, obs.BuildInfo{Version: Version}, log); err != nil {
+		fmt.Fprintf(stderr, "metrics: %v\n", err)
+		return 2
+	}
 	srv := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup
 	wg.Add(1)

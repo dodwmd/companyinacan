@@ -31,6 +31,9 @@ spec:
             # injects the can-module Secret as environment into every container.
             - name: CAN_{{ upper .Chart.Name }}_CONFIG
               value: {{ .Values.configMountPath }}/{{ .Chart.Name }}.yaml
+            # The declared RAM, for the footprint self-check metric (can_ram_declared_bytes, epic E22).
+            - name: CAN_RAM_DECLARED_MB
+              value: {{ .Values.resources.requests.memory | toString | trimSuffix "Mi" | quote }}
           ports:
             {{- range .Values.ports }}
             - {name: {{ .name }}, containerPort: {{ .port }}}
