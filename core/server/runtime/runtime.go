@@ -34,6 +34,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
+	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 	"github.com/dodwmd/companyinacan/core/server/webhook"
@@ -66,6 +67,7 @@ type Config struct {
 	PostgresHost       string        // CAN_POSTGRES_HOST: Postgres Service as seen by modules
 	ShutdownTimeout    time.Duration // CAN_SHUTDOWN_TIMEOUT_SECONDS
 	PublicIPs          []string      // CAN_PUBLIC_IPS: the server's public addresses, listed in the setup wizard's DNS step
+	SSOSecretDir       string        // CAN_SSO_SECRET_DIR: directory with the SSO client secret as <name>/<key> files, a mounted Secret (default /etc/can/sso)
 
 	// OnListen is called once both listeners are bound (tests use it to learn ports).
 	OnListen func(admin, module net.Addr)
@@ -113,7 +115,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		CompanyName: getenv("CAN_COMPANY_NAME"), CompanyDomain: getenv("CAN_COMPANY_DOMAIN"), LeadsTokenFile: getenv("CAN_LEADS_TOKEN_FILE"), DirectoryTokenFile: getenv("CAN_DIRECTORY_TOKEN_FILE"),
 		Installer: str("CAN_INSTALLER", "none"), CompanyFile: str("CAN_COMPANY_FILE", "/etc/can/company/company.yaml"), ModulesDir: str("CAN_MODULES_DIR", "/modules"),
 		NodeIP: getenv("CAN_NODE_IP"), PostgresAdminURL: getenv("CAN_POSTGRES_ADMIN_URL"), PostgresHost: str("CAN_POSTGRES_HOST", "postgres.can-data.svc.cluster.local"),
-		ReconcileInterval: 30 * time.Second,
+		ReconcileInterval: 30 * time.Second, SSOSecretDir: str("CAN_SSO_SECRET_DIR", "/etc/can/sso"),
 	}
 	if c.SecureCookies, err = boolean("CAN_COOKIE_SECURE", true); err != nil {
 		return c, err
@@ -227,19 +229,22 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	}
 	pats.Holds = func(ctx context.Context, subject, perm string) (bool, error) { return rb.Check(ctx, subject, perm, "") }
 
+	// Single sign-on (epic E11b): configured by the sso: block of company.yaml; absent means off.
+	ssoSvc := &sso.Service{DB: db, RBAC: rb, Audit: al, Log: log, Secure: cfg.SecureCookies, HardLock: cfg.TrustProxy, Source: sso.FileSource(cfg.CompanyFile), Secrets: cfg.ssoSecrets(log)}
 	adminSrv := &adminapi.Server{
-		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats,
-		Auth: auth.NewService(db, al, auth.Options{Log: log, Policy: loginPolicy(cfg)}), DB: db, Audit: al, Registry: reg,
+		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, SSO: ssoSvc,
+		Auth: auth.NewService(db, al, auth.Options{Log: log, Policy: loginPolicy(cfg), LocalPolicy: ssoSvc.AllowLocalLogin}), DB: db, Audit: al, Registry: reg,
 		Log: log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
+	ssoSvc.Auth = adminSrv.Auth
 	uiSrv := &adminui.Server{
-		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats,
+		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, SSO: ssoSvc,
 		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
 		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: adminui.FileToken(cfg.LeadsTokenFile)},
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
 		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
-	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats}
+	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Users: ssoSvc}
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
 	if err != nil {
@@ -357,6 +362,13 @@ func (c Config) moduleManagement(db *store.DB, al *audit.Log, rec *reconcile.Rec
 		log.Warn("module management: no Secret writer in this mode; the setup wizard cannot store email relay credentials")
 	}
 	return svc, cs, run, nil
+}
+
+// ssoSecrets reads the SSO client secret from a Secret mounted into the pod at CAN_SSO_SECRET_DIR
+// (deploy/can-core mounts the optional Secret sso-client). can-core's Kubernetes permissions
+// deliberately do not include reading Secrets of can-system, so none are added for this.
+func (c Config) ssoSecrets(_ *slog.Logger) sso.SecretReader {
+	return sso.DirSecrets{Dir: c.SSOSecretDir}
 }
 
 func dirOf(p string) string {

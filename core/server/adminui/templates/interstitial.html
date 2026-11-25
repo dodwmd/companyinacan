@@ -1,0 +1,8 @@
+{{define "head"}}<meta http-equiv="refresh" content="0;url={{.Data.URL}}">{{end}}
+{{define "content"}}
+<section class="narrow">
+<h1>{{.Data.Heading}}</h1>
+<p>{{.Data.Message}}</p>
+<p><a class="button" href="{{.Data.URL}}">{{t "sso.continue"}}</a></p>
+</section>
+{{end}}

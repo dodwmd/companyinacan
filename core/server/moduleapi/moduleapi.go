@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
@@ -20,6 +21,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
+	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 )
@@ -42,6 +44,14 @@ type Server struct {
 	// PATs resolves personal access tokens presented to a module (E03c); nil means only module
 	// tokens introspect.
 	PATs *pat.Service
+	// Users answers introspection of end-user session tokens issued by single sign-on (epic E11b);
+	// nil means such tokens are simply inactive.
+	Users UserIntrospector
+}
+
+// UserIntrospector resolves an end-user session token to the person behind it.
+type UserIntrospector interface {
+	IntrospectSession(ctx context.Context, token string) (sso.UserInfo, error)
 }
 
 type route struct {
@@ -139,6 +149,50 @@ type introspectResponse struct {
 	Subject        string   `json:"subject,omitempty"`
 	Permissions    []string `json:"permissions,omitempty"`
 	ExpiresAt      string   `json:"expires_at,omitempty"`
+	// End-user sessions created by single sign-on (kind "user", like a PAT): Subject is the can-core
+	// subject user:<name> (the same form a PAT carries, so modules treat both alike), Sub the stable
+	// external identity oidc:<issuer-hash>:<sub>. Permissions are the caller module's permissions the
+	// person holds now; Roles the caller's own role names (people:hr is "hr" for the people module)
+	// plus built-ins, AllRoles every role by its full name, Groups the provider's groups at the last
+	// sign-in. Anything shown here for a token may be shown to every enabled module that is given it.
+	Sub      string   `json:"sub,omitempty"`
+	Email    string   `json:"email,omitempty"`
+	Name     string   `json:"name,omitempty"`
+	Groups   []string `json:"groups,omitempty"`
+	Roles    []string `json:"roles,omitempty"`
+	AllRoles []string `json:"all_roles,omitempty"`
+	AMR      []string `json:"amr,omitempty"`
+}
+
+// looksLikeSession reports whether tok has the shape of an admin session token (43 base64url
+// characters, no dots), distinct from a personal access token (`canpat_`) and a projected
+// ServiceAccount token (a dotted JWT). Session tokens are looked up by hash, with no TokenReview.
+func looksLikeSession(tok string) bool {
+	if len(tok) != 43 || pat.LooksLikeToken(tok) {
+		return false
+	}
+	for _, c := range tok {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// localRoles maps role names for the calling module: "people:hr" becomes "hr" for the people
+// module; built-in roles stay; other modules' roles are not listed. A built-in role and a module
+// role with the same bare name are indistinguishable to the module (docs/sso.md).
+func localRoles(module string, all []string) []string {
+	out := []string{}
+	for _, r := range all {
+		switch mod, name, ok := strings.Cut(r, ":"); {
+		case !ok:
+			out = append(out, r)
+		case mod == module:
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // introspect lets a module verify a caller's token (SPEC §4.3). A personal access token is
@@ -148,6 +202,33 @@ type introspectResponse struct {
 func (s *Server) introspect(w http.ResponseWriter, r *http.Request, caller store.Module) {
 	var req introspectRequest
 	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if looksLikeSession(req.Token) {
+		if s.Users == nil || (req.Audience != "" && req.Audience != caller.ID) {
+			httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
+			return
+		}
+		ui, err := s.Users.IntrospectSession(r.Context(), req.Token)
+		if err != nil {
+			s.Log.Error("session introspection failed", "request_id", httpx.RequestID(r.Context()), "error", err)
+			httpx.Problem(w, http.StatusBadGateway, "session introspection unavailable")
+			return
+		}
+		if !ui.Active {
+			httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
+			return
+		}
+		var perms []string
+		if s.RBAC != nil {
+			for _, p := range caller.Manifest.Permissions {
+				if ok, err := s.RBAC.Check(r.Context(), ui.Subject, p, ""); err == nil && ok {
+					perms = append(perms, p)
+				}
+			}
+		}
+		httpx.WriteJSON(w, http.StatusOK, introspectResponse{Active: true, Kind: "user", Subject: ui.Subject, Sub: ui.Sub, Email: ui.Email, Name: ui.Name, Permissions: perms,
+			Groups: ui.Groups, Roles: localRoles(caller.ID, ui.Roles), AllRoles: ui.Roles, AMR: ui.AMR})
 		return
 	}
 	if pat.LooksLikeToken(req.Token) {

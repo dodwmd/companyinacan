@@ -84,6 +84,10 @@ type Options struct {
 	// MinLoginTime floors login duration (default MinLoginTime); Sleep is injectable for tests.
 	MinLoginTime time.Duration
 	Sleep        func(context.Context, time.Duration) error
+	// LocalPolicy, when set, is asked after a local login's credentials were verified whether this
+	// user may sign in with a password (sso.local_login, epic E11b). A refusal looks like any other
+	// failed login but does not count as a failure: valid credentials are never throttled.
+	LocalPolicy func(ctx context.Context, u store.AdminUser) bool
 }
 
 // Appender is the audit log write interface.
@@ -343,6 +347,9 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 
 	u, uerr := s.db.AdminByUsername(ctx, r.Username)
 	secret, hash := s.dummyTOTP, s.dummy
+	if uerr == nil && u.AuthSource != store.SourceLocal {
+		uerr = store.ErrNotFound // SSO users have no password: indistinguishable from an unknown user
+	}
 	if uerr == nil {
 		secret, hash = u.TOTPSecret, u.PasswordHash
 	}
@@ -367,6 +374,10 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		return finish(LoginResult{}, ErrInvalidCredentials)
 	}
 	_ = s.db.ClearLoginAttempt(ctx, userKey)
+	if s.opt.LocalPolicy != nil && !s.opt.LocalPolicy(ctx, u) {
+		s.recordBestEffort(ctx, u.Username, "admin.login.refused_local", r.IP)
+		return finish(LoginResult{}, ErrInvalidCredentials)
+	}
 	if NeedsRehash(u.PasswordHash) {
 		if nh, err := s.hash(ctx, r.Password); err == nil {
 			_ = s.db.SetPasswordHash(ctx, u.ID, nh)
@@ -411,7 +422,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (store.Session
 		}
 		return store.Session{}, store.AdminUser{}, err
 	}
-	if !s.opt.Now().Before(sess.ExpiresAt) {
+	if !s.opt.Now().Before(sess.ExpiresAt) || (!sess.RevalidateAt.IsZero() && !s.opt.Now().Before(sess.RevalidateAt)) {
 		_ = s.db.DeleteSession(ctx, sess.IDHash)
 		return store.Session{}, store.AdminUser{}, ErrUnauthenticated
 	}
@@ -420,6 +431,27 @@ func (s *Service) Authenticate(ctx context.Context, token string) (store.Session
 		return store.Session{}, store.AdminUser{}, ErrUnauthenticated
 	}
 	return sess, u, nil
+}
+
+// CreateSSOSession starts a session for a user who signed in through the identity provider. The
+// token is fresh (never one the browser presented before: no session fixation) and the session must
+// be re-established at the provider after revalidate. The caller audits and, if that fails, deletes
+// the session with Logout.
+func (s *Service) CreateSSOSession(ctx context.Context, userID int64, ip string, revalidate time.Duration) (LoginResult, error) {
+	now := s.opt.Now()
+	tok := randToken()
+	sess := store.Session{IDHash: hashToken(tok), UserID: userID, CSRF: randToken(), IP: ip, CreatedAt: now, ExpiresAt: now.Add(s.opt.SessionTTL), Source: store.SourceSSO}
+	if revalidate > 0 {
+		sess.RevalidateAt = now.Add(revalidate)
+		if sess.RevalidateAt.After(sess.ExpiresAt) {
+			sess.RevalidateAt = sess.ExpiresAt
+		}
+	}
+	if err := s.db.CreateSession(ctx, sess); err != nil {
+		return LoginResult{}, err
+	}
+	_, _ = s.db.DeleteExpiredSessions(ctx, now)
+	return LoginResult{Token: tok, Session: sess}, nil
 }
 
 // Logout destroys the session.

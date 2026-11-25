@@ -59,6 +59,11 @@ paths:
         the caller serves; a mismatch answers inactive. Every other case (unknown, expired, revoked,
         another module's, malformed) answers {"active": false} without saying why. Personal access
         tokens do not count against the TokenReview rate limit.
+        A token that is the value of a live end-user session created by single sign-on (E11b; 43
+        characters, no dots) also answers kind `user`, with the can-core subject `user:<name>` (the same
+        form a personal access token carries), `sub` (`oidc:<issuer-hash>:<sub>`), email, name, groups,
+        the caller module's permissions the person holds, and role names. Local-password sessions are
+        never described. Every enabled module may be shown this for a session token it is given.
       requestBody:
         required: true
         content:
@@ -315,6 +320,13 @@ components:
         module_id: { type: string }
         namespace: { type: string }
         service_account: { type: string }
+        sub: { type: string, description: "SSO sessions (E11b): stable external identity oidc:<issuer-hash>:<sub>." }
+        email: { type: string }
+        name: { type: string }
+        groups: { type: array, items: { type: string }, description: "The identity provider's groups at the last sign-in." }
+        roles: { type: array, items: { type: string }, description: "The caller's own role names (people:hr is hr for the people module) and built-in roles." }
+        all_roles: { type: array, items: { type: string }, description: "Every unscoped role by its full name." }
+        amr: { type: array, items: { type: string } }
     Provider:
       type: object
       required: [module, url]

@@ -18,6 +18,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/registry"
+	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -35,6 +36,8 @@ func (s *Server) loginCookieName() string {
 
 type loginData struct {
 	Username, Error, LoginCSRF string
+	// SSOHref is the sign-in with the identity provider link ("" when SSO is not configured).
+	SSOHref string
 }
 
 func (s *Server) loginCookie(tok string) *http.Cookie {
@@ -44,6 +47,12 @@ func (s *Server) loginCookie(tok string) *http.Cookie {
 func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int, tok, username, errKey string) {
 	http.SetCookie(w, s.loginCookie(tok))
 	d := loginData{Username: username, LoginCSRF: tok}
+	if s.SSO != nil && s.SSO.Enabled(r.Context()) {
+		d.SSOHref = "/auth/oidc/login"
+		if n := sso.SafeNext(r.URL.Query().Get("next")); n != "/" {
+			d.SSOHref += "?next=" + url.QueryEscape(n)
+		}
+	}
 	if errKey != "" {
 		d.Error = s.msg(errKey)
 	}
@@ -97,6 +106,14 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request, sc *sessionCtx) 
 		return
 	}
 	http.SetCookie(w, auth.ClearCookie(s.Secure))
+	if s.SSO != nil {
+		// The provider's session ends too when sso.rp_logout is on. A redirect after a form post to
+		// another origin is blocked by form-action 'self', so this is a page that navigates on.
+		if u := s.SSO.LogoutURL(r.Context(), sc.Session); u != "" {
+			s.interstitial(w, r, "sso.signed_out", u)
+			return
+		}
+	}
 	s.redirect(w, r, "/login", "flash.logged_out")
 }
 
@@ -680,6 +697,9 @@ type sessionRow struct {
 type settingsData struct {
 	Error    string
 	Sessions []sessionRow
+	// SSOUser is true for users who signed in through the identity provider: they have no local
+	// password or authentication secret to change.
+	SSOUser bool
 }
 
 func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, sc *sessionCtx, status int, errKey string) {
@@ -688,7 +708,7 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, sc *sess
 		s.internal(w, r, sc, err)
 		return
 	}
-	d := settingsData{}
+	d := settingsData{SSOUser: sc.User.AuthSource == store.SourceSSO}
 	if errKey != "" {
 		d.Error = s.msg(errKey)
 	}

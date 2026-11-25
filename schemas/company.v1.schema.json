@@ -59,6 +59,44 @@
       "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
       "additionalProperties": { "$ref": "#/$defs/approvalPolicy" }
     },
+    "sso": {
+      "type": "object",
+      "description": "OpenID Connect single sign-on for the admin UI (docs/sso.md). The client secret is a Secret name, never a value.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "issuer": { "type": "string", "maxLength": 500 },
+        "client_id": { "type": "string", "maxLength": 256 },
+        "client_secret_ref": { "type": "string", "maxLength": 507 },
+        "scopes": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 64 } },
+        "redirect_base_url": { "type": "string", "maxLength": 300 },
+        "claims": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "subject": { "type": "string", "maxLength": 64 },
+            "email": { "type": "string", "maxLength": 64 },
+            "groups": { "type": "string", "maxLength": 64 },
+            "name": { "type": "string", "maxLength": 64 }
+          }
+        },
+        "allowed_email_domains": { "type": "array", "maxItems": 50, "items": { "type": "string", "maxLength": 253 } },
+        "require_email_verified": { "type": "boolean" },
+        "require_amr": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 64 } },
+        "group_roles": {
+          "type": "object",
+          "maxProperties": 200,
+          "additionalProperties": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 81 } }
+        },
+        "confirm_owner_mapping": { "type": "boolean" },
+        "require_mapped_role": { "type": "boolean" },
+        "local_login": { "enum": ["all", "owner_only", "disabled"] },
+        "confirm_disable_local_login": { "type": "boolean" },
+        "revalidate_interval": { "type": "string", "maxLength": 16 },
+        "rp_logout": { "type": "boolean" },
+        "allow_insecure_dev": { "type": "boolean" }
+      }
+    },
     "notifications": {
       "type": "object",
       "additionalProperties": false,

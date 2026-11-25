@@ -13,6 +13,8 @@ type Company struct {
 	// Approvals are the approval policies by type; Notifications the delivery settings (epic E11a).
 	Approvals     map[string]ApprovalPolicy `yaml:"approvals"`
 	Notifications NotificationConfig        `yaml:"notifications"`
+	// SSO is OpenID Connect sign-in for the admin UI (epic E11b); nil = local login only.
+	SSO *SSO `yaml:"sso"`
 }
 
 // Provider selects where the company runs.

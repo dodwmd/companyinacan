@@ -134,6 +134,10 @@ under. Rules that cannot be configured away:
 - Recovery without the UI: `can-core admin roles grant <user> owner --db <path>` (also `revoke`,
   `list`), audited as actor `cli`. The first admin created, and every admin that existed before this
   version, is an owner.
+- With single sign-on ([`sso.md`](sso.md)) the unscoped roles of SSO users follow the IdP groups through
+  `sso.group_roles`: assigned and removed at sign-in with audit actor `sso` (`rbac.sso_sync`, with before and
+  after). The sync only changes assignments it made, never assigns `owner` without `confirm_owner_mapping`, and
+  never removes the last owner. Approval steps and notifications see these roles like any other.
 - Create more admin users with `can-core admin bootstrap --username <name>` (names: letters, digits,
   `_ . @ -`). An admin created by an older version with other characters gets no role from the
   upgrade; create a new admin with a valid name and grant it `owner` from the CLI.

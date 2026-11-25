@@ -1,0 +1,9 @@
+schema: 1
+name: Acme Co
+domain: acme.example
+provider: { type: local }
+sso:
+  enabled: true
+  issuer: https://169.254.169.254/
+  client_id: can
+  client_secret_ref: acme-sso
