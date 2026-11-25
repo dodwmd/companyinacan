@@ -1,0 +1,9 @@
+schema: 1
+id: badmod
+name: Bad
+description: Trial module with an unaccepted licence.
+version: 0.1.0
+provider: { type: oss-wrapper, name: Bad, licence: Elastic-2.0, upstream: "https://bad.example" }
+runtime: { chart: ./chart }
+requires: { database: none }
+resources: { ram_mb: 10 }
