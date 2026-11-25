@@ -250,6 +250,7 @@ func TestSendErrorsAreClassifiedAndCarryNoServerText(t *testing.T) {
 		{"RCPT", "450 4.2.0 <sales@acme.example> try later", false, 450},
 		{"AUTH", "535 5.7.8 bad credentials s3cr3t-relay-pass", false, 535},
 		{"MAIL", "553 sender rejected", true, 553},
+		{"MAIL", "530 5.7.0 authentication required", false, 530},
 	} {
 		f := newFakeRelay(t, true, false)
 		f.replies[tc.verb] = tc.reply

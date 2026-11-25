@@ -10,8 +10,10 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 )
 
-// Delivery is at least once: a crash between the relay accepting a message and the row being updated
-// sends it again, with the same Message-ID. There is exactly one worker (can-core is one replica).
+// Delivery is at least once: a crash between the relay accepting a message and the outcome being
+// recorded sends it again, with the same Message-ID. Each attempt is claimed (counted, postponed and
+// audited) before anything leaves, so a database that stops accepting writes cannot turn into a stream
+// of repeats. There is exactly one worker (can-core is one replica).
 
 // Backoff is the wait after the given failed attempt: one minute, doubling, at most one hour.
 func Backoff(attempt int) time.Duration {
@@ -73,6 +75,16 @@ func (s *Service) RunOnce(ctx context.Context) (int, error) {
 			}
 			continue
 		}
+		if d.attempts >= MaxAttempts { // the outcome of the last attempt was never recorded
+			if err := s.record(ctx, d, &SendError{Stage: "delivery (outcome unknown)", Permanent: true}); err != nil {
+				return i, err
+			}
+			continue
+		}
+		if err := s.claim(ctx, d); err != nil {
+			return i, err
+		}
+		d.attempts++
 		msg := message{ID: d.id, From: p.Relay.From, To: d.recipient, ReplyTo: d.replyTo, Subject: d.subject, Text: d.body, Date: s.Now()}
 		sendErr := s.transport.Send(ctx, p.Relay, d.recipient, msg.build())
 		if sendErr != nil && ctx.Err() != nil {
@@ -85,10 +97,22 @@ func (s *Service) RunOnce(ctx context.Context) (int, error) {
 	return len(batch), nil
 }
 
-// record stores the outcome of one attempt together with its audit entry.
+// claim counts an attempt before it is made.
+func (s *Service) claim(ctx context.Context, d due) error {
+	n := d.attempts + 1
+	return s.db.InTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE email_outbox SET attempts=?, next_attempt_at=? WHERE id=? AND status='pending'`, n, s.Now().Add(Backoff(n)).Unix(), d.id); err != nil {
+			return err
+		}
+		_, err := s.audit.AppendTx(ctx, tx, audit.Entry{Actor: "can-core", Action: "email.attempt", Target: d.id, Detail: map[string]any{"source": d.source, "attempt": n}})
+		return err
+	})
+}
+
+// record stores the outcome of an attempt (d.attempts includes it) together with its audit entry.
 func (s *Service) record(ctx context.Context, d due, sendErr error) error {
 	now := s.Now()
-	attempts := d.attempts + 1
+	attempts := d.attempts
 	status, action, result, reason := StatusSent, "email.sent", "sent", ""
 	next := now
 	if sendErr != nil {

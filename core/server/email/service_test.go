@@ -324,6 +324,35 @@ func TestRetryBackoffDeadLetterRequeueAndPrune(t *testing.T) {
 	}
 }
 
+// The relay takes the message but the outcome cannot be written: no stream of repeats.
+func TestUnrecordedOutcomeDoesNotRepeatAtOnce(t *testing.T) {
+	f := newFixture(t, baseCompany)
+	ctx := context.Background()
+	ids, _, err := f.s.Send(ctx, req("sales@acme.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`CREATE TRIGGER fail_outcome BEFORE UPDATE OF status ON email_outbox BEGIN SELECT RAISE(ABORT, 'disk full'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.RunOnce(ctx); err == nil {
+		t.Fatal("want the write error")
+	}
+	if n, err := f.s.RunOnce(ctx); n != 0 || err != nil || len(f.tr.sent) != 1 {
+		t.Fatal("repeated at once:", n, err, len(f.tr.sent))
+	}
+	for range 2 * MaxAttempts {
+		f.now = f.now.Add(2 * time.Hour)
+		_, _ = f.s.RunOnce(ctx)
+	}
+	if len(f.tr.sent) != MaxAttempts {
+		t.Fatalf("%d sends, want at most %d", len(f.tr.sent), MaxAttempts)
+	}
+	if m := f.status(ids[0]); m.Attempts != MaxAttempts {
+		t.Fatalf("%+v", m)
+	}
+}
+
 func TestUnexpectedTransportErrorsAreNotStored(t *testing.T) {
 	f := newFixture(t, baseCompany)
 	f.tr.err = errors.New("something about sales@acme.example")

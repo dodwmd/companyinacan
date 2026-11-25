@@ -74,7 +74,10 @@ func smtpErr(stage string, err error, rejectable bool) error {
 	if errors.As(err, &pe) {
 		// Only a refusal of this message (sender, recipient or content) is final. Anything about the
 		// session (greeting, TLS, authentication) is the operator's to fix, so it is retried.
-		return &SendError{Stage: stage, Code: pe.Code, Permanent: rejectable && pe.Code >= 500}
+		// 530, 534, 535 and 538 ask for (other) authentication or TLS: the session again, whatever the
+		// command they answer.
+		auth := pe.Code == 530 || pe.Code == 534 || pe.Code == 535 || pe.Code == 538
+		return &SendError{Stage: stage, Code: pe.Code, Permanent: rejectable && !auth && pe.Code >= 500}
 	}
 	return &SendError{Stage: stage}
 }
