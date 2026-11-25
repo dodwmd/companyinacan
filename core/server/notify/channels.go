@@ -107,7 +107,7 @@ type HTTPWebhook struct {
 // Post implements Webhook.
 func (h HTTPWebhook) Post(ctx context.Context, target, text string) error {
 	u, err := url.Parse(target)
-	if err != nil || (u.Scheme != "https" && !(h.AllowInsecure && u.Scheme == "http")) || u.Host == "" {
+	if err != nil || (u.Scheme != "https" && (!h.AllowInsecure || u.Scheme != "http")) || u.Host == "" {
 		return errors.New("webhook URL must be https")
 	}
 	c := h.Client
