@@ -49,7 +49,9 @@ const (
 	PermManage        = "rbac.manage"         // assign roles, override grants
 	PermApprovalAdmin = "approvals.admin"     // see and cancel any approval request
 	PermNotifyAdmin   = "notifications.admin" // delivery log of everyone's notifications
-	PermOperate       = "platform.operate"    // requeue deliveries, change lead status
+	PermOperate       = "platform.operate"    // requeue deliveries, change lead status, change modules and their settings
+	PermSetup         = "platform.setup"      // onboarding wizard: company identity, domain, email relay (owner only by default)
+	PermPurge         = "platform.purge"      // destroy a disabled module's data (owner only by default)
 )
 
 // builtin roles besides owner. Least privilege: a new admin user holds none of them.

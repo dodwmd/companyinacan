@@ -1,0 +1,132 @@
+{{define "content"}}
+<h1>{{t "wz.title"}}</h1>
+{{if eq .Data.Status "completed"}}<p class="alert ok">{{t "wz.completed"}}</p>{{else if eq .Data.Status "dismissed"}}<p class="alert warn">{{t "wz.dismissed"}}</p>{{else}}<p class="hint">{{t "wz.help"}}</p>{{end}}
+<nav aria-label="{{t "wz.steps"}}">
+<ol class="steps">
+{{range .Data.Steps}}<li><a href="/setup/{{.ID}}"{{if .Current}} aria-current="step"{{end}}>{{.Label}}</a>{{if .HasStatus}} <span class="badge {{if .Done}}ok{{else}}neutral{{end}}">{{if .Done}}{{t "wz.done"}}{{else}}{{t "wz.todo"}}{{end}}</span>{{end}}</li>
+{{end}}</ol>
+</nav>
+
+<h2>{{.Data.StepLabel}}</h2>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+
+{{if eq .Data.Step "company"}}
+<p>{{t "wz.company_help"}}</p>
+{{if .Data.Open}}<form method="post" action="/setup/company" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="w-name">{{t "wz.name"}}</label><input id="w-name" name="name" type="text" maxlength="80" value="{{.Data.Name}}" required></p>
+<p><label for="w-domain">{{t "wz.domain"}}</label><input id="w-domain" name="domain" type="text" maxlength="253" value="{{.Data.Domain}}" required autocomplete="off" autocapitalize="off"><span class="hint">{{t "wz.domain_hint"}}</span></p>
+<p><label for="w-ram">{{t "wz.ram"}}</label><input id="w-ram" name="server_ram_mb" type="text" inputmode="numeric" maxlength="7" value="{{.Data.ServerRAMMB}}"><span class="hint">{{t "wz.ram_hint"}}</span></p>
+<p><button type="submit">{{t "wz.save"}}</button></p>
+</form>{{else}}<dl><dt>{{t "wz.name"}}</dt><dd>{{.Data.Name}}</dd><dt>{{t "wz.domain"}}</dt><dd>{{.Data.Domain}}</dd></dl>{{end}}
+
+{{else if eq .Data.Step "template"}}
+<p>{{t "wz.template_help"}}</p>
+{{if .Data.Open}}<form method="post" action="/setup/template" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{range $i, $b := .Data.Bundles}}<p><input type="radio" id="b-{{$i}}" name="template" value="{{$b.ID}}"{{if $b.Selected}} checked{{end}}> <label class="check" for="b-{{$i}}">{{$b.Label}}</label>
+<span class="hint">{{if $b.Modules}}{{t "wz.bundle_enables"}} {{range $j, $m := $b.Modules}}{{if $j}}, {{end}}<code>{{$m}}</code>{{end}}{{else}}{{t "wz.bundle_nothing"}}{{end}}</span>
+{{range $b.Skipped}}<span class="hint errtext">{{t "wz.bundle_skipped" .ID .Reason}}</span>{{end}}</p>
+{{end}}
+<p><button type="submit">{{t "wz.save"}}</button></p>
+</form>{{end}}
+
+{{else if eq .Data.Step "modules"}}
+<p>{{t "wz.modules_help"}}</p>
+<h3>{{t "cg.footprint"}}</h3>
+{{template "footprint" .Data.Footprint}}
+{{if .Data.Open}}<form method="post" action="/setup/modules" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<div class="table-wrap" role="region" aria-labelledby="cap-wm" tabindex="0">
+<table>
+<caption id="cap-wm" class="sr">{{t "cg.modules"}}</caption>
+<thead><tr><th scope="col">{{t "mod.module"}}</th><th scope="col">{{t "mod.licence"}}</th><th scope="col">{{t "mod.ram"}}</th><th scope="col">{{t "cg.graph"}}</th><th scope="col">{{t "cg.enable"}}</th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr>
+<th scope="row">{{.Name}} <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{if .Description}}<span class="hint">{{.Description}}</span>{{end}}</th>
+<td>{{.Licence}}{{if .SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</td>
+<td>{{t "mod.mb" .RAMMB}}</td>
+<td>{{if .Requires}}<ul>{{template "needs" .Requires}}</ul>{{end}}{{if .Provides}}<ul>{{template "provides" .Provides}}</ul>{{end}}{{range .ConflictNote}}<p class="errtext">{{t "cg.conflicts_with" .}}</p>{{end}}</td>
+<td>{{if .Selectable}}<input type="checkbox" id="en-{{.ID}}" name="enable" value="{{.ID}}"{{if .Enabled}} checked{{end}}> <label class="check" for="en-{{.ID}}">{{t "cg.enable_named" .Name}}</label>
+{{if .SourceAvailable}}<br><input type="checkbox" id="al-{{.ID}}" name="ack" value="licence:{{.ID}}"{{if .AckLicence}} checked{{end}}> <label class="check" for="al-{{.ID}}">{{t "cg.ack_licence" .Name}}</label>{{end}}
+{{if .Experimental}}<br><input type="checkbox" id="ae-{{.ID}}" name="ack" value="experimental:{{.ID}}"{{if .AckExperimental}} checked{{end}}> <label class="check" for="ae-{{.ID}}">{{t "cg.ack_experimental" .Name}}</label>{{end}}
+{{else}}<span class="muted">{{t "cg.not_deployable"}}</span>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+<p><button type="submit">{{t "wz.save"}}</button></p>
+</form>{{end}}
+
+{{else if eq .Data.Step "email"}}
+<p>{{t "wz.email_help"}}</p>
+{{if .Data.Relay.Configured}}<p class="alert ok">{{t "wz.relay_configured" .Data.Relay.Host .Data.Relay.Port}}</p>{{end}}
+{{if .Data.Open}}<form method="post" action="/setup/email" class="stack" autocomplete="off">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="r-host">{{t "wz.relay_host"}}</label><input id="r-host" name="host" type="text" maxlength="253" value="{{.Data.Relay.Host}}" required></p>
+<p><label for="r-port">{{t "wz.relay_port"}}</label><input id="r-port" name="port" type="text" inputmode="numeric" maxlength="5" value="587" required></p>
+<p><label for="r-user">{{t "wz.relay_user"}}</label><input id="r-user" name="username" type="text" maxlength="256" value="{{.Data.Relay.Username}}" autocomplete="off"></p>
+<p><label for="r-pass">{{t "wz.relay_pass"}}</label><input id="r-pass" name="password" type="password" maxlength="1024" autocomplete="new-password" required><span class="hint">{{t "wz.relay_pass_hint"}}</span></p>
+<p><label for="r-from">{{t "wz.relay_from"}}</label><input id="r-from" name="from" type="text" maxlength="254" value="{{.Data.Relay.From}}" required></p>
+<p><button type="submit">{{t "wz.relay_save"}}</button></p>
+</form>{{end}}
+<p class="hint">{{t "wz.email_skip"}}</p>
+
+{{else if eq .Data.Step "dns"}}
+<p>{{t "wz.dns_help"}}</p>
+{{if .Data.DNS.NoAddress}}<p class="alert warn">{{t "wz.dns_no_address"}}</p>
+{{else}}<div class="table-wrap" role="region" aria-labelledby="cap-dns" tabindex="0">
+<table>
+<caption id="cap-dns" class="sr">{{t "wz.step_dns"}}</caption>
+<thead><tr><th scope="col">{{t "wz.dns_name"}}</th><th scope="col">{{t "wz.dns_type"}}</th><th scope="col">{{t "wz.dns_value"}}</th><th scope="col">{{t "wz.dns_for"}}</th></tr></thead>
+<tbody>
+{{range .Data.DNS.Records}}<tr><th scope="row"><code>{{.Name}}</code></th><td>{{.Type}}</td><td><code>{{.Value}}</code></td><td>{{.Purpose}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>{{end}}
+<h3>{{t "wz.instant"}}</h3>
+<p>{{t "wz.instant_help"}}</p>
+{{if .Data.DNS.InstantURL}}<p><code>{{.Data.DNS.InstantURL}}</code> <span class="badge {{.Data.InstantClass}}">{{.Data.InstantLabel}}</span></p>
+<p class="hint">{{t "wz.instant_note"}}</p>{{end}}
+
+{{else if eq .Data.Step "account"}}
+<p>{{t "wz.account_help"}}</p>
+<ul>
+<li>{{t "wz.password"}} <span class="badge {{if .Data.PasswordRotated}}ok{{else}}warn{{end}}">{{if .Data.PasswordRotated}}{{t "wz.done"}}{{else}}{{t "wz.todo"}}{{end}}</span></li>
+<li>{{t "wz.totp"}} <span class="badge {{if .Data.TOTPRotated}}ok{{else}}warn{{end}}">{{if .Data.TOTPRotated}}{{t "wz.done"}}{{else}}{{t "wz.todo"}}{{end}}</span></li>
+</ul>
+<p><a href="/settings">{{t "wz.account_link"}}</a></p>
+<h3>{{t "wz.kit"}}</h3>
+<p>{{t "wz.kit_help"}} <code>can backup kit</code></p>
+{{if .Data.Open}}<form method="post" action="/setup/account" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><input type="checkbox" id="w-kit" name="kit" value="on"{{if .Data.KitAck}} checked{{end}}> <label class="check" for="w-kit">{{t "wz.kit_ack"}}</label></p>
+<p><button type="submit">{{t "wz.save"}}</button></p>
+</form>{{end}}
+
+{{else if eq .Data.Step "review"}}
+{{if .Data.ReviewEmpty}}<p class="muted">{{t "wz.review_empty"}}</p>
+{{else}}{{template "issues" .Data.Review}}
+<h3>{{t "ch.diff"}}</h3>
+{{template "diff" .Data.Review}}
+<h3>{{t "ch.plan"}}</h3>
+{{template "plan" .Data.Review}}
+<h3>{{t "cg.footprint"}}</h3>
+{{template "footprint" .Data.Review.Footprint}}{{end}}
+{{if .Data.RunID}}<p><a href="/runs/{{.Data.RunID}}">{{t "ch.see_run"}}</a></p>{{end}}
+{{if .Data.CanApply}}<form method="post" action="/setup/apply" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p>{{t "ch.apply_help"}}</p>
+<p><button type="submit">{{t "wz.apply"}}</button></p>
+</form>{{end}}
+{{end}}
+
+<p class="actions">
+{{if .Data.Prev}}<a href="/setup/{{.Data.Prev}}">{{t "wz.prev"}}</a>{{end}}
+{{if .Data.Next}}<a href="/setup/{{.Data.Next}}">{{t "wz.next"}}</a>{{end}}
+</p>
+{{if .Data.Open}}<form method="post" action="/setup/dismiss" class="inline">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button type="submit" class="link">{{t "wz.dismiss"}}</button>
+</form>{{end}}
+{{end}}

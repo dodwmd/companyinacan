@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Module catalogue - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+<li><a href="/access">Access</a></li>
+<li><a href="/catalogue" aria-current="page">Catalogue</a></li>
+<li><a href="/status">Status</a></li>
+<li><a href="/setup">Setup</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Module catalogue</h1>
+<p class="hint">Every module can-core knows about. Tick the ones you want, preview the change, then apply it. Disabling a module keeps its data; destroying data is a separate step.</p>
+
+
+
+<section aria-labelledby="h-fp">
+<h2 id="h-fp">Does it fit in your server?</h2>
+<dl>
+<dt>Platform (k3s, ingress, can-core)</dt><dd>650 MB</dd>
+<dt>Enabled modules (requested)</dt><dd>20 MB</dd>
+<dt>Total</dt><dd>670 MB <span class="badge ok">Fits</span></dd>
+<dt>Declared server size</dt><dd>2048 MB</dd>
+<dt>Sum of module limits</dt><dd>40 MB</dd>
+</dl>
+<p><meter min="0" max="2048" value="670" aria-label="Memory used as a share of the declared server size">32%</meter> 32% of the server</p>
+
+
+</section>
+
+
+
+<section aria-labelledby="h-list">
+<h2 id="h-list">Modules</h2>
+<form method="post" action="/changes" class="stack">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="sha:5d61fb89a3020d8f">
+<div class="table-wrap" role="region" aria-labelledby="cap-cat" tabindex="0">
+<table>
+<caption id="cap-cat" class="sr">Modules</caption>
+<thead><tr><th scope="col">Module</th><th scope="col">Licence</th><th scope="col">Declared RAM</th><th scope="col">Requires and provides</th><th scope="col">Enable</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row"><a href="/catalogue/alt">Alt forms</a>
+<span class="badge ok">Ready</span>
+<span class="hint">alt module</span></th>
+<td></td>
+<td>10 MB <span class="muted">(limit 15 MB)</span></td>
+<td><p class="graph">Provides</p><ul><li><code>leads</code></li>
+</ul><p class="errtext">Would conflict on leads: web</p></td>
+<td><input type="checkbox" id="en-alt" name="enable" value="alt"> <label class="check" for="en-alt">Enable Alt forms</label>
+
+
+
+</td>
+</tr>
+<tr>
+<th scope="row"><a href="/catalogue/crm">CRM</a>
+<span class="badge warn">Experimental</span>
+<span class="hint">crm module</span></th>
+<td>BUSL-1.1 <span class="badge warn">Source-available</span></td>
+<td>300 MB <span class="muted">(limit 450 MB)</span></td>
+<td><p class="graph">Requires</p><ul><li><code>leads</code> <span class="badge ok">provided</span> <span class="muted">web</span></li>
+</ul><p class="graph">Provides</p><ul><li><code>contacts</code></li>
+</ul></td>
+<td><input type="checkbox" id="en-crm" name="enable" value="crm"> <label class="check" for="en-crm">Enable CRM</label>
+<br><input type="checkbox" id="al-crm" name="ack" value="licence:crm"> <label class="check" for="al-crm">I accept the source-available licence of CRM</label>
+<br><input type="checkbox" id="ae-crm" name="ack" value="experimental:crm"> <label class="check" for="ae-crm">I understand CRM is experimental</label>
+
+</td>
+</tr>
+<tr>
+<th scope="row"><a href="/catalogue/desk">Help desk</a>
+<span class="badge err">Not deployable</span>
+<span class="hint">desk module</span></th>
+<td></td>
+<td>250 MB <span class="muted">(limit 375 MB)</span></td>
+<td><p class="graph">Requires</p><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
+</ul><p class="graph">Provides</p><ul><li><code>tickets</code></li>
+</ul></td>
+<td><span class="muted">Not deployable yet</span>
+</td>
+</tr>
+<tr>
+<th scope="row"><a href="/catalogue/evil">&lt;script&gt;alert(1)&lt;/script&gt;</a>
+<span class="badge ok">Ready</span>
+<span class="hint">evil module</span></th>
+<td></td>
+<td>5 MB <span class="muted">(limit 7 MB)</span></td>
+<td></td>
+<td><input type="checkbox" id="en-evil" name="enable" value="evil"> <label class="check" for="en-evil">Enable &lt;script&gt;alert(1)&lt;/script&gt;</label>
+
+
+
+</td>
+</tr>
+<tr>
+<th scope="row"><a href="/catalogue/plan">Planner</a>
+<span class="badge warn">Experimental</span>
+<span class="hint">plan module</span></th>
+<td></td>
+<td>10 MB <span class="muted">(limit 15 MB)</span></td>
+<td><p class="graph">Requires</p><ul><li><code>invoices</code> <span class="badge warn">not yet served</span></li>
+</ul><p class="graph">Provides</p><ul><li><code>invoices</code> <span class="badge warn">not yet served</span></li>
+</ul></td>
+<td><input type="checkbox" id="en-plan" name="enable" value="plan"> <label class="check" for="en-plan">Enable Planner</label>
+
+<br><input type="checkbox" id="ae-plan" name="ack" value="experimental:plan"> <label class="check" for="ae-plan">I understand Planner is experimental</label>
+
+</td>
+</tr>
+<tr>
+<th scope="row"><a href="/catalogue/solo">Solo</a>
+<span class="badge ok">Ready</span>
+<span class="hint">solo module</span></th>
+<td></td>
+<td>10 MB <span class="muted">(limit 15 MB)</span></td>
+<td></td>
+<td><input type="checkbox" id="en-solo" name="enable" value="solo"> <label class="check" for="en-solo">Enable Solo</label>
+
+
+
+</td>
+</tr>
+<tr>
+<th scope="row"><a href="/catalogue/web">Web forms</a>
+<span class="badge ok">Ready</span> <span class="badge ok">Enabled</span>
+<span class="hint">web module</span></th>
+<td></td>
+<td>20 MB <span class="muted">(limit 40 MB)</span></td>
+<td><p class="graph">Requires</p><ul><li><code>email.send</code> <span class="badge ok">built in</span></li>
+</ul><p class="graph">Provides</p><ul><li><code>leads</code></li>
+</ul></td>
+<td><input type="checkbox" id="en-web" name="enable" value="web" checked> <label class="check" for="en-web">Enable Web forms</label>
+
+
+
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><button type="submit">Preview changes</button></p>
+</form>
+
+</section>
+<p><a href="/company">View the stored company.yaml</a></p>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

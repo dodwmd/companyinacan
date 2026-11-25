@@ -153,6 +153,20 @@ func (db *DB) SetModuleState(ctx context.Context, id, state, lastErr string) err
 	return nil
 }
 
+// DeleteDisabledModule removes the record of a module that is disabled (its providers and
+// subscriptions are removed with it). Any other state is refused, so a running module's identity is
+// never dropped; used by the explicit purge flow.
+func (db *DB) DeleteDisabledModule(ctx context.Context, id string) error {
+	res, err := db.ExecContext(ctx, `DELETE FROM modules WHERE id=? AND state='disabled'`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Providers returns the enabled modules that provide a capability, ordered by module id.
 func (db *DB) Providers(ctx context.Context, capability string) ([]Provider, error) {
 	rows, err := db.QueryContext(ctx, `SELECT p.capability,p.module_id,p.service,p.port,p.schema,m.namespace FROM capability_providers p

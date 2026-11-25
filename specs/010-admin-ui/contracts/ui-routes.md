@@ -45,6 +45,20 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `GET /access` | yes (`rbac.manage`) | Users, role assignments and role definitions |
 | `POST /access/{username}/grant` | yes (`rbac.manage`) | Fields `role`, `scope` |
 | `POST /access/{username}/revoke` | yes (`rbac.manage`) | Fields `role`, `scope`; 409 for the last owner |
+| `GET /catalogue` | yes (`platform.view`) | Module catalogue (E12b): every manifest with status badge (`ready`, `experimental`, `not-deployable`), licence and source-available warning, declared RAM request and limit, the footprint total against the declared server size, requires/provides (planned capabilities shown as "not yet served"), exclusive-capability conflicts, and the selection form. 503 without module management |
+| `GET /catalogue/{id}` | yes (`platform.view`) | One module: summary, requires/provides, and the settings form generated from its `settings.schema.json` (shown to `platform.operate`). 404 for an unknown id |
+| `POST /catalogue/{id}/settings` | yes (`platform.operate`) | Fields `s.<property>` for each rendered property. Validated server side with the module's schema; 400 re-renders the form with per-field errors. 303 to `/changes/{cid}` (a stored proposal, not yet applied) |
+| `GET /catalogue/{id}/purge` | yes (`platform.purge`) | Purge confirmation page. 409 unless the module is recorded as disabled |
+| `POST /catalogue/{id}/purge` | yes (`platform.purge`) | Fields `confirm` (exactly `purge <id>`), `password` (the caller's current password). 400 wrong confirmation, 401/429 wrong password, 409 not disabled, 503 no purge executor. Audited before and after |
+| `POST /changes` | yes (`platform.operate`) | Catalogue selection: fields `version` (the company.yaml version the page showed), repeated `enable` (module ids), repeated `ack` (`licence:<id>`, `experimental:<id>`). 303 to `/changes/{cid}`; 409 when `version` is stale; 400 when a module is not deployable, an acknowledgement is missing, or the selection is invalid or cannot work |
+| `GET /changes/{id}` | yes (`platform.operate`) | Preview of a stored proposal: company.yaml diff, reconcile plan, what will be created (namespace, Secrets, volumes, ingress host, database) and what disable keeps, footprint, graph, issues, and the apply form. Marks a proposal stale |
+| `POST /changes/{id}/apply` | yes (`platform.operate`) | Writes company.yaml (optimistic concurrency) and starts the reconcile. 303 to `/runs/{rid}`; applying an already applied change returns its run; 409 stale or expired; 503 with `Retry-After` while another apply runs |
+| `GET /runs/{id}` | yes (`platform.view`) | Apply progress and result. `<meta http-equiv="refresh" content="3">` while running; query `refresh=0` turns the reload off. Errors shown are sanitised |
+| `GET /status` | yes (`platform.view`) | Module readiness, last reconcile result, certificate/ingress status and disk usage (each marked unavailable when its source is not configured) |
+| `GET /company` | yes (`platform.operate`) | The stored company.yaml and its version |
+| `GET /setup` | yes (`platform.setup`) | 303 to `/setup/company` |
+| `GET /setup/{step}` | yes (`platform.setup`) | Wizard step: `company`, `template`, `modules`, `email`, `dns`, `account`, `review`. 404 otherwise |
+| `POST /setup/{step}` | yes (`platform.setup`) | Steps `company` (`name`, `domain`, `server_ram_mb`), `template` (`template`), `modules` (`enable`, `ack`), `email` (`host`, `port`, `username`, `password`, `from`: the password goes to a Secret and is never echoed), `account` (`kit`), plus `apply` (applies the saved answers; idempotent) and `dismiss`. 303 back to the step; 400 re-renders it |
 | `GET /static/{file}` | no | Embedded stylesheet and icons (immutable cache) |
 | `GET /manifest.webmanifest` | no | Web app manifest |
 

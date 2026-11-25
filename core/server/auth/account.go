@@ -28,6 +28,11 @@ func accountKey(u store.AdminUser) string { return "acct:" + u.Username }
 // transaction (RegisterFailure), so parallel guesses cannot slip past the limit; a success clears
 // the count. Cheapest check first: a wrong code never reaches argon2.
 func (s *Service) checkCurrent(ctx context.Context, u store.AdminUser, current, code string, needCode bool) error {
+	return s.checkCurrentOpt(ctx, u, current, code, needCode, true)
+}
+
+// checkCurrentOpt is checkCurrent with control over clearing the failure count on success.
+func (s *Service) checkCurrentOpt(ctx context.Context, u store.AdminUser, current, code string, needCode, clear bool) error {
 	now := s.opt.Now()
 	key := accountKey(u)
 	a, locked, err := s.db.RegisterFailure(ctx, key, accountMaxFailures, s.opt.Policy.Window, accountLockFor, now)
@@ -63,8 +68,17 @@ func (s *Service) checkCurrent(ctx context.Context, u store.AdminUser, current, 
 			return ErrInvalidCredentials // replayed code
 		}
 	}
-	_ = s.db.ClearLoginAttempt(ctx, key)
+	if clear {
+		_ = s.db.ClearLoginAttempt(ctx, key)
+	}
 	return nil
+}
+
+// ConfirmPasswordAndCode re-authenticates for a destructive action: the current password and a fresh
+// single-use authentication code. A success does not clear the shared account failure count, so this
+// cannot be used to reset the throttle that guards password changes.
+func (s *Service) ConfirmPasswordAndCode(ctx context.Context, u store.AdminUser, current, code string) error {
+	return s.checkCurrentOpt(ctx, u, current, code, true, false)
 }
 
 func (s *Service) auditAccount(ctx context.Context, u store.AdminUser, action, ip string) error {

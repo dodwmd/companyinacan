@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Stored company.yaml - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+<li><a href="/access">Access</a></li>
+<li><a href="/catalogue" aria-current="page">Catalogue</a></li>
+<li><a href="/status">Status</a></li>
+<li><a href="/setup">Setup</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<p><a href="/catalogue">Back to the catalogue</a></p>
+<h1>Stored company.yaml</h1>
+<p>This is the document can-core applies. Changes made in the admin UI are written here.</p>
+<p class="hint">Version: <code>sha:5d61fb89a3020d8f</code></p>
+<pre class="pre" tabindex="0" aria-label="Stored company.yaml"><code># the company
+schema: 1
+name: Acme
+domain: acme.example
+provider:
+  type: local
+  options: {server_ram_mb: 2048}
+modules:
+  web:
+    enabled: true
+    settings: {site_title: Acme}
+</code></pre>
+<p class="hint">If you also run can apply from a company repository, it overwrites this document. Copy this version into your repository first.</p>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

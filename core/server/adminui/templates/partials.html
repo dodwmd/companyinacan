@@ -1,0 +1,49 @@
+{{define "footprint"}}<dl>
+<dt>{{t "cg.fp_platform"}}</dt><dd>{{t "mod.mb" .PlatformMB}}</dd>
+<dt>{{t "cg.fp_modules"}}</dt><dd>{{t "mod.mb" .RequestMB}}</dd>
+{{if .DatabaseMB}}<dt>{{t "cg.fp_database"}}</dt><dd>{{t "mod.mb" .DatabaseMB}}</dd>
+{{end}}<dt>{{t "cg.fp_total"}}</dt><dd>{{t "mod.mb" .TotalMB}} <span class="badge {{.VerdictClass}}">{{.VerdictLabel}}</span></dd>
+<dt>{{t "cg.fp_server"}}</dt><dd>{{if .ServerMB}}{{t "mod.mb" .ServerMB}}{{else}}{{t "cg.fp_server_unknown"}}{{end}}</dd>
+<dt>{{t "cg.fp_limits"}}</dt><dd>{{t "mod.mb" .LimitMB}}</dd>
+</dl>
+{{if .ServerMB}}<p><meter min="0" max="{{.ServerMB}}" value="{{.TotalMB}}" aria-label="{{t "cg.fp_meter"}}">{{.UsedPercent}}%</meter> {{t "cg.fp_used" .UsedPercent}}</p>
+{{if eq .VerdictClass "err"}}<p class="alert err" role="alert">{{t "cg.fp_over_by" .OverByMB}}</p>{{end}}{{else}}<p class="hint">{{t "cg.fp_declare"}}</p>{{end}}
+{{end}}
+
+{{define "needs"}}{{range .}}<li><code>{{.Capability}}</code> <span class="badge {{.StateClass}}">{{.StateLabel}}</span>{{if .Providers}} <span class="muted">{{range $i, $p := .Providers}}{{if $i}}, {{end}}{{$p}}{{end}}</span>{{end}}{{if .Available}} <span class="muted">{{t "cg.could_be"}} {{range $i, $p := .Available}}{{if $i}}, {{end}}{{$p}}{{end}}</span>{{end}}</li>
+{{end}}{{end}}
+
+{{define "provides"}}{{range .}}<li><code>{{.Capability}}</code>{{if not .Served}} <span class="badge warn">{{t "cg.not_yet_served"}}</span>{{end}}</li>
+{{end}}{{end}}
+
+{{define "plan"}}{{if .Actions}}<div class="table-wrap" role="region" aria-labelledby="cap-plan" tabindex="0">
+<table>
+<caption id="cap-plan" class="sr">{{t "ch.plan"}}</caption>
+<thead><tr><th scope="col">{{t "mod.module"}}</th><th scope="col">{{t "ch.action"}}</th><th scope="col">{{t "ch.reason"}}</th></tr></thead>
+<tbody>
+{{range .Actions}}<tr><th scope="row"><code>{{.Module}}</code></th><td>{{.KindLabel}}</td><td>{{.Reason}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "ch.no_actions"}}</p>{{end}}
+{{if .Resources}}<h3>{{t "ch.resources"}}</h3>
+<ul>
+{{range .Resources}}<li><strong><code>{{.Module}}</code></strong> ({{.ActionLabel}})
+{{if .Keeps}}<p>{{t "ch.keeps"}} {{range $i, $k := .KeepLabels}}{{if $i}}, {{end}}{{$k}}{{end}}.</p><p class="hint">{{t "ch.keeps_note"}}</p>
+{{else}}<dl>
+<dt>{{t "mod.namespace"}}</dt><dd><code>{{.Namespace}}</code></dd>
+{{if .Host}}<dt>{{t "ch.host"}}</dt><dd><code>{{.Host}}</code></dd>{{end}}
+<dt>{{t "ch.secrets"}}</dt><dd>{{range $i, $x := .Secrets}}{{if $i}}, {{end}}<code>{{$x}}</code>{{end}}</dd>
+{{if .DiskMB}}<dt>{{t "mod.disk"}}</dt><dd>{{t "mod.mb" .DiskMB}}</dd>{{end}}
+{{if .DBName}}<dt>{{t "mod.database"}}</dt><dd>{{.Database}}: <code>{{.DBName}}</code></dd>{{else if .Database}}<dt>{{t "mod.database"}}</dt><dd>{{.Database}}</dd>{{end}}
+</dl>{{end}}</li>
+{{end}}</ul>
+{{end}}{{end}}
+
+{{define "diff"}}{{if .DiffTooLarge}}<p class="alert warn">{{t "ch.diff_large"}}</p>
+{{else if .Diff}}<pre class="diff" tabindex="0" aria-label="{{t "ch.diff_label"}}"><code>{{range .Diff}}<span class="{{.Class}}">{{if eq .Class "add"}}<span class="sr">{{t "ch.diff_added"}} </span>{{else if eq .Class "del"}}<span class="sr">{{t "ch.diff_removed"}} </span>{{end}}{{.Mark}} {{.Text}}</span>
+{{end}}</code></pre>
+{{else}}<p class="muted">{{t "ch.no_diff"}}</p>{{end}}{{end}}
+
+{{define "issues"}}{{if .Issues}}<div class="alert err" role="alert"><p><strong>{{t "ch.issues"}}</strong></p><ul>{{range .Issues}}<li>{{.}}</li>
+{{end}}</ul></div>{{end}}{{end}}

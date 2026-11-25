@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Email - Company in a Can</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Dashboard</a></li>
+<li><a href="/modules">Modules</a></li>
+<li><a href="/audit">Audit log</a></li>
+<li><a href="/events">Events</a></li>
+<li><a href="/leads">Leads</a></li>
+<li><a href="/settings">Settings</a></li>
+<li><a href="/access">Access</a></li>
+<li><a href="/catalogue">Catalogue</a></li>
+<li><a href="/status">Status</a></li>
+<li><a href="/setup" aria-current="page">Setup</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (root)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+
+<h1>Set up your company</h1>
+<p class="hint">Answer these steps in any order. Your answers are saved as you go, so you can leave and come back. Nothing changes until you review and apply.</p>
+<nav aria-label="Setup steps">
+<ol class="steps">
+<li><a href="/setup/company">Company</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/template">Template</a> <span class="badge neutral">To do</span></li>
+<li><a href="/setup/modules">Modules</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/email" aria-current="step">Email</a> <span class="badge ok">Done</span></li>
+<li><a href="/setup/dns">DNS</a></li>
+<li><a href="/setup/account">Your account</a> <span class="badge neutral">To do</span></li>
+<li><a href="/setup/review">Review and apply</a></li>
+</ol>
+</nav>
+
+<h2>Email</h2>
+
+
+
+<p>Real email needs an outbound relay. Enter the SMTP settings your relay gave you. The password is stored in a Kubernetes Secret and is never shown again. You can skip this and connect email later.</p>
+<p class="alert ok">A relay is saved: smtp.relay.example port 587. The password is in a Secret and cannot be shown.</p>
+<form method="post" action="/setup/email" class="stack" autocomplete="off">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="r-host">SMTP host</label><input id="r-host" name="host" type="text" maxlength="253" value="smtp.relay.example" required></p>
+<p><label for="r-port">SMTP port</label><input id="r-port" name="port" type="text" inputmode="numeric" maxlength="5" value="587" required></p>
+<p><label for="r-user">Username</label><input id="r-user" name="username" type="text" maxlength="256" value="apikey" autocomplete="off"></p>
+<p><label for="r-pass">Password</label><input id="r-pass" name="password" type="password" maxlength="1024" autocomplete="new-password" required><span class="hint">Stored in a Secret and never shown again.</span></p>
+<p><label for="r-from">From address</label><input id="r-from" name="from" type="text" maxlength="254" value="hello@acme.example" required></p>
+<p><button type="submit">Save relay</button></p>
+</form>
+<p class="hint">Mail from your own domain also needs SPF, DKIM and DMARC records at your DNS provider; see the email policy documentation.</p>
+
+
+
+<p class="actions">
+<a href="/setup/modules">Previous step</a>
+<a href="/setup/dns">Next step</a>
+</p>
+<form method="post" action="/setup/dismiss" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Close setup without finishing</button>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can admin. Apache-2.0.</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{{define "content"}}
+<p><a href="/catalogue">{{t "cg.back"}}</a></p>
+<h1>{{t "ch.title"}}</h1>
+<p class="hint">{{t "ch.by" .Data.Actor}} <time datetime="{{iso .Data.Created}}">{{ts .Data.Created}}</time>{{if .Data.Summary}} ({{.Data.Summary}}){{end}}</p>
+{{if .Data.Stale}}<p class="alert warn" role="alert">{{t "ch.stale"}}</p>{{end}}
+{{if .Data.Applied}}<p class="alert ok">{{t "ch.applied"}} <a href="/runs/{{.Data.RunID}}">{{t "ch.see_run"}}</a></p>{{end}}
+{{template "issues" .Data}}
+
+<section aria-labelledby="h-diff">
+<h2 id="h-diff">{{t "ch.diff"}}</h2>
+<p class="hint">{{t "ch.diff_help"}}</p>
+{{template "diff" .Data}}
+</section>
+
+<section aria-labelledby="h-plan">
+<h2 id="h-plan">{{t "ch.plan"}}</h2>
+{{template "plan" .Data}}
+</section>
+
+<section aria-labelledby="h-fp">
+<h2 id="h-fp">{{t "cg.footprint"}}</h2>
+{{template "footprint" .Data.Footprint}}
+</section>
+
+{{if .Data.Needs}}<section aria-labelledby="h-needs">
+<h2 id="h-needs">{{t "cg.graph"}}</h2>
+<ul>{{range .Data.Needs}}<li><code>{{.Module}}</code> {{t "mod.requires"}} <code>{{.Capability}}</code> <span class="badge {{.StateClass}}">{{.StateLabel}}</span></li>
+{{end}}</ul>
+</section>{{end}}
+
+{{if not .Data.Applied}}<section aria-labelledby="h-apply">
+<h2 id="h-apply">{{t "ch.apply"}}</h2>
+{{if .Data.CanApply}}<form method="post" action="/changes/{{.Data.ID}}/apply" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p>{{t "ch.apply_help"}}</p>
+<p><button type="submit">{{t "ch.apply"}}</button></p>
+</form>{{else}}<p class="muted">{{t "ch.cannot_apply"}}</p>{{end}}
+</section>{{end}}
+{{end}}

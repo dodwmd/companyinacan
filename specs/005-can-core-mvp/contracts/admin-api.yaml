@@ -134,6 +134,41 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Resolution" }
         "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/catalogue:
+    get:
+      operationId: getCatalogue
+      summary: Module catalogue with footprint and capability state
+      description: |
+        Every manifest in the modules directory with its status (`ready`, `experimental`, `not-deployable`),
+        licence class, declared RAM, requires/provides (planned provisions have `served: false`), whether
+        company.yaml enables it, the exclusive capabilities that are served twice without a primary, and the
+        footprint of the enabled modules against the declared server size (`verdict` is `unknown` when no size is
+        declared). Needs `platform.view`. Changes are made in the admin UI (preview, then apply); this endpoint is read-only.
+      responses:
+        "200":
+          description: The catalogue
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Catalogue" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/status:
+    get:
+      operationId: getStatus
+      summary: Module readiness, last reconcile, certificate and disk status
+      description: |
+        Needs `platform.view`. `certificates_available` and `disk_available` are false when the source is not
+        configured or failed; an unavailable source is never reported as healthy. Error texts are sanitised.
+      responses:
+        "200":
+          description: The status snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusReport" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/audit:
     get:
       operationId: listAudit
@@ -645,6 +680,99 @@ components:
         provides: { type: array, items: { type: string } }
         ram_mb: { type: integer }
         updated_at: { type: string, format: date-time }
+    Catalogue:
+      type: object
+      required: [modules, conflicts, footprint]
+      properties:
+        modules:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogueEntry" }
+        conflicts: { type: array, items: { type: string } }
+        footprint:
+          type: object
+          required: [platform_mb, request_mb, limit_mb, database_mb, total_mb, server_mb, verdict]
+          properties:
+            platform_mb: { type: integer }
+            request_mb: { type: integer }
+            limit_mb: { type: integer }
+            database_mb: { type: integer }
+            total_mb: { type: integer }
+            server_mb: { type: integer, description: "0 when the server size is not declared" }
+            verdict: { type: string, enum: [fits, tight, over, unknown] }
+    CatalogueEntry:
+      type: object
+      required: [id, status, source_available, deployable, enabled, ram_mb, ram_limit_mb, requires, provides]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [ready, experimental, not-deployable] }
+        licence_class: { type: string, enum: [osi, source-available] }
+        source_available: { type: boolean }
+        deployable: { type: boolean }
+        enabled: { type: boolean }
+        ram_mb: { type: integer }
+        ram_limit_mb: { type: integer }
+        invalid: { type: string }
+        requires:
+          type: array
+          items:
+            type: object
+            required: [capability, state]
+            properties:
+              capability: { type: string }
+              state: { type: string, enum: [met, platform, planned, missing, none, unmet] }
+        provides:
+          type: array
+          items:
+            type: object
+            required: [capability, served]
+            properties:
+              capability: { type: string }
+              served: { type: boolean }
+    StatusReport:
+      type: object
+      required: [modules, certificates, certificates_available, disk, disk_available]
+      properties:
+        modules:
+          type: array
+          items:
+            type: object
+            required: [id, state, ready, version]
+            properties:
+              id: { type: string }
+              state: { type: string, enum: [enabled, disabled, failed] }
+              ready: { type: string, enum: ["yes", "no", "off", unknown] }
+              version: { type: string }
+              last_error: { type: string }
+        reconcile:
+          type: object
+          required: [at, ok, actions, failed]
+          properties:
+            at: { type: string, format: date-time }
+            ok: { type: boolean }
+            actions: { type: integer }
+            failed: { type: integer }
+            error: { type: string }
+        certificates:
+          type: array
+          items:
+            type: object
+            properties:
+              host: { type: string }
+              state: { type: string }
+              days_left: { type: integer }
+        certificates_available: { type: boolean }
+        disk:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              used_bytes: { type: integer }
+              total_bytes: { type: integer }
+              used_percent: { type: integer }
+        disk_available: { type: boolean }
     Provider:
       type: object
       required: [module, url]

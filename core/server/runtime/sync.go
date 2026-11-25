@@ -13,6 +13,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/dbprov"
 	"github.com/dodwmd/companyinacan/core/server/installer"
 	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -74,12 +75,17 @@ func contains(l []string, s string) bool {
 // kubelet refreshes a mounted ConfigMap within about a minute, so the loop, not a file watcher,
 // picks up `can apply` changes; failed modules are retried on the same cadence.
 func reconcileLoop(ctx context.Context, cfg Config, r *reconcile.Reconciler, log *slog.Logger) {
+	loopEvery(ctx, cfg, log, func(ctx context.Context) error { return reconcileOnce(ctx, cfg, r, log) })
+}
+
+// loopEvery runs tick at start and then every cfg.ReconcileInterval until ctx ends.
+func loopEvery(ctx context.Context, cfg Config, log *slog.Logger, tick func(context.Context) error) {
 	interval := cfg.ReconcileInterval
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
 	for {
-		if err := reconcileOnce(ctx, cfg, r, log); err != nil && ctx.Err() == nil {
+		if err := tick(ctx); err != nil && ctx.Err() == nil {
 			log.Error("reconcile failed; will retry", "error", err, "in", interval.String())
 		}
 		select {
@@ -88,6 +94,36 @@ func reconcileLoop(ctx context.Context, cfg Config, r *reconcile.Reconciler, log
 		case <-time.After(interval):
 		}
 	}
+}
+
+// reconcileStored applies the company.yaml held by the company store (the in-cluster ConfigMap).
+// It reads the store, not the mounted file: the kubelet refreshes a mounted ConfigMap only after up to
+// a minute, so a change just made in the admin UI would otherwise be reverted by the next tick. The
+// runner serialises it with applies started from the UI, and the outcome is recorded for the status page.
+func reconcileStored(ctx context.Context, cfg Config, cs modmgr.CompanyStore, run *modmgr.Runner, svc *modmgr.Service, log *slog.Logger) error {
+	snap, err := cs.Get(ctx)
+	if errors.Is(err, modmgr.ErrNoCompany) {
+		log.Debug("no company.yaml to reconcile yet")
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading the company store: %w", err)
+	}
+	desired, ps := reconcile.LoadDesiredBytes("company.yaml", snap.Data, cfg.ModulesDir)
+	if problem.HasErrors(ps) {
+		for _, p := range ps {
+			if p.Severity == problem.Error {
+				log.Error("company.yaml is invalid; nothing applied", "rule", p.Rule, "path", p.Path, "message", p.Message)
+			}
+		}
+		return fmt.Errorf("company.yaml is invalid (%d problems)", len(ps))
+	}
+	res, err := run.Apply(ctx, desired)
+	for _, a := range res.Actions {
+		log.Info("reconciled", "action", a.Kind, "module", a.Module, "reason", a.Reason, "failed", contains(res.Failed, a.Module))
+	}
+	svc.RecordReconcile(ctx, res, err)
+	return err
 }
 
 func newReconciler(db *store.DB, reg *registry.Registry, al *audit.Log, inst reconcile.ModuleInstaller) *reconcile.Reconciler {

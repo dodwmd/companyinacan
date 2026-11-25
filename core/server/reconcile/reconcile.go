@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/dodwmd/companyinacan/core/config"
@@ -112,11 +113,22 @@ func New(db *store.DB, reg *registry.Registry, a Appender, inst ModuleInstaller)
 // LoadDesired validates company.yaml with the manifests of its enabled modules (the same checks as
 // `can validate`) and returns the desired state. Any error-severity problem aborts.
 func LoadDesired(companyFile, modulesDir string) (Desired, []problem.Problem) {
-	ps := validate.CompanyFile(companyFile, modulesDir)
+	data, err := os.ReadFile(companyFile) //nolint:gosec // operator-configured path
+	if err != nil {
+		return Desired{}, []problem.Problem{{File: companyFile, Rule: "parse.read", Severity: problem.Error, Message: err.Error()}}
+	}
+	return LoadDesiredBytes(companyFile, data, modulesDir)
+}
+
+// LoadDesiredBytes is LoadDesired for company.yaml content held in memory (the admin UI applies the
+// stored document directly, without waiting for the mounted ConfigMap to refresh).
+func LoadDesiredBytes(name string, data []byte, modulesDir string) (Desired, []problem.Problem) {
+	ps := validate.CompanyBytes(name, data, modulesDir)
 	if problem.HasErrors(ps) {
 		return Desired{}, ps
 	}
-	doc, lp := config.Load(companyFile)
+	companyFile := name
+	doc, lp := config.LoadBytes(name, data)
 	if doc == nil {
 		return Desired{}, lp
 	}
