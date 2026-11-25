@@ -70,6 +70,34 @@ type Service struct {
 	Holds func(ctx context.Context, subject, permission string) (bool, error)
 }
 
+// impliedBy lists, per module, the permissions that carry another one inside the module itself:
+// finance and work treat <module>.admin as every permission (and write/approve as read), so a
+// subject holding only the admin permission holds the rest. Issue and introspection both use this
+// one table, so what may be granted and what stays active agree. The jobs and people admin
+// permissions imply nothing and are not listed.
+var impliedBy = map[string]map[string][]string{
+	"finance": {
+		"finance.read": {"finance.write", "finance.approve", "finance.admin"}, "finance.write": {"finance.admin"},
+		"finance.approve": {"finance.admin"},
+	},
+	"work": {"work.read": {"work.write", "work.admin"}, "work.write": {"work.admin"}},
+}
+
+// holds reports whether subject holds perm of the module, directly or through a permission that
+// implies it inside the module.
+func (s *Service) holds(ctx context.Context, subject, module, perm string) (bool, error) {
+	for _, p := range append([]string{perm}, impliedBy[module][perm]...) {
+		ok, err := s.Holds(ctx, subject, p)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // New returns a Service.
 type failWindow struct {
 	start time.Time
@@ -177,7 +205,7 @@ func (s *Service) Issue(ctx context.Context, actor string, req IssueRequest) (Is
 			return Issued{}, invalid("module %s does not declare permission %q", mod.ID, p)
 		}
 		if s.Holds != nil {
-			ok, err := s.Holds(ctx, actor, p)
+			ok, err := s.holds(ctx, actor, mod.ID, p)
 			if err != nil {
 				return Issued{}, err
 			}
@@ -341,7 +369,7 @@ func (s *Service) introspect(ctx context.Context, callerModule, token string) (R
 			continue
 		}
 		if s.Holds != nil {
-			ok, err := s.Holds(ctx, t.Subject, p)
+			ok, err := s.holds(ctx, t.Subject, mod.ID, p)
 			if err != nil || !ok {
 				continue
 			}

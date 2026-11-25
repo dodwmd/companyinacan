@@ -336,3 +336,29 @@ func TestMaliciousServiceNameIsRefusedBeforeInstall(t *testing.T) {
 		t.Fatalf("installer called: %v", g.fk.Calls)
 	}
 }
+
+// A transient store error while reading the recorded module must not regenerate the webhook
+// signing secret: the module would keep verifying with the old one and every delivery would fail.
+func TestEnableFailsOnAStoreErrorWithoutChangingTheSigningSecret(t *testing.T) {
+	ctx := context.Background()
+	g := newRig(t)
+	d := desired(nil, nil, mf("work", "0.1.0", nil))
+	if _, err := g.r.Apply(ctx, d, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	first := g.fk.Enabled["work"].HMACSecret
+	g.r.getModule = func(context.Context, string) (store.Module, error) {
+		return store.Module{}, errors.New("database is locked")
+	}
+	d2 := desired(nil, nil, mf("work", "0.2.0", nil))
+	if err := g.r.enable(ctx, d2, Action{Module: "work", Kind: Upgrade}); err == nil {
+		t.Fatal("enable went on after the store failed")
+	}
+	if got := g.fk.Enabled["work"].HMACSecret; got != first {
+		t.Fatal("the installer was handed a new signing secret")
+	}
+	rec, _ := g.db.GetModule(ctx, "work")
+	if rec.HMACSecret != first {
+		t.Fatal("the recorded signing secret changed")
+	}
+}

@@ -103,6 +103,8 @@ type Reconciler struct {
 	audit     Appender
 	Installer ModuleInstaller
 	Actor     string
+	// getModule reads the recorded module (db.GetModule; a seam for tests).
+	getModule func(ctx context.Context, id string) (store.Module, error)
 }
 
 // Appender is the audit write interface.
@@ -112,7 +114,7 @@ type Appender interface {
 
 // New returns a Reconciler.
 func New(db *store.DB, reg *registry.Registry, a Appender, inst ModuleInstaller) *Reconciler {
-	return &Reconciler{db: db, reg: reg, audit: a, Installer: inst, Actor: "can-apply"}
+	return &Reconciler{db: db, reg: reg, audit: a, Installer: inst, Actor: "can-apply", getModule: db.GetModule}
 }
 
 // LoadDesired validates company.yaml with the manifests of its enabled modules (the same checks as
@@ -327,7 +329,14 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
 		return err
 	}
-	prev, perr := r.db.GetModule(ctx, a.Module)
+	prev, perr := r.getModule(ctx, a.Module)
+	if perr != nil && !errors.Is(perr, store.ErrNotFound) {
+		// Any error but "no such module" leaves the recorded signing secret unknown: generating a
+		// new one would make the running module reject every webhook. Fail the enable instead.
+		err := fmt.Errorf("reading the recorded module: %w", perr)
+		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
+		return err
+	}
 	secret := prev.HMACSecret
 	if perr != nil || secret == "" {
 		secret = newSecret()

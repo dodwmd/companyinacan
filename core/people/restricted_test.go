@@ -82,3 +82,50 @@ func TestRestrictedPerformanceNeedsPerformancePermissions(t *testing.T) {
 		t.Error("performance.write must write")
 	}
 }
+
+// The hr and admin paths of checklist creation and task completion are writes of other people's
+// records: a restricted token needs people.write for them. The self-service paths (an assigned
+// employee completing their own task, a manager starting a checklist for a report) stay open to
+// the manifest roles that have no people.write.
+func TestRestrictedChecklistWritesNeedPeopleWriteOnTheHRPath(t *testing.T) {
+	cases := []struct {
+		name  string
+		actor Actor
+		act   Action
+		fact  Fact
+		want  bool
+	}{
+		{"hr with people.write creates", restricted([]string{RoleEmployee, RoleHR}, "people.read", "people.write"), ActChecklistCreate, Fact{}, true},
+		{"admin without people.write cannot create", restricted([]string{RoleEmployee, RoleAdmin}, "people.read", "people.admin"), ActChecklistCreate, Fact{}, false},
+		{"admin without people.write cannot complete someone's task", restricted([]string{RoleEmployee, RoleAdmin}, "people.read", "people.admin"), ActTaskComplete, Fact{}, false},
+		{"hr with people.write completes", restricted([]string{RoleEmployee, RoleHR}, "people.read", "people.write"), ActTaskComplete, Fact{}, true},
+		{"employee completes their own assigned task", restricted([]string{RoleEmployee}, "people.read"), ActTaskComplete, Fact{Assigned: true}, true},
+		{"employee cannot complete an unassigned task", restricted([]string{RoleEmployee}, "people.read"), ActTaskComplete, Fact{}, false},
+		{"unrestricted service account unchanged", Actor{Subject: "svc", Roles: []string{RoleHR}}, ActChecklistCreate, Fact{}, true},
+	}
+	for _, c := range cases {
+		c.actor.HasPerson, c.actor.Status = true, StActive
+		if c.name == "unrestricted service account unchanged" {
+			c.actor.HasPerson = false
+		}
+		if got := Decide(c.actor, c.act, c.fact); got != c.want {
+			t.Errorf("%s: got %v", c.name, got)
+		}
+	}
+	mgr := restricted([]string{RoleEmployee, RoleManager}, "people.read", "performance.read", "performance.write")
+	mgr.HasPerson, mgr.Status = true, StActive
+	if !Decide(mgr, ActChecklistCreate, Fact{Direct: true}) {
+		t.Error("a manager lost checklist creation for a direct report")
+	}
+}
+
+// Self-service writes (own preferred_name/work_phone) are deliberately not gated by people.write:
+// the employee role in modules/people/module.yaml does not carry it, so gating would lock every
+// employee out of their own entry. A token with people.read still maps to an employee.
+func TestSelfServiceWriteIsNotGatedByPeopleWrite(t *testing.T) {
+	emp := restricted([]string{RoleEmployee}, "people.read")
+	emp.HasPerson, emp.Status = true, StActive
+	if !Decide(emp, ActDirUpdateSelf, Fact{Self: true}) {
+		t.Error("an employee token cannot edit their own entry")
+	}
+}

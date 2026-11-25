@@ -156,8 +156,14 @@ func (a Actor) elevated(role string) bool {
 	return false
 }
 
-func (a Actor) staff() bool           { return !a.blocked() && a.HasPerson && a.has(RoleEmployee) }
-func (a Actor) hrAdmin() bool         { return a.elevated(RoleHR) || a.elevated(RoleAdmin) }
+func (a Actor) staff() bool   { return !a.blocked() && a.HasPerson && a.has(RoleEmployee) }
+func (a Actor) hrAdmin() bool { return a.elevated(RoleHR) || a.elevated(RoleAdmin) }
+
+// hrWriter is hrAdmin for the writes that change other people's records but are not listed in
+// actionPerm: a restricted token needs people.write on this path, while the self-service and
+// manager paths of the same action stay open to manifest roles that do not carry it.
+func (a Actor) hrWriter() bool { return a.hrAdmin() && a.permits("people.write") }
+
 func (a Actor) managerOf(f Fact) bool { return a.elevated(RoleManager) && f.Direct }
 func (a Actor) chainOf(f Fact) bool   { return a.elevated(RoleManager) && f.Chain }
 func (a Actor) selfStaff(f Fact) bool { return a.staff() && f.Self }
@@ -183,11 +189,11 @@ func Decide(a Actor, act Action, f Fact) bool {
 		return a.selfStaff(f) || a.hrAdmin()
 
 	case ActChecklistCreate:
-		return a.hrAdmin() || a.managerOf(f)
+		return a.hrWriter() || a.managerOf(f)
 	case ActChecklistRead:
 		return a.selfStaff(f) || a.hrAdmin() || a.managerOf(f)
 	case ActTaskComplete:
-		return (a.staff() && f.Assigned) || a.hrAdmin()
+		return (a.staff() && f.Assigned) || a.hrWriter()
 	case ActTaskListOwn:
 		return a.staff()
 

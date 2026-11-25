@@ -156,3 +156,42 @@ func keyNames(m map[string]any) []string {
 	}
 	return out
 }
+
+// racer simulates a concurrent can-core creating the module Secret between this one's read and
+// its write: just before the Create goes through, the other creator's Secret appears.
+type racer struct {
+	*kube.Fake
+	other map[string]string
+}
+
+func (r *racer) Create(ctx context.Context, obj kube.Object) (bool, error) {
+	if obj["kind"] == "Secret" && r.other != nil {
+		o := kube.Object{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": "can-module", "namespace": "mod-stub"}, "stringData": map[string]any{}}
+		for k, v := range r.other {
+			o["stringData"].(map[string]any)[k] = v
+		}
+		r.other = nil
+		if err := r.Apply(ctx, o); err != nil {
+			return false, err
+		}
+	}
+	return r.Fake.Create(ctx, obj)
+}
+
+func TestConcurrentCreatorsAdoptTheFirstValuesAndNeverOverwrite(t *testing.T) {
+	in, api, _, spec := fixture(t, nil)
+	in.cfg.SecretsFor = func(string) []modsecrets.Spec {
+		return []modsecrets.Spec{{Key: "CAN_STUB_TOKEN"}, {Key: modsecrets.KeyringKey, Kind: modsecrets.Keyring}}
+	}
+	first := map[string]string{"CAN_STUB_TOKEN": "first-creator-token", modsecrets.KeyringKey: "k1 " + strings.Repeat("ab", 32) + "\n"}
+	in.cfg.API = &racer{Fake: api, other: first}
+	if err := in.Enable(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	d := secretData(get(t, api, "Secret", "mod-stub", "can-module"))
+	for k, want := range first {
+		if d[k] != want {
+			t.Errorf("%s was overwritten by the second creator", k)
+		}
+	}
+}
