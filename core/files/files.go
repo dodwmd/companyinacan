@@ -1,6 +1,7 @@
 package files
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -143,16 +144,8 @@ func (s *Store) stage(ctx context.Context, body io.Reader, name string) (*staged
 		return nil, err
 	}
 	h := sha256.New()
-	w := io.MultiWriter(f, h)
-	if _, err := w.Write(head); err != nil {
-		return fail(fmt.Errorf("%w: staging", ErrUnavailable))
-	}
-	total := int64(n)
-	if int64(n) > max {
-		return fail(ErrTooLarge)
-	}
-	rest, err := io.Copy(w, &ctxReader{ctx: ctx, r: lr})
-	total += rest
+	// One io.Copy, from the head already read and then the rest, into the private file and the hash.
+	total, err := io.Copy(io.MultiWriter(f, h), &ctxReader{ctx: ctx, r: io.MultiReader(bytes.NewReader(head), lr)})
 	if err != nil {
 		return fail(invalid("the upload was interrupted"))
 	}
