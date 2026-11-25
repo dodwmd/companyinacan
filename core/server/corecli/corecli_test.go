@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
@@ -128,6 +129,62 @@ func TestAdminBootstrap(t *testing.T) {
 	// env var password source
 	if code, _, _ := run(t, map[string]string{"CAN_ADMIN_PASSWORD": "correct horse battery staple"}, "", "admin", "bootstrap", "--db", filepath.Join(t.TempDir(), "y.db"), "--username", "root"); code != 0 {
 		t.Fatal("env password rejected")
+	}
+}
+
+func TestAdminUnlockAndResetPassword(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	if code, _, e := run(t, nil, "correct horse battery staple\n", "admin", "bootstrap", "--db", path, "--username", "root"); code != 0 {
+		t.Fatal(e)
+	}
+	db, _ := store.Open(ctx, path)
+	for _, k := range []string{"user:root|1.1.1.1", "user:bob|1.1.1.1", "ip:1.1.1.1"} {
+		_, _, _ = db.RegisterFailure(ctx, k, 1, time.Hour, time.Hour, time.Now())
+	}
+	before, _ := db.AdminByUsername(ctx, "root")
+	_ = db.CreateSession(ctx, store.Session{IDHash: "s", UserID: before.ID, CSRF: "c", IP: "i", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)})
+	_ = db.Close()
+
+	// targeted unlock
+	code, out, _ := run(t, nil, "", "admin", "unlock", "--db", path, "--username", "root")
+	if code != 0 || !strings.Contains(out, "Cleared 1") {
+		t.Fatalf("%d %q", code, out)
+	}
+	if code, out, _ := run(t, nil, "", "admin", "unlock", "--db", path); code != 0 || !strings.Contains(out, "Cleared 2") {
+		t.Fatalf("%d %q", code, out)
+	}
+
+	// reset with TOTP rotation
+	code, out, errs := run(t, nil, "a brand new long password\n", "admin", "reset-password", "--db", path, "--username", "root", "--rotate-totp")
+	if code != 0 || !strings.Contains(out, "New TOTP secret") || strings.Contains(out, "brand new") {
+		t.Fatalf("%d %q %q", code, out, errs)
+	}
+	db, _ = store.Open(ctx, path)
+	defer func() { _ = db.Close() }()
+	after, _ := db.AdminByUsername(ctx, "root")
+	if after.PasswordHash == before.PasswordHash || after.TOTPSecret == before.TOTPSecret {
+		t.Fatal("credentials not replaced")
+	}
+	if ok, _ := auth.VerifyPassword("a brand new long password", after.PasswordHash); !ok {
+		t.Fatal("new password does not verify")
+	}
+	if _, err := db.SessionByHash(ctx, "s"); err == nil {
+		t.Fatal("old session survived")
+	}
+	res, _ := audit.New(db).Verify(ctx, audit.VerifyOptions{})
+	if !res.OK() || res.Entries < 4 {
+		t.Fatalf("recovery actions not audited: %+v", res)
+	}
+	// errors: unknown user, weak password, missing db
+	if code, _, _ := run(t, nil, "a brand new long password\n", "admin", "reset-password", "--db", path, "--username", "ghost"); code == 0 {
+		t.Fatal("unknown user")
+	}
+	if code, _, _ := run(t, nil, "short\n", "admin", "reset-password", "--db", path, "--username", "root"); code == 0 {
+		t.Fatal("weak password")
+	}
+	if code, _, _ := run(t, nil, "", "admin", "unlock", "--db", filepath.Join(t.TempDir(), "none.db")); code == 0 {
+		t.Fatal("missing db")
 	}
 }
 

@@ -21,6 +21,9 @@ import (
 // MaxBodyBytes bounds every request body.
 const MaxBodyBytes = 1 << 20
 
+// MaxLoginBodyBytes bounds the unauthenticated login body.
+const MaxLoginBodyBytes = 4 << 10
+
 // WriteJSON writes v as JSON with the given status.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -46,6 +49,11 @@ func Problem(w http.ResponseWriter, status int, detail string) {
 // DecodeJSON reads a JSON body into v, rejecting unknown fields and trailing data. The Content-Type
 // must be application/json (this also blocks cross-site form posts).
 func DecodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	return DecodeJSONMax(w, r, v, MaxBodyBytes)
+}
+
+// DecodeJSONMax is DecodeJSON with a custom body limit (small for unauthenticated endpoints).
+func DecodeJSONMax(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	ct := r.Header.Get("Content-Type")
 	if i := strings.IndexByte(ct, ';'); i >= 0 {
 		ct = ct[:i]
@@ -54,7 +62,7 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 		Problem(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
 		return false
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		var mbe *http.MaxBytesError

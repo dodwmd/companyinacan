@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
@@ -20,13 +22,21 @@ import (
 // Errors returned by the service.
 var (
 	// ErrInvalidCredentials is the single answer for every failed login: unknown user, wrong
-	// password, wrong or reused TOTP code. Callers must not distinguish them.
+	// password, wrong or reused TOTP code, oversized input. Callers must not distinguish them.
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrUnauthenticated means no valid session.
 	ErrUnauthenticated = errors.New("unauthenticated")
+	// ErrBusy means the password-hashing slot could not be obtained in time (overload protection).
+	ErrBusy = errors.New("login temporarily unavailable")
 )
 
-// LockedError is returned while a user or client address is locked out.
+// Input limits applied before any hashing.
+const (
+	MaxUsernameLen = 64
+	MaxPasswordLen = 1024
+)
+
+// LockedError is returned while a user/address pair or a client address is locked out or rate limited.
 type LockedError struct{ RetryAfter time.Duration }
 
 func (e *LockedError) Error() string {
@@ -35,14 +45,18 @@ func (e *LockedError) Error() string {
 
 // Policy is the login throttling policy.
 type Policy struct {
-	MaxUserFailures int           // failures per username before lockout
+	MaxUserFailures int           // failures per (username, client address) before lockout
 	MaxIPFailures   int           // failures per client address before lockout
+	AttemptsPerMin  int           // all login attempts per client address per minute, checked before hashing
 	Window          time.Duration // failures older than this are forgotten
 	LockFor         time.Duration
 }
 
-// DefaultPolicy locks a username for 15 minutes after 5 failures and a client address after 20.
-var DefaultPolicy = Policy{MaxUserFailures: 5, MaxIPFailures: 20, Window: 15 * time.Minute, LockFor: 15 * time.Minute}
+// DefaultPolicy: a (username, address) pair is locked for 15 minutes after 5 failures, an address
+// after 20, and an address may not make more than 10 attempts a minute. The username lock is keyed
+// on the address as well so an anonymous attacker cannot lock the real admin out from elsewhere;
+// recovery for the remaining cases is `can-core admin unlock`.
+var DefaultPolicy = Policy{MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 10, Window: 15 * time.Minute, LockFor: 15 * time.Minute}
 
 // DefaultSessionTTL is the absolute lifetime of an admin session.
 const DefaultSessionTTL = 12 * time.Hour
@@ -55,6 +69,11 @@ type Options struct {
 	Policy     Policy
 	SessionTTL time.Duration
 	Now        func() time.Time
+	Log        *slog.Logger
+	// HashSlots bounds concurrent argon2 evaluations (each holds ~19 MiB). Default 1.
+	HashSlots int
+	// HashWait is how long a login waits for a slot before giving up with ErrBusy. Default 3 s.
+	HashWait time.Duration
 }
 
 // Appender is the audit log write interface.
@@ -68,6 +87,16 @@ type Service struct {
 	audit Appender
 	opt   Options
 	dummy string // hash verified for unknown users so timing does not reveal them
+	slots chan struct{}
+
+	mu      sync.Mutex
+	rate    map[string]*window // per-address attempt counter
+	rateGen time.Time
+}
+
+type window struct {
+	start time.Time
+	n     int
 }
 
 // NewService returns an auth service.
@@ -81,8 +110,17 @@ func NewService(db *store.DB, a Appender, opt Options) *Service {
 	if opt.Now == nil {
 		opt.Now = time.Now
 	}
+	if opt.Log == nil {
+		opt.Log = slog.Default()
+	}
+	if opt.HashSlots < 1 {
+		opt.HashSlots = 1
+	}
+	if opt.HashWait == 0 {
+		opt.HashWait = 3 * time.Second
+	}
 	d, _ := HashPassword("dummy password for timing equalisation")
-	return &Service{db: db, audit: a, opt: opt, dummy: d}
+	return &Service{db: db, audit: a, opt: opt, dummy: d, slots: make(chan struct{}, opt.HashSlots), rate: map[string]*window{}}
 }
 
 // LoginRequest is one login attempt.
@@ -109,26 +147,77 @@ func randToken() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (s *Service) record(ctx context.Context, actor, action, ip string, extra map[string]any) {
-	d := map[string]any{"ip": ip}
-	for k, v := range extra {
-		d[k] = v
-	}
-	_, _ = s.audit.Append(ctx, audit.Entry{Actor: actor, Action: action, Target: "admin", Detail: d})
+func (s *Service) record(ctx context.Context, actor, action, ip string) error {
+	_, err := s.audit.Append(ctx, audit.Entry{Actor: actor, Action: action, Target: "admin", Detail: map[string]any{"ip": ip}})
+	return err
 }
 
-// Login verifies username, password and TOTP code. Locked keys are refused before any credential
-// is evaluated.
+// recordBestEffort logs (never swallows silently) an audit failure on a path that must not block.
+func (s *Service) recordBestEffort(ctx context.Context, actor, action, ip string) {
+	if err := s.record(ctx, actor, action, ip); err != nil {
+		s.opt.Log.Error("audit append failed", "action", action, "error", err)
+	}
+}
+
+// admit counts every login attempt per client address, before any hashing happens.
+func (s *Service) admit(ip string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.rate) > 4096 || now.Sub(s.rateGen) > time.Minute { // bound memory: drop expired windows
+		for k, w := range s.rate {
+			if now.Sub(w.start) >= time.Minute {
+				delete(s.rate, k)
+			}
+		}
+		s.rateGen = now
+	}
+	w := s.rate[ip]
+	if w == nil || now.Sub(w.start) >= time.Minute {
+		w = &window{start: now}
+		s.rate[ip] = w
+	}
+	w.n++
+	if w.n > s.opt.Policy.AttemptsPerMin {
+		return &LockedError{RetryAfter: time.Minute - now.Sub(w.start)}
+	}
+	return nil
+}
+
+// acquire takes a hashing slot, bounding concurrent 19 MiB argon2 evaluations.
+func (s *Service) acquire(ctx context.Context) (func(), error) {
+	t := time.NewTimer(s.opt.HashWait)
+	defer t.Stop()
+	select {
+	case s.slots <- struct{}{}:
+		return func() { <-s.slots }, nil
+	case <-t.C:
+		return nil, ErrBusy
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// Login verifies username, password and TOTP code. Rate limits and locks are checked before any
+// credential is evaluated, and argon2 runs under a concurrency cap.
 func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error) {
 	now := s.opt.Now()
-	userKey, ipKey := "user:"+strings.ToLower(r.Username), "ip:"+r.IP
+	if err := s.admit(r.IP, now); err != nil {
+		return LoginResult{}, err
+	}
+	userKey, ipKey := "user:"+strings.ToLower(r.Username)+"|"+r.IP, "ip:"+r.IP
+	if len(r.Username) > MaxUsernameLen || len(r.Password) > MaxPasswordLen || len(r.Username) == 0 {
+		// Never reaches argon2; counts against the address only (no per-name state for junk names).
+		if _, _, err := s.db.RegisterFailure(ctx, ipKey, s.opt.Policy.MaxIPFailures, s.opt.Policy.Window, s.opt.Policy.LockFor, now); err != nil {
+			return LoginResult{}, err
+		}
+		return LoginResult{}, ErrInvalidCredentials
+	}
 	for _, k := range []string{userKey, ipKey} {
 		a, err := s.db.GetLoginAttempt(ctx, k)
 		if err != nil {
 			return LoginResult{}, err
 		}
 		if now.Before(a.LockedUntil) {
-			s.record(ctx, r.Username, "admin.login.locked", r.IP, nil)
 			return LoginResult{}, &LockedError{RetryAfter: a.LockedUntil.Sub(now)}
 		}
 	}
@@ -138,7 +227,12 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 	if uerr == nil {
 		hash = u.PasswordHash
 	}
+	release, err := s.acquire(ctx)
+	if err != nil {
+		return LoginResult{}, err
+	}
 	pwOK, verr := VerifyPassword(r.Password, hash)
+	release()
 	if verr != nil {
 		return LoginResult{}, verr
 	}
@@ -151,19 +245,21 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		ok = valid
 	}
 	if !ok {
-		if err := s.fail(ctx, userKey, s.opt.Policy.MaxUserFailures, now); err != nil {
+		if err := s.fail(ctx, userKey, s.opt.Policy.MaxUserFailures, r.Username, r.IP, now); err != nil {
 			return LoginResult{}, err
 		}
-		if err := s.fail(ctx, ipKey, s.opt.Policy.MaxIPFailures, now); err != nil {
+		if err := s.fail(ctx, ipKey, s.opt.Policy.MaxIPFailures, r.Username, r.IP, now); err != nil {
 			return LoginResult{}, err
 		}
-		s.record(ctx, r.Username, "admin.login.failed", r.IP, nil)
 		return LoginResult{}, ErrInvalidCredentials
 	}
 	_ = s.db.ClearLoginAttempt(ctx, userKey)
 	if NeedsRehash(u.PasswordHash) {
-		if nh, err := HashPassword(r.Password); err == nil {
-			_ = s.db.SetPasswordHash(ctx, u.ID, nh)
+		if release, err := s.acquire(ctx); err == nil {
+			if nh, err := HashPassword(r.Password); err == nil {
+				_ = s.db.SetPasswordHash(ctx, u.ID, nh)
+			}
+			release()
 		}
 	}
 	tok := randToken()
@@ -171,25 +267,26 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 	if err := s.db.CreateSession(ctx, sess); err != nil {
 		return LoginResult{}, err
 	}
+	// Fail closed: a login that cannot be audited does not get a session.
+	if err := s.record(ctx, u.Username, "admin.login", r.IP); err != nil {
+		_ = s.db.DeleteSession(ctx, sess.IDHash)
+		return LoginResult{}, fmt.Errorf("audit log unavailable, refusing login: %w", err)
+	}
 	_, _ = s.db.DeleteExpiredSessions(ctx, now)
-	s.record(ctx, u.Username, "admin.login", r.IP, nil)
 	return LoginResult{Token: tok, Session: sess}, nil
 }
 
-func (s *Service) fail(ctx context.Context, key string, max int, now time.Time) error {
-	a, err := s.db.GetLoginAttempt(ctx, key)
+func (s *Service) fail(ctx context.Context, key string, max int, username, ip string, now time.Time) error {
+	_, locked, err := s.db.RegisterFailure(ctx, key, max, s.opt.Policy.Window, s.opt.Policy.LockFor, now)
 	if err != nil {
 		return err
 	}
-	expiredLock := !a.LockedUntil.IsZero() && a.LockedUntil.Unix() > 0 && !now.Before(a.LockedUntil)
-	if a.Failures == 0 || expiredLock || now.Sub(a.FirstFailed) > s.opt.Policy.Window {
-		a = store.LoginAttempt{Key: key, FirstFailed: now}
+	if locked { // one audit entry per lock, not one per refused attempt
+		s.recordBestEffort(ctx, username, "admin.login.locked", ip)
+	} else if strings.HasPrefix(key, "user:") {
+		s.recordBestEffort(ctx, username, "admin.login.failed", ip)
 	}
-	a.Failures++
-	if a.Failures >= max {
-		a.LockedUntil = now.Add(s.opt.Policy.LockFor)
-	}
-	return s.db.PutLoginAttempt(ctx, a)
+	return nil
 }
 
 // Authenticate resolves a cookie token to a live session and its user.

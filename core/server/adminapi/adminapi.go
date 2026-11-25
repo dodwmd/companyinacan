@@ -122,7 +122,7 @@ type loginBody struct {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var b loginBody
-	if !httpx.DecodeJSON(w, r, &b) {
+	if !httpx.DecodeJSONMax(w, r, &b, httpx.MaxLoginBodyBytes) {
 		return
 	}
 	res, err := s.Auth.Login(r.Context(), auth.LoginRequest{Username: b.Username, Password: b.Password, Code: b.TOTP, IP: httpx.ClientIP(r, s.TrustProxy)})
@@ -131,6 +131,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &locked):
 		w.Header().Set("Retry-After", strconv.Itoa(int(locked.RetryAfter.Seconds())+1))
 		httpx.Problem(w, http.StatusTooManyRequests, "too many failed attempts; try again later")
+		return
+	case errors.Is(err, auth.ErrBusy):
+		w.Header().Set("Retry-After", "5")
+		httpx.Problem(w, http.StatusServiceUnavailable, "login is busy; try again shortly")
 		return
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		httpx.Problem(w, http.StatusUnauthorized, "invalid username, password or authentication code")

@@ -155,7 +155,9 @@ func newEnv(t *testing.T) *env {
 	if _, err := db.CreateAdmin(context.Background(), "root", h, e.sec); err != nil {
 		t.Fatal(err)
 	}
-	e.svc = NewService(db, audit.New(db), Options{Now: func() time.Time { return now }})
+	pol := DefaultPolicy
+	pol.AttemptsPerMin = 1000 // the per-minute limiter has its own test
+	e.svc = NewService(db, audit.New(db), Options{Now: func() time.Time { return now }, Policy: pol})
 	return e
 }
 
@@ -225,7 +227,7 @@ func TestLockoutAfterRepeatedFailuresThenExpires(t *testing.T) {
 		}
 	}
 	// Now even the right credentials are refused, and the credentials are not evaluated.
-	good := LoginRequest{Username: "root", Password: e.pw, Code: e.code(t), IP: "8.8.8.8"}
+	good := LoginRequest{Username: "root", Password: e.pw, Code: e.code(t), IP: "9.9.9.9"}
 	_, err := e.svc.Login(ctx, good)
 	var le *LockedError
 	if !errors.As(err, &le) || le.RetryAfter <= 0 {

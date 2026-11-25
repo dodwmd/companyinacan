@@ -48,7 +48,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	al := audit.New(db)
 	s := &Server{
-		Auth: auth.NewService(db, al, auth.Options{Now: func() time.Time { return now }}),
+		Auth: auth.NewService(db, al, auth.Options{Now: func() time.Time { return now }, Policy: auth.Policy{MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
 		DB:   db, Audit: al, Registry: registry.New(db, "http://can-core"),
 		Log: slog.New(slog.NewJSONHandler(h.logs, nil)), Secure: true, Now: func() time.Time { return now },
 	}
@@ -303,7 +303,19 @@ func TestLogsNeverContainCredentials(t *testing.T) {
 	}
 }
 
-func TestUnknownRouteAndPanicRecovery(t *testing.T) {
+func TestLoginBodyAndUsernameLimits(t *testing.T) {
+	h := newHarness(t)
+	resp, _ := h.do("POST", "/api/v1/login", map[string]string{"username": "root", "password": strings.Repeat("p", 5000), "totp": "000000"})
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized login body: %d", resp.StatusCode)
+	}
+	resp, _ = h.do("POST", "/api/v1/login", map[string]string{"username": strings.Repeat("u", 200), "password": "x", "totp": "000000"})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("long username: %d", resp.StatusCode)
+	}
+}
+
+func TestUnknownRouteAndMethod(t *testing.T) {
 	h := newHarness(t)
 	if resp, _ := h.do("GET", "/nope", nil); resp.StatusCode != 404 {
 		t.Fatalf("%d", resp.StatusCode)

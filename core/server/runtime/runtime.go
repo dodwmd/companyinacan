@@ -168,7 +168,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	disp.Log = log
 
 	adminSrv := &adminapi.Server{
-		Auth: auth.NewService(db, al, auth.Options{}), DB: db, Audit: al, Registry: reg,
+		Auth: auth.NewService(db, al, auth.Options{Log: log}), DB: db, Audit: al, Registry: reg,
 		Log: log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
 	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log}
@@ -240,6 +240,9 @@ func housekeeping(ctx context.Context, db *store.DB, log *slog.Logger) {
 		case <-t.C:
 			if _, err := db.DeleteExpiredSessions(ctx, time.Now()); err != nil {
 				log.Error("session cleanup failed", "error", err)
+			}
+			if _, err := db.PruneLoginAttempts(ctx, time.Now(), auth.DefaultPolicy.Window); err != nil {
+				log.Error("login attempt pruning failed", "error", err)
 			}
 			if _, err := db.PruneEvents(ctx, time.Now().Add(-30*24*time.Hour)); err != nil {
 				log.Error("outbox pruning failed", "error", err)

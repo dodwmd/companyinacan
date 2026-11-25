@@ -196,13 +196,9 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 	user := boot.Flags().String("username", "admin", "admin username")
 	issuer := boot.Flags().String("issuer", "Company in a Can", "issuer label shown in the authenticator app")
 	boot.RunE = func(c *cobra.Command, _ []string) error {
-		pw := getenv("CAN_ADMIN_PASSWORD")
-		if pw == "" {
-			line, err := bufio.NewReader(stdin).ReadString('\n')
-			if err != nil && line == "" {
-				return fail("no password: set CAN_ADMIN_PASSWORD or pipe it on stdin")
-			}
-			pw = strings.TrimRight(line, "\r\n")
+		pw, err := readPassword(stdin, getenv)
+		if err != nil {
+			return err
 		}
 		hash, err := auth.HashPassword(pw)
 		if err != nil {
@@ -227,6 +223,88 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		fmt.Fprintf(w, "Admin %q created.\nTOTP secret (shown once): %s\nProvisioning URI: %s\n", *user, secret, auth.TOTPURI(*issuer, *user, secret))
 		return nil
 	}
-	cmd.AddCommand(boot)
+
+	unlock := &cobra.Command{
+		Use: "unlock", Short: "Clear login lockouts and rate-limit state (recovery)", Args: cobra.NoArgs,
+		Long: "Removes failed-login counters and locks, for every user and address or only for --username.\n" +
+			"Run it inside the can-core pod (kubectl exec) when the admin is locked out.",
+	}
+	udb := dbFlag(unlock, getenv)
+	uuser := unlock.Flags().String("username", "", "only clear locks for this username (default: all)")
+	unlock.RunE = func(c *cobra.Command, _ []string) error {
+		d, err := openExisting(c.Context(), *udb)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = d.Close() }()
+		n, err := d.ClearLoginAttempts(c.Context(), *uuser)
+		if err != nil {
+			return fail("%v", err)
+		}
+		if _, err := audit.New(d).Append(c.Context(), audit.Entry{Actor: "cli", Action: "admin.unlock", Target: "admin", Detail: map[string]any{"username": *uuser}}); err != nil {
+			return fail("%v", err)
+		}
+		fmt.Fprintf(c.OutOrStdout(), "Cleared %d lockout entries.\n", n)
+		return nil
+	}
+
+	reset := &cobra.Command{
+		Use: "reset-password", Short: "Set a new admin password (and optionally a new TOTP secret); ends all sessions", Args: cobra.NoArgs,
+		Long: "The new password comes from $CAN_ADMIN_PASSWORD or the first line of stdin. All sessions of the user are\n" +
+			"destroyed and lockouts cleared. With --rotate-totp a new TOTP secret is generated and printed once (use it when\n" +
+			"the authenticator device was lost). Run inside the can-core pod.",
+	}
+	rdb := dbFlag(reset, getenv)
+	ruser := reset.Flags().String("username", "admin", "admin username")
+	rotate := reset.Flags().Bool("rotate-totp", false, "also generate a new TOTP secret")
+	rissuer := reset.Flags().String("issuer", "Company in a Can", "issuer label shown in the authenticator app")
+	reset.RunE = func(c *cobra.Command, _ []string) error {
+		pw, err := readPassword(stdin, getenv)
+		if err != nil {
+			return err
+		}
+		hash, err := auth.HashPassword(pw)
+		if err != nil {
+			return fail("%v", err)
+		}
+		d, err := openExisting(c.Context(), *rdb)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = d.Close() }()
+		u, err := d.AdminByUsername(c.Context(), *ruser)
+		if err != nil {
+			return fail("no admin %q", *ruser)
+		}
+		secret := ""
+		if *rotate {
+			secret = auth.NewTOTPSecret()
+		}
+		if err := d.SetAdminCredentials(c.Context(), u.ID, hash, secret); err != nil {
+			return fail("%v", err)
+		}
+		_, _ = d.ClearLoginAttempts(c.Context(), "")
+		if _, err := audit.New(d).Append(c.Context(), audit.Entry{Actor: "cli", Action: "admin.reset-password", Target: "admin", Detail: map[string]any{"username": *ruser, "totp_rotated": *rotate}}); err != nil {
+			return fail("%v", err)
+		}
+		w := c.OutOrStdout()
+		fmt.Fprintf(w, "Password for %q reset; all sessions ended.\n", *ruser)
+		if *rotate {
+			fmt.Fprintf(w, "New TOTP secret (shown once): %s\nProvisioning URI: %s\n", secret, auth.TOTPURI(*rissuer, *ruser, secret))
+		}
+		return nil
+	}
+	cmd.AddCommand(boot, unlock, reset)
 	return cmd
+}
+
+func readPassword(stdin io.Reader, getenv func(string) string) (string, error) {
+	if pw := getenv("CAN_ADMIN_PASSWORD"); pw != "" {
+		return pw, nil
+	}
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && line == "" {
+		return "", fail("no password: set CAN_ADMIN_PASSWORD or pipe it on stdin")
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
