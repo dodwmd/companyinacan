@@ -710,6 +710,19 @@ func TestStatusShowsAFailedDumpRun(t *testing.T) {
 	}
 }
 
+// E08b QA2 1: modules a successful run skipped are shown loudly.
+func TestStatusShowsSkippedModules(t *testing.T) {
+	m := newMM(t)
+	m.svc.LastDump = func() (backup.DumpRun, error) {
+		return backup.DumpRun{RunID: "r", At: time.Unix(1_700_000_000, 0), OK: true, Skipped: []backup.SkippedModule{{ID: "crm", Reason: "disabled", Database: "mariadb"}}}, nil
+	}
+	s := m.loginAs("viewer")
+	r := m.do("GET", "/status", nil, s.with()...)
+	if r.StatusCode != 200 || !strings.Contains(r.body, "DATABASE IS NOT BACKED UP") {
+		t.Fatalf("%d\n%s", r.StatusCode, r.body)
+	}
+}
+
 // --- purge --------------------------------------------------------------------------------------
 
 func TestPurgeIsSeparateTypedAndPermissioned(t *testing.T) {

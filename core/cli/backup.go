@@ -179,6 +179,9 @@ func newBackupStatusCmd(g *globalOpts) *cobra.Command {
 				for _, p := range rep.Problems {
 					fmt.Fprintln(w, "PROBLEM:", p)
 				}
+				for _, m := range rep.Warnings {
+					fmt.Fprintln(w, "WARNING:", m)
+				}
 			}
 			if len(rep.Problems) > 0 {
 				return silent(ExitFailure)

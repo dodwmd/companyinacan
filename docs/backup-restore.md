@@ -19,9 +19,11 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    bootstrap and `can backup install` set that). A run happens nightly at 02:30 UTC (`CAN_DUMP_AT`), about 10
    minutes after start when no marker younger than 20 h exists, and on request:
    `sudo k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m` (on the server). It:
-   - deletes `COMPLETE` and removes what an earlier run left behind;
+   - puts the previous set back if an earlier run died while swapping it, deletes `COMPLETE` and removes what an
+     earlier run left behind;
    - writes `can-core/state.db` (`VACUUM INTO` over a read-only connection of its own, then `integrity_check`) and
-     a copy of the applied `company.yaml`;
+     a copy of the applied `company.yaml`. These two are replaced in place, so after a **failed** run they are newer
+     than the module dumps beside them; without a marker the set is not backed up either way;
    - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
      data is still there), as a Job in `mod-<id>`: restricted pod, projected audience-`can` token, the module's
      volume at `/data`, `/storage` and `/app/data` (read-only unless SQLite; none for MariaDB/PostgreSQL modules).
@@ -33,7 +35,12 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    - when every hook succeeded: swaps the staged set in, writes `DUMPED` (which modules, and their database kind),
      flushes everything to disk, then writes `COMPLETE` (run id, finish time). One failing hook therefore stops
      backups until it is fixed: `can backup status` and the admin status page show the last failure
-     (`LAST-RUN`). Downloads (`GET /v1/dumps/...`) are refused: there is no restore mode yet.
+     (`LAST-RUN`).
+   - **A disabled module never stops backups.** If its hook cannot run (the unpublished `can-hooks` image) or fails,
+     it is skipped and reported by `can backup status`, the admin status page and `can up`. Only its raw volume
+     files are then backed up; for a MariaDB or PostgreSQL module **the database is not backed up**. A module that
+     had a dump and suddenly reports no data is reported the same way, and its earlier dump is kept. To get backups
+     back after enabling a module whose hook cannot run, disable it. Downloads (`GET /v1/dumps/...`) are refused: there is no restore mode yet.
 2. The host timer `can-backup.timer` (default 03:30 plus up to 15 min) starts `can-backup.service`, which runs
    `/usr/local/sbin/can-backup`. The script, in order:
    - syncs the erasure ledger (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
@@ -222,7 +229,8 @@ a module backup hook Job. The numbers are in
   onto a blank host, importing can-core state, module `restore` hooks and PVC data have never run. can-core has no
   restore mode: whoever implements it must keep dump runs off until the import is done.
 - The shipped module hooks (wiki, support, newsletter, analytics, crm, status) and the `can-hooks` image: the
-  image is not built or published, so these modules' dump runs fail (and no marker is written) until it is. The
+  image is not built or published, so while one of them is enabled the dump run fails (and no marker is written);
+  disabled, it is skipped. The
   hook Job mechanism was run with a test module and a public curl image.
 - `can-hooks` Jobs against a database module (DB credentials come from the `can-database` Secret).
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps

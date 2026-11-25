@@ -22,3 +22,19 @@ func TestUnrunnableBackupHookWarns(t *testing.T) {
 		}
 	}
 }
+
+// QA2 1: the warnings name the way out and do not claim disabling is not enough.
+func TestUnrunnableBackupHookWarningNamesTheWayOut(t *testing.T) {
+	for _, p := range ModuleFile(filepath.Join("..", "..", "modules", "crm", "module.yaml")) {
+		if p.Rule != "semantic.backup-hooks-image" {
+			continue
+		}
+		for _, want := range []string{"Disable the module", "database is NOT backed up"} {
+			if !strings.Contains(p.Message, want) {
+				t.Errorf("missing %q: %s", want, p.Message)
+			}
+		}
+		return
+	}
+	t.Fatal("no warning")
+}

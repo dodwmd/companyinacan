@@ -145,6 +145,9 @@ func (s *Service) Status(ctx context.Context) (Health, error) {
 	if s.LastDump != nil {
 		if run, err := s.LastDump(); err == nil {
 			run.Error = Sanitise(run.Error)
+			for i := range run.Skipped {
+				run.Skipped[i].Reason = Sanitise(run.Skipped[i].Reason)
+			}
 			h.Dump = &run
 		}
 	}

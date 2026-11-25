@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dodwmd/companyinacan/core/backup"
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/provider"
 )
 
@@ -35,7 +36,7 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		return false, "", err
 	}
 	s := b.Settings
-	if err := r.warnBackupLimits(b); err != nil {
+	if err := r.warnBackupLimits(ctx, b.Mods, b.Settings); err != nil {
 		return false, "", err
 	}
 	shown := st.Launch != nil && st.Launch.KitShown
@@ -148,9 +149,19 @@ func validPassword(s string) bool {
 // RestoreCaveat is shown by every `can up` with backups on.
 const RestoreCaveat = "RESTORE IS NOT FUNCTIONAL YET: `can restore` stops at its first step. Snapshots are taken, but recovering from them is manual work with restic (docs/backup-restore.md)"
 
-// warnBackupLimits says, on every run, what the backup does not do for this company.
-func (r *runner) warnBackupLimits(b *BackupInstall) error {
-	plan, err := backup.BuildPlan(r.o.Company, b.Mods, b.Settings)
+// warnBackupLimits says, on every run of a company with backups, what the backup does not do,
+// and what the server's last dump run reported.
+func (r *runner) warnBackupLimits(ctx context.Context, mods map[string]*config.Module, s backup.Settings) error {
+	// Modules without a readable manifest cannot be judged here (the install itself requires
+	// the enabled ones).
+	known := *r.o.Company
+	known.Modules = map[string]config.ModuleEntry{}
+	for id, e := range r.o.Company.Modules {
+		if mods[id] != nil {
+			known.Modules[id] = e
+		}
+	}
+	plan, err := backup.BuildPlan(&known, mods, s)
 	if err != nil {
 		return err
 	}
@@ -158,6 +169,22 @@ func (r *runner) warnBackupLimits(b *BackupInstall) error {
 	r.res.Warnings = append(r.res.Warnings, plan.Warnings...)
 	if r.res.BundleAdded {
 		r.res.Warnings = append(r.res.Warnings, `module "forms" keeps SQLite on a PVC but has no backup hook: raw database files are backed up and may be inconsistent`)
+	}
+	// Modules the server still records (removed from company.yaml, say) show up in its last run.
+	out, err := r.d.Host.Run(ctx, "cat "+path.Join(s.DumpsDir, backup.DumpRunName)+" 2>/dev/null || true\n")
+	if err != nil {
+		r.res.Warnings = append(r.res.Warnings, "could not read the server's last dump run: run `can backup status` on the server")
+		return nil
+	}
+	run, err := backup.ParseDumpRun([]byte(out))
+	if err != nil {
+		return nil // no run yet
+	}
+	if !run.OK {
+		r.res.Warnings = append(r.res.Warnings, "the server's last dump run FAILED, so nothing new is being backed up: "+run.Error)
+	}
+	for _, m := range run.Skipped {
+		r.res.Warnings = append(r.res.Warnings, m.Message())
 	}
 	return nil
 }

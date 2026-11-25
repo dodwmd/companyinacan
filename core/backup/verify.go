@@ -176,6 +176,8 @@ type StatusReport struct {
 	Latest    string    `json:"latest,omitempty"`
 	LatestAt  time.Time `json:"latest_at,omitempty"`
 	Problems  []string  `json:"problems,omitempty"`
+	// Warnings are shown but do not fail the status: modules covered by their raw files only.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Status inspects the completion marker and the repository. r == nil means no
@@ -187,8 +189,17 @@ func Status(ctx context.Context, r ResticAPI, dumpsDir string, now time.Time, ma
 		return rep
 	}
 	rep.Enabled = true
-	if run, err := ReadDumpRun(dumpsDir); err == nil && !run.OK {
-		rep.Problems = append(rep.Problems, fmt.Sprintf("last dump run failed at %s: %s", run.At.UTC().Format("2006-01-02 15:04 MST"), run.Error))
+	if run, err := ReadDumpRun(dumpsDir); err == nil {
+		if !run.OK {
+			rep.Problems = append(rep.Problems, fmt.Sprintf("last dump run failed at %s: %s", run.At.UTC().Format("2006-01-02 15:04 MST"), run.Error))
+		}
+		for _, s := range run.Skipped {
+			if s.DatabaseServer() || s.NoData {
+				rep.Problems = append(rep.Problems, s.Message())
+			} else {
+				rep.Warnings = append(rep.Warnings, s.Message())
+			}
+		}
 	}
 	if m, err := ReadMarker(filepath.Join(dumpsDir, MarkerName)); err != nil {
 		rep.Problems = append(rep.Problems, err.Error())

@@ -130,6 +130,7 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 		}
 	}
 	sort.Strings(ids)
+	p.Warnings = append(p.Warnings, disabledSkips(co, mods)...)
 	for _, id := range ids {
 		m, ok := mods[id]
 		if !ok || m == nil {
@@ -140,11 +141,37 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 			p.Dumps = append(p.Dumps, Dump{Module: id, Hook: m.Hooks.Backup, File: "modules/" + id + "/"})
 		}
 		if why := m.BackupHookUnrunnable(); why != "" {
-			p.Warnings = append(p.Warnings, fmt.Sprintf("module %q has a backup hook that cannot run (%s): while it is enabled every dump run fails and NOTHING is backed up", id, why))
+			p.Warnings = append(p.Warnings, fmt.Sprintf("module %q has a backup hook that cannot run (%s): while it is enabled (or recorded as failed) every dump run fails and NOTHING is backed up. %s", id, why, DisableAdvice(m.Requires.Database)))
 		}
 		if m.Requires.Database == "sqlite" && !hasDump {
 			p.Warnings = append(p.Warnings, fmt.Sprintf("module %q keeps SQLite on a PVC but has no backup hook: raw database files are backed up and may be inconsistent", id))
 		}
 	}
 	return p, nil
+}
+
+// DisableAdvice is the way out for a module whose backup hook cannot run.
+func DisableAdvice(database string) string {
+	s := SkippedModule{Database: database}
+	if s.DatabaseServer() {
+		return "Disable the module to get backups back; its database is NOT backed up then either."
+	}
+	return "Disable the module to get backups back; only its raw volume files are backed up then."
+}
+
+// disabledSkips announces the disabled modules the dump runs will skip.
+func disabledSkips(co *config.Company, mods map[string]*config.Module) []string {
+	var ids []string
+	for id, e := range co.Modules {
+		if !e.IsEnabled() && mods[id] != nil && mods[id].BackupHookUnrunnable() != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	var out []string
+	for _, id := range ids {
+		s := SkippedModule{ID: id, Database: mods[id].Requires.Database, Reason: "its backup hook cannot run (" + mods[id].BackupHookUnrunnable() + ")"}
+		out = append(out, strings.Replace(s.Message(), "was NOT dumped", "is disabled and, if it holds data, is NOT dumped", 1))
+	}
+	return out
 }

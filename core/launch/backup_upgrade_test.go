@@ -112,3 +112,32 @@ func TestBackupWarningsReachTheOperator(t *testing.T) {
 		}
 	}
 }
+
+// QA2 1 and 6: a plain re-run (no --backup-*) of a company with backups still states the limits,
+// including disabled modules and what the server's last dump run skipped.
+func TestPlainReRunShowsBackupLimitsAndSkippedModules(t *testing.T) {
+	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
+	o, d, _ := newStack(t, k, &fakeLoader{})
+	d.Host = &hostFake{out: map[string]string{"LAST-RUN": `{"run_id":"r","ok":true,"skipped":[{"id":"oldwiki","reason":"disabled","database":"none"}]}`}}
+	off := false
+	crm := &config.Module{ID: "crm"}
+	crm.Requires.Database, crm.Hooks.Backup, crm.Hooks.Image = "mariadb", "./hooks/backup.sh", "ghcr.io/dodwmd/can-hooks:0.1.0"
+	o.Company.Modules = map[string]config.ModuleEntry{"crm": {Enabled: &off}, "unknown": {}}
+	o.Mods = map[string]*config.Module{"crm": crm}
+	if err := d.Store.Mutate(func(s *provider.State) error {
+		s.Launch = &provider.LaunchState{BackupInstalled: true, BackupVersion: BackupInstallVersion, KitShown: true}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(context.Background(), o, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(res.Warnings, "\n")
+	for _, want := range []string{"RESTORE IS NOT FUNCTIONAL", `"crm" is disabled`, "DATABASE IS NOT BACKED UP", `"oldwiki" was NOT dumped`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q in:\n%s", want, all)
+		}
+	}
+}

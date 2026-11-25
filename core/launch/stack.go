@@ -69,7 +69,9 @@ type Options struct {
 	ForceCompany bool
 	SiteBaseURL  string // canonical origin baked into the site (sitemap, canonical links)
 	Backup       *BackupInstall
-	Timeouts     Timeouts
+	// Mods are the manifests of the company's modules that could be read, for backup warnings.
+	Mods     map[string]*config.Module
+	Timeouts Timeouts
 }
 
 // Deps are the seams.
@@ -444,8 +446,13 @@ func (r *runner) hostDumpsDir(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if r.o.Backup == nil && st.Launch != nil && st.Launch.BackupInstalled && st.Launch.BackupVersion < BackupInstallVersion {
-		r.res.Warnings = append(r.res.Warnings, "the backup script on the server was installed by an older version: run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file to update it")
+	if r.o.Backup == nil && st.Launch != nil && st.Launch.BackupInstalled {
+		if st.Launch.BackupVersion < BackupInstallVersion {
+			r.res.Warnings = append(r.res.Warnings, "the backup script on the server was installed by an older version: run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file to update it")
+		}
+		if err := r.warnBackupLimits(ctx, r.o.Mods, backup.DefaultSettings()); err != nil {
+			return err
+		}
 	}
 	return nil
 }

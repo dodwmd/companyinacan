@@ -97,3 +97,22 @@ func TestSettingsValidate(t *testing.T) {
 		}
 	}
 }
+
+// QA2 1: a disabled module whose hook cannot run is announced as skipped.
+func TestBuildPlanWarnsAboutDisabledModulesThatWillBeSkipped(t *testing.T) {
+	co := &config.Company{Modules: map[string]config.ModuleEntry{"crm": {Enabled: off()}, "wiki": {Enabled: off()}}}
+	crm := mod("crm", "mariadb", "./hooks/backup.sh")
+	crm.Hooks.Image = config.UnpublishedHooksImage + "0.1.0"
+	wiki := mod("wiki", "none", "./hooks/backup.sh")
+	wiki.Hooks.Image = config.UnpublishedHooksImage + "0.1.0"
+	p, err := BuildPlan(co, map[string]*config.Module{"crm": crm, "wiki": wiki}, DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(p.Warnings, "\n")
+	for _, want := range []string{`"crm" is disabled`, "DATABASE IS NOT BACKED UP", `"wiki" is disabled`, "raw volume files"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q in %s", want, all)
+		}
+	}
+}

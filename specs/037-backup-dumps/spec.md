@@ -27,6 +27,9 @@ specs/033-make-up-e2e (can-core could not write the host dumps directory, so eve
   copy, root-owned host-state, symlink refusal exit 13, `forget --group-by ''`).
 - **FR-006** The host gets a restic of 0.17 or newer, pinned by version and sha256.
 - **FR-007** `--allow-broken-backup` is accepted and does nothing.
+- **FR-012** A disabled module never stops backups: a hook that cannot run or fails is skipped and reported (a
+  database-server module's database is then not backed up). Data that disappears is reported, and the earlier dump
+  kept. The swap of the module set survives a crash or a failed rename.
 - **FR-009** Raw SQLite exclusions follow what was dumped in the run, never the install-time plan.
 - **FR-010** The operator is told what backups do not do (restore, live-file SQLite, unrunnable hooks) and sees the
   last failed run.

@@ -5,11 +5,11 @@ Host `/var/lib/can/dumps` is the `can-dumps` volume, which can-core sees as `/va
 
 | Path (relative to the directory) | Content |
 |---|---|
-| `can-core/state.db` | `VACUUM INTO` copy of can-core's database, integrity-checked |
-| `company.yaml` | the applied company file |
+| `can-core/state.db` | `VACUUM INTO` copy of can-core's database, integrity-checked; replaced even by a run that later fails |
+| `company.yaml` | the applied company file; likewise replaced in place |
 | `modules/<id>/<name>` | the uploads of the last successful run, 0600 |
 | `DUMPED` | `<id> <database>` per module dumped in that run |
-| `LAST-RUN` | JSON: run id, time, ok, error |
+| `LAST-RUN` | JSON: run id, time, ok, error, skipped modules |
 | `COMPLETE` | `run_id=` and `finished_at=` lines (specs/008 format), present only after a fully successful run |
 | `.run-<id>/` | staging of the run in progress (`tmp/`, `modules/`); never backed up |
 
