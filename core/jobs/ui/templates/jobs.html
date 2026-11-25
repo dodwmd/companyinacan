@@ -1,0 +1,24 @@
+{{define "content"}}
+<h1>{{t "jobs.title"}}</h1>
+<p class="actions">
+<a href="/jobs">{{t "jobs.all"}}</a>
+<a href="/jobs?status=draft">{{t "jstatus.draft"}}</a>
+<a href="/jobs?status=open">{{t "jstatus.open"}}</a>
+<a href="/jobs?status=paused">{{t "jstatus.paused"}}</a>
+<a href="/jobs?status=closed">{{t "jstatus.closed"}}</a>
+{{if .Caps.WriteJobs}}<a href="/jobs/new">{{t "jobs.new"}}</a>{{end}}
+</p>
+{{if .Data.Jobs}}
+<div class="scroll">
+<table>
+<caption>{{t "jobs.caption"}}</caption>
+<thead><tr><th scope="col">{{t "job.title_col"}}</th><th scope="col">{{t "job.department"}}</th><th scope="col">{{t "job.status"}}</th><th scope="col">{{t "job.approval"}}</th><th scope="col">{{t "job.manager"}}</th></tr></thead>
+<tbody>
+{{range .Data.Jobs}}<tr><th scope="row"><a href="/jobs/{{.ID}}">{{.Title}}</a></th><td>{{.Department}}</td><td>{{t (printf "jstatus.%s" .Status)}}</td><td>{{t (printf "approval.%s" .Approval)}}</td><td>{{.HiringManager}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "jobs.none"}}</p>{{end}}
+{{if .Data.Next}}<p><a href="/jobs?status={{.Data.Status}}&amp;cursor={{.Data.Next}}">{{t "common.more"}}</a></p>{{end}}
+{{end}}

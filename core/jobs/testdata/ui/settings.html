@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<meta name="robots" content="noindex, nofollow">
+<title>Settings - Company in a Can: Recruiting</title>
+<link rel="stylesheet" href="/static/jobs.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Recruiting</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/jobs">Requisitions</a></li>
+<li><a href="/interviews">My interviews</a></li>
+<li><a href="/talent">Talent pool</a></li>
+<li><a href="/settings" aria-current="page">Settings</a></li>
+
+</ul>
+</nav>
+<p class="who">Signed in as rita</p>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Settings</h1>
+<p class="hint">These settings are read-only here. Change the pipeline stages through the API (PUT /v1/stages, administrators with an unscoped token).</p>
+<div class="scroll">
+<table>
+<caption>Pipeline stages</caption>
+<thead><tr><th scope="col">Position</th><th scope="col">Name</th><th scope="col">Key</th><th scope="col">Kind</th></tr></thead>
+<tbody>
+<tr><td>1</td><th scope="row">Applied</th><td>applied</td><td>Initial</td></tr>
+<tr><td>2</td><th scope="row">Screen</th><td>screen</td><td>Active</td></tr>
+<tr><td>3</td><th scope="row">Interview</th><td>interview</td><td>Active</td></tr>
+<tr><td>4</td><th scope="row">Offer</th><td>offer</td><td>Offer</td></tr>
+<tr><td>5</td><th scope="row">Hired</th><td>hired</td><td>Hired</td></tr>
+
+</tbody>
+</table>
+</div>
+<div class="scroll">
+<table>
+<caption>Job boards</caption>
+<thead><tr><th scope="col">Board</th><th scope="col">Status</th><th scope="col">Note</th></tr></thead>
+<tbody>
+<tr><th scope="row">google-jobs</th><td>feed</td><td>Google for Jobs indexes the JobPosting data on the careers pages; no agreement needed</td></tr>
+<tr><th scope="row">generic-feed</th><td>feed</td><td>XML and JSON feeds for aggregators that accept them; check each aggregator&#39;s terms</td></tr>
+<tr><th scope="row">indeed-feed</th><td>feed</td><td>Indeed-format XML feed; Indeed accepts feeds only from approved partners, so this is a ready file, not an integration</td></tr>
+<tr><th scope="row">linkedin</th><td>needs_partner_access</td><td>the board&#39;s posting API is open to approved partners only; apply to its programme, then replace this stub with a connector</td></tr>
+<tr><th scope="row">indeed</th><td>needs_partner_access</td><td>the board&#39;s posting API is open to approved partners only; apply to its programme, then replace this stub with a connector</td></tr>
+<tr><th scope="row">glassdoor</th><td>needs_partner_access</td><td>the board&#39;s posting API is open to approved partners only; apply to its programme, then replace this stub with a connector</td></tr>
+<tr><th scope="row">fake-board</th><td>connected</td><td>test double</td></tr>
+
+</tbody>
+</table>
+</div>
+<p class="hint">Email and interview templates are not part of this module yet.</p>
+
+</main>
+<footer>
+<p>Company in a Can recruiting. Apache-2.0. A tool, not legal advice: candidate data is personal data.</p>
+</footer>
+</body>
+</html>

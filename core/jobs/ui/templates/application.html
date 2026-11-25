@@ -1,0 +1,145 @@
+{{define "content"}}
+{{with .Data}}
+<h1>{{.A.CandidateName}}</h1>
+<dl class="facts">
+<dt>{{t "app.job"}}</dt><dd>{{if $.Caps.ReadJobs}}<a href="/jobs/{{.A.JobID}}">{{.A.JobTitle}}</a>{{else}}{{.A.JobTitle}}{{end}}</dd>
+<dt>{{t "app.stage"}}</dt><dd>{{.StageName}}</dd>
+<dt>{{t "app.status"}}</dt><dd><span class="badge">{{t (printf "astatus.%s" .A.Status)}}</span></dd>
+{{if .A.RejectReason}}<dt>{{t "app.reject_reason"}}</dt><dd>{{t (printf "reason.%s" .A.RejectReason)}}</dd>{{end}}
+{{if .A.Source}}<dt>{{t "app.source"}}</dt><dd>{{.A.Source}}</dd>{{end}}
+<dt>{{t "app.applied"}}</dt><dd>{{when .A.CreatedAt}}</dd>
+</dl>
+
+{{if $.Caps.ReadCandidate}}
+<section aria-labelledby="h-cand">
+<h2 id="h-cand">{{t "app.candidate"}}</h2>
+<p class="notice">{{t "app.reveal_notice"}}</p>
+<p class="actions"><a href="/candidates/{{.A.CandidateID}}">{{t "app.candidate_page"}}</a></p>
+<form method="post" action="/applications/{{.A.ID}}/reveal">
+{{template "csrf" $}}
+<button type="submit">{{t "app.reveal"}}</button>
+</form>
+</section>
+{{end}}
+
+<section aria-labelledby="h-resume">
+<h2 id="h-resume">{{t "app.resume"}}</h2>
+{{with .A.Resume}}
+<dl class="facts">
+<dt>{{t "resume.name"}}</dt><dd>{{.Name}}</dd>
+<dt>{{t "resume.type"}}</dt><dd>{{.Type}}</dd>
+<dt>{{t "resume.size"}}</dt><dd>{{t "resume.bytes" .Size}}</dd>
+<dt>{{t "resume.scan"}}</dt><dd><span class="badge">{{t (printf "scan.%s" .Scan)}}</span></dd>
+</dl>
+{{if $.Data.ResumeLink}}<p><a href="/applications/{{$.Data.A.ID}}/resume">{{t "resume.download"}}</a> <span class="hint">{{t "resume.download_hint"}}</span></p>
+{{else}}<p class="error" role="alert">{{t "resume.blocked"}}</p>{{end}}
+{{else}}<p class="muted">{{t "resume.none"}}</p>{{end}}
+</section>
+
+{{if and .Active $.Caps.MoveApps}}
+<section aria-labelledby="h-move">
+<h2 id="h-move">{{t "app.move"}}</h2>
+<form method="post" action="/applications/{{.A.ID}}/move" class="card">
+{{template "csrf" $}}
+<p><label for="mv-note">{{t "move.note"}}</label>
+<input id="mv-note" name="note" required maxlength="500"></p>
+<p>
+{{if .Prev}}<button type="submit" name="to" value="{{.Prev.Key}}">{{t "move.back" .Prev.Name}}</button>{{end}}
+{{if .Next}}<button type="submit" name="to" value="{{.Next.Key}}">{{t "move.forward" .Next.Name}}</button>{{end}}
+</p>
+</form>
+<h3>{{t "app.reject"}}</h3>
+<form method="post" action="/applications/{{.A.ID}}/reject" class="card">
+{{template "csrf" $}}
+<p><label for="rj-reason">{{t "app.reject_reason"}}</label>
+<select id="rj-reason" name="reason">{{range .RejectReasons}}<option value="{{.}}">{{t (printf "reason.%s" .)}}</option>{{end}}</select></p>
+<p><label for="rj-note">{{t "app.reject_note"}}</label>
+<textarea id="rj-note" name="note" rows="3" maxlength="2000"></textarea></p>
+<p><button type="submit">{{t "app.reject"}}</button></p>
+</form>
+{{if and .Offer $.Caps.HireApps}}
+<h3>{{t "app.hire_title"}}</h3>
+<form method="post" action="/applications/{{.A.ID}}/hire" class="card">
+{{template "csrf" $}}
+<p class="hint">{{t "app.hire_hint"}}</p>
+<p><button type="submit">{{t "app.hire"}}</button></p>
+</form>
+{{end}}
+</section>
+{{end}}
+
+{{if $.Caps.AssignPanel}}
+<section aria-labelledby="h-panel">
+<h2 id="h-panel">{{t "app.panel"}}</h2>
+{{if .Interviewers}}
+<ul class="list">
+{{range .Interviewers}}<li>{{.}}
+<form method="post" action="/applications/{{$.Data.A.ID}}/interviewers/remove" class="inline">
+{{template "csrf" $}}
+<input type="hidden" name="subject" value="{{.}}">
+<button type="submit">{{t "app.unassign"}}</button>
+</form></li>
+{{end}}
+</ul>
+{{else}}<p class="muted">{{t "app.panel_none"}}</p>{{end}}
+<form method="post" action="/applications/{{.A.ID}}/interviewers" class="card">
+{{template "csrf" $}}
+<p><label for="as-subject">{{t "app.assign_subject"}}</label>
+<input id="as-subject" name="subject" required maxlength="128" autocomplete="off"></p>
+<p><button type="submit">{{t "app.assign"}}</button></p>
+</form>
+</section>
+{{end}}
+
+{{if $.Caps.Score}}
+<section aria-labelledby="h-fb">
+<h2 id="h-fb">{{t "fb.title"}}</h2>
+{{if .Blind}}<p class="notice">{{t "fb.blind"}}</p>{{end}}
+{{if and .Active .Assigned (or (not .Mine) (eq .Mine.Status "draft"))}}
+<form method="post" action="/applications/{{.A.ID}}/scorecard" class="card">
+{{template "csrf" $}}
+<p><label for="sc-rating">{{t "fb.rating"}}</label>
+<select id="sc-rating" name="rating">{{$r := 0}}{{if .Mine}}{{$r = .Mine.Rating}}{{end}}{{range .Ratings}}<option value="{{.}}"{{if eq . $r}} selected{{end}}>{{t (printf "rating.%d" .)}}</option>{{end}}</select></p>
+<p><label for="sc-rec">{{t "fb.recommendation"}}</label>
+<select id="sc-rec" name="recommendation">{{$c := ""}}{{if .Mine}}{{$c = .Mine.Recommendation}}{{end}}{{range .Recs}}<option value="{{.}}"{{if eq . $c}} selected{{end}}>{{t (printf "rec.%s" .)}}</option>{{end}}</select></p>
+<p><label for="sc-comments">{{t "fb.comments"}}</label>
+<textarea id="sc-comments" name="comments" rows="5" maxlength="5000">{{if .Mine}}{{.Mine.Comments}}{{end}}</textarea></p>
+<p><button type="submit" name="action" value="save">{{t "fb.save"}}</button>
+<button type="submit" name="action" value="submit">{{t "fb.submit"}}</button></p>
+<p class="hint">{{t "fb.final_hint"}}</p>
+</form>
+{{else if .Mine}}
+<h3>{{t "fb.yours"}}</h3>
+<dl class="facts">
+<dt>{{t "fb.rating"}}</dt><dd>{{t (printf "rating.%d" .Mine.Rating)}}</dd>
+<dt>{{t "fb.recommendation"}}</dt><dd>{{t (printf "rec.%s" .Mine.Recommendation)}}</dd>
+<dt>{{t "fb.comments"}}</dt><dd class="prose">{{.Mine.Comments}}</dd>
+</dl>
+{{end}}
+{{if .Others}}
+<h3>{{t "fb.colleagues"}}</h3>
+{{range .Others}}
+<div class="card">
+<p><strong>{{.Author}}</strong>: {{t (printf "rating.%d" .Rating)}}, {{t (printf "rec.%s" .Recommendation)}}</p>
+<p class="prose">{{.Comments}}</p>
+</div>
+{{end}}
+{{end}}
+</section>
+{{end}}
+
+<section aria-labelledby="h-hist">
+<h2 id="h-hist">{{t "app.history"}}</h2>
+<div class="scroll">
+<table>
+<caption>{{t "app.history_caption"}}</caption>
+<thead><tr><th scope="col">{{t "hist.when"}}</th><th scope="col">{{t "hist.who"}}</th><th scope="col">{{t "hist.change"}}</th><th scope="col">{{t "hist.note"}}</th></tr></thead>
+<tbody>
+{{range .History}}<tr><th scope="row">{{.At}}</th><td>{{.Actor}}</td><td>{{if .From}}{{.From}} &rarr; {{end}}{{.To}} ({{t (printf "astatus.%s" .Status)}})</td><td>{{if .HasNote}}{{.Note}}{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+</section>
+{{end}}
+{{end}}

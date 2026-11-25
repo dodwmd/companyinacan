@@ -1,0 +1,19 @@
+{{define "content"}}
+<h1>{{t "eeo.title"}}</h1>
+<p class="notice">{{t "eeo.notice" .Data.MinCell}}</p>
+<p>{{if .Data.HasTotal}}{{t "eeo.responses" .Data.Responses}}{{else}}{{t "eeo.responses_hidden"}}{{end}}</p>
+{{range .Data.Fields}}
+<div class="scroll">
+<table>
+<caption>{{t (printf "eeo.field.%s" .Name)}}</caption>
+<thead><tr><th scope="col">{{t "eeo.answer"}}</th><th scope="col">{{t "funnel.count"}}</th></tr></thead>
+<tbody>
+{{if .Suppressed}}<tr><td colspan="2">{{t "eeo.suppressed"}}</td></tr>
+{{else}}{{range .Cells}}<tr><th scope="row">{{human .Value}}</th><td>{{.Count}}</td></tr>
+{{else}}<tr><td colspan="2">{{t "eeo.no_data"}}</td></tr>
+{{end}}{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+{{end}}

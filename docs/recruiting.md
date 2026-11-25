@@ -6,8 +6,8 @@ applicant tracking pipeline, a talent pool, consent, retention and erasure. Libr
 binary `cmd/can-jobs`, module `modules/jobs`, contract `specs/013-jobs-recruiting/`.
 
 **Status: experimental.** Built and tested offline and measured locally. The image has not been
-built or run on a cluster, there are no Helm templates yet (values only), there is no recruiter web
-UI (the API and the careers pages exist), and no real virus scanner or job-board connector ships.
+built or run on a cluster, there are no Helm templates yet (values only), there is a recruiter web
+UI ([`recruiting-ui.md`](recruiting-ui.md), experimental, not browser-verified; the API and the careers pages also exist), and no real virus scanner or job-board connector ships.
 
 > **This is a tool, not legal advice.** Recruiting data is personal data and is regulated
 > differently in every jurisdiction (data protection, anti-discrimination, employment and
@@ -176,7 +176,7 @@ can-core's approvals capability is a later step.
 
 ## Known limits of this slice
 
-No recruiter web UI; no interview scheduling or offer letters (E15/E17 modules); no real virus
+The recruiter web UI ([`recruiting-ui.md`](recruiting-ui.md)) is read-only for stages and has no approval decision, retention or erasure screens; no interview scheduling or offer letters (E15/E17 modules); no real virus
 scanner, board connector, inbound board applications or email-to-apply; no applicant email
 verification; no reopen of a rejected application; no bulk operations; the careers pages are
 server-rendered with a minimal stylesheet and are not themed from `company.yaml`; no `can-jobs`

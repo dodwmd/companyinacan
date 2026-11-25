@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<meta name="robots" content="noindex, nofollow">
+<title>New requisition - Company in a Can: Recruiting</title>
+<link rel="stylesheet" href="/static/jobs.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Recruiting</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/jobs" aria-current="page">Requisitions</a></li>
+<li><a href="/interviews">My interviews</a></li>
+<li><a href="/talent">Talent pool</a></li>
+<li><a href="/settings">Settings</a></li>
+
+</ul>
+</nav>
+<p class="who">Signed in as rita</p>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+
+<h1>Edit requisition</h1>
+<form method="post" action="/jobs/ID" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="version" value="2">
+<p><label for="f-title">Title</label>
+<input id="f-title" name="title" required maxlength="120" value="Engineer"></p>
+<p><label for="f-dept">Department</label>
+<input id="f-dept" name="department" maxlength="80" value="Engineering"></p>
+<p><label for="f-city">City</label>
+<input id="f-city" name="city" maxlength="80" value="Austin"></p>
+<p><label for="f-region">Region</label>
+<input id="f-region" name="region" maxlength="80" value="TX"></p>
+<p><label for="f-country">Country</label>
+<input id="f-country" name="country" maxlength="2" value="US" aria-describedby="f-country-hint"></p>
+<p id="f-country-hint" class="hint">Two-letter code such as US.</p>
+<p><label for="f-postal">Postal code</label>
+<input id="f-postal" name="postal_code" maxlength="20" value=""></p>
+<p><label for="f-remote">Work arrangement</label>
+<select id="f-remote" name="remote"><option value="onsite">Onsite</option><option value="hybrid" selected>Hybrid</option><option value="remote">Remote</option></select></p>
+<p><label for="f-countries">Countries applicants may live in</label>
+<input id="f-countries" name="applicant_countries" maxlength="300" value="" aria-describedby="f-countries-hint"></p>
+<p id="f-countries-hint" class="hint">Two-letter codes separated by commas. Needed for remote jobs without a location country.</p>
+<p><label for="f-emp">Employment type</label>
+<select id="f-emp" name="employment_type"><option value="contract">Contract</option><option value="full_time" selected>Full time</option><option value="intern">Intern</option><option value="other">Other</option><option value="part_time">Part time</option><option value="temporary">Temporary</option><option value="volunteer">Volunteer</option></select></p>
+<p><label for="f-smin">Salary minimum</label>
+<input id="f-smin" name="salary_min" inputmode="decimal" maxlength="12" value="100000"></p>
+<p><label for="f-smax">Salary maximum</label>
+<input id="f-smax" name="salary_max" inputmode="decimal" maxlength="12" value="140000"></p>
+<p><label for="f-scur">Currency</label>
+<input id="f-scur" name="salary_currency" maxlength="3" value="USD"></p>
+<p><label for="f-sper">Pay period</label>
+<select id="f-sper" name="salary_period"><option value="day">Day</option><option value="hour">Hour</option><option value="month">Month</option><option value="week">Week</option><option value="year" selected>Year</option></select></p>
+<p><input id="f-pub" name="publish_salary" type="checkbox"> <label for="f-pub" class="inline">Show the salary range on the public careers page</label></p>
+<p><label for="f-hm">Hiring manager (login)</label>
+<input id="f-hm" name="hiring_manager" maxlength="128" value="alice"></p>
+<p><label for="f-head">Headcount</label>
+<input id="f-head" name="headcount" inputmode="numeric" maxlength="4" value="1"></p>
+<p><label for="f-valid">Valid through</label>
+<input id="f-valid" name="valid_through" maxlength="10" value="2027-01-19" aria-describedby="f-valid-hint"></p>
+<p id="f-valid-hint" class="hint">A date like 2026-12-31. Empty uses the default.</p>
+<h2>Description</h2>
+<p class="hint">Plain text. Blank lines separate paragraphs. Leave a heading and body empty to drop that section.</p>
+
+<p><label for="sh-0">Section 0 heading</label>
+<input id="sh-0" name="section_heading_0" maxlength="100" value="About"></p>
+<p><label for="sb-0">Section 0 text</label>
+<textarea id="sb-0" name="section_body_0" rows="6" maxlength="10000">Do good work.
+
+With good people.</textarea></p>
+
+<p><label for="sh-1">Section 1 heading</label>
+<input id="sh-1" name="section_heading_1" maxlength="100" value=""></p>
+<p><label for="sb-1">Section 1 text</label>
+<textarea id="sb-1" name="section_body_1" rows="6" maxlength="10000"></textarea></p>
+
+<p><label for="sh-2">Section 2 heading</label>
+<input id="sh-2" name="section_heading_2" maxlength="100" value=""></p>
+<p><label for="sb-2">Section 2 text</label>
+<textarea id="sb-2" name="section_body_2" rows="6" maxlength="10000"></textarea></p>
+
+<p><button type="submit">Save</button></p>
+</form>
+
+
+</main>
+<footer>
+<p>Company in a Can recruiting. Apache-2.0. A tool, not legal advice: candidate data is personal data.</p>
+</footer>
+</body>
+</html>

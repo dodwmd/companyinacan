@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<meta name="robots" content="noindex, nofollow">
+<title>Home - Company in a Can: Recruiting</title>
+<link rel="stylesheet" href="/static/jobs.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Recruiting</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Home</a></li>
+<li><a href="/jobs">Requisitions</a></li>
+<li><a href="/interviews">My interviews</a></li>
+<li><a href="/talent">Talent pool</a></li>
+<li><a href="/settings">Settings</a></li>
+
+</ul>
+</nav>
+<p class="who">Signed in as rita</p>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Home</h1>
+
+<section aria-labelledby="h-funnel">
+<h2 id="h-funnel">Pipeline</h2>
+
+<div class="scroll">
+<table>
+<caption>Active applications per stage</caption>
+<thead><tr><th scope="col">Stage</th><th scope="col">Count</th></tr></thead>
+<tbody>
+<tr><th scope="row">Applied</th><td>3</td></tr>
+<tr><th scope="row">Screen</th><td>0</td></tr>
+<tr><th scope="row">Interview</th><td>0</td></tr>
+<tr><th scope="row">Offer</th><td>0</td></tr>
+
+</tbody>
+</table>
+</div>
+
+<p class="muted">Hired so far: 0. Rejected so far: 0.</p>
+</section>
+<section aria-labelledby="h-jobs">
+<h2 id="h-jobs">Requisitions</h2>
+
+<div class="scroll">
+<table>
+<caption>Your most recent requisitions</caption>
+<thead><tr><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Active applications</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/jobs/ID">Draft role</a></th><td>Draft</td><td>0</td></tr>
+<tr><th scope="row"><a href="/jobs/ID">Designer</a></th><td>Open</td><td>1</td></tr>
+<tr><th scope="row"><a href="/jobs/ID">Engineer</a></th><td>Open</td><td>2</td></tr>
+
+</tbody>
+</table>
+</div>
+
+<p class="actions"><a href="/jobs">All requisitions</a> <a href="/jobs/new">New requisition</a></p>
+</section>
+
+
+</main>
+<footer>
+<p>Company in a Can recruiting. Apache-2.0. A tool, not legal advice: candidate data is personal data.</p>
+</footer>
+</body>
+</html>

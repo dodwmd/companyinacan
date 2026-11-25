@@ -63,6 +63,17 @@ type Config struct {
 		URL string `yaml:"url"`
 	} `yaml:"webhook"`
 
+	// UI is the server-rendered recruiter, hiring-manager and interviewer web UI
+	// (specs/027-jobs-ui). Off by default: the module then serves the API and the careers pages.
+	UI struct {
+		Enabled bool `yaml:"enabled"`
+		// InsecureCookies drops the Secure attribute (and the __Host- cookie prefix) for plain-HTTP
+		// local development. Leave it false behind TLS.
+		InsecureCookies bool `yaml:"insecure_cookies"`
+		IdleMinutes     int  `yaml:"idle_minutes"`   // default 30
+		AbsoluteHours   int  `yaml:"absolute_hours"` // default 8
+	} `yaml:"ui"`
+
 	// Retention. Days count from the decision on the candidate's last application.
 	Retention struct {
 		RejectedDays       int `yaml:"rejected_days"`        // candidates never hired
@@ -169,6 +180,9 @@ func (c *Config) Validate() error {
 		if u, err := url.Parse(o); err != nil || u.Scheme == "" || u.Host == "" || u.Path != "" {
 			add(fmt.Sprintf("apply.allowed_origins: %q is not an origin", o))
 		}
+	}
+	if c.UI.IdleMinutes < 0 || c.UI.IdleMinutes > 24*60 || c.UI.AbsoluteHours < 0 || c.UI.AbsoluteHours > 24*30 {
+		add("ui.idle_minutes and ui.absolute_hours are out of range")
 	}
 	if c.EEO.MinCell < 1 {
 		add("eeo.min_cell must be at least 1")

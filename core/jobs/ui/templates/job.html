@@ -1,0 +1,89 @@
+{{define "content"}}
+{{with .Data}}
+<h1>{{.Job.Title}}</h1>
+<p class="actions">
+<span class="badge">{{t (printf "jstatus.%s" .Job.Status)}}</span>
+<span class="badge">{{t "job.approval"}}: {{t (printf "approval.%s" .Job.Approval)}}</span>
+{{if $.Caps.WriteJobs}}<a href="/jobs/{{.Job.ID}}/edit">{{t "job.edit"}}</a>{{end}}
+</p>
+<dl class="facts">
+<dt>{{t "job.department"}}</dt><dd>{{.Job.Department}}</dd>
+<dt>{{t "job.location"}}</dt><dd>{{.Job.Location.City}} {{.Job.Location.Region}} {{.Job.Location.Country}}</dd>
+<dt>{{t "job.remote"}}</dt><dd>{{human .Job.Remote}}</dd>
+<dt>{{t "job.employment"}}</dt><dd>{{human .Job.EmploymentType}}</dd>
+<dt>{{t "job.headcount"}}</dt><dd>{{.Job.Headcount}}</dd>
+<dt>{{t "job.manager"}}</dt><dd>{{.Job.HiringManager}}</dd>
+{{with .Job.Salary}}<dt>{{t "job.salary"}}</dt><dd>{{t "job.salary_range" (money .Min) (money .Max) .Currency .Period}}</dd>{{end}}
+<dt>{{t "job.salary_public"}}</dt><dd>{{if .Job.PublishSalary}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</dd>
+{{with .Job.ValidThrough}}<dt>{{t "job.valid_through"}}</dt><dd>{{day .}}</dd>{{end}}
+{{if .Job.CloseReason}}<dt>{{t "job.close_reason"}}</dt><dd>{{t (printf "close.%s" .Job.CloseReason)}}</dd>{{end}}
+<dt>{{t "job.careers"}}</dt><dd>{{if .Live}}<a href="{{.CareersURL}}">{{t "job.preview"}}</a>{{else}}<span class="muted">{{t "job.not_public"}}</span>{{end}}</dd>
+</dl>
+
+{{if $.Caps.WriteJobs}}
+<section aria-labelledby="h-state">
+<h2 id="h-state">{{t "job.lifecycle"}}</h2>
+{{range .Moves}}
+<form method="post" action="/jobs/{{$.Data.Job.ID}}/transition" class="inline">
+{{template "csrf" $}}
+<button type="submit" name="to" value="{{.}}">{{t (printf "jmove.%s" .)}}</button>
+</form>
+{{end}}
+{{if .CanApproval}}
+<form method="post" action="/jobs/{{.Job.ID}}/approval" class="inline">
+{{template "csrf" $}}
+<button type="submit">{{t "job.request_approval"}}</button>
+</form>
+{{end}}
+{{if ne .Job.Status "closed"}}
+<form method="post" action="/jobs/{{.Job.ID}}/transition" class="inline">
+{{template "csrf" $}}
+<input type="hidden" name="to" value="closed">
+<label for="close-reason">{{t "job.close_reason"}}</label>
+<select id="close-reason" name="reason">{{range .CloseReason}}<option value="{{.}}">{{t (printf "close.%s" .)}}</option>{{end}}</select>
+<button type="submit">{{t "job.close"}}</button>
+</form>
+{{end}}
+</section>
+{{end}}
+
+<section aria-labelledby="h-board">
+<h2 id="h-board">{{t "board.title"}}</h2>
+<p class="hint">{{t "board.hint"}}</p>
+{{range .Columns}}
+<section aria-labelledby="col-{{.Stage.Key}}" class="card">
+<h3 id="col-{{.Stage.Key}}">{{t "board.column" .Stage.Name .Count}}</h3>
+{{if .Cards}}
+<ul class="list">
+{{range .Cards}}
+<li>
+<a href="/applications/{{.ID}}">{{.Name}}</a>
+{{if $.Caps.MoveApps}}
+<form method="post" action="/applications/{{.ID}}/move" class="inline">
+{{template "csrf" $}}
+<input type="hidden" name="return" value="/jobs/{{$.Data.Job.ID}}">
+<label for="n-{{.ID}}" class="visually-hidden">{{t "move.note"}}</label>
+<input id="n-{{.ID}}" name="note" required maxlength="500" placeholder="{{t "move.note"}}">
+{{if .Prev}}<button type="submit" name="to" value="{{.Prev.Key}}">{{t "move.back" .Prev.Name}}</button>{{end}}
+{{if .Next}}<button type="submit" name="to" value="{{.Next.Key}}">{{t "move.forward" .Next.Name}}</button>{{end}}
+</form>
+{{end}}
+</li>
+{{end}}
+</ul>
+{{if .More}}<p class="hint">{{t "board.more" .More}}</p>{{end}}
+{{else}}<p class="muted">{{t "board.empty"}}</p>{{end}}
+</section>
+{{end}}
+<p class="muted">{{t "board.outcomes" .Hired .Rejected .Withdrawn}}</p>
+</section>
+
+<section aria-labelledby="h-desc">
+<h2 id="h-desc">{{t "job.description"}}</h2>
+{{range .Job.Sections}}
+<h3>{{.Heading}}</h3>
+<p class="prose">{{.Body}}</p>
+{{end}}
+</section>
+{{end}}
+{{end}}

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<meta name="robots" content="noindex, nofollow">
+<title>Talent pool - Company in a Can: Recruiting</title>
+<link rel="stylesheet" href="/static/jobs.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Recruiting</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/jobs">Requisitions</a></li>
+<li><a href="/interviews">My interviews</a></li>
+<li><a href="/talent" aria-current="page">Talent pool</a></li>
+<li><a href="/settings">Settings</a></li>
+
+</ul>
+</nav>
+<p class="who">Signed in as rita</p>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Talent pool</h1>
+<form method="get" action="/talent" role="search" class="card">
+<p><label for="t-q">Name starts with</label>
+<input id="t-q" name="q" type="search" value="" maxlength="100"></p>
+<p><label for="t-tag">Tag</label>
+<input id="t-tag" name="tag" value="" maxlength="30"></p>
+<p><button type="submit">Search</button></p>
+</form>
+
+<div class="scroll">
+<table>
+<caption>Talent pool members</caption>
+<thead><tr><th scope="col">Name starts with</th><th scope="col">Tags</th><th scope="col">Source</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/candidates/ID">Ada Example</a></th><td></td><td></td></tr>
+
+</tbody>
+</table>
+</div>
+
+
+
+</main>
+<footer>
+<p>Company in a Can recruiting. Apache-2.0. A tool, not legal advice: candidate data is personal data.</p>
+</footer>
+</body>
+</html>

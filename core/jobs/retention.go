@@ -105,6 +105,7 @@ func (s *Store) purgeClass(ctx context.Context, tx dbq, id, class string) error 
 		stmts = []string{
 			`DELETE FROM scorecards WHERE application_id IN (SELECT id FROM applications WHERE candidate_id = ?)`,
 			`UPDATE applications SET reject_note_sealed = NULL WHERE candidate_id = ?`,
+			`UPDATE stage_history SET note_sealed = NULL WHERE application_id IN (SELECT id FROM applications WHERE candidate_id = ?)`,
 		}
 	case ClassPII:
 		stmts = []string{

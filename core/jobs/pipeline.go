@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
+	"strconv"
 	"time"
 )
 
@@ -113,6 +114,9 @@ type StageChange struct {
 	Status string    `json:"status"`
 	Actor  string    `json:"actor"`
 	At     time.Time `json:"at"`
+	// Note is the reason given for a move made with MoveApplicationNote. It is sealed and shown only
+	// to roles that may read the rejection note; nil otherwise.
+	Note *string `json:"note,omitempty"`
 }
 
 // ApplicationView is an application as the API returns it. Sealed text is present only for
@@ -201,7 +205,7 @@ func (s *Store) GetApplication(ctx context.Context, p *Principal, id string) (*A
 			return nil, err
 		}
 	}
-	if v.History, err = s.historyOf(ctx, id); err != nil {
+	if v.History, err = s.historyOf(ctx, p, id); err != nil {
 		return nil, err
 	}
 	if err := s.auditRead(ctx, p, "application:"+id, fields); err != nil {
@@ -227,8 +231,8 @@ func (s *Store) interviewersOf(ctx context.Context, appID string) ([]string, err
 	return out, rows.Err()
 }
 
-func (s *Store) historyOf(ctx context.Context, appID string) ([]StageChange, error) {
-	rows, err := s.rdb.QueryContext(ctx, `SELECT from_stage, to_stage, status, actor, at FROM stage_history WHERE application_id = ? ORDER BY seq`, appID)
+func (s *Store) historyOf(ctx context.Context, p *Principal, appID string) ([]StageChange, error) {
+	rows, err := s.rdb.QueryContext(ctx, `SELECT seq, from_stage, to_stage, status, actor, at, note_sealed FROM stage_history WHERE application_id = ? ORDER BY seq`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -236,11 +240,19 @@ func (s *Store) historyOf(ctx context.Context, appID string) ([]StageChange, err
 	out := []StageChange{}
 	for rows.Next() {
 		var c StageChange
-		var at int64
-		if err := rows.Scan(&c.From, &c.To, &c.Status, &c.Actor, &at); err != nil {
+		var seq, at int64
+		var sealed sql.NullString
+		if err := rows.Scan(&seq, &c.From, &c.To, &c.Status, &c.Actor, &at, &sealed); err != nil {
 			return nil, err
 		}
 		c.At = fromUnix(at)
+		if sealed.Valid && p.canSee(fieldRejNote) {
+			note, err := s.unseal("stage_history", strconv.FormatInt(seq, 10), "note_sealed", sealed)
+			if err != nil {
+				return nil, err
+			}
+			c.Note = &note
+		}
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -335,8 +347,28 @@ func stageKind(ctx context.Context, tx dbq, key string) (string, error) {
 // MoveApplication moves an active application to another pipeline stage. Hiring is a separate
 // action; moving into the hired stage is refused.
 func (s *Store) MoveApplication(ctx context.Context, p *Principal, id, to string) (*ApplicationView, error) {
+	return s.moveApplication(ctx, p, id, to, "", false)
+}
+
+// MoveNoteMax bounds the reason of a stage move.
+const MoveNoteMax = 500
+
+// MoveApplicationNote is MoveApplication with a required reason (1 to MoveNoteMax characters),
+// sealed with the history entry. The web UI uses it: a person who moves a candidate says why.
+func (s *Store) MoveApplicationNote(ctx context.Context, p *Principal, id, to, note string) (*ApplicationView, error) {
+	return s.moveApplication(ctx, p, id, to, note, true)
+}
+
+func (s *Store) moveApplication(ctx context.Context, p *Principal, id, to, note string, needNote bool) (*ApplicationView, error) {
 	if !p.Can(ActAppMove) {
 		return nil, ErrForbidden
+	}
+	if needNote || note != "" {
+		var pr problems
+		pr.text("note", note, MoveNoteMax, needNote, false)
+		if err := pr.err(); err != nil {
+			return nil, err
+		}
 	}
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		st, err := s.loadAppForWrite(ctx, tx, p, id)
@@ -360,7 +392,7 @@ func (s *Store) MoveApplication(ctx context.Context, p *Principal, id, to string
 		if _, err := tx.ExecContext(ctx, `UPDATE applications SET stage = ?, updated_at = ? WHERE id = ?`, to, ts(now), id); err != nil {
 			return err
 		}
-		return s.recordStage(ctx, tx, p, st, to, AppActive, now, "application.move")
+		return s.recordStage(ctx, tx, p, st, to, AppActive, now, "application.move", note)
 	})
 	if err != nil {
 		return nil, err
@@ -368,9 +400,23 @@ func (s *Store) MoveApplication(ctx context.Context, p *Principal, id, to string
 	return s.GetApplication(ctx, p, id)
 }
 
-func (s *Store) recordStage(ctx context.Context, tx dbq, p *Principal, st *appState, to, status string, now time.Time, auditAction string) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO stage_history (application_id, from_stage, to_stage, status, actor, at) VALUES (?,?,?,?,?,?)`, st.id, st.stage, to, status, p.Subject, ts(now)); err != nil {
+func (s *Store) recordStage(ctx context.Context, tx dbq, p *Principal, st *appState, to, status string, now time.Time, auditAction, note string) error {
+	res, err := tx.ExecContext(ctx, `INSERT INTO stage_history (application_id, from_stage, to_stage, status, actor, at) VALUES (?,?,?,?,?,?)`, st.id, st.stage, to, status, p.Subject, ts(now))
+	if err != nil {
 		return err
+	}
+	if note != "" {
+		seq, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		sealed, err := s.seal("stage_history", strconv.FormatInt(seq, 10), "note_sealed", note)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE stage_history SET note_sealed = ? WHERE seq = ?`, sealed, seq); err != nil {
+			return err
+		}
 	}
 	if err := s.emit(ctx, tx, EventApplicationStage, applicationStageData{ApplicationID: st.id, JobID: st.job, CandidateID: st.candidate, From: st.stage, To: to, Status: status, Actor: p.Subject, ChangedAt: now}); err != nil {
 		return err
@@ -408,7 +454,7 @@ func (s *Store) RejectApplication(ctx context.Context, p *Principal, id, reason,
 		if _, err := tx.ExecContext(ctx, `UPDATE applications SET status = 'rejected', reject_reason = ?, reject_note_sealed = ?, decided_at = ?, updated_at = ? WHERE id = ?`, reason, sealed, ts(now), ts(now), id); err != nil {
 			return err
 		}
-		if err := s.recordStage(ctx, tx, p, st, st.stage, AppRejected, now, "application.reject"); err != nil {
+		if err := s.recordStage(ctx, tx, p, st, st.stage, AppRejected, now, "application.reject", ""); err != nil {
 			return err
 		}
 		return s.touchRetention(ctx, tx, st.candidate)
@@ -448,7 +494,7 @@ func (s *Store) HireApplication(ctx context.Context, p *Principal, id string) (*
 		if _, err := tx.ExecContext(ctx, `UPDATE applications SET stage = ?, status = 'hired', decided_at = ?, updated_at = ? WHERE id = ?`, hired, ts(now), ts(now), id); err != nil {
 			return err
 		}
-		if err := s.recordStage(ctx, tx, p, st, hired, AppHired, now, "application.hire"); err != nil {
+		if err := s.recordStage(ctx, tx, p, st, hired, AppHired, now, "application.hire", ""); err != nil {
 			return err
 		}
 		if err := s.emit(ctx, tx, EventCandidateHired, candidateHiredData{CandidateID: st.candidate, ApplicationID: id, JobID: st.job, JobTitle: st.jobTitle, Department: st.dept,

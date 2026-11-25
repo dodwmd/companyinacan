@@ -3,6 +3,7 @@
 Project documentation. `epics/` holds the epic breakdown; measurements recorded by epic E00 go in `measurements/`.
 
 - [admin-ui.md](admin-ui.md): the admin web UI (routes, security model, installing it on Android).
+- [recruiting-ui.md](recruiting-ui.md): the recruiter, hiring-manager and interviewer web UI of the jobs module (sign-in, roles, blind feedback, candidate data reveal, diversity report).
 - [pwa.md](pwa.md): installing the admin UI on a phone, Web Push notifications, operator notes and limits.
 - [work-tracker.md](work-tracker.md): the in-house work tracker (API tokens, curl examples, `can work` CLI, events).
 - [releasing.md](releasing.md): cutting, verifying, rolling back a release; the security-advisory flow.
