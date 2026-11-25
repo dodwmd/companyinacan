@@ -47,6 +47,7 @@ type client struct {
 	u       *uiEnv
 	cookies map[string]string
 	csrf    string
+	landed  *httptest.ResponseRecorder // the answer to the last ticket POST (ssoEnv.land)
 }
 
 var csrfRe = regexp.MustCompile(`name="csrf" value="([^"]+)"`)

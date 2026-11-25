@@ -49,6 +49,14 @@ var uiMessagesEN = map[string]string{
 	"login.locked":  "Too many failed attempts. Try again in a few seconds.",
 	"login.csrf":    "The sign-in form expired. Try again.",
 
+	"login.sso_only":        "Sign in from the Apps page of the admin UI. Pasting an access token is switched off here.",
+	"login.token_off":       "Pasting an access token is switched off. Open finance from the Apps page of the admin UI.",
+	"login.ticket_invalid":  "That sign-in link was not accepted. A link works once and for about a minute. Open finance again from the Apps page of the admin UI.",
+	"login.sso_unavailable": "Single sign-on is not available right now. Try again in a moment.",
+	"ticket.title":          "Continue with single sign-on",
+	"ticket.intro":          "You came here from the admin UI. Press Continue to sign in to finance. Nothing happens until you do.",
+	"ticket.submit":         "Continue",
+
 	"flash.saved":     "Saved.",
 	"flash.deleted":   "The draft was deleted.",
 	"flash.approved":  "Approved.",

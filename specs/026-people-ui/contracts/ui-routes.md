@@ -25,6 +25,8 @@ Every response carries `Cache-Control: no-store` (static files excepted) and no 
 |---|---|---|---|---|
 | `GET /login` | no | - | - | Sign-in form; sets the login CSRF cookie |
 | `POST /login` | no | `ResolveActor` via the shared Authenticator | - | Field `token` (a personal access token), `csrf`. 303 `/` on success; 401 generic, 403 stale form, 429 after repeated failures (valid tokens are never throttled) |
+| `GET /login/ticket` | no | - | - | Single sign-on interstitial (query `t`, a launch ticket from the admin UI's Apps page): only renders a form with hidden `csrf` and `ticket`, never consumes the ticket; sets the login CSRF cookie; 404 when can-core is not wired, 400 for a malformed ticket |
+| `POST /login/ticket` | no | `ResolveActor` over the principal built from can-core's redeem answer | - | Fields `ticket`, `csrf`. Redeems over the module API; the person must be linked in the directory (`sso_subject`). 303 to the validated landing path (default `/`) with a new session; 401 generic (replay, foreign, no people permission, unlinked), 403 stale form, 429 after repeated failures (valid tickets are never throttled), 503 when can-core cannot answer, 404 when can-core is not wired |
 | `POST /logout` | yes | none, ends only the caller's own session | - | Ends the server-side session, 303 `/login` |
 | `GET /{$}` | yes | `MyTasks`, `ListSeries`, `ListMeetings`, `ListGoals` | check.list_own, 1on1.read, goal.read | Home: my tasks, upcoming 1:1s, goals in progress, approvals waiting (only when the approvals seam is wired), notifications link |
 | `POST /tasks/{id}/complete` | yes | `CompleteTask` | check.complete | Mark one of my checklist tasks done |

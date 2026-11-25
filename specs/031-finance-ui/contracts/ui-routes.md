@@ -34,6 +34,8 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 |---|---|---|---|---|
 | `GET /login` | no | - | - | Sign-in form; sets the login CSRF cookie |
 | `POST /login` | no | - | the shared Authenticator | Field `token`, `csrf`. 303 `/` on success; 401 generic, 403 stale form, 429 after repeated failures (valid tokens are never throttled) |
+| `GET /login/ticket` | no | - | - | Single sign-on landing (`specs/036-module-ui-sso`): query `t` (a launch ticket). Shows a Continue form only; it never consumes the ticket, so a link scanner or prefetch cannot spend it. Sets the login CSRF cookie. 400 for a malformed ticket, 404 when not installed under can-core |
+| `POST /login/ticket` | no | - | - | Fields `ticket`, `csrf` (double-submit). Redeems the ticket at can-core (this module is the audience), then 303 to a clean URL (`/` or the checked landing path) with a new session. 401 for every refusal (one message), 403 stale form or cross-site, 429 after repeated failures (a valid ticket is never throttled), 503 when can-core cannot answer. When `ui.token_login` is off, `POST /login` answers 403 and `GET /login` shows no token form |
 | `GET /static/{file}` | no | - | - | Embedded stylesheet and icon |
 | `GET /manifest.webmanifest` | no | - | - | Web app manifest |
 | `POST /logout` | yes | session+own | - | Ends the caller's own server-side session, 303 `/login` |

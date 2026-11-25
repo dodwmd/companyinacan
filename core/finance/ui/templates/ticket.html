@@ -1,0 +1,9 @@
+{{define "content"}}
+<h1>{{t "ticket.title"}}</h1>
+<p>{{t "ticket.intro"}}</p>
+<form method="post" action="/login/ticket" class="card">
+<input type="hidden" name="csrf" value="{{.Data.CSRF}}">
+<input type="hidden" name="ticket" value="{{.Data.Ticket}}">
+<p><button type="submit">{{t "ticket.submit"}}</button></p>
+</form>
+{{end}}

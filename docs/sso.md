@@ -146,12 +146,57 @@ Purging a module (needs the current password) is only possible for local account
 and an `end_session_endpoint`, the response is a page that continues to the IdP's logout (with `client_id`
 and `post_logout_redirect_uri`; no `id_token_hint`, which would mean storing the ID token).
 
+## Opening module web pages from the admin UI (E11c)
+
+The admin UI has an **Apps** page. It lists the enabled modules that have a web page and in which your roles
+give you at least one permission (the same rule personal access tokens use, including `work.admin` implying
+`work.read`). **Open** is a POST: can-core mints a one-time *launch ticket* for that one module and the browser
+is sent to the module's sign-in address. The module starts a session of its own for you, with exactly the
+permissions you hold in it at that moment. You never see or paste a token, and the module never receives a
+long-lived credential. Design, threat model and tests: [`specs/036-module-ui-sso/`](../specs/036-module-ui-sso/).
+
+```
+admin UI  --POST /apps/work/launch (session + CSRF)-->  can-core mints ticket (60 s, once, for "work")
+browser   --GET  https://work.<domain>/ui/login/ticket?t=cant_...   -->  work shows a Continue form (nothing spent)
+browser   --POST /ui/login/ticket (CSRF)                            -->  work -> can-core POST /v1/tickets/redeem
+work      <-- {subject, name, permissions, session handle}          <--  can-core (audience = the calling module)
+browser   <-- 303 /ui/ + work's own session cookie                       (clean URL, no ticket)
+work      --POST /v1/tickets/revalidate every 30 s ... 5 min-->  can-core: still allowed? with what now?
+```
+
+Properties (all tested): the ticket works once, for one module, for at most 60 seconds, and only its hash is
+stored; a GET (link scanner, prefetch) never spends it; every refusal is the same `{"active": false}` and
+failed redeems are slowed per module while valid ones never are; the landing path is a strict allowlist and
+the address of the module comes from configuration, never from the request; a disabled account, a removed role,
+an SSO unlink or an access revocation ends the module session at the next revalidation (1 minute for
+privileged sessions in people, jobs and finance, 5 minutes for the others, 30 seconds in work); minting is
+limited to 30 per person and minute; mint and redeem are audited with ids only. Logging out of a module ends
+that module's session only.
+
+**Configuration.**
+
+| Setting | Meaning |
+|---|---|
+| module manifest `runtime.subdomain` + `runtime.ui {service, port, base_path}` | the UI is at `https://<subdomain>.<company domain><base_path>`; `base_path` is empty or up to two lowercase segments (`/ui`) |
+| `CAN_MODULE_UI_URLS` (can-core env) | `work=https://work.acme.example/ui,people=https://people.acme.example`: the operator's address, validated the same way, wins over the manifest |
+| `CAN_COMPANY_DOMAIN` | module UI hosts must be this domain or below; the admin host is refused |
+| `ui.token_login` (each module's `ui:` block / env, see its UI doc) | `true` (default, for compatibility) keeps the paste-a-token form; set `false` once SSO is used so the only way in is a ticket. Scripts keep using tokens against the APIs |
+
+**Not routed by default.** The charts shipped today do not expose work, people or finance on a public host
+(jobs exposes only `/careers`). Until you route a module's UI and configure its address, it does not appear
+under **Apps**; the paste-a-token page keeps working. The compose stack (`CAN_INSTALLER=none`) installs no
+module, so Apps is empty there and the modules' token login is the way in.
+
+**Not verified:** no browser or cluster run. See `specs/036-module-ui-sso/tasks.md`.
+
 ## For modules
 
 People who sign in through SSO use modules with **personal access tokens** (`/tokens` in the admin UI,
 `specs/016-module-wiring`): an SSO user is an ordinary `user:sso-...` subject, so the PAT machinery (issue only
 permissions you hold, introspection bound to one module, expiry, revocation, revocation when the issuer loses
 the permission) applies unchanged. Modules need no SSO-specific code.
+
+(Scripts and other tools still use tokens. For the module web pages, use the Apps page above.)
 
 **The admin UI session is never a module credential.** `POST /v1/tokens/introspect` does not recognise the
 value of the `can_session` cookie (an earlier draft did; it was removed): a module that was handed it could replay

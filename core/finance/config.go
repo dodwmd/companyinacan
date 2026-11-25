@@ -59,12 +59,19 @@ type UIConfig struct {
 	// ForceSecure is the production guard: Secure cookies even when the listener sits behind a
 	// TLS-terminating proxy and sees plain HTTP. It cannot be combined with insecure_cookies.
 	ForceSecure bool `yaml:"force_secure"`
+	// TokenLogin keeps the "paste a personal access token" sign-in (default true, for
+	// compatibility). Turn it off once single sign-on from the admin UI is in use
+	// (specs/036-module-ui-sso).
+	TokenLogin *bool `yaml:"token_login"`
 	// NotificationsURL, when set, adds a Notifications link to the navigation.
 	NotificationsURL string `yaml:"notifications_url"`
 	// IdleMinutes and AbsoluteHours bound a session (defaults 30 minutes and 8 hours).
 	IdleMinutes   int `yaml:"idle_minutes"`
 	AbsoluteHours int `yaml:"absolute_hours"`
 }
+
+// tokenLogin reports whether the pasted-token sign-in is offered (default true).
+func (c *Config) tokenLogin() bool { return c.UI.TokenLogin == nil || *c.UI.TokenLogin }
 
 // DefaultConfig returns the defaults.
 func DefaultConfig() *Config {

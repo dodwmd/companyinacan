@@ -48,7 +48,14 @@ type UIConfig struct {
 	// IdleMinutes and AbsoluteHours bound a session (defaults 30 minutes and 8 hours).
 	IdleMinutes   int `yaml:"idle_minutes"`
 	AbsoluteHours int `yaml:"absolute_hours"`
+	// TokenLogin keeps the "paste a personal access token" sign-in (default true, for
+	// compatibility). Turn it off once single sign-on from the admin UI is in use: then the only
+	// way into the UI is a launch ticket (specs/036-module-ui-sso).
+	TokenLogin *bool `yaml:"token_login"`
 }
+
+// tokenLogin reports whether the pasted-token sign-in is offered (default true).
+func (c UIConfig) tokenLogin() bool { return c.TokenLogin == nil || *c.TokenLogin }
 
 // WebhookConfig is where outbox events are delivered (can-core's event endpoint).
 type WebhookConfig struct {

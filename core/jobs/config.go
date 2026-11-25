@@ -72,6 +72,10 @@ type Config struct {
 		InsecureCookies bool `yaml:"insecure_cookies"`
 		IdleMinutes     int  `yaml:"idle_minutes"`   // default 30
 		AbsoluteHours   int  `yaml:"absolute_hours"` // default 8
+		// TokenLogin keeps the "paste a personal access token" sign-in (default true, for
+		// compatibility). Turn it off once single sign-on from the admin UI is in use: then the
+		// only way into the UI is a launch ticket (specs/036-module-ui-sso).
+		TokenLogin *bool `yaml:"token_login"`
 	} `yaml:"ui"`
 
 	// Retention. Days count from the decision on the candidate's last application.
@@ -202,6 +206,9 @@ func (c *Config) Validate() error {
 // CareersPath is where the public pages are mounted. Put a path-rewriting proxy rule in front
 // if the company site wants them elsewhere.
 const CareersPath = "/careers"
+
+// tokenLogin reports whether the pasted-token sign-in is offered (default true).
+func (c *Config) tokenLogin() bool { return c.UI.TokenLogin == nil || *c.UI.TokenLogin }
 
 // Site is the public identity the renderers and feeds use.
 func (c *Config) Site() SiteInfo {

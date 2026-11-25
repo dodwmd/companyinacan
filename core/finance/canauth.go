@@ -27,14 +27,28 @@ func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
 	if err != nil || !id.Active || id.Kind != "user" || !canSubjectRe.MatchString(id.Subject) {
 		return nil, ErrUnauthenticated
 	}
+	p, ok := personalPrincipal(id.Subject, id.Permissions)
+	if !ok {
+		return nil, ErrUnauthenticated
+	}
+	return p, nil
+}
+
+// personalPrincipal maps what can-core says about a person (a personal access token or a launch
+// ticket session) to a Principal: the permissions are limited to those this module defines, and
+// nothing left means no principal. Shared so the two sign-in paths cannot drift.
+func personalPrincipal(subject string, in []string) (*Principal, bool) {
+	if !canSubjectRe.MatchString(subject) {
+		return nil, false
+	}
 	var perms []string
-	for _, p := range id.Permissions {
+	for _, p := range in {
 		if (p == PermRead || p == PermWrite || p == PermApprove || p == PermAdmin) && !slices.Contains(perms, p) {
 			perms = append(perms, p)
 		}
 	}
 	if len(perms) == 0 {
-		return nil, ErrUnauthenticated
+		return nil, false
 	}
-	return &Principal{Subject: id.Subject, Kind: "personal", Permissions: perms}, nil
+	return &Principal{Subject: subject, Kind: "personal", Permissions: perms}, true
 }
