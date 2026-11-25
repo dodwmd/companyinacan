@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -270,7 +272,13 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	tickets := &ticket.Service{DB: db, Audit: al, Holds: pats.Holds,
 		Launcher: ticket.Launcher{Domain: cfg.CompanyDomain, Overrides: cfg.ModuleUIURLs, AllowHTTP: !cfg.SecureCookies}}
 	adminSrv.Tickets = tickets
-	for _, w := range moduleUIWarnings(cfg.ModuleUIURLsRaw, cfg.CompanyDomain, !cfg.SecureCookies) {
+	uiWarnings := moduleUIWarnings(cfg.ModuleUIURLsRaw, cfg.CompanyDomain, !cfg.SecureCookies)
+	if installed, err := db.ListModules(ctx); err != nil {
+		log.Warn("apps: cannot check CAN_MODULE_UI_URLS against the installed modules", "error", err)
+	} else {
+		uiWarnings = append(uiWarnings, unknownModuleUIWarnings(cfg.ModuleUIURLs, installed)...)
+	}
+	for _, w := range uiWarnings {
 		log.Warn("apps: " + w)
 	}
 	uiSrv := &adminui.Server{
@@ -486,7 +494,6 @@ func pushContact(domain string) string {
 	return ""
 }
 
-// splitList splits a comma-separated setting, dropping blanks.
 // parseModuleUIURLs reads "id=url,id=url". Entries that are not a lowercase module id and a
 // non-empty value are dropped; the launcher validates each URL itself.
 func parseModuleUIURLs(v string) map[string]string {
@@ -498,6 +505,18 @@ func parseModuleUIURLs(v string) map[string]string {
 			continue
 		}
 		out[id] = raw
+	}
+	return out
+}
+
+// unknownModuleUIWarnings names the CAN_MODULE_UI_URLS entries for module ids this server has no
+// module record of: a typo there would otherwise only show as an app missing from Apps.
+func unknownModuleUIWarnings(overrides map[string]string, installed []store.Module) []string {
+	var out []string
+	for _, id := range slices.Sorted(maps.Keys(overrides)) {
+		if !slices.ContainsFunc(installed, func(m store.Module) bool { return m.ID == id }) {
+			out = append(out, "CAN_MODULE_UI_URLS names "+strconv.Quote(id)+", which is not an installed module (check the spelling; it takes effect if that module is installed)")
+		}
 	}
 	return out
 }
@@ -529,6 +548,7 @@ func moduleUIWarnings(raw, domain string, allowHTTP bool) []string {
 	return out
 }
 
+// splitList splits a comma-separated setting, dropping blanks.
 func splitList(v string) []string {
 	var out []string
 	for _, p := range strings.Split(v, ",") {

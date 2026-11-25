@@ -48,6 +48,9 @@ type Identity struct {
 	Name          string
 	Groups        []string
 	AMR           []string
+	// AuthTime is the auth_time claim: when the person last authenticated at the provider (zero =
+	// the provider did not say).
+	AuthTime time.Time
 }
 
 // ExternalSubject is the stable subject of an identity: oidc:<issuer-hash>:<sub>.
@@ -218,6 +221,9 @@ func (p *Provider) AuthURL(ctx context.Context, state, nonce, challenge string) 
 	q.Set("nonce", nonce)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
+	// OpenID Connect makes auth_time a required claim when max_age is requested. A year forces no
+	// new sign-in; it is asked so that irreversible actions can tell how fresh a sign-in is.
+	q.Set("max_age", "31536000")
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -312,6 +318,14 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, wantNonce, accessToke
 	id.Subject = sub
 	p.fillClaims(id, c)
 	id.AMR = stringList(c["amr"], 20)
+	// Only from the verified ID token, never from userinfo. A time in the future beyond the clock
+	// skew is not believed.
+	if at, ok := numDate(c["auth_time"]); ok && !at.After(now.Add(clockSkew)) {
+		id.AuthTime = at
+		if at.After(now) {
+			id.AuthTime = now
+		}
+	}
 	if (id.Email == "" || len(id.Groups) == 0 && len(p.cfg.GroupRoles) > 0) && accessToken != "" {
 		if d, derr := p.Discover(ctx); derr == nil && d.UserinfoEndpoint != "" {
 			var ui map[string]any

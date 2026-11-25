@@ -16,6 +16,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
 	"github.com/dodwmd/companyinacan/core/server/moduleapi"
+	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
 	"github.com/dodwmd/companyinacan/core/work"
 )
@@ -64,7 +65,15 @@ func TestLaunchTicketSignsInToTheRealTracker(t *testing.T) {
 		t.Fatalf("root's apps: %+v %v", all, err)
 	}
 
-	launched, err := tickets.Launch(w.ctx, "user:alice", "work", "/dashboard", time.Time{})
+	alice, err := w.db.AdminByUsername(w.ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := store.Session{IDHash: strings.Repeat("a", 64), UserID: alice.ID, CSRF: "c", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	if err := w.db.CreateSession(w.ctx, admin); err != nil {
+		t.Fatal(err)
+	}
+	launched, err := tickets.Launch(w.ctx, "user:alice", "work", "/dashboard", admin)
 	if err != nil {
 		t.Fatal(err)
 	}

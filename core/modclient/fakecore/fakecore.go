@@ -64,6 +64,8 @@ type Core struct {
 	sessions    map[string]*session
 	Redeems     int
 	Revalidates int
+	// Now is the fake's clock for launch sessions (default time.Now); set it to the module's.
+	Now func() time.Time
 }
 
 // Grant is a launch ticket the fake knows: one use, for this module only.
@@ -74,6 +76,26 @@ type Grant struct {
 	Used                      bool
 	// Binding is the launching browser's nonce; NewTicket makes one when empty.
 	Binding string
+	// SessionExpires is session_expires_at; zero means 12 hours from the fake's now.
+	SessionExpires time.Time
+	// AuthenticatedAt is authenticated_at; zero means the fake's now at NewTicket.
+	AuthenticatedAt time.Time
+	// NoAuthTime leaves authenticated_at out (can-core does not know).
+	NoAuthTime bool
+}
+
+func (c *Core) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+func withAuthTime(g Grant, m map[string]any) map[string]any {
+	if !g.NoAuthTime {
+		m["authenticated_at"] = g.AuthenticatedAt.UTC().Format(time.RFC3339)
+	}
+	return m
 }
 
 type session struct {
@@ -182,6 +204,9 @@ func (c *Core) NewTicket(g Grant) string {
 	if g.Binding == "" {
 		g.Binding = modclient.BindingPrefix + randSecret()
 	}
+	if g.AuthenticatedAt.IsZero() {
+		g.AuthenticatedAt = c.now()
+	}
 	c.tickets[t] = &g
 	return t
 }
@@ -254,8 +279,12 @@ func (c *Core) redeem(w http.ResponseWriter, r *http.Request) {
 		c.sessions = map[string]*session{}
 	}
 	c.sessions[handle] = &session{grant: *g}
-	_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "subject": g.Subject, "name": g.Name, "permissions": g.Permissions,
-		"return_path": g.ReturnPath, "session": handle, "session_expires_at": time.Now().Add(12 * time.Hour).UTC().Format(time.RFC3339)})
+	exp := g.SessionExpires
+	if exp.IsZero() {
+		exp = c.now().Add(12 * time.Hour)
+	}
+	_ = json.NewEncoder(w).Encode(withAuthTime(*g, map[string]any{"active": true, "subject": g.Subject, "name": g.Name, "permissions": g.Permissions,
+		"return_path": g.ReturnPath, "session": handle, "session_expires_at": exp.UTC().Format(time.RFC3339)}))
 }
 
 func (c *Core) revalidate(w http.ResponseWriter, r *http.Request) {
@@ -269,7 +298,7 @@ func (c *Core) revalidate(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"active":false}`))
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "subject": s.grant.Subject, "name": s.grant.Name, "permissions": s.grant.Permissions})
+	_ = json.NewEncoder(w).Encode(withAuthTime(s.grant, map[string]any{"active": true, "subject": s.grant.Subject, "name": s.grant.Name, "permissions": s.grant.Permissions}))
 }
 
 func (c *Core) publish(w http.ResponseWriter, r *http.Request) {

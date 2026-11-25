@@ -293,7 +293,7 @@ func (u *UI) party(c *uiCtx) error {
 }
 
 type eraseForm struct {
-	// SSO is a launch-ticket session: no token field, the launch itself is the step-up.
+	// SSO is a launch-ticket session: no token field; a recent admin sign-in is the step-up.
 	SSO            bool
 	P              Party
 	RetentionYears int
@@ -328,7 +328,7 @@ func (u *UI) partyErase(c *uiCtx) error {
 	}
 	// Step-up: erasing is irreversible, so a session left open on an unlocked screen is not enough.
 	// A token session is asked for its sign-in token again, compared with the one it was made from;
-	// a launch-ticket session must be freshly launched and confirmed by can-core (stepUpSSO).
+	// a launch-ticket session needs a recent admin sign-in, confirmed by can-core (stepUpSSO).
 	if c.ss.ssoHandle != "" {
 		if err := u.stepUpSSO(c); err != nil {
 			return err

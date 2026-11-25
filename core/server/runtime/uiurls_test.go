@@ -3,6 +3,8 @@ package runtime
 import (
 	"strings"
 	"testing"
+
+	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
 func TestParseModuleUIURLs(t *testing.T) {
@@ -36,5 +38,16 @@ func TestModuleUIWarnings(t *testing.T) {
 	}
 	if w := all("", "localhost", true); !strings.Contains(w, "cookie") {
 		t.Fatalf("no warning for a single-label domain: %q", w)
+	}
+}
+
+func TestUnknownModuleIDsInUIURLsAreWarnedAbout(t *testing.T) {
+	overrides := parseModuleUIURLs("work=https://work.example.org,wrok=https://work.example.org,poeple=https://user:secret@people.example.org")
+	w := unknownModuleUIWarnings(overrides, []store.Module{{ID: "work"}})
+	if len(w) != 2 || !strings.Contains(w[0], `"poeple"`) || !strings.Contains(w[1], `"wrok"`) {
+		t.Fatalf("%q", w)
+	}
+	if strings.Contains(strings.Join(w, " "), "secret") || strings.Contains(strings.Join(w, " "), "https") {
+		t.Fatalf("a configured address was repeated: %q", w)
 	}
 }

@@ -47,6 +47,14 @@ type uiSession struct {
 	// person's display name from can-core. Both are guarded by the store's mutex.
 	ssoHandle string
 	name      string
+	// ssoExpires is can-core's session_expires_at (the identity provider's deadline caps it): the
+	// session ends then, whatever the timeouts say. Set at creation, never changed.
+	ssoExpires time.Time
+}
+
+// pastDeadline reports whether a launch-ticket session has reached can-core's session_expires_at.
+func (ss *uiSession) pastDeadline(now time.Time) bool {
+	return ss.ssoHandle != "" && !now.Before(ss.ssoExpires)
 }
 
 type sessionStore struct {
@@ -69,8 +77,8 @@ func (s *sessionStore) create(p Principal, token string, now time.Time) (string,
 }
 
 // createSSO is create for a launch-ticket session: no token, the can-core session handle instead.
-func (s *sessionStore) createSSO(p Principal, handle, name string, now time.Time) (string, *uiSession) {
-	return s.add(&uiSession{subject: p.Subject, princ: p, ssoHandle: handle, name: name}, now)
+func (s *sessionStore) createSSO(p Principal, handle, name string, expires, now time.Time) (string, *uiSession) {
+	return s.add(&uiSession{subject: p.Subject, princ: p, ssoHandle: handle, name: name, ssoExpires: expires}, now)
 }
 
 func (s *sessionStore) add(ss *uiSession, now time.Time) (string, *uiSession) {
@@ -184,7 +192,7 @@ func (u *UI) current(w http.ResponseWriter, r *http.Request) (*uiSession, Princi
 	u.sessions.mu.Lock()
 	last, created, checked, princ, token, handle := ss.last, ss.created, ss.checked, ss.princ, ss.token, ss.ssoHandle
 	u.sessions.mu.Unlock()
-	if now.Sub(last) > u.IdleTimeout || now.Sub(created) > u.AbsoluteTimeout {
+	if now.Sub(last) > u.IdleTimeout || now.Sub(created) > u.AbsoluteTimeout || ss.pastDeadline(now) {
 		return kill()
 	}
 	recheck := now.Sub(checked) > u.recheckFor(&princ)

@@ -31,6 +31,7 @@ func newSSOEnv(t *testing.T, logger *slog.Logger, mut func(*Config)) *ssoEnv {
 	t.Helper()
 	e := newEnv(t, nil)
 	core := fakecore.New(t, "jobs")
+	core.Now = e.clk.Now
 	cfg := DefaultConfig()
 	dir := t.TempDir()
 	cfg.DBPath = filepath.Join(dir, "jobs.db")
@@ -448,5 +449,26 @@ func TestAnotherAccountsSessionIsNeverReplacedSilently(t *testing.T) {
 	form.Set("replace", "user:alice")
 	if r := b.do("POST", "/login/ticket", form, "Sec-Fetch-Site", "same-origin"); r.Code != 303 || b.cookies[sessionCookie] == old {
 		t.Fatalf("confirmed: %d %.300s", r.Code, r.Body.String())
+	}
+}
+
+// can-core's session_expires_at (the identity provider's deadline) ends the module session.
+func TestTicketSessionNeverOutlivesCanCoresDeadline(t *testing.T) {
+	s := newSSOEnv(t, nil, nil)
+	g := fakecore.Grant{Subject: "user:alice", Permissions: recruiterPerms, SessionExpires: s.clk.Now().Add(30 * time.Second)}
+	b := s.browser(t)
+	s.land(b, s.core.NewTicket(g))
+	if p := b.get("/"); p.Code != 200 {
+		t.Fatalf("before the deadline: %d %.300s", p.Code, p.Body)
+	}
+	s.clk.Add(30 * time.Second)
+	if p := b.get("/"); p.Code != 303 {
+		t.Fatalf("the session outlived the deadline: %d", p.Code)
+	}
+	g.SessionExpires = s.clk.Now().Add(-time.Second)
+	b = s.browser(t)
+	s.land(b, s.core.NewTicket(g))
+	if p := b.get("/"); p.Code != 303 {
+		t.Fatalf("a session past its deadline was started: %d", p.Code)
 	}
 }

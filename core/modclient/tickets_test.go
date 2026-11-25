@@ -64,11 +64,39 @@ func TestPeekAndTheLaunchCookie(t *testing.T) {
 		t.Fatalf("a plain-http UI read %q", got)
 	}
 	r.AddCookie(&http.Cookie{Name: modclient.LaunchCookieName("work", true), Value: core.Binding(tk)})
-	if got := modclient.LaunchBinding(r, "work", false); got != core.Binding(tk) {
-		t.Fatalf("the secure cookie wins: %q", got)
+	if got := modclient.LaunchBinding(r, "work", false); got != core.Binding(tk)+" "+plain {
+		t.Fatalf("the secure cookie is tried first: %q", got)
 	}
 	if got := modclient.LaunchBinding(r, "people", false); got != "" {
 		t.Fatalf("another module's cookie: %q", got)
+	}
+}
+
+// A nonce planted by another host of the company domain arrives ahead of the genuine one: the
+// genuine one is still tried, for peek and for redeem.
+func TestAPlantedLaunchCookieDoesNotHideTheGenuineOne(t *testing.T) {
+	core := fakecore.New(t, "work")
+	cl := core.Client(t)
+	ctx := context.Background()
+	tk := core.NewTicket(fakecore.Grant{Subject: "user:alice", Permissions: []string{"work.read"}})
+	r := httptest.NewRequest("GET", "/", nil)
+	name := modclient.LaunchCookieName("work", true)
+	r.AddCookie(&http.Cookie{Name: name, Value: modclient.BindingPrefix + strings.Repeat("p", 43)})
+	r.AddCookie(&http.Cookie{Name: name, Value: core.Binding(tk)})
+	b := modclient.LaunchBinding(r, "work", true)
+	if p, err := cl.PeekTicket(ctx, tk, b); err != nil || !p.Active {
+		t.Fatalf("peek: %+v %v", p, err)
+	}
+	if s, err := cl.RedeemTicket(ctx, tk, b); err != nil || !s.Active || s.AuthenticatedAt.IsZero() {
+		t.Fatalf("redeem: %+v %v", s, err)
+	}
+	// Bounded: a pile of planted cookies is not tried without end.
+	r = httptest.NewRequest("GET", "/", nil)
+	for _, c := range "abcdefghij" {
+		r.AddCookie(&http.Cookie{Name: name, Value: modclient.BindingPrefix + strings.Repeat(string(c), 43)})
+	}
+	if n := len(strings.Fields(modclient.LaunchBinding(r, "work", true))); n != 4 {
+		t.Fatalf("%d candidates", n)
 	}
 }
 

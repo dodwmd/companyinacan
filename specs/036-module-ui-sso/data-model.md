@@ -1,6 +1,7 @@
 # Data model: single sign-on into module UIs (E11c)
 
-Migration `core/server/store/migrations/0009_login_tickets.sql`. Only hashes of secrets are stored.
+Migrations `core/server/store/migrations/0009_login_tickets.sql` and `0010_launch_auth_time.sql`. Only hashes of
+secrets are stored.
 
 ## login_tickets
 
@@ -15,6 +16,8 @@ Migration `core/server/store/migrations/0009_login_tickets.sql`. Only hashes of 
 | `session_not_after` | Unix seconds the module session may not outlive (the launching SSO session's IdP revalidation deadline); 0 = none |
 | `created_at`, `expires_at` | Unix seconds; `expires_at = created_at + 60` at most (`ticket.MaxTicketTTL`) |
 | `used_at` | 0 while unused; set by the atomic redeem |
+| `auth_at` | Unix seconds the launching person last authenticated to the admin UI; 0 = unknown |
+| `revoked_at` | 0 while valid; set on every ticket of a subject (consumed ones too) by `endLaunchAccess`; no module session is stored for a revoked ticket |
 
 Rows older than an hour past expiry are deleted by the hourly housekeeping (`PurgeLoginTickets`).
 
@@ -28,10 +31,14 @@ The server-side handle of a module session that began with a ticket.
 | `ticket_id` | the ticket it came from (an id, not the ticket) |
 | `subject`, `module_id` | the person and the only module that may revalidate it |
 | `created_at`, `expires_at` | Unix seconds; at most 12 hours (`ticket.SessionLifetime`) and never past `session_not_after` |
-| `revoked_at` | 0 while valid; set (with the person's unused tickets spent) by `endLaunchAccess` in the transaction of a password/TOTP change or CLI reset, an admin session revocation, SSO unlink or link replacement, and `identity.end` |
+| `auth_at` | copied from the ticket; returned by redeem and revalidate as `authenticated_at` |
+| `revoked_at` | 0 while valid; set (with the person's tickets revoked) by `endLaunchAccess` in the transaction of a password/TOTP change or CLI reset, an admin session revocation, SSO unlink or link replacement, and `identity.end` |
 
 Revalidation does not depend on `revoked_at` alone: it re-reads the account (must exist and not be disabled)
 and RBAC (at least one module permission) on every call.
+
+`sessions.auth_at` (admin sessions) is the identity provider's `auth_time` for an SSO session, 0 when it did not
+say; a local session authenticated when it was created.
 
 ## Manifest (`module.v1`)
 
