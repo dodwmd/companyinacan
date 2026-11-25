@@ -1,0 +1,6 @@
+apiVersion: v2
+name: crm
+description: CRM (EspoCRM) for companyinacan
+type: application
+version: 0.1.0
+appVersion: "10.x"

@@ -1,5 +1,7 @@
 # modules
 
+A status-by-status overview of every module is in [docs/modules-catalogue.md](../docs/modules-catalogue.md).
+
 One directory per module: `module.yaml`, a Helm chart, hooks, and settings schema (see SPEC.md §4).
 Directories starting with `_` are examples and are not enabled or listed in THIRD_PARTY_LICENSES.
 
@@ -9,6 +11,9 @@ Directories starting with `_` are examples and are not enabled or listed in THIR
 | `support` | FreeScout | AGPL-3.0 | 250 MB | MariaDB | `tickets` |
 | `newsletter` | Listmonk | AGPL-3.0 | 50 MB | Postgres | `newsletter` |
 | `analytics` | GoatCounter | EUPL-1.2 | 20 MB | SQLite | `analytics` |
+| `wiki` | DokuWiki | GPL-2.0 | 64 MB | none (flat files) | `wiki` |
+| `crm` | EspoCRM | AGPL-3.0 | 350 MB | MariaDB | `crm` |
+| `status` | Uptime Kuma | MIT | 128 MB | SQLite | `status` |
 | `finance` | in-house | Apache-2.0 | 20 MB (16 MB measured idle) | SQLite | `invoices`, `contracts`, `timesheets` |
 | `people` | in-house | Apache-2.0 | 30 MB (14 MB measured idle) | SQLite | `directory`, `performance` |
 | `jobs` | in-house | Apache-2.0 | 30 MB (16 MB measured idle) | SQLite | `jobs`, `ats` |
@@ -16,7 +21,7 @@ Directories starting with `_` are examples and are not enabled or listed in THIR
 ## Licences and network copyleft
 
 Wrapped apps keep their own licences; the manifests, charts and hooks in this repository are
-Apache-2.0. FreeScout and Listmonk are **AGPL-3.0** and GoatCounter is **EUPL-1.2**; both are
+Apache-2.0. FreeScout, Listmonk and EspoCRM are **AGPL-3.0** and GoatCounter is **EUPL-1.2**; both are
 *network copyleft* licences, in different words:
 
 - AGPL-3.0 section 13: if you **modify** the program and let users interact with it remotely

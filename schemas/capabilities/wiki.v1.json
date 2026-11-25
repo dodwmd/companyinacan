@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/wiki.v1.json",
+  "title": "wiki.v1",
+  "description": "Capability `wiki` (SPEC.md section 4.3): internal wiki and optional public help centre (DokuWiki today). Pages are plain text in the wiki's own markup; the contract carries ids, titles and text, never HTML. Authentication: projected ServiceAccount token (audience `can`). Planned: no adapter serves it yet.",
+  "x-capability": "wiki",
+  "x-verbs": [
+    { "verb": "list_pages", "method": "GET", "path": "/v1/pages", "response": "PageList", "permission": "wiki.read", "description": "Query: namespace, limit (max 200), cursor. Only pages the caller may read." },
+    { "verb": "get_page", "method": "GET", "path": "/v1/pages/{id}", "response": "Page", "permission": "wiki.read", "description": "The id is the colon-separated wiki id, e.g. handbook:onboarding." },
+    { "verb": "search", "method": "GET", "path": "/v1/search", "response": "SearchResults", "permission": "wiki.read", "description": "Query: q (2 to 200 characters), limit (max 50)." },
+    { "verb": "put_page", "method": "PUT", "path": "/v1/pages/{id}", "request": "PutPageRequest", "response": "Page", "write": true, "permission": "wiki.write", "description": "Creates or replaces a page. `base_revision` guards against lost updates." }
+  ],
+  "$defs": {
+    "PageId": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+(:[a-z0-9_]+)*$",
+      "maxLength": 200,
+      "description": "Colon-separated namespace path, lower case."
+    },
+    "PageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "public"],
+      "properties": {
+        "id": { "$ref": "#/$defs/PageId" },
+        "title": { "type": "string", "maxLength": 300 },
+        "public": { "type": "boolean", "description": "Readable without logging in (the help centre)." },
+        "modified_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PageList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pages"],
+      "properties": {
+        "pages": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/PageSummary" } },
+        "next_cursor": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "Page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "text", "revision", "public"],
+      "properties": {
+        "id": { "$ref": "#/$defs/PageId" },
+        "title": { "type": "string", "maxLength": 300 },
+        "text": { "type": "string", "maxLength": 1000000, "description": "Source text in the wiki's markup." },
+        "revision": { "type": "string", "pattern": "^[0-9]{1,20}$", "description": "Opaque revision stamp (DokuWiki: Unix timestamp)." },
+        "public": { "type": "boolean" },
+        "modified_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "SearchResults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "hits"],
+      "properties": {
+        "query": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "hits": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "title"],
+            "properties": {
+              "id": { "$ref": "#/$defs/PageId" },
+              "title": { "type": "string", "maxLength": 300 },
+              "snippet": { "type": "string", "maxLength": 500 }
+            }
+          }
+        }
+      }
+    },
+    "PutPageRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "title": { "type": "string", "maxLength": 300 },
+        "text": { "type": "string", "maxLength": 1000000 },
+        "base_revision": { "type": "string", "pattern": "^[0-9]{1,20}$", "description": "Revision the edit started from; a mismatch is a conflict. Absent only when creating." },
+        "summary": { "type": "string", "maxLength": 200, "description": "Edit summary shown in the page history." }
+      }
+    }
+  }
+}

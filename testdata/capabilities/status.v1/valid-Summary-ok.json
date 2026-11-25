@@ -1,0 +1,7 @@
+{
+  "state": "operational",
+  "monitors_total": 5,
+  "monitors_up": 5,
+  "page_url": "https://status.example.com/status/main",
+  "updated_at": "2026-11-25T01:02:03Z"
+}

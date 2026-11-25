@@ -1,0 +1,31 @@
+{{- /*
+The module namespace already carries default-deny plus the allows for Traefik, can-core, DNS,
+the shared databases and the internet (deploy/templates/module-namespace.yaml). With a single
+pod nothing more is needed. The adapter talks to the app inside the namespace, and the base
+module-egress policy excludes the pod CIDR, so both directions need an explicit same-namespace
+allow, limited to this release's pods.
+*/ -}}
+{{- if .Values.adapter.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "mod.selector" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "mod.selector" . | nindent 14 }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "mod.selector" . | nindent 14 }}
+{{- end }}

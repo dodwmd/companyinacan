@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/status.v1.json",
+  "title": "status.v1",
+  "description": "Capability `status` (SPEC.md section 4.3): public service status and uptime monitors (Uptime Kuma today). Read verbs return aggregates the site renderer can embed; the one write verb schedules maintenance. No personal data crosses this contract. Authentication: projected ServiceAccount token (audience `can`). Planned: no adapter serves it yet.",
+  "x-capability": "status",
+  "x-verbs": [
+    { "verb": "summary", "method": "GET", "path": "/v1/summary", "response": "Summary", "permission": "status.read", "description": "Overall state and counts, for a badge on the company site." },
+    { "verb": "list_monitors", "method": "GET", "path": "/v1/monitors", "response": "MonitorList", "permission": "status.read" },
+    { "verb": "schedule_maintenance", "method": "PUT", "path": "/v1/maintenance/{id}", "request": "MaintenanceRequest", "response": "Maintenance", "write": true, "permission": "status.write", "description": "Idempotent on the caller-chosen id." }
+  ],
+  "$defs": {
+    "State": { "enum": ["operational", "degraded", "major_outage", "maintenance"] },
+    "Summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "monitors_total", "monitors_up", "updated_at"],
+      "properties": {
+        "state": { "$ref": "#/$defs/State" },
+        "monitors_total": { "type": "integer", "minimum": 0 },
+        "monitors_up": { "type": "integer", "minimum": 0 },
+        "page_url": { "type": "string", "pattern": "^https?://" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Monitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "state"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "state": { "enum": ["up", "down", "pending", "maintenance", "paused"] },
+        "uptime_30d": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent over the last 30 days." },
+        "response_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "MonitorList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monitors"],
+      "properties": { "monitors": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/Monitor" } } }
+    },
+    "MaintenanceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "starts_at", "ends_at"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "starts_at": { "type": "string", "format": "date-time" },
+        "ends_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Maintenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "starts_at", "ends_at"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "starts_at": { "type": "string", "format": "date-time" },
+        "ends_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

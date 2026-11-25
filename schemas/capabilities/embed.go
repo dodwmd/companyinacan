@@ -62,3 +62,18 @@ var ContractsV1 []byte
 //
 //go:embed timesheets.v1.json
 var TimesheetsV1 []byte
+
+// WikiV1 is the contract of the `wiki` capability (DokuWiki module).
+//
+//go:embed wiki.v1.json
+var WikiV1 []byte
+
+// CrmV1 is the contract of the `crm` capability (EspoCRM module).
+//
+//go:embed crm.v1.json
+var CrmV1 []byte
+
+// StatusV1 is the contract of the `status` capability (Uptime Kuma module).
+//
+//go:embed status.v1.json
+var StatusV1 []byte

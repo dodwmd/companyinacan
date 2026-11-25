@@ -1,0 +1,71 @@
+{{- /*
+Optional capability adapter (SPEC 4.3): translates the capability contract in schemas/capabilities
+to the upstream app's API, publishes its events and receives the public inbound webhooks. Off by
+default until the adapter image exists (specs/007-starter-modules/tasks.md, deferred).
+*/ -}}
+{{- if .Values.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mod.selector" . | nindent 6 }}
+      app.kubernetes.io/component: adapter
+  template:
+    metadata:
+      labels:
+        {{- include "mod.labels" . | nindent 8 }}
+        app.kubernetes.io/component: adapter
+    spec:
+      # No default API token: the adapter's identity is the projected audience-`can` token below.
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: adapter
+          image: {{ include "mod.image" .Values.adapter.image | quote }}
+          ports:
+            - {name: http, containerPort: {{ .Values.adapter.port }}}
+          env:
+            - {name: PORT, value: {{ .Values.adapter.port | quote }}}
+            - {name: UPSTREAM_URL, value: "http://{{ .Chart.Name }}:{{ .Values.service.port }}"}
+            - {name: CAN_TOKEN_FILE, value: /var/run/secrets/can/token}
+            - name: CAN_API_URL
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: api-url}}
+            - name: CAN_WEBHOOK_SECRET
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: webhook-secret}}
+            {{- if eq .Chart.Name "support" }}
+            - {name: INBOUND_MODE, value: {{ .Values.inbound.mode | quote }}}
+            {{- end }}
+            {{- range $k, $v := .Values.adapter.env }}
+            - {name: {{ $k }}, value: {{ $v | quote }}}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.adapter.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: true
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+          volumeMounts:
+            - {name: can-token, mountPath: /var/run/secrets/can, readOnly: true}
+      volumes:
+        - name: can-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: can
+                  expirationSeconds: 3600
+                  path: token
+{{- end }}

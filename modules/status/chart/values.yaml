@@ -1,0 +1,67 @@
+# Values for the status module chart (Uptime Kuma, SQLite). can-core supplies ingress.host
+# (<subdomain>.<domain>); see specs/007-starter-modules/contracts/module-charts.md.
+image:
+  # The `-rootless` variant (runs as the image's `node` user, per upstream's dockerfile). The tag was
+  # listed on Docker Hub when this was written (research.md R-images) but not pulled or run: re-check
+  # the newest release when pinning.
+  repository: docker.io/louislam/uptime-kuma
+  tag: 2.5.12-rootless
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+service:
+  port: 3001
+ingress:
+  enabled: true
+  host: ""                 # supplied by can-core
+  tls: true                # false on local dev (plain HTTP, no certificate resolver)
+  certResolver: letsencrypt
+  # true: route only the public status-page paths below; the admin dashboard, its socket.io channel
+  # and the first-run setup stay off the internet (use `kubectl port-forward`). false: route the host.
+  publicOnly: true
+  # Paths of the public status pages and the assets they load, from upstream's URL scheme as
+  # remembered (UNVERIFIED, README "Open items"): if a page renders without styling or data, a path is missing.
+  publicPaths:
+    - /status
+    - /api/status-page
+    - /assets
+    - /upload
+    - /icon.svg
+    - /favicon.ico
+  adapterRoutes: []
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  mountPath: /app/data     # kuma.db (SQLite), uploads
+resources:
+  requests: { memory: 112Mi, cpu: 20m }
+  limits: { memory: 256Mi }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000          # the image's `node` user (unverified numeric id)
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities: { drop: [ALL] }
+secrets:
+  database: can-database   # unused (SQLite); kept so every wrapped chart has the same contract
+  smtp: can-smtp           # unused: alert mail is configured in the Kuma UI (README)
+  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+probes:
+  readiness: { path: /, port: http }
+  liveness: { path: /, port: http }
+adapter:
+  enabled: false           # needs the can-adapter-status image (deferred, see tasks.md)
+  port: 8081
+  image:
+    repository: ghcr.io/dodwmd/can-adapter-status
+    tag: 0.1.0
+    digest: sha256:REPLACE_WITH_DIGEST
+  env: {}
+  resources:
+    requests: { memory: 16Mi, cpu: 5m }
+    limits: { memory: 64Mi }

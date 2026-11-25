@@ -1,0 +1,54 @@
+{{- /*
+Status page. By default (ingress.publicOnly) only the public status-page paths are routed, so the
+admin dashboard, its socket.io channel and the first-run setup are not reachable from the internet;
+the operator reaches them through `kubectl port-forward` or sets ingress.publicOnly=false (local
+dev, first run). Every rule is one `&&` chain with a single Host, the shape the installer accepts.
+*/ -}}
+{{- if .Values.ingress.enabled }}
+{{- $host := required "ingress.host (<subdomain>.<domain>) is supplied by can-core and is required" .Values.ingress.host }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - {{ ternary "websecure" "web" .Values.ingress.tls }}
+  routes:
+    {{- if .Values.ingress.publicOnly }}
+    - match: Host(`{{ $host }}`) && Path(`/`)
+      kind: Rule
+      services:
+        - name: {{ .Chart.Name }}
+          port: {{ .Values.service.port }}
+    {{- range .Values.ingress.publicPaths }}
+    - match: Host(`{{ $host }}`) && PathPrefix(`{{ . }}`)
+      kind: Rule
+      services:
+        - name: {{ $.Chart.Name }}
+          port: {{ $.Values.service.port }}
+    {{- end }}
+    {{- else }}
+    - match: Host(`{{ $host }}`)
+      kind: Rule
+      services:
+        - name: {{ .Chart.Name }}
+          port: {{ .Values.service.port }}
+    {{- end }}
+    {{- if .Values.adapter.enabled }}
+    {{- range .Values.ingress.adapterRoutes }}
+    - match: Host(`{{ $host }}`) && PathPrefix(`{{ .pathPrefix }}`)
+      kind: Rule
+      priority: {{ .priority }}
+      services:
+        - name: {{ $.Chart.Name }}-adapter
+          port: {{ $.Values.adapter.port }}
+    {{- end }}
+    {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    certResolver: {{ .Values.ingress.certResolver }}
+  {{- end }}
+{{- end }}

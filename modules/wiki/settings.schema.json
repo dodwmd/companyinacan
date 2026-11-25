@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Wiki module settings",
+  "description": "Operator settings of the wiki module. Passwords are never settings: they live in the module's Secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "wiki_title": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Title shown in the wiki header." },
+    "public_help_centre": { "type": "boolean", "default": false, "description": "Make the `help` namespace readable without logging in. Everything else stays private." },
+    "php_memory_limit": { "type": "string", "pattern": "^[1-9][0-9]*M$", "default": "128M" },
+    "revision_retention_days": { "type": "integer", "minimum": 30, "default": 730, "description": "Matches the wiki-revision data class (2y)." }
+  }
+}

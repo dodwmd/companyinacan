@@ -1,0 +1,64 @@
+# CRM: EspoCRM (PHP, AGPL-3.0) wrapped behind the `crm` capability.
+schema: 1
+id: crm
+name: CRM
+description: Contacts, accounts, deals and pipeline for a small company. Wraps EspoCRM on the shared MariaDB; an adapter exposes the crm capability and turns a form submission (lead.created.v1) into a contact. Chosen over Twenty, SuiteCRM, Monica and Odoo CRM (specs/019-wiki-crm-status/research.md).
+category: sales
+# NOT DEPLOYABLE as shipped: the official EspoCRM image serves Apache on port 80 and its README does
+# not state a non-root user, so the `restricted` module namespace is expected to refuse it, and its
+# release tag is unresolved. Until a non-root wrapper image exists (specs/019-wiki-crm-status tasks
+# T031, T041) `can validate` warns and the module must not be offered as enable-ready.
+status: not-deployable
+version: 0.1.0
+provider:
+  type: oss-wrapper
+  name: EspoCRM
+  # AGPL-3.0 is network copyleft: see modules/README.md. We run EspoCRM unmodified. GitHub reports
+  # AGPL-3.0 for the repository (fetched 2026-11-25); upstream may add attribution terms (README).
+  licence: AGPL-3.0-only
+  licence_class: osi
+  upstream: https://github.com/espocrm/espocrm
+  upstream_version: "10.x"
+runtime:
+  chart: ./chart
+  values: ./chart/values.yaml
+  subdomain: crm
+  ui: { service: crm, port: 80 }
+requires:
+  database: mariadb
+  capabilities: [email.send]
+  sso: none
+resources:
+  # Estimate from SPEC.md section 6.1 (~350 MB); not measured (research.md R-footprint). Split:
+  # web 208 + scheduled-job daemon 96 + adapter 40 = 344 MB of requests, all inside this figure.
+  ram_mb: 350
+  ram_limit_mb: 640
+  disk_mb: 5120
+# status: planned = the adapter that serves the capability is not built yet (T031); the registry,
+# provider resolution and event routing ignore planned entries. Keep in step with chart adapter.enabled.
+provides:
+  - { capability: crm, schema: crm.v1, service: crm-adapter, port: 8081, status: planned }
+consumes: [leads]
+subscribes:
+  # lead.created.v1 -> contact (specs/019-wiki-crm-status/contracts/lead-to-crm-adapter.md).
+  - { event: lead.created.v1, service: crm-adapter, port: 8081, webhook: /hooks/lead, optional: true, status: planned }
+permissions: [crm.read, crm.write, crm.admin]
+roles:
+  sales: [crm.read, crm.write]
+  viewer: [crm.read]
+  admin: [crm.read, crm.write, crm.admin]
+data_classes:
+  # Names, emails, phone numbers and notes of people outside the company: personal data of standard
+  # sensitivity. Retention counts from the last activity on the contact; erasure on request is
+  # sooner (README "Personal data and erasure"). Adjust to the company's own policy.
+  - { class: crm-contact, retention: 3y, sensitivity: standard }
+  - { class: crm-activity, retention: 3y, sensitivity: standard }
+  # Deal records are commercial records; anonymised, not deleted, when a contact is erased.
+  - { class: crm-deal, retention: 7y, sensitivity: standard }
+settings_schema: ./settings.schema.json
+hooks:
+  # The upstream image has neither curl nor the MariaDB client; see deploy/hooks/.
+  image: ghcr.io/dodwmd/can-hooks:0.1.0
+  backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
+healthcheck: /

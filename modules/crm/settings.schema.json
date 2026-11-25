@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CRM module settings",
+  "description": "Operator settings of the CRM module. Passwords and API keys are never settings: they live in the module's Secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "from_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "From address of mail the CRM sends (needs email.send)." },
+    "lead_intake": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "description": "Create a contact for each form submission once the adapter exists." },
+        "form_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" }, "description": "Only these forms feed the CRM; empty means every form." }
+      }
+    },
+    "contact_retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Matches the crm-contact data class (3y), counted from the last activity." }
+  }
+}

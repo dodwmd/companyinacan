@@ -1,0 +1,10 @@
+{
+  "query": "onboarding",
+  "hits": [
+    {
+      "id": "handbook:onboarding",
+      "title": "Onboarding",
+      "snippet": "Welcome"
+    }
+  ]
+}

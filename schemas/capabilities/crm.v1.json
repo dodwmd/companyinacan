@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/crm.v1.json",
+  "title": "crm.v1",
+  "description": "Capability `crm` (SPEC.md section 4.3): contacts and deals of a CRM (EspoCRM today). Contacts are personal data of standard sensitivity: the contract has an explicit erase verb and an idempotent upsert keyed by `external_key`, so a redelivered lead.created.v1 never duplicates a contact. Authentication: projected ServiceAccount token (audience `can`). Planned: no adapter serves it yet. The broader `contacts` capability (party model, SPEC.md section 4.3) is a later contract.",
+  "x-capability": "crm",
+  "x-verbs": [
+    { "verb": "list_contacts", "method": "GET", "path": "/v1/contacts", "response": "ContactList", "permission": "crm.read", "description": "Query: email, limit (max 200), cursor." },
+    { "verb": "get_contact", "method": "GET", "path": "/v1/contacts/{id}", "response": "Contact", "permission": "crm.read" },
+    { "verb": "upsert_contact", "method": "PUT", "path": "/v1/contacts", "request": "UpsertContactRequest", "response": "Contact", "write": true, "permission": "crm.write", "description": "Idempotent on external_key: the same key updates the same contact." },
+    { "verb": "list_deals", "method": "GET", "path": "/v1/deals", "response": "DealList", "permission": "crm.read", "description": "Query: contact_id, stage, limit (max 200), cursor." },
+    { "verb": "erase_contact", "method": "POST", "path": "/v1/contacts/{id}/erase", "request": "EraseContactRequest", "response": "EraseResult", "write": true, "permission": "crm.admin", "description": "Deletes the contact and its notes, emails and activities; deals are anonymised, not deleted, when the business must keep them." }
+  ],
+  "$defs": {
+    "Contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^ct_[A-Za-z0-9]{1,40}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "email": { "type": "string", "maxLength": 254, "pattern": "^[^@\\s]+@[^@\\s]+$" },
+        "phone": { "type": "string", "maxLength": 40 },
+        "organisation": { "type": "string", "maxLength": 300 },
+        "party_id": { "type": "string", "minLength": 1, "description": "Directory party, once the `directory` capability exists." },
+        "external_key": { "type": "string", "maxLength": 100 },
+        "source": { "enum": ["form", "manual", "import", "api"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ContactList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contacts"],
+      "properties": {
+        "contacts": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/Contact" } },
+        "next_cursor": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "UpsertContactRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_key", "name"],
+      "properties": {
+        "external_key": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Stable key of the caller's record, e.g. the lead id `ld_...`." },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "email": { "type": "string", "maxLength": 254, "pattern": "^[^@\\s]+@[^@\\s]+$" },
+        "phone": { "type": "string", "maxLength": 40 },
+        "organisation": { "type": "string", "maxLength": 300 },
+        "party_id": { "type": "string", "minLength": 1 },
+        "source": { "enum": ["form", "manual", "import", "api"] },
+        "message": { "type": "string", "maxLength": 10000, "description": "Free text the person submitted; stored as a note on the contact." }
+      }
+    },
+    "Deal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "stage"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^dl_[A-Za-z0-9]{1,40}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "stage": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,40}$" },
+        "contact_id": { "type": "string", "pattern": "^ct_[A-Za-z0-9]{1,40}$" },
+        "amount_minor": { "type": "integer", "minimum": 0, "description": "Minor units of `currency`." },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "DealList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deals"],
+      "properties": {
+        "deals": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/Deal" } },
+        "next_cursor": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "EraseContactRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": { "enum": ["subject-request", "retention-expired", "withdrawn-consent"] },
+        "request_id": { "type": "string", "maxLength": 100, "description": "Erasure request id, for the audit trail." }
+      }
+    },
+    "EraseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contact_id", "contacts_removed", "notes_removed", "deals_anonymised"],
+      "properties": {
+        "contact_id": { "type": "string", "pattern": "^ct_[A-Za-z0-9]{1,40}$" },
+        "contacts_removed": { "type": "integer", "minimum": 0 },
+        "notes_removed": { "type": "integer", "minimum": 0 },
+        "deals_anonymised": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

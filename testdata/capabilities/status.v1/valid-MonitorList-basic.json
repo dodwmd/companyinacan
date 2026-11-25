@@ -1,0 +1,10 @@
+{
+  "monitors": [
+    {
+      "name": "Website",
+      "state": "up",
+      "uptime_30d": 99.95,
+      "response_ms": 120
+    }
+  ]
+}
