@@ -126,11 +126,13 @@ func blockedWithin(t *testing.T, ns, name, host string, port int, limit time.Dur
 
 func pollReachPort(t *testing.T, ns, name, host string, port int) bool {
 	t.Helper()
-	for i := 0; i < 6; i++ {
+	// Generous: a fresh pod's network (CNI, node routes) can lag behind the pod reporting ready, and
+	// this is the positive control for every BLOCKED verdict, so a slow start must not fail the test.
+	for i := 0; i < 15; i++ {
 		if reachPort(t, ns, fmt.Sprintf("%s-%d", name, i), host, port) {
 			return true
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(4 * time.Second)
 	}
 	return false
 }

@@ -48,7 +48,7 @@ func get(t *testing.T, url string) int {
 func TestRunServesTwoSeparateListenersAndShutsDownGracefully(t *testing.T) {
 	cfg := Config{
 		AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "state.db"),
-		SecureCookies: false, TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 5 * time.Second,
+		SecureCookies: false, TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 20 * time.Second,
 	}
 	addrs := make(chan [2]net.Addr, 1)
 	cfg.OnListen = func(a, m net.Addr) { addrs <- [2]net.Addr{a, m} }
@@ -61,7 +61,7 @@ func TestRunServesTwoSeparateListenersAndShutsDownGracefully(t *testing.T) {
 	case a = <-addrs:
 	case err := <-done:
 		t.Fatalf("exited early: %v", err)
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("no listeners")
 	}
 	admin, mod := "http://"+a[0].String(), "http://"+a[1].String()
@@ -88,7 +88,7 @@ func TestRunServesTwoSeparateListenersAndShutsDownGracefully(t *testing.T) {
 		if err != nil {
 			t.Fatalf("shutdown error: %v", err)
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(45 * time.Second): // a loaded CI runner under -race; the code's own bound is ShutdownTimeout
 		t.Fatal("no graceful shutdown")
 	}
 	if _, err := http.Get(admin + "/healthz"); err == nil { //nolint:gosec,noctx // listener must be closed

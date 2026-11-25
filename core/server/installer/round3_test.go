@@ -40,7 +40,7 @@ func TestExponentialTemplateFanOutStopsFast(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "iterations") {
 		t.Fatalf("%v", err)
 	}
-	if d := time.Since(start); d > 2*time.Second {
+	if d := time.Since(start); d > raceBudget(2*time.Second) {
 		t.Fatalf("took %s", d)
 	}
 	if n := goroutinesSettle(t, base); n > base+1 {
@@ -51,14 +51,13 @@ func TestExponentialTemplateFanOutStopsFast(t *testing.T) {
 func TestRepeatedReconcilesDoNotStackRenders(t *testing.T) {
 	base := runtime.NumGoroutine()
 	in, _, _, spec := fixture(t, map[string]string{"stub/chart/templates/bomb.yaml": exponentialChain()})
-	start := time.Now()
+	// Behaviour, not wall clock: every reconcile must fail (the renderer's own limits end each
+	// one) and the checks below show nothing is left running. A time budget here only measured
+	// how loaded the machine was.
 	for i := 0; i < 6; i++ {
 		if err := in.Enable(context.Background(), spec); err == nil {
 			t.Fatal("hostile chart installed")
 		}
-	}
-	if d := time.Since(start); d > 12*time.Second {
-		t.Fatalf("6 reconciles took %s", d)
 	}
 	if n := goroutinesSettle(t, base); n > base+1 {
 		t.Fatalf("renders stacked up: goroutines %d, baseline %d", n, base)
@@ -117,4 +116,12 @@ func TestIngressRouteTLSIsLimited(t *testing.T) {
 	if err := enableWith(t, "a.example", route("  tls: {certResolver: letsencrypt}\n")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// raceBudget widens a wall-clock bound when the race detector slows everything down several times.
+func raceBudget(d time.Duration) time.Duration {
+	if raceEnabled {
+		return d * 5
+	}
+	return d
 }

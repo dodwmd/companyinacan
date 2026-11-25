@@ -45,6 +45,7 @@ fail if the committed file differs). Violations are named per module with rule i
 |---|---|
 | `make` / `make help` | list targets |
 | `make build` | build `bin/can` |
+| `make unit` | `go test -race ./cmd/... ./core/...` (the race detector is on everywhere; about 40 s cold) |
 | `make test` | `lint` + unit + contract + `licences --check`; no network required except an optional first-time lint download |
 | `make lint` | golangci-lint (pinned), falls back to `go vet` with a notice offline |
 | `make licences` | regenerate `THIRD_PARTY_LICENSES` |
