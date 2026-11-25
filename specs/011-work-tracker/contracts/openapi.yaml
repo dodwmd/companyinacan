@@ -1,0 +1,731 @@
+openapi: 3.1.0
+info:
+  title: can-work REST API
+  version: 1.0.0
+  summary: Work tracker API (capabilities `work` and `projects`).
+  description: |
+    The complete REST surface of the in-house work tracker (`cmd/can-work`). The stable subset other
+    modules may depend on is `schemas/capabilities/work.v1.json` and `projects.v1.json`; everything
+    else here (sprints, boards, links, watchers, attachments, tokens, audit) is the module's own API.
+
+    Authentication: `Authorization: Bearer <token>`. Tokens carry scopes (`work.read`, `work.write`,
+    `work.admin`; admin implies write implies read) and may be limited to some projects. A project
+    outside a token's scope is reported as 404, never 403, so keys cannot be probed.
+
+    Conventions: JSON bodies with unknown fields rejected (400); validation problems are 422 with a
+    per-field list; `ETag` carries the issue version and `If-Match` guards updates (412 when stale);
+    creates accept `Idempotency-Key`; lists take `limit` (max 100) and an opaque `cursor`. Each operation's
+    `x-required-scope` is the scope the token needs (checked by a test against the router).
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://work.mod-work.svc.cluster.local:8080
+    description: In-cluster (ClusterIP only)
+security:
+  - bearer: []
+tags:
+  - { name: meta }
+  - { name: projects }
+  - { name: issues }
+  - { name: sprints }
+  - { name: admin }
+paths:
+  /healthz:
+    get:
+      tags: [meta]
+      operationId: healthz
+      security: []
+      summary: Liveness and database check (no authentication)
+      responses:
+        "200": { description: Healthy, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "503": { $ref: "#/components/responses/Error" }
+  /v1/me:
+    get:
+      tags: [meta]
+      operationId: me
+      x-required-scope: work.read
+      summary: Who the token is and what it may do
+      responses:
+        "200":
+          description: The caller
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subject: { type: string }
+                  kind: { enum: [personal, service, static] }
+                  token_id: { type: string }
+                  scopes: { type: array, items: { type: string } }
+                  projects: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Error" }
+  /v1/projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      x-required-scope: work.read
+      summary: Projects the token can see
+      responses:
+        "200": { description: Projects, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Project" } } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [projects]
+      operationId: createProject
+      x-required-scope: work.admin
+      summary: Create a project (work.admin, unscoped token)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewProject" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/projects/{key}:
+    parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
+    get:
+      tags: [projects]
+      operationId: getProject
+      x-required-scope: work.read
+      responses:
+        "200": { description: The project, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [projects]
+      operationId: updateProject
+      x-required-scope: work.admin
+      summary: Rename, archive, or change the workflow or SLA hints (work.admin)
+      description: A new workflow must still contain every status in use by issues (422 otherwise). resolved_at follows the new status categories.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectPatch" } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/projects/{key}/issues:
+    parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
+    post:
+      tags: [issues]
+      operationId: createIssue
+      x-required-scope: work.write
+      summary: Create an issue
+      description: Idempotent on the Idempotency-Key header or the body's idempotency_key; a retry returns the original issue with 200 and Idempotent-Replayed true. The same key with a different body is 422 idempotency_mismatch. The reporter is the token's subject.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateIssue" } } } }
+      responses:
+        "201": { description: Created, headers: { ETag: { $ref: "#/components/headers/ETag" }, Location: { schema: { type: string } } }, content: { application/json: { schema: { $ref: "#/components/schemas/Issue" } } } }
+        "200": { description: Replay of an earlier create, headers: { Idempotent-Replayed: { schema: { const: "true" } } }, content: { application/json: { schema: { $ref: "#/components/schemas/Issue" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/projects/{key}/issues/bulk:
+    parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
+    post:
+      tags: [issues]
+      operationId: bulkCreateIssues
+      x-required-scope: work.write
+      summary: Create up to 100 issues atomically (all or none)
+      description: Problems name the failing item as issues[N].field. Idempotent on the Idempotency-Key header.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [issues]
+              properties: { issues: { type: array, minItems: 1, maxItems: 100, items: { $ref: "#/components/schemas/CreateIssue" } } }
+      responses:
+        "201": { description: Created in request order, content: { application/json: { schema: { $ref: "#/components/schemas/IssueList" } } } }
+        "200": { description: Replay, content: { application/json: { schema: { $ref: "#/components/schemas/IssueList" } } } }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/projects/{key}/board:
+    parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
+    get:
+      tags: [sprints]
+      operationId: getBoard
+      x-required-scope: work.read
+      summary: Board view data, one column per workflow status, issues in rank order
+      parameters:
+        - { name: sprint, in: query, description: "active (default), backlog, all or a sprint id", schema: { type: string } }
+      responses:
+        "200": { description: The board, content: { application/json: { schema: { $ref: "#/components/schemas/Board" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/projects/{key}/sprints:
+    parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
+    get:
+      tags: [sprints]
+      operationId: listSprints
+      x-required-scope: work.read
+      responses:
+        "200": { description: Sprints, newest first, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Sprint" } } } } } } }
+    post:
+      tags: [sprints]
+      operationId: createSprint
+      x-required-scope: work.write
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewSprint" } } } }
+      responses:
+        "201": { description: Created (state planned), content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/sprints/{id}:
+    parameters: [{ $ref: "#/components/parameters/SprintId" }]
+    get:
+      tags: [sprints]
+      operationId: getSprint
+      x-required-scope: work.read
+      responses:
+        "200": { description: The sprint, content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [sprints]
+      operationId: updateSprint
+      x-required-scope: work.write
+      description: Planned and active sprints only; a closed sprint is 409.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SprintPatch" } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/sprints/{id}/start:
+    parameters: [{ $ref: "#/components/parameters/SprintId" }]
+    post:
+      tags: [sprints]
+      operationId: startSprint
+      x-required-scope: work.write
+      description: A planned sprint becomes the project's active sprint; a project has at most one (409).
+      responses:
+        "200": { description: Started, content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/sprints/{id}/complete:
+    parameters: [{ $ref: "#/components/parameters/SprintId" }]
+    post:
+      tags: [sprints]
+      operationId: completeSprint
+      x-required-scope: work.write
+      description: Closes an active sprint. Unresolved issues move to move_to (a planned sprint of the same project) or back to the backlog.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { move_to: { type: [integer, "null"], minimum: 1 } } }
+      responses:
+        "200": { description: Closed, content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/issues:
+    get:
+      tags: [issues]
+      operationId: searchIssues
+      x-required-scope: work.read
+      summary: Search and filter issues
+      description: |
+        `q` is a space-separated list of terms that must all match. Fields: `status`, `priority`
+        (P0..P3), `type`, `project`, `assignee` (`me`, `none`), `reporter`, `label` (`none`), `sprint`
+        (id, `active`, `none`), `parent` (key, `none`), `key`, `is` (`open`, `resolved`, `overdue`,
+        `blocked`), and dates `due`, `created`, `updated`, `resolved` with `<`, `<=`, `>`, `>=`, `=`
+        against `YYYY-MM-DD`, RFC 3339, `today` or `-7d`/`-12h`/`-2w`. Comma lists mean "any of". A
+        leading `-` negates a term. Bare words (or `"quoted phrases"`) match title or description.
+        Queries are limited to 500 characters and 20 terms. Input is bound as parameters; it is never
+        concatenated into SQL.
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 500 } }
+        - { name: project, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { enum: [created, -created, updated, -updated, priority, -priority, due, rank], default: -created } }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200": { description: A page, content: { application/json: { schema: { $ref: "#/components/schemas/IssueList" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/bulk-update:
+    post:
+      tags: [issues]
+      operationId: bulkUpdateIssues
+      x-required-scope: work.write
+      summary: Apply one patch and/or one transition to up to 100 issues
+      description: Each issue succeeds or fails on its own; the response lists the outcome per key (out-of-scope keys are not_found). Optimistic versions and parent changes are not supported here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [keys]
+              properties:
+                keys: { type: array, minItems: 1, maxItems: 100, items: { $ref: "#/components/schemas/IssueKey" } }
+                set: { $ref: "#/components/schemas/IssuePatch" }
+                transition: { type: string }
+      responses:
+        "200":
+          description: Per-key results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        ok: { type: boolean }
+                        code: { enum: [invalid, not_found, version_mismatch, conflict, forbidden, internal] }
+                        error: { type: string }
+                        version: { type: integer }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/{key}:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }]
+    get:
+      tags: [issues]
+      operationId: getIssue
+      x-required-scope: work.read
+      responses:
+        "200": { description: The issue with relations, headers: { ETag: { $ref: "#/components/headers/ETag" } }, content: { application/json: { schema: { $ref: "#/components/schemas/IssueDetail" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [issues]
+      operationId: updateIssue
+      x-required-scope: work.write
+      summary: Change fields (never status, reporter or key)
+      parameters: [{ $ref: "#/components/parameters/IfMatch" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/IssuePatch" } } } }
+      responses:
+        "200": { description: Updated (unchanged when nothing differs), headers: { ETag: { $ref: "#/components/headers/ETag" } }, content: { application/json: { schema: { $ref: "#/components/schemas/Issue" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/{key}/transitions:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }]
+    get:
+      tags: [issues]
+      operationId: listTransitions
+      x-required-scope: work.read
+      responses:
+        "200": { description: Statuses the issue can move to now, content: { application/json: { schema: { type: object, properties: { allowed: { type: array, items: { type: string } } } } } } }
+    post:
+      tags: [issues]
+      operationId: transitionIssue
+      x-required-scope: work.write
+      parameters: [{ $ref: "#/components/parameters/IfMatch" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, required: [to], properties: { to: { type: string } } } } }
+      responses:
+        "200": { description: Moved, headers: { ETag: { $ref: "#/components/headers/ETag" } }, content: { application/json: { schema: { $ref: "#/components/schemas/Issue" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/{key}/rank:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }]
+    post:
+      tags: [issues]
+      operationId: rankIssue
+      x-required-scope: work.write
+      summary: Move an issue in the project's ordering (one fractional rank is written)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: { before: { $ref: "#/components/schemas/IssueKey" }, after: { $ref: "#/components/schemas/IssueKey" }, position: { enum: [first, last] } }
+              description: Give exactly one of before, after or position.
+      responses:
+        "200": { description: Moved, content: { application/json: { schema: { $ref: "#/components/schemas/Issue" } } } }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/{key}/comments:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }]
+    get:
+      tags: [issues]
+      operationId: listComments
+      x-required-scope: work.read
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
+      responses:
+        "200": { description: Oldest first, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Comment" } }, next_cursor: { type: string } } } } } }
+    post:
+      tags: [issues]
+      operationId: addComment
+      x-required-scope: work.write
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, required: [body], properties: { body: { type: string, minLength: 1, maxLength: 20000 } } } } } }
+      responses:
+        "201": { description: Added, content: { application/json: { schema: { $ref: "#/components/schemas/Comment" } } } }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/{key}/activity:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }]
+    get:
+      tags: [issues]
+      operationId: listActivity
+      x-required-scope: work.read
+      summary: Per-issue history (created, updated with before/after, transitioned, commented, linked, attachments)
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
+      responses:
+        "200": { description: Oldest first, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Activity" } }, next_cursor: { type: string } } } } } }
+  /v1/issues/{key}/links:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }]
+    post:
+      tags: [issues]
+      operationId: addLink
+      x-required-scope: work.write
+      summary: Link this issue to another
+      description: "`blocks` means this issue blocks the target; `duplicates` means this issue duplicates the target. Self links, repeats and cycles are rejected (409); `relates` is symmetric."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type, target]
+              properties: { type: { enum: [blocks, relates, duplicates] }, target: { $ref: "#/components/schemas/IssueKey" } }
+      responses:
+        "201": { description: Linked, content: { application/json: { schema: { $ref: "#/components/schemas/Link" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/{key}/links/{id}:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }, { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }]
+    delete:
+      tags: [issues]
+      operationId: removeLink
+      x-required-scope: work.write
+      responses:
+        "204": { description: Removed }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/issues/{key}/watchers/{subject}:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }, { name: subject, in: path, required: true, schema: { type: string, maxLength: 254 } }]
+    put:
+      tags: [issues]
+      operationId: addWatcher
+      x-required-scope: work.write
+      responses: { "204": { description: Watching }, "404": { $ref: "#/components/responses/Error" } }
+    delete:
+      tags: [issues]
+      operationId: removeWatcher
+      x-required-scope: work.write
+      responses: { "204": { description: Not watching }, "404": { $ref: "#/components/responses/Error" } }
+  /v1/issues/{key}/attachments:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }]
+    post:
+      tags: [issues]
+      operationId: addAttachment
+      x-required-scope: work.write
+      summary: Record attachment metadata (the tracker stores no file bytes yet)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewAttachment" } } } }
+      responses:
+        "201": { description: Recorded, content: { application/json: { schema: { $ref: "#/components/schemas/Attachment" } } } }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/issues/{key}/attachments/{id}:
+    parameters: [{ $ref: "#/components/parameters/IssueKey" }, { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }]
+    delete:
+      tags: [issues]
+      operationId: removeAttachment
+      x-required-scope: work.write
+      responses: { "204": { description: Removed }, "404": { $ref: "#/components/responses/Error" } }
+  /v1/tokens:
+    get:
+      tags: [admin]
+      operationId: listTokens
+      x-required-scope: work.admin
+      summary: Token metadata, never secrets (work.admin, unscoped token)
+      responses:
+        "200": { description: Tokens, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/TokenInfo" } } } } } } }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [admin]
+      operationId: createToken
+      x-required-scope: work.admin
+      summary: Mint a personal or service token (work.admin)
+      description: The secret is returned once. A creator can only grant scopes and projects it holds. Personal tokens always expire (default 90 days, at most 365); service tokens may be non-expiring.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewToken" } } } }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { token: { type: string, description: "cwt_<id>_<secret>" }, info: { $ref: "#/components/schemas/TokenInfo" }, note: { type: string } }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/tokens/{id}:
+    delete:
+      tags: [admin]
+      operationId: revokeToken
+      x-required-scope: work.admin
+      summary: Revoke a token; effective immediately
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: Revoked }, "403": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
+  /v1/audit:
+    get:
+      tags: [admin]
+      operationId: listAudit
+      x-required-scope: work.admin
+      summary: Admin action log, newest first (work.admin, unscoped token)
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
+      responses:
+        "200": { description: Entries, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }, next_cursor: { type: string } } } } } }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/events/dead:
+    get:
+      tags: [admin]
+      operationId: listDeadEvents
+      x-required-scope: work.admin
+      summary: Webhook events not delivered within the 7-day delivery window (unscoped admin)
+      description: Undelivered events are retried with capped backoff (30 s doubling to 6 h) for 7 days, are then kept as dead (logged at error level) for 90 days and can be replayed. Delivery is at least once, per event; ordering across events is not guaranteed once a retry is involved, so receivers should use `version` and `time`.
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" }]
+      responses:
+        "200":
+          description: Dead events, oldest first; next_cursor when more
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  next_cursor: { type: string }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties: { event_id: { type: string }, type: { type: string }, created_at: { type: string, format: date-time }, dead_at: { type: string, format: date-time }, attempts: { type: integer }, last_error: { type: string } }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/events/{id}/replay:
+    post:
+      tags: [admin]
+      operationId: replayEvent
+      x-required-scope: work.admin
+      summary: Put a dead event back in the queue with a fresh delivery window (unscoped admin)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: Queued again, same event id }, "403": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, description: "API token (cwt_...) or the bootstrap admin token" }
+  headers:
+    ETag: { description: "The issue version, quoted", schema: { type: string, examples: ['"3"'] } }
+  parameters:
+    ProjectKey: { name: key, in: path, required: true, schema: { type: string, pattern: "^[A-Z][A-Z0-9]{1,9}$" } }
+    IssueKey: { name: key, in: path, required: true, schema: { $ref: "#/components/schemas/IssueKey" } }
+    SprintId: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    IfMatch: { name: If-Match, in: header, description: 'Issue version, for example "3". A stale version is 412.', schema: { type: string } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, description: 8 to 128 characters; scoped to the caller, schema: { type: string, minLength: 8, maxLength: 128 } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+    Cursor: { name: cursor, in: query, description: Opaque; take it from next_cursor, schema: { type: string } }
+  responses:
+    Error: { description: Error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Invalid: { description: Validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    RateLimited: { description: Too many requests, headers: { Retry-After: { schema: { type: integer } } }, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { enum: [bad_request, unauthenticated, forbidden, not_found, conflict, version_mismatch, idempotency_mismatch, invalid, too_large, rate_limited, search_timeout, internal, unhealthy] }
+        message: { type: string }
+        errors: { type: array, items: { type: object, properties: { field: { type: string }, message: { type: string } } } }
+    IssueKey: { type: string, pattern: "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$", examples: [ACME-123] }
+    Priority: { enum: [P0, P1, P2, P3], description: "P0 drop everything, P1 this sprint, P2 planned, P3 backlog" }
+    Issue:
+      type: object
+      required: [key, project, type, title, priority, status, status_category, reporter, version, created_at, updated_at]
+      properties:
+        key: { $ref: "#/components/schemas/IssueKey" }
+        project: { type: string }
+        type: { enum: [epic, story, task, bug, subtask] }
+        title: { type: string, maxLength: 200 }
+        description: { type: string, maxLength: 50000 }
+        priority: { $ref: "#/components/schemas/Priority" }
+        sla_hint: { $ref: "#/components/schemas/SLATarget" }
+        status: { type: string }
+        status_category: { enum: [todo, active, done] }
+        reporter: { type: string }
+        assignee: { type: [string, "null"] }
+        due_date: { type: [string, "null"], format: date }
+        estimate: { type: [number, "null"] }
+        parent: { type: [string, "null"] }
+        sprint_id: { type: [integer, "null"] }
+        labels: { type: array, items: { type: string } }
+        rank: { type: string }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        resolved_at: { type: [string, "null"], format: date-time }
+    IssueDetail:
+      allOf:
+        - { $ref: "#/components/schemas/Issue" }
+        - type: object
+          properties:
+            children: { type: array, items: { type: string } }
+            links: { type: array, items: { $ref: "#/components/schemas/Link" } }
+            watchers: { type: array, items: { type: string } }
+            attachments: { type: array, items: { $ref: "#/components/schemas/Attachment" } }
+    IssueList:
+      type: object
+      required: [items]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/Issue" } }, next_cursor: { type: string } }
+    CreateIssue:
+      type: object
+      additionalProperties: false
+      required: [type, title]
+      description: Hierarchy rules - an epic has no parent; a story, task or bug may sit under an epic; a subtask needs a story, task or bug. The parent must be in the same project.
+      properties:
+        type: { enum: [epic, story, task, bug, subtask] }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 50000 }
+        priority: { $ref: "#/components/schemas/Priority" }
+        assignee: { type: [string, "null"], maxLength: 254 }
+        due_date: { type: [string, "null"], format: date }
+        estimate: { type: [number, "null"], minimum: 0, maximum: 10000 }
+        parent: { type: [string, "null"], description: "An issue key, or in a bulk request $N for the Nth (from 0) earlier item of the same request" }
+        sprint_id: { type: [integer, "null"], minimum: 1 }
+        labels: { type: array, maxItems: 20, items: { type: string, pattern: "^[a-z0-9][a-z0-9._:-]{0,39}$" } }
+        idempotency_key: { type: string, minLength: 8, maxLength: 128 }
+    IssuePatch:
+      type: object
+      additionalProperties: false
+      description: Absent fields are untouched; null clears assignee, due_date, estimate, parent and sprint_id. labels replaces; labels_add and labels_remove edit (not both with labels). version is the same guard as If-Match.
+      properties:
+        title: { type: string }
+        description: { type: string }
+        priority: { $ref: "#/components/schemas/Priority" }
+        assignee: { type: [string, "null"] }
+        due_date: { type: [string, "null"] }
+        estimate: { type: [number, "null"] }
+        parent: { type: [string, "null"] }
+        sprint_id: { type: [integer, "null"] }
+        labels: { type: array, items: { type: string } }
+        labels_add: { type: array, items: { type: string } }
+        labels_remove: { type: array, items: { type: string } }
+        version: { type: integer, minimum: 1 }
+    SLATarget:
+      type: object
+      properties: { respond_hours: { type: integer }, resolve_hours: { type: integer } }
+    Link:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { enum: [blocks, relates, duplicates] }
+        direction: { enum: [outbound, inbound], description: "outbound: this issue is the source (it blocks / duplicates the other)" }
+        key: { type: string }
+        title: { type: string }
+        status: { type: string }
+    Comment:
+      type: object
+      properties: { id: { type: integer }, issue: { type: string }, author: { type: string }, body: { type: string }, created_at: { type: string, format: date-time } }
+    Activity:
+      type: object
+      properties: { id: { type: integer }, actor: { type: string }, kind: { type: string }, data: { type: object }, at: { type: string, format: date-time } }
+    NewAttachment:
+      type: object
+      additionalProperties: false
+      required: [filename]
+      properties:
+        filename: { type: string, minLength: 1, maxLength: 255, description: No path separators or control characters }
+        content_type: { type: string, maxLength: 127 }
+        size_bytes: { type: integer, minimum: 0, maximum: 1073741824 }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        url: { type: string, maxLength: 2000, description: http(s) only; never fetched by the tracker }
+    Attachment:
+      type: object
+      properties: { id: { type: integer }, filename: { type: string }, content_type: { type: string }, size_bytes: { type: integer }, sha256: { type: string }, url: { type: string }, added_by: { type: string }, created_at: { type: string, format: date-time } }
+    Workflow:
+      type: object
+      required: [statuses, initial]
+      properties:
+        statuses: { type: array, minItems: 1, maxItems: 30, items: { type: object, required: [name, category], properties: { name: { type: string, pattern: "^[a-z][a-z0-9_]{0,29}$" }, category: { enum: [todo, active, done] } } } }
+        initial: { type: string }
+        transitions: { type: object, additionalProperties: { type: array, items: { type: string } } }
+    Project:
+      type: object
+      properties:
+        key: { type: string }
+        name: { type: string }
+        description: { type: string }
+        workflow: { $ref: "#/components/schemas/Workflow" }
+        sla: { type: object, additionalProperties: { $ref: "#/components/schemas/SLATarget" } }
+        archived: { type: boolean }
+        issue_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    NewProject:
+      type: object
+      additionalProperties: false
+      required: [key, name]
+      properties:
+        key: { type: string, pattern: "^[A-Z][A-Z0-9]{1,9}$" }
+        name: { type: string, maxLength: 100 }
+        description: { type: string, maxLength: 2000 }
+        workflow: { $ref: "#/components/schemas/Workflow" }
+        sla: { type: object, additionalProperties: { $ref: "#/components/schemas/SLATarget" } }
+    ProjectPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        description: { type: string }
+        workflow: { $ref: "#/components/schemas/Workflow" }
+        sla: { type: object, additionalProperties: { $ref: "#/components/schemas/SLATarget" } }
+        archived: { type: boolean }
+    Sprint:
+      type: object
+      properties:
+        id: { type: integer }
+        project: { type: string }
+        name: { type: string }
+        goal: { type: string }
+        state: { enum: [planned, active, closed] }
+        starts_on: { type: [string, "null"], format: date }
+        ends_on: { type: [string, "null"], format: date }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    NewSprint:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties: { name: { type: string, maxLength: 100 }, goal: { type: string, maxLength: 1000 }, starts_on: { type: [string, "null"], format: date }, ends_on: { type: [string, "null"], format: date } }
+    SprintPatch:
+      type: object
+      additionalProperties: false
+      properties: { name: { type: string }, goal: { type: string }, starts_on: { type: [string, "null"], format: date }, ends_on: { type: [string, "null"], format: date } }
+    Board:
+      type: object
+      properties:
+        project: { type: string }
+        selection: { type: string }
+        sprint: { oneOf: [{ $ref: "#/components/schemas/Sprint" }, { type: "null" }] }
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              status: { type: string }
+              category: { enum: [todo, active, done] }
+              count: { type: integer, description: "Total in the column; issues is capped at 200" }
+              issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
+    NewToken:
+      type: object
+      additionalProperties: false
+      required: [kind, subject, scopes]
+      properties:
+        kind: { enum: [personal, service] }
+        subject: { type: string, maxLength: 254, description: "Who the token acts as; becomes the reporter, author and actor on what it does" }
+        name: { type: string, maxLength: 100 }
+        scopes: { type: array, minItems: 1, items: { enum: [work.read, work.write, work.admin] } }
+        projects: { type: array, items: { type: string }, description: "Empty or absent means every project" }
+        expires_at: { type: [string, "null"], format: date-time }
+    TokenInfo:
+      type: object
+      properties:
+        id: { type: string }
+        kind: { enum: [personal, service] }
+        subject: { type: string }
+        name: { type: string }
+        scopes: { type: array, items: { type: string } }
+        projects: { type: array, items: { type: string } }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: [string, "null"], format: date-time }
+        revoked_at: { type: [string, "null"], format: date-time }
+        last_used_at: { type: [string, "null"], format: date-time }
+    AuditEntry:
+      type: object
+      properties: { id: { type: integer }, actor: { type: string }, action: { type: string }, target: { type: string }, detail: { type: object }, at: { type: string, format: date-time } }

@@ -1,0 +1,15 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "work.issue.transitioned.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "work",
+  "data": {
+    "issue_key": "ACME-12",
+    "project": "ACME",
+    "from": "todo",
+    "to": "done",
+    "to_category": "finished",
+    "actor": "a",
+    "transitioned_at": "2026-11-25T09:00:00Z"
+  }
+}

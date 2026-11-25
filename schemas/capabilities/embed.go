@@ -17,3 +17,13 @@ var NewsletterV1 []byte
 //
 //go:embed analytics.v1.json
 var AnalyticsV1 []byte
+
+// WorkV1 is the contract of the `work` capability (in-house work tracker; Plane adapter later).
+//
+//go:embed work.v1.json
+var WorkV1 []byte
+
+// ProjectsV1 is the contract of the `projects` capability (read-only project directory of the work tracker).
+//
+//go:embed projects.v1.json
+var ProjectsV1 []byte

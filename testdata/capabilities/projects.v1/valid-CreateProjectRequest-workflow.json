@@ -1,0 +1,22 @@
+{
+  "key": "REL",
+  "name": "Releases",
+  "workflow": {
+    "statuses": [
+      {
+        "name": "todo",
+        "category": "todo"
+      },
+      {
+        "name": "done",
+        "category": "done"
+      }
+    ],
+    "initial": "todo",
+    "transitions": {
+      "todo": [
+        "done"
+      ]
+    }
+  }
+}

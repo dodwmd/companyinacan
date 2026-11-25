@@ -1,0 +1,32 @@
+# Default values for the work module chart. The chart templates are delivered with the module
+# deployment work (E03/E07 pattern); this file fixes the contract the service expects.
+image:
+  repository: ghcr.io/dodwmd/can-work
+  # Pinned by digest at release time; see deploy/work/README.md.
+  digest: ""
+service:
+  api: { name: work, port: 8080 }   # ClusterIP only; the `work` and `projects` capabilities
+persistence:
+  size: 500Mi
+  mountPath: /data
+resources:
+  requests: { memory: 20Mi, cpu: 5m }
+  limits: { memory: 48Mi }
+config:
+  # Off by default: the API is reached by other modules and by people's scripts through
+  # can-core or Traefik; turn it on only when a proxy that appends the client address fronts it.
+  trust_proxy: false
+  rate_limit_per_minute: 600
+  retention_days: 1825
+env:
+  # Names only; values come from the module Secret created by can-core.
+  secretKeys:
+    - CAN_WORK_ADMIN_TOKEN       # bootstrap token with every scope; mint day-to-day tokens with it
+    - CAN_WORK_WEBHOOK_SECRET    # only when webhook_url is set
+probes:
+  readiness: { path: /healthz, port: 8080 }
+  liveness: { exec: [/can-work, healthcheck, -addr, "127.0.0.1:8080"] }
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false

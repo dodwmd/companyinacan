@@ -1,0 +1,18 @@
+{
+  "issues": [
+    {
+      "type": "epic",
+      "title": "Q1"
+    },
+    {
+      "type": "story",
+      "title": "Signup",
+      "parent": "$0"
+    },
+    {
+      "type": "subtask",
+      "title": "Form",
+      "parent": "$1"
+    }
+  ]
+}

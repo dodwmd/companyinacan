@@ -1,0 +1,9 @@
+{
+  "type": "story",
+  "title": "Plan the quarter",
+  "priority": "P1",
+  "labels": [
+    "planning"
+  ],
+  "idempotency_key": "planner-run-42-1"
+}

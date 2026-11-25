@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/work.issue.transitioned.v1.json",
+  "title": "work.issue.transitioned.v1",
+  "description": "Published when an issue moves along its project's workflow. `to_category` lets consumers react to \"resolved\" without knowing a project's custom status names. Delivered at least once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "work.issue.transitioned.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "work"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_key",
+        "project",
+        "from",
+        "to",
+        "to_category",
+        "actor",
+        "transitioned_at"
+      ],
+      "properties": {
+        "issue_key": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$"
+        },
+        "project": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$"
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,29}$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,29}$"
+        },
+        "to_category": {
+          "enum": [
+            "todo",
+            "active",
+            "done"
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "transitioned_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

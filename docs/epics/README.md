@@ -28,7 +28,7 @@ Backlog (broken down into epics when the previous phase is done):
 | E11 | SSO, RBAC, approval engine, notifications, webhooks, retention engine | 2 |
 | E12 | Admin dashboard and onboarding wizard; DigitalOcean provider; Cloudflare DNS | 2 |
 | E13 | `files`, `directory`/`people`, `identity.provision`, hire/leave workflows | 3a |
-| E14 | `work` tracker (API-first) and `performance` (1:1s, goals, reviews); timesheets | 3a |
+| E14 | `work` tracker (API-first) and `performance` (1:1s, goals, reviews); timesheets. **E14a (in-house `work` service, API, CLI, contracts) is built offline**: web UI, image and cluster checks, `performance` and timesheets pending, see `specs/011-work-tracker/` | 3a |
 | E15 | `invoices`, `contracts`, expenses, vendors, accounting/payroll adapters | 3b |
 | E16 | `jobs` (careers page, feeds, ATS, board connectors) | 3b |
 | E17 | `equity`, `board`, `entity`; investor and other portals; search, reporting, import | 3b |
