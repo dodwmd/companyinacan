@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/modules/provisioning/settings.schema.json",
+  "title": "provisioning settings",
+  "description": "Operator settings for the provisioning module (company.yaml modules.provisioning). Credentials (the API token, the directory token, connector tokens and secrets) are never settings.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "dry_run": { "type": "boolean", "description": "Record every run and its plan but call no connector. On by default in the chart: turn it off only after reading docs/provisioning.md." },
+    "privileged_groups": { "type": "array", "maxItems": 50, "items": { "type": "string", "maxLength": 100 }, "description": "SCIM group names whose members are privileged: granting them access, and removing their access on leaving, needs a second person (an approval)." },
+    "delete_after_days": { "type": "integer", "minimum": 0, "maximum": 3650, "description": "Delete a leaver's downstream accounts this many days after their last day (0 keeps them, disabled). Deleting always needs an approval." },
+    "timezone": { "type": "string", "maxLength": 64, "description": "IANA time zone in which a leaver's last day ends." }
+  }
+}

@@ -13,7 +13,7 @@ out="${2:-}"
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here/.."
 
-BINARIES="${BINARIES:-can can-core can-static can-forms can-work can-people can-jobs can-finance can-equity}"
+BINARIES="${BINARIES:-can can-core can-static can-forms can-work can-people can-jobs can-finance can-equity can-provision}"
 ARCHES="${ARCHES:-amd64 arm64}"
 mod=github.com/dodwmd/companyinacan
 epoch="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
@@ -30,6 +30,7 @@ ldflags_for() {
 	can-jobs) echo "-s -w -X $mod/core/jobs.Version=$version" ;;
 	can-finance) echo "-s -w -X $mod/core/finance.Version=$version" ;;
 	can-equity) echo "-s -w -X $mod/core/equity.Version=$version" ;;
+	can-provision) echo "-s -w -X $mod/core/provision.Version=$version" ;;
 	*) echo "-s -w" ;;
 	esac
 }

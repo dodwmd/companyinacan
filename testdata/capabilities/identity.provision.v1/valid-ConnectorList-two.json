@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "name": "wiki",
+      "type": "scim-client",
+      "verified": false,
+      "privileged": false
+    },
+    {
+      "name": "gws",
+      "type": "google-workspace",
+      "verified": false,
+      "privileged": true
+    }
+  ]
+}

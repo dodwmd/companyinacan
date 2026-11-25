@@ -360,7 +360,8 @@ func (s *Service) introspect(ctx context.Context, callerModule, token string) (R
 	}
 	// The issuer must still exist, and the token carries only what the issuer still holds: a token
 	// never outlives the rights of the person who made it.
-	if _, err := s.db.AdminByUsername(ctx, strings.TrimPrefix(t.Subject, "user:")); err != nil {
+	issuer, err := s.db.AdminByUsername(ctx, strings.TrimPrefix(t.Subject, "user:"))
+	if err != nil || s.db.AdminDisabled(ctx, issuer.ID) { // a disabled account's tokens are dead, revoked or not
 		return Result{}, false
 	}
 	var perms []string

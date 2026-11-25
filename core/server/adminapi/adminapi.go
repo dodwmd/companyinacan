@@ -15,6 +15,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
+	"github.com/dodwmd/companyinacan/core/server/identity"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/pat"
@@ -40,7 +41,9 @@ type Server struct {
 	// PATs issues and revokes personal access tokens for module APIs; nil answers 503 on its routes.
 	PATs *pat.Service
 	// SSO is OpenID Connect sign-in (epic E11b); nil answers 503 on its endpoints.
-	SSO        *sso.Service
+	SSO *sso.Service
+	// Identity ends the access of someone who left at once (E13d); nil answers 503.
+	Identity   *identity.Service
 	Log        *slog.Logger
 	Secure     bool // set the Secure cookie attribute (false only for plain-HTTP local dev)
 	TrustProxy bool // take the client address from the ingress's X-Forwarded-For
@@ -59,7 +62,7 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.pushRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...)
+	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.pushRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), s.identityRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {

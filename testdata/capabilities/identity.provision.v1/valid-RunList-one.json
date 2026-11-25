@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "id": "run_0123456789abcdef01234567",
+      "kind": "joiner",
+      "party_id": "pers_0123456789abcdef01234567",
+      "state": "succeeded",
+      "trigger": "person.created.v1",
+      "urgent": false,
+      "dry_run": false,
+      "privileged": false,
+      "created_at": "2026-06-10T09:00:00Z",
+      "updated_at": "2026-06-10T09:00:10Z"
+    }
+  ],
+  "next_cursor": "run_0123456789abcdef01234567"
+}

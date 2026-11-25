@@ -1,0 +1,8 @@
+{
+  "name": "okta",
+  "scopes": [
+    "scim.read",
+    "scim.write"
+  ],
+  "expires_in": "720h"
+}

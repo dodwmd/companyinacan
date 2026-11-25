@@ -44,6 +44,8 @@ var Catalogue = []string{
 	"issue.created.v1", "issue.updated.v1", "issue.transitioned.v1", "issue.priority_changed.v1",
 	"one_on_one.action_item.created.v1", "review.cycle.opened.v1",
 	"approval.requested.v1", "approval.approved.v1", "approval.rejected.v1",
+	// E13d: provisioning (ids only).
+	"provision.step.completed.v1", "provision.failed.v1",
 	// E11a: one terminal event per request (outcome approved, rejected, cancelled or expired).
 	"approval.decided.v1", "notification.sent.v1",
 }

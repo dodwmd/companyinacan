@@ -15,6 +15,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
+	"github.com/dodwmd/companyinacan/core/server/identity"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/pat"
@@ -42,6 +43,8 @@ type Server struct {
 	// PATs resolves personal access tokens presented to a module (E03c); nil means only module
 	// tokens introspect.
 	PATs *pat.Service
+	// Identity performs access revocation for offboarded people (E13d); nil answers 503.
+	Identity *identity.Service
 }
 
 type route struct {
@@ -61,6 +64,7 @@ func (s *Server) routes() []route {
 		{"GET /v1/approvals/{id}", s.authed(s.getApproval)},
 		{"POST /v1/approvals/{id}/cancel", s.authed(s.cancelApproval)},
 		{"POST /v1/notifications", s.authed(s.sendNotification)},
+		{"POST /v1/identity/revoke", s.authed(s.revokeIdentity)},
 	}
 }
 

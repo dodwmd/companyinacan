@@ -9,6 +9,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
+	"github.com/dodwmd/companyinacan/core/server/identity"
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
@@ -225,5 +226,38 @@ func (s *Server) sendNotification(w http.ResponseWriter, r *http.Request, m stor
 		s.internal(w, r, err)
 	default:
 		httpx.WriteJSON(w, http.StatusAccepted, map[string]bool{"created": created})
+	}
+}
+
+// revokeIdentity ends the personal access tokens and sessions of one offboarded person (E13d).
+// The service verifies that the caller provides identity.provision, that the people module
+// reported the person as offboarded with a reached effective date, and that the subject is the
+// account linked to them. Nothing else can be revoked through this route.
+func (s *Server) revokeIdentity(w http.ResponseWriter, r *http.Request, m store.Module) {
+	if s.Identity == nil {
+		s.unavailable(w)
+		return
+	}
+	var req identity.Request
+	if !httpx.DecodeJSONMax(w, r, &req, 4<<10) {
+		return
+	}
+	res, err := s.Identity.Revoke(r.Context(), m, req)
+	switch {
+	case err == nil:
+		httpx.WriteJSON(w, http.StatusOK, res)
+	case errors.Is(err, identity.ErrInvalid):
+		httpx.Problem(w, http.StatusBadRequest, "party_id (pers_...) and subject (user:<name>) are required")
+	case errors.Is(err, identity.ErrNotEntitled):
+		httpx.Problem(w, http.StatusForbidden, "module does not provide identity.provision")
+	case errors.Is(err, identity.ErrSubjectMismatch):
+		httpx.Problem(w, http.StatusForbidden, "the subject is not the account linked to that person")
+	case errors.Is(err, identity.ErrNotOffboarded):
+		httpx.Problem(w, http.StatusConflict, "the person is not recorded as offboarded with a reached effective date")
+	case errors.Is(err, identity.ErrRateLimited):
+		w.Header().Set("Retry-After", "60")
+		httpx.Problem(w, http.StatusTooManyRequests, "too many revocations; retry later")
+	default:
+		s.internal(w, r, err)
 	}
 }

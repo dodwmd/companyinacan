@@ -929,7 +929,17 @@ func (s *Service) applyStatus(ctx context.Context, tx *sqlTx, id string, from, t
 		}
 	}
 	if to == StFormer {
-		if err := s.enqueue(ctx, tx, EventPersonOffboarded, map[string]any{"party_id": id, "kind": kind, "effective_date": date}); err != nil {
+		data := map[string]any{"party_id": id, "kind": kind, "effective_date": date}
+		// subject_ref lets can-core check that an access revocation names the account linked to
+		// this person, without the subject (or anything personal) being in the event.
+		var sub sql.NullString
+		if err := tx.QueryRowContext(ctx, `SELECT sso_subject FROM people WHERE id = ?`, id).Scan(&sub); err != nil {
+			return err
+		}
+		if sub.Valid && sub.String != "" {
+			data["subject_ref"] = SubjectRef(sub.String)
+		}
+		if err := s.enqueue(ctx, tx, EventPersonOffboarded, data); err != nil {
 			return err
 		}
 	}

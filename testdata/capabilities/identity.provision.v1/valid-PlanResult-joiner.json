@@ -1,0 +1,16 @@
+{
+  "kind": "joiner",
+  "party_id": "pers_0123456789abcdef01234567",
+  "privileged": false,
+  "urgent": false,
+  "steps": [
+    {
+      "ord": 1,
+      "op": "create_account",
+      "connector": "wiki",
+      "state": "pending",
+      "attempts": 0,
+      "completed_at": "2026-06-10T09:00:00Z"
+    }
+  ]
+}

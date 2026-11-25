@@ -360,7 +360,9 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		if verr != nil {
 			return LoginResult{}, verr
 		}
-		if uerr == nil && pwOK {
+		// A disabled account is refused before anything is consumed or cleared: the TOTP step
+		// stays unused and the failure counts like any other bad login.
+		if uerr == nil && pwOK && !s.db.AdminDisabled(ctx, u.ID) {
 			ok, _ = s.db.AdvanceTOTPStep(ctx, u.ID, step) // single use; consumed only once the password is right
 		}
 	}
@@ -427,7 +429,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (store.Session
 		return store.Session{}, store.AdminUser{}, ErrUnauthenticated
 	}
 	u, err := s.db.AdminByID(ctx, sess.UserID)
-	if err != nil {
+	if err != nil || s.db.AdminDisabled(ctx, u.ID) {
 		return store.Session{}, store.AdminUser{}, ErrUnauthenticated
 	}
 	return sess, u, nil

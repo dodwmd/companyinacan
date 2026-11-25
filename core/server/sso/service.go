@@ -354,6 +354,10 @@ func (s *Service) Complete(ctx context.Context, req CompleteRequest) (Result, er
 	default:
 		return Result{}, err
 	}
+	if s.DB.AdminDisabled(ctx, ident.UserID) {
+		s.failAudit(ctx, "disabled", req.IP)
+		return Result{}, deny("disabled")
+	}
 	// 5. Roles follow the groups on every sign-in; revoked mappings are removed (and audited by the sync).
 	var roles []string
 	if s.RBAC != nil {

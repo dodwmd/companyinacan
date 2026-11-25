@@ -1,0 +1,7 @@
+{
+  "name": "x",
+  "scopes": [
+    "scim.admin"
+  ],
+  "expires_in": "24h"
+}

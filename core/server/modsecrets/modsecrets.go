@@ -47,6 +47,8 @@ var table = map[string][]Spec{
 	// candidate from their duplicates without any error, so it is generated once and never rotated.
 	"jobs":   {{Key: "CAN_JOBS_ADMIN_TOKEN"}, {Key: "CAN_JOBS_HASH_KEY", NoRotate: true}, {Key: "CAN_JOBS_FORM_SECRET"}, {Key: KeyringKey, Kind: Keyring}},
 	"people": {{Key: "CAN_PEOPLE_API_TOKEN"}, {Key: KeyringKey, Kind: Keyring}},
+	// The service token for the provisioning API (can-core and operators); the SCIM tokens are made through that API.
+	"provisioning": {{Key: "CAN_PROVISIONING_API_TOKEN"}},
 }
 
 // For returns the secrets generated for a module (none for modules that need none).

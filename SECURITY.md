@@ -77,7 +77,7 @@ gh attestation verify can_vX.Y.Z_linux_amd64.tar.gz --repo dodwmd/companyinacan
 ```
 
 **Container images** (`ghcr.io/dodwmd/can-core`, `can-static`, `can-forms`, `can-work`, `can-people`,
-`can-jobs`, `can-finance`, `can-equity`, `can-hooks`). Pin by the digest printed in the release notes:
+`can-jobs`, `can-finance`, `can-equity`, `can-provision`, `can-hooks`). Pin by the digest printed in the release notes:
 
 ```sh
 cosign verify \

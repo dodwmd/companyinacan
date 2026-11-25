@@ -12,6 +12,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/forms"
 	"github.com/dodwmd/companyinacan/core/jobs"
 	"github.com/dodwmd/companyinacan/core/people"
+	"github.com/dodwmd/companyinacan/core/provision"
 	"github.com/dodwmd/companyinacan/core/work"
 )
 
@@ -26,6 +27,17 @@ type inhouse struct {
 	parseConf func(b []byte) error
 }
 
+// binary is the binary and image name: can-<id>, except where the module id differs.
+func (m inhouse) binary() string {
+	if m.id == "provisioning" {
+		return "can-provision"
+	}
+	return "can-" + m.id
+}
+
+// subdomains of the modules that have public routes.
+var inhouseSubdomains = map[string]string{"jobs": "careers", "provisioning": "scim"}
+
 func inhouseModules() []inhouse {
 	return []inhouse{
 		{"forms", "forms,forms-api", 15, 32, "8080", func(b []byte) error { _, err := forms.ParseConfig(b); return err }},
@@ -39,6 +51,7 @@ func inhouseModules() []inhouse {
 		{"finance", "finance", 28, 64, "8080", func(b []byte) error {
 			return writeLoad(b, func(p string) error { _, err := finance.LoadConfig(p, true); return err })
 		}},
+		{"provisioning", "provisioning", 20, 64, "8090", func(b []byte) error { _, err := provision.ParseConfig(b); return err }},
 	}
 }
 
@@ -62,8 +75,8 @@ func enableInhouse(t *testing.T, id string, mutate func(*Installer)) (*Installer
 	spec.ID, spec.Namespace, spec.ServiceAccount = id, "mod-"+id, id
 	spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
 	spec.Manifest.Requires.Database = "none"
-	if id == "jobs" {
-		spec.Manifest.Runtime.Subdomain = "careers"
+	if sub, ok := inhouseSubdomains[id]; ok {
+		spec.Manifest.Runtime.Subdomain = sub
 	}
 	if err := in.Enable(context.Background(), spec); err != nil {
 		t.Fatalf("%s chart does not install: %v", id, err)
@@ -88,7 +101,7 @@ func TestInhouseModuleChartsInstall(t *testing.T) {
 			}
 			ps := dig(d, "spec", "template", "spec").(map[string]any)
 			c := ps["containers"].([]any)[0].(map[string]any)
-			if img, _ := c["image"].(string); !strings.HasPrefix(img, "ghcr.io/dodwmd/can-"+m.id+":") {
+			if img, _ := c["image"].(string); !strings.HasPrefix(img, "ghcr.io/dodwmd/"+m.binary()+":") {
 				t.Errorf("image %q is not taken from values", img)
 			}
 			sc := c["securityContext"].(map[string]any)
@@ -99,7 +112,7 @@ func TestInhouseModuleChartsInstall(t *testing.T) {
 				t.Errorf("capabilities: %v", sc["capabilities"])
 			}
 			lv := toJSON(dig(c, "livenessProbe", "exec", "command"))
-			want := fmt.Sprintf(`["/can-%s","healthcheck","-addr","127.0.0.1:%s"]`, m.id, m.port)
+			want := fmt.Sprintf(`["/%s","healthcheck","-addr","127.0.0.1:%s"]`, m.binary(), m.port)
 			if lv != want {
 				t.Errorf("liveness %s, want the binary's own healthcheck %s", lv, want)
 			}
@@ -160,8 +173,8 @@ func TestInhouseModuleChartsInstall(t *testing.T) {
 					routes++
 				}
 			}
-			if (m.id == "jobs") != (routes == 1) {
-				t.Errorf("%d IngressRoutes for %s (only jobs, which has a subdomain, is routed)", routes, m.id)
+			if _, routed := inhouseSubdomains[m.id]; routed != (routes >= 1) {
+				t.Errorf("%d IngressRoutes for %s (only modules with a subdomain are routed)", routes, m.id)
 			}
 		})
 	}
@@ -240,4 +253,19 @@ func keys(m map[string]map[string]any) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func TestProvisioningIngressRouteIsScopedToSCIM(t *testing.T) {
+	_, objs, ns := enableInhouse(t, "provisioning", nil)
+	r := objs["IngressRoute/"+ns+"/provisioning"]
+	if r == nil {
+		t.Fatal("no IngressRoute")
+	}
+	js := toJSON(r["spec"])
+	if !strings.Contains(js, "Host(`scim.acme.example`)") || !strings.Contains(js, "/scim/v2") {
+		t.Errorf("route: %s", js)
+	}
+	if strings.Contains(js, "/v1") || strings.Contains(js, "/healthz") {
+		t.Errorf("the provisioning API must stay cluster-internal: %s", js)
+	}
 }

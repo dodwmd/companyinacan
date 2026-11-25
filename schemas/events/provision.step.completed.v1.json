@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/provision.step.completed.v1.json",
+  "title": "provision.step.completed.v1",
+  "description": "Published when one step of a joiner, mover or leaver run has completed against a connector (a step skipped, retried or dead-lettered does not publish this). Delivered at least once; consumers de-duplicate on `id`. The payload carries opaque ids and machine values only, never names, emails, group names or free text (SPEC.md sections 3.7 and 4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "provision.step.completed.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "provisioning"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "party_id",
+        "kind",
+        "step",
+        "op",
+        "connector",
+        "completed_at"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_[0-9a-f]{24}$"
+        },
+        "party_id": {
+          "type": "string",
+          "pattern": "^pers_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": [
+            "joiner",
+            "mover",
+            "leaver"
+          ]
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "op": {
+          "enum": [
+            "create_account",
+            "update_account",
+            "disable_account",
+            "delete_account",
+            "add_group",
+            "remove_group",
+            "revoke_core",
+            "create_tasks"
+          ]
+        },
+        "connector": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}
