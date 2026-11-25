@@ -293,3 +293,15 @@ func TestRecordOnlyInstaller(t *testing.T) {
 		t.Fatalf("%+v", rec)
 	}
 }
+
+func TestMaliciousServiceNameIsRefusedBeforeInstall(t *testing.T) {
+	g := newRig(t)
+	m := mf("evil", "1", nil, "contacts")
+	m.Provides[0].Service = "evil.com/"
+	if _, err := g.r.Apply(context.Background(), desired(nil, nil, m), Options{}); err == nil {
+		t.Fatal("accepted")
+	}
+	if len(g.fk.Calls) != 0 {
+		t.Fatalf("installer called: %v", g.fk.Calls)
+	}
+}

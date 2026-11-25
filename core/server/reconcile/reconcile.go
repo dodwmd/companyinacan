@@ -267,6 +267,10 @@ func (r *Reconciler) Apply(ctx context.Context, d Desired, opt Options) (Result,
 
 func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	man := d.Manifests[a.Module]
+	if _, _, err := registry.FromManifest(man); err != nil { // refuse before touching the cluster
+		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
+		return err
+	}
 	prev, perr := r.db.GetModule(ctx, a.Module)
 	secret := prev.HMACSecret
 	if perr != nil || secret == "" {

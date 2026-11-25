@@ -145,7 +145,12 @@ func (b *Bus) Publish(ctx context.Context, source, eventType string, data json.R
 	env := Envelope{ID: b.newID(), Type: eventType, Time: b.db.Now().Truncate(time.Second), Source: source, Data: json.RawMessage(t)}
 	targets := make([]store.DeliveryTarget, 0, len(subs))
 	for _, s := range subs {
-		targets = append(targets, store.DeliveryTarget{ModuleID: s.ModuleID, URL: registry.ServiceURL(s.Namespace, s.Service, s.Port) + s.Webhook})
+		u, err := registry.ServiceURL(s.Namespace, s.Service, s.Port)
+		if err != nil {
+			b.log.Error("skipping subscriber with invalid address", "module", s.ModuleID, "error", err)
+			continue
+		}
+		targets = append(targets, store.DeliveryTarget{ModuleID: s.ModuleID, URL: u + s.Webhook})
 	}
 	if err := b.db.InsertEvent(ctx, store.Event{ID: env.ID, Type: env.Type, Time: env.Time, Source: source, DataJSON: string(env.Data)}, targets); err != nil {
 		return Envelope{}, err

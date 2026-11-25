@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/config"
@@ -124,7 +125,10 @@ func TestFromManifestDefaults(t *testing.T) {
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
 	}{Event: "lead.created.v1", Webhook: "/hooks/lead"})
-	_, subs := FromManifest(m)
+	_, subs, err := FromManifest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(subs) != 1 || subs[0].Service != "crm" || subs[0].Port != 8080 || subs[0].Webhook != "/hooks/lead" {
 		t.Fatalf("%+v", subs)
 	}
@@ -136,5 +140,39 @@ func TestDeclares(t *testing.T) {
 	m.Consumes = []string{"contacts"}
 	if !Declares(m, "email.send") || !Declares(m, "contacts") || Declares(m, "files") {
 		t.Fatal("Declares wrong")
+	}
+}
+
+func TestServiceURLRejectsSSRFVectors(t *testing.T) {
+	for _, svc := range []string{"169.254.169.254#", "evil.com/", "x@evil.com", "a.b", "a b", "-a", "A", "", "evil.com:80#", "a?b", strings.Repeat("a", 64)} {
+		if u, err := ServiceURL("mod-x", svc, 80); err == nil {
+			t.Errorf("service %q accepted: %s", svc, u)
+		}
+	}
+	for _, ns := range []string{"x.evil.com#", "", "a/b"} {
+		if _, err := ServiceURL(ns, "ok", 80); err == nil {
+			t.Errorf("namespace %q accepted", ns)
+		}
+	}
+	for _, port := range []int{0, -1, 65536} {
+		if _, err := ServiceURL("mod-x", "ok", port); err == nil {
+			t.Errorf("port %d accepted", port)
+		}
+	}
+	if u, err := ServiceURL("mod-crm", "adapter", 8081); err != nil || u != "http://adapter.mod-crm.svc.cluster.local:8081" {
+		t.Fatalf("%s %v", u, err)
+	}
+}
+
+func TestRegisterRejectsMaliciousServiceInManifest(t *testing.T) {
+	r, db := setup(t)
+	m := manifest("evil", "contacts")
+	m.Provides[0].Service = "169.254.169.254#"
+	rec := store.Module{ID: "evil", Version: "1", Namespace: "mod-evil", ServiceAccount: "evil", State: store.StateEnabled, Manifest: *m}
+	if err := r.Register(context.Background(), rec); err == nil {
+		t.Fatal("manifest with an SSRF service accepted")
+	}
+	if ms, _ := db.ListModules(context.Background()); len(ms) != 0 {
+		t.Fatal("rejected module was still recorded")
 	}
 }
