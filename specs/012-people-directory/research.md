@@ -27,12 +27,11 @@ configurable later is a product decision, not an accident.
 **Skip-level managers.** They can read basic fields and `manager`/`team` visibility goals (the "manager of
 manager" case) but not sensitive fields, 1:1s or edit goals.
 
-**Erasure subject id.** E08's ledger (`core/backup/ledger.go`, on branch `epic/E08-backup-restore`) accepts
+**Erasure subject id.** E08's ledger (`core/backup/ledger.go`) accepts
 `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$` subjects and `^[a-z][a-z0-9-]{0,63}$` classes and warns that callers
 must pass opaque ids. The person id (`pers_` + 96 random bits) is opaque by construction; data class names
 follow the manifest pattern (hyphens, no dots), so `directory.basic` in the brief became `directory-basic`.
-`core/backup` is not on `main` yet, so this module does not import it: it exposes the tombstones through
-`GET /v1/erasures` and the `purge` hook, and the contract tests copy the two patterns. Wiring is E08/E11 work.
+The service does not import `core/backup` (Constitution IV: no coupling to another module's internals); it exposes the tombstones through `GET /v1/erasures` and the `purge` hook, and `test/contract/people_ledger_test.go` feeds real tombstones into the real `backup.Ledger` to prove they are accepted and chain-verify. Wiring the pull is E08/E11 work.
 
 **Retention clock.** From the day a person becomes former (`ended_at`); 1:1 meetings and closed goals also
 expire by age. Retention purges do not write ledger entries (a restore re-runs the sweep and re-purges);
