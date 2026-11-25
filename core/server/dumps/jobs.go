@@ -20,6 +20,14 @@ const (
 	hookUID       = 1000 // the can-hooks image user and the module pods' fsGroup (contracts/hooks.md)
 )
 
+// HookDataPaths are where a hook Job mounts the module's volume: the paths the shipped hooks
+// default to (analytics /data, wiki /storage, status /app/data).
+var HookDataPaths = []string{"/data", "/storage", "/app/data"}
+
+// MountsVolume reports whether a module with this requires.database gets its volume in the hook
+// Job: not when the data is in a database server, which the hook reads over the network.
+func MountsVolume(database string) bool { return database != "postgres" && database != "mariadb" }
+
 // KubeHooks runs a module's backup hook as a Job in the module's namespace (contracts/hooks.md):
 // the hook script from a ConfigMap, the module's data volume, a projected audience-`can` token,
 // and a pod that satisfies the restricted Pod Security level.
@@ -62,12 +70,14 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 		"data":     obj{"backup.sh": script}}); err != nil {
 		return fmt.Errorf("hook script ConfigMap: %w", err)
 	}
-	claim, err := h.dataClaim(ctx, ns, module)
-	if err != nil {
-		return err
+	claim := ""
+	if MountsVolume(m.Requires.Database) {
+		if claim, err = h.dataClaim(ctx, ns, module); err != nil {
+			return err
+		}
 	}
 	name := fmt.Sprintf("%s%d", hookJobPrefix, time.Now().UnixNano())
-	if _, err := h.API.Create(ctx, h.job(ctx, name, ns, module, m.Hooks.Image, claim, labels)); err != nil {
+	if _, err := h.API.Create(ctx, h.job(ctx, name, ns, module, m.Hooks.Image, claim, m.Requires.Database != "sqlite", labels)); err != nil {
 		return fmt.Errorf("create the hook Job: %w", err)
 	}
 	defer func() {
@@ -139,7 +149,7 @@ func (h *KubeHooks) dataClaim(ctx context.Context, ns, module string) (string, e
 	return "", nil
 }
 
-func (h *KubeHooks) job(ctx context.Context, name, ns, module, image, claim string, labels obj) kube.Object {
+func (h *KubeHooks) job(ctx context.Context, name, ns, module, image, claim string, readOnly bool, labels obj) kube.Object {
 	deadline := int64(900)
 	if d, ok := ctx.Deadline(); ok {
 		if s := int64(time.Until(d).Seconds()); s > 0 && s < deadline {
@@ -157,8 +167,10 @@ func (h *KubeHooks) job(ctx context.Context, name, ns, module, image, claim stri
 		obj{"name": "can-token", "projected": obj{"sources": []any{obj{"serviceAccountToken": obj{"audience": "can", "expirationSeconds": 3600, "path": "token"}}}}},
 	}
 	if claim != "" {
-		// The starter hooks expect their data at /data (analytics) or /storage (wiki).
-		mounts = append(mounts, obj{"name": "data", "mountPath": "/data"}, obj{"name": "data", "mountPath": "/storage"})
+		// Read-only unless the hook must take an SQLite online backup, which writes the WAL index.
+		for _, p := range HookDataPaths {
+			mounts = append(mounts, obj{"name": "data", "mountPath": p, "readOnly": readOnly})
+		}
 		volumes = append(volumes, obj{"name": "data", "persistentVolumeClaim": obj{"claimName": claim}})
 	}
 	return kube.Object{

@@ -9,8 +9,11 @@ trap 'rm -rf "$tmp"' EXIT
 umask 077
 printf 'Authorization: Bearer %s\n' "$(cat /var/run/secrets/can/token)" >"$tmp/auth"
 
-echo "stub-data-from-the-volume" >/data/probe
-tar -C /data -czf "$tmp/probe.tar.gz" probe
+# The stub declares no database, so its volume must be mounted, read-only.
+grep -q " /data " /proc/mounts || { echo "no volume at /data" >&2; exit 1; }
+if touch /data/probe 2>/dev/null; then echo "the volume is writable" >&2; exit 1; fi
+echo "stub-data-from-the-hook" >"$tmp/probe"
+tar -C "$tmp" -czf "$tmp/probe.tar.gz" probe
 
 # A new pod's NetworkPolicy rules are programmed a moment after it starts: retry refused connections.
 curl --fail --silent --show-error --retry 10 --retry-delay 2 --retry-all-errors \

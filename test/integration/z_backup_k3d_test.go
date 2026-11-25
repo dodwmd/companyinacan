@@ -72,7 +72,7 @@ func TestBackupHookJobOnK3d(t *testing.T) {
 	t.Logf("dump run with one module hook Job: %s", took.Round(100*time.Millisecond))
 
 	got := onNode(t, "tar -xzOf /var/lib/can/dumps/modules/stub/probe.tar.gz probe")
-	if got != "stub-data-from-the-volume" {
+	if got != "stub-data-from-the-hook" {
 		t.Fatalf("the module's dump holds %q", got)
 	}
 	marker := onNode(t, "cat /var/lib/can/dumps/COMPLETE")

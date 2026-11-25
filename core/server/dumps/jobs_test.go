@@ -24,6 +24,7 @@ func hookFixture(t *testing.T) (*KubeHooks, *kube.Fake, *config.Module) {
 		t.Fatal(err)
 	}
 	m := &config.Module{ID: "wiki"}
+	m.Requires.Database = "none"
 	m.Hooks.Backup = "./hooks/backup.sh"
 	m.Hooks.Image = "ghcr.io/dodwmd/can-hooks:0.1.0"
 	api := kube.NewFake()
@@ -69,7 +70,7 @@ func TestKubeHooksRunsARestrictedJobAndCleansUp(t *testing.T) {
 	job := string(raw)
 	for _, want := range []string{
 		`"runAsNonRoot":true`, `"allowPrivilegeEscalation":false`, `"drop":["ALL"]`, `"type":"RuntimeDefault"`, `"readOnlyRootFilesystem":true`,
-		`"automountServiceAccountToken":false`, `"audience":"can"`, `"claimName":"wiki-data"`, `"mountPath":"/storage"`, `"mountPath":"/data"`,
+		`"automountServiceAccountToken":false`, `"audience":"can"`, `"claimName":"wiki-data"`, `"mountPath":"/storage","name":"data","readOnly":true`, `"mountPath":"/data","name":"data","readOnly":true`, `"mountPath":"/app/data","name":"data","readOnly":true`,
 		`"CAN_API_URL"`, `"http://can-core:8090"`, `"backoffLimit":0`, `"ghcr.io/dodwmd/can-hooks:0.1.0"`, `"serviceAccountName":"wiki"`,
 	} {
 		if !strings.Contains(job, want) {
@@ -133,5 +134,30 @@ func TestKubeHooksReportsNoData(t *testing.T) {
 	}
 	if err := h.RunBackup(context.Background(), "wiki"); !errors.Is(err, ErrNoData) {
 		t.Fatalf("got %v, want ErrNoData", err)
+	}
+}
+
+// QA 5: a SQLite hook needs its volume writable (the online backup uses the shared-memory
+// file); a database-server hook reads the server and gets no module volume at all.
+func TestKubeHooksVolumeFollowsTheDatabase(t *testing.T) {
+	for db, want := range map[string]struct{ mounted, readOnly bool }{
+		"sqlite": {true, false}, "none": {true, true}, "mariadb": {false, false}, "postgres": {false, false},
+	} {
+		h, api, m := hookFixture(t)
+		m.Requires.Database = db
+		created := finishJob(api, "succeeded")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := h.RunBackup(ctx, "wiki"); err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+		raw, _ := json.Marshal(<-created)
+		job := string(raw)
+		if got := strings.Contains(job, `"claimName":"wiki-data"`); got != want.mounted {
+			t.Errorf("%s: volume mounted=%v, want %v", db, got, want.mounted)
+		}
+		if want.mounted && strings.Contains(job, `"name":"data","readOnly":true`) != want.readOnly {
+			t.Errorf("%s: read-only should be %v: %s", db, want.readOnly, job)
+		}
 	}
 }

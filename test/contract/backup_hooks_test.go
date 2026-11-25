@@ -3,8 +3,13 @@ package contract
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/server/dumps"
 )
 
 func hookScripts(t *testing.T, pattern string) []string {
@@ -37,6 +42,53 @@ func TestBackupHooksStreamTheirUploads(t *testing.T) {
 		}
 		if filepath.Base(p) == "backup.sh" && strings.Contains(s, "/v1/dumps/") && !strings.Contains(s, "-T \"$tmp/") {
 			t.Errorf("%s does not upload with curl -T", p)
+		}
+	}
+}
+
+// QA 5: every data path a shipped backup hook defaults to is where the hook Job mounts the
+// module volume, and is the path the module's own chart uses.
+func TestShippedHookDataPathsAreMounted(t *testing.T) {
+	dataDefault := regexp.MustCompile(`(?m)^data="\$\{[A-Z_]+:-(/[^}]*)\}"`)
+	chartPath := regexp.MustCompile(`(?m)^\s+mountPath:\s*(\S+)`)
+	for _, p := range hookScripts(t, "backup.sh") {
+		if strings.Contains(p, "testdata") {
+			continue
+		}
+		dir := filepath.Dir(filepath.Dir(p))
+		mod := filepath.Base(dir)
+		doc, ps := config.Load(filepath.Join(dir, "module.yaml"))
+		if doc == nil {
+			t.Fatal(ps)
+		}
+		m, err := config.DecodeModule(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script, err := os.ReadFile(p) //nolint:gosec // repository file
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := dataDefault.FindStringSubmatch(string(script))
+		mounted := dumps.MountsVolume(m.Requires.Database)
+		if found == nil {
+			if mounted {
+				t.Errorf("%s: database %q but the hook names no data directory", mod, m.Requires.Database)
+			}
+			continue
+		}
+		if !mounted {
+			t.Errorf("%s: the hook reads %s but a %s module gets no volume", mod, found[1], m.Requires.Database)
+		}
+		if !slices.Contains(dumps.HookDataPaths, found[1]) {
+			t.Errorf("%s: the hook reads %s, which the Job does not mount (%v)", mod, found[1], dumps.HookDataPaths)
+		}
+		values, err := os.ReadFile(filepath.Join(dir, "chart", "values.yaml")) //nolint:gosec // repository file
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c := chartPath.FindStringSubmatch(string(values)); c == nil || c[1] != found[1] {
+			t.Errorf("%s: the hook reads %s but the chart mounts the volume at %v", mod, found[1], c)
 		}
 	}
 }
