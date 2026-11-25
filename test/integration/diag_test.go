@@ -13,6 +13,7 @@ import (
 // stop a pod from reaching the node's own address in k3s, and does a host firewall rule do it?
 // Results are logged and recorded in docs/measurements/phase0-ci.md.
 func TestDiagnosePodToNodeEgress(t *testing.T) {
+	phase0(t)
 	ip := nodeIP(t)
 	plainNS(t, "diag-deny")
 	deny := `

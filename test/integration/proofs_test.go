@@ -18,6 +18,16 @@ import (
 
 const templateDir = "../../deploy/templates/"
 
+// phase0 skips a proof unless CAN_PHASE0_PROOFS=1 (set by the footprint workflow). They are
+// slow (policy-programming waits) and TestModuleEgressDeniedToNodeAndAPI fails on purpose while
+// issue #13 is open, so they must not turn the dev-cluster job red.
+func phase0(t *testing.T) {
+	t.Helper()
+	if os.Getenv("CAN_PHASE0_PROOFS") != "1" {
+		t.Skip("Phase 0 proof: set CAN_PHASE0_PROOFS=1 (run by the footprint workflow)")
+	}
+}
+
 func nodeIP(t *testing.T) string {
 	t.Helper()
 	return mustKubectl(t, "get", "node", "-o", `jsonpath={.items[0].status.addresses[?(@.type=="InternalIP")].address}`)
@@ -140,6 +150,7 @@ func listener(t *testing.T, ns, name, labels string, ports ...int) string {
 }
 
 func TestModuleTemplateApplies(t *testing.T) {
+	phase0(t)
 	moduleNS(t, "mod-stuba")
 	for _, np := range []string{"default-deny", "allow-ingress-from-traefik", "allow-ingress-from-can-core", "module-egress"} {
 		mustKubectl(t, "-n", "mod-stuba", "get", "networkpolicy", np)
@@ -166,6 +177,7 @@ func TestModuleTemplateApplies(t *testing.T) {
 // Pod-to-node egress denial (SPEC 3.1): a module pod must not reach the node's own addresses,
 // which include the API server (6443) and the kubelet.
 func TestModuleEgressDeniedToNodeAndAPI(t *testing.T) {
+	phase0(t)
 	moduleNS(t, "mod-stuba")
 	plainNS(t, "probe-node-ctl")
 	ip := nodeIP(t)
@@ -193,6 +205,7 @@ func TestModuleEgressDeniedToNodeAndAPI(t *testing.T) {
 }
 
 func TestModuleDNSRewriteFromModuleNamespace(t *testing.T) {
+	phase0(t)
 	moduleNS(t, "mod-stuba")
 	traefik := mustKubectl(t, "-n", "kube-system", "get", "svc", "traefik", "-o", "jsonpath={.spec.clusterIP}")
 	out := rprobe(t, "mod-stuba", "dns-a", "app=probe", "nslookup foo.localtest.me")
@@ -206,6 +219,7 @@ func TestModuleDNSRewriteFromModuleNamespace(t *testing.T) {
 }
 
 func TestModulesIsolatedFromEachOther(t *testing.T) {
+	phase0(t)
 	moduleNS(t, "mod-stuba")
 	moduleNS(t, "mod-stubb")
 	plainNS(t, "probe-mod-ctl")
@@ -238,6 +252,7 @@ spec:
 // The module API port of can-core is reachable from a module namespace; the admin port is not.
 // A stand-in pod carries can-core's labels (can-core itself arrives with E03).
 func TestModuleReachesOnlyTheModuleAPIPort(t *testing.T) {
+	phase0(t)
 	moduleNS(t, "mod-stuba")
 	ip := listener(t, "can-system", "can-core-stand-in", "app.kubernetes.io/name=can-core", 8090, 8080)
 	if !pollReachPort(t, "mod-stuba", "api", ip, 8090) {
@@ -271,6 +286,7 @@ func review(t *testing.T, token, aud, field string) string {
 // Done from outside the pod (kubectl create token + impersonating can-core); the in-pod
 // projected-volume path and a real can-core are not exercised.
 func TestTokenReviewAuthenticatesModule(t *testing.T) {
+	phase0(t)
 	moduleNS(t, "mod-stuba")
 	mustKubectl(t, "-n", "mod-stuba", "create", "serviceaccount", "stub")
 	tok := mustKubectl(t, "-n", "mod-stuba", "create", "token", "stub", "--audience=can-core-module-api", "--duration=10m")
@@ -297,6 +313,7 @@ func TestTokenReviewAuthenticatesModule(t *testing.T) {
 
 // can-core's standing grant is small and the per-namespace grant appears with the RoleBinding.
 func TestCanCoreRBACScope(t *testing.T) {
+	phase0(t)
 	const core = "--as=system:serviceaccount:can-system:can-core"
 	can := func(args ...string) string {
 		out, _ := kubectl(append([]string{"auth", "can-i"}, append(args, core)...)...)

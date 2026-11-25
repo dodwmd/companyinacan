@@ -168,6 +168,8 @@ jobs:
       - name: Create the cluster
         run: make dev
       - name: Phase 0 proofs (module namespace template, egress denial, TokenReview, RBAC)
+        env:
+          CAN_PHASE0_PROOFS: "1"
         run: |
           set -o pipefail
           go test -tags integration -count=1 -v -timeout 20m ./test/integration/... 2>&1 | tee proofs.log
