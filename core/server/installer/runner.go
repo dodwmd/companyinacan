@@ -77,7 +77,7 @@ func (in *Installer) renderInChild(ctx context.Context, j renderJob) ([]kube.Obj
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "render-chart", fmt.Sprintf("--as-mb=%d", asMB), fmt.Sprintf("--heap-mb=%d", heapMB)) //nolint:gosec // our own binary
 	cmd.Dir = work
-	cmd.Env = []string{"GOMAXPROCS=2", fmt.Sprintf("GOMEMLIMIT=%dMiB", heapMB)} // nothing inherited: no tokens, no proxy settings
+	cmd.Env = append([]string{"GOMAXPROCS=2", fmt.Sprintf("GOMEMLIMIT=%dMiB", heapMB)}, raceChildEnv...) // nothing inherited: no tokens, no proxy settings
 	cmd.Stdin = bytes.NewReader(in0)
 	out, errOut := &capWriter{max: maxChildStdout}, &capWriter{max: maxChildStderr}
 	cmd.Stdout, cmd.Stderr = out, errOut

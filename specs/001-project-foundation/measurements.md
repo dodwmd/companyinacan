@@ -5,11 +5,19 @@ Recorded 2026-11-25 on the author's workstation (Linux 7.3.5, amd64, Go 1.27.3).
 | Check | Result | Target |
 |---|---|---|
 | `make test` (lint + unit + contract + licence check), warm lint cache, cold test cache | 1.4 s | < 2 min (SC-001) |
+| `make test` after E03b (unit runs with `-race`), cold test cache, before the fix | ~3 min (`core/server/installer` alone 177 s) | < 2 min (SC-001): **missed** |
+| `make test` with the fix, cold test cache (`-race`; whole `./cmd/... ./core/...` ~40 s wall, `core/server/installer` ~35 s) | ~1 min | < 2 min (SC-001) |
 | First `make test` on a machine that has not built golangci-lint before | ~13 s (includes fetching and building the pinned linter) | < 2 min |
 | Unit + contract tests with networking disabled (`unshare -rn`), cold test cache | 0.23 s, all pass | no network needed (FR-016) |
 | `can validate examples/acme-co` | < 0.1 s | < 1 s |
 
 Notes:
+- Why the installer package was slow: every chart render starts a child process (the test binary),
+  and a binary built with `-race` sleeps `atexit_sleep_ms` (1 s by default) before each exit. Roughly
+  170 renders cost ~170 s of pure sleeping. The child now gets `GORACE=atexit_sleep_ms=0` in race
+  builds only (`core/server/installer/race_on.go`); production builds are unchanged. `make unit`
+  therefore keeps `-race` on the whole tree and still fits the budget, so no separate fast target
+  was needed. Wall-clock assertions in these tests no longer depend on the race detector's cost.
 - macOS is out of scope for now (no build hosts); CI runs on Linux only.
 - Lint is a hard gate: the first lint run found 6 `errcheck` issues, which are fixed or excluded
   in `.golangci.yml` (writes to user-facing writers). An earlier Makefile fallback would have
