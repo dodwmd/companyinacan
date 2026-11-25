@@ -18,7 +18,7 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    `hostPath`, and can-core has no permission to create volumes. The directory belongs to uid 65532 (host
    bootstrap and `can backup install` set that). A run happens nightly at 02:30 UTC (`CAN_DUMP_AT`), about 10
    minutes after start when no marker younger than 20 h exists, and on request:
-   `kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m`. It:
+   `sudo k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m` (on the server). It:
    - deletes `COMPLETE`;
    - writes `can-core/state.db` (`VACUUM INTO`, then `integrity_check`) and a copy of the applied `company.yaml`;
    - runs each enabled module's `backup` hook as a Job in `mod-<id>` (restricted pod, projected audience-`can`
@@ -82,6 +82,11 @@ retention expires them; erasure requests are re-applied at restore from the eras
 or snapshots.
 
 ## Commands
+
+Run these on the server, as root (`sudo`). `can up` does **not** copy the `can` binary to the server: put the
+Linux release binary at `/usr/local/bin/can` there first (the erasure ledger upload needs it too). Without it,
+`sudo systemctl start can-backup.service` runs a backup and `journalctl -u can-backup` shows the result.
+`status` and `verify` find the repository in `/etc/can/backup.d/restic.env`.
 
 | Command | Use |
 |---|---|

@@ -81,8 +81,9 @@ propagation is not part of the five-minute budget.
   It is never written inside a git working tree or to `.can/`, and a run that has no way to deliver it stops
   before provisioning.
 - The first backup needs a dump run: can-core makes one about 10 minutes after it starts, then nightly at 02:30
-  UTC. To back up at once: `kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m`,
-  then `can backup run` on the server.
+  UTC. To back up at once, on the server:
+  `sudo k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m`, then
+  `sudo systemctl start can-backup.service` and `journalctl -u can-backup`.
 
 ### The default bundle
 

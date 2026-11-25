@@ -96,7 +96,7 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		{"/etc/systemd/system/can-backup.timer", backup.GenerateTimer(s), "0644"},
 		{"/etc/systemd/system/can-backup-failure.service", backup.GenerateFailureService(), "0644"},
 		{pwPath, kit.Restic.Password, "0600"},
-		{envPath, backup.FormatEnvFile(kit.Repo("").Env), "0600"},
+		{envPath, backup.HostEnvFile(kit), "0600"},
 	}
 	for _, f := range files {
 		if err := r.d.Host.Copy(ctx, f.path, []byte(f.body), f.mode); err != nil {

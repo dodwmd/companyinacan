@@ -90,12 +90,27 @@ func (f *repoFlags) add(cmd *cobra.Command) {
 
 // restic builds the wrapper, or nil when no repository is configured.
 func (f *repoFlags) restic() (*backup.Restic, error) {
-	if f.repo == "" {
-		return nil, nil
-	}
 	env, err := backup.LoadEnvFile(f.envFile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		if f.repo == "" && errors.Is(err, os.ErrPermission) {
+			return nil, fmt.Errorf("%w (run it with sudo)", err)
+		}
 		return nil, err
+	}
+	// --repo wins; otherwise the installed env file names the repository.
+	kept := env[:0]
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, "RESTIC_REPOSITORY="); ok {
+			if f.repo == "" {
+				f.repo = v
+			}
+			continue
+		}
+		kept = append(kept, e)
+	}
+	env = kept
+	if f.repo == "" {
+		return nil, nil
 	}
 	return &backup.Restic{R: backupSeams.runner, Repo: backup.Repo{Repository: f.repo, PasswordFile: f.passwordFile, Env: env}}, nil
 }
@@ -429,7 +444,7 @@ func newBackupInstallCmd(g *globalOpts) *cobra.Command {
 				{at("/etc/systemd/system/can-backup.service"), backup.GenerateService(s), 0o644},
 				{at("/etc/systemd/system/can-backup.timer"), backup.GenerateTimer(s), 0o644},
 				{at(s.ConfigDir + "/" + backup.PasswordFileName), kit.Restic.Password, 0o600},
-				{at(s.ConfigDir + "/" + backup.EnvFileName), backup.FormatEnvFile(kit.Repo("").Env), 0o600},
+				{at(s.ConfigDir + "/" + backup.EnvFileName), backup.HostEnvFile(kit), 0o600},
 				{at("/etc/systemd/system/can-backup-failure.service"), backup.GenerateFailureService(), 0o644},
 			}
 			for _, f := range files {

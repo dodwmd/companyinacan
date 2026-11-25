@@ -183,7 +183,7 @@ type StatusReport struct {
 func Status(ctx context.Context, r ResticAPI, dumpsDir string, now time.Time, maxAge time.Duration) StatusReport {
 	var rep StatusReport
 	if r == nil {
-		rep.Problems = append(rep.Problems, "backups are OFF: no bucket configured (set backup options in company.yaml and run make up)")
+		rep.Problems = append(rep.Problems, "backups are OFF: no repository configured (run `can up` with the --backup-* flags; on the server, run this with sudo)")
 		return rep
 	}
 	rep.Enabled = true

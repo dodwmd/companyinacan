@@ -92,3 +92,15 @@ func TestShippedHookDataPathsAreMounted(t *testing.T) {
 		}
 	}
 }
+
+// QA 9: the commands the docs give operators must work on the server, where cluster access is
+// `sudo k3s kubectl` (the kubeconfig is root's).
+func TestDocumentedClusterCommandsRunOnTheServer(t *testing.T) {
+	for _, rel := range []string{"docs/backup-restore.md", "docs/make-up.md"} {
+		for i, line := range strings.Split(readFile(t, rel), "\n") {
+			if strings.Contains(line, "dump-request") && strings.Contains(line, "kubectl") && !strings.Contains(line, "sudo k3s kubectl") {
+				t.Errorf("%s:%d: %s", rel, i+1, line)
+			}
+		}
+	}
+}

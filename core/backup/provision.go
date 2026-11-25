@@ -41,3 +41,9 @@ bzip2 -dc "$tmp/restic.bz2" >"$tmp/restic"
 install -m 0755 "$tmp/restic" %[1]s
 `, shq(dest), ResticVersion, ResticSHA256["amd64"], ResticSHA256["arm64"])
 }
+
+// HostEnvFile is the root-only env file of an install: the bucket credentials and the
+// repository, so that `can backup status` and `verify` need no flags on the server.
+func HostEnvFile(k *Kit) string {
+	return FormatEnvFile(append(append([]string{}, k.Repo("").Env...), "RESTIC_REPOSITORY="+k.Restic.Repository))
+}
