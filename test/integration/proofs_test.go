@@ -98,6 +98,22 @@ func reachPort(t *testing.T, ns, name, host string, port int) bool {
 	return false
 }
 
+// blockedWithin probes until the target is unreachable and returns how long that took, or -1 if
+// it was still reachable at the deadline.
+func blockedWithin(t *testing.T, ns, name, host string, port int, limit time.Duration) time.Duration {
+	t.Helper()
+	start := time.Now()
+	for i := 0; ; i++ {
+		if !reachPort(t, ns, fmt.Sprintf("%s-%d", name, i), host, port) {
+			return time.Since(start)
+		}
+		if time.Since(start) > limit {
+			return -1
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func pollReachPort(t *testing.T, ns, name, host string, port int) bool {
 	t.Helper()
 	for i := 0; i < 6; i++ {
@@ -159,11 +175,16 @@ func TestModuleEgressDeniedToNodeAndAPI(t *testing.T) {
 	if !pollReachPort(t, "probe-node-ctl", "node-ctl", ip, 6443) {
 		t.Fatalf("control failed: an unpolicied pod could not reach node %s:6443", ip)
 	}
-	if reachPort(t, "mod-stuba", "to-node", ip, 6443) {
-		t.Errorf("FINDING: module pod reached the node %s:6443 despite the ipBlock except", ip)
+	// Policy programming is asynchronous, so allow it time before calling a reach a finding.
+	if d := blockedWithin(t, "mod-stuba", "to-node", ip, 6443, 90*time.Second); d < 0 {
+		t.Errorf("FINDING: module pod still reached the node %s:6443 90s after the namespace was created, despite the ipBlock except", ip)
+	} else {
+		t.Logf("module pod -> node %s:6443 first observed BLOCKED after %s", ip, d.Round(time.Second))
 	}
-	if reachPort(t, "mod-stuba", "to-apiserver-svc", "10.43.0.1", 443) {
-		t.Errorf("FINDING: module pod reached the kubernetes Service 10.43.0.1:443")
+	if d := blockedWithin(t, "mod-stuba", "to-apiserver-svc", "10.43.0.1", 443, 30*time.Second); d < 0 {
+		t.Errorf("FINDING: module pod still reached the kubernetes Service 10.43.0.1:443")
+	} else {
+		t.Logf("module pod -> 10.43.0.1:443 first observed BLOCKED after %s", d.Round(time.Second))
 	}
 	// Positive control for the egress allow itself: the internet is reachable.
 	if !pollReachPort(t, "mod-stuba", "to-internet", "1.1.1.1", 443) {
@@ -268,7 +289,8 @@ func TestTokenReviewAuthenticatesModule(t *testing.T) {
 		t.Errorf("a tampered token was accepted")
 	}
 	// A module itself must not be able to validate tokens.
-	if out, _ := kubectl("auth", "can-i", "create", "tokenreviews.authentication.k8s.io", "--as=system:serviceaccount:mod-stuba:stub"); !strings.HasPrefix(out, "no") {
+	out, _ := kubectl("auth", "can-i", "create", "tokenreviews.authentication.k8s.io", "--as=system:serviceaccount:mod-stuba:stub")
+	if lines := strings.Split(out, "\n"); strings.TrimSpace(lines[len(lines)-1]) != "no" { // kubectl may print a Warning first
 		t.Errorf("module ServiceAccount can create TokenReviews: %q", out)
 	}
 }

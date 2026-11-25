@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -25,13 +24,13 @@ spec: {podSelector: {}, policyTypes: [Ingress, Egress]}
 	if out, err := kubectlStdin(deny, "apply", "-f", "-"); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	time.Sleep(5 * time.Second)
-	for _, port := range []int{6443, 10250} {
-		t.Logf("DIAG default-deny only (no egress allowed at all): pod -> node %s:%d reachable=%v", ip, port, reachPort(t, "diag-deny", fmt.Sprintf("d%d", port), ip, port))
-	}
-	// The same policy must stop pod -> pod (TestModulesIsolatedFromEachOther relies on it).
 	other := listener(t, "kube-system", "diag-listener", "app=diag", 5432)
-	t.Logf("DIAG default-deny only: pod -> pod %s:5432 reachable=%v", other, reachPort(t, "diag-deny", "dpod", other, 5432))
+	// Probe repeatedly after the policy exists: shows whether "reachable" is a programming delay.
+	for _, wait := range []time.Duration{0, 20 * time.Second, 40 * time.Second} {
+		time.Sleep(wait)
+		t.Logf("DIAG +%s default-deny only: pod -> node %s:6443 reachable=%v; pod -> kubelet :10250 reachable=%v; pod -> pod %s:5432 reachable=%v",
+			wait, ip, reachPort(t, "diag-deny", "dn", ip, 6443), reachPort(t, "diag-deny", "dk", ip, 10250), other, reachPort(t, "diag-deny", "dp", other, 5432))
+	}
 
 	// Host firewall: drop pod-CIDR traffic to the node's API port in the node's INPUT chain.
 	nodeC := "k3d-" + strings.TrimPrefix(kubeContext(), "k3d-") + "-server-0"
