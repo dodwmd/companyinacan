@@ -1,56 +1,71 @@
-# Default values for the jobs module chart. The chart templates are delivered with the module
-# deployment epic (E03); this file fixes the contract the service expects, as for people and work.
+# Values for the jobs module chart (in-house can-jobs, SQLite). Rendered by can-core's installer.
+# Secrets are not values: can-core puts CAN_JOBS_ADMIN_TOKEN, CAN_JOBS_HASH_KEY, CAN_JOBS_FORM_SECRET
+# and the sealed-field `keyring` (all generated once) and the can-core API settings into the
+# can-module Secret, which every container receives as environment.
 image:
   repository: ghcr.io/dodwmd/can-jobs
-  # Pinned by digest at release time; see deploy/jobs/README.md.
-  digest: ""
-service:
-  # One listener. Route only /careers, /feeds and /robots.txt through the public ingress; /v1 is
-  # the cluster-internal API (jobs and ats capabilities) and must not be exposed to the internet.
-  api: { name: jobs, port: 8080 }
+  tag: 0.1.0
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+ports:
+  - { name: http, port: 8080 }
+services:                  # ClusterIP only; the `jobs` and `ats` capabilities
+  - { name: jobs, portName: http, port: 8080 }
+ingress:
+  # Only the public careers pages are routed, and only when the manifest declares
+  # runtime.subdomain (host <subdomain>.<domain>, supplied by can-core). /v1 stays cluster-internal.
+  enabled: true
+  host: ""
+  tls: true
+  certResolver: letsencrypt
+  service: jobs
+  port: 8080
+  pathPrefixes: [/careers, /feeds]
+  paths: [/robots.txt]
 persistence:
-  size: 1Gi          # database and resume files
+  enabled: true
+  size: 1Gi                # database and resume files
+  storageClass: ""
   mountPath: /data
+configMountPath: /etc/can-jobs-config
+# Written verbatim to jobs.yaml; only keys core/jobs Config accepts. No webhook.url: events reach
+# other modules through can-core (POST /v1/events on the module API).
+config:
+  listen: ":8080"
+  db_path: /data/jobs.db
+  resume_dir: /data/resumes
+  keyring_path: /etc/can-jobs/keyring
+  trust_proxy: false       # turn on only behind a proxy that appends the client address
+  company: { name: "", base_url: "" }   # set both: absolute URLs in JSON-LD, feeds and the sitemap
+  rate_limit: { per_minute: 600, auth_failures_per_minute: 30, apply_per_hour: 10, max_tracked: 10000 }
+  apply:
+    max_resume_bytes: 5242880
+    collect_eeo: false
+    captcha_provider: ""
+    scanner_required: true # no resume upload is accepted until a real virus scanner is wired in
+  approval: { required: false }
+keyring:
+  enabled: true            # can-core generates it once into the can-module Secret (key `keyring`)
+  mountPath: /etc/can-jobs/keyring
+  # 0440 with fsGroup: kubelet makes the file root:65532 group-readable. See modules/jobs/chart/README.md.
+  mode: 288
 resources:
   requests: { memory: 30Mi, cpu: 5m }
   limits: { memory: 64Mi }
-config:
-  # Mounted at /etc/can-jobs/jobs.yaml. keyring_path points at the mounted Secret below.
-  keyring_path: /etc/can-jobs/keys/keyring
-  company: { name: "", base_url: "" }   # required: absolute URLs in JSON-LD, feeds and the sitemap
-  # Off by default: turn it on only when a proxy that appends the client address fronts the pod.
-  trust_proxy: false
-  rate_limit: { per_minute: 600, auth_failures_per_minute: 30, apply_per_hour: 10 }
-  apply: { max_resume_bytes: 5242880, collect_eeo: false, captcha_provider: "", scanner_required: true }   # true = no resume uploads until a real virus scanner is wired in
-  approval: { required: false }
-  webhook:
-    url: ""          # can-core event endpoint for the outbox; empty = no events are queued
-secrets:
-  # Names only; the values are created by can-core and never appear in values or git.
-  env:
-    - CAN_JOBS_ADMIN_TOKEN       # bootstrap admin token; mint day-to-day tokens with it
-    - CAN_JOBS_HASH_KEY          # HMAC key for the email dedupe hash; changing it breaks duplicate detection
-    - CAN_JOBS_WEBHOOK_SECRET    # only when webhook.url is set
-    - CAN_JOBS_FORM_SECRET       # optional: stable apply-form tokens across restarts and replicas
-    - CAN_JOBS_CAPTCHA_SECRET    # only when apply.captcha_provider is set
-  keyring:
-    secretName: can-jobs-keys    # one key `keyring`: lines of `<key-id> <64 hex>`, newest first; mounted 0400
-    key: keyring
-    mountPath: /etc/can-jobs/keys
-    subPath: keyring             # mount the single key with subPath: the loader refuses symlinks
-probes:
-  readiness: { path: /healthz, port: 8080 }
-  liveness: { exec: [/can-jobs, healthcheck, -addr, "127.0.0.1:8080"] }
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
   seccompProfile: { type: RuntimeDefault }
 securityContext:
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /healthz, port: http }
+  liveness: { exec: [/can-jobs, healthcheck, -addr, "127.0.0.1:8080"] }
 networkPolicy:
-  # Default deny; ingress from the ingress controller (careers paths) and from can-core and the
-  # modules that consume jobs/ats (labelled by can-core). Egress only to can-core (webhook) and,
-  # when configured, the CAPTCHA provider.
-  ingressFromCapabilityConsumers: true
+  intraNamespace: false

@@ -1,5 +1,21 @@
 # finance chart
 
-`values.yaml` documents the contract the service expects (port, secrets, probes, security
-context). The Helm templates arrive with the module deployment finance; until then the module is
-validated by `can validate` and run directly with `cmd/can-finance`.
+Helm-compatible templates for the in-house finance module, rendered by can-core's sandboxed renderer
+(not Helm) and applied by its installer. Same templates as the other in-house charts; see
+`modules/work/chart/README.md` for the object table.
+
+- Port 8080 (`invoices`, `contracts`, `timesheets`), Service `finance`, ClusterIP.
+- No IngressRoute today: finance declares no `runtime.subdomain`. `ingress.pathPrefixes` already lists
+  `/public/invoices/` (the signed, expiring invoice view) for the day it gets one; nothing else would
+  ever be routed.
+- Secrets (`CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET`) come from the `can-module` Secret that
+  can-core generates once and injects as environment.
+- `config:` is written to `finance.yaml` (strict loader); no `webhook.url`, events go to can-core's
+  module API. Settings from `company.yaml` are not yet mapped onto `config:`.
+
+## What is verified
+
+Unit tests (`core/server/installer/modulecharts_test.go`, part of `make test`) install the chart
+through the installer against the fake Kubernetes API and parse the rendered config with the module's
+own loader. `make release-check` fails while `image.digest` is a placeholder. The chart has not been
+run on a cluster.

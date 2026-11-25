@@ -1,35 +1,71 @@
-# Default values for the forms module chart. The chart templates are delivered with the
-# module deployment epic (E03); this file fixes the contract the service expects.
+# Values for the forms module chart (in-house can-forms, SQLite). Rendered by can-core's installer.
+# Secrets are not values: can-core puts CAN_FORMS_TOKEN_KEY, CAN_FORMS_API_TOKEN and
+# CAN_FORMS_API_READ_TOKEN (generated once) and the can-core API settings into the can-module
+# Secret, which every container receives as environment.
 image:
   repository: ghcr.io/dodwmd/can-forms
-  # Pinned by digest at release time; see deploy/forms/README.md.
-  digest: ""
-service:
-  public: { name: forms, port: 8080 }   # routed by Traefik at /_forms (prefix stripped)
-  api: { name: forms-api, port: 8081 }  # ClusterIP only; the `leads` capability
+  tag: 0.1.0
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+ports:
+  - { name: public, port: 8080 }
+  - { name: api, port: 8081 }
+services:
+  - { name: forms, portName: public, port: 8080 }      # the site's same-origin /_forms route (prefix stripped)
+  - { name: forms-api, portName: api, port: 8081 }     # ClusterIP only; the `leads` capability
+ingress:                   # forms declares no runtime.subdomain: the site's own route reaches it, not a module host
+  enabled: false
+  host: ""
+  tls: true
+  certResolver: letsencrypt
+  service: forms
+  port: 8080
+  pathPrefixes: []
+  paths: []
 persistence:
+  enabled: true
   size: 100Mi
-  mountPath: /data
+  storageClass: ""
+  mountPath: /data         # forms.db
+configMountPath: /etc/can-forms-config
+# Written verbatim to forms.yaml; only keys core/forms Config accepts (strict). No webhook.url: events
+# reach other modules through can-core (POST /v1/events on the module API). At least one form is
+# required; replace the sample with the company's own forms.
+config:
+  listen: ":8080"
+  api_listen: ":8081"
+  db_path: /data/forms.db
+  path_prefix: /_forms
+  # Safe only because the public Service is reached through Traefik, which appends the client
+  # address to X-Forwarded-For. Set false if that ever stops being true.
+  trust_proxy: true
+  retention_days: 730
+  forms:
+    - id: contact
+      name: Contact
+      fields:
+        - { name: name, type: text, required: true, max_length: 200 }
+        - { name: email, type: email, required: true, max_length: 254 }
+        - { name: message, type: text, required: true, multiline: true, max_length: 5000 }
+keyring:
+  enabled: false
 resources:
   requests: { memory: 15Mi, cpu: 5m }
   limits: { memory: 32Mi }
-config:
-  # Safe here because the public Service is reachable only through Traefik, which appends the
-  # client address to X-Forwarded-For. Set false if that ever stops being true.
-  trust_proxy: true
-env:
-  # Names only; values come from the module Secret created by can-core.
-  secretKeys:
-    - CAN_FORMS_TOKEN_KEY
-    - CAN_FORMS_API_TOKEN
-    - CAN_FORMS_API_READ_TOKEN
-    - CAN_FORMS_WEBHOOK_SECRET
-    - CAN_FORMS_CAPTCHA_SECRET
-    - CAN_FORMS_EMAIL_TOKEN
-probes:
-  readiness: { path: /healthz, port: 8080 }
-  liveness: { exec: [/can-forms, healthcheck, -addr, "127.0.0.1:8080"] }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
 securityContext:
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /healthz, port: public }
+  liveness: { exec: [/can-forms, healthcheck, -addr, "127.0.0.1:8080"] }
+networkPolicy:
+  intraNamespace: false

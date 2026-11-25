@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # SQLite on a ReadWriteOnce volume: exactly one writer, never two pods
+  selector:
+    matchLabels:
+      {{- include "mod.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mod.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: app
+          image: {{ include "mod.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [serve]
+          env:
+            # Secrets (tokens, signing keys, the sealed-field keyring) are not listed here: can-core
+            # injects the can-module Secret as environment into every container.
+            - name: CAN_{{ upper .Chart.Name }}_CONFIG
+              value: {{ .Values.configMountPath }}/{{ .Chart.Name }}.yaml
+          ports:
+            {{- range .Values.ports }}
+            - {name: {{ .name }}, containerPort: {{ .port }}}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: {{ .Values.probes.readiness.path }}, port: {{ .Values.probes.readiness.port }}}
+            periodSeconds: 10
+          livenessProbe:
+            # The image has no shell or curl: the binary checks itself.
+            exec:
+              command: {{ toJson .Values.probes.liveness.exec }}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          volumeMounts:
+            - {name: data, mountPath: {{ .Values.persistence.mountPath }}}
+            - {name: config, mountPath: {{ .Values.configMountPath }}, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            {{- if .Values.keyring.enabled }}
+            # One file, mounted with subPath: the loader refuses symlinks, which a Secret volume's
+            # ..data links would be.
+            - {name: keyring, mountPath: {{ .Values.keyring.mountPath }}, subPath: keyring, readOnly: true}
+            {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ .Chart.Name }}-data}
+        - name: config
+          configMap: {name: {{ .Chart.Name }}-config}
+        - name: tmp
+          emptyDir: {sizeLimit: 32Mi}
+        {{- if .Values.keyring.enabled }}
+        - name: keyring
+          secret:
+            secretName: can-module
+            defaultMode: {{ .Values.keyring.mode }}
+            items:
+              - {key: keyring, path: keyring}
+        {{- end }}

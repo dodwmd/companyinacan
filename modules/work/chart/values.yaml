@@ -1,32 +1,61 @@
-# Default values for the work module chart. The chart templates are delivered with the module
-# deployment work (E03/E07 pattern); this file fixes the contract the service expects.
+# Values for the work module chart (in-house can-work, SQLite). Rendered by can-core's installer;
+# see specs/016-module-wiring/contracts/module-charts.md. Secrets are not values: can-core puts
+# CAN_WORK_ADMIN_TOKEN (generated once) and the can-core API settings into the can-module Secret,
+# which every container receives as environment.
 image:
   repository: ghcr.io/dodwmd/can-work
-  # Pinned by digest at release time; see deploy/work/README.md.
-  digest: ""
-service:
-  api: { name: work, port: 8080 }   # ClusterIP only; the `work` and `projects` capabilities
+  tag: 0.1.0
+  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
+  digest: sha256:REPLACE_WITH_DIGEST
+  pullPolicy: IfNotPresent
+ports:
+  - { name: http, port: 8080 }
+services:                  # ClusterIP only; the `work` and `projects` capabilities
+  - { name: work, portName: http, port: 8080 }
+ingress:                   # work has no public site: no manifest subdomain, so nothing is routed
+  enabled: false
+  host: ""                 # supplied by can-core, only for a module with runtime.subdomain
+  tls: true
+  certResolver: letsencrypt
+  service: work
+  port: 8080
+  pathPrefixes: []
+  paths: []
 persistence:
+  enabled: true
   size: 500Mi
-  mountPath: /data
+  storageClass: ""
+  mountPath: /data         # work.db
+configMountPath: /etc/can-work-config
+# Written verbatim to work.yaml; only keys core/work Config accepts. No webhook.url: events reach
+# other modules through can-core (POST /v1/events on the module API).
+config:
+  listen: ":8080"
+  db_path: /data/work.db
+  trust_proxy: false       # turn on only behind a proxy that appends the client address
+  rate_limit:
+    per_minute: 600
+    auth_failures_per_minute: 30
+    max_tracked: 10000
+  retention_days: 1825
+keyring:
+  enabled: false
 resources:
   requests: { memory: 20Mi, cpu: 5m }
   limits: { memory: 48Mi }
-config:
-  # Off by default: the API is reached by other modules and by people's scripts through
-  # can-core or Traefik; turn it on only when a proxy that appends the client address fronts it.
-  trust_proxy: false
-  rate_limit_per_minute: 600
-  retention_days: 1825
-env:
-  # Names only; values come from the module Secret created by can-core.
-  secretKeys:
-    - CAN_WORK_ADMIN_TOKEN       # bootstrap token with every scope; mint day-to-day tokens with it
-    - CAN_WORK_WEBHOOK_SECRET    # only when webhook_url is set
-probes:
-  readiness: { path: /healthz, port: 8080 }
-  liveness: { exec: [/can-work, healthcheck, -addr, "127.0.0.1:8080"] }
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
 securityContext:
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /healthz, port: http }
+  liveness: { exec: [/can-work, healthcheck, -addr, "127.0.0.1:8080"] }
+networkPolicy:
+  intraNamespace: false    # one pod: the namespace's base policies are enough

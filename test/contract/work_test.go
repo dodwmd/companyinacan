@@ -112,16 +112,15 @@ func TestWorkChartAndImage(t *testing.T) {
 	if cfg["trust_proxy"] != false {
 		t.Error("trust_proxy must default to false")
 	}
-	secrets := asList(asMap(v["env"])["secretKeys"])
-	if len(secrets) != 2 {
-		t.Errorf("secret keys %v", secrets)
+	if _, ok := v["env"]; ok {
+		t.Error("secrets are not chart values: can-core injects the can-module Secret")
 	}
 	sc := asMap(v["securityContext"])
 	if sc["runAsNonRoot"] != true || sc["readOnlyRootFilesystem"] != true || sc["allowPrivilegeEscalation"] != false {
 		t.Errorf("securityContext %v", sc)
 	}
-	if asStr(asMap(v["image"])["digest"]) != "" {
-		t.Error("image digest must be filled in at release time, not committed as a guess")
+	if !chartDigestOK(asStr(asMap(v["image"])["digest"])) {
+		t.Error("image digest must be a sha256 or the REPLACE_WITH_ placeholder (`make release-check` rejects it), never a guess")
 	}
 	df, err := os.ReadFile(filepath.Join(root, "deploy", "work", "Dockerfile"))
 	if err != nil {
