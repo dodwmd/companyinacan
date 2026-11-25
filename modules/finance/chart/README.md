@@ -8,7 +8,7 @@ Helm-compatible templates for the in-house finance module, rendered by can-core'
 - No IngressRoute today: finance declares no `runtime.subdomain`. `ingress.pathPrefixes` already lists
   `/public/invoices/` (the signed, expiring invoice view) for the day it gets one; nothing else would
   ever be routed.
-- Secrets (`CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET`) come from the `can-module` Secret that
+- Secrets (`CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET`, `CAN_FINANCE_SEAL_KEY`) come from the `can-module` Secret that
   can-core generates once and injects as environment.
 - `config:` is written to `finance.yaml` (strict loader); no `webhook.url`, events go to can-core's
   module API. Settings from `company.yaml` are not yet mapped onto `config:`.

@@ -245,9 +245,18 @@ at least once, with backoff, dead-lettering after seven days (`GET /v1/events/de
 | `contract.expiring.v1` | an active contract enters its renewal reminder window |
 | `timesheet.approved.v1` | a timesheet is approved |
 | `expense.approved.v1` | an expense is approved |
+| `journal.posted.v1` | a journal entry is posted (E15c: [`accounting.md`](accounting.md)) |
+| `bank.statement.imported.v1` | a bank statement file is imported (ids and counts only) |
 
 The OpenAPI document is `specs/014-finance-basics/contracts/openapi.yaml`; the capability schemas
 are `schemas/capabilities/{invoices,contracts,timesheets}.v1.json`.
+
+## Accounting interfaces (E15c)
+
+A chart of accounts, a double-entry journal posted from the events above, period close, bank statement import with reconciliation and
+file adapters (CSV journal export, CSV payroll import; xero, quickbooks and wave are documented stubs) live in the same binary and database. They have their
+own permissions (`finance.ledger.*`, unscoped tokens only), a sealed bank account number (`CAN_FINANCE_SEAL_KEY`, 64 hex characters, optional until you add a
+bank account) and their own limits and disclaimers: see [`accounting.md`](accounting.md).
 
 ## Web UI
 
