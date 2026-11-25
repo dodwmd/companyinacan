@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>ACME Acme - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/ACME">ACME</a></p>
+<ul>
+<li><a href="/ui/projects/ACME" aria-current="page">Backlog</a></li>
+<li><a href="/ui/projects/ACME/board">Board</a></li>
+<li><a href="/ui/projects/ACME/sprints">Sprints</a></li>
+<li><a href="/ui/projects/ACME/epics">Epics</a></li>
+</ul>
+</nav>
+<h1>ACME Acme</h1>
+
+<section aria-labelledby="filters">
+<h2 id="filters">Filter</h2>
+<form method="get" action="/ui/projects/ACME" class="filters">
+<div><label for="f-q">Search</label>
+<input id="f-q" name="q" type="search" value="" maxlength="500" aria-describedby="f-q-hint"></div>
+<div><label for="f-status">Status</label>
+<select id="f-status" name="status"><option value="">Any</option><option value="todo">To do</option><option value="in_progress">In progress</option><option value="in_review">In review</option><option value="done">Done</option><option value="cancelled">Cancelled</option></select></div>
+<div><label for="f-priority">Priority</label>
+<select id="f-priority" name="priority"><option value="">Any</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option></select></div>
+<div><label for="f-type">Type</label>
+<select id="f-type" name="type"><option value="">Any</option><option value="epic">Epic</option><option value="story">Story</option><option value="task">Task</option><option value="bug">Bug</option><option value="subtask">Subtask</option></select></div>
+<div><label for="f-assignee">Assignee</label>
+<input id="f-assignee" name="assignee" type="text" value="" maxlength="100" aria-describedby="f-assignee-hint"></div>
+<div><label for="f-label">Label</label>
+<input id="f-label" name="label" type="text" value="" maxlength="40"></div>
+<div><label for="f-sort">Sort by</label>
+<select id="f-sort" name="sort"><option value="rank" selected>Backlog order</option><option value="-priority">Priority, lowest first</option><option value="priority">Priority, highest first</option><option value="due">Due date</option><option value="-created">Newest first</option><option value="created">Oldest first</option><option value="-updated">Recently updated</option><option value="updated">Least recently updated</option></select></div>
+<div><label for="f-scope">Show</label>
+<select id="f-scope" name="scope"><option value="open" selected>Open issues</option><option value="all">All issues, including done</option></select></div>
+<div class="actions"><button type="submit">Apply filter</button> <a href="/ui/projects/ACME">Clear filter</a></div>
+</form>
+<p id="f-q-hint" class="hint">Words search titles and descriptions. Terms such as status:in_progress, label:web, due&lt;2026-12-01 or -status:done narrow the list. The address of this page keeps the filter, so you can bookmark or share it.</p>
+<p id="f-assignee-hint" class="hint">An email address, me, or none.</p>
+</section>
+<section aria-labelledby="create">
+<h2 id="create">Create an issue</h2>
+<form method="post" action="/ui/projects/ACME/issues" class="create">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="idem" value="IDEM">
+<div class="wide"><label for="c-title">Title</label>
+<input id="c-title" name="title" type="text" required maxlength="200"></div>
+<div><label for="c-type">Type</label>
+<select id="c-type" name="type"><option value="epic">Epic</option><option value="story">Story</option><option value="task" selected>Task</option><option value="bug">Bug</option></select></div>
+<div><label for="c-priority">Priority</label>
+<select id="c-priority" name="priority"><option value="P0">P0</option><option value="P1">P1</option><option value="P2" selected>P2</option><option value="P3">P3</option></select></div>
+<div><label for="c-assignee">Assignee</label>
+<input id="c-assignee" name="assignee" type="text" maxlength="254"></div>
+<div><label for="c-labels">Labels</label>
+<input id="c-labels" name="labels" type="text" maxlength="400" aria-describedby="c-labels-hint"></div>
+<div><label for="c-estimate">Estimate</label>
+<input id="c-estimate" name="estimate" type="number" min="0" max="10000" step="any" inputmode="decimal"></div>
+<div><label for="c-due">Due</label>
+<input id="c-due" name="due_date" type="date"></div>
+<div class="actions"><button type="submit">Create issue</button></div>
+</form>
+<p id="c-labels-hint" class="hint">Labels are lower case words separated by spaces or commas.</p>
+</section>
+
+<section aria-labelledby="list">
+<h2 id="list">Issues</h2>
+<div class="scroll">
+<table class="issues">
+<caption>Issues matching the filter</caption>
+<thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Priority</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Assignee</th><th scope="col">Labels</th><th scope="col">Estimate</th><th scope="col">Due</th><th scope="col">Sprint</th></tr></thead>
+<tbody>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-1">ACME-1</a></td>
+<td data-label="Type"><span class="type type-story">Story</span></td>
+<td data-label="Priority"><span class="prio prio-P1"><span class="sr">Priority </span>P1</span></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-1">Customers can sign up</a></td>
+<td data-label="Status"><span class="status status-todo">To do</span></td>
+<td data-label="Assignee">dev@example.com</td>
+<td data-label="Labels"><span class="label">web</span> </td>
+<td data-label="Estimate"></td>
+<td data-label="Due"></td>
+<td data-label="Sprint"></td>
+</tr>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-2">ACME-2</a></td>
+<td data-label="Type"><span class="type type-epic">Epic</span></td>
+<td data-label="Priority"><span class="prio prio-P1"><span class="sr">Priority </span>P1</span></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-2">Onboarding</a></td>
+<td data-label="Status"><span class="status status-todo">To do</span></td>
+<td data-label="Assignee"><span class="muted">Unassigned</span></td>
+<td data-label="Labels"></td>
+<td data-label="Estimate"></td>
+<td data-label="Due"></td>
+<td data-label="Sprint"></td>
+</tr>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-3">ACME-3</a></td>
+<td data-label="Type"><span class="type type-task">Task</span></td>
+<td data-label="Priority"><span class="prio prio-P2"><span class="sr">Priority </span>P2</span></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-3">Write the welcome email</a></td>
+<td data-label="Status"><span class="status status-todo">To do</span></td>
+<td data-label="Assignee">ann@example.com</td>
+<td data-label="Labels"><span class="label">copy</span> <span class="label">email</span> </td>
+<td data-label="Estimate">3</td>
+<td data-label="Due"><span class="overdue">2026-11-20 <span class="sr">(overdue)</span></span></td>
+<td data-label="Sprint">Sprint 1</td>
+</tr>
+</tbody>
+</table>
+</div>
+<nav class="pager" aria-label="Pages">
+
+<span>Page 1</span>
+
+</nav>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

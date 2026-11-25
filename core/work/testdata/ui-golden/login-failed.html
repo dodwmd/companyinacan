@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Sign in - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+
+</header>
+<main id="main" tabindex="-1">
+<h1>Sign in</h1>
+<p class="flash err" role="alert">That token was not accepted. Check that it is complete, not expired or revoked, and has a work permission.</p>
+<p>Sign in with a personal access token. Create one in the admin UI (Tokens) with the work permissions you need.</p>
+<form method="post" action="/ui/login" class="stack narrow" autocomplete="off">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="next" value="">
+<label for="token">Personal access token</label>
+<input id="token" name="token" type="password" autocomplete="off" required maxlength="512" spellcheck="false" autocapitalize="off" aria-describedby="token-hint">
+<p id="token-hint" class="hint">The token is checked and then kept only in the server&#39;s memory. It is not stored in your browser, and it is never shown again.</p>
+<button type="submit">Sign in</button>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

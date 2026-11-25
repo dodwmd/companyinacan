@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>ACME sprints - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/ACME">ACME</a></p>
+<ul>
+<li><a href="/ui/projects/ACME">Backlog</a></li>
+<li><a href="/ui/projects/ACME/board">Board</a></li>
+<li><a href="/ui/projects/ACME/sprints" aria-current="page">Sprints</a></li>
+<li><a href="/ui/projects/ACME/epics">Epics</a></li>
+</ul>
+</nav>
+<h1>ACME sprints</h1>
+<section class="sprint" aria-labelledby="sprint-1">
+<h2 id="sprint-1">Sprint 1 <span class="label">planned</span></h2>
+<p>Ship onboarding <span class="muted">2026-11-23 - 2026-12-04</span> <span class="muted">3 points</span></p>
+<div class="sprint-actions">
+<form method="post" action="/ui/sprints/1/start"><input type="hidden" name="csrf" value="CSRF"><button type="submit">Start sprint<span class="sr"> Sprint 1</span></button></form>
+
+</div>
+<div class="scroll">
+<table class="issues">
+<caption>Issues in Sprint 1</caption>
+<thead><tr><th scope="col">Key</th><th scope="col">Priority</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Assignee</th><th scope="col">Estimate</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-3">ACME-3</a></td>
+<td data-label="Priority"><span class="prio prio-P2"><span class="sr">Priority </span>P2</span></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-3">Write the welcome email</a></td>
+<td data-label="Status"><span class="status status-todo">To do</span></td>
+<td data-label="Assignee">ann@example.com</td>
+<td data-label="Estimate">3</td>
+<td data-label="Actions"><form method="post" action="/ui/issues/ACME-3/sprint"><input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="version" value="2"><input type="hidden" name="sprint" value=""><input type="hidden" name="next" value="/ui/projects/ACME/sprints"><button type="submit" class="quiet">Remove from sprint<span class="sr"> ACME-3</span></button></form></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</section>
+<section class="sprint" aria-labelledby="sprint-2">
+<h2 id="sprint-2">Sprint 2 <span class="label">planned</span></h2>
+<p></p>
+<div class="sprint-actions">
+<form method="post" action="/ui/sprints/2/start"><input type="hidden" name="csrf" value="CSRF"><button type="submit">Start sprint<span class="sr"> Sprint 2</span></button></form>
+
+</div>
+<p class="empty">No issues in this sprint yet. Add issues from the backlog below.</p>
+</section>
+<section aria-labelledby="new-sprint">
+<h2 id="new-sprint">Create a sprint</h2>
+<form method="post" action="/ui/projects/ACME/sprints" class="create">
+<input type="hidden" name="csrf" value="CSRF">
+<div class="wide"><label for="s-name">Name</label>
+<input id="s-name" name="name" type="text" required maxlength="100"></div>
+<div class="wide"><label for="s-goal">Goal</label>
+<input id="s-goal" name="goal" type="text" maxlength="1000"></div>
+<div><label for="s-start">Starts on</label>
+<input id="s-start" name="starts_on" type="date"></div>
+<div><label for="s-end">Ends on</label>
+<input id="s-end" name="ends_on" type="date"></div>
+<div class="actions"><button type="submit">Create sprint</button></div>
+</form>
+</section>
+<section aria-labelledby="backlog">
+<h2 id="backlog">Backlog</h2>
+<div class="scroll">
+<table class="issues">
+<caption>Open issues that are not in a sprint</caption>
+<thead><tr><th scope="col">Key</th><th scope="col">Priority</th><th scope="col">Title</th><th scope="col">Estimate</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-1">ACME-1</a></td>
+<td data-label="Priority"><span class="prio prio-P1"><span class="sr">Priority </span>P1</span></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-1">Customers can sign up</a></td>
+<td data-label="Estimate"></td>
+<td data-label="Actions"><form method="post" action="/ui/issues/ACME-1/sprint" class="inline"><input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="version" value="1"><input type="hidden" name="next" value="/ui/projects/ACME/sprints">
+<select name="sprint" aria-label="Add to sprint ACME-1"><option value="1">Sprint 1</option><option value="2">Sprint 2</option></select>
+<button type="submit" class="quiet">Add to sprint<span class="sr"> ACME-1</span></button></form></td>
+</tr>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-2">ACME-2</a></td>
+<td data-label="Priority"><span class="prio prio-P1"><span class="sr">Priority </span>P1</span></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-2">Onboarding</a></td>
+<td data-label="Estimate"></td>
+<td data-label="Actions"><form method="post" action="/ui/issues/ACME-2/sprint" class="inline"><input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="version" value="1"><input type="hidden" name="next" value="/ui/projects/ACME/sprints">
+<select name="sprint" aria-label="Add to sprint ACME-2"><option value="1">Sprint 1</option><option value="2">Sprint 2</option></select>
+<button type="submit" class="quiet">Add to sprint<span class="sr"> ACME-2</span></button></form></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</section>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

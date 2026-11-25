@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>epics - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/EMPTY">EMPTY</a></p>
+<ul>
+<li><a href="/ui/projects/EMPTY">Backlog</a></li>
+<li><a href="/ui/projects/EMPTY/board">Board</a></li>
+<li><a href="/ui/projects/EMPTY/sprints">Sprints</a></li>
+<li><a href="/ui/projects/EMPTY/epics" aria-current="page">Epics</a></li>
+</ul>
+</nav>
+<h1>EMPTY epics</h1>
+<p class="empty">This project has no epics.</p>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

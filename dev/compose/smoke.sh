@@ -82,6 +82,28 @@ code="${resp##*$'\n'}"
 [ "$code" = 201 ] || die "work create issue: expected 201, got $code" "${resp%$'\n'*}"
 ok "work create issue (HTTP 201): $(printf '%s' "${resp%$'\n'*}" | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')"
 
+# 4b. work web UI: sign in by pasting the dev token (cookie jar, like a browser), open the project
+# list and the project's backlog, and check that an anonymous request is sent to the login page.
+work_ui="http://work.localhost:$port/ui"
+jar="$(mktemp)"
+trap 'rm -f "$jar"' EXIT
+expect_status "work UI redirects anonymous users to sign-in" 303 "$work_ui/"
+login="$(curlx -c "$jar" -b "$jar" "$work_ui/login")" || die "work UI login page: curl failed"
+csrf="$(printf '%s' "$login" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -n1)"
+[ -n "$csrf" ] || die "work UI: no CSRF field on the login page"
+code="$(curlx -o /dev/null -w '%{http_code}' -c "$jar" -b "$jar" -X POST "$work_ui/login" \
+  -H "Origin: http://work.localhost:$port" --data-urlencode "csrf=$csrf" --data-urlencode "token=$WORK_TOKEN")" || die "work UI sign-in: curl failed"
+[ "$code" = 303 ] || die "work UI sign-in: expected HTTP 303, got $code"
+ok "work UI sign-in (HTTP 303)"
+page="$(curlx -b "$jar" "$work_ui/")" || die "work UI project list: curl failed"
+case "$page" in *"/ui/projects/SMOKE"*) ok "work UI lists the SMOKE project" ;; *) die "work UI project list lacks SMOKE" "$page" ;; esac
+page="$(curlx -b "$jar" "$work_ui/projects/SMOKE")" || die "work UI backlog: curl failed"
+case "$page" in *"Created by smoke.sh"*) ok "work UI backlog shows the issue created through the API" ;; *) die "work UI backlog lacks the smoke issue" ;; esac
+session_csrf="$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -n1)"
+code="$(curlx -o /dev/null -w '%{http_code}' -b "$jar" -X POST "$work_ui/logout" --data-urlencode "csrf=$session_csrf")" || die "work UI logout: curl failed"
+[ "$code" = 303 ] || die "work UI logout: expected HTTP 303, got $code"
+expect_status "work UI session ended by logout" 303 -b "$jar" "$work_ui/"
+
 # 5. healthz of the other modules, careers page
 expect_status "people healthz" 200 "http://people.localhost:$port/healthz"
 expect_status "jobs healthz" 200 "http://jobs.localhost:$port/healthz"

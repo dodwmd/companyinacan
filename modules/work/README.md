@@ -9,7 +9,7 @@ In-house work tracker: a lean, API-first, Jira-style issue tracker. Library `cor
 **Status: experimental.** Built and tested offline and measured locally. The chart installs through
 can-core's installer in unit tests; the advisory dev-cluster CI job builds the image and installs it
 through can-core on a k3d cluster, creates an issue with a personal access token and disables it again
-(what that proves and does not: [`docs/module-wiring.md`](../../docs/module-wiring.md)). There is no web UI yet. A Plane wrapper for 8 GB+
+(what that proves and does not: [`docs/module-wiring.md`](../../docs/module-wiring.md)). The service also serves a small web UI under `/ui/` ([`docs/work-ui.md`](../../docs/work-ui.md)). A Plane wrapper for 8 GB+
 servers is a later, separate module that provides the same capability.
 
 **Installed under can-core** (`CAN_API_URL` set): can-core generates `CAN_WORK_ADMIN_TOKEN` once;

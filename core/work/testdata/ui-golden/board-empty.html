@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>EMPTY board - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/EMPTY">EMPTY</a></p>
+<ul>
+<li><a href="/ui/projects/EMPTY">Backlog</a></li>
+<li><a href="/ui/projects/EMPTY/board" aria-current="page">Board</a></li>
+<li><a href="/ui/projects/EMPTY/sprints">Sprints</a></li>
+<li><a href="/ui/projects/EMPTY/epics">Epics</a></li>
+</ul>
+</nav>
+<h1>EMPTY board</h1>
+<nav class="tabs" aria-label="Board views">
+<ul>
+<li><a href="/ui/projects/EMPTY/board" aria-current="page">Active sprint</a></li>
+<li><a href="/ui/projects/EMPTY/board?sprint=backlog">Backlog</a></li>
+<li><a href="/ui/projects/EMPTY/board?sprint=all">All issues</a></li>
+</ul>
+</nav>
+<p class="empty">No active sprint. <a href="/ui/projects/EMPTY/sprints">Plan a sprint</a></p>
+<p class="hint">Use the buttons on a card to move it along the workflow or to change its order. Each button only works while the card is unchanged since this page loaded.</p>
+<div class="board">
+<section class="column column-todo" aria-labelledby="col-todo">
+<h2 id="col-todo">To do <span class="count">0</span></h2>
+<p class="empty">Nothing here.</p>
+</section>
+<section class="column column-active" aria-labelledby="col-in_progress">
+<h2 id="col-in_progress">In progress <span class="count">0</span></h2>
+<p class="empty">Nothing here.</p>
+</section>
+<section class="column column-active" aria-labelledby="col-in_review">
+<h2 id="col-in_review">In review <span class="count">0</span></h2>
+<p class="empty">Nothing here.</p>
+</section>
+<section class="column column-done" aria-labelledby="col-done">
+<h2 id="col-done">Done <span class="count">0</span></h2>
+<p class="empty">Nothing here.</p>
+</section>
+<section class="column column-done" aria-labelledby="col-cancelled">
+<h2 id="col-cancelled">Cancelled <span class="count">0</span></h2>
+<p class="empty">Nothing here.</p>
+</section>
+</div>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

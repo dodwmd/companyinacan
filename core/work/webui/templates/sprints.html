@@ -1,0 +1,76 @@
+{{define "content"}}<h1>{{.D.Project.Key}} {{t "sprints.title"}}</h1>
+{{range .D.Open}}{{$sp := .}}<section class="sprint" aria-labelledby="sprint-{{.ID}}">
+<h2 id="sprint-{{.ID}}">{{.Name}} <span class="label">{{t (printf "sprint.%s" .State)}}</span></h2>
+<p>{{if .Goal}}{{.Goal}} {{end}}{{if .StartsOn}}<span class="muted">{{.StartsOn}}{{if .EndsOn}} - {{.EndsOn}}{{end}}</span> {{end}}{{if .Estimate}}<span class="muted">{{t "sprints.points" .Estimate}}</span>{{end}}</p>
+{{if $.CanWrite}}<div class="sprint-actions">
+{{if eq .State "planned"}}<form method="post" action="/ui/sprints/{{.ID}}/start"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">{{t "sprints.start"}}<span class="sr"> {{.Name}}</span></button></form>{{end}}
+{{if eq .State "active"}}<form method="post" action="/ui/sprints/{{.ID}}/complete" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="mv-{{.ID}}">{{t "sprints.move_to"}}</label>
+<select id="mv-{{.ID}}" name="move_to"><option value="">{{t "sprints.to_backlog"}}</option>{{range .Targets}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+<button type="submit">{{t "sprints.complete"}}<span class="sr"> {{.Name}}</span></button></form>{{end}}
+</div>
+{{end}}{{if .Issues}}<div class="scroll">
+<table class="issues">
+<caption>{{t "sprints.issues_caption" .Name}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.priority"}}</th><th scope="col">{{t "col.title"}}</th><th scope="col">{{t "col.status"}}</th><th scope="col">{{t "col.assignee"}}</th><th scope="col">{{t "col.estimate"}}</th>{{if $.CanWrite}}<th scope="col">{{t "col.actions"}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .Issues}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/issues/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.priority"}}">{{template "prio" .Priority}}</td>
+<td data-label="{{t "col.title"}}" class="title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></td>
+<td data-label="{{t "col.status"}}">{{template "status" .}}</td>
+<td data-label="{{t "col.assignee"}}">{{if .Assignee}}{{.Assignee}}{{else}}<span class="muted">{{t "issue.unassigned"}}</span>{{end}}</td>
+<td data-label="{{t "col.estimate"}}">{{if .Estimate}}{{.Estimate}}{{end}}</td>
+{{if $.CanWrite}}<td data-label="{{t "col.actions"}}"><form method="post" action="/ui/issues/{{.Key}}/sprint"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="sprint" value=""><input type="hidden" name="next" value="/ui/projects/{{$.D.Project.Key}}/sprints"><button type="submit" class="quiet">{{t "sprints.remove"}}<span class="sr"> {{.Key}}</span></button></form></td>{{end}}
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .More}}<p class="hint">{{t "sprints.more"}}</p>{{end}}
+{{else}}<p class="empty">{{t "sprints.empty"}}</p>
+{{end}}</section>
+{{else}}<p class="empty">{{t "sprints.none"}}</p>
+{{end}}{{if .CanWrite}}<section aria-labelledby="new-sprint">
+<h2 id="new-sprint">{{t "sprints.new"}}</h2>
+<form method="post" action="/ui/projects/{{.D.Project.Key}}/sprints" class="create">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<div class="wide"><label for="s-name">{{t "sprints.name"}}</label>
+<input id="s-name" name="name" type="text" required maxlength="100"></div>
+<div class="wide"><label for="s-goal">{{t "sprints.goal"}}</label>
+<input id="s-goal" name="goal" type="text" maxlength="1000"></div>
+<div><label for="s-start">{{t "sprints.starts"}}</label>
+<input id="s-start" name="starts_on" type="date"></div>
+<div><label for="s-end">{{t "sprints.ends"}}</label>
+<input id="s-end" name="ends_on" type="date"></div>
+<div class="actions"><button type="submit">{{t "sprints.create"}}</button></div>
+</form>
+</section>
+{{end}}<section aria-labelledby="backlog">
+<h2 id="backlog">{{t "sprints.backlog"}}</h2>
+{{if .D.Backlog}}<div class="scroll">
+<table class="issues">
+<caption>{{t "sprints.backlog_caption"}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.priority"}}</th><th scope="col">{{t "col.title"}}</th><th scope="col">{{t "col.estimate"}}</th>{{if $.CanWrite}}<th scope="col">{{t "col.actions"}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .D.Backlog}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/issues/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.priority"}}">{{template "prio" .Priority}}</td>
+<td data-label="{{t "col.title"}}" class="title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></td>
+<td data-label="{{t "col.estimate"}}">{{if .Estimate}}{{.Estimate}}{{end}}</td>
+{{if $.CanWrite}}<td data-label="{{t "col.actions"}}">{{if $.D.Targets}}<form method="post" action="/ui/issues/{{.Key}}/sprint" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="next" value="/ui/projects/{{$.D.Project.Key}}/sprints">
+<select name="sprint" aria-label="{{t "sprints.add_to"}} {{.Key}}">{{range $.D.Targets}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+<button type="submit" class="quiet">{{t "sprints.add"}}<span class="sr"> {{.Key}}</span></button></form>{{end}}</td>{{end}}
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .D.BacklogMore}}<p class="hint">{{t "sprints.more_backlog" .D.Project.Key}}</p>{{end}}
+{{else}}<p class="empty">{{t "sprints.backlog_empty"}}</p>
+{{end}}</section>
+{{if .D.Closed}}<section aria-labelledby="closed">
+<h2 id="closed">{{t "sprints.closed"}}</h2>
+<ul>
+{{range .D.Closed}}<li>{{.Name}} <span class="muted">{{if .StartsOn}}{{.StartsOn}}{{end}}{{if .EndsOn}} - {{.EndsOn}}{{end}}</span> <a href="/ui/projects/{{$.D.Project.Key}}/board?sprint={{.ID}}">{{t "nav.board"}}</a></li>
+{{end}}</ul>
+</section>
+{{end}}{{end}}

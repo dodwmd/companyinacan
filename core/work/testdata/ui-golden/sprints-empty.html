@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>EMPTY sprints - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/EMPTY">EMPTY</a></p>
+<ul>
+<li><a href="/ui/projects/EMPTY">Backlog</a></li>
+<li><a href="/ui/projects/EMPTY/board">Board</a></li>
+<li><a href="/ui/projects/EMPTY/sprints" aria-current="page">Sprints</a></li>
+<li><a href="/ui/projects/EMPTY/epics">Epics</a></li>
+</ul>
+</nav>
+<h1>EMPTY sprints</h1>
+<p class="empty">There is no planned or active sprint. Create one below.</p>
+<section aria-labelledby="new-sprint">
+<h2 id="new-sprint">Create a sprint</h2>
+<form method="post" action="/ui/projects/EMPTY/sprints" class="create">
+<input type="hidden" name="csrf" value="CSRF">
+<div class="wide"><label for="s-name">Name</label>
+<input id="s-name" name="name" type="text" required maxlength="100"></div>
+<div class="wide"><label for="s-goal">Goal</label>
+<input id="s-goal" name="goal" type="text" maxlength="1000"></div>
+<div><label for="s-start">Starts on</label>
+<input id="s-start" name="starts_on" type="date"></div>
+<div><label for="s-end">Ends on</label>
+<input id="s-end" name="ends_on" type="date"></div>
+<div class="actions"><button type="submit">Create sprint</button></div>
+</form>
+</section>
+<section aria-labelledby="backlog">
+<h2 id="backlog">Backlog</h2>
+<p class="empty">Every open issue is in a sprint.</p>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

@@ -19,6 +19,7 @@ type api struct {
 	limiter    *rateLimiter  // per principal
 	failures   *rateLimiter  // failed authentications per client address
 	penalty    time.Duration // delay added to failures from an address over the limit
+	ui         *webUI        // the web UI under /ui/ (ui.go)
 }
 
 func (a *api) handler() http.Handler {
@@ -73,6 +74,9 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("GET /v1/events/dead", a.guard(admin, a.listDead))
 	mux.HandleFunc("POST /v1/events/{id}/replay", a.guard(admin, a.replayEvent))
 
+	if a.ui != nil {
+		a.ui.mount(mux)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setSecurityHeaders(w)
 		mux.ServeHTTP(w, r)

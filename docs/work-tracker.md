@@ -7,7 +7,7 @@ one API call; a script that retries never creates duplicates.
 
 Status: **experimental**. The service (`cmd/can-work`, `core/work`) is built and tested
 offline and measured locally; the image has not been built or run on a cluster, and there is
-no web UI yet (the admin UI, E12, and the board UI are later). See
+a web UI (E14c, [work-ui.md](work-ui.md)) is served under `/ui/`. See
 `specs/011-work-tracker/tasks.md` for the known gaps.
 
 ## Concepts
@@ -284,7 +284,7 @@ can-work healthcheck -addr 127.0.0.1:8080                     # for container pr
 
 ## What is not here yet
 
-No web UI or board UI, no file storage for attachments, no per-person SSO (tokens are minted by
+No attachment upload or file storage (the UI shows attachment details), no UI sign-in through SSO (the UI takes a pasted token, see [work-ui.md](work-ui.md)), no per-person SSO (tokens are minted by
 an admin; can-core introspection plugs in behind the `Authenticator` interface), no saved
 filters or components, no time tracking, no source-control links, no `issue.priority_changed`
 event or manager notifications (use `changes.priority` on `work.issue.updated.v1`), and no

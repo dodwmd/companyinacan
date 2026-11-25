@@ -35,6 +35,7 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://localhost:8080/_forms/contact/token> | forms gateway, same origin as the site (prefix stripped by the edge) |
 | <http://admin.localhost:8080> | can-core admin UI (and `/api/v1/...` admin API) |
 | <http://work.localhost:8080> | work tracker API (`/v1/...`, bearer token) |
+| <http://work.localhost:8080/ui/> | work tracker web UI: sign in by pasting the work admin token below ([work-ui.md](work-ui.md)) |
 | <http://people.localhost:8080> | people API (`/v1/...`, bearer token) |
 | <http://jobs.localhost:8080/careers> | public careers pages; API under `/v1` (bearer token) |
 | <http://finance.localhost:8080> | finance API (`/v1/...`, bearer token) |

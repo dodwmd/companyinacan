@@ -1,0 +1,28 @@
+{{define "content"}}<h1>{{t "dashboard.title"}}</h1>
+<p>{{t "dashboard.intro"}}</p>
+<form method="get" action="/ui/dashboard" class="stack narrow">
+<label for="d-people">{{t "dashboard.people"}}</label>
+<input id="d-people" name="assignees" type="text" value="{{.D.Input}}" maxlength="4000" aria-describedby="d-hint">
+<p id="d-hint" class="hint">{{t "dashboard.hint"}}</p>
+<button type="submit">{{t "dashboard.show"}}</button>
+</form>
+{{if .D.Searched}}{{range .D.Groups}}<section aria-labelledby="p-{{.Person}}">
+<h2 id="p-{{.Person}}">{{.Person}} <span class="count">{{len .Issues}}</span></h2>
+{{if .Issues}}<div class="scroll">
+<table class="issues">
+<caption>{{t "dashboard.caption" .Person}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.priority"}}</th><th scope="col">{{t "col.title"}}</th><th scope="col">{{t "col.status"}}</th><th scope="col">{{t "col.due"}}</th></tr></thead>
+<tbody>
+{{range .Issues}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/issues/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.priority"}}">{{template "prio" .Priority}}</td>
+<td data-label="{{t "col.title"}}" class="title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></td>
+<td data-label="{{t "col.status"}}">{{template "status" .}}</td>
+<td data-label="{{t "col.due"}}">{{if .DueDate}}<span{{if overdue .DueDate .StatusCategory}} class="overdue"{{end}}>{{.DueDate}}</span>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "dashboard.none"}}</p>
+{{end}}</section>
+{{end}}{{if .D.Truncated}}<p class="hint">{{t "dashboard.truncated"}}</p>{{end}}{{end}}{{end}}

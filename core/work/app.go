@@ -97,6 +97,10 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		penalty:  300 * time.Millisecond,
 		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
+	if a.ui, err = newWebUI(a, now); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	app.handler = withMiddleware(log, a.handler())
 	return app, nil
 }

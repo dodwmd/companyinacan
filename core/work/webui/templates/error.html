@@ -1,0 +1,19 @@
+{{define "content"}}<h1>{{.Title}}</h1>
+<p>{{.D.Message}}</p>
+{{if .D.Problems}}<ul class="problems">
+{{range .D.Problems}}<li><strong>{{.Field}}</strong>: {{.Message}}</li>
+{{end}}</ul>
+{{end}}{{with .D.Extra}}{{if .Key}}<section aria-labelledby="now">
+<h2 id="now">{{t "conflict.current"}}</h2>
+<p><a href="/ui/issues/{{.Key}}">{{.Key}}</a> {{.Title}} ({{stat .Status}}), {{t "conflict.version" .Version}} {{.UpdatedAt}}</p>
+</section>
+{{end}}{{if .Edit}}<section aria-labelledby="yours">
+<h2 id="yours">{{t "conflict.yours"}}</h2>
+<p class="hint">{{t "conflict.yours_hint"}}</p>
+<label for="y-title">{{t "issue.title"}}</label>
+<input id="y-title" type="text" readonly value="{{.YourTitle}}">
+<label for="y-desc">{{t "issue.description"}}</label>
+<textarea id="y-desc" rows="8" readonly>{{.YourDescription}}</textarea>
+</section>
+{{end}}{{end}}<p><a href="{{.D.Back}}">{{.D.BackText}}</a></p>
+{{end}}

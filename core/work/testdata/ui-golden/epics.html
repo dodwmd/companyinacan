@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>epics - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/dashboard">Team dashboard</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (dev@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/ACME">ACME</a></p>
+<ul>
+<li><a href="/ui/projects/ACME">Backlog</a></li>
+<li><a href="/ui/projects/ACME/board">Board</a></li>
+<li><a href="/ui/projects/ACME/sprints">Sprints</a></li>
+<li><a href="/ui/projects/ACME/epics" aria-current="page">Epics</a></li>
+</ul>
+</nav>
+<h1>ACME epics</h1>
+<div class="scroll">
+<table class="epics">
+<caption>Epics and the progress of their child issues</caption>
+<thead><tr><th scope="col">Key</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Progress</th></tr></thead>
+<tbody>
+<tr>
+<td data-label="Key"><a href="/ui/issues/ACME-2">ACME-2</a></td>
+<td data-label="Title" class="title"><a href="/ui/issues/ACME-2">Onboarding</a></td>
+<td data-label="Status"><span class="status status-todo">To do</span></td>
+<td data-label="Progress"><progress max="2" value="1" aria-label="Progress of ACME-2">50%</progress> 1 of 2 done</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<nav class="pager" aria-label="Pages">
+
+
+</nav>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>
