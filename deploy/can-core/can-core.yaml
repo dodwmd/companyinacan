@@ -21,9 +21,24 @@ spec:
       storage: 256Mi
 ---
 # Backup dumps (epic E08b, specs/037-backup-dumps): can-core writes consistent dumps and the
-# completion marker here; the host backup timer reads this volume's local-path directory
-# (/var/lib/rancher/k3s/storage/pvc-<uid>_can-system_can-dumps). No pod needs a hostPath. The
-# size is not enforced by local-path.
+# completion marker to the host directory the backup timer reads, /var/lib/can/dumps, through a
+# static volume an administrator declares. The pod mounts only a PersistentVolumeClaim, so Pod
+# Security (which forbids hostPath volumes in pod specs) stays in force, and can-core has no
+# permission to create volumes. The directory must be owned by uid 65532 (host bootstrap does
+# that); DirectoryOrCreate would make it root-owned, and dump runs would then fail and say so.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: can-dumps
+  labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+spec:
+  capacity: {storage: 5Gi}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef: {namespace: can-system, name: can-dumps}
+  hostPath: {path: /var/lib/can/dumps, type: DirectoryOrCreate}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -32,6 +47,8 @@ metadata:
   labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
 spec:
   accessModes: [ReadWriteOnce]
+  storageClassName: ""
+  volumeName: can-dumps
   resources:
     requests:
       storage: 5Gi

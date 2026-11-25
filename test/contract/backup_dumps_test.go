@@ -3,20 +3,30 @@ package contract
 import (
 	"strings"
 	"testing"
+
+	"github.com/dodwmd/companyinacan/core/backup"
 )
 
 // E08b (specs/037-backup-dumps): can-core writes dumps to its own volume; no pod uses a
 // hostPath, which can-system's Pod Security level would reject.
 func TestCanCoreDumpsVolume(t *testing.T) {
 	docs := loadDocs(t, "deploy/can-core/can-core.yaml")
-	var claim bool
+	var claim, volume bool
 	for _, p := range ofKind(docs, "PersistentVolumeClaim") {
-		if p.name() == "can-dumps" && p.ns() == "can-system" {
+		if p.name() == "can-dumps" && p.ns() == "can-system" && p.str("spec", "volumeName") == "can-dumps" {
 			claim = true
 		}
 	}
-	if !claim {
-		t.Fatal("no can-dumps PVC in can-system: the host backup script reads its local-path directory by that name")
+	for _, v := range ofKind(docs, "PersistentVolume") {
+		// The path the backup script and `can restore` use, bound to exactly that claim.
+		if v.name() == "can-dumps" && v.str("spec", "hostPath", "path") == backup.DefaultSettings().DumpsDir &&
+			v.str("spec", "claimRef", "namespace") == "can-system" && v.str("spec", "claimRef", "name") == "can-dumps" &&
+			v.str("spec", "persistentVolumeReclaimPolicy") == "Retain" {
+			volume = true
+		}
+	}
+	if !claim || !volume {
+		t.Fatalf("static can-dumps volume (%v) and claim (%v) must tie can-core to the host dumps directory", volume, claim)
 	}
 	d := ofKind(docs, "Deployment")[0]
 	pod := toJSON(d.get("spec", "template", "spec"))

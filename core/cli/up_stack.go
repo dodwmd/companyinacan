@@ -53,7 +53,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release manifest pinning every image by digest (default deploy/release-images.json when present)")
 	fl.BoolVar(&f.printSecrets, "print-secrets", false, "print the admin password, TOTP secret and recovery kit without a terminal (CI); never the default")
 	fl.BoolVar(&f.noDefaultBundle, "no-default-bundle", false, "do not add the forms module to the company pushed to the cluster")
-	fl.BoolVar(&f.allowBrokenBackup, "allow-broken-backup", false, "accept --backup-*  although backups cannot work yet (the can-core pod cannot mount the host dump directory); the kit is marked with that caveat")
+	fl.BoolVar(&f.allowBrokenBackup, "allow-broken-backup", false, "deprecated, does nothing (kept so existing commands keep working)")
 	fl.BoolVar(&f.writeBundle, "write-bundle", false, "also write the default bundle (the forms module) into company.yaml on disk, so `can apply` keeps it")
 	fl.BoolVar(&f.forceCompany, "force-company", false, "overwrite the company.yaml in the cluster even if it was changed there (admin UI, `can apply`) since the last `can up`")
 	fl.BoolVar(&f.domainLive, "domain-live", false, "the company domain's DNS records resolve to the server: also route and certify it (implied by dns.provider: cloudflare)")
@@ -366,7 +366,6 @@ func (t *target) summarize(cmd *cobra.Command, g *globalOpts, out io.Writer, res
 			p("\nAdmin: %s. Lost it? kubectl -n can-system exec -i deploy/can-core -- /can-core admin reset-password --rotate-totp (password on stdin).\n", lr.AdminNote)
 		}
 		if lr.Kit != nil {
-			p("\nCAVEAT: %s\n", launch.KitCaveat)
 			switch {
 			case f.kitOut != "":
 				p("\nRecovery kit written, encrypted, to %s. Keep it and its passphrase away from this server.\n", f.kitOut)

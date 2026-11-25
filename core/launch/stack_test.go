@@ -462,6 +462,14 @@ func TestBackupInstalledOnHostAndKitReturned(t *testing.T) {
 	if !strings.Contains(joined, "enable --now can-backup.timer") {
 		t.Fatalf("the timer is not enabled:\n%s", joined)
 	}
+	for _, want := range []string{"install -d -o 65532 -g 65532 -m 0700 '/var/lib/can/dumps'", "sha256sum -c", backup.ResticVersion} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the host is not prepared: %q missing from the scripts run", want)
+		}
+	}
+	if res.Kit.Note != "" {
+		t.Errorf("no caveat on a working backup: %q", res.Kit.Note)
+	}
 }
 
 func (h *hostFake) CopyFrom(ctx context.Context, p string, r io.Reader, mode string) error {
@@ -497,7 +505,7 @@ func TestImagesAreStreamedWhenTheRunnerCanAndReverified(t *testing.T) {
 	}
 }
 
-func TestBackupReusesPasswordAlreadyOnHostAndWarnsLoudly(t *testing.T) {
+func TestBackupReusesPasswordAlreadyOnHost(t *testing.T) {
 	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
 	o, d, _ := newStack(t, k, &fakeLoader{})
 	h := &hostFake{out: map[string]string{"cat /etc/can/backup.d/restic.password": "left-by-crashed-run-0123456789\n"}}
@@ -510,8 +518,8 @@ func TestBackupReusesPasswordAlreadyOnHostAndWarnsLoudly(t *testing.T) {
 	if res.Kit.Restic.Password != "left-by-crashed-run-0123456789" || string(h.copied["/etc/can/backup.d/restic.password"]) != res.Kit.Restic.Password {
 		t.Fatalf("a crash after restic init must not mint a second password: %q", res.Kit.Restic.Password)
 	}
-	if len(res.Warnings) == 0 || !strings.Contains(res.Warnings[0], "BACKUPS DO NOT WORK YET") {
-		t.Fatalf("the missing dump mount must be reported loudly: %v", res.Warnings)
+	if res.Kit.Note != "" || strings.Contains(strings.Join(res.Warnings, "\n"), "DO NOT WORK") {
+		t.Fatalf("backups work: no caveat expected: %q %v", res.Kit.Note, res.Warnings)
 	}
 }
 

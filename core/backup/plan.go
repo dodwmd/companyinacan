@@ -91,7 +91,7 @@ func (s Settings) Validate() error {
 type Dump struct {
 	Module string `json:"module"`
 	Hook   string `json:"hook"`
-	File   string `json:"file"` // relative to the dumps directory
+	File   string `json:"file"` // the module's directory in the dumps directory; the hook names the files
 }
 
 // Plan is what gets backed up, derived from company.yaml and module manifests.
@@ -114,6 +114,11 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 		return nil, err
 	}
 	p := &Plan{Sources: []string{s.DumpsDir, s.PVCRoot, s.HostStateDir}}
+	// can-core's own database is covered by its dump (<dumps>/can-core/state.db); the live file
+	// on its volume could be copied mid-write.
+	for _, f := range []string{"state.db", "state.db-wal", "state.db-shm"} {
+		p.Excludes = append(p.Excludes, fmt.Sprintf("%s/pvc-*_can-system_can-core-data/%s", strings.TrimRight(s.PVCRoot, "/"), f))
+	}
 	ids := make([]string, 0, len(co.Modules))
 	for id, e := range co.Modules {
 		if e.IsEnabled() {
@@ -128,7 +133,7 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 		}
 		hasDump := m.Hooks.Backup != ""
 		if hasDump {
-			p.Dumps = append(p.Dumps, Dump{Module: id, Hook: m.Hooks.Backup, File: "modules/" + id + ".dump"})
+			p.Dumps = append(p.Dumps, Dump{Module: id, Hook: m.Hooks.Backup, File: "modules/" + id + "/"})
 		}
 		if m.Requires.Database != "sqlite" {
 			continue

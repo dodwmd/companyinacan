@@ -33,7 +33,7 @@ func TestBuildPlanDumpsAndScope(t *testing.T) {
 	if len(p.Dumps) != 2 || p.Dumps[0].Module != "forms" || p.Dumps[1].Module != "wiki" {
 		t.Fatalf("dumps = %+v", p.Dumps)
 	}
-	if p.Dumps[0].File != "modules/forms.dump" {
+	if p.Dumps[0].File != "modules/forms/" {
 		t.Errorf("dump file = %q", p.Dumps[0].File)
 	}
 	// SQLite-on-PVC module: its database files are excluded from the raw PVC copy.
@@ -51,6 +51,10 @@ func TestBuildPlanDumpsAndScope(t *testing.T) {
 	}
 	if !sawDB || !sawWAL {
 		t.Errorf("sqlite excludes missing: %v", p.Excludes)
+	}
+	// can-core's live database is excluded: its dump covers it.
+	if !strings.Contains(strings.Join(p.Excludes, "\n"), "/var/lib/rancher/k3s/storage/pvc-*_can-system_can-core-data/state.db-wal") {
+		t.Errorf("can-core state excludes missing: %v", p.Excludes)
 	}
 	// Sources: dumps dir first (restored first), then PVC root.
 	if p.Sources[0] != "/var/lib/can/dumps" || p.Sources[1] != "/var/lib/rancher/k3s/storage" {

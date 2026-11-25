@@ -451,6 +451,15 @@ func newBackupInstallCmd(g *globalOpts) *cobra.Command {
 			if created {
 				fmt.Fprintln(cmd.OutOrStdout(), "initialised a new restic repository")
 			}
+			// can-core writes its dumps here through the can-dumps volume, as uid 65532.
+			if err := os.MkdirAll(at(s.DumpsDir), 0o700); err != nil {
+				return failure("%v", err)
+			}
+			if os.Geteuid() == 0 {
+				if err := os.Chown(at(s.DumpsDir), 65532, 65532); err != nil {
+					return failure("%v", err)
+				}
+			}
 			if enable {
 				for _, a := range [][]string{{"daemon-reload"}, {"enable", "--now", "can-backup.timer"}} {
 					if _, err := backupSeams.runner.Run(cmd.Context(), backup.Cmd{Name: "systemctl", Args: a}); err != nil {
