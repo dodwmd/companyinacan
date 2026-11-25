@@ -9,6 +9,9 @@ type Company struct {
 	Modules  map[string]ModuleEntry `yaml:"modules"`
 	Primary  map[string]string      `yaml:"primary"`
 	Site     Site                   `yaml:"site"`
+	// Approvals are the approval policies by type; Notifications the delivery settings (epic E11a).
+	Approvals     map[string]ApprovalPolicy `yaml:"approvals"`
+	Notifications NotificationConfig        `yaml:"notifications"`
 }
 
 // Provider selects where the company runs.

@@ -11,19 +11,27 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
+	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
 // Server holds the admin API's dependencies.
 type Server struct {
-	Auth       *auth.Service
-	DB         *store.DB
-	Audit      *audit.Log
-	Registry   *registry.Registry
+	Auth     *auth.Service
+	DB       *store.DB
+	Audit    *audit.Log
+	Registry *registry.Registry
+	// Shared platform services (epic E11a, platform.go). When RBAC is nil no permission is
+	// enforced (single-admin behaviour of earlier versions); the other two may be nil in tests.
+	RBAC       *rbac.Service
+	Approvals  *approvals.Engine
+	Notify     *notify.Service
 	Log        *slog.Logger
 	Secure     bool // set the Secure cookie attribute (false only for plain-HTTP local dev)
 	TrustProxy bool // take the client address from the ingress's X-Forwarded-For
@@ -42,19 +50,23 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
+	return append(s.coreRoutes(), s.platformRoutes()...)
+}
+
+func (s *Server) coreRoutes() []route {
 	return []route{
 		{"GET /healthz", httpx.Health},
 		{"POST /api/v1/login", s.login},
 		{"POST /api/v1/logout", s.authed(s.logout)},
 		{"GET /api/v1/session", s.authed(s.session)},
-		{"GET /api/v1/modules", s.authed(s.listModules)},
-		{"GET /api/v1/modules/{id}", s.authed(s.getModule)},
-		{"GET /api/v1/capabilities", s.authed(s.listCapabilities)},
-		{"GET /api/v1/audit", s.authed(s.listAudit)},
-		{"GET /api/v1/audit/verify", s.authed(s.verifyAudit)},
-		{"GET /api/v1/deliveries", s.authed(s.listDeliveries)},
-		{"GET /api/v1/deliveries/{id}/attempts", s.authed(s.listAttempts)},
-		{"POST /api/v1/deliveries/{id}/requeue", s.authed(s.requeue)},
+		{"GET /api/v1/modules", s.authedPerm(rbac.PermView, s.listModules)},
+		{"GET /api/v1/modules/{id}", s.authedPerm(rbac.PermView, s.getModule)},
+		{"GET /api/v1/capabilities", s.authedPerm(rbac.PermView, s.listCapabilities)},
+		{"GET /api/v1/audit", s.authedPerm(rbac.PermAudit, s.listAudit)},
+		{"GET /api/v1/audit/verify", s.authedPerm(rbac.PermAudit, s.verifyAudit)},
+		{"GET /api/v1/deliveries", s.authedPerm(rbac.PermView, s.listDeliveries)},
+		{"GET /api/v1/deliveries/{id}/attempts", s.authedPerm(rbac.PermView, s.listAttempts)},
+		{"POST /api/v1/deliveries/{id}/requeue", s.authedPerm(rbac.PermOperate, s.requeue)},
 	}
 }
 

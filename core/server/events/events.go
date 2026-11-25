@@ -42,6 +42,8 @@ var Catalogue = []string{
 	"issue.created.v1", "issue.updated.v1", "issue.transitioned.v1", "issue.priority_changed.v1",
 	"one_on_one.action_item.created.v1", "review.cycle.opened.v1",
 	"approval.requested.v1", "approval.approved.v1", "approval.rejected.v1",
+	// E11a: one terminal event per request (outcome approved, rejected, cancelled or expired).
+	"approval.decided.v1", "notification.sent.v1",
 }
 
 var typeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+\.v[1-9][0-9]*$`)
@@ -124,6 +126,23 @@ func (b *Bus) Subscribe(eventType string, h Handler) {
 
 // Publish validates, persists and fans out an event. source is the publishing module id or can-core.
 func (b *Bus) Publish(ctx context.Context, source, eventType string, data json.RawMessage) (Envelope, error) {
+	return b.PublishTo(ctx, source, eventType, data, "")
+}
+
+// SubscribeAll registers an in-process handler that sees every event (used by the notification
+// rules engine). Handlers must be quick and must not publish events of the types they handle.
+func (b *Bus) SubscribeAll(h Handler) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.handlers[allEvents] = append(b.handlers[allEvents], h)
+}
+
+const allEvents = "*"
+
+// PublishTo is Publish with the webhook fan-out restricted to one module (onlyModule); an empty
+// onlyModule delivers to every subscriber. Approval decisions use it so a module only ever
+// receives the decisions of its own requests. In-process handlers still see the event.
+func (b *Bus) PublishTo(ctx context.Context, source, eventType string, data json.RawMessage, onlyModule string) (Envelope, error) {
 	if source == "" {
 		return Envelope{}, errors.New("event source is required")
 	}
@@ -147,6 +166,9 @@ func (b *Bus) Publish(ctx context.Context, source, eventType string, data json.R
 	env := Envelope{ID: b.newID(), Type: eventType, Time: b.db.Now().Truncate(time.Second), Source: source, Data: json.RawMessage(t)}
 	targets := make([]store.DeliveryTarget, 0, len(subs))
 	for _, s := range subs {
+		if onlyModule != "" && s.ModuleID != onlyModule {
+			continue
+		}
 		u, err := registry.ServiceURL(s.Namespace, s.Service, s.Port)
 		if err != nil {
 			b.log.Error("skipping subscriber with invalid address", "module", s.ModuleID, "error", err)
@@ -169,7 +191,7 @@ func (b *Bus) Publish(ctx context.Context, source, eventType string, data json.R
 
 func (b *Bus) runHandlers(ctx context.Context, env Envelope) {
 	b.mu.RLock()
-	hs := append([]Handler(nil), b.handlers[env.Type]...)
+	hs := append(append([]Handler(nil), b.handlers[env.Type]...), b.handlers[allEvents]...)
 	b.mu.RUnlock()
 	for _, h := range hs {
 		func() {

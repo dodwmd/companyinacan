@@ -132,6 +132,26 @@
         }
       }
     },
+    "notifications": {
+      "type": "array",
+      "description": "Notification rules: when the event is published, notify the recipients (role:<name>, user:<subject>, field:<event data key holding a subject>, channel:<webhook channel>).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event", "recipients"],
+        "properties": {
+          "event": { "$ref": "#/$defs/eventName" },
+          "type": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]*$", "maxLength": 64 },
+          "recipients": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": { "type": "string", "pattern": "^(role|user|field|channel):[A-Za-z0-9_.:-]{1,64}$" }
+          },
+          "urgent": { "type": "boolean" }
+        }
+      }
+    },
     "data_classes": {
       "type": "array",
       "items": {
