@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -491,8 +492,13 @@ func ParseOFX(r io.Reader, currency string) (*ParsedStatement, error) {
 		}
 		if strings.HasPrefix(tag, "/") {
 			name := tag[1:]
-			if len(stack) > 0 && stack[len(stack)-1] == name {
-				stack = stack[:len(stack)-1]
+			// An SGML leaf with no value and no closing tag looks like an opening aggregate. Closing an aggregate
+			// therefore unwinds whatever was left open inside it, so empty leaves do not pile up to the depth cap.
+			for j := len(stack) - 1; j >= 0; j-- {
+				if stack[j] == name {
+					stack = stack[:j]
+					break
+				}
 			}
 			if (name == "STMTRS" || name == "CCSTMTRS") && inBlock {
 				if err := ids.block(stAccount, stCur); err != nil {
@@ -575,6 +581,12 @@ func ParseOFX(r io.Reader, currency string) (*ParsedStatement, error) {
 				}
 			case "CURRENCY":
 				cur.Currency = strings.ToUpper(raw)
+			case "CURSYM":
+				// <CURRENCY> is an aggregate: the amount is in its CURSYM. (<ORIGCURRENCY> describes an amount already
+				// converted to the statement currency, so it is ignored.)
+				if slices.Contains(stack, "CURRENCY") {
+					cur.Currency = strings.ToUpper(raw)
+				}
 			}
 		case tag == "ACCTID":
 			if err := setOnce(&stAccount, raw, "account"); err != nil {

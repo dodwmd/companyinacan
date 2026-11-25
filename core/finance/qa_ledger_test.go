@@ -464,3 +464,31 @@ func TestQAErasureReportListsRetainedBankData(t *testing.T) {
 	}
 	t.Errorf("retained %+v", rep.Retained)
 }
+
+// QA 16: empty unclosed leaves do not reach the depth cap, a CURRENCY aggregate is honoured, and CURDEF is checked.
+func TestQAOFXEmptyLeavesAndCurrencyAggregate(t *testing.T) {
+	trn := func(i, extra string) string {
+		return "<STMTTRN><DTPOSTED>20260601<CHECKNUM><REFNUM><MEMO><TRNAMT>1.00<FITID>" + i + extra + "</STMTTRN>"
+	}
+	var many strings.Builder
+	for i := 0; i < 50; i++ {
+		many.WriteString(trn(id(int64(i)), "<NAME><PAYEEID>"))
+	}
+	ps, err := ParseOFX(strings.NewReader("<OFX><STMTRS><CURDEF>USD<BANKTRANLIST>"+many.String()+"</BANKTRANLIST></STMTRS></OFX>"), "USD")
+	if err != nil || len(ps.Txns) != 50 || ps.Txns[49].AmountMinor != 100 {
+		t.Fatalf("empty leaves: %v", err)
+	}
+	wrap := func(body, def string) error {
+		_, err := ParseOFX(strings.NewReader("<OFX><STMTRS><CURDEF>"+def+"<BANKTRANLIST>"+body+"</BANKTRANLIST></STMTRS></OFX>"), "USD")
+		return err
+	}
+	if wrap(trn("1", "<CURRENCY><CURRATE>1.1<CURSYM>EUR</CURRENCY>"), "USD") == nil {
+		t.Error("a EUR amount (CURRENCY aggregate) was accepted into a USD account")
+	}
+	if err := wrap(trn("1", "<ORIGCURRENCY><CURRATE>1.1<CURSYM>EUR</ORIGCURRENCY>"), "USD"); err != nil {
+		t.Errorf("an already converted amount: %v", err)
+	}
+	if wrap(trn("1", ""), "EUR") == nil {
+		t.Error("a EUR statement (CURDEF) was accepted")
+	}
+}
