@@ -23,7 +23,7 @@ func TestStubModuleOfTheIntegrationSuiteInstalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := kube.NewFake()
-	in := New(Config{API: api, ModulesDir: dir, PlatformURL: "http://can-core.can-system.svc.cluster.local:8090", NodeIP: "172.18.0.2", RolloutTimeout: time.Second, Poll: time.Millisecond})
+	in := New(Config{API: api, ModulesDir: dir, PlatformURL: "http://can-core.can-system.svc.cluster.local:8090", NodeIP: "172.18.0.2", RolloutTimeout: time.Second, Poll: time.Millisecond, ChildAddressSpaceMB: -1})
 	spec := reconcile.Spec{ID: "stub", Version: man.Version, Namespace: "mod-stub", ServiceAccount: "stub", Manifest: man, HMACSecret: "x", Settings: map[string]any{"greeting": "hi"}}
 	if err := in.Enable(context.Background(), spec); err != nil {
 		t.Fatal(err)

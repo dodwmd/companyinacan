@@ -294,3 +294,32 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   can-core provides for the starter charts (`can-database`, `can-smtp`); names are no longer taken from chart values.
   A chart volume called `can-token` must be the projected `can` token. IngressRoute `tls` may only set
   `certResolver: letsencrypt` (no `domains`, `secretName`, `options`).
+
+### R18 addendum (QA round 4): charts render in a child process
+- **Why.** In-process limits cannot stop everything a template can do: a pointer-shared list DAG
+  (`$l = list $l $l` forty times) serialises to 2^40 nodes through any printing path, and Go's
+  "fatal error: out of memory" is not recoverable, so it would kill can-core. Budgets and caps stay as defence in depth
+  (tick budget, string and output caps, a node cap in `toYaml`, `toJson`, `join`, `toString`, `quote`, `squote`, `print`,
+  `println`, `printf`), but the boundary is a process.
+- **How.** The installer re-executes its own binary (`os.Executable()`, so the image needs nothing extra) as the hidden
+  `can-core render-chart` subcommand: job JSON on stdin (module directory, chart path, values file, settings, release),
+  result JSON on stdout. Limits: clean environment (only `GOMAXPROCS`, `GOMEMLIMIT`), working directory a fresh temp
+  directory, own process group killed on timeout or cancel, 15 s wall clock (the child also stops itself at 10 s), stdout
+  capped at 16 MiB and stderr at 4 KiB, `RLIMIT_AS` set to the start-up address space plus 256 MiB, and a heap watchdog that
+  exits the child above 32 MiB of live heap within about 5 ms. Any crash, kill, limit or missing output is a render error
+  in the parent, which keeps running. If the child cannot be started the enable fails with "refusing to render in-process";
+  there is no in-process fallback. The one-render-per-module guard stays.
+- **Linux only** for `RLIMIT_AS` and the process group (`child_linux.go`); other platforms compile but have only the heap
+  watchdog and the wall-clock kill. A fixed absolute address-space limit does not work for a Go binary (measured: the
+  static binary fails to start at 512 MiB, starts at 1 GiB, and a limit set below the current size after start makes the
+  next runtime allocation fatal), hence start-up size plus headroom.
+- **Cost, measured** (workstation, stub and `support` charts, static binary): 6 ms wall per render and 15.6 MB peak RSS in
+  the child, transient. The child's memory counts against the same container limit as can-core (96 MiB), so a render adds
+  up to about 16 MB to can-core's 41 to 55 MB for a few milliseconds, and at most about 32 MB of heap before the watchdog
+  fires; keep the limit at or above 96 MiB.
+- **Tests** (`round4_test.go`, `limits_test.go`): the list DAG through toYaml, toJson, join, toString, printf, print, quote
+  and squote is a render error (guard); through `{{ $l }}`, `html` and `urlquery`, which have no guard, the child dies at
+  the heap limit (exit 5) and the test process, which stands in for can-core, survives with bounded peak RSS and still
+  installs a normal chart afterwards; a missing renderer binary fails clearly before the cluster is touched; goroutines
+  return to baseline; the 45-define chain still fails in under 2 s; the starter charts still install; the production limits
+  work both with and without the race detector.

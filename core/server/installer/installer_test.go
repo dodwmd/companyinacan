@@ -44,7 +44,7 @@ func fixture(t *testing.T, extra map[string]string) (*Installer, *kube.Fake, *db
 	api := kube.NewFake()
 	db := dbprov.NewFake()
 	in := New(Config{API: api, ModulesDir: dir, PlatformURL: "http://can-core.can-system.svc.cluster.local:8090", NodeIP: "172.18.0.2",
-		DB: db, RolloutTimeout: 200 * time.Millisecond, Poll: 5 * time.Millisecond})
+		DB: db, RolloutTimeout: 200 * time.Millisecond, Poll: 5 * time.Millisecond, ChildAddressSpaceMB: -1})
 	man := &config.Module{ID: "stub", Version: "0.1.0"}
 	man.Runtime.Chart = "./chart"
 	man.Resources.RAMMB, man.Resources.RAMLimitMB = 20, 40

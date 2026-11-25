@@ -258,7 +258,7 @@ func funcs(root *template.Template, st *renderState) template.FuncMap {
 		}
 		return true
 	}
-	return template.FuncMap{
+	fm := template.FuncMap{
 		"toYaml": toYAML,
 		"toJson": func(v any) string { b, _ := json.Marshal(v); return string(b) },
 		"indent": indent,
@@ -346,4 +346,6 @@ func funcs(root *template.Template, st *renderState) template.FuncMap {
 			return w.buf.String(), nil
 		},
 	}
+	guardSerialisers(fm, toYAML)
+	return fm
 }

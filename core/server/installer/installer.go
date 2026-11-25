@@ -26,7 +26,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -57,7 +56,11 @@ type Config struct {
 	ModulesDir  string // directory of module directories (module.yaml, chart/)
 	PlatformURL string // CAN_API_URL given to modules
 	NodeIP      string // excluded from module egress (templates/module-namespace.yaml)
-	Domain      string // company domain: the only parent of a module's public host (<subdomain>.<domain>)
+	// RenderExe is the binary re-executed as `render-chart` (default: this executable).
+	RenderExe string
+	// ChildAddressSpaceMB and ChildHeapMB limit the render child (defaults 256 extra and 32; negative AS = none).
+	ChildAddressSpaceMB, ChildHeapMB int
+	Domain                           string // company domain: the only parent of a module's public host (<subdomain>.<domain>)
 	// RequireAdmission makes Enable refuse to create anything until the can-core ValidatingAdmissionPolicies
 	// and their Deny bindings are seen in the cluster (fail closed).
 	RequireAdmission bool
@@ -377,60 +380,10 @@ func (in *Installer) moduleDir(id string) (string, error) {
 	for _, d := range []string{id, "_" + id} { // `_id` directories are examples (validate.ManifestPath)
 		p := filepath.Join(in.cfg.ModulesDir, d) // id matched idRE: no separators
 		if st, err := os.Stat(p); err == nil && st.IsDir() {
-			return p, nil
+			return filepath.Abs(p) // the render child runs in a temp directory
 		}
 	}
 	return "", fmt.Errorf("no module directory for %q under %s", id, in.cfg.ModulesDir)
-}
-
-func (in *Installer) values(ctx context.Context, s reconcile.Spec, dir string) (map[string]any, error) {
-	can := map[string]any{
-		"apiUrl": in.cfg.PlatformURL, "namespace": s.Namespace, "serviceAccount": s.ServiceAccount,
-		"moduleSecret": secretModule, "databaseSecret": secretDB, "tokenDir": TokenDir,
-	}
-	settings := s.Settings
-	if settings == nil {
-		settings = map[string]any{}
-	}
-	out := map[string]any{"settings": settings}
-	if vf := s.Manifest.Runtime.Values; vf != "" {
-		rootDir, err := filepath.EvalSymlinks(dir)
-		if err != nil {
-			return nil, err
-		}
-		b, err := readInside(rootDir, filepath.Join(rootDir, filepath.Clean("/"+vf))) // cannot escape the module directory
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", vf, err)
-		}
-		vst := &renderState{ctx: ctx, deadline: time.Now().Add(renderTimeout)}
-		t := template.New("values").Option("missingkey=zero")
-		t.Funcs(funcs(t, vst))
-		t.Funcs(template.FuncMap{"tick": vst.tick})
-		if _, err := t.Parse(string(b)); err != nil {
-			return nil, fmt.Errorf("%s does not parse", vf)
-		}
-		if err := instrumentRanges(t, vst); err != nil {
-			return nil, err
-		}
-		buf := &limitWriter{max: maxObjectBytes}
-		input := map[string]any{
-			"Settings": settings, "Can": map[string]any{"APIURL": can["apiUrl"], "Namespace": s.Namespace, "ServiceAccount": s.ServiceAccount, "SecretName": secretModule, "DBSecretName": secretDB, "TokenDir": TokenDir},
-			"Module": map[string]any{"ID": s.ID, "Version": s.Version},
-		}
-		if err := t.Execute(buf, input); err != nil {
-			return nil, fmt.Errorf("%s: %w", vf, err)
-		}
-		var mapped map[string]any
-		if err := yaml.Unmarshal([]byte(strings.ReplaceAll(buf.buf.String(), "<no value>", "")), &mapped); err != nil {
-			return nil, fmt.Errorf("%s is not valid YAML after rendering: %w", vf, err)
-		}
-		out = deepMerge(out, mapped)
-	}
-	if h := in.hostFor(s); h != "" { // last, so no values file can override the host can-core validates routes against
-		out = deepMerge(out, map[string]any{"ingress": map[string]any{"host": h}})
-	}
-	out["can"] = can
-	return out, nil
 }
 
 // protected object names that only can-core may write in a module namespace.
@@ -452,11 +405,7 @@ func (in *Installer) render(ctx context.Context, s reconcile.Spec) ([]kube.Objec
 		return nil, err
 	}
 	chart := filepath.Join(dir, filepath.Clean("/"+s.Manifest.Runtime.Chart))
-	vals, err := in.values(ctx, s, dir)
-	if err != nil {
-		return nil, err
-	}
-	objs, err := RenderChartContext(ctx, chart, vals, ReleaseInfo{Name: s.ID, Namespace: s.Namespace})
+	objs, err := in.renderInChild(ctx, in.jobFor(s, dir, chart))
 	if err != nil {
 		return nil, fmt.Errorf("rendering chart: %w", err)
 	}
