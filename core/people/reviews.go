@@ -832,9 +832,10 @@ func (s *Service) ListReviews(ctx context.Context, a Actor, cycleID string) ([]R
 	}
 	if !a.hrAdmin() {
 		// own review, or anyone below the caller in the reporting line; applied before the limit
-		q += ` AND (rp.person_id = ? OR rp.person_id IN (WITH RECURSIVE r(id) AS (SELECT id FROM people WHERE manager_id = ?
-			UNION SELECT p2.id FROM people p2 JOIN r ON p2.manager_id = r.id) SELECT id FROM r))`
-		args = append(args, a.PersonID, a.PersonID)
+		// own, direct reports, and released reviews further down the line; applied before the limit
+		q += ` AND (rp.person_id = ? OR p.manager_id = ? OR (rp.release_state = 'released' AND rp.person_id IN (WITH RECURSIVE r(id) AS
+			(SELECT id FROM people WHERE manager_id = ? UNION SELECT p2.id FROM people p2 JOIN r ON p2.manager_id = r.id) SELECT id FROM r)))`
+		args = append(args, a.PersonID, a.PersonID, a.PersonID)
 	}
 	q += ` ORDER BY rp.created_at, rp.id LIMIT 1000`
 	rows, err := s.db.QueryContext(ctx, q, args...)

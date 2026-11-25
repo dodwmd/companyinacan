@@ -124,10 +124,13 @@ returned in an order derived from a hash of answer and question, different per q
 `min_responses` answers exist (default 3, never lower; **upward** feedback needs at least 5). It is never
 shown incrementally: while the cycle is open the view does not change when another person answers (not even
 a count), because a view that moves lets a watcher compute the new answer from the change in the average.
+The threshold applies per question: a question that fewer than the required number of people answered is omitted entirely (no average, no count, no comments), because answers are optional and a lone answer would be exact.
 Nobody sees which reviewer has answered: a nomination reads `approved` whether or not it was answered
 (only the reviewer sees their own open requests). In an anonymous cycle the audit entry for an answer names
 the cycle, not the request or the person. After release the employee sees aggregates, never comments. In an **attributed** cycle the manager and HR also see
-who wrote each comment. Limits: anonymity holds against API users, not against someone who can read the
+who wrote each comment. The audit entry for an anonymous answer carries its arrival time against the cycle, so in a cycle with one
+participant (or whose answers someone can watch arrive) the audit log still shows when answers came in, though not from whom.
+Limits: anonymity holds against API users, not against someone who can read the
 database file and the WAL (write order, file offsets) together with the outbox and request tables, and free
 text can identify its author by style or content. A threshold of k = 3 does not stop collusion: if k-1 of
 the reviewers pool what they know, the last one is exposed; and a manager who asked exactly three peers knows

@@ -418,7 +418,9 @@ func (s *Service) feedbackView(ctx context.Context, cy *cycleRow, participantID,
 					n++
 				}
 			}
-			if n > 0 {
+			// The threshold applies per question: answers are optional, so a question that fewer than
+			// `need` people answered would show one person's exact rating. Omitted entirely, no N.
+			if n >= need {
 				fv.Ratings = append(fv.Ratings, RatingAgg{QuestionID: q.ID, Average: math.Round(float64(sum)/float64(n)*100) / 100, N: n})
 			}
 		case "text":
@@ -440,6 +442,9 @@ func (s *Service) feedbackView(ctx context.Context, cy *cycleRow, participantID,
 					h := sha256.Sum256([]byte(r.id + ":" + q.ID))
 					cs = append(cs, keyed{hex.EncodeToString(h[:]), c})
 				}
+			}
+			if len(cs) < need {
+				continue // too few comments on this question to leave them unattributable
 			}
 			sort.Slice(cs, func(i, j int) bool { return cs[i].key < cs[j].key })
 			for _, k := range cs {

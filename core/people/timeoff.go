@@ -1159,7 +1159,7 @@ func (s *Service) CancelLeaveRequest(ctx context.Context, a Actor, id string) (*
 				back = min(back, used)
 				if back > 0 {
 					if _, err := tx.ExecContext(ctx, `INSERT INTO leave_ledger (person_id, type_id, entry_date, kind, halves, ref, created_by, created_at) VALUES (?,?,?,?,?,?,?,?)`,
-						r.PersonID, r.TypeID, s.today(), "reversal", back, id, a.auditID(), now); err != nil {
+						r.PersonID, r.TypeID, r.StartDate, "reversal", back, id, a.auditID(), now); err != nil {
 						return err
 					}
 				}
