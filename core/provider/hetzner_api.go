@@ -44,10 +44,16 @@ type APIError struct {
 	Status  int
 	Code    string
 	Message string
+	// Service names the API in messages ("hetzner" when empty).
+	Service string
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("hetzner API: %s (%s, HTTP %d)", e.Message, e.Code, e.Status)
+	svc := e.Service
+	if svc == "" {
+		svc = "hetzner"
+	}
+	return fmt.Sprintf("%s API: %s (%s, HTTP %d)", svc, e.Message, e.Code, e.Status)
 }
 
 // IsNotFound reports a 404 from the API.

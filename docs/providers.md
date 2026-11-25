@@ -14,7 +14,7 @@ provider:
 | `hetzner` | available | Creates an SSH key, a cloud firewall and a server with cloud-init on Hetzner Cloud. |
 | `local` | stub (epic E02) | k3d cluster via `can dev`. `can up` exits 3. |
 | `static` | stub (epic E18) | Site-only deploy, no server. Exits 3. |
-| `digitalocean` | stub (epic E12) | Exits 3. |
+| `digitalocean` | available (offline-tested, see below) | Creates an SSH key, a Cloud Firewall and a tagged Droplet with cloud-init on DigitalOcean. |
 
 All options are listed in `specs/006-providers-make-up/contracts/options.md`. Secrets are never put
 in `company.yaml`: use a reference, `env:NAME` or `file:/path`.
@@ -116,6 +116,102 @@ firewall, and the SSH key only if `can` uploaded it. **Deleting the server delet
 The defaults for `server_type`, `image` and `location` have not been checked against the live API
 yet (epic E00). Override them if Hetzner has renamed a type.
 
+## digitalocean
+
+```yaml
+provider:
+  type: digitalocean
+  options:
+    token_secret_ref: env:DIGITALOCEAN_TOKEN    # default
+    ssh_public_key_file: ~/.ssh/id_ed25519.pub
+    region: fra1                # default, unverified
+    size: s-1vcpu-2gb           # default, unverified: 1 vCPU, 2 GiB
+    image: ubuntu-24-04-x64     # default, unverified
+    operator_ip: 198.51.100.9   # optional: SSH from this address only
+```
+
+The full option list is in `specs/020-digitalocean-cloudflare/contracts/options.md`. Unknown option
+keys are an error (also in `can validate`), and a literal token is rejected: use `env:NAME` or
+`file:PATH`. `port` other than 22 is an error, as for Hetzner.
+
+Create a personal access token with read and write scope in the DigitalOcean control panel
+(API, Tokens) and `export DIGITALOCEAN_TOKEN=...`. `can up` creates, in order: the SSH key (reused
+if the fingerprint exists), a Cloud Firewall (inbound 22, 80, 443 and icmp; SSH only from
+`operator_ip` when set; all outbound; never 6443 or 10250) and the Droplet with the bootstrap as
+user-data, then waits for the create action, for the Droplet to be active with a public IPv4 address,
+and for the bootstrap marker. Ids are saved at once, so an interrupted run resumes.
+
+**Ownership by tag.** The Droplet is tagged `managed-by:can` and `company:<slug>`; the firewall is
+named `can-<slug>` and targets exactly those tags (DigitalOcean firewalls have no labels, so this
+is the marker; it is a weaker proof than a Hetzner label). A Droplet or firewall with the expected
+name but without them is never adopted (`can up` stops) and never deleted. `can down` re-reads the
+tags right before deleting, deletes the Droplet and waits until it is gone, then the firewall, then
+the SSH key only if `can` uploaded it. With an empty state file it finds can's resources by tag and
+name. **Deleting the Droplet deletes its data.** SSH keys already in your account can be added to the
+Droplet with `ssh_key_fingerprints` (MD5 form); can never uploads or deletes those.
+
+**Size and cost** (the 2 GB target of SPEC.md section 3.2; prices as shown on DigitalOcean's
+pricing page when this was written, per month, USD, not verified by running anything and subject to
+change; check the page):
+
+| Slug | RAM | Disk | Price | Use |
+|---|---|---|---|---|
+| `s-1vcpu-512mb-10gb` | 512 MiB | 10 GiB | $4 | too small |
+| `s-1vcpu-1gb` | 1 GiB | 25 GiB | $6 | too small for the trimmed k3s plus modules |
+| `s-1vcpu-2gb` | 2 GiB | 50 GiB | $12 | default |
+
+Droplets are billed while they exist, including when powered off; `can down` is how to stop paying.
+The slugs for image and region are from memory of the public lists and not checked: list the real
+ones with `doctl compute size list`, `doctl compute image list-distribution` and
+`doctl compute region list`, and override the defaults if they differ.
+
+## DNS plugins
+
+```yaml
+dns:
+  provider: cloudflare            # manual (default) | cloudflare
+  zone: acme.example              # optional; default: the zone found for `domain`
+  ttl: 300                        # 1 (automatic) or 60..86400
+  proxied: false                  # default false, see below
+  adopt_existing: false
+  token_secret_ref: env:CLOUDFLARE_API_TOKEN     # default; or file:~/.config/can/cloudflare-token
+```
+
+`can up --dns manual|cloudflare` overrides `dns.provider`. `provider-native` (DigitalOcean's domains
+API) is not built and exits 3.
+
+### Cloudflare
+
+Create an API token (Cloudflare dashboard, My Profile, API Tokens, Create Token, "Create Custom
+Token") with **Zone / DNS / Edit** (shown as "DNS Write" in newer docs) and **Zone / Zone / Read**,
+and under Zone Resources choose *Include, Specific zone*, your zone. Nothing else: no account or
+other-zone permissions. Then `export CLOUDFLARE_API_TOKEN=...`. The domain must already be a
+zone in your Cloudflare account (the name servers delegated to Cloudflare).
+
+What it does: `can up` first checks the token and finds the zone (failing before a server is
+created), then, after the server is up, upserts an `A` (or `AAAA`) record for the apex, `admin` and
+`help`, each with the comment `managed-by=can`. Re-runs write nothing when nothing changed and update
+can's own records in place when the address changed. `can up --plan` shows the planned records
+without calling Cloudflare.
+
+Safety rules:
+
+- A record at the same name and type that does **not** carry the comment is never changed; `can up`
+  stops. A `CNAME` at the same name also stops it (Cloudflare does not allow both).
+- `adopt_existing: true` lets `can` take over such a record, but only if it is not proxied. It
+  updates content and TTL, leaves the comment alone, and `can down` will never delete it.
+- `can down --yes` removes the DNS records first (so no record points at an address that is about to
+  be recycled), only those recorded in `.can/state.json` that were created by `can` and still carry
+  the comment. If this fails, the teardown stops so you can repeat it; fix the token or remove the
+  `dns` block to skip it.
+- `proxied` defaults to `false`: the certificate challenge (ACME HTTP-01) must reach your server
+  directly. With `proxied: true` the TTL is automatic and certificates will not issue until a DNS-01
+  challenge exists, which is **not built** (future work).
+- Cloudflare allows 1,200 API requests per five minutes; `can` waits for `Retry-After` on HTTP 429 and
+  retries only requests that cannot repeat an effect (429 for any method, GET on 5xx).
+
+DNS propagation time is not part of the five-minute budget.
+
 ## Option values
 
 `port` and the other numeric options must be whole numbers: a quoted `"22"` or `22.5` is an error,
@@ -180,4 +276,4 @@ and kubeconfig files are mode 0600 and the state holds no secrets.
 ## Exit codes
 
 `0` ok, `1` failure (including `status` when not ready), `2` usage (bad flag, `down` without
-`--yes`), `3` not implemented (`local`, `static`, `digitalocean`, Cloudflare DNS).
+`--yes`), `3` not implemented (`local`, `static`, the `provider-native` DNS plugin).

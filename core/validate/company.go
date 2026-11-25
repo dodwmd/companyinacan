@@ -9,6 +9,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
+	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/schema"
 )
 
@@ -55,6 +56,10 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 	add := func(rule, path, msg string) {
 		l, col := doc.Pos(path)
 		ps = append(ps, problem.Problem{File: doc.File, Line: l, Column: col, Path: path, Rule: rule, Severity: problem.Error, Message: msg})
+	}
+
+	for _, is := range append(provider.CheckProviderOptions(c.Provider.Type, c.Provider.Options), provider.CheckDNS(c.Domain, c.DNS)...) {
+		add(is.Rule, is.Path, is.Message)
 	}
 
 	ids := make([]string, 0, len(c.Modules))

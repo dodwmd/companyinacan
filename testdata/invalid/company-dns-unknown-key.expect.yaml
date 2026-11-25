@@ -1,0 +1,3 @@
+problems:
+  - rule: schema.unknown-field
+    path: "/dns/colour"

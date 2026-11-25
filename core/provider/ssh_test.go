@@ -255,7 +255,7 @@ func TestNewAndStubs(t *testing.T) {
 	if _, err := New("nope", Deps{}); err == nil {
 		t.Fatal("unknown type accepted")
 	}
-	for _, typ := range []string{"local", "static", "digitalocean"} {
+	for _, typ := range []string{"local", "static"} {
 		p, _ := New(typ, Deps{})
 		st := NewStore(t.TempDir())
 		for name, err := range map[string]error{

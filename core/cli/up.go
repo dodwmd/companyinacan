@@ -44,6 +44,7 @@ type target struct {
 	store   *provider.Store
 	deps    provider.Deps
 	redact  *provider.Redactor
+	dnsCfg  provider.DNSConfig
 }
 
 // load validates company.yaml in dir and builds the provider.
@@ -66,11 +67,24 @@ func load(cmd *cobra.Command, g *globalOpts, dir, modulesDir string) (*target, e
 	t := &target{dir: dir, company: co, redact: provider.NewRedactor(), store: provider.NewStore(dir)}
 	t.deps = lifecycle.deps()
 	t.deps.Redactor = t.redact
+	if t.dnsCfg, err = provider.DNSConfigFrom(co.DNS); err != nil {
+		return nil, failure("%s: %v", file, err)
+	}
 	t.spec = provider.Spec{Dir: dir, Name: co.Name, Domain: co.Domain, Options: co.Provider.Options}
 	if t.prov, err = provider.New(co.Provider.Type, t.deps); err != nil {
 		return nil, usage("%v", err)
 	}
 	return t, nil
+}
+
+// dnsPlugin builds the DNS plugin: the --dns flag wins, then company.yaml's
+// dns.provider, then manual.
+func (t *target) dnsPlugin(flag string) (provider.DNS, error) {
+	name := flag
+	if name == "" {
+		name = t.dnsCfg.Provider
+	}
+	return provider.NewDNSWith(name, t.dnsCfg, t.deps, t.store)
 }
 
 // fail converts a provider error to an exit error, redacting secrets and
@@ -119,12 +133,13 @@ func newUpCmd(g *globalOpts) *cobra.Command {
 	var modulesDir, dnsName string
 	cmd := &cobra.Command{
 		Use:   "up [dir]",
-		Short: "Provision a server and bootstrap k3s (ssh, hetzner)",
+		Short: "Provision a server and bootstrap k3s (ssh, hetzner, digitalocean)",
 		Long: `Provision the server named by company.yaml (provider.type), install k3s,
-fetch the kubeconfig, and print the instant URL and the DNS records to add.
+fetch the kubeconfig, and print the instant URL and the DNS records to add
+(or create them, with dns.provider: cloudflare).
 
 Use --plan to print the planned actions without changing anything.
-Exit codes: 0 ok, 1 failure, 2 usage, 3 not implemented (local, static, digitalocean).`,
+Exit codes: 0 ok, 1 failure, 2 usage, 3 not implemented (local, static).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -135,7 +150,7 @@ Exit codes: 0 ok, 1 failure, 2 usage, 3 not implemented (local, static, digitalo
 			if err != nil {
 				return err
 			}
-			dns, err := provider.NewDNS(dnsName)
+			dns, err := t.dnsPlugin(dnsName)
 			if err != nil {
 				return t.fail(err)
 			}
@@ -146,7 +161,7 @@ Exit codes: 0 ok, 1 failure, 2 usage, 3 not implemented (local, static, digitalo
 	}
 	cmd.Flags().BoolVar(&plan, "plan", false, "print the planned actions and change nothing")
 	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
-	cmd.Flags().StringVar(&dnsName, "dns", "manual", "DNS plugin: manual")
+	cmd.Flags().StringVar(&dnsName, "dns", "", "DNS plugin: manual or cloudflare (default: dns.provider in company.yaml, else manual)")
 	return cmd
 }
 
@@ -169,8 +184,18 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	acts = append(acts,
 		provider.Action{ID: "kubeconfig", Description: fmt.Sprintf("fetch the k3s kubeconfig over ssh into %s (API reached via SSH tunnel on 127.0.0.1:%d; 6443 stays closed)", provider.KubeconfigPath(t.dir), provider.DefaultTunnelPort)},
 		provider.Action{ID: "instant-url", Description: "decide the instant URL: https on <ip>.sslip.io, or plain-http fallback (sslip.io check + ACME rate limits)"},
-		provider.Action{ID: "dns", Description: "print DNS records for " + t.company.Domain + " (" + dns.Name() + " plugin)"},
 	)
+	if pl, ok := dns.(provider.DNSPlanner); ok {
+		recs, _ := provider.Records(t.company.Domain, "192.0.2.1", instantSubdomains)
+		for i := range recs {
+			recs[i].Value = "<server IP>"
+		}
+		for _, line := range pl.PlanRecords(t.company.Domain, recs) {
+			acts = append(acts, provider.Action{ID: "dns", Description: line})
+		}
+	} else {
+		acts = append(acts, provider.Action{ID: "dns", Description: "print DNS records for " + t.company.Domain + " (" + dns.Name() + " plugin)"})
+	}
 	res.Actions = acts
 	if planOnly {
 		if g.json() {
@@ -187,6 +212,12 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		return nil
 	}
 
+	// Fail on a bad DNS token or missing zone before any server is paid for.
+	if ck, ok := dns.(provider.DNSChecker); ok {
+		if err := ck.Preflight(ctx, t.company.Domain); err != nil {
+			return t.fail(err)
+		}
+	}
 	if err := t.prov.Create(ctx, t.spec, t.store, out); err != nil {
 		return t.fail(err)
 	}
@@ -290,7 +321,8 @@ func newDownCmd(g *globalOpts) *cobra.Command {
 		Short: "Tear down what `can up` created",
 		Long: `For the local provider this is ` + "`can dev down`" + ` (deletes the k3d cluster; --yes is not needed).
 For the ssh provider this uninstalls k3s and can-core and leaves the server alone.
-For hetzner it deletes the server, firewall and (if can uploaded it) the SSH key: all data on the server is lost.
+For hetzner and digitalocean it deletes the server, firewall and (if can uploaded it) the SSH key: all data on the server is lost.
+With dns.provider: cloudflare the DNS records can created are deleted first (records it adopted or did not create are kept).
 
 Destructive: requires --yes. Use --plan to see what would happen.`,
 		Args: cobra.MaximumNArgs(1),
@@ -310,6 +342,9 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 			out, flush := t.writers(cmd, g)
 			defer flush()
 			warning := downWarning(t.prov.Name())
+			if t.dnsCfg.Provider == "cloudflare" {
+				warning += " Also deletes the Cloudflare DNS records can created (adopted and foreign records are kept)."
+			}
 			if plan || !yes {
 				fmt.Fprintln(out, warning)
 				if plan {
@@ -328,6 +363,17 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 			defer release()
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop()
+			// DNS first: records must not keep pointing at an address that is
+			// about to be recycled. A failure stops here so the run can be repeated.
+			dns, err := t.dnsPlugin("")
+			if err != nil {
+				return t.fail(err)
+			}
+			if rm, ok := dns.(provider.DNSRemover); ok {
+				if err := rm.Remove(ctx, t.company.Domain, out); err != nil {
+					return t.fail(err)
+				}
+			}
 			if err := t.prov.Destroy(ctx, t.spec, t.store, out); err != nil {
 				return t.fail(err)
 			}
@@ -352,6 +398,8 @@ func downWarning(name string) string {
 		return "can down (ssh): uninstalls k3s and can-core from the server; the server itself, its firewall and swap are left as they are."
 	case "hetzner":
 		return "can down (hetzner): DELETES the server, its cloud firewall and the SSH key can uploaded. All data on the server is lost."
+	case "digitalocean":
+		return "can down (digitalocean): DELETES the droplet, its cloud firewall and the SSH key can uploaded. All data on the droplet is lost."
 	}
 	return "can down (" + name + ")"
 }

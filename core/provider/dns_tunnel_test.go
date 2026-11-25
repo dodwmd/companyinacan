@@ -43,7 +43,10 @@ func TestManualDNSPrintsRecords(t *testing.T) {
 }
 
 func TestNewDNS(t *testing.T) {
-	if _, err := NewDNS("cloudflare"); !errors.Is(err, ErrNotImplemented) {
+	if _, err := NewDNS("provider-native"); !errors.Is(err, ErrNotImplemented) {
+		t.Fatalf("%v", err)
+	}
+	if _, err := NewDNS("cloudflare"); err == nil || errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("%v", err)
 	}
 	if _, err := NewDNS("route66"); err == nil || errors.Is(err, ErrNotImplemented) {

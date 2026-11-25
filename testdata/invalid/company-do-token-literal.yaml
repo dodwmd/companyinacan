@@ -1,0 +1,6 @@
+schema: 1
+name: Acme
+domain: acme.example
+provider:
+  type: digitalocean
+  options: { token_secret_ref: dop_v1_0123456789abcdef }

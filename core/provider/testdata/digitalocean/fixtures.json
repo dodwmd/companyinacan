@@ -1,0 +1,16 @@
+{
+  "_comment": "Hand-written in the shape of the DigitalOcean API v2 (https://docs.digitalocean.com/reference/api/). NOT recorded from a live account; shapes are UNVERIFIED against it.",
+  "empty": {},
+  "error_unauthorized": {"id": "unauthorized", "message": "Unable to authenticate you.", "request_id": "0a1b2c"},
+  "error_not_found": {"id": "not_found", "message": "The resource you requested could not be found.", "request_id": "0a1b2d"},
+  "error_rate_limit": {"id": "too_many_requests", "message": "API Rate limit exceeded.", "request_id": "0a1b2e"},
+  "error_server": {"id": "server_error", "message": "Server was unable to give a response.", "request_id": "0a1b2f"},
+  "error_unprocessable": {"id": "unprocessable_entity", "message": "SSH Key is already in use on your account", "request_id": "0a1b30"},
+  "key": {"ssh_key": {"id": 5011, "fingerprint": "FINGERPRINT", "public_key": "ssh-ed25519 AAAA can-test", "name": "can-acme-co"}},
+  "key_foreign_name": {"ssh_key": {"id": 5012, "fingerprint": "FINGERPRINT", "public_key": "ssh-ed25519 AAAA can-test", "name": "my-laptop"}},
+  "firewall_owned": {"id": "fw-0000-aaaa", "name": "can-acme-co", "status": "succeeded", "tags": ["managed-by:can", "company:acme-co"], "droplet_ids": [], "inbound_rules": [], "outbound_rules": []},
+  "firewall_foreign": {"id": "fw-9999-zzzz", "name": "can-acme-co", "status": "succeeded", "tags": ["web"], "droplet_ids": [1], "inbound_rules": [], "outbound_rules": []},
+  "action_in_progress": {"action": {"id": 7001, "status": "in-progress", "type": "create", "resource_type": "droplet"}},
+  "action_completed": {"action": {"id": 7001, "status": "completed", "type": "create", "resource_type": "droplet"}},
+  "action_errored": {"action": {"id": 7001, "status": "errored", "type": "create", "resource_type": "droplet"}}
+}

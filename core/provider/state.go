@@ -25,6 +25,11 @@ type State struct {
 	// SSHKeyOwned is true when can uploaded the key (and so may delete it).
 	SSHKeyOwned bool  `json:"ssh_key_owned,omitempty"`
 	FirewallID  int64 `json:"firewall_id,omitempty"`
+	// FirewallUUID is the DigitalOcean firewall id (a UUID string).
+	FirewallUUID string `json:"firewall_uuid,omitempty"`
+
+	// DNSRecords are the records a DNS plugin created or adopted (see dns_cloudflare.go).
+	DNSRecords []DNSRecordState `json:"dns_records,omitempty"`
 
 	// Steps records completed idempotent steps by Action.ID (value: RFC3339 time).
 	Steps map[string]string `json:"steps,omitempty"`
@@ -42,6 +47,17 @@ type ServerState struct {
 	IP   string `json:"ip"`
 	User string `json:"user,omitempty"`
 	Port int    `json:"port,omitempty"`
+}
+
+// DNSRecordState remembers a DNS record a plugin manages. Adopted records
+// existed before can and are never deleted by `can down`.
+type DNSRecordState struct {
+	Plugin  string `json:"plugin"`
+	Zone    string `json:"zone"`
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Adopted bool   `json:"adopted,omitempty"`
 }
 
 // Issuance is one certificate issuance attempt for a set of hostnames.

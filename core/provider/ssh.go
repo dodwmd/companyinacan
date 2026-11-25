@@ -251,7 +251,7 @@ func TargetFor(spec Spec, st *Store, deps Deps) (Target, error) {
 	}
 	o := opts(spec.Options)
 	t := Target{Host: state.Server.IP, User: o.str("user", "root"), Port: o.integer("port", 22), KeyFile: expandHome(o.str("key_file", o.str("ssh_private_key_file", "")))}
-	if state.Provider == "hetzner" {
+	if state.Provider == "hetzner" || state.Provider == "digitalocean" {
 		t.Port = 22
 		t.KnownHosts = knownHostsPath(spec.Dir)
 	}

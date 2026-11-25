@@ -1,0 +1,3 @@
+problems:
+  - rule: semantic.secret-ref
+    path: "/provider/options/token_secret_ref"

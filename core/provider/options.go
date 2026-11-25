@@ -69,19 +69,20 @@ func (d *Deps) ResolveSecret(ref string) (string, error) {
 	case strings.HasPrefix(ref, "env:"):
 		val = d.Getenv(strings.TrimPrefix(ref, "env:"))
 		if val == "" {
-			return "", fmt.Errorf("secret reference %q: environment variable is empty or unset", ref)
+			return "", fmt.Errorf("secret reference %q is not usable (the environment variable is empty or unset)", ref)
 		}
 	case strings.HasPrefix(ref, "file:"):
 		b, err := d.ReadFile(expandHome(strings.TrimPrefix(ref, "file:")))
 		if err != nil {
-			return "", fmt.Errorf("secret reference %q: cannot read file", ref)
+			return "", fmt.Errorf("secret reference %q is not usable (cannot read the file)", ref)
 		}
 		val = strings.TrimSpace(string(b))
 		if val == "" {
-			return "", fmt.Errorf("secret reference %q: file is empty", ref)
+			return "", fmt.Errorf("secret reference %q is not usable (the file is empty)", ref)
 		}
 	default:
-		return "", fmt.Errorf("secret reference %q: want env:NAME or file:PATH", ref)
+		// The value is not echoed: a literal secret pasted here must not reach output.
+		return "", fmt.Errorf("secret reference is not valid: want env:NAME or file:PATH (a secret value must never be written in company.yaml)")
 	}
 	d.Redactor.Add(val)
 	return val, nil

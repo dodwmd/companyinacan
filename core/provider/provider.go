@@ -95,6 +95,10 @@ type Deps struct {
 	Redactor *Redactor
 	// APIBase overrides the Hetzner API base URL (tests).
 	APIBase string
+	// DOBase overrides the DigitalOcean API base URL (tests).
+	DOBase string
+	// CFBase overrides the Cloudflare API base URL (tests).
+	CFBase string
 }
 
 func (d *Deps) defaults() {
@@ -143,7 +147,7 @@ func New(typ string, deps Deps) (Provider, error) {
 	case "static":
 		return stub{name: "static", epic: "E18", what: "the static provider"}, nil
 	case "digitalocean":
-		return stub{name: "digitalocean", epic: "E12", what: "the digitalocean provider"}, nil
+		return &DigitalOcean{deps: deps}, nil
 	}
 	return nil, fmt.Errorf("unknown provider type %q (known: %v)", typ, Types())
 }
