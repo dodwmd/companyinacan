@@ -262,7 +262,7 @@ func TestResolutionSeamForOtherModules(t *testing.T) {
 	// a withdrawn request is "cancelled", and the same reference can be requested again
 	req2 := ResolutionRequest{Type: "equity.grant", Ref: "grt_aaaaaaaaaaaaaaaaaaaaaaaa", BodyID: a.body.ID, Requester: "hr-alice"}
 	o2 := m(a.s.RequestResolution(a.ctx, a.integ, req2))
-	m(a.s.WithdrawResolution(a.ctx, a.sec, o2.ResolutionID))
+	m(a.s.WithdrawResolution(a.ctx, a.sec, o2.ResolutionID, ""))
 	if got := m(a.s.OutcomeByRef(a.ctx, a.integ, "equity.grant", req2.Ref)); got.Outcome != "cancelled" {
 		t.Errorf("%+v", got)
 	}

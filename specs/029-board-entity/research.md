@@ -39,7 +39,14 @@ grant, the director whose pay is voted) take the person off the voter list and o
 automatically, and withhold the text from them, so a self-approval does not depend on the director declaring
 anything.
 
-**R6 Secret ballot without a link.** Receipts (`sha256(resolution|person)`) stop a second vote; ballots hold a
+**R6 (revised after QA) Secret ballot without a link.** `WITHOUT ROWID` does not hide insertion order (cell offsets
+in a page follow it) and a per-vote audit row carries the voter and an increasing sequence, so the first design
+only gave API-level unlinkability. Revised: ballots and receipts are staged while voting is open, nothing is audited
+per vote, and at close the service shuffles (`crypto/rand` Fisher-Yates), writes the final rows, writes one `voted`
+audit marker per voter sorted by person id, deletes the staging and vacuums. The residual (live file, WAL or memory
+access during an open vote, backups taken meanwhile) is documented. Original text follows.
+
+(Original)  Receipts (`sha256(resolution|person)`) stop a second vote; ballots hold a
 random id and the sealed choice with no voter, no time and no rowid order (`WITHOUT ROWID`, random key). The
 audit trail still says that a person voted (not how), which is stated as a limit, as is the small-electorate
 problem. The tally is computed at close by opening every ballot.

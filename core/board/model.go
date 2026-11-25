@@ -91,7 +91,7 @@ const (
 func parseDate(s string) (time.Time, error) {
 	t, err := time.Parse(dateLayout, s)
 	if err != nil || t.Year() < minYear || t.Year() > maxYear {
-		return time.Time{}, invalid("date %q must be YYYY-MM-DD between %d and %d", s, minYear, maxYear)
+		return time.Time{}, invalid("date must be YYYY-MM-DD between %d and %d", minYear, maxYear)
 	}
 	return t, nil
 }

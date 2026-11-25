@@ -229,11 +229,8 @@ func FieldAccess(a Actor, write bool, field string, f Fact) bool {
 		if write || f.Secret {
 			return false // a secret ballot is never readable per voter, by anyone
 		}
-		if a.sec() {
-			return true
-		}
-		if a.has(RoleAuditViewer) {
-			return f.Final
+		if a.sec() || a.has(RoleAuditViewer) {
+			return f.Final // nobody, the secretary included, reads who voted how while voting is open
 		}
 		return a.dir(f) && f.Final && !f.Recused && !f.Subject
 	case FieldMinutesDraft:

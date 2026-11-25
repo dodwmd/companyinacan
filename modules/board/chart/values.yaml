@@ -24,7 +24,8 @@ config:
 secrets:
   # Names only; the values are created by can-core and never appear in values or git.
   env:
-    - CAN_BOARD_API_TOKEN          # service account (integration and admin roles; never secretary or director) used by can-core
+    - CAN_BOARD_API_TOKEN          # service account with the integration role only (request a resolution, read its outcome) used by can-core
+    - CAN_BOARD_ADMIN_TOKEN        # optional separate service account with the admin role only (erasure, legal hold, tombstones)
     - CAN_BOARD_WEBHOOK_SECRET
     - CAN_BOARD_INTROSPECT_TOKEN
   keyring:

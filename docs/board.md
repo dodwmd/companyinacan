@@ -51,7 +51,7 @@ secretary), `admin`, `observer`, `audit-viewer` (`auditor` is reserved for can-c
 | Body, members, meetings, agenda | own bodies | meetings invited to | all | all (no content) | own bodies | all | no |
 | Resolution (metadata) | own bodies | no | all | all | no | all | no |
 | Resolution title and text | yes, unless recused or the subject | no | all | no | no | once decided | no |
-| Per-voter votes | after close, unless recused/subject | no | all (never a secret ballot) | no | no | after close | no |
+| Per-voter votes | after close, unless recused/subject | no | after close (never a secret ballot) | no | no | after close | no |
 | Draft minutes | chair, or attended | no | all | no | no | no | no |
 | Approved minutes | own bodies | meetings invited to | all | no | own bodies | all | no |
 | Board pack | own bodies | meetings invited to | all | no | no | no | no |
@@ -114,15 +114,37 @@ anything else).
   signed, fails at once on a decline, and fails with reason `deadline` when the deadline passes (the sweep
   closes it). A written consent cannot abstain or be a secret ballot. Other consent rules (for example majority
   consent) are not implemented.
-- **Secret ballot**: the choice is sealed and stored in `ballots`, which holds only a random id, the resolution
-  and the sealed choice (no voter, no time, `WITHOUT ROWID` so insertion order is not kept); who voted is
-  stored separately as a hash receipt that prevents a second vote. Nobody, including the secretary, can read
-  per-voter detail; the tally is computed from the sealed ballots at close. Limits: the audit trail records
-  that a person voted (not how), and a very small electorate can infer votes from the tally.
+- **Secret ballot**: while voting is open each ballot is only **staged**: the sealed choice goes into
+  `ballot_staging` (a random id and the sealed choice, no voter, no time) and a hash receipt with the voter
+  into `receipt_staging`, which stops a second vote. No audit row is written per vote (a per-vote row would carry
+  the voter and an increasing sequence). When voting closes (or the resolution is withdrawn) the service, in one
+  transaction, re-seals each staged ballot under a new random id, writes the ballots into `ballots` and the
+  receipts into `vote_receipts` in an order produced by a `crypto/rand` Fisher-Yates shuffle, writes one `voted`
+  audit marker per voter sorted by person id (at close time), deletes the staging rows, and then runs `VACUUM`
+  and `wal_checkpoint(TRUNCATE)` with `secure_delete` on so the staging order does not persist in free pages or
+  the write-ahead log. After the close nothing in the database, the audit trail or the API records the order the
+  votes were cast in; nobody, including the secretary, can read per-voter detail; the tally is computed from the
+  sealed ballots. A vote cannot be changed once cast. The API never exposes ballot ids or order.
+  **Residual risks (not protected):** (a) anyone who can read the live database file, its write-ahead log or
+  the process memory **during an open vote** sees the staging tables in cast order and can pair a receipt with a
+  ballot by position, and with the keyring can open the choices: the protection is against the API, the audit
+  trail and a copy of the database taken after the close, not against an operator with live file access while
+  voting is open; (b) backups and snapshots taken during the vote keep the staging; (c) the audit trail shows who
+  voted (not how) once the vote closes; (d) a very small electorate, or a unanimous result, reveals votes by the
+  tally alone; (e) a pass needs at least two "for" ballots because the proposer cannot be told apart.
 - **Tallies are immutable.** Votes and ballots can be inserted only while voting is open and are never changed
   or deleted; a decided resolution cannot be updated; the database enforces this with triggers. No running
   tally is shown while voting is open.
-- **Withdrawn** resolutions record no tally.
+- **Withdrawn**: before voting opens, a withdrawal records no tally. A resolution withdrawn **while voting is
+  open** needs a reason (sealed, audited as a `withdraw` entry), keeps the votes cast so far (the ballots are
+  finalised, the tally is recorded and stays readable to those who may read votes) and is then immutable.
+- **Abstentions** are not votes cast: they do not count in the denominator of the pass threshold, and they never
+  change the outcome (property-tested). They do count as present for quorum if the person is recorded present.
+- **A member whose term ends while voting is open** stays on the voter list (the eligible count was fixed) but
+  loses access with the term, so cannot vote; a written consent then cannot complete and fails at its deadline.
+- **A recused director or the subject of a resolution** sees that the resolution exists, its status, kind,
+  thresholds, tally once decided, and the list of declared interests (person ids and treatments, not the
+  nature); they do not see the title or text, and cannot vote.
 
 ### The equity approval seam
 
@@ -202,11 +224,13 @@ introspect: { url: "", allow_insecure_http: false }
 retention: { board-packs: 7y, board-private: 7y, entity-person: 7y }
 ```
 
-Environment: `CAN_BOARD_API_TOKEN` (at least 24 characters; the service account, roles `integration` and
-`admin`, never secretary or director), `CAN_BOARD_WEBHOOK_SECRET`, `CAN_BOARD_INTROSPECT_TOKEN`, optional
+Environment: `CAN_BOARD_API_TOKEN` (at least 24 characters; the can-core service account with the `integration`
+role only: it requests a resolution and reads the outcome of the requests it created, nothing else),
+`CAN_BOARD_ADMIN_TOKEN` (optional, at least 24 characters, different; a separate service account with the `admin`
+role only, for erasure, legal hold and tombstones), `CAN_BOARD_WEBHOOK_SECRET`, `CAN_BOARD_INTROSPECT_TOKEN`, optional
 `CAN_BOARD_CONFIG`, `CAN_BOARD_KEY_FILE`. The introspection endpoint answers `{active, subject, roles,
 person_id}`; unknown roles are dropped. Failed authentications are rate limited per address; a request with a
-valid credential is never refused because of what else the same address sent. Request bodies are limited to 64
+valid credential is never refused because of FAILED authentications from the same address (the failed-authentication limiter is per address and only failures count). Authenticated requests are limited per subject (burst 120, 20 per second), except the can-core service account, which carries all of can-core's traffic under one subject and is exempt. Request bodies are limited to 64
 KiB and strict JSON; every read and write has a deadline; list sizes are capped. Creating a resolution honours
 `Idempotency-Key`: the same key and body replays the first result (200), the same key with another body is 409,
 and a replay re-reads the record under the caller's current rights.
@@ -232,7 +256,7 @@ the text.
 - Database triggers repeat the rules for bugs in the service; someone with write access to the SQLite file can
   drop them. Keep the file out of reach and a copy of the audit chain head elsewhere.
 - Meeting titles, agenda titles and body names are plain (they are structure and appear in notices); put
-  nothing confidential in them. Quantities and amounts do not exist in this module.
+  nothing confidential in them. No monetary amounts exist in this module (the entity module's register share counts are plaintext integers, see `docs/entity.md`).
 - A response-time difference between "exists but not yours" (writes a denial audit row) and "does not exist"
   is possible; it is not equalised.
 - Member terms are effective-dated but the service uses the term in force today for access; a director whose
@@ -242,3 +266,13 @@ the text.
 - Not verified on a cluster. can-core does not yet: inject the keyring Secret, route token introspection, wire
   the equity approval adapter to `resolutions`, or deploy `board` and `entity` as one release.
 - One writer: the database uses one connection; there is no horizontal scaling.
+
+## Later review notes
+
+- Entity records are scoped by body: a director reads a legal entity only through a body whose `entity_ref` is that
+  entity (see `docs/entity.md`); the secretary, officer and audit-viewer see all entities.
+- The secretary reads per-voter detail only after the vote closes, like everyone else.
+- A resolution request from another module after a withdrawal creates a fresh resolution; identical concurrent
+  requests return the same one. The requester has no access to the board: only the secretary (or the proposer
+  director) amends or withdraws a draft, and the outcome verb returns only requests created by the same
+  service-account subject.

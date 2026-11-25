@@ -199,7 +199,8 @@ func TestFieldAccess(t *testing.T) {
 		{RoleAuditViewer, false, FieldResolutionText, final(rel("none")), true},
 		{RoleDirector, true, FieldResolutionText, rel("proposer"), true},
 		{RoleDirector, true, FieldResolutionText, rel("member"), false},
-		{RoleSecretary, false, FieldVoteDetail, rel("none"), true},
+		{RoleSecretary, false, FieldVoteDetail, rel("none"), false}, // not while voting is open
+		{RoleSecretary, false, FieldVoteDetail, final(rel("none")), true},
 		{RoleSecretary, false, FieldVoteDetail, secret(rel("none")), false},
 		{RoleDirector, false, FieldVoteDetail, rel("member"), false}, // not while voting is open
 		{RoleDirector, false, FieldVoteDetail, final(rel("member")), true},

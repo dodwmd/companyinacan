@@ -141,11 +141,11 @@ func (s *Service) purgeClass(ctx context.Context, q querier, person, class strin
 		}
 		return nil
 	case ClassMinutes, ClassResolutions, ClassAudit, ClassRegister, ClassFilings, ClassEntityAudit:
-		return conflict("class %s is retained by law and cannot be purged per person", class)
+		return conflict("this class is retained by law and cannot be purged per person")
 	case ClassPacks:
-		return invalid("class %s is not tied to a person", class)
+		return invalid("this class is not tied to a person")
 	}
-	return invalid("unknown data class %q", class)
+	return invalid("unknown data class")
 }
 
 // Retained says what an erasure kept, and why.
@@ -350,7 +350,7 @@ type sealedColumn struct{ table, idExpr, col, aadSuffix string }
 var sealedColumns = []sealedColumn{
 	{"pack_items", "id", "sens_title", "title"}, {"pack_items", "id", "sens_note", "note"},
 	{"resolution_versions", "resolution_id || '#' || version", "sens_title", "title"}, {"resolution_versions", "resolution_id || '#' || version", "sens_text", "text"},
-	{"conflicts", "id", "sens_nature", "nature"}, {"ballots", "id", "sens_choice", "choice"},
+	{"conflicts", "id", "sens_nature", "nature"}, {"ballots", "id", "sens_choice", "choice"}, {"ballot_staging", "id", "sens_choice", "choice"}, {"resolution_withdrawals", "resolution_id", "sens_reason", "reason"},
 	{"minutes", "id", "sens_content", "content"}, {"action_items", "id", "sens_text", "text"},
 	{"legal_entities", "id", "sens_reg_number", "reg_number"}, {"legal_entities", "id", "sens_tax_id", "tax_id"},
 	{"entity_contacts", "id", "sens_name", "name"}, {"entity_contacts", "id", "sens_address", "address"},

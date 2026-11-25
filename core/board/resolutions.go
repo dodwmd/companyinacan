@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 	"time"
@@ -173,6 +174,7 @@ type Resolution struct {
 	Title           string     `json:"title,omitempty"`
 	Text            string     `json:"text,omitempty"`
 	TextWithheld    bool       `json:"text_withheld,omitempty"`
+	WithdrawReason  string     `json:"withdraw_reason,omitempty"`
 	PassNum         int        `json:"pass_num"`
 	PassDen         int        `json:"pass_den"`
 	PassInclusive   bool       `json:"pass_inclusive"`
@@ -196,7 +198,7 @@ func (s *Service) viewResolution(ctx context.Context, a Actor, r *resRow, f Fact
 	if r.Status == ResVoting || r.final() {
 		v.Eligible, v.QuorumRequired, v.QuorumPresent = r.Eligible, r.QReq, r.QPresent
 	}
-	if r.Status == ResPassed || r.Status == ResFailed {
+	if r.Status == ResPassed || r.Status == ResFailed || (r.Status == ResWithdrawn && r.For+r.Against+r.Abstain > 0) {
 		v.Result = &Tally{For: r.For, Against: r.Against, Abstain: r.Abstain, Reason: r.CloseReason}
 	}
 	var fields []string
@@ -208,14 +210,24 @@ func (s *Service) viewResolution(ctx context.Context, a Actor, r *resRow, f Fact
 			}
 			v.Title, v.Text = title, text
 			fields = append(fields, FieldResolutionText)
+			var sr sql.NullString
+			switch err := s.db.QueryRowContext(ctx, `SELECT sens_reason FROM resolution_withdrawals WHERE resolution_id = ?`, r.ID).Scan(&sr); {
+			case errors.Is(err, sql.ErrNoRows):
+			case err != nil:
+				return nil, nil, err
+			default:
+				if v.WithdrawReason, err = s.open(r.ID, "reason", sr); err != nil {
+					return nil, nil, err
+				}
+			}
 		} else {
 			v.TextWithheld = true
 		}
 	}
 	if a.PersonID != "" {
 		var n int
-		if err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM votes WHERE resolution_id = ? AND voter_person = ?) + (SELECT COUNT(*) FROM vote_receipts WHERE resolution_id = ? AND voter_key = ?)`,
-			r.ID, a.PersonID, r.ID, voterKey(r.ID, a.PersonID)).Scan(&n); err != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM votes WHERE resolution_id = ? AND voter_person = ?) + (SELECT COUNT(*) FROM vote_receipts WHERE resolution_id = ? AND voter_key = ?) + (SELECT COUNT(*) FROM receipt_staging WHERE resolution_id = ? AND voter_key = ?)`,
+			r.ID, a.PersonID, r.ID, voterKey(r.ID, a.PersonID), r.ID, voterKey(r.ID, a.PersonID)).Scan(&n); err != nil {
 			return nil, nil, err
 		}
 		v.Voted = n > 0
@@ -760,9 +772,10 @@ func (s *Service) CastVote(ctx context.Context, a Actor, id string, in VoteInput
 			return nil, conflict("quorum is lost: %d present, %d required", q.Present, q.Required)
 		}
 	}
-	err = s.txAudit(ctx, a, "vote", "resolution:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
+	castFn := func(ctx context.Context, tx *sqlTx) error {
 		if r.Secret {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO vote_receipts (resolution_id, voter_key) VALUES (?,?)`, id, voterKey(id, a.PersonID)); err != nil {
+			// Staged: no timestamp, no audit row per vote. Written to ballots and receipts, shuffled, at close.
+			if _, err := tx.ExecContext(ctx, `INSERT INTO receipt_staging (resolution_id, voter_key, person_id) VALUES (?,?,?)`, id, voterKey(id, a.PersonID), a.PersonID); err != nil {
 				return err
 			}
 			var rb [12]byte
@@ -772,7 +785,7 @@ func (s *Service) CastVote(ctx context.Context, a Actor, id string, in VoteInput
 			if err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO ballots (id, resolution_id, sens_choice) VALUES (?,?,?)`, bid, id, sc); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO ballot_staging (id, resolution_id, sens_choice) VALUES (?,?,?)`, bid, id, sc); err != nil {
 				return err
 			}
 		} else {
@@ -789,7 +802,12 @@ func (s *Service) CastVote(ctx context.Context, a Actor, id string, in VoteInput
 			return s.settleConsent(ctx, tx, r, a)
 		}
 		return nil
-	})
+	}
+	if r.Secret {
+		err = s.tx(ctx, castFn)
+	} else {
+		err = s.txAudit(ctx, a, "vote", "resolution:"+id, nil, castFn)
+	}
 	if err != nil {
 		if isUnique(err) {
 			return nil, conflict("you have already voted on this resolution")
@@ -814,6 +832,102 @@ func (s *Service) excludedFor(ctx context.Context, q querier, id string) (map[st
 		out[p] = true
 	}
 	return out, rows.Err()
+}
+
+// randInt is a uniform integer in [0, n) from crypto/rand.
+func randInt(n int) (int, error) {
+	v, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
+	if err != nil {
+		return 0, err
+	}
+	return int(v.Int64()), nil
+}
+
+// shuffle is a Fisher-Yates shuffle driven by crypto/rand.
+func shuffle[T any](xs []T) error {
+	for i := len(xs) - 1; i > 0; i-- {
+		j, err := randInt(i + 1)
+		if err != nil {
+			return err
+		}
+		xs[i], xs[j] = xs[j], xs[i]
+	}
+	return nil
+}
+
+// finaliseBallots moves the staged secret ballots and receipts of a resolution into the final tables in a
+// shuffled order, writes one "voted" audit entry per voter (sorted by person id, at close time: no per-vote
+// time or sequence exists), and deletes the staging rows. The caller vacuums after the transaction commits.
+func (s *Service) finaliseBallots(ctx context.Context, tx *sqlTx, r *resRow) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id, sens_choice FROM ballot_staging WHERE resolution_id = ?`, r.ID)
+	if err != nil {
+		return err
+	}
+	type ballot struct{ id, sealed string }
+	var bs []ballot
+	for rows.Next() {
+		var b ballot
+		if err := rows.Scan(&b.id, &b.sealed); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		bs = append(bs, b)
+	}
+	_ = rows.Close()
+	if err := shuffle(bs); err != nil {
+		return err
+	}
+	for _, b := range bs {
+		plain, err := s.keys.Open(b.sealed, b.id+":choice")
+		if err != nil {
+			return err
+		}
+		var rb [12]byte
+		if _, err := rand.Read(rb[:]); err != nil {
+			return err
+		}
+		nid := "bal_" + hex.EncodeToString(rb[:])
+		sc, err := s.seal(nid, "choice", plain)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ballots (id, resolution_id, sens_choice) VALUES (?,?,?)`, nid, r.ID, sc); err != nil {
+			return err
+		}
+	}
+	rrows, err := tx.QueryContext(ctx, `SELECT voter_key, person_id FROM receipt_staging WHERE resolution_id = ? ORDER BY person_id`, r.ID)
+	if err != nil {
+		return err
+	}
+	type receipt struct{ key, person string }
+	var rs []receipt
+	for rrows.Next() {
+		var x receipt
+		if err := rrows.Scan(&x.key, &x.person); err != nil {
+			_ = rrows.Close()
+			return err
+		}
+		rs = append(rs, x)
+	}
+	_ = rrows.Close()
+	for _, x := range rs { // sorted by person id for the audit entries
+		if err := s.auditIn(ctx, tx, Actor{PersonID: x.person}, "voted", "resolution:"+r.ID, nil); err != nil {
+			return err
+		}
+	}
+	if err := shuffle(rs); err != nil {
+		return err
+	}
+	for _, x := range rs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO vote_receipts (resolution_id, voter_key) VALUES (?,?)`, r.ID, x.key); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ballot_staging WHERE resolution_id = ?`, r.ID); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM receipt_staging WHERE resolution_id = ?`, r.ID)
+	return err
 }
 
 // counts reads the tally of an open-vote resolution. Secret ballots are opened one by one here.
@@ -936,6 +1050,11 @@ func (s *Service) CloseVote(ctx context.Context, a Actor, id string) (*Resolutio
 		return nil, conflict("voting is not open (the resolution is %s)", r.Status)
 	}
 	err = s.txAudit(ctx, a, "close", "resolution:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
+		if r.Secret {
+			if err := s.finaliseBallots(ctx, tx, r); err != nil {
+				return err
+			}
+		}
 		forN, against, abstain, others, err := s.counts(ctx, tx, r)
 		if err != nil {
 			return err
@@ -971,12 +1090,24 @@ func (s *Service) CloseVote(ctx context.Context, a Actor, id string) (*Resolutio
 	if err != nil {
 		return nil, err
 	}
+	if r.Secret { // the staging order must not survive in free pages or the write-ahead log
+		if err := s.scrub(ctx, true); err != nil {
+			return nil, err
+		}
+	}
 	return s.GetResolution(ctx, a, id)
 }
 
+// WithdrawInput carries the reason for withdrawing a resolution that is already being voted on.
+type WithdrawInput struct {
+	Reason string `json:"reason"`
+}
+
 // WithdrawResolution withdraws a resolution that is not decided. The proposer or the secretary. A
-// withdrawn resolution records no tally.
-func (s *Service) WithdrawResolution(ctx context.Context, a Actor, id string) (*Resolution, error) {
+// resolution withdrawn before voting opens records no tally. One withdrawn while voting is open needs a
+// reason (sealed, audited) and keeps the votes cast so far: they are finalised, the tally is recorded and
+// stays readable by those who may read votes.
+func (s *Service) WithdrawResolution(ctx context.Context, a Actor, id, reason string) (*Resolution, error) {
 	r, f, err := s.seeResolution(ctx, a, id)
 	if err != nil {
 		return nil, err
@@ -987,13 +1118,39 @@ func (s *Service) WithdrawResolution(ctx context.Context, a Actor, id string) (*
 	if r.final() {
 		return nil, conflict("the resolution is already %s", r.Status)
 	}
-	err = s.txAudit(ctx, a, "write", "resolution:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE resolutions SET status = 'withdrawn', close_reason = 'withdrawn', closed_by = ?, closed_on = ?, updated_at = ? WHERE id = ? AND status IN ('draft','proposed','voting')`,
-			canonSubject(a.Subject), s.today(), s.now().Unix(), id)
+	if err := validText("reason", reason, 1000, r.Status == ResVoting); err != nil {
+		return nil, err
+	}
+	err = s.txAudit(ctx, a, "withdraw", "resolution:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
+		forN, against, abstain := 0, 0, 0
+		if r.Status == ResVoting {
+			if r.Secret {
+				if err := s.finaliseBallots(ctx, tx, r); err != nil {
+					return err
+				}
+			}
+			if forN, against, abstain, _, err = s.counts(ctx, tx, r); err != nil {
+				return err
+			}
+			sealed, err := s.seal(id, "reason", reason)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO resolution_withdrawals (resolution_id, sens_reason, withdrawn_by, withdrawn_at) VALUES (?,?,?,?)`, id, sealed, canonSubject(a.Subject), s.now().Unix()); err != nil {
+				return err
+			}
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE resolutions SET status = 'withdrawn', close_reason = 'withdrawn', result_for = ?, result_against = ?, result_abstain = ?, closed_by = ?, closed_on = ?, updated_at = ? WHERE id = ? AND status IN ('draft','proposed','voting')`,
+			forN, against, abstain, canonSubject(a.Subject), s.today(), s.now().Unix(), id)
 		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	if r.Secret && r.Status == ResVoting {
+		if err := s.scrub(ctx, true); err != nil {
+			return nil, err
+		}
 	}
 	return s.GetResolution(ctx, a, id)
 }
@@ -1012,11 +1169,11 @@ type VoteRecord struct {
 func (s *Service) ListVotes(ctx context.Context, a Actor, id string) ([]VoteRecord, error) {
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
-	r, f, err := s.seeResolution(ctx, a, id)
+	_, f, err := s.seeResolution(ctx, a, id)
 	if err != nil {
 		return nil, err
 	}
-	if !FieldAccess(a, false, FieldVoteDetail, f) || (!r.final() && !a.has(RoleSecretary)) {
+	if !FieldAccess(a, false, FieldVoteDetail, f) {
 		s.auditDeny(ctx, a, "read", "resolution:"+id+"/votes", []string{FieldVoteDetail})
 		return nil, ErrForbidden
 	}
@@ -1083,14 +1240,17 @@ func (s *Service) RequestResolution(ctx context.Context, a Actor, in ResolutionR
 	if err != nil {
 		return nil, invalid("body_id is not a body")
 	}
-	if ex, err := s.outcomeBy(ctx, in.Type, in.Ref); err == nil {
+	if ex, err := s.outcomeBy(ctx, a, in.Type, in.Ref); err == nil && ex.Outcome != "cancelled" {
 		return ex, nil
 	}
 	text := fmt.Sprintf("To be completed by the company secretary. Requested by another module: %s %s.", in.Type, in.Ref)
 	if _, _, err := s.createResolution(ctx, a, b, ResolutionInput{Kind: "meeting", Title: in.Title, Text: text, Subjects: in.Subjects}, canonSubject(in.Requester), "", in.Type, in.Ref, "", nil); err != nil {
+		if isUnique(err) { // a concurrent identical request created it first: return that one
+			return s.outcomeBy(ctx, a, in.Type, in.Ref)
+		}
 		return nil, err
 	}
-	return s.outcomeBy(ctx, in.Type, in.Ref)
+	return s.outcomeBy(ctx, a, in.Type, in.Ref)
 }
 
 // ResolutionOutcome is the answer an approval engine needs: pending, approved, rejected or cancelled.
@@ -1104,9 +1264,9 @@ type ResolutionOutcome struct {
 	DecidedOn    string `json:"decided_on,omitempty"`
 }
 
-func (s *Service) outcomeBy(ctx context.Context, typ, ref string) (*ResolutionOutcome, error) {
+func (s *Service) outcomeBy(ctx context.Context, a Actor, typ, ref string) (*ResolutionOutcome, error) {
 	var id, body, status, closed string
-	err := s.db.QueryRowContext(ctx, `SELECT id, body_id, status, IFNULL(closed_on,'') FROM resolutions WHERE external_type = ? AND external_ref = ? ORDER BY (status = 'withdrawn'), created_at DESC LIMIT 1`, typ, ref).Scan(&id, &body, &status, &closed)
+	err := s.db.QueryRowContext(ctx, `SELECT id, body_id, status, IFNULL(closed_on,'') FROM resolutions WHERE external_type = ? AND external_ref = ? AND created_by = ? ORDER BY (status = 'withdrawn'), created_at DESC LIMIT 1`, typ, ref, canonSubject(a.Subject)).Scan(&id, &body, &status, &closed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -1133,7 +1293,7 @@ func (s *Service) OutcomeByRef(ctx context.Context, a Actor, typ, ref string) (*
 	if err := s.authorize(ctx, a, ActResolutionOutcome, Fact{}, "resolution-outcome"); err != nil {
 		return nil, err
 	}
-	o, err := s.outcomeBy(ctx, typ, ref)
+	o, err := s.outcomeBy(ctx, a, typ, ref)
 	if err != nil {
 		return nil, err
 	}

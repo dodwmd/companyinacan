@@ -57,3 +57,16 @@ stated per phase rather than assumed. Tool, not legal advice.
 - [ ] Trademark and domain calendars as dedicated records (obligations can stand in)
 - [ ] A way for a body to vote by proxy, casting votes or weighted votes (jurisdiction-specific, not implemented)
 - [ ] Persist who requested an external resolution with a person id, not only a subject
+
+## QA follow-ups (PR #39 review)
+- [x] Secret ballot: staged while voting is open, no per-vote audit row, shuffled (`crypto/rand`) into `ballots` and
+      `vote_receipts` at close with one `voted` marker per voter sorted by person id, staging deleted, `VACUUM` and
+      WAL truncate; shuffle unbiasedness test; residual (live file access during an open vote) documented
+- [x] No request values echoed in error messages (dates, party refs, register, class, kind); trigger text mapped to a constant
+- [x] Separate `CAN_BOARD_ADMIN_TOKEN`; the integration role reads only the outcomes of requests its subject created
+- [x] A request after a withdrawal creates a fresh resolution; concurrent identical requests return the same row
+- [x] Directors read entity records only through a body tied to the entity by `entity_ref`
+- [x] The secretary reads per-voter detail only after close; withdrawing while voting keeps and finalises the votes,
+      needs a sealed reason and is audited
+- [x] The can-core service account is exempt from the per-subject limiter; the "valid credentials" claim is worded precisely
+- [x] Docs: plaintext register counts, mid-vote term end, abstention semantics, recused-director visibility

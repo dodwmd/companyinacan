@@ -56,16 +56,12 @@ func validMMDD(s string) bool {
 	return err == nil && len(s) == 5
 }
 
-func (s *Service) entityFact(ctx context.Context, a Actor) (Fact, error) {
-	return s.anyMemberFact(ctx, s.db, a)
-}
-
 func (s *Service) seeEntity(ctx context.Context, a Actor, id string) (*LegalEntity, Fact, error) {
 	e, err := s.loadEntity(ctx, s.db, id)
 	if err != nil {
 		return nil, Fact{}, err
 	}
-	f, err := s.entityFact(ctx, a)
+	f, err := s.entityMemberFact(ctx, s.db, a, id)
 	if err != nil {
 		return nil, f, err
 	}
@@ -160,11 +156,7 @@ func (s *Service) GetLegalEntity(ctx context.Context, a Actor, id string) (*Lega
 func (s *Service) ListLegalEntities(ctx context.Context, a Actor) ([]*LegalEntity, error) {
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
-	f, err := s.entityFact(ctx, a)
-	if err != nil {
-		return nil, err
-	}
-	if !Decide(a, ActEntityRead, f) {
+	if !a.known() {
 		s.auditDeny(ctx, a, "read", "legal-entities", nil)
 		return nil, ErrForbidden
 	}
@@ -172,17 +164,25 @@ func (s *Service) ListLegalEntities(ctx context.Context, a Actor) ([]*LegalEntit
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-	out := []*LegalEntity{}
+	var all []*LegalEntity
 	for rows.Next() {
 		var e LegalEntity
 		if err := rows.Scan(&e.ID, &e.Name, &e.Jurisdiction, &e.EntityType, &e.Status, &e.IncorporatedOn, &e.FiscalYearEnd, &e.EquityEntityRef); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
-		out = append(out, &e)
+		all = append(all, &e)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	_ = rows.Close()
+	out := []*LegalEntity{}
+	for _, e := range all { // filtered per entity: a director sees the entities their bodies are tied to
+		f, err := s.entityMemberFact(ctx, s.db, a, e.ID)
+		if err != nil {
+			return nil, err
+		}
+		if Decide(a, ActEntityRead, f) {
+			out = append(out, e)
+		}
 	}
 	if err := s.auditRead(ctx, a, "legal-entities", nil); err != nil {
 		return nil, err
@@ -498,12 +498,12 @@ func validateRegister(register string, entries []*regRow) error {
 			switch e.Kind {
 			case "appointed":
 				if open[key] {
-					return conflict("%s already holds the office %s on %s", e.PartyRef, e.Office, e.EffectiveOn)
+					return conflict("the party already holds this office on the entry date")
 				}
 				open[key] = true
 			case "ceased":
 				if !open[key] {
-					return conflict("%s does not hold the office %s on %s", e.PartyRef, e.Office, e.EffectiveOn)
+					return conflict("the party does not hold this office on the entry date")
 				}
 				open[key] = false
 			}
@@ -513,12 +513,12 @@ func validateRegister(register string, entries []*regRow) error {
 			case "allotted", "transferred":
 				bal[key] += e.Quantity
 				if bal[key] < 0 {
-					return conflict("this would leave %s with a negative holding on %s", e.PartyRef, e.EffectiveOn)
+					return conflict("this would leave the holder with a negative holding on the entry date or a later date")
 				}
 			case "ceased":
 				for k, v := range bal {
 					if strings.HasPrefix(k, e.PartyRef+"|") && v != 0 {
-						return conflict("%s still holds shares on %s: transfer them before the membership ceases", e.PartyRef, e.EffectiveOn)
+						return conflict("the party still holds shares on the entry date: transfer them before the membership ceases")
 					}
 				}
 			}
@@ -526,12 +526,12 @@ func validateRegister(register string, entries []*regRow) error {
 			switch e.Kind {
 			case "created":
 				if open[e.PartyRef] {
-					return conflict("charge %s is already registered and not satisfied on %s", e.PartyRef, e.EffectiveOn)
+					return conflict("the charge is already registered and not satisfied on the entry date")
 				}
 				open[e.PartyRef] = true
 			case "satisfied":
 				if !open[e.PartyRef] {
-					return conflict("charge %s is not registered on %s", e.PartyRef, e.EffectiveOn)
+					return conflict("the charge is not registered on the entry date")
 				}
 				open[e.PartyRef] = false
 			}
@@ -587,7 +587,7 @@ func (s *Service) RecordEntry(ctx context.Context, a Actor, entityID, register s
 		return nil, ErrNotFound
 	}
 	if !contains(kinds, in.Kind) {
-		return nil, invalid("kind for the %s register must be one of %s", register, strings.Join(kinds, ", "))
+		return nil, invalid("kind for this register must be one of %s", strings.Join(kinds, ", "))
 	}
 	if e.Status == "dissolved" {
 		return nil, conflict("the entity is dissolved")

@@ -86,3 +86,36 @@ func FuzzQuorumRequired(f *testing.F) {
 		}
 	})
 }
+
+// The staged secret ballots are written in an order unrelated to the order they were cast: a Fisher-Yates
+// shuffle driven by crypto/rand. Statistical check: every element lands in every position about equally
+// often, and the identity permutation is (almost) never produced.
+func TestShuffleIsUnbiased(t *testing.T) {
+	const n, runs = 6, 6000
+	var pos [n][n]int
+	identity := 0
+	for i := 0; i < runs; i++ {
+		xs := []int{0, 1, 2, 3, 4, 5}
+		if err := shuffle(xs); err != nil {
+			t.Fatal(err)
+		}
+		same := true
+		for p, v := range xs {
+			pos[v][p]++
+			same = same && v == p
+		}
+		if same {
+			identity++
+		}
+	}
+	for v := 0; v < n; v++ {
+		for p := 0; p < n; p++ { // expected 1000 each
+			if pos[v][p] < 800 || pos[v][p] > 1200 {
+				t.Errorf("element %d landed at position %d %d times of %d", v, p, pos[v][p], runs)
+			}
+		}
+	}
+	if identity > 30 { // expected about 8
+		t.Errorf("identity permutation produced %d times of %d", identity, runs)
+	}
+}

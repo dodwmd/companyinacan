@@ -33,7 +33,7 @@ Nothing is copied from `equity` or `people`.
 
 ## Roles and access
 
-| | secretary | admin | officer | director (member of any body) | audit-viewer | observer, employee |
+| | secretary | admin | officer | director (member of a body tied to the entity) | audit-viewer | observer, employee |
 |---|---|---|---|---|---|---|
 | Entity record, documents, links | read, write | read, create (no identifiers) | read | read | read | no (404) |
 | Registration and tax numbers | read, write | no | read | read | read | no |
@@ -127,3 +127,11 @@ than the configured period ago (`entity-person`, default 7y), except for people 
 - No admin UI, no document storage (references only), no import of existing registers, no PDF output.
 - The `entity` manifest shares a release with `board`; can-core cannot deploy two manifests as one release yet.
 - Not verified on a cluster.
+
+## Scope by body
+
+A director reads an entity and its registers, contacts, documents and filings only through a body whose
+`entity_ref` is that entity's id (set when the body is created); a body with no `entity_ref` gives no access to any
+entity record. The secretary, officer and audit-viewer see every entity, the admin sees entity structure only.
+Lists are filtered per entity. Share counts and offices in the registers are plaintext integers in the database
+(the replay and the triggers need them); names, addresses, dates of birth and charge terms are sealed.

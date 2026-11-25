@@ -25,6 +25,7 @@ config:
 secrets:
   env:
     - CAN_BOARD_API_TOKEN
+    - CAN_BOARD_ADMIN_TOKEN
     - CAN_BOARD_WEBHOOK_SECRET
     - CAN_BOARD_INTROSPECT_TOKEN
   keyring:

@@ -88,7 +88,8 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	defer func() { _ = svc.Close() }()
 
 	st := &StaticTokens{}
-	st.Add(sec.APIToken, Principal{Subject: "svc-can-core", Roles: []string{RoleIntegration, RoleAdmin}})
+	st.Add(sec.APIToken, Principal{Subject: "svc-can-core", Roles: []string{RoleIntegration}})
+	st.Add(sec.AdminToken, Principal{Subject: "svc-can-core-admin", Roles: []string{RoleAdmin}})
 	auth := MultiAuth{st}
 	if cfg.Introspect.URL != "" {
 		auth = append(auth, &IntrospectAuthenticator{URL: cfg.Introspect.URL, Token: sec.IntrospectToken})

@@ -207,7 +207,7 @@ func TestRollCallPassesAndTheTallyIsImmutable(t *testing.T) {
 			t.Errorf("the database accepted: %s", q)
 		}
 	}
-	if _, err := e.s.WithdrawResolution(e.ctx, e.sec, res.ID); !isErr(err, ErrConflict) {
+	if _, err := e.s.WithdrawResolution(e.ctx, e.sec, res.ID, ""); !isErr(err, ErrConflict) {
 		t.Errorf("withdrawing a decided resolution: %v", err)
 	}
 	if _, err := e.s.AmendResolution(e.ctx, e.d2, res.ID, AmendInput{Title: "x", Text: "y"}); !isErr(err, ErrConflict) {
@@ -441,27 +441,22 @@ func TestSecretBallotCannotBeLinkedToAPerson(t *testing.T) {
 	e.must(err)
 	m(e.s.ProposeResolution(e.ctx, e.sec, id))
 	m(e.s.OpenVote(e.ctx, e.sec, id))
+	m(e.s.CastVote(e.ctx, e.d3, id, VoteInput{Choice: "against"})) // cast out of person order on purpose
 	m(e.s.CastVote(e.ctx, e.d1, id, VoteInput{Choice: "for"}))
 	m(e.s.CastVote(e.ctx, e.d2, id, VoteInput{Choice: "for"}))
-	m(e.s.CastVote(e.ctx, e.d3, id, VoteInput{Choice: "against"}))
 	if _, err := e.s.CastVote(e.ctx, e.d3, id, VoteInput{Choice: "for"}); !isErr(err, ErrConflict) {
 		t.Errorf("a second secret ballot: %v", err)
 	}
-	if e.count(`SELECT COUNT(*) FROM votes WHERE resolution_id = ?`, id) != 0 || e.count(`SELECT COUNT(*) FROM ballots WHERE resolution_id = ?`, id) != 3 || e.count(`SELECT COUNT(*) FROM vote_receipts WHERE resolution_id = ?`, id) != 3 {
-		t.Error("a secret ballot is stored in ballots and receipts only")
+	// while voting is open the ballots are only staged; nothing is in the final tables and no per-vote audit row exists
+	if e.count(`SELECT COUNT(*) FROM votes WHERE resolution_id = ?`, id) != 0 || e.count(`SELECT COUNT(*) FROM ballots WHERE resolution_id = ?`, id) != 0 ||
+		e.count(`SELECT COUNT(*) FROM ballot_staging WHERE resolution_id = ?`, id) != 3 || e.count(`SELECT COUNT(*) FROM receipt_staging WHERE resolution_id = ?`, id) != 3 {
+		t.Error("a secret ballot is staged while voting is open")
 	}
-	// the ballots hold nothing but a random id, the resolution and a sealed choice
-	rows, err := e.s.db.Query(`SELECT * FROM ballots`)
-	e.must(err)
-	cols, _ := rows.Columns()
-	_ = rows.Close()
-	if strings.Join(cols, ",") != "id,resolution_id,sens_choice" {
-		t.Errorf("ballot columns: %v", cols)
+	if e.count(`SELECT COUNT(*) FROM audit_log WHERE action IN ('vote', 'voted') AND resource = ?`, "resolution:"+id) != 0 {
+		t.Error("a per-vote audit row exists for a secret ballot")
 	}
-	var sealed string
-	e.must(e.s.db.QueryRow(`SELECT sens_choice FROM ballots LIMIT 1`).Scan(&sealed))
-	if !strings.HasPrefix(sealed, "v1.") || strings.Contains(sealed, "for") && len(sealed) < 10 {
-		t.Errorf("the choice is not sealed: %q", sealed)
+	if v := m(e.s.GetResolution(e.ctx, e.d1, id)); !v.Voted {
+		t.Error("a voter cannot see that their ballot was received")
 	}
 	// nobody reads per-voter detail of a secret ballot, before or after the close
 	for _, a := range []Actor{e.sec, e.d1, e.aud} {
@@ -473,6 +468,24 @@ func TestSecretBallotCannotBeLinkedToAPerson(t *testing.T) {
 	v := m(e.s.CloseVote(e.ctx, e.sec, id))
 	if v.Status != ResPassed || v.Result.For != 2 || v.Result.Against != 1 {
 		t.Errorf("%+v", v)
+	}
+	// at close the ballots and receipts are written shuffled and the staging is gone; the audit trail holds one
+	// "voted" marker per voter, sorted by person id, with no per-vote order
+	if e.count(`SELECT COUNT(*) FROM ballots WHERE resolution_id = ?`, id) != 3 || e.count(`SELECT COUNT(*) FROM vote_receipts WHERE resolution_id = ?`, id) != 3 ||
+		e.count(`SELECT COUNT(*) FROM ballot_staging`) != 0 || e.count(`SELECT COUNT(*) FROM receipt_staging`) != 0 {
+		t.Error("staging was not moved to the final tables")
+	}
+	rows, err2 := e.s.db.Query(`SELECT actor FROM audit_log WHERE action = 'voted' AND resource = ? ORDER BY seq`, "resolution:"+id)
+	e.must(err2)
+	var voted []string
+	for rows.Next() {
+		var a string
+		_ = rows.Scan(&a)
+		voted = append(voted, a)
+	}
+	_ = rows.Close()
+	if strings.Join(voted, ",") != pD1+","+pD2+","+pD3 {
+		t.Errorf("voted markers: %v (want one per voter, sorted by person id, regardless of the order they voted in)", voted)
 	}
 	for _, a := range []Actor{e.sec, e.d1, e.aud} {
 		if _, err := e.s.ListVotes(e.ctx, a, id); err == nil {

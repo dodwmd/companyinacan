@@ -126,7 +126,9 @@ func (a *API) wrap(fn handlerFn) http.HandlerFunc {
 			writeJSON(w, http.StatusUnauthorized, apiError{"unauthenticated", "a valid bearer token is required"})
 			return
 		}
-		if !a.perUser.allow(p.Subject) {
+		// The can-core service account carries all of can-core's traffic under one subject: it is exempt from the
+		// per-subject limit (it still authenticates, and it has two verbs). Everyone else is limited per subject.
+		if !(Actor{Roles: p.Roles}).has(RoleIntegration) && !a.perUser.allow(p.Subject) {
 			tooMany(w)
 			return
 		}

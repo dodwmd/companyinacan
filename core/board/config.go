@@ -40,17 +40,21 @@ type IntrospectConfig struct {
 
 // Secrets are read from the environment.
 type Secrets struct {
-	APIToken        string // service-account bearer with the integration and admin roles (never secretary or director), used by can-core (CAN_BOARD_API_TOKEN)
+	APIToken        string // service-account bearer with the integration role only, used by can-core (CAN_BOARD_API_TOKEN)
 	WebhookSecret   string // HMAC secret for outbox deliveries (CAN_BOARD_WEBHOOK_SECRET)
+	AdminToken      string // optional second service-account bearer with the admin role only: erasure, legal hold, tombstones (CAN_BOARD_ADMIN_TOKEN)
 	IntrospectToken string // credential for the introspection endpoint (CAN_BOARD_INTROSPECT_TOKEN)
 }
 
 // SecretsFromEnv loads and checks the secrets against cfg.
 func SecretsFromEnv(getenv func(string) string, cfg *Config) (Secrets, error) {
-	s := Secrets{APIToken: getenv("CAN_BOARD_API_TOKEN"), WebhookSecret: getenv("CAN_BOARD_WEBHOOK_SECRET"), IntrospectToken: getenv("CAN_BOARD_INTROSPECT_TOKEN")}
+	s := Secrets{APIToken: getenv("CAN_BOARD_API_TOKEN"), WebhookSecret: getenv("CAN_BOARD_WEBHOOK_SECRET"), IntrospectToken: getenv("CAN_BOARD_INTROSPECT_TOKEN"), AdminToken: getenv("CAN_BOARD_ADMIN_TOKEN")}
 	var errs []error
 	if len(s.APIToken) < 24 {
 		errs = append(errs, errors.New("CAN_BOARD_API_TOKEN is required and must be at least 24 characters"))
+	}
+	if s.AdminToken != "" && (len(s.AdminToken) < 24 || s.AdminToken == s.APIToken) {
+		errs = append(errs, errors.New("CAN_BOARD_ADMIN_TOKEN must be at least 24 characters and differ from CAN_BOARD_API_TOKEN"))
 	}
 	if cfg.Webhook.URL != "" && len(s.WebhookSecret) < 16 {
 		errs = append(errs, errors.New("webhook.url is set but CAN_BOARD_WEBHOOK_SECRET is missing or shorter than 16 characters"))

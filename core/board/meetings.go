@@ -420,7 +420,7 @@ func (s *Service) RecordAttendance(ctx context.Context, a Actor, meetingID, pers
 		return err
 	})
 	if err != nil {
-		return nil, conflict("attendance can no longer change: %v", err)
+		return nil, conflict("attendance can no longer change (the minutes are approved or the record could not be written)")
 	}
 	return &Attendee{PersonID: person, Status: status, Capacity: cap}, nil
 }

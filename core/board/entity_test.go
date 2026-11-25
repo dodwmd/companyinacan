@@ -9,8 +9,13 @@ import (
 
 func (e *env) entity() *LegalEntity {
 	e.t.Helper()
-	return m(e.s.CreateLegalEntity(e.ctx, e.sec, LegalEntityInput{Name: "Example Pty Ltd", Jurisdiction: "AU", EntityType: "private company", IncorporatedOn: "2020-07-01", FiscalYearEnd: "06-30",
+	le := m(e.s.CreateLegalEntity(e.ctx, e.sec, LegalEntityInput{Name: "Example Pty Ltd", Jurisdiction: "AU", EntityType: "private company", IncorporatedOn: "2020-07-01", FiscalYearEnd: "06-30",
 		RegNumber: "000 111 222", TaxID: "TAX-1", EquityEntityRef: "ent_0123456789abcdef01234567"}))
+	// the board is the board of this entity: directors read the entity's records through it
+	if _, err := e.s.db.Exec(`UPDATE bodies SET entity_ref = ? WHERE id = ?`, le.ID, e.body.ID); err != nil {
+		e.t.Fatal(err)
+	}
+	return le
 }
 
 func TestEntityVisibilityAndSealedIdentifiers(t *testing.T) {

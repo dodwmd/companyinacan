@@ -189,9 +189,10 @@ CREATE TABLE votes (
     UNIQUE (resolution_id, voter_person)
 );
 
--- Secret ballot: who voted (receipt) and what was voted (ballot) are in separate tables with no link and
--- no timestamps or insertion order on the ballots (WITHOUT ROWID, random key), so the choice cannot be
--- tied to a person. The choice is sealed; the tally is computed when voting closes.
+-- Secret ballot: who voted (receipt) and what was voted (ballot) are in separate tables with no link. While voting
+-- is open they are STAGED (migration 004); at close they are written here in a cryptographically shuffled order and
+-- the staging is deleted and vacuumed, so the order the votes were cast in is not kept in these tables. The choice
+-- is sealed; the tally is computed when voting closes. See docs/board.md for what this does not protect against.
 CREATE TABLE ballots (
     id            TEXT PRIMARY KEY,
     resolution_id TEXT NOT NULL REFERENCES resolutions (id),

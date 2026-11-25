@@ -44,7 +44,7 @@ Platform tables with no personal content: `outbox` (ids, dates, results), `erasu
 - `resolution_subjects`, `conflicts` (treatment recuse|abstain|disclosed, sealed nature), `resolution_voters`
   (fixed when voting opens).
 - `votes` (open votes and consent signatures; insert only while voting; never updated or deleted), `ballots` and
-  `vote_receipts` (secret ballot: no link, `WITHOUT ROWID`).
+  `vote_receipts` (secret ballot: no link; written at close in a shuffled order from `ballot_staging` and `receipt_staging`), `resolution_withdrawals` (sealed reason when withdrawn mid-vote).
 - `minutes` (version, status draft|approved|superseded, sealed content, `content_sha256`, author, editors, approver);
   approved rows are immutable except for a later supersede; never deleted.
 - `action_items` (sealed text, assignee person, opaque `work` issue ref, due, status).

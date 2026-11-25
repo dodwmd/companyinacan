@@ -242,7 +242,9 @@
       "path": "/v1/resolutions/{id}/withdraw",
       "response": "Resolution",
       "write": true,
-      "permission": "board.write"
+      "permission": "board.write",
+      "request": "WithdrawInput",
+      "description": "The proposer or the secretary. The body is optional; a reason (sealed, audited) is required once voting has opened, and the votes cast so far are kept."
     },
     {
       "verb": "declare_conflict",
@@ -1324,6 +1326,10 @@
           "items": {
             "$ref": "#/$defs/Conflict"
           }
+        },
+        "withdraw_reason": {
+          "type": "string",
+          "maxLength": 1000
         }
       },
       "additionalProperties": false,
@@ -1775,6 +1781,16 @@
       "required": [
         "items"
       ]
+    },
+    "WithdrawInput": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

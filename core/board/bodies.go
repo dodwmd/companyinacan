@@ -86,13 +86,15 @@ func (s *Service) bodyFact(ctx context.Context, q querier, a Actor, bodyID strin
 	return f, err
 }
 
-// anyMemberFact is the fact for records that belong to the company rather than to one body.
-func (s *Service) anyMemberFact(ctx context.Context, q querier, a Actor) (Fact, error) {
+// entityMemberFact is the fact for a company record: the actor is a member (in term) of a body that is
+// tied to this entity by its entity_ref. A body with no entity_ref gives no access to any entity record.
+func (s *Service) entityMemberFact(ctx context.Context, q querier, a Actor, entityID string) (Fact, error) {
 	f := Fact{}
 	if a.PersonID == "" {
 		return f, nil
 	}
-	m, err := s.exists(ctx, q, `SELECT 1 FROM body_members WHERE person_id = ? AND role IN ('chair', 'member') AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)`, a.PersonID, s.today(), s.today())
+	m, err := s.exists(ctx, q, `SELECT 1 FROM body_members m JOIN bodies b ON b.id = m.body_id WHERE m.person_id = ? AND m.role IN ('chair', 'member') AND b.entity_ref = ? AND m.start_date <= ? AND (m.end_date IS NULL OR m.end_date >= ?)`,
+		a.PersonID, entityID, s.today(), s.today())
 	f.Member = m
 	return f, err
 }

@@ -75,8 +75,9 @@ test/contract/board_test.go
    (`for × den` against `num × (for + against)`, strict or inclusive); abstentions never change the outcome.
 6. **Voter list snapshot** at open: members in term minus subjects and the recused; eligible count and quorum
    figures are stored on the resolution.
-7. **Secret ballot** = receipts (who voted, as a hash) + ballots (random id, sealed choice), no link, no time, no
-   insertion order; per-voter reads refused for every role; a pass needs two "for" ballots (conservative: the
+7. **Secret ballot** = staged while voting is open (`ballot_staging`, `receipt_staging`), then at close written to
+   receipts (who voted, as a hash) and ballots (random id, sealed choice) in a `crypto/rand` shuffled order, with
+   one `voted` audit marker per voter sorted by person id, the staging deleted and the database vacuumed; per-voter reads refused for every role; a pass needs two "for" ballots (conservative: the
    proposer cannot be told apart).
 8. **Integrity hash** for resolution versions and minutes (sha256 over id and content, frozen by trigger), checked
    on open, so a swapped or edited ciphertext is detected; key rotation may rewrite only the ciphertext.

@@ -1561,7 +1561,18 @@
      "429": {
       "$ref": "#/components/responses/TooMany"
      }
-    }
+    },
+    "requestBody": {
+     "required": false,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WithdrawInput"
+       }
+      }
+     }
+    },
+    "description": "The proposer or the secretary. The body is optional; a reason (sealed, audited) is required once voting has opened, and the votes cast so far are kept and finalised."
    }
   },
   "/v1/resolutions/{id}/conflicts": {
@@ -4562,6 +4573,9 @@
       "items": {
        "$ref": "#/components/schemas/Conflict"
       }
+     },
+     "withdraw_reason": {
+      "type": "string"
      }
     },
     "additionalProperties": false,
@@ -5914,6 +5928,16 @@
      },
      "message": {
       "type": "string"
+     }
+    }
+   },
+   "WithdrawInput": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "reason": {
+      "type": "string",
+      "maxLength": 1000
      }
     }
    }

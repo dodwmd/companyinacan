@@ -64,7 +64,9 @@ closes; the tally is recorded and can never change.
 
 A resolution can be passed by circulation: every eligible member signs (with a signature record reference) before
 a deadline; one decline fails it; it passes by itself when the last signature arrives. A resolution can be a
-secret ballot: choices are sealed and cannot be tied to a person, even by the secretary.
+secret ballot: choices are sealed and, once voting closes, cannot be tied to a person by the API, the audit trail
+or a copy of the database (ballots are staged, then written in a shuffled order); nobody, the secretary included,
+can read who voted how. Not protected: live file access during an open vote (docs/board.md).
 
 **Independent Test**: `TestWrittenConsent`, `TestSecretBallotCannotBeLinkedToAPerson`.
 
@@ -73,9 +75,10 @@ secret ballot: choices are sealed and cannot be tied to a person, even by the se
 1. **Given** a consent with three eligible members, **When** all sign, **Then** it passes (`all_signed`); **When** one
    declines, **Then** it fails (`declined`); **When** the deadline passes first, **Then** the sweep fails it
    (`deadline`).
-2. **Given** a secret ballot, **When** votes are cast, **Then** `votes` stays empty, `ballots` holds only a random
-   id, the resolution id and a sealed choice, a second vote from the same person is refused, and no role can list
-   who voted how.
+2. **Given** a secret ballot, **When** votes are cast, **Then** `votes` stays empty, the ballots are only staged and
+   no per-vote audit row is written, a second vote from the same person is refused; **When** voting closes,
+   **Then** the ballots and receipts are written in a shuffled order, the staging is deleted and vacuumed, the audit
+   trail gets one `voted` marker per voter sorted by person id, and no role can list who voted how.
 
 ### User Story 3 - Minutes are statutory records (Priority: P1)
 
@@ -158,7 +161,7 @@ why; a legal hold blocks it.
 - **FR-004** Conflict declarations (recuse, abstain, disclosed) with a sealed nature; resolution subjects are
   recused automatically; declared before voting opens.
 - **FR-005** Resolutions: draft → proposed → voting → passed | failed | withdrawn (forward only); amendments create
-  versions; roll call, written consent with signature references, secret ballot (sealed, unlinkable); tallies
+  versions; roll call, written consent with signature references, secret ballot (sealed, staged and shuffled at close); tallies
   immutable once closed; proposer never the sole approver; pass threshold as a fraction (strict or inclusive).
 - **FR-006** Minutes: draft, approved, superseded; versions; immutable after approval; drafter and editors cannot
   approve; integrity hash on every open.

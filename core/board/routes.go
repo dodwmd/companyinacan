@@ -257,7 +257,19 @@ func (a *API) Handler() http.Handler {
 	simple("propose", (*Service).ProposeResolution)
 	simple("open-vote", (*Service).OpenVote)
 	simple("close", (*Service).CloseVote)
-	simple("withdraw", (*Service).WithdrawResolution)
+	route("POST /v1/resolutions/{id}/withdraw", func(ctx ctxT, ac Actor, r *http.Request) (result, error) {
+		var in WithdrawInput
+		if r.ContentLength != 0 { // the body is optional: a reason is only needed once voting has opened
+			if _, err := decode(r, &in); err != nil {
+				return result{}, err
+			}
+		}
+		v, err := svc().WithdrawResolution(ctx, ac, pv(r, "id"), in.Reason)
+		if err != nil {
+			return result{}, err
+		}
+		return ok(v)
+	})
 	route("POST /v1/resolutions/{id}/vote", func(ctx ctxT, ac Actor, r *http.Request) (result, error) {
 		var in VoteInput
 		if _, err := decode(r, &in); err != nil {
