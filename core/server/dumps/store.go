@@ -40,6 +40,8 @@ var (
 	ErrTooMany  = errors.New("dump: too many files")
 	ErrNoRun    = errors.New("dump: no backup hook of this module is running")
 	ErrBusy     = errors.New("dump: a dump run is already in progress")
+	// ErrNotRestoring refuses downloads outside restore mode.
+	ErrNotRestoring = errors.New("dump: downloads are only allowed in restore mode")
 )
 
 var (

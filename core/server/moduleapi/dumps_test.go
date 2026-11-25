@@ -93,6 +93,11 @@ func TestDumpAPIPutAndGetOwnDump(t *testing.T) {
 		t.Fatalf("PUT: %d %s", st, b)
 	}
 	publish(t, h, "wiki", "storage.tar.gz", "archive")
+	// QA 11: outside restore mode a module cannot read dumps back at all.
+	if st, _ := h.do(t, "GET", "/v1/dumps/wiki/storage.tar.gz", "tok-wiki", ""); st != http.StatusConflict {
+		t.Fatalf("GET outside restore mode: %d, want 409", st)
+	}
+	h.d.RestoreMode = true
 	if st, b := h.do(t, "GET", "/v1/dumps/wiki/storage.tar.gz", "tok-wiki", ""); st != http.StatusOK || b != "archive" {
 		t.Fatalf("GET: %d %q", st, b)
 	}

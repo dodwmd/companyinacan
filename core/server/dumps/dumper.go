@@ -38,6 +38,9 @@ type Dumper struct {
 	CompanyFile string
 	Now         func() time.Time // default time.Now
 	Log         *slog.Logger
+	// RestoreMode allows modules to download their dumps (restore hooks). can-core has no restore
+	// mode yet, so nothing sets it and every download is refused.
+	RestoreMode bool
 	// HookTimeout bounds one module's hook (default 15 minutes).
 	HookTimeout time.Duration
 
@@ -352,8 +355,13 @@ func (d *Dumper) Loop(ctx context.Context, hour, min int, startDelay time.Durati
 	}
 }
 
-// Open opens a stored module dump (the restore hook's GET).
-func (d *Dumper) Open(module, name string) (*os.File, error) { return d.Store.Open(module, name) }
+// Open opens a stored module dump (the restore hook's GET); only in restore mode.
+func (d *Dumper) Open(module, name string) (*os.File, error) {
+	if !d.RestoreMode {
+		return nil, ErrNotRestoring
+	}
+	return d.Store.Open(module, name)
+}
 
 // BeginForTest opens a run with module's hook window open, without running anything; other
 // packages' tests use it to exercise Accept. Production code never calls it.
