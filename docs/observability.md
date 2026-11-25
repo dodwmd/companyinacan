@@ -62,6 +62,10 @@ Prometheus: `deploy/monitoring/networkpolicy-metrics.example.yaml` allows only p
 `app.kubernetes.io/name: prometheus` in a namespace labelled `can.dev/namespace-kind: monitoring`, to TCP
 9190 only. It is an example, not applied by default.
 
+On a server the [node isolation](node-isolation.md) rules also apply: a Prometheus pod cannot scrape anything
+on the host itself (`node_exporter`, the kubelet), and one that discovers targets through the Kubernetes API
+needs its namespace in `/etc/can/firewall/trusted-namespaces`.
+
 ### Metric catalogue
 
 | Metric | Type | Labels | Notes |
