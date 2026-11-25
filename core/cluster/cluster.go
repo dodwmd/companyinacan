@@ -177,7 +177,8 @@ func (m *Manager) Status(ctx context.Context) (Status, error) {
 
 func isNotFound(err error) bool {
 	m := strings.ToLower(err.Error())
-	return strings.Contains(m, "no nodes found") || strings.Contains(m, "not found")
+	// Only k3d's own message: "not found" would also match `executable file not found in $PATH`.
+	return strings.Contains(m, "no nodes found")
 }
 
 // Up creates the cluster if it does not exist, starts it if it is stopped, then

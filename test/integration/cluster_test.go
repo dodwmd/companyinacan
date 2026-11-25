@@ -185,6 +185,29 @@ func TestDefaultDenyBlocksCrossNamespaceIngress(t *testing.T) {
 	if reach(t, "probe-ext", "ext-probe", "app=probe", ip) {
 		t.Fatalf("a pod in an unrelated namespace reached can-data %s:5432", ip)
 	}
+
+	// Positive control: explicitly admit probe-ext to the target and the same probe must get
+	// through, so the BLOCKED above means "denied by policy", not "not listening".
+	allow := `
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: test-allow-ext-ingress, namespace: can-data}
+spec:
+  podSelector: {matchLabels: {app: ingress-target}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: probe-ext}}}]
+      ports: [{protocol: TCP, port: 5432}]
+`
+	if out, err := kubectlStdin(allow, "apply", "-f", "-"); err != nil {
+		t.Fatalf("apply control policy: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		_, _ = kubectl("-n", "can-data", "delete", "networkpolicy", "test-allow-ext-ingress", "--ignore-not-found")
+	})
+	if !pollReach(t, "probe-ext", "ext-allow-probe", "app=probe", ip) {
+		t.Fatalf("positive control failed: explicitly admitted probe could not reach %s:5432", ip)
+	}
 }
 
 func TestCoreDNSCustomLoaded(t *testing.T) {

@@ -24,7 +24,7 @@ tests; cluster-backed assertions are written under the `integration` build tag a
 | II. Footprint | PASS | metrics-server disabled; quotas and LimitRange defaults cap every namespace; Traefik requests 48Mi; no new resident components |
 | III. Test-first | PASS | Unit and contract tests written before implementation; cluster tests written without a cluster and later confirmed by the `dev-cluster` CI job |
 | IV. Module contracts | PASS | Module namespace template fixes the label, egress and quota contract can-core instantiates |
-| V. Secure/private | PASS | Default-deny everywhere, least-privilege RBAC, secrets encryption on, no secrets in manifests; metadata endpoint, node and cluster CIDRs denied to modules |
+| V. Secure/private | PARTIAL | Default-deny everywhere, secrets encryption on, no secrets in manifests, metadata endpoint/node/cluster CIDRs denied to modules, can-core standing RBAC reduced (no cluster-wide secrets/workloads/exec). Gaps until E03: can-core can RoleBind `can-core-module` into any namespace (escalation to cluster-admin-equivalent), create namespaces with relaxed PSA labels, and rewrite DNS/Traefik values in kube-system; module namespaces can reach every database in can-data (DB auth is the only barrier) |
 | VI. OSS hygiene | PASS | No new dependencies; workflow actions pinned by SHA |
 | VII. Simplicity/measured | PASS | Plain YAML + kubectl `-k`, no Helm/Terraform; remaining unverified claims are listed in research.md |
 

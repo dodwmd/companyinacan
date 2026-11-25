@@ -77,7 +77,9 @@ node IP; the later-added positive-control and cross-namespace default-deny probe
 CoreDNS regex until CI runs them; runs on a developer machine or with Podman. The workflow is
 `continue-on-error`, so read its log rather than the green tick.
 
-Known limits (details in `specs/004-local-dev-cluster/research.md`): can-core's egress allows
+Security limits (details in `specs/004-local-dev-cluster/research.md`): can-core's RBAC is a *reduced standing grant*, not least privilege. Because it may create RoleBindings and `bind` `can-core-module`, a compromised can-core can give itself secrets, workloads and exec in any namespace including kube-system, so treat it as cluster-admin-equivalent until the E03 ValidatingAdmissionPolicy exists. Its kube-system Role can also replace Traefik chart values and `coredns-custom` (DNS hijack). Every module namespace can reach every database in `can-data`; only database credentials separate modules. Module namespaces are default-deny inside the namespace too, so pods of one module need an explicit allow to talk to each other.
+
+Other known limits: can-core's egress allows
 `0.0.0.0/0` on ports 443 and 6443; a module pod can still send `Host: admin.<domain>` to Traefik,
 so the admin router needs the pod-CIDR-rejecting middleware (E03/E06); `can dev down` on a
 missing cluster does nothing and succeeds; `can dev up` on a stopped cluster starts it.

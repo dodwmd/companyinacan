@@ -18,6 +18,9 @@ spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
 ---
+# default-deny also blocks traffic between pods of the SAME module namespace (it selects every
+# pod, and no policy allows pod-to-pod ingress inside the namespace); a module whose pods must
+# talk to each other (app and worker, app and cache) needs an explicit intra-namespace allow.
 # Module UIs and public webhooks are reached through Traefik (any port: ports vary per module).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -89,7 +92,10 @@ spec:
       ports:
         - {protocol: TCP, port: 8000}
         - {protocol: TCP, port: 8443}
-    # The module's own database
+    # Database ports in can-data. NOTE: this selects the namespace, not the module's own
+    # database: every module namespace can reach every database in can-data, and only DB
+    # authentication (one user per module) separates them. Residual risk; per-module isolation
+    # needs per-database pod labels, added with the databases in E03.
     - to:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: can-data}

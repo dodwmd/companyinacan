@@ -132,6 +132,8 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  # Selects whole namespaces, not individual modules: any module namespace can open a connection to
+  # any database pod here; DB credentials (one user per module) are the per-module barrier.
   name: allow-db-from-modules-and-core
   namespace: can-data
 spec:

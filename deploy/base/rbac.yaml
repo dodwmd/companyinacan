@@ -11,10 +11,14 @@
 # can-core-module in can-system and can-data. No wildcards, no escalate/impersonate, never
 # cluster-admin.
 #
-# Residual risks (cannot be expressed in RBAC; to be closed by a ValidatingAdmissionPolicy in
-# E03): (1) creating RoleBindings cluster-wide lets can-core bind can-core-module into any
-# namespace, including kube-system; (2) it can create namespaces with relaxed pod-security
-# labels. Both need a compromised can-core to exploit.
+# This is a REDUCED STANDING GRANT, not least privilege. Residual risks (cannot be expressed in
+# RBAC; to be closed by a ValidatingAdmissionPolicy in E03). A compromised can-core can:
+#  (1) create RoleBindings cluster-wide and bind can-core-module into any namespace, including
+#      kube-system, so it is effectively cluster-admin until that policy exists;
+#  (2) create namespaces with relaxed pod-security labels;
+#  (3) via the kube-system Role below: update HelmChartConfig/traefik (arbitrary chart values,
+#      e.g. extra containers, volumes, args) and ConfigMap/coredns-custom (hijack any cluster
+#      DNS name, for example point auth.<domain> at an attacker).
 apiVersion: v1
 kind: ServiceAccount
 metadata:

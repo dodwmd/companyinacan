@@ -95,6 +95,7 @@ func TestStatus(t *testing.T) {
 		{"stopped", `[{"name":"companyinacan-dev","serversCount":1,"serversRunning":0}]`, nil, true, false, false},
 		{"absent-empty-list", `[]`, nil, false, false, false},
 		{"absent-error", "", errors.New("exit status 1: FATA No nodes found for given cluster"), false, false, false},
+		{"k3d-not-installed", "", errors.New(`exec: "k3d": executable file not found in $PATH`), false, false, true},
 		{"docker-down", "", errors.New("exit status 1: Cannot connect to the Docker daemon"), false, false, true},
 		{"garbage", "not json", nil, false, false, true},
 	}

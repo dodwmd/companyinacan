@@ -22,7 +22,7 @@ kubectl --context k3d-<name> apply -k deploy/base
 kubectl --context k3d-<name> -n kube-system rollout restart deployment/coredns
 kubectl --context k3d-<name> -n kube-system rollout status deployment/coredns --timeout=120s
 ```
-The existence check is `k3d cluster list <name> --output json`: only "No nodes found"/"not found" means absent; any other failure (Docker down, k3d broken) aborts with exit 1. A running cluster only runs the last five lines (re-apply). A stopped one first runs `k3d cluster start <name>` and the node wait, then the same five lines.
+The existence check is `k3d cluster list <name> --output json`: only k3d's "No nodes found" means absent (not a generic "not found", which also matches a missing k3d binary); any other failure (Docker down, k3d broken) aborts with exit 1. A running cluster only runs the last five lines (re-apply). A stopped one first runs `k3d cluster start <name>` and the node wait, then the same five lines.
 
 ## Make targets
 | Target | Runs |

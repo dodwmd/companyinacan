@@ -30,7 +30,7 @@ Written without a cluster. Afterwards the non-required `dev-cluster` GitHub job 
 - **Open**: can-core cannot delete namespaces with this grant (deletion cannot be limited to `mod-*` by RBAC); E03 must decide between a ValidatingAdmissionPolicy-guarded `delete` and another cleanup path. Also E03: a ValidatingAdmissionPolicy denying RoleBindings outside `mod-*`/platform namespaces and relaxed pod-security labels.
 
 ## R7. Executor and planning
-- **Decision**: `Cmd{Name,Args,Retries}`; plans are values; `Manager` runs a plan sequentially, retrying only commands that declare `Retries` (the CRD existence poll: `kubectl wait` fails at once on a missing object and `--for=create` needs kubectl 1.31), and stops on the first error. `Status` treats only a "No nodes found"/"not found" failure of `k3d cluster list <name>` as absent; other errors surface. `Up` starts a stopped cluster; `Down` of an absent cluster is a no-op.
+- **Decision**: `Cmd{Name,Args,Retries}`; plans are values; `Manager` runs a plan sequentially, retrying only commands that declare `Retries` (the CRD existence poll: `kubectl wait` fails at once on a missing object and `--for=create` needs kubectl 1.31), and stops on the first error. `Status` treats only a "No nodes found" failure of `k3d cluster list <name>` as absent; other errors surface. `Up` starts a stopped cluster; `Down` of an absent cluster is a no-op.
 - **Alternatives**: calling the k3d Go library (large dependency, version coupling).
 
 ## R8. Prerequisites
