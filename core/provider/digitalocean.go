@@ -109,6 +109,9 @@ func (p *DigitalOcean) conf(spec Spec) (doConf, error) {
 		return c, err
 	}
 	c.wait = time.Duration(wait) * time.Second
+	if err := CheckOperatorIP(c.operator); err != nil {
+		return c, err
+	}
 	if !reDOName.MatchString(c.serverName) {
 		return c, fmt.Errorf("provider.options.server_name %q is not a valid hostname label", c.serverName)
 	}
@@ -181,9 +184,43 @@ func (c doConf) firewall() DOCreateFirewall {
 	}
 }
 
-// ownedFirewall reports whether fw carries can's targeting tags and the expected name.
-func (c doConf) ownedFirewall(fw DOFirewall) bool {
-	return fw.Name == c.fwName && OwnedByTags(fw.Tags, c.slug)
+// ownedFirewall reports whether fw is can's: the expected name, targeting
+// exactly the two owner tags, and attached by id to no droplet other than
+// ours (serverID, 0 if not known yet).
+func (c doConf) ownedFirewall(fw DOFirewall, serverID int64) bool {
+	if fw.Name != c.fwName || len(fw.Tags) != len(c.ownerTags) || !OwnedByTags(fw.Tags, c.slug) {
+		return false
+	}
+	for _, id := range fw.DropletIDs {
+		if id != serverID {
+			return false
+		}
+	}
+	return true
+}
+
+// ruleKeys is a comparable form of inbound rules.
+func ruleKeys(rs []DOFirewallRule) []string {
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		var addrs []string
+		if r.Sources != nil {
+			addrs = append(addrs, r.Sources.Addresses...)
+		}
+		sort.Strings(addrs)
+		ports := r.Ports
+		if r.Protocol == "icmp" {
+			ports = ""
+		}
+		out = append(out, r.Protocol+"|"+ports+"|"+strings.Join(addrs, ","))
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sameRules(a, b []DOFirewallRule) bool {
+	x, y := ruleKeys(a), ruleKeys(b)
+	return strings.Join(x, ";") == strings.Join(y, ";")
 }
 
 // Plan implements Provider.
@@ -230,7 +267,7 @@ func (p *DigitalOcean) findDroplet(ctx context.Context, api *DOClient, c doConf)
 	return DODroplet{}, false, nil
 }
 
-func (p *DigitalOcean) findFirewall(ctx context.Context, api *DOClient, c doConf) (DOFirewall, bool, error) {
+func (p *DigitalOcean) findFirewall(ctx context.Context, api *DOClient, c doConf, serverID int64) (DOFirewall, bool, error) {
 	list, err := api.ListFirewalls(ctx)
 	if err != nil {
 		return DOFirewall{}, false, err
@@ -240,13 +277,13 @@ func (p *DigitalOcean) findFirewall(ctx context.Context, api *DOClient, c doConf
 		if fw.Name != c.fwName {
 			continue
 		}
-		if c.ownedFirewall(fw) {
+		if c.ownedFirewall(fw, serverID) {
 			return fw, true, nil
 		}
 		foreign = true
 	}
 	if foreign {
-		return DOFirewall{}, false, fmt.Errorf("a firewall named %q already exists and was not created by can (it does not target the tags managed-by:can, company:%s); refusing to adopt it. Rename or delete it, or change the company name", c.fwName, c.slug)
+		return DOFirewall{}, false, fmt.Errorf("a firewall named %q already exists and was not created by can (it must target exactly the tags managed-by:can, company:%s and be attached to no other droplet); refusing to adopt it. Rename or delete it, or change the company name", c.fwName, c.slug)
 	}
 	return DOFirewall{}, false, nil
 }
@@ -289,7 +326,10 @@ func (p *DigitalOcean) Create(ctx context.Context, spec Spec, st *Store, out io.
 		if err != nil {
 			return err
 		}
-		owned := found && key.Name == c.keyName
+		// Only a key uploaded by this run is owned. A key that already exists is
+		// reused and never deleted, even one named can-<slug>: after a crash it
+		// stays behind (a public key, harmless) rather than risk deleting someone else's.
+		owned := false
 		if !found {
 			if key, err = api.UploadKey(ctx, c.keyName, pub); err != nil {
 				return err
@@ -313,12 +353,22 @@ func (p *DigitalOcean) Create(ctx context.Context, spec Spec, st *Store, out io.
 		return err
 	}
 	if state.FirewallUUID == "" {
-		fw, found, err := p.findFirewall(ctx, api, c)
+		var sid int64
+		if state.Server != nil {
+			sid = state.Server.ID
+		}
+		fw, found, err := p.findFirewall(ctx, api, c, sid)
 		if err != nil {
 			return err
 		}
 		if !found {
 			if fw, err = api.CreateFirewall(ctx, c.firewall()); err != nil {
+				return err
+			}
+		} else if want := c.firewall(); !sameRules(fw.InboundRules, want.InboundRules) {
+			// an adopted firewall must not silently keep old rules (for example an old operator_ip)
+			fmt.Fprintf(out, "firewall: rules differ from the configuration; updating %s\n", fw.ID)
+			if err := api.UpdateFirewall(ctx, fw.ID, want, fw.DropletIDs); err != nil {
 				return err
 			}
 		}
@@ -486,6 +536,22 @@ func (p *DigitalOcean) Destroy(ctx context.Context, spec Spec, st *Store, out io
 			return nil
 		}
 	}
+	if state.Server == nil || state.Server.ID == 0 {
+		// State may hold the key and firewall but no droplet (a crash after the
+		// droplet was created, before its id was saved): look it up by tag so it
+		// is not orphaned (and left unprotected) when the firewall goes.
+		drops, err := api.ListDroplets(ctx, "", "company:"+c.slug)
+		if err != nil {
+			return err
+		}
+		for _, d := range drops {
+			if d.Name == c.serverName && OwnedByTags(d.Tags, c.slug) {
+				state.Server = &ServerState{ID: d.ID, Name: d.Name, IP: d.PublicIPv4(), User: "root", Port: 22}
+				fmt.Fprintf(out, "found droplet %d by name and tags\n", d.ID)
+				break
+			}
+		}
+	}
 	if state.Server != nil && state.Server.ID != 0 {
 		// Re-check the tags right before deleting.
 		d, err := api.GetDroplet(ctx, state.Server.ID)
@@ -516,8 +582,8 @@ func (p *DigitalOcean) Destroy(ctx context.Context, spec Spec, st *Store, out io
 		case IsNotFound(err):
 		case err != nil:
 			return err
-		case !c.ownedFirewall(fw):
-			return fmt.Errorf("refusing to delete firewall %s: it is not named %q with tags managed-by:can, company:%s", fw.ID, c.fwName, c.slug)
+		case !c.ownedFirewall(fw, serverID(state)):
+			return fmt.Errorf("refusing to delete firewall %s: it is not named %q targeting exactly the tags managed-by:can, company:%s, or it is attached to another droplet", fw.ID, c.fwName, c.slug)
 		default:
 			if err := api.DeleteFirewall(ctx, fw.ID); err != nil {
 				return err
@@ -530,15 +596,48 @@ func (p *DigitalOcean) Destroy(ctx context.Context, spec Spec, st *Store, out io
 	}
 	if state.SSHKeyID != 0 {
 		if state.SSHKeyOwned {
-			if err := api.DeleteKey(ctx, state.SSHKeyID); err != nil {
+			if err := p.deleteOwnedKey(ctx, api, c, state.SSHKeyID, out); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "ssh key %d deleted\n", state.SSHKeyID)
 		} else {
 			fmt.Fprintf(out, "ssh key %d kept (not uploaded by can)\n", state.SSHKeyID)
 		}
 	}
 	return st.Remove()
+}
+
+func serverID(s *State) int64 {
+	if s.Server != nil {
+		return s.Server.ID
+	}
+	return 0
+}
+
+// deleteOwnedKey deletes the key can uploaded, after checking that it still has
+// the expected name and our key's fingerprint.
+func (p *DigitalOcean) deleteOwnedKey(ctx context.Context, api *DOClient, c doConf, id int64, out io.Writer) error {
+	key, err := api.GetKey(ctx, id)
+	if IsNotFound(err) {
+		fmt.Fprintf(out, "ssh key %d already gone\n", id)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	pub, perr := p.publicKey(c)
+	var fp string
+	if perr == nil {
+		fp, perr = SSHFingerprint(pub)
+	}
+	if perr != nil || key.Name != c.keyName || key.Fingerprint != fp {
+		fmt.Fprintf(out, "ssh key %d kept (its name or fingerprint no longer matches what can uploaded)\n", id)
+		return nil
+	}
+	if err := api.DeleteKey(ctx, id); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "ssh key %d deleted\n", id)
+	return nil
 }
 
 // waitDropletGone polls until the droplet no longer exists.
@@ -585,25 +684,14 @@ func (p *DigitalOcean) discover(ctx context.Context, api *DOClient, c doConf, ou
 	}
 	for _, fw := range fws {
 		switch {
-		case c.ownedFirewall(fw):
+		case c.ownedFirewall(fw, serverID(st)):
 			st.FirewallUUID = fw.ID
 			fmt.Fprintf(out, "found firewall %s by name and tags\n", fw.ID)
 		case fw.Name == c.fwName:
 			fmt.Fprintf(out, "firewall %q exists but does not carry can's tags; leaving it alone\n", c.fwName)
 		}
 	}
-	if pub, err := p.publicKey(c); err == nil {
-		if fp, err := SSHFingerprint(pub); err == nil {
-			key, found, err := api.FindKey(ctx, fp)
-			if err != nil {
-				return nil, err
-			}
-			if found && key.Name == c.keyName {
-				st.SSHKeyID, st.SSHKeyOwned = key.ID, true
-				fmt.Fprintf(out, "found ssh key %d by fingerprint and name\n", key.ID)
-			}
-		}
-	}
+	// An SSH key is never claimed without state: it stays in the account.
 	return st, nil
 }
 

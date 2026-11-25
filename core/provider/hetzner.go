@@ -85,6 +85,9 @@ func (p *Hetzner) conf(spec Spec) (hetznerConf, error) {
 		return c, err
 	}
 	c.wait = time.Duration(wait) * time.Second
+	if err := CheckOperatorIP(c.operator); err != nil {
+		return c, err
+	}
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`).MatchString(c.serverName) {
 		return c, fmt.Errorf("provider.options.server_name %q is not a valid hostname label", c.serverName)
 	}
@@ -365,6 +368,19 @@ func (p *Hetzner) Destroy(ctx context.Context, spec Spec, st *Store, out io.Writ
 		if state.Server == nil && state.FirewallID == 0 && state.SSHKeyID == 0 {
 			fmt.Fprintln(out, "nothing to do: no hetzner resources of this company found")
 			return nil
+		}
+	}
+	if state.Server == nil || state.Server.ID == 0 {
+		// State may hold the key and firewall but no server (a crash between
+		// creating the server and saving its id): look it up by name and labels,
+		// so it is not orphaned when its firewall is deleted.
+		srv, found, err := api.FindServer(ctx, c.serverName)
+		if err != nil {
+			return err
+		}
+		if found && OwnedBy(srv.Labels, c.slug) {
+			state.Server = &ServerState{ID: srv.ID, Name: srv.Name, IP: srv.PublicNet.IPv4.IP, User: "root", Port: 22}
+			fmt.Fprintf(out, "found server %d by name and labels\n", srv.ID)
 		}
 	}
 	if state.Server != nil && state.Server.ID != 0 {

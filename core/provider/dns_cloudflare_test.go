@@ -543,7 +543,7 @@ func TestCloudflareTokenMustBeAReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = p.Apply(context.Background(), "acme.example", cfRecs(), io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "env:NAME or file:PATH") || strings.Contains(err.Error(), "0123456789literal") {
+	if err == nil || !strings.Contains(err.Error(), "env:NAME") || strings.Contains(err.Error(), "0123456789literal") {
 		t.Fatalf("got %v", err)
 	}
 }

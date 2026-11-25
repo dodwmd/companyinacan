@@ -58,6 +58,10 @@ type DNSRecordState struct {
 	Type    string `json:"type"`
 	Name    string `json:"name"`
 	Adopted bool   `json:"adopted,omitempty"`
+	// Content and Proxied are what can last wrote; `can down` leaves a record
+	// alone if an operator has since pointed it elsewhere.
+	Content string `json:"content,omitempty"`
+	Proxied bool   `json:"proxied,omitempty"`
 }
 
 // Issuance is one certificate issuance attempt for a set of hostnames.

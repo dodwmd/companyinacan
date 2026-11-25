@@ -40,9 +40,19 @@ type doDroplet struct {
 }
 
 type doFirewall struct {
-	ID   string
-	Name string
-	Tags []string
+	ID       string
+	Name     string
+	Tags     []string
+	Inbound  json.RawMessage // as stored from POST/PUT
+	Droplets []int64
+}
+
+func (fw *doFirewall) json() map[string]any {
+	m := map[string]any{"id": fw.ID, "name": fw.Name, "tags": fw.Tags, "status": "succeeded", "droplet_ids": append([]int64{}, fw.Droplets...)}
+	if fw.Inbound != nil {
+		m["inbound_rules"] = fw.Inbound
+	}
+	return m
 }
 
 // fakeDO is a stateful stand-in for the DigitalOcean API. Lists are paginated
@@ -188,22 +198,46 @@ func (f *fakeDO) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case key == "GET /firewalls":
 		items := []any{}
 		for _, fw := range f.firewalls {
-			items = append(items, map[string]any{"id": fw.ID, "name": fw.Name, "tags": fw.Tags, "status": "succeeded"})
+			items = append(items, fw.json())
 		}
 		f.page(w, r, "firewalls", items)
 	case key == "POST /firewalls":
 		var req struct {
-			Name string   `json:"name"`
-			Tags []string `json:"tags"`
+			Name    string          `json:"name"`
+			Tags    []string        `json:"tags"`
+			Inbound json.RawMessage `json:"inbound_rules"`
 		}
 		_ = json.Unmarshal(f.bodies[key], &req)
-		fw := &doFirewall{ID: "fw-0000-aaaa", Name: req.Name, Tags: req.Tags}
+		fw := &doFirewall{ID: "fw-0000-aaaa", Name: req.Name, Tags: req.Tags, Inbound: req.Inbound}
 		f.firewalls = append(f.firewalls, fw)
-		f.write(w, 202, map[string]any{"firewall": map[string]any{"id": fw.ID, "name": fw.Name, "tags": fw.Tags, "status": "waiting"}})
+		f.write(w, 202, map[string]any{"firewall": fw.json()})
+	case strings.HasPrefix(key, "PUT /firewalls/"):
+		for _, fw := range f.firewalls {
+			if "/firewalls/"+fw.ID == r.URL.Path {
+				var req struct {
+					Inbound json.RawMessage `json:"inbound_rules"`
+				}
+				_ = json.Unmarshal(f.bodies[key], &req)
+				fw.Inbound = req.Inbound
+				f.write(w, 200, map[string]any{"firewall": fw.json()})
+				return
+			}
+		}
+		f.write(w, 404, "error_not_found")
+	case key == "GET /account/keys/5011" || key == "GET /account/keys/5012":
+		if f.keyName == "" {
+			f.write(w, 404, "error_not_found")
+			return
+		}
+		id := int64(5011)
+		if f.keyName != "can-acme-co" {
+			id = 5012
+		}
+		f.write(w, 200, map[string]any{"ssh_key": map[string]any{"id": id, "name": f.keyName, "fingerprint": fp}})
 	case strings.HasPrefix(key, "GET /firewalls/"):
 		for _, fw := range f.firewalls {
 			if "/firewalls/"+fw.ID == r.URL.Path {
-				f.write(w, 200, map[string]any{"firewall": map[string]any{"id": fw.ID, "name": fw.Name, "tags": fw.Tags}})
+				f.write(w, 200, map[string]any{"firewall": fw.json()})
 				return
 			}
 		}
@@ -440,11 +474,16 @@ func TestDOResumesAfterCrashBetweenCreateAndStateWrite(t *testing.T) {
 	f := newFakeDO(t)
 	// a previous run created everything but died before saving any state
 	f.keyName = "can-acme-co"
-	f.firewalls = []*doFirewall{{ID: "fw-0000-aaaa", Name: "can-acme-co", Tags: ownedTags()}}
+	want := (doConf{fwName: "can-acme-co", ownerTags: ownedTags()}).firewall().InboundRules
+	rules, _ := json.Marshal(want)
+	f.firewalls = []*doFirewall{{ID: "fw-0000-aaaa", Name: "can-acme-co", Tags: ownedTags(), Inbound: rules}}
 	f.droplets = []*doDroplet{{ID: 8080, Name: "can-acme-co", Tags: ownedTags()}}
 	x := doFixture(t, f, readyRunner())
 	if err := x.p.Create(context.Background(), doSpec(), x.st, &strings.Builder{}); err != nil {
 		t.Fatal(err)
+	}
+	if f.count("PUT") != 0 {
+		t.Fatalf("matching firewall was rewritten: %v", f.calls)
 	}
 	for _, c := range []string{"POST /account/keys", "POST /firewalls", "POST /droplets"} {
 		if f.count(c) != 0 {
@@ -452,7 +491,7 @@ func TestDOResumesAfterCrashBetweenCreateAndStateWrite(t *testing.T) {
 		}
 	}
 	state, _ := x.st.Load()
-	if state.Server == nil || state.Server.ID != 8080 || state.FirewallUUID != "fw-0000-aaaa" || !state.SSHKeyOwned {
+	if state.Server == nil || state.Server.ID != 8080 || state.FirewallUUID != "fw-0000-aaaa" || state.SSHKeyOwned {
 		t.Fatalf("not adopted: %+v", state)
 	}
 }
@@ -602,7 +641,7 @@ func TestDODestroyWithEmptyStateFindsOwnResourcesOnly(t *testing.T) {
 	if err := x.p.Destroy(context.Background(), doSpec(), x.st, &out); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if !f.droplets[0].deleted || len(f.firewalls) != 1 || f.firewalls[0].ID != "fw-9999-zzzz" || f.keyName != "" {
+	if !f.droplets[0].deleted || len(f.firewalls) != 1 || f.firewalls[0].ID != "fw-9999-zzzz" || f.keyName != "can-acme-co" {
 		t.Fatalf("after destroy: %+v %+v key=%q", f.droplets[0], f.firewalls, f.keyName)
 	}
 }

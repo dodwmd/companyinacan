@@ -6,7 +6,7 @@ Unknown keys are rejected by `can validate` and `can up`.
 
 | Key | Default | Notes |
 |---|---|---|
-| `token_secret_ref` | `env:DIGITALOCEAN_TOKEN` | `env:NAME` or `file:/path` (`~/` expanded). A literal token is rejected (the value is never echoed). |
+| `token_secret_ref` | `env:DIGITALOCEAN_TOKEN` | `env:NAME` (upper case) or `file:/path` (`~/` expanded). A literal token is rejected (the value is never echoed). |
 | `region` | `fra1` | slug, unverified default |
 | `size` | `s-1vcpu-2gb` | slug, unverified default; $12/month per DigitalOcean's pricing page |
 | `image` | `ubuntu-24-04-x64` | slug, unverified default |

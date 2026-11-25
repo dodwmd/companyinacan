@@ -57,6 +57,8 @@ func (f *cliDO) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write([]byte(`{"ssh_key":{"id":5011,"name":"can-acme-co"}}`))
+	case k == "GET /account/keys/5011":
+		_ = json.NewEncoder(w).Encode(map[string]any{"ssh_key": map[string]any{"id": 5011, "name": "can-acme-co", "fingerprint": fp}})
 	case k == "POST /account/keys":
 		f.key = true
 		w.WriteHeader(201)
@@ -324,5 +326,29 @@ func TestValidateCatchesDigitalOceanAndDNSMistakes(t *testing.T) {
 	}
 	if strings.Contains(out, "dop_v1_literal") {
 		t.Error("validate echoed the literal token")
+	}
+}
+
+func TestDownRefusesWhenDNSBlockWasRemovedButRecordsRemain(t *testing.T) {
+	dir := writeCompany(t, doCompanyYAML)
+	do, cf := &cliDO{}, &cliCF{zone: true}
+	doLifecycle(t, do, cf)
+	if code, out, errs := run(t, "up", dir, "--modules-dir", "../../modules"); code != ExitOK {
+		t.Fatalf("up: %d %q %q", code, out, errs)
+	}
+	// the operator deletes the dns block, then runs down
+	noDNS := strings.Replace(doCompanyYAML, "dns:\n  provider: cloudflare\n", "", 1)
+	if err := os.WriteFile(filepath.Join(dir, "company.yaml"), []byte(noDNS), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errs := run(t, "down", dir, "--yes", "--modules-dir", "../../modules")
+	if code != ExitFailure || !strings.Contains(errs, "dns_records") {
+		t.Fatalf("code=%d err=%q", code, errs)
+	}
+	if do.gone || !do.fw || len(cf.records) != 3 {
+		t.Fatalf("something was destroyed: %+v %d", do, len(cf.records))
+	}
+	if st, _ := provider.NewStore(dir).Load(); len(st.DNSRecords) != 3 {
+		t.Fatalf("state was wiped: %+v", st.DNSRecords)
 	}
 }

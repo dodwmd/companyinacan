@@ -150,9 +150,11 @@ type DOKey struct {
 // DOFirewall is a cloud firewall. Tags select the droplets it applies to; the
 // API has no separate labels, so can uses them as its ownership marker.
 type DOFirewall struct {
-	ID   string   `json:"id"`
-	Name string   `json:"name"`
-	Tags []string `json:"tags"`
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Tags         []string         `json:"tags"`
+	DropletIDs   []int64          `json:"droplet_ids"`
+	InboundRules []DOFirewallRule `json:"inbound_rules"`
 }
 
 // DOFirewallRule is one rule. Sources are used for inbound, Destinations for outbound.
@@ -254,6 +256,24 @@ func (c *DOClient) UploadKey(ctx context.Context, name, publicKey string) (DOKey
 // DeleteKey removes a key; a missing key is not an error.
 func (c *DOClient) DeleteKey(ctx context.Context, id int64) error {
 	return ignoreNotFound(c.do(ctx, http.MethodDelete, "/account/keys/"+strconv.FormatInt(id, 10), nil, nil))
+}
+
+// GetKey fetches a key by id (IsNotFound when gone).
+func (c *DOClient) GetKey(ctx context.Context, id int64) (DOKey, error) {
+	var r struct {
+		Key DOKey `json:"ssh_key"`
+	}
+	err := c.do(ctx, http.MethodGet, "/account/keys/"+strconv.FormatInt(id, 10), nil, &r)
+	return r.Key, err
+}
+
+// UpdateFirewall replaces a firewall's definition (PUT needs the whole object).
+func (c *DOClient) UpdateFirewall(ctx context.Context, id string, req DOCreateFirewall, dropletIDs []int64) error {
+	if dropletIDs == nil {
+		dropletIDs = []int64{}
+	}
+	body := map[string]any{"name": req.Name, "inbound_rules": req.InboundRules, "outbound_rules": req.OutboundRule, "tags": req.Tags, "droplet_ids": dropletIDs}
+	return c.do(ctx, http.MethodPut, "/firewalls/"+url.PathEscape(id), body, nil)
 }
 
 // ListFirewalls returns every firewall (the API has no name filter).

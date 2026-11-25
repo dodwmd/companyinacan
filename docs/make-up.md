@@ -53,6 +53,7 @@ resources are adopted instead of duplicated.
 - DigitalOcean: `a droplet named ... was not created by can`: a Droplet with that name exists without
   the `managed-by:can` and `company:<slug>` tags; rename it, delete it yourself, or set
   `provider.options.server_name`. Same for a firewall named `can-<slug>`.
+- Cloudflare: `cannot read DNS records in the zone`: the token can see the zone but lacks DNS edit permission.
 - Cloudflare: `no Cloudflare zone found`: the domain is not a zone in the account the token belongs
   to, or the token lacks Zone Read for it. `already exists ... not created by can`: see
   `adopt_existing` in [providers.md](providers.md).

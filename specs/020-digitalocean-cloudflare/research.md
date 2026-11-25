@@ -21,7 +21,7 @@ knowledge of the public API and are **unverified**; each is marked.
 **Unverified**: all three slugs against `GET /v2/sizes`, `/v2/images`, `/v2/regions`; the price table;
 that 2 GiB is enough in practice (E00 measures on a real box). Operators can override each.
 
-## D2. Ownership without labels
+## D2. Ownership without labels (revised after QA)
 
 Hetzner objects carry labels; DigitalOcean has **tags** on droplets and no labels on firewalls or
 SSH keys.
@@ -31,12 +31,15 @@ SSH keys.
   A droplet is can's only if both tags are present.
 - **Firewall**: a DigitalOcean firewall's `tags` field is the set of droplet tags it *applies to*.
   can creates it with `tags: [managed-by:can, company:<slug>]` and treats a firewall as its own only
-  if its name is `can-<slug>` **and** it targets exactly those tags. This is a weaker proof than a
+  if its name is `can-<slug>`, it targets exactly those tags (no extras) **and** no other droplet
+  is attached to it by id. An adopted firewall whose inbound rules differ from the configuration is
+  updated (PUT) so a changed `operator_ip` is not ignored. This is a weaker proof than a
   label (someone could create a same-named firewall targeting the same tags on purpose), and is
   documented as such. Deleting it affects only droplets with can's tags.
-- **SSH key**: no labels. A key found by fingerprint is reused. It is "owned" (deleted by `can down`)
-  only if can uploaded it in this run (recorded in state) or, when state is lost, if its name is
-  `can-<slug>`. A key with another name is never deleted.
+- **SSH key**: no labels. A key found by fingerprint is reused and never claimed: it is "owned"
+  (deleted by `can down`) only if can uploaded it in this run (recorded in state). Before the delete
+  the key is re-read and must still be named `can-<slug>` with our fingerprint. A key left by a crash
+  stays in the account (a public key, harmless).
 
 ## D3. Rate limits and retries
 
@@ -99,6 +102,18 @@ both names appear in the dashboard history, so docs mention both. **Unverified**
 
 `can up` calls `DNSChecker.Preflight` (token resolves, zone found; read-only) before creating any
 server so a typo cannot cost a droplet-hour.
+
+## D13. Destroy with a partial state
+
+State may hold the key and firewall but no droplet id (crash between `CreateDroplet` and the state
+write). Destroy always looks the droplet up by tag and name when state has none, and deletes it before
+the firewall. The same fix was applied to Hetzner (by name and labels).
+
+## D14. Cloudflare record drift
+
+State stores the content, type, name and proxied value can wrote. `can down` leaves a record in place
+(and reports it) if type, name or content changed, and warns if proxied changed. If `dns.provider` is
+removed from company.yaml while records remain in state, `can down` refuses.
 
 ## D12. A secret echoed by `ResolveSecret`
 

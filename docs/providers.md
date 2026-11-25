@@ -95,6 +95,9 @@ provider:
     location: fsn1
 ```
 
+Secret references are `env:NAME` with NAME in upper case (`A-Z`, `0-9`, `_`), or `file:PATH`; anything
+else, such as a token pasted after `env:`, is rejected without being printed.
+
 `~/` is expanded in `ssh_public_key_file`, `ssh_private_key_file`, `key_file` and `file:` secret
 references. The SSH port is fixed to 22 for `hetzner`: setting `port` to anything else is an error,
 because the cloud firewall only opens 22.
@@ -141,13 +144,22 @@ if the fingerprint exists), a Cloud Firewall (inbound 22, 80, 443 and icmp; SSH 
 user-data, then waits for the create action, for the Droplet to be active with a public IPv4 address,
 and for the bootstrap marker. Ids are saved at once, so an interrupted run resumes.
 
+**SSH is open to the world unless you set `operator_ip`.** With it unset the cloud firewall (and the
+host firewall) allow port 22 from any address; key-only login is then the only barrier. Set
+`operator_ip` to an IP or CIDR (`0.0.0.0/0` and `::/0` are rejected: leave it unset instead). Changing
+it later: a resumed `can up` that adopts the firewall by tag updates its rules to match; a firewall
+already recorded in state is not reconciled.
+
 **Ownership by tag.** The Droplet is tagged `managed-by:can` and `company:<slug>`; the firewall is
-named `can-<slug>` and targets exactly those tags (DigitalOcean firewalls have no labels, so this
-is the marker; it is a weaker proof than a Hetzner label). A Droplet or firewall with the expected
+named `can-<slug>`, targets exactly those two tags and is attached by id to no other droplet
+(DigitalOcean firewalls have no labels, so this is the marker; it is a weaker proof than a Hetzner
+label). A Droplet or firewall with the expected
 name but without them is never adopted (`can up` stops) and never deleted. `can down` re-reads the
 tags right before deleting, deletes the Droplet and waits until it is gone, then the firewall, then
-the SSH key only if `can` uploaded it. With an empty state file it finds can's resources by tag and
-name. **Deleting the Droplet deletes its data.** SSH keys already in your account can be added to the
+the SSH key only if `can` uploaded it (re-read first: the name `can-<slug>` and the fingerprint of your
+key must still match). The droplet is looked up by tag whenever state has no droplet id, even if state
+holds the key or firewall (a crash right after creation), so it is never orphaned. A key that already
+existed, or that was left by a crashed run, is never claimed or deleted. **Deleting the Droplet deletes its data.** SSH keys already in your account can be added to the
 Droplet with `ssh_key_fingerprints` (MD5 form); can never uploads or deletes those.
 
 **Size and cost** (the 2 GB target of SPEC.md section 3.2; prices as shown on DigitalOcean's
@@ -197,13 +209,20 @@ without calling Cloudflare.
 Safety rules:
 
 - A record at the same name and type that does **not** carry the comment is never changed; `can up`
-  stops. A `CNAME` at the same name also stops it (Cloudflare does not allow both).
+  stops. If several records of that type exist at a name (round robin), `can` warns and manages
+  only its own one.
+- `can up` sets `proxied` back to the configured value on records it owns: turning the proxy on in the
+  dashboard is undone by the next run unless you set `proxied: true`. A `CNAME` at the same name also stops it (Cloudflare does not allow both).
 - `adopt_existing: true` lets `can` take over such a record, but only if it is not proxied. It
   updates content and TTL, leaves the comment alone, and `can down` will never delete it.
 - `can down --yes` removes the DNS records first (so no record points at an address that is about to
-  be recycled), only those recorded in `.can/state.json` that were created by `can` and still carry
-  the comment. If this fails, the teardown stops so you can repeat it; fix the token or remove the
-  `dns` block to skip it.
+  be recycled), only those recorded in `.can/state.json` that were created by `can`, still carry the
+  comment and still point where `can` put them (a record an operator repointed is left in place and
+  reported). Records are **never discovered**: with an empty or lost state file nothing in the zone is
+  deleted. If removal fails, the teardown stops so you can repeat it. If you remove the `dns` block
+  while records remain in state, `can down` refuses (it would wipe the state that remembers them):
+  restore the block, or delete the records in Cloudflare and the `dns_records` entries from
+  `.can/state.json`.
 - `proxied` defaults to `false`: the certificate challenge (ACME HTTP-01) must reach your server
   directly. With `proxied: true` the TTL is automatic and certificates will not issue until a DNS-01
   challenge exists, which is **not built** (future work).

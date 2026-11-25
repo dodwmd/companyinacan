@@ -373,6 +373,9 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 				if err := rm.Remove(ctx, t.company.Domain, out); err != nil {
 					return t.fail(err)
 				}
+			} else if st, err := t.store.Load(); err == nil && len(st.DNSRecords) > 0 {
+				// Destroying would wipe the state that remembers these records.
+				return t.fail(fmt.Errorf("%s lists %d DNS record(s) that can created, but company.yaml no longer has dns.provider: cloudflare, so they cannot be removed; restore the dns block and run `can down` again, or delete the records in Cloudflare and then the dns_records entries from .can/state.json", provider.StatePath(t.dir), len(st.DNSRecords)))
 			}
 			if err := t.prov.Destroy(ctx, t.spec, t.store, out); err != nil {
 				return t.fail(err)

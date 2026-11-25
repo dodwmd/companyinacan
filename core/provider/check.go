@@ -13,9 +13,7 @@ type Issue struct {
 }
 
 // isSecretRef reports whether v has the form of a secret reference.
-func isSecretRef(v string) bool {
-	return strings.HasPrefix(v, "env:") && len(v) > 4 || strings.HasPrefix(v, "file:") && len(v) > 5
-}
+func isSecretRef(v string) bool { return ValidSecretRef(v) }
 
 // CheckProviderOptions checks provider.options for typ: a secret must be a
 // reference, and digitalocean rejects unknown keys, a non-22 port and
@@ -25,6 +23,11 @@ func CheckProviderOptions(typ string, o map[string]any) []Issue {
 	if v, ok := o["token_secret_ref"].(string); ok && (typ == "digitalocean" || typ == "hetzner") && !isSecretRef(v) {
 		// the value is not echoed: a literal secret must not reach output
 		out = append(out, Issue{"semantic.secret-ref", "/provider/options/token_secret_ref", "token_secret_ref must be a reference (env:NAME or file:PATH), never the token itself"})
+	}
+	if ip, ok := o["operator_ip"].(string); ok && typ != "digitalocean" {
+		if err := CheckOperatorIP(ip); err != nil {
+			out = append(out, Issue{"semantic.provider-option", "/provider/options/operator_ip", err.Error()})
+		}
 	}
 	if typ != "digitalocean" {
 		return out

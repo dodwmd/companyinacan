@@ -270,8 +270,15 @@ func (c *Cloudflare) Preflight(ctx context.Context, domain string) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = cl.findZone(ctx, domain, c.cfg.Zone)
-	return err
+	zone, _, err := cl.findZone(ctx, domain, c.cfg.Zone)
+	if err != nil {
+		return err
+	}
+	// read the records too: a token that can see the zone but not its DNS fails here
+	if _, err := cl.listByName(ctx, zone, domain); err != nil {
+		return fmt.Errorf("cannot read DNS records in the zone (token needs Zone:DNS:Edit): %w", err)
+	}
+	return nil
 }
 
 // Apply implements DNS: upsert every record, idempotently.
@@ -306,7 +313,10 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 				foreign = e
 			}
 		}
-		base := DNSRecordState{Plugin: "cloudflare", Zone: zone, Type: r.Type, Name: r.Name}
+		base := DNSRecordState{Plugin: "cloudflare", Zone: zone, Type: r.Type, Name: r.Name, Content: r.Value, Proxied: want.Proxied}
+		if same := sameTypeCount(existing, r.Type); same > 1 {
+			fmt.Fprintf(w, "dns: warning: %d %s records exist for %s (round robin?); can manages only one of them\n", same, r.Type, r.Name)
+		}
 		switch {
 		case owned != nil:
 			if owned.Content != want.Content || owned.TTL != want.TTL || owned.Proxied != want.Proxied {
@@ -352,6 +362,16 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 	return nil
 }
 
+func sameTypeCount(rs []cfRec, typ string) int {
+	n := 0
+	for _, r := range rs {
+		if r.Type == typ {
+			n++
+		}
+	}
+	return n
+}
+
 // Remove implements DNSRemover: delete only records this plugin created.
 func (c *Cloudflare) Remove(ctx context.Context, _ string, w io.Writer) error {
 	state, err := c.st.Load()
@@ -389,9 +409,16 @@ func (c *Cloudflare) Remove(ctx context.Context, _ string, w io.Writer) error {
 			if err := json.Unmarshal(env.Result, &cur); err != nil {
 				return fmt.Errorf("cloudflare API: unreadable response: %w", err)
 			}
+			if !strings.EqualFold(cur.Type, r.Type) || !strings.EqualFold(cur.Name, r.Name) || (r.Content != "" && cur.Content != r.Content) {
+				fmt.Fprintf(w, "dns: %s %s was changed by an operator (now %s %s -> %s); left in place\n", r.Type, r.Name, cur.Type, cur.Name, cur.Content)
+				break
+			}
 			if cur.Comment != cfOwnerComment {
 				fmt.Fprintf(w, "dns: %s %s no longer carries the %q comment; leaving it alone\n", r.Type, r.Name, cfOwnerComment)
 				break
+			}
+			if r.Content != "" && cur.Proxied != r.Proxied {
+				fmt.Fprintf(w, "dns: warning: proxied was changed on %s %s after can wrote it; deleting it anyway\n", r.Type, r.Name)
 			}
 			if _, err := cl.do(ctx, http.MethodDelete, "/zones/"+url.PathEscape(r.Zone)+"/dns_records/"+url.PathEscape(r.ID), nil); err != nil && !IsNotFound(err) {
 				return err
