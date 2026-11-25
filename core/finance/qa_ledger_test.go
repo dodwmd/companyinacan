@@ -441,3 +441,26 @@ func TestQAConfirmLinksInsteadOfDoubleRecording(t *testing.T) {
 		t.Errorf("bank text was copied: %s", dump)
 	}
 }
+
+// QA 15: the erasure report names the retained bank data.
+func TestQAErasureReportListsRetainedBankData(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	maker, boss := e.token("maker", rw, nil, nil, false), e.token("boss", app, nil, nil, false)
+	acc := e.token("dana", acct, nil, nil, false)
+	party := e.party(maker, "Forget Me", "customer")
+	inv := e.approveInvoice(maker, boss, party, obj{"issue_date": "2026-06-01"}, line("work", 1000, 100))
+	b := e.bankAccount(admin)
+	e.must(201, acc, "POST", "/v1/bank/accounts/"+id(b.ID)+"/statements"+csvQuery, "d,a,r,n,i\n2026-06-10,1.00,r,Forget Me,A\n", nil)
+	var txns struct{ Items []BankTxn }
+	e.must(200, acc, "GET", "/v1/bank/transactions", nil, &txns)
+	e.must(200, acc, "POST", "/v1/bank/transactions/"+id(txns.Items[0].ID)+"/confirm", obj{"invoice_id": inv.ID}, nil)
+	var rep ErasureReport
+	e.must(200, adminTok, "POST", "/v1/parties/"+id(party)+"/erase", obj{}, &rep)
+	for _, r := range rep.Retained {
+		if r.Class == "finance-bank" && r.Count == 1 && r.Until != "" {
+			return
+		}
+	}
+	t.Errorf("retained %+v", rep.Retained)
+}

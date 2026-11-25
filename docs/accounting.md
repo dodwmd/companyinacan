@@ -171,7 +171,10 @@ Ids, numbers, counts and minor-unit totals only: no account names, memo, party, 
 
 Accounting records are legal records: **erasing a customer does not touch them**, and the retention purge does not delete journal
 entries (they hold no personal data, and removing old ones would change every later balance; archiving is a
-separate decision for you and your accountant). Data classes in the manifest: `finance-ledger` (7 years, standard) and
+separate decision for you and your accountant). A bank transaction keeps the counterparty, reference and description the bank
+reported: erasure does not remove them, and the erasure report lists the rows matched to the party's invoices under
+`finance-bank` with the date until which they are kept. Unmatched and ignored rows naming that person cannot be attributed
+automatically; review them if you answer a data subject request. Data classes in the manifest: `finance-ledger` (7 years, standard) and
 `finance-bank` (7 years, sensitive). Decided bank transactions (matched or ignored) are purged with the invoices once their booking date is past
 `retention_years`; unmatched transactions are open work and are never purged. Export batches and the close history are kept. The audit log follows
 `audit_retention_days`. This is not legal advice: set `retention_years` for your jurisdiction.
