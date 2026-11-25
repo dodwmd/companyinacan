@@ -11,6 +11,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/audit"
+	"github.com/dodwmd/companyinacan/core/server/identity"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -52,7 +53,7 @@ func addModule(t *testing.T, db *store.DB, id string, ui bool, state string) {
 	m := config.Module{ID: id, Name: id, Version: "1.0.0", Permissions: []string{id + ".read", id + ".write"}}
 	m.Runtime.Subdomain = id
 	if ui {
-		m.Runtime.UI.Service, m.Runtime.UI.Port, m.Runtime.UI.BasePath = id, 8080, ""
+		m.Runtime.WebLogin = &config.WebLogin{ViaSubdomain: true}
 	}
 	if err := db.UpsertModule(context.Background(), store.Module{ID: id, Version: "1.0.0", Namespace: "mod-" + id, ServiceAccount: id, State: state, Manifest: m}, nil, nil); err != nil {
 		t.Fatal(err)
@@ -443,11 +444,54 @@ func TestAppsListsOnlyWhatTheUserMayOpen(t *testing.T) {
 	}
 }
 
+// An upstream app that is only routed (runtime.ui) cannot take tickets: it is never offered, so a
+// ticket is never sent to a program that does not expect one.
+func TestOnlyModulesDeclaringWebLoginAreLaunchable(t *testing.T) {
+	m := config.Module{ID: "wiki"}
+	m.Runtime.Subdomain = "wiki"
+	l := Launcher{Domain: "example.org", Overrides: map[string]string{"wiki": "https://wiki.example.org"}}
+	if b, ok := l.Base(store.Module{ID: "wiki", Manifest: m}); ok {
+		t.Fatalf("a module without web_login is launchable at %s", b)
+	}
+	// Declared but not served on the subdomain: only the operator's address counts, and a bare
+	// origin gets the manifest's base path.
+	m.Runtime.WebLogin = &config.WebLogin{BasePath: "/ui"}
+	if _, ok := (Launcher{Domain: "example.org"}).Base(store.Module{ID: "wiki", Manifest: m}); ok {
+		t.Fatal("launchable without an address")
+	}
+	if b, ok := l.Base(store.Module{ID: "wiki", Manifest: m}); !ok || b != "https://wiki.example.org/ui" {
+		t.Fatalf("%q %v", b, ok)
+	}
+}
+
+// Ending an account's access (identity.revoke) marks its module sessions revoked.
+func TestIdentityRevocationEndsLaunchSessions(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.hold("user:bob", "work.read") // alice is the first admin, so the owner
+	tk, _ := launch(t, e, "user:bob", "work", "")
+	r, ok := e.s.Redeem(ctx, "work", tk)
+	if !ok {
+		t.Fatal("redeem")
+	}
+	id := &identity.Service{DB: e.db, Audit: audit.New(e.db), Now: func() time.Time { return e.now }}
+	if _, err := id.RevokeNow(ctx, "user:alice", "user:bob"); err != nil {
+		t.Fatal(err)
+	}
+	var revoked int
+	if err := e.db.QueryRow(`SELECT count(*) FROM ui_launch_sessions WHERE revoked_at<>0`).Scan(&revoked); err != nil || revoked != 1 {
+		t.Fatalf("revoked sessions: %d %v", revoked, err)
+	}
+	if _, ok := e.s.Revalidate(ctx, "work", r.Handle); ok {
+		t.Fatal("still active after the account's access was ended")
+	}
+}
+
 func TestLauncherURLRules(t *testing.T) {
 	mod := func(sub, base string) store.Module {
 		m := config.Module{ID: "work"}
 		m.Runtime.Subdomain = sub
-		m.Runtime.UI.Service, m.Runtime.UI.Port, m.Runtime.UI.BasePath = "work", 8080, base
+		m.Runtime.WebLogin = &config.WebLogin{BasePath: base, ViaSubdomain: true}
 		return store.Module{ID: "work", Manifest: m}
 	}
 	l := Launcher{Domain: "example.org"}

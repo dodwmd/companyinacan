@@ -46,6 +46,14 @@ it (follow-up).
    hours, at most 5 sessions per subject. A restart signs everyone out. Failed sign-ins are throttled per address;
    a valid token is never throttled.
 
+### Single sign-on from the admin UI
+
+With the module installed under can-core and its address configured
+([`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c)), **Open** on the admin UI's **Apps** page
+signs a person in without a token (`/login/ticket`, then **Continue**), with the finance permissions they hold.
+The session is re-checked with can-core on the same intervals as above. `ui.token_login: false` (default
+`true`) removes the paste-a-token form. Not verified in a browser or on a cluster.
+
 ## What the pages are
 
 | Area | What you can do | Scope |
@@ -137,5 +145,5 @@ R2): 17.2 MiB RSS idle with the UI on (the same as off), 27.9 MiB after 200 invo
 ## Not done
 
 See `specs/031-finance-ui/tasks.md`: no browser, screen-reader or phone pass; no cluster run; no chart exposure or
-route; no SSO sign-in; no record-signature, contract-text editing or template editor pages; no recurring-schedule edit;
+route; no direct OpenID Connect sign-in at the module (single sign-on is by launch ticket from the admin UI); no record-signature, contract-text editing or template editor pages; no recurring-schedule edit;
 no tax-rate, token, audit-log or period-lock administration pages (the API has them); sessions do not survive a restart.

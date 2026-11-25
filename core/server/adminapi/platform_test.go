@@ -65,7 +65,7 @@ func newPHarness(t *testing.T) *pHarness {
 		Manifest: config.Module{ID: "expenses", Permissions: []string{"expenses.approve", "expenses.pay"}, Roles: map[string][]string{"finance": {"expenses.approve"}}}}
 	m.Manifest.Name = "Expenses <b>"
 	m.Manifest.Runtime.Subdomain = "expenses"
-	m.Manifest.Runtime.UI.Service, m.Manifest.Runtime.UI.Port = "expenses", 8080
+	m.Manifest.Runtime.WebLogin = &config.WebLogin{ViaSubdomain: true}
 	if err := db.UpsertModule(ctx, m, nil, nil); err != nil {
 		t.Fatal(err)
 	}

@@ -46,7 +46,7 @@ func newTicketEnv(t *testing.T) *ticketEnv {
 	for _, id := range []string{"work", "people"} {
 		m := config.Module{ID: id, Name: id, Version: "1.0.0", Permissions: []string{id + ".read", id + ".write"}}
 		m.Runtime.Subdomain = id
-		m.Runtime.UI.Service, m.Runtime.UI.Port = id, 8080
+		m.Runtime.WebLogin = &config.WebLogin{ViaSubdomain: true}
 		if err := db.UpsertModule(ctx, store.Module{ID: id, Version: "1.0.0", Namespace: "mod-" + id, ServiceAccount: id, State: store.StateEnabled, HMACSecret: "s", Manifest: m}, nil, nil); err != nil {
 			t.Fatal(err)
 		}

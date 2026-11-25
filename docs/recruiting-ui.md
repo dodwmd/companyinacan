@@ -49,6 +49,14 @@ Helm chart does not expose the `ui` block or a route yet (follow-up).
 4. A wrong, unknown or revoked token all get the same refusal. Only failed attempts count against the
    per-address limit; a valid token is never throttled.
 
+### Single sign-on from the admin UI
+
+With the module installed under can-core and its address configured
+([`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c)), **Open** on the admin UI's **Apps** page
+signs a person in without a token (`/login/ticket`, then **Continue**), with the role their permissions map to.
+The session is re-checked with can-core on the same intervals as above. `ui.token_login: false` (default
+`true`) removes the paste-a-token form. Not verified in a browser or on a cluster.
+
 ## What each role sees
 
 | Role | Pages |
@@ -139,4 +147,4 @@ The residual risks are in [`recruiting.md`](recruiting.md).
 
 Browser, phone and screen-reader verification; a run of the compose smoke test against a rebuilt
 stack; Helm exposure; stage editing, approval decisions and retention or erasure screens (API only);
-SSO redirect login; bulk actions.
+direct OpenID Connect redirect login at the module (sign-on is by launch ticket); bulk actions.

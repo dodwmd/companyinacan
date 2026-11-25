@@ -115,18 +115,23 @@ type Launcher struct {
 }
 
 // Base returns the base URL of the module's UI, with no trailing slash. ok is false when the module
-// declares no UI or its address is not acceptable.
+// does not declare runtime.web_login (its UI cannot take tickets, whatever else it serves) or has
+// no acceptable address. An operator's address without a path gets the manifest's base_path.
 func (l Launcher) Base(m store.Module) (string, bool) {
-	ui := m.Manifest.Runtime.UI
-	if ui.Service == "" {
+	wl := m.Manifest.Runtime.WebLogin
+	if wl == nil {
 		return "", false
 	}
-	raw := l.Overrides[m.ID]
-	if raw == "" {
-		if m.Manifest.Runtime.Subdomain == "" || l.Domain == "" {
-			return "", false
+	raw := strings.TrimSuffix(l.Overrides[m.ID], "/")
+	switch {
+	case raw != "":
+		if u, err := url.Parse(raw); err == nil && u.Path == "" {
+			raw += wl.BasePath
 		}
-		raw = "https://" + m.Manifest.Runtime.Subdomain + "." + l.Domain + ui.BasePath
+	case wl.ViaSubdomain && m.Manifest.Runtime.Subdomain != "" && l.Domain != "":
+		raw = "https://" + m.Manifest.Runtime.Subdomain + "." + l.Domain + wl.BasePath
+	default:
+		return "", false
 	}
 	return l.validate(raw)
 }
@@ -139,7 +144,7 @@ func (l Launcher) validate(raw string) (string, bool) {
 	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
 		return "", false
 	}
-	if u.Scheme != "https" && !(u.Scheme == "http" && l.AllowHTTP) {
+	if u.Scheme != "https" && (u.Scheme != "http" || !l.AllowHTTP) {
 		return "", false
 	}
 	host := strings.ToLower(u.Hostname())

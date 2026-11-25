@@ -130,7 +130,8 @@ failures only).
 
 ## Signing in to a module's web page without a token (E11c)
 
-A module that serves a web UI for people can accept **launch tickets** instead of pasted tokens
+A module that serves a web UI for people can accept **launch tickets** instead of pasted tokens. It declares
+`runtime.web_login` in its manifest (work, people, jobs and finance do)
 (`specs/036-module-ui-sso`, [`sso.md`](sso.md)). Two module-API calls, both authenticated by the module's
 projected token:
 

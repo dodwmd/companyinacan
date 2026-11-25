@@ -177,14 +177,15 @@ that module's session only.
 
 | Setting | Meaning |
 |---|---|
-| module manifest `runtime.subdomain` + `runtime.ui {service, port, base_path}` | the UI is at `https://<subdomain>.<company domain><base_path>`; `base_path` is empty or up to two lowercase segments (`/ui`) |
-| `CAN_MODULE_UI_URLS` (can-core env) | `work=https://work.acme.example/ui,people=https://people.acme.example`: the operator's address, validated the same way, wins over the manifest |
+| module manifest `runtime.web_login {base_path, via_subdomain}` | the module's UI accepts tickets. Declared by work, people, jobs and finance. An app without it (wiki, CRM, ...) is never offered. With `via_subdomain: true` the address is `https://<runtime.subdomain>.<company domain><base_path>` |
+| `CAN_MODULE_UI_URLS` (can-core env) | `work=https://work.acme.example/ui,people=https://people.acme.example`: the operator's address (https, on the company domain or below, not the admin host); wins over the manifest; a bare origin gets `base_path` appended |
 | `CAN_COMPANY_DOMAIN` | module UI hosts must be this domain or below; the admin host is refused |
 | `ui.token_login` (each module's `ui:` block / env, see its UI doc) | `true` (default, for compatibility) keeps the paste-a-token form; set `false` once SSO is used so the only way in is a ticket. Scripts keep using tokens against the APIs |
 
 **Not routed by default.** The charts shipped today do not expose work, people or finance on a public host
-(jobs exposes only `/careers`). Until you route a module's UI and configure its address, it does not appear
-under **Apps**; the paste-a-token page keeps working. The compose stack (`CAN_INSTALLER=none`) installs no
+(jobs exposes only `/careers`). Until you route a module's UI and set its address in `CAN_MODULE_UI_URLS`, it
+does not appear under **Apps**; the paste-a-token page keeps working. The people, jobs and finance web UIs also
+need `ui.enabled: true`. A module installed before this version is offered after its next upgrade or re-enable. The compose stack (`CAN_INSTALLER=none`) installs no
 module, so Apps is empty there and the modules' token login is the way in.
 
 **Not verified:** no browser or cluster run. See `specs/036-module-ui-sso/tasks.md`.

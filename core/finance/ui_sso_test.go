@@ -45,10 +45,10 @@ var hiddenTicketRe = regexp.MustCompile(`name="ticket" value="([^"]+)"`)
 
 // land opens the link from the launcher and posts the interstitial's form, like a browser.
 func (e *ssoEnv) land(c *client, ticket string) *httptest.ResponseRecorder {
-	e.env.t.Helper()
+	e.t.Helper()
 	page := c.do("GET", "/login/ticket?t="+ticket, nil)
 	if page.Code != 200 {
-		e.env.t.Fatalf("interstitial: %d %.300s", page.Code, page.Body)
+		e.t.Fatalf("interstitial: %d %.300s", page.Code, page.Body)
 	}
 	return c.do("POST", "/login/ticket", url.Values{"csrf": {csrfRe.FindStringSubmatch(page.Body.String())[1]}, "ticket": {hiddenTicketRe.FindStringSubmatch(page.Body.String())[1]}}, "Sec-Fetch-Site", "same-origin")
 }
@@ -231,7 +231,7 @@ func TestTicketSessionFollowsCanCoreAtTheRevalidationInterval(t *testing.T) {
 	if code := create("Two"); code != 303 {
 		t.Fatalf("inside the interval the old permissions still apply: %d", code)
 	}
-	e.env.advance(5*time.Minute + time.Second)
+	e.advance(5*time.Minute + time.Second)
 	if code := create("Three"); code != 403 {
 		t.Fatalf("after the interval write must be gone: %d", code)
 	}
@@ -239,7 +239,7 @@ func TestTicketSessionFollowsCanCoreAtTheRevalidationInterval(t *testing.T) {
 		t.Fatalf("read remains: %d", p.Code)
 	}
 	e.core.EndSessions("user:alice")
-	e.env.advance(5*time.Minute + time.Second)
+	e.advance(5*time.Minute + time.Second)
 	if p := c.get("/"); p.Code != 303 || p.Header().Get("Location") != "/login" {
 		t.Fatalf("a disabled user kept the session: %d", p.Code)
 	}
@@ -251,11 +251,11 @@ func TestApproverTicketSessionIsRecheckedEveryMinute(t *testing.T) {
 	e.land(c, e.ticket(PermRead, PermApprove))
 	c.get("/")
 	e.core.EndSessions("user:alice")
-	e.env.advance(30 * time.Second)
+	e.advance(30 * time.Second)
 	if p := c.get("/"); p.Code != 200 {
 		t.Fatalf("inside the minute: %d", p.Code)
 	}
-	e.env.advance(time.Minute)
+	e.advance(time.Minute)
 	if p := c.get("/"); p.Code != 303 {
 		t.Fatalf("an approver kept the session past a minute: %d", p.Code)
 	}
@@ -274,7 +274,7 @@ func TestCanCoreOutageEndsTicketSessionsAtTheNextCheckAndNeverActivates(t *testi
 		t.Fatalf("the ticket must survive an outage: %d", r.Code)
 	}
 	e.core.SetDown(true)
-	e.env.advance(5*time.Minute + time.Second)
+	e.advance(5*time.Minute + time.Second)
 	if p := c.get("/"); p.Code != 303 {
 		t.Fatalf("an unverifiable session stayed open: %d", p.Code)
 	}

@@ -398,7 +398,7 @@ paths:
     get:
       operationId: listApps
       summary: "Modules with a web UI you may open (E11c)"
-      description: "Enabled modules that declare `runtime.ui`, have an acceptable UI address (https on the company domain, set by configuration, never by the request) and in which you hold at least one of the module's permissions."
+      description: "Enabled modules that declare `runtime.web_login` (their web UI accepts launch tickets), have an acceptable UI address (https on the company domain, set by configuration, never by the request) and in which you hold at least one of the module's permissions."
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AppList" } } } }
         "401": { $ref: "#/components/responses/Problem" }

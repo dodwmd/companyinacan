@@ -45,8 +45,10 @@ body, so a module cannot claim to be another one.
 ## R6. Open redirect
 
 Two places carry a URL: the address the browser is sent to, and the landing path inside the module.
-- The module address is built by can-core from configuration only: manifest `runtime.subdomain` + company
-  domain + `runtime.ui.base_path`, or the operator's `CAN_MODULE_UI_URLS`. `Launcher.validate` requires https
+- Only modules declaring `runtime.web_login` are launchable (an upstream app with `runtime.ui` is not: it does
+  not expect tickets). The address is built by can-core from configuration only: the operator's
+  `CAN_MODULE_UI_URLS`, or (with `web_login.via_subdomain`) `runtime.subdomain` + company domain +
+  `web_login.base_path`. `Launcher.validate` requires https
   (http only in plain-HTTP development, `CAN_COOKIE_SECURE=false`), a host equal to or under the company domain
   (or localhost in development), no userinfo, query or fragment, a path of at most two lowercase segments,
   a valid port, and refuses the admin host (a module in the admin UI's origin could read its cookie scope).
@@ -61,6 +63,11 @@ Login CSRF (an attacker makes a victim's browser sign in as the attacker): the P
 double-submit login cookie (set by the GET) equal to the form field, plus the existing `Sec-Fetch-Site` /
 `Origin` checks. An attacker's ticket in a victim's browser has no matching cookie. Session fixation: a
 session cookie sent with the login is never adopted; a new random id is issued and the old session is deleted.
+
+With `Referrer-Policy: no-referrer` a browser posts a form with `Origin: null` (Fetch standard). The work UI
+refused every `null` origin, which would have refused its own forms in a real browser; it now accepts `null`
+only when the browser-controlled `Sec-Fetch-Site` is `same-origin`. The other module UIs check
+`Sec-Fetch-Site` only. This rests on the standard, not on a browser run.
 
 ## R8. XSS in the launcher
 

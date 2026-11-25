@@ -17,7 +17,7 @@ Contracts: [contracts/ui-routes.md](contracts/ui-routes.md) and the OpenAPI file
 - `core/server/moduleapi`: `POST /v1/tickets/redeem`, `POST /v1/tickets/revalidate`.
 - `core/server/runtime`: builds the service (`CAN_COMPANY_DOMAIN`, `CAN_MODULE_UI_URLS`, `CAN_COOKIE_SECURE`),
   hourly purge.
-- `core/config` + `schemas/module.v1.schema.json`: `runtime.ui.base_path`; typed `Runtime.UI`.
+- `core/config` + `schemas/module.v1.schema.json`: `runtime.web_login {base_path, via_subdomain}` (typed `Runtime.WebLogin`), declared by work, people, jobs and finance.
 - `core/modclient`: `RedeemTicket`, `RevalidateSession`, `SessionAPI`, `TicketShaped`; `fakecore` learns tickets.
 - `core/{work,people,jobs,finance}`: `GET/POST <ui>/login/ticket`, an sso session variant (handle instead of
   token), revalidation on the existing interval, `ui.token_login`. Each module keeps its own session store

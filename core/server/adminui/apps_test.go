@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
 )
@@ -25,7 +26,7 @@ func newAppsUI(t *testing.T) *pui {
 	}
 	m.Manifest.Name = `Expenses <script>alert(1)</script>`
 	m.Manifest.Runtime.Subdomain = "expenses"
-	m.Manifest.Runtime.UI.Service, m.Manifest.Runtime.UI.Port = "expenses", 8080
+	m.Manifest.Runtime.WebLogin = &config.WebLogin{ViaSubdomain: true}
 	if err := p.db.UpsertModule(ctx, m, nil, nil); err != nil {
 		t.Fatal(err)
 	}

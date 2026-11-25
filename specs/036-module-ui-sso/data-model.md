@@ -33,9 +33,14 @@ and RBAC (at least one module permission) on every call.
 
 ## Manifest (`module.v1`)
 
-`runtime.ui` gains an optional `base_path` (`^(/[a-z0-9-]{1,32}){0,2}$`, default none: the UI is at the root
-of the host; work's UI is under `/ui`). `runtime.ui` still requires `runtime.subdomain`. `config.Module`
-carries `Runtime.UI.{Service, Port, BasePath}`.
+New optional `runtime.web_login: {base_path, via_subdomain}` (`config.Module.Runtime.WebLogin`): the module's
+web UI accepts launch tickets at `<base>/login/ticket`. `base_path` matches `^(/[a-z0-9-]{1,32}){0,2}$` (work:
+`/ui`). `via_subdomain: true` means `https://<runtime.subdomain>.<domain>` serves that UI; otherwise only the
+operator's address makes the module launchable. work, people, jobs and finance declare it without
+`via_subdomain`.
+
+`runtime.ui` is deliberately **not** used: it describes the routed web app of an upstream module (wiki, CRM,
+...), which does not understand tickets. Offering those would send tickets to programs that never asked for them.
 
 ## Configuration
 

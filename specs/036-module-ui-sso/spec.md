@@ -39,8 +39,8 @@ have to do it all over again for every module.
   calls; nothing here is specific to in-house modules.
 - Hosting: today no in-house module is routed to a public host by its chart (work, people, finance: none;
   jobs: only `/careers`). The launcher lists a module only when its UI address is configured
-  (`runtime.ui` plus `runtime.subdomain` in the manifest, or the operator's `CAN_MODULE_UI_URLS`), so on a stock
-  install the Apps page is empty. Exposing the module UIs through the ingress is a separate decision (see
+  (the manifest declares `runtime.web_login`, and the operator gives `CAN_MODULE_UI_URLS` or the manifest says
+  the subdomain serves the UI), so on a stock install the Apps page is empty. Exposing the module UIs through the ingress is a separate decision (see
   `docs/sso.md`).
 
 ## User stories
