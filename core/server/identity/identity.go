@@ -21,6 +21,7 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -65,8 +66,12 @@ type Service struct {
 	Audit *audit.Log
 	Now   func() time.Time
 	Log   *slog.Logger
-	// PerMinute bounds revocation calls per module and minute (default 30).
+	// PerMinute bounds revocation calls per module and minute (default 120: a mass offboarding
+	// revokes many people at once, and the caller treats a 429 as "wait", never as a failure).
 	PerMinute int
+	// Providers, when set, resolves a capability to the ids of the enabled modules providing it;
+	// the caller must be one of them. Without it the caller's own manifest is checked.
+	Providers func(ctx context.Context, capability string) ([]string, error)
 
 	mu  sync.Mutex
 	win map[string]*window
@@ -125,7 +130,7 @@ type Result struct {
 func (s *Service) allow(module string) bool {
 	max := s.PerMinute
 	if max <= 0 {
-		max = 30
+		max = 120
 	}
 	now := s.now()
 	s.mu.Lock()
@@ -151,6 +156,15 @@ func (s *Service) Revoke(ctx context.Context, caller store.Module, req Request) 
 	if !provides {
 		return Result{}, ErrNotEntitled
 	}
+	if s.Providers != nil {
+		ids, err := s.Providers(ctx, Capability)
+		if err != nil {
+			return Result{}, err
+		}
+		if !slices.Contains(ids, caller.ID) {
+			return Result{}, ErrNotEntitled // not the resolved provider, or not enabled
+		}
+	}
 	if !partyRe.MatchString(req.PartyID) || !subjectRe.MatchString(req.Subject) {
 		return Result{}, ErrInvalid
 	}
@@ -171,24 +185,85 @@ func (s *Service) Revoke(ctx context.Context, caller store.Module, req Request) 
 	if ref == "" || ref != SubjectRef(req.Subject) {
 		return Result{}, ErrSubjectMismatch
 	}
-	username := strings.TrimPrefix(req.Subject, "user:")
 	var res Result
 	err = s.DB.InTx(ctx, func(tx *sql.Tx) error {
-		r1, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE subject=? AND revoked_at=0`, s.now().Unix(), req.Subject)
-		if err != nil {
+		var err error
+		if res, err = s.end(ctx, tx, req.Subject); err != nil {
 			return err
 		}
-		n1, _ := r1.RowsAffected()
-		r2, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (SELECT id FROM admin_users WHERE username=?)`, username)
-		if err != nil {
-			return err
-		}
-		n2, _ := r2.RowsAffected()
-		res = Result{Tokens: int(n1), Sessions: int(n2)}
 		// Fail closed: a revocation that cannot be audited is rolled back and reported as failed.
 		_, err = s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: "module:" + caller.ID, Action: "identity.revoke", Target: req.PartyID,
 			Detail: map[string]any{"tokens": res.Tokens, "sessions": res.Sessions}})
 		return err
 	})
 	return res, err
+}
+
+// end revokes the subject's tokens, deletes their sessions and push subscriptions and disables the
+// administrator account, in the caller's transaction. Idempotent.
+func (s *Service) end(ctx context.Context, tx *sql.Tx, subject string) (Result, error) {
+	username := strings.TrimPrefix(subject, "user:")
+	now := s.now().Unix()
+	r1, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE subject=? AND revoked_at=0`, now, subject)
+	if err != nil {
+		return Result{}, err
+	}
+	r2, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (SELECT id FROM admin_users WHERE username=?)`, username)
+	if err != nil {
+		return Result{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE admin_users SET disabled_at=? WHERE username=? AND disabled_at=0`, now, username); err != nil {
+		return Result{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE subject=?`, subject); err != nil {
+		return Result{}, err
+	}
+	n1, _ := r1.RowsAffected()
+	n2, _ := r2.RowsAffected()
+	return Result{Tokens: int(n1), Sessions: int(n2)}, nil
+}
+
+// RevokeNow is the administrator's action for a termination that cannot wait for the people module
+// to report the person offboarded (someone still "offboarding", flagged urgent): the same effect as
+// Revoke, without the offboarding check, for a subject the administrator names. The caller must have
+// checked the administrator's permission (rbac.manage); it is audited with the actor and the subject.
+func (s *Service) RevokeNow(ctx context.Context, actor, subject string) (Result, error) {
+	if !subjectRe.MatchString(subject) {
+		return Result{}, ErrInvalid
+	}
+	var res Result
+	err := s.DB.InTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		if res, err = s.end(ctx, tx, subject); err != nil {
+			return err
+		}
+		_, err = s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "identity.revoke_now", Target: subject,
+			Detail: map[string]any{"tokens": res.Tokens, "sessions": res.Sessions}})
+		return err
+	})
+	return res, err
+}
+
+// Reconcile rebuilds the offboarding facts from the stored events of the people module, so a fact
+// missed while this process was down (or lost with the table) is not lost. Call it at start.
+func (s *Service) Reconcile(ctx context.Context) error {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, data_json FROM events WHERE type='person.offboarded.v1' AND source=? ORDER BY time`, PeopleSource)
+	if err != nil {
+		return err
+	}
+	type ev struct{ id, data string }
+	var evs []ev
+	for rows.Next() {
+		var e ev
+		if err := rows.Scan(&e.id, &e.data); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		evs = append(evs, e)
+	}
+	_ = rows.Close()
+	for _, e := range evs {
+		s.HandleOffboarded(ctx, events.Envelope{ID: e.id, Type: "person.offboarded.v1", Source: PeopleSource, Data: json.RawMessage(e.data)})
+	}
+	return nil
 }

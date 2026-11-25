@@ -82,6 +82,16 @@ func (db *DB) AdminByID(ctx context.Context, id int64) (AdminUser, error) {
 	return scanAdmin(db.QueryRowContext(ctx, `SELECT id, username, password_hash, totp_secret, created_at, auth_source FROM admin_users WHERE id=?`, id))
 }
 
+// AdminDisabled reports whether the account is disabled (the person left). Unknown ids count as
+// disabled: fail closed.
+func (db *DB) AdminDisabled(ctx context.Context, id int64) bool {
+	var d int64
+	if err := db.QueryRowContext(ctx, `SELECT disabled_at FROM admin_users WHERE id=?`, id).Scan(&d); err != nil {
+		return true
+	}
+	return d != 0
+}
+
 // SetPasswordHash replaces the stored hash (password change or rehash).
 func (db *DB) SetPasswordHash(ctx context.Context, id int64, hash string) error {
 	_, err := db.ExecContext(ctx, `UPDATE admin_users SET password_hash=? WHERE id=?`, hash, id)

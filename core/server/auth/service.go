@@ -374,6 +374,10 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		return finish(LoginResult{}, ErrInvalidCredentials)
 	}
 	_ = s.db.ClearLoginAttempt(ctx, userKey)
+	if s.db.AdminDisabled(ctx, u.ID) {
+		s.recordBestEffort(ctx, u.Username, "admin.login.refused_disabled", r.IP)
+		return finish(LoginResult{}, ErrInvalidCredentials)
+	}
 	if s.opt.LocalPolicy != nil && !s.opt.LocalPolicy(ctx, u) {
 		s.recordBestEffort(ctx, u.Username, "admin.login.refused_local", r.IP)
 		return finish(LoginResult{}, ErrInvalidCredentials)
@@ -427,7 +431,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (store.Session
 		return store.Session{}, store.AdminUser{}, ErrUnauthenticated
 	}
 	u, err := s.db.AdminByID(ctx, sess.UserID)
-	if err != nil {
+	if err != nil || s.db.AdminDisabled(ctx, u.ID) {
 		return store.Session{}, store.AdminUser{}, ErrUnauthenticated
 	}
 	return sess, u, nil

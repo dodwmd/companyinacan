@@ -763,6 +763,31 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/identity/revoke-now:
+    post:
+      operationId: revokeNow
+      summary: "End the tokens and sessions of an account at once, disable it and drop its push subscriptions (rbac.manage). For a termination that cannot wait for the people module to report the person offboarded. Audited with the actor; never your own account."
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subject]
+              properties:
+                subject: { type: string, pattern: "^user:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" }
+      responses:
+        "200":
+          description: Revoked (counts are zero on a repeat)
+          content:
+            application/json:
+              schema: { type: object, properties: { tokens: { type: integer }, sessions: { type: integer } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/sso/test:
     post:
       operationId: testSSO

@@ -269,7 +269,21 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
 		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
-	idSvc := &identity.Service{DB: db, Audit: al, Log: log}
+	idSvc := &identity.Service{DB: db, Audit: al, Log: log, Providers: func(ctx context.Context, name string) ([]string, error) {
+		res, err := reg.Resolve(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		var ids []string
+		for _, p := range res.Providers {
+			ids = append(ids, p.ModuleID)
+		}
+		return ids, nil
+	}}
+	adminSrv.Identity = idSvc
+	if err := idSvc.Reconcile(ctx); err != nil {
+		log.Warn("identity: reconciling offboarding facts failed", "error", err)
+	}
 	bus.Subscribe("person.offboarded.v1", idSvc.HandleOffboarded)
 	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc}
 
