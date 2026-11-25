@@ -9,7 +9,6 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net"
 	"os"
@@ -18,8 +17,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	_ "github.com/lib/pq"
 
 	"github.com/dodwmd/companyinacan/core/server/dbprov"
 )
@@ -58,7 +55,7 @@ func nsYAML(name string, labels map[string]string) string {
 	if len(labels) > 0 {
 		b.WriteString("  labels:\n")
 		for k, v := range labels {
-			fmt.Fprintf(&b, "    %s: %s\n", k, v)
+			fmt.Fprintf(&b, "    %s: %q\n", k, v)
 		}
 	}
 	return b.String()
@@ -300,14 +297,12 @@ func TestPostgresProvisioner(t *testing.T) {
 	if creds.Database != "mod_crm" || creds.User != "mod_crm" {
 		t.Fatalf("%+v", creds)
 	}
+	// The image trusts connections from localhost (which includes the port-forward), so credentials
+	// are checked from inside the pod over its own address, where scram-sha-256 applies.
 	connect := func(user, password, db string) (string, error) {
-		d, err := sql.Open("postgres", fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/%s?sslmode=disable", user, password, port, db))
-		if err != nil {
-			return "", err
-		}
-		defer func() { _ = d.Close() }()
-		var cur string
-		return cur, d.QueryRow("SELECT current_database()").Scan(&cur)
+		out, err := kubectl("-n", "can-data", "exec", "pg-test", "--", "sh", "-c",
+			fmt.Sprintf(`PGCONNECT_TIMEOUT=5 PGPASSWORD=%s psql -h "$(hostname -i)" -U %s -d %s -tAc "SELECT current_database()"`, password, user, db))
+		return strings.TrimSpace(out), err
 	}
 	if cur, err := connect("mod_crm", "modulePassw0rdAAAAAAAAAAAA", "mod_crm"); err != nil || cur != "mod_crm" {
 		t.Fatalf("the module cannot use its own database: %q %v", cur, err)
