@@ -39,6 +39,18 @@ description: "Task list for Epic E22: Observability, health and diagnostics"
 - [x] T017 Compose: metrics env on every service (private network only), `monitoring` profile with Prometheus and Grafana, pinned tags, localhost-bound, not in the default `up`
 - [ ] T018 [V] `promtool check rules`, Prometheus loading the config, Grafana loading the dashboard (images not pulled in this run)
 
+## Phase 4b: QA follow-ups
+
+- [x] T022 Backup alerts: `backup-textfile.sh` keeps the last good timestamp and writes `can_backup_last_run_ok`; `CanBackupMissing` (`absent`, 1h) and `CanBackupLastRunFailed`; alert rules parsed and checked by `test/contract/monitoring_test.go` (promtool is not available offline); script behaviour tested with a stub `can`
+- [x] T023 `can_audit_verify_ok` and its timestamp exist only after a completed verification; retry after 5 minutes on an error; alert gated on the timestamp
+- [x] T024 Audit `Verify` is keyset-paged (5000 rows) and releases the single SQLite connection between pages; test: a concurrent query waits under 100 ms on a 30,000-record log; damage across page boundaries still found
+- [x] T025 Diagnose: `RedactConfig` removes nested values under secret, URL, email and contact keys and all block-scalar text; `--compose-project` validated; claims reworded to secrets and email addresses
+- [x] T026 `/readyz` checks run detached from the first caller's context and are shared by concurrent probes (no lock held while checking)
+- [x] T027 Log redaction scans structured values (maps, structs, http.Header, byte slices, Stringers, pointers) and messages
+- [x] T028 Warn when `CAN_METRICS_TOKEN_FILE` is group or world readable
+- [x] T029 `CanNotReady` renamed `CanHighServerErrorRatio` with a minimum request rate
+- [x] T030 Finance merge: route pattern in the access log; `logPath` kept for its tests
+
 ## Phase 5: Docs and measurement
 
 - [x] T019 `docs/observability.md`, SPEC cross-references, `docs/local-compose.md`, epics table
