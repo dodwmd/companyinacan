@@ -1,0 +1,18 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "job.opened.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "jobs",
+  "data": {
+    "job_id": "job_00000000000000a1",
+    "slug": "senior-engineer-00a1b2",
+    "title": "Senior Engineer",
+    "department": "Engineering",
+    "employment_type": "full_time",
+    "remote": "hybrid",
+    "reopened": false,
+    "opened_at": "2026-11-25T09:00:00Z",
+    "actor": "rita@example.com",
+    "name": "Ada Example"
+  }
+}

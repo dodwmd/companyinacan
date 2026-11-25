@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<source>
+  <publisher>Example Co</publisher>
+  <publisherurl>https://example.test</publisherurl>
+  <lastBuildDate>Fri, 20 Nov 2026 12:00:00 UTC</lastBuildDate>
+  <job>
+    <title>Senior Engineer</title>
+    <date>Sun, 01 Nov 2026 00:00:00 UTC</date>
+    <referencenumber>job_0000000000000001</referencenumber>
+    <url>https://example.test/careers/senior-engineer-0001</url>
+    <company>Example Co</company>
+    <sourcename>Example Co</sourcename>
+    <city>Austin</city>
+    <state>TX</state>
+    <country>US</country>
+    <postalcode>78701</postalcode>
+    <description><![CDATA[<h3>About the role</h3><p>Build things.</p><p>Ship them &lt;b&gt;safely&lt;/b&gt; &amp; often.</p><h3>Requirements</h3><p>Go.</p>]]></description>
+    <salary>150000 - 190000 USD a year</salary>
+    <jobtype>fulltime</jobtype>
+    <category>Engineering</category>
+    <remotetype>Hybrid</remotetype>
+  </job>
+  <job>
+    <title>Support Agent</title>
+    <date>Tue, 10 Nov 2026 00:00:00 UTC</date>
+    <referencenumber>job_0000000000000002</referencenumber>
+    <url>https://example.test/careers/support-agent-0002</url>
+    <company>Example Co</company>
+    <sourcename>Example Co</sourcename>
+    <country>DE</country>
+    <description><![CDATA[<h3>Role</h3><p>Help customers.</p>]]></description>
+    <jobtype>parttime</jobtype>
+    <category>Support</category>
+    <remotetype>Fully remote</remotetype>
+  </job>
+</source>

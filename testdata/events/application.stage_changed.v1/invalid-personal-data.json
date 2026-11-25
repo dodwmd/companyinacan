@@ -1,0 +1,17 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "application.stage_changed.v1",
+  "time": "2026-11-25T09:00:00Z",
+  "source": "jobs",
+  "data": {
+    "application_id": "app_00000000000000b1",
+    "job_id": "job_00000000000000a1",
+    "candidate_id": "cand_00000000000000c1",
+    "from": "screen",
+    "to": "interview",
+    "status": "active",
+    "actor": "rita@example.com",
+    "changed_at": "2026-11-25T09:00:00Z",
+    "name": "Ada Example"
+  }
+}

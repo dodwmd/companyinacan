@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jobs generated="2026-11-20T12:00:00Z" company="Example Co">
+  <job>
+    <id>job_0000000000000001</id>
+    <title>Senior Engineer</title>
+    <url>https://example.test/careers/senior-engineer-0001</url>
+    <apply_url>https://example.test/careers/senior-engineer-0001#apply</apply_url>
+    <department>Engineering</department>
+    <employment_type>full_time</employment_type>
+    <remote>hybrid</remote>
+    <location>
+      <city>Austin</city>
+      <region>TX</region>
+      <country>US</country>
+      <postal_code>78701</postal_code>
+    </location>
+    <applicant_countries></applicant_countries>
+    <salary>
+      <min>150000</min>
+      <max>190000</max>
+      <currency>USD</currency>
+      <period>year</period>
+    </salary>
+    <date_posted>2026-11-01</date_posted>
+    <valid_through>2027-01-15</valid_through>
+    <description_html>&lt;h3&gt;About the role&lt;/h3&gt;&lt;p&gt;Build things.&lt;/p&gt;&lt;p&gt;Ship them &amp;lt;b&amp;gt;safely&amp;lt;/b&amp;gt; &amp;amp; often.&lt;/p&gt;&lt;h3&gt;Requirements&lt;/h3&gt;&lt;p&gt;Go.&lt;/p&gt;</description_html>
+  </job>
+  <job>
+    <id>job_0000000000000002</id>
+    <title>Support Agent</title>
+    <url>https://example.test/careers/support-agent-0002</url>
+    <apply_url>https://example.test/careers/support-agent-0002#apply</apply_url>
+    <department>Support</department>
+    <employment_type>part_time</employment_type>
+    <remote>remote</remote>
+    <location>
+      <country>DE</country>
+    </location>
+    <applicant_countries>
+      <country>DE</country>
+      <country>AT</country>
+    </applicant_countries>
+    <date_posted>2026-11-10</date_posted>
+    <valid_through>2027-02-01</valid_through>
+    <description_html>&lt;h3&gt;Role&lt;/h3&gt;&lt;p&gt;Help customers.&lt;/p&gt;</description_html>
+  </job>
+</jobs>

@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/ats.v1.json",
+  "title": "ats.v1",
+  "description": "Capability `ats` (SPEC.md section 4.3, Recruiting): the applicant tracking pipeline. Applications, candidates, stage moves, rejections with reasons and the hire hand-off. Candidate data is personal data: contact and sealed fields are masked by role, interviewers see a name and the resume only, diversity data is never part of this contract, and every read of candidate data is audited. Consumers must not depend on anything not in this file.",
+  "x-capability": "ats",
+  "x-verbs": [
+    {
+      "verb": "list_applications",
+      "method": "GET",
+      "path": "/v1/applications",
+      "response": "ApplicationList",
+      "permission": "ats.read",
+      "description": "Query: job_id, candidate_id, stage, status, cursor, limit. Names and pipeline state only; sealed text is in the detail."
+    },
+    {
+      "verb": "get_application",
+      "method": "GET",
+      "path": "/v1/applications/{id}",
+      "response": "Application",
+      "permission": "ats.read",
+      "description": "Fields the caller's role may not see are absent and named in restricted_fields. The read is audited."
+    },
+    {
+      "verb": "move",
+      "method": "POST",
+      "path": "/v1/applications/{id}/move",
+      "request": "MoveRequest",
+      "response": "Application",
+      "write": true,
+      "permission": "ats.write"
+    },
+    {
+      "verb": "reject",
+      "method": "POST",
+      "path": "/v1/applications/{id}/reject",
+      "request": "RejectRequest",
+      "response": "Application",
+      "write": true,
+      "permission": "ats.write"
+    },
+    {
+      "verb": "hire",
+      "method": "POST",
+      "path": "/v1/applications/{id}/hire",
+      "response": "Application",
+      "write": true,
+      "permission": "ats.hire",
+      "description": "Only from an offer stage. Publishes candidate.hired.v1."
+    },
+    {
+      "verb": "get_candidate",
+      "method": "GET",
+      "path": "/v1/candidates/{id}",
+      "response": "Candidate",
+      "permission": "ats.read",
+      "description": "The people module reads name and contact details here after candidate.hired.v1. Contact fields depend on role; every read is audited."
+    }
+  ],
+  "$defs": {
+    "Application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "job_id",
+        "candidate_id",
+        "candidate_name",
+        "stage",
+        "status",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^app_[0-9a-f]{16}$"
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{16}$"
+        },
+        "job_title": {
+          "type": "string"
+        },
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "candidate_name": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "rejected",
+            "withdrawn",
+            "hired"
+          ]
+        },
+        "reject_reason": {
+          "type": "string"
+        },
+        "reject_note": {
+          "type": "string"
+        },
+        "cover_letter": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "resume": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "interviewers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "history": {
+          "type": "array"
+        },
+        "restricted_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "decided_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ApplicationList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Application"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "Candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "tags",
+        "talent_pool",
+        "consent_at",
+        "consent_version",
+        "erased"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^cand_[0-9a-f]{16}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "salary_expectation": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "type": "string"
+        },
+        "talent_pool": {
+          "type": "boolean"
+        },
+        "talent_consent_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "consent_at": {
+          "type": "string"
+        },
+        "consent_version": {
+          "type": "string"
+        },
+        "retain_until": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "legal_hold": {
+          "type": "boolean"
+        },
+        "erased": {
+          "type": "boolean"
+        },
+        "restricted_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      }
+    },
+    "MoveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,29}$"
+        }
+      }
+    },
+    "RejectRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "enum": [
+            "not_a_fit",
+            "unqualified",
+            "position_filled",
+            "no_response",
+            "compensation",
+            "withdrew",
+            "other"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      }
+    }
+  }
+}

@@ -37,3 +37,13 @@ var DirectoryV1 []byte
 //
 //go:embed performance.v1.json
 var PerformanceV1 []byte
+
+// JobsV1 is the contract of the `jobs` capability (in-house jobs module: requisitions, careers pages, feeds).
+//
+//go:embed jobs.v1.json
+var JobsV1 []byte
+
+// AtsV1 is the contract of the `ats` capability (in-house jobs module: applications, candidates, pipeline).
+//
+//go:embed ats.v1.json
+var AtsV1 []byte
