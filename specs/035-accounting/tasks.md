@@ -36,6 +36,10 @@ description: "Task list for Epic E15c: accounting interfaces"
 - [x] T015 `module.yaml`: permissions, roles, data classes, RAM re-measured (R9) and kept at 28/64; retention purge for decided bank transactions
 - [x] T016 `docs/accounting.md` with disclaimers and limits; `docs/finance.md`, `docs/finance-ui.md`, `docs/module-wiring.md`, epics README
 
+## Phase 5: QA on PR #46
+
+- [x] T017 Eighteen QA findings, one commit and a regression test each (`core/finance/qa_ledger_test.go`): bank number panic and transaction rollback; export cursor by posting number; CAMT dedup; one account and currency per file; purge foreign key; cut-over opening entry; hand reversal of manual journals only; payroll re-import; skipped rows and force import; linear CAMT remittance; bounded export batch; digit grouping; repeated sign-off; linking an existing payment; erasure report and no copied bank text; OFX leaves and currency; provider payment into a closed period; line moves
+
 ## Gaps (not done)
 
 - [ ] G01 `[V]` Real Xero, QuickBooks and Wave adapters (documented stubs only); they belong in their own module with their own credentials

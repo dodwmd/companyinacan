@@ -94,3 +94,5 @@ the file downloads byte for byte; the named products answer "not implemented".
 - **FR-014** Exports are batches with a cursor, stored content, a hash, an audit entry and idempotency; stubs do nothing.
 - **FR-015** Accounting records survive party erasure; decided bank transactions are purged with their retention period; unmatched ones never.
 - **FR-016** Events carry ids, numbers, counts and minor-unit totals only.
+- **FR-017** Automatic posting starts with a cut-over: one opening entry per currency for open receivables and unreimbursed claims; every later hook
+  relieves it for older documents. Only manual and payroll journals are reversed by hand, never by their drafter or poster.
