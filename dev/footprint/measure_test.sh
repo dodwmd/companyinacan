@@ -17,6 +17,7 @@ fi
 exit 0
 EOF
 # can and kubectl fail, which ends the run right after the cluster would have been created.
+# shellcheck disable=SC2016 # $* and $CALLS are for the stand-in to expand
 printf '#!/bin/sh\necho "can $*" >>"$CALLS"\nexit 1\n' >"$tmp/bin/can"
 printf '#!/bin/sh\nexit 1\n' >"$tmp/bin/kubectl"
 chmod +x "$tmp/bin/k3d" "$tmp/bin/can" "$tmp/bin/kubectl"
