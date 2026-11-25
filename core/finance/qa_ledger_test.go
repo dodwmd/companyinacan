@@ -528,3 +528,60 @@ func TestQALineCannotMoveIntoAPostedEntry(t *testing.T) {
 		t.Error("lines were moved into a posted entry")
 	}
 }
+
+func (e *env) importCSV(tok string, bank int64, force bool, rows string) StatementResult {
+	e.t.Helper()
+	path := "/v1/bank/accounts/" + id(bank) + "/statements?format=csv&delimiter=comma&date_col=1&amount_col=2&reference_col=3"
+	if force {
+		path += "&force_duplicates=true"
+	}
+	var res StatementResult
+	if code := e.do(tok, "POST", path, "d,a,r\n"+rows, &res); code != 201 && code != 200 {
+		e.t.Fatalf("import = %d", code)
+	}
+	return res
+}
+
+func (e *env) bankRows() int {
+	var n int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM bank_transactions`).Scan(&n)
+	return n
+}
+
+// QA round 2, 1: force works on the very file whose rows were skipped, and adds them once.
+func TestQA2ForceOnAnAlreadyImportedFile(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	e.importCSV(admin, b.ID, false, "2026-06-10,10.00,coffee\n")
+	second := "2026-06-10,10.00,coffee\n2026-06-11,1.00,x\n"
+	if r := e.importCSV(admin, b.ID, false, second); r.NewCount != 1 || len(r.Skipped) != 1 {
+		t.Fatalf("%+v", r)
+	}
+	r := e.importCSV(admin, b.ID, true, second)
+	if !r.AlreadyImported || r.NewCount != 1 || r.DuplicateCount != 1 || r.TransactionCnt != 2 || e.bankRows() != 3 {
+		t.Fatalf("force on the imported file: %+v, %d rows", r, e.bankRows())
+	}
+	if r := e.importCSV(admin, b.ID, true, second); r.NewCount != 0 || e.bankRows() != 3 {
+		t.Errorf("forced twice: %+v, %d rows", r, e.bankRows())
+	}
+	if r := e.importCSV(admin, b.ID, true, "2026-06-10,10.00,coffee\n"); r.NewCount != 0 || e.bankRows() != 3 {
+		t.Errorf("forcing a file that owns its rows: %+v, %d rows", r, e.bankRows())
+	}
+}
+
+// QA round 2, 2: a forced row is recognised by the next cumulative statement.
+func TestQA2ForcedRowIsNotImportedAgainByACumulativeFile(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	e.importCSV(admin, b.ID, false, "2026-06-10,10.00,coffee\n")
+	e.importCSV(admin, b.ID, true, "2026-06-10,10.00,coffee\n2026-06-12,2.00,y\n") // a second, real coffee
+	before := e.bankRows()
+	r := e.importCSV(admin, b.ID, false, "2026-06-10,10.00,coffee\n2026-06-10,10.00,coffee\n2026-06-12,2.00,y\n2026-06-13,3.00,z\n")
+	var coffee int
+	_ = e.app.store.db.QueryRow(`SELECT COUNT(*) FROM bank_transactions WHERE reference = 'coffee'`).Scan(&coffee)
+	if coffee != 2 || r.NewCount != 1 || e.bankRows() != before+1 {
+		t.Errorf("%d coffee rows for 2 real, %+v", coffee, r)
+	}
+}

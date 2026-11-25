@@ -280,6 +280,9 @@ func appendCapped(s, v string, max int) string {
 	return s + v
 }
 
+// servicerKeyPrefix marks a CAMT key built from the account servicer's reference and the entry's content.
+const servicerKeyPrefix = "a:"
+
 // derivedKeyPrefix marks a key made from the row's content, as opposed to the bank's own id.
 const derivedKeyPrefix = "h:"
 
@@ -292,11 +295,21 @@ func deriveKeys(txns []ParsedTxn) {
 		if t.Key != "" {
 			continue
 		}
-		base := strings.Join([]string{t.Date, fmt.Sprint(t.AmountMinor), t.Currency, t.Reference, t.Counterparty, t.Description}, "\x1f")
+		base := contentOf(*t)
 		count[base]++
-		sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x1e%d", base, count[base])))
-		t.Key = derivedKeyPrefix + hex.EncodeToString(sum[:16])
+		t.Key = contentKey(base, count[base])
 	}
+}
+
+// contentOf is what makes two rows without a bank id "equal".
+func contentOf(t ParsedTxn) string {
+	return strings.Join([]string{t.Date, fmt.Sprint(t.AmountMinor), t.Currency, t.Reference, t.Counterparty, t.Description}, "\x1f")
+}
+
+// contentKey is the key of the n-th (from 1) row with that content.
+func contentKey(content string, n int) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x1e%d", content, n)))
+	return derivedKeyPrefix + hex.EncodeToString(sum[:16])
 }
 
 // ---- CSV ----------------------------------------------------------------------------------
