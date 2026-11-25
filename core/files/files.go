@@ -24,6 +24,7 @@ type UploadRequest struct {
 	Subject     string // opaque id of the data subject (a candidate, a person), for erasure
 	Ref         string // opaque reference of the owning object, "<module>:<id>"
 	Body        io.Reader
+	Size        int64 // the declared length, when known (0 or less: unknown)
 }
 
 // ---- reading rows -------------------------------------------------------------------------------
@@ -166,6 +167,33 @@ func (s *Store) stage(ctx context.Context, body io.Reader, name string) (*staged
 	return st, nil
 }
 
+// uploadSlot reserves one of the bounded upload slots without waiting; call the returned function
+// to give it back.
+func (s *Store) uploadSlot() (func(), error) {
+	select {
+	case s.uploads <- struct{}{}:
+		return func() { <-s.uploads }, nil
+	default:
+		return nil, fmt.Errorf("%w: too many uploads in progress, retry shortly", ErrUnavailable)
+	}
+}
+
+// checkRoom refuses, before a byte is read or staged, an upload the space owner's quota cannot
+// take. The transaction that records the file checks again with the real size.
+func (s *Store) checkRoom(ctx context.Context, spaceID string, declared int64) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	var owner string
+	if err := s.db.QueryRowContext(ctx, `SELECT owner FROM spaces WHERE (id = ?)`, spaceID).Scan(&owner); err != nil {
+		return err
+	}
+	used, err := s.ownerUsage(ctx, s.db, owner)
+	if err != nil {
+		return err
+	}
+	return checkQuota(used, max(declared, 1), s.cfg.Limits.QuotaBytesPerOwner)
+}
+
 func (s *Store) scannerReady() error {
 	if _, noop := s.scanner.(NoopScanner); noop && s.cfg.ScannerRequired() {
 		return fmt.Errorf("%w: no virus scanner is configured, so uploads are closed (scanner.required)", ErrUnavailable)
@@ -279,6 +307,14 @@ func (s *Store) Upload(ctx context.Context, p *Principal, req UploadRequest) (*F
 	if err := s.checkWritable(ctx, p, req.SpaceID, "file.upload"); err != nil {
 		return nil, err
 	}
+	if err := s.checkRoom(ctx, req.SpaceID, req.Size); err != nil {
+		return nil, err
+	}
+	release, err := s.uploadSlot()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	st, err := s.stage(ctx, req.Body, name)
 	if err != nil {
 		return nil, err
@@ -397,7 +433,7 @@ func (s *Store) checkWritable(ctx context.Context, p *Principal, spaceID, action
 
 // UploadVersion adds an immutable version to a file. Editors and managers. The type must match
 // the file's extension like any upload.
-func (s *Store) UploadVersion(ctx context.Context, p *Principal, fileID string, body io.Reader) (*FileView, error) {
+func (s *Store) UploadVersion(ctx context.Context, p *Principal, fileID string, body io.Reader, declared ...int64) (*FileView, error) {
 	if !p.Has(PermWrite) {
 		return nil, ErrForbidden
 	}
@@ -413,6 +449,18 @@ func (s *Store) UploadVersion(ctx context.Context, p *Principal, fileID string, 
 	if f.status != "active" {
 		return nil, conflict("restore the file before adding a version")
 	}
+	var size int64
+	if len(declared) > 0 {
+		size = declared[0]
+	}
+	if err := s.checkRoom(ctx, f.spaceID, size); err != nil {
+		return nil, err
+	}
+	release, err := s.uploadSlot()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	st, err := s.stage(ctx, body, "x."+f.ext)
 	if err != nil {
 		return nil, err
@@ -689,15 +737,19 @@ func (s *Store) openVersion(ctx context.Context, f *fileRow, version int) (*Cont
 	var key string
 	c := &Content{FileID: f.id, store: s, ContentType: "application/octet-stream", Ext: f.ext}
 	var purged sql.NullInt64
+	var scan string
 	qctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	err := s.db.QueryRowContext(qctx, `SELECT n, blob_key, size, sha256, content_type, purged_at FROM versions WHERE (file_id = ?) AND (n = CASE WHEN ? = 0 THEN ? ELSE ? END)`,
-		f.id, version, f.cur, version).Scan(&c.Version, &key, &c.Size, &c.SHA256, &c.StoredType, &purged)
+	err := s.db.QueryRowContext(qctx, `SELECT n, blob_key, size, sha256, content_type, purged_at, scan FROM versions WHERE (file_id = ?) AND (n = CASE WHEN ? = 0 THEN ? ELSE ? END)`,
+		f.id, version, f.cur, version).Scan(&c.Version, &key, &c.Size, &c.SHA256, &c.StoredType, &purged, &scan)
 	if errors.Is(err, sql.ErrNoRows) || purged.Valid {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	if s.cfg.ScannerRequired() && scan != string(ScanClean) {
+		return nil, conflict("this version was never scanned and scanning is now required")
 	}
 	name, err := s.unseal("files", f.id, "name_sealed", f.nameS)
 	if err != nil {

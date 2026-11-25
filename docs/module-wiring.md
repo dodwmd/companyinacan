@@ -185,7 +185,7 @@ offboarded yet or not yet effective, 429 rate limited. See [`provisioning.md`](p
 
 ## The files module (E13e)
 
-can-core generates `CAN_FILES_API_TOKEN`, `CAN_FILES_LINK_SECRET` and the sealed-field `keyring` for the `files`
+can-core generates `CAN_FILES_API_TOKEN`, `CAN_FILES_RESTORE_TOKEN`, `CAN_FILES_LINK_SECRET` and the sealed-field `keyring` for the `files`
 module (`core/server/modsecrets`). Personal access tokens are introspected like the other in-house modules:
 `kind` user, subject `user:<name>`, and the permissions `files.read`, `files.write` and `files.admin`
 become the coarse gate; the role in the space decides the rest. The module publishes `file.uploaded.v1`,

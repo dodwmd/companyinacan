@@ -52,14 +52,13 @@ func NewLocalBackend(dir string) (*LocalBackend, error) {
 	if err := os.Chmod(filepath.Join(dir, ".tmp"), 0o700); err != nil {
 		return nil, err
 	}
-	b := &LocalBackend{dir: dir}
-	b.sweepTemp()
-	return b, nil
+	return &LocalBackend{dir: dir}, nil
 }
 
-// sweepTemp removes temporary files a crash left behind (a rename never happened, so no
-// database row names them).
-func (b *LocalBackend) sweepTemp() {
+// SweepTemp removes temporary files a crash left behind (a rename never happened, so no database
+// row names them). Only the serving process calls it, at start: a maintenance command running next
+// to it must not remove a write in flight.
+func (b *LocalBackend) SweepTemp() {
 	ents, _ := os.ReadDir(filepath.Join(b.dir, ".tmp"))
 	for _, e := range ents {
 		_ = os.Remove(filepath.Join(b.dir, ".tmp", e.Name()))

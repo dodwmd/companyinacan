@@ -174,10 +174,6 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	defer func() { _ = st.Close() }()
-	if err := st.SetStaging(cfg.StagingDir); err != nil {
-		fmt.Fprintf(stderr, "start: staging directory: %v\n", err)
-		return 2
-	}
 	switch cmd {
 	case "verify-audit":
 		if err := st.VerifyAudit(context.Background()); err != nil {
@@ -207,6 +203,14 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	auth := MultiAuth{StaticToken{Token: sec.APIToken}, StaticRestoreToken{Token: sec.RestoreToken}}
 	if can != nil {
 		auth = append(auth, &CanAuth{In: &modclient.Introspector{API: can}})
+	}
+	// Only now, as the one serving process, is it safe to clear what a crash left behind.
+	if err := st.SetStaging(cfg.StagingDir); err != nil {
+		fmt.Fprintf(stderr, "start: staging directory: %v\n", err)
+		return 2
+	}
+	if local, ok := be.(*LocalBackend); ok {
+		local.SweepTemp()
 	}
 	api := &API{Store: st, Auth: auth, Log: log, TrustProxy: cfg.TrustProxy}
 	ln, err := listen(cfg.Listen)

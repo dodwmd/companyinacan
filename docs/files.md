@@ -80,7 +80,16 @@ Limits (all configurable, all with defaults): file size (25 MiB), files per spac
 file (100), spaces per owner (100), members per space (500), folder depth (8), storage quota per space
 owner (5 GiB, counted over the versions that have not been purged), live share links per file (20).
 Refusals are 413 (too large, quota, caps), 415 (type), 422 (infected), 503 (no scanner, scanner failed).
-There is no resumable or chunked upload: a failed upload is repeated.
+There is no resumable or chunked upload: a failed upload is repeated. At most
+`limits.max_concurrent_uploads` (4) uploads run at once (503 beyond that, nothing read), and an upload the
+owner's quota cannot take is refused before it is staged (the final check is in the recording transaction).
+
+**What the type check does not do.** It looks at the extension and the leading bytes only. For the Office
+and OpenDocument types it checks the ZIP local-file signature, not the entries inside: any ZIP renamed to
+`.docx` (including one holding executables or macros) passes, and the archive is never opened. For text
+types only the first 4 KiB must be UTF-8 without NUL bytes: binary content further in is not detected. The
+virus scanner, the attachment-only download and the fixed `application/octet-stream` type are what limit
+the harm; the check is not content validation.
 
 ### Virus scanning
 
@@ -125,6 +134,10 @@ download when created `one_time`, and stops working when the file is deleted or 
 - The token is in the URL path and nowhere else: access metrics and errors carry the route pattern
   (`GET /s/{token}`), never the URL, and the service writes no access log of paths.
 - A `HEAD` request is refused (405) and does not count as a use. A `GET` does: a mail or chat link previewer that fetches a one-time link before the recipient does will use it up, so send one-time links only over channels that do not unfurl them.
+- Removing a member, or demoting them below editor, revokes in the same transaction the links that rested
+  on that grant (the person's or a group's), unless another of the creator's grants still allows sharing.
+  A person who leaves a directory group is **not** seen: their links last until they expire or are revoked.
+- A version stored unscanned is not served (409, links answer 404) once `scanner.required` is on.
 - Rotating `CAN_FILES_LINK_SECRET` ends every live link. Revoking one link is `DELETE /v1/shares/{id}`.
 - Only `/s/` is exposed by the chart's ingress. The recipient needs no account and the response is the
   same attachment as any download.
@@ -135,28 +148,39 @@ download when created `one_time`, and stops working when the file is deleted or 
   hold, or a retention date that has not passed, makes it a 409.
 - **Retention sweep** (every `sweep_interval_hours`, or `can-files sweep`) purges files that have been in
   the trash `trash_days` (30 by default; 0 never purges), skipping held files and files before their
-  retention date, removes pending blobs older than an hour and drops old outbox rows. Purging deletes
+  retention date, finishes interrupted purges, removes pending blobs older than an hour and drops old outbox rows. Purging deletes
   every blob (zeroed first on a plain filesystem), blanks the sealed names, the version references and
   checksums, deletes the share links, writes tombstones and an audit entry per file and queues
   `file.deleted.v1` (`reason` `retention`). The row stays as an empty shell so ids never come back.
-- **Legal hold and retention date** are set only by `files.admin` (`PUT /v1/files/{id}/hold`): the
-  people who manage a space cannot lift a hold placed on it. A hold blocks deletion, the sweep and an
-  erasure request; it does not block adding a version.
+- **A purge is claimed, then carried out.** One transaction re-checks holds, retention dates and state,
+  marks the files `purging` and writes the tombstones. From then on they are invisible and a hold, restore,
+  new version or share link is refused. Then exactly the blobs of the claimed versions are deleted and the
+  result recorded. A crash or storage failure in between is finished by the next sweep or a repeat.
+- **Legal hold and retention date** are set only by `files.admin` (`PUT /v1/files/{id}/hold`): the people
+  who manage a space cannot lift a hold placed on it. `legal_hold` is required in every request; an omitted
+  `retain_until` leaves the date as it is and `null` clears it. Both block deletion, the sweep, erasure on
+  request (409) and the purge route; neither blocks adding a version.
 - **Erasure** (`POST /v1/subjects/{subject}/erasure`, `files.admin`) purges every file whose `subject` is
-  the given opaque id, in order: the blobs, then one transaction (names, versions, links, tombstones,
-  audit, events), then `VACUUM` and a truncating WAL checkpoint so the erased names are not left in free
-  pages or the write-ahead log. A hold on any of the files blocks the whole request (409). It is
-  idempotent and a repeat retries the scrub.
-- **Tombstones** (`GET /v1/erasures`, `files.admin`) are `(subject, class, date)` rows in the format of
-  the backup erasure ledger, for the classes `file-content` and `file-metadata`, written by erasure and by
-  every retention purge (the subject is the file id for a file that has none) so a restore from an older
-  backup cannot bring the content back. `POST /v1/purge` is the `purge(subject, class)` hook the restore
-  replays: idempotent, it matches a subject or a file id, ignores holds (the erasure was authorised when
-  the tombstone was written) and an unknown subject is a no-op. Neither class is reachable on its own:
-  both purge the whole file.
+  the given opaque id (no row limit), then runs `VACUUM` and a truncating WAL checkpoint so the erased names
+  are not left in free pages or the write-ahead log. A held or retention-dated file blocks the whole request
+  (409). It is idempotent and a repeat finishes an interrupted erasure and retries the scrub.
+- **Tombstones** (`GET /v1/erasures`, `files.admin`) are `(subject, class, date)` rows in the format of the
+  backup erasure ledger, for the classes `file-content` and `file-metadata`. An erasure request writes them
+  for the subject. A retention purge writes them for the **file id** only, so a restore never removes the
+  subject's other files.
+- **`POST /v1/purge`** is the `purge(subject, class)` hook the restore replays: idempotent, it matches a
+  subject or a file id, and an unknown subject is a no-op. An administrator gets 409 for a held or
+  retention-dated file. Only the restore-only credential `CAN_FILES_RESTORE_TOKEN` (optional; it opens
+  this route and nothing else) ignores them, audited as `file.restore_purge`. can-core generates it, but
+  nothing in can-core calls this route yet. Neither class is reachable on its own: both purge the whole
+  file.
 - Backups and snapshots taken earlier still hold the data until they expire; the ledger re-applies the
   erasure after a restore. The zeroing of a deleted blob is not a guarantee on copy-on-write or SSD
   storage.
+- **S3 versioned buckets.** If the bucket has object versioning (or object lock, replication or its own
+  backups), `DELETE` only adds a delete marker: the bytes of a "purged" or erased file stay as a
+  noncurrent version until a bucket lifecycle rule expires it. Use an unversioned bucket, or set a rule
+  that expires noncurrent versions within the period you promise; this module does not and cannot check.
 
 ## Sealed metadata, audit, keys
 
@@ -172,8 +196,7 @@ module**.
 The audit log is hash-chained and append-only at the database level (triggers refuse UPDATE and
 DELETE; `can-files verify-audit` recomputes the chain). It holds actor, action, resource id and field
 names; never a name, a label or content. Writes record their audit entry **in the same transaction** as
-the change: an action that cannot be audited does not happen. Reads (`file.read`, `file.download`,
-`share.download`) are audited before the data is returned and fail closed. Refusals are audited too,
+the change: an action that cannot be audited does not happen. Every read that returns sealed metadata or content (spaces, folders, files and their lists, versions, share lists, member lists, downloads and share downloads) is audited before the data is returned and fails closed. Refusals are audited too,
 throttled per actor. The chain protects against edits only if the latest hash is kept somewhere the
 editor cannot reach.
 
@@ -205,7 +228,7 @@ can-files serve | check-config | healthcheck | verify-audit | rotate-keys | swee
 
 Secrets are environment variables, never config: `CAN_FILES_API_TOKEN` (the service token: it acts as
 `svc:static`, holds `files.admin`, owns the spaces it creates and sees nothing it has no role in) and
-`CAN_FILES_LINK_SECRET` (32+ characters, 10+ distinct), plus `CAN_FILES_S3_ACCESS_KEY_ID` and
+`CAN_FILES_LINK_SECRET` (32+ characters, 10+ distinct), optionally `CAN_FILES_RESTORE_TOKEN` (the restore-only credential above), plus `CAN_FILES_S3_ACCESS_KEY_ID` and
 `CAN_FILES_S3_SECRET_ACCESS_KEY` for S3. can-core generates the first two and the keyring. Personal access
 tokens are introspected through can-core (`kind` user, subject `user:<name>`, permissions `files.*`).
 

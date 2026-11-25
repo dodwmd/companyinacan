@@ -17,11 +17,14 @@ Helm-compatible templates for the in-house files module, rendered by can-core's 
 - The sealed-field keyring is the `keyring` key of the `can-module` Secret, mounted with `subPath` at
   `/etc/can-files/keyring`, mode `0440` plus `fsGroup: 65532` (the loader accepts 0400, 0440 and 0600).
 
+- can-core also generates `CAN_FILES_RESTORE_TOKEN`, the restore-only credential of `POST /v1/purge`.
+
 ## Known gaps (not covered by any test here)
 
 - **S3 credentials.** can-core generates `CAN_FILES_API_TOKEN` and `CAN_FILES_LINK_SECRET` and the
   keyring. The S3 credentials are not generated and the installer refuses a reference to any other
   Secret, so there is no supported way yet to provide them: the local backend is the working default.
+- **Versioned S3 buckets** keep deleted objects until a lifecycle rule expires them (docs/files.md).
 - **Egress** to an S3 endpoint or a ClamAV service depends on the module namespace NetworkPolicy.
 - **Groups.** No directory group resolver is wired; only user grants apply.
 

@@ -57,8 +57,8 @@ data_classes:
   # The bytes of every version. Purged after the trash period, on erasure and by the restore-time
   # ledger replay; never in the database, never in events.
   - { class: file-content, retention: 30d, sensitivity: sensitive }
-  # File, folder and space names, descriptions and share labels. Sealed per field; every read
-  # audited; never in events.
+  # File, folder and space names, descriptions and share labels. Sealed per field; every read,
+  # lists included, audited before it is returned; never in events.
   - { class: file-metadata, retention: 30d, sensitivity: sensitive }
 settings_schema: ./settings.schema.json
 healthcheck: /healthz

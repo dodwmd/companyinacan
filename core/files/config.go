@@ -51,15 +51,17 @@ type BackendConfig struct {
 
 // LimitsConfig bounds uploads and what one person can keep.
 type LimitsConfig struct {
-	MaxFileBytes       int64    `yaml:"max_file_bytes"`
-	MaxFilesPerSpace   int      `yaml:"max_files_per_space"`
-	MaxVersionsPerFile int      `yaml:"max_versions_per_file"`
-	MaxSpacesPerOwner  int      `yaml:"max_spaces_per_owner"`
-	QuotaBytesPerOwner int64    `yaml:"quota_bytes_per_owner"`
-	MaxFolderDepth     int      `yaml:"max_folder_depth"`
-	MaxMembersPerSpace int      `yaml:"max_members_per_space"`
-	AllowedTypes       []string `yaml:"allowed_types"` // extensions, checked against the magic bytes
-	UploadTimeout      string   `yaml:"upload_timeout"`
+	MaxFileBytes       int64 `yaml:"max_file_bytes"`
+	MaxFilesPerSpace   int   `yaml:"max_files_per_space"`
+	MaxVersionsPerFile int   `yaml:"max_versions_per_file"`
+	MaxSpacesPerOwner  int   `yaml:"max_spaces_per_owner"`
+	QuotaBytesPerOwner int64 `yaml:"quota_bytes_per_owner"`
+	MaxFolderDepth     int   `yaml:"max_folder_depth"`
+	MaxMembersPerSpace int   `yaml:"max_members_per_space"`
+	// MaxConcurrentUploads bounds the uploads in progress (staging disk, scanner load).
+	MaxConcurrentUploads int      `yaml:"max_concurrent_uploads"`
+	AllowedTypes         []string `yaml:"allowed_types"` // extensions, checked against the magic bytes
+	UploadTimeout        string   `yaml:"upload_timeout"`
 }
 
 // ScannerConfig is the virus-scan hook.
@@ -147,6 +149,9 @@ func (c *Config) defaults() {
 	if len(l.AllowedTypes) == 0 {
 		l.AllowedTypes = DefaultTypes
 	}
+	if l.MaxConcurrentUploads == 0 {
+		l.MaxConcurrentUploads = 4
+	}
 	if l.UploadTimeout == "" {
 		l.UploadTimeout = "2m"
 	}
@@ -232,7 +237,8 @@ func (c *Config) validate() error {
 		v    int
 		max  int
 	}{{"max_files_per_space", l.MaxFilesPerSpace, 1_000_000}, {"max_versions_per_file", l.MaxVersionsPerFile, 10_000},
-		{"max_spaces_per_owner", l.MaxSpacesPerOwner, 100_000}, {"max_folder_depth", l.MaxFolderDepth, 32}, {"max_members_per_space", l.MaxMembersPerSpace, 10_000}} {
+		{"max_spaces_per_owner", l.MaxSpacesPerOwner, 100_000}, {"max_folder_depth", l.MaxFolderDepth, 32}, {"max_members_per_space", l.MaxMembersPerSpace, 10_000},
+		{"max_concurrent_uploads", l.MaxConcurrentUploads, 1000}} {
 		if f.v < 1 || f.v > f.max {
 			return fmt.Errorf("config: limits.%s must be between 1 and %d", f.name, f.max)
 		}

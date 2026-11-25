@@ -258,6 +258,12 @@ func (s *Store) OpenShare(ctx context.Context, token, client string) (*Content, 
 		if fr.status != "active" || revoked.Valid || expires <= ts(now) {
 			return errShareGone
 		}
+		if s.cfg.ScannerRequired() {
+			var scan string
+			if err := tx.QueryRowContext(ctx, `SELECT scan FROM versions WHERE (file_id = ?) AND (n = ?)`, fileID, version).Scan(&scan); err != nil || scan != string(ScanClean) {
+				return errShareGone // never use up a link on a version that may not be served
+			}
+		}
 		res, err := tx.ExecContext(ctx, `UPDATE shares SET uses = uses + 1 WHERE (id = ?) AND (revoked_at IS NULL) AND (expires_at > ?) AND ((one_time = 0) OR (uses = 0))`, id, ts(now))
 		if err != nil {
 			return err

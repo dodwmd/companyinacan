@@ -44,6 +44,7 @@ config:
   limits:
     max_file_bytes: 26214400
     quota_bytes_per_owner: 5368709120
+    max_concurrent_uploads: 4
     allowed_types: [pdf, png, jpg, jpeg, gif, webp, docx, xlsx, pptx, odt, ods, odp, rtf, txt, csv, md]
   scanner:
     required: true         # no upload is accepted until a real virus scanner is wired in

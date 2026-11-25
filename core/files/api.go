@@ -419,7 +419,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request, p *Principal) error
 	ctx, cancel := context.WithTimeout(r.Context(), a.uploadBudget())
 	defer cancel()
 	f, err := a.Store.Upload(ctx, p, UploadRequest{SpaceID: r.PathValue("id"), FolderID: q.Get("folder"), Name: q.Get("name"), Description: q.Get("description"),
-		Subject: q.Get("subject"), Ref: q.Get("ref"), Body: body})
+		Subject: q.Get("subject"), Ref: q.Get("ref"), Body: body, Size: r.ContentLength})
 	if err != nil {
 		return err
 	}
@@ -437,7 +437,7 @@ func (a *API) uploadVersion(w http.ResponseWriter, r *http.Request, p *Principal
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), a.uploadBudget())
 	defer cancel()
-	f, err := a.Store.UploadVersion(ctx, p, r.PathValue("id"), body)
+	f, err := a.Store.UploadVersion(ctx, p, r.PathValue("id"), body, r.ContentLength)
 	if err != nil {
 		return err
 	}

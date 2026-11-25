@@ -60,15 +60,19 @@ The failure limiter counts only failures per client address, bounded to 10,000 a
 token never consults it, so an attacker behind a shared address cannot lock a legitimate recipient out of
 a valid link. Rotating the link secret ends every link: that is deliberate and documented.
 
-## R8. Erasure, tombstones and the WAL
+## R8. Erasure, claims, tombstones and the WAL
 
-Same order as `core/jobs`: delete blobs first (idempotent, so a failure leaves every reference and the
-whole request can be repeated), then one transaction (names, versions, links, tombstones, audit, events),
-then `VACUUM` and `wal_checkpoint(TRUNCATE)`. The tombstone subject is the data subject, or the file id
-for a file that has none, so the restore-time `purge(subject, class)` replay can find either. A legal
-hold blocks a *request*; the replay ignores holds because the erasure was authorised when the tombstone
-was written. Retention purges write tombstones too, so a restore from an old backup does not resurrect
-files whose retention has ended.
+A purge decides and destroys in two steps. The decision is one transaction that re-checks holds,
+retention dates and state, marks files `purging` and writes tombstones; a first version that checked, then
+deleted blobs, then recorded could destroy a file held in between and orphan a version uploaded in
+between. Then the claimed versions' blobs are deleted (idempotent) and one transaction records it; a
+`purging` file is finished by the next sweep. After an erasure, `VACUUM` and `wal_checkpoint(TRUNCATE)`.
+
+Tombstone subjects: an erasure request writes the data subject; retention and hook purges write the file
+id, because a subject-wide tombstone for one expired file would make a restore delete everything the
+subject has. The `purge(subject, class)` route refuses held and retention-dated files for administrators;
+only a separate restore-only credential ignores them, because a replayed tombstone was authorised when it
+was written.
 
 ## R9. RAM, measured locally
 

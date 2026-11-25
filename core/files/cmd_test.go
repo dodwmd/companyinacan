@@ -124,9 +124,6 @@ func TestMainCommandsAndWiring(t *testing.T) {
 	if c, o, _ := run("sweep"); c != 0 || !strings.Contains(o, "purged 0") {
 		t.Errorf("sweep: %d %q", c, o)
 	}
-	if st, err := os.Stat(filepath.Join(dir, "stage")); err != nil || st.Mode().Perm() != 0o700 {
-		t.Errorf("staging dir: %v %v", st, err)
-	}
 	// a keyring readable by everyone is refused
 	if err := os.Chmod(filepath.Join(dir, "keyring"), 0o666); err != nil {
 		t.Fatal(err)

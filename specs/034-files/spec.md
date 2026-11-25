@@ -52,7 +52,7 @@ employee documents) get somewhere to put the bytes and a contract to reference t
 - FR-4 Immutable versions, each with its own blob, size, SHA-256 and scan result; download by number.
 - FR-5 Metadata change (name, description, folder) with optimistic concurrency; the extension is fixed.
 - FR-6 Soft delete into a trash, restore, purge after `trash_days`; legal hold and retention date
-  block deletion and purge.
+  block deletion, erasure and purge; a purge is claimed in one transaction before anything is deleted.
 - FR-7 Share links: signed, expiring, revocable, optionally one-time, pinned to a version, public route
   `GET /s/{token}`.
 - FR-8 A scanner hook (`Scanner`) that fails closed; a clamd client; `scanner.required` defaults to true.
@@ -71,7 +71,7 @@ employee documents) get somewhere to put the bytes and a contract to reference t
   reads nothing; a hold can be lifted only by `files.admin`.
 - SR-3 Names, descriptions and share labels are sealed with a per-row AAD; keys rotate with a
   compare-and-swap; erasure scrubs the WAL.
-- SR-4 Audit before return for reads (fail closed), in the same transaction for writes, hash-chained and
+- SR-4 Audit before return for every read of sealed metadata or content, lists included (fail closed), in the same transaction for writes, hash-chained and
   append-only; entries carry ids and field names only.
 - SR-5 Storage keys are random; no user-controlled path exists; names are sanitised for display and headers.
 - SR-6 Downloads are attachments of `application/octet-stream`, nosniff, sandboxed CSP, never cached; no
