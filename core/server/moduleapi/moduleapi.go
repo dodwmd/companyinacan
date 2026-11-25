@@ -17,6 +17,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/modauth"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 )
 
 // Authenticator resolves a bearer token to an installed, enabled module.
@@ -70,11 +71,15 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) authed(h func(http.ResponseWriter, *http.Request, store.Module)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		m, err := s.Auth.Authenticate(r.Context(), httpx.BearerToken(r))
+		m, err := s.Auth.Authenticate(tokenreview.WithSource(r.Context(), httpx.ClientIP(r, false)), httpx.BearerToken(r))
 		switch {
 		case errors.Is(err, modauth.ErrUnauthenticated):
 			w.Header().Set("WWW-Authenticate", `Bearer realm="can"`)
 			httpx.Problem(w, http.StatusUnauthorized, "a valid projected ServiceAccount token (audience can) is required")
+			return
+		case errors.Is(err, tokenreview.ErrRateLimited):
+			w.Header().Set("Retry-After", "1")
+			httpx.Problem(w, http.StatusTooManyRequests, "too many token reviews; slow down")
 			return
 		case errors.Is(err, modauth.ErrForbidden):
 			httpx.Problem(w, http.StatusForbidden, "module is not enabled")
@@ -125,6 +130,9 @@ func (s *Server) introspect(w http.ResponseWriter, r *http.Request, _ store.Modu
 		httpx.WriteJSON(w, http.StatusOK, introspectResponse{Active: true, ModuleID: m.ID, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount})
 	case errors.Is(err, modauth.ErrUnauthenticated), errors.Is(err, modauth.ErrForbidden):
 		httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
+	case errors.Is(err, tokenreview.ErrRateLimited):
+		w.Header().Set("Retry-After", "1")
+		httpx.Problem(w, http.StatusTooManyRequests, "too many token reviews; slow down")
 	default:
 		s.Log.Error("introspection failed", "request_id", httpx.RequestID(r.Context()), "error", err)
 		httpx.Problem(w, http.StatusBadGateway, "token review unavailable")

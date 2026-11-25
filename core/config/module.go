@@ -20,6 +20,7 @@ type Module struct {
 	} `yaml:"provider"`
 	Runtime struct {
 		Chart     string `yaml:"chart"`
+		Values    string `yaml:"values"`
 		Subdomain string `yaml:"subdomain"`
 	} `yaml:"runtime"`
 	Requires struct {
