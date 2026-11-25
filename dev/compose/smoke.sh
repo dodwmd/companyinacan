@@ -19,7 +19,7 @@ WORK_TOKEN="${WORK_TOKEN:-$(secret work CAN_WORK_ADMIN_TOKEN)}"
 FORMS_TOKEN="${FORMS_TOKEN:-$(secret forms CAN_FORMS_API_TOKEN)}"
 
 resolve=()
-for h in localhost admin.localhost work.localhost people.localhost jobs.localhost finance.localhost forms.localhost; do
+for h in localhost admin.localhost work.localhost people.localhost jobs.localhost finance.localhost forms.localhost equity.localhost; do
   resolve+=(--resolve "$h:$port:127.0.0.1")
 done
 curlx() { curl -sS --max-time 15 "${resolve[@]}" "$@"; }
@@ -110,6 +110,9 @@ expect_status "jobs healthz" 200 "http://jobs.localhost:$port/healthz"
 expect_status "jobs careers page" 200 "http://jobs.localhost:$port/careers"
 expect_status "finance healthz" 200 "http://finance.localhost:$port/healthz"
 expect_status "work healthz" 200 "http://work.localhost:$port/healthz"
+expect_status "equity healthz" 200 "http://equity.localhost:$port/healthz"
+expect_status "equity API refuses a request without a token" 401 "http://equity.localhost:$port/v1/entities"
+expect_status "unknown Host header gets nothing (421)" 421 -H "Host: evil.example" "http://localhost:$port/"
 
 # 5b. people web UI (E13c): login page, anonymous redirect, a wrong token is refused, API unchanged
 expect_status "people UI login page" 200 "http://people.localhost:$port/login"
