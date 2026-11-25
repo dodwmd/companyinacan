@@ -1,0 +1,773 @@
+openapi: 3.1.0
+info:
+  title: can-jobs REST API and public pages
+  version: 1.0.0
+  summary: Jobs and recruiting module (capabilities `jobs` and `ats`).
+  description: |
+    The complete HTTP surface of the in-house jobs module (`cmd/can-jobs`): the cluster-internal API
+    under /v1 and the public careers pages, feeds and apply form. The stable subset other modules may
+    depend on is `schemas/capabilities/jobs.v1.json` and `ats.v1.json`.
+
+    Authentication (/v1): `Authorization: Bearer <token>`. A token has one role (admin, recruiter,
+    hiring_manager, interviewer) and may be limited to some jobs. Anything outside a caller's scope is
+    reported as 404, never 403, so ids cannot be probed. A role that may not call an operation at all
+    gets 403. Global operations (tokens, audit, erasure, EEO, stages) need an unscoped admin token.
+
+    Conventions: JSON bodies with unknown fields rejected (400); validation problems are 422 with a
+    per-field list; `ETag`/`If-Match` guard job edits (412 when stale); lists take `limit` (max 200) and an
+    opaque `cursor`. Candidate data is personal data: sealed fields are absent for roles that may not
+    see them (named in `restricted_fields`), and every read that returns candidate data is audited.
+    Every operation's `x-roles` is checked by a test against the router's action matrix.
+
+    The public paths carry no credentials and must be the only ones exposed through the ingress.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://jobs.mod-jobs.svc.cluster.local:8080
+    description: In-cluster (ClusterIP only for /v1)
+security:
+  - bearer: []
+tags:
+  - { name: meta }
+  - { name: jobs }
+  - { name: pipeline }
+  - { name: candidates }
+  - { name: privacy }
+  - { name: admin }
+  - { name: public }
+paths:
+  /careers:
+    get:
+      tags: [public]
+      operationId: get_careers
+      security: []
+      summary: Careers list page (HTML); filters q, dept, remote, type
+      responses:
+        "200": { description: Ok, content: { text/html: { schema: { type: string } } } }
+  /careers/applied:
+    get:
+      tags: [public]
+      operationId: get_careers_applied
+      security: []
+      summary: Thank-you page (noindex)
+      responses:
+        "200": { description: Ok, content: { text/html: { schema: { type: string } } } }
+  /careers/assets/careers.css:
+    get:
+      tags: [public]
+      operationId: get_careers_assets_careers_css
+      security: []
+      summary: Stylesheet
+      responses:
+        "200": { description: Ok, content: { text/css: { schema: { type: string } } } }
+  /careers/jobs.json:
+    get:
+      tags: [public]
+      operationId: get_careers_jobs_json
+      security: []
+      summary: JSON feed - schema.org JobPosting objects for open jobs
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/JobPostings" } } } }
+  /careers/sitemap.xml:
+    get:
+      tags: [public]
+      operationId: get_careers_sitemap_xml
+      security: []
+      summary: Sitemap of open jobs
+      responses:
+        "200": { description: Ok, content: { application/xml: { schema: { type: string } } } }
+  /careers/{slug}:
+    get:
+      tags: [public]
+      operationId: get_careers_slug
+      security: []
+      summary: Job page with JobPosting JSON-LD and the apply form; noindex when paused, closed or expired
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { text/html: { schema: { type: string } } } }
+  /careers/{slug}/apply:
+    post:
+      tags: [public]
+      operationId: post_careers_slug_apply
+      security: []
+      summary: Submit an application (multipart/form-data); 303 to /careers/applied. Spam controls - timing token, honeypot, same-origin, per-address rate limit
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "303": { description: Done }
+        "403": { description: Rejected }
+        "409": { description: Rejected }
+        "413": { description: Rejected }
+        "422": { description: Rejected }
+        "429": { description: Rejected }
+  /feeds/generic.xml:
+    get:
+      tags: [public]
+      operationId: get_feeds_generic_xml
+      security: []
+      summary: Generic XML job feed
+      responses:
+        "200": { description: Ok, content: { application/xml: { schema: { type: string } } } }
+  /feeds/indeed.xml:
+    get:
+      tags: [public]
+      operationId: get_feeds_indeed_xml
+      security: []
+      summary: Indeed-format XML job feed (Indeed accepts feeds from approved partners only)
+      responses:
+        "200": { description: Ok, content: { application/xml: { schema: { type: string } } } }
+  /healthz:
+    get:
+      tags: [meta]
+      operationId: get_healthz
+      security: []
+      summary: Liveness and database check (no authentication)
+      responses:
+        "200": { description: Healthy, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+  /robots.txt:
+    get:
+      tags: [public]
+      operationId: get_robots_txt
+      security: []
+      summary: robots.txt (for hosts this service owns)
+      responses:
+        "200": { description: Ok, content: { text/plain: { schema: { type: string } } } }
+  /v1/applications:
+    get:
+      tags: [pipeline]
+      operationId: get_v1_applications
+      x-roles: admin, recruiter, hiring_manager, interviewer (assigned only)
+      summary: List applications in scope (names and pipeline state only)
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/ApplicationList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [pipeline]
+      operationId: post_v1_applications
+      x-roles: admin, recruiter
+      summary: Add a sourced candidate to a job (recruiter attests consent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManualApplication" }
+      responses:
+        "201": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Application" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}:
+    get:
+      tags: [pipeline]
+      operationId: get_v1_applications_id
+      x-roles: admin, recruiter, hiring_manager, interviewer (assigned only)
+      summary: One application; fields the role may not see are absent and listed in restricted_fields
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Application" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/hire:
+    post:
+      tags: [pipeline]
+      operationId: post_v1_applications_id_hire
+      x-roles: admin, recruiter
+      summary: Hire from an offer stage; publishes candidate.hired.v1
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Application" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/interviewers/{subject}:
+    put:
+      tags: [pipeline]
+      operationId: put_v1_applications_id_interviewers_subject
+      x-roles: admin, recruiter, hiring_manager
+      summary: Assign an interviewer
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: subject, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [pipeline]
+      operationId: delete_v1_applications_id_interviewers_subject
+      x-roles: admin, recruiter, hiring_manager
+      summary: Remove an interviewer and their draft scorecard
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: subject, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/move:
+    post:
+      tags: [pipeline]
+      operationId: post_v1_applications_id_move
+      x-roles: admin, recruiter, hiring_manager
+      summary: Move an active application to a stage
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveRequest" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Application" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/reject:
+    post:
+      tags: [pipeline]
+      operationId: post_v1_applications_id_reject
+      x-roles: admin, recruiter, hiring_manager
+      summary: Reject with a reason code and an optional sealed note
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectRequest" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Application" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/resume:
+    get:
+      tags: [pipeline]
+      operationId: get_v1_applications_id_resume
+      x-roles: admin, recruiter, hiring_manager, interviewer (assigned only)
+      summary: Download the resume (attachment, audited, never when infected)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/octet-stream: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/scorecards:
+    get:
+      tags: [pipeline]
+      operationId: get_v1_applications_id_scorecards
+      x-roles: assigned or in-scope roles
+      summary: Feedback the caller may see; assigned interviewers see peers' submitted feedback only after submitting their own
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/ScorecardList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/scorecards/mine:
+    put:
+      tags: [pipeline]
+      operationId: put_v1_applications_id_scorecards_mine
+      x-roles: assigned interviewers
+      summary: Save the caller's own draft scorecard
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScorecardInput" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Scorecard" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/applications/{id}/scorecards/mine/submit:
+    post:
+      tags: [pipeline]
+      operationId: post_v1_applications_id_scorecards_mine_submit
+      x-roles: assigned interviewers
+      summary: Submit the caller's scorecard (final)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Scorecard" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/audit:
+    get:
+      tags: [admin]
+      operationId: get_v1_audit
+      x-roles: admin (unscoped token)
+      summary: Append-only audit log, newest first
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/AuditList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/boards:
+    get:
+      tags: [jobs]
+      operationId: get_v1_boards
+      x-roles: admin, recruiter, hiring_manager
+      summary: Configured boards and their status (feed, connected, needs_partner_access)
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/BoardList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/candidates:
+    get:
+      tags: [candidates]
+      operationId: get_v1_candidates
+      x-roles: admin, recruiter, hiring_manager
+      summary: List or look up candidates (email lookup finds duplicates)
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/CandidateList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/candidates/{id}:
+    get:
+      tags: [candidates]
+      operationId: get_v1_candidates_id
+      x-roles: admin, recruiter, hiring_manager
+      summary: One candidate; contact and sealed fields depend on role; audited
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Candidate" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [candidates]
+      operationId: patch_v1_candidates_id
+      x-roles: admin, recruiter
+      summary: Edit tags and recruiter-owned sealed fields
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CandidatePatch" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Candidate" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/candidates/{id}/erasure:
+    post:
+      tags: [privacy]
+      operationId: post_v1_candidates_id_erasure
+      x-roles: admin (unscoped token)
+      summary: Erase a candidate and record tombstones
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Erasure" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/candidates/{id}/legal-hold:
+    put:
+      tags: [privacy]
+      operationId: put_v1_candidates_id_legal_hold
+      x-roles: admin (unscoped token)
+      summary: Place or lift a legal hold
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LegalHoldRequest" }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/candidates/{id}/talent-pool:
+    put:
+      tags: [candidates]
+      operationId: put_v1_candidates_id_talent_pool
+      x-roles: admin, recruiter
+      summary: Record or withdraw talent-pool consent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TalentPoolRequest" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Candidate" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/eeo-report:
+    get:
+      tags: [privacy]
+      operationId: get_v1_eeo_report
+      x-roles: admin (unscoped token)
+      summary: Diversity aggregates with small cells suppressed; never individual rows
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/EEOReport" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/erasures:
+    get:
+      tags: [privacy]
+      operationId: get_v1_erasures
+      x-roles: admin (unscoped token)
+      summary: Erasure tombstones after a cursor (the backup ledger feed)
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/ErasureList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/events/dead:
+    get:
+      tags: [admin]
+      operationId: get_v1_events_dead
+      x-roles: admin (unscoped token)
+      summary: Events not delivered within the window
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Generic" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/events/{id}/replay:
+    post:
+      tags: [admin]
+      operationId: post_v1_events_id_replay
+      x-roles: admin (unscoped token)
+      summary: Replay a dead event
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/jobs:
+    get:
+      tags: [jobs]
+      operationId: get_v1_jobs
+      x-roles: admin, recruiter, hiring_manager
+      summary: List jobs the caller may see
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/JobList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [jobs]
+      operationId: post_v1_jobs
+      x-roles: admin, recruiter (unscoped token)
+      summary: Create a draft job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewJob" }
+      responses:
+        "201": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/jobs/{id}:
+    get:
+      tags: [jobs]
+      operationId: get_v1_jobs_id
+      x-roles: admin, recruiter, hiring_manager
+      summary: Get one job (ETag carries the version)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [jobs]
+      operationId: patch_v1_jobs_id
+      x-roles: admin, recruiter
+      summary: Edit a job that is not closed (If-Match guards stale writes)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobPatch" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/jobs/{id}/approval:
+    post:
+      tags: [jobs]
+      operationId: post_v1_jobs_id_approval
+      x-roles: admin
+      summary: Record the approver's decision (never the requester)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalDecision" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/jobs/{id}/approval-requests:
+    post:
+      tags: [jobs]
+      operationId: post_v1_jobs_id_approval_requests
+      x-roles: admin, recruiter
+      summary: Ask the approval hook to approve a draft requisition
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/jobs/{id}/syndication:
+    get:
+      tags: [jobs]
+      operationId: get_v1_jobs_id_syndication
+      x-roles: admin, recruiter, hiring_manager
+      summary: Per-board state of a job
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/BoardStateList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/jobs/{id}/transitions:
+    post:
+      tags: [jobs]
+      operationId: post_v1_jobs_id_transitions
+      x-roles: admin, recruiter
+      summary: Open, pause, reopen or close a job
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransitionRequest" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/me:
+    get:
+      tags: [meta]
+      operationId: get_v1_me
+      x-roles: any
+      summary: Who the token is, its role and job scope
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/purge:
+    post:
+      tags: [privacy]
+      operationId: post_v1_purge
+      x-roles: admin (unscoped token)
+      summary: purge(subject, class) hook - idempotent replay after a restore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PurgeRequest" }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/retention/run:
+    post:
+      tags: [privacy]
+      operationId: post_v1_retention_run
+      x-roles: admin (unscoped token)
+      summary: Run the retention sweep now
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/RetentionReport" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/stages:
+    get:
+      tags: [pipeline]
+      operationId: get_v1_stages
+      x-roles: any
+      summary: The pipeline stages
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/StageList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      tags: [pipeline]
+      operationId: put_v1_stages
+      x-roles: admin (unscoped token)
+      summary: Replace the pipeline (stages in use cannot be removed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StageList" }
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/StageList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/talent-pool:
+    get:
+      tags: [candidates]
+      operationId: get_v1_talent_pool
+      x-roles: admin, recruiter
+      summary: Candidates who opted into the talent pool
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/CandidateList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/tokens:
+    get:
+      tags: [admin]
+      operationId: get_v1_tokens
+      x-roles: admin (unscoped token)
+      summary: List tokens (never secrets)
+      responses:
+        "200": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/TokenList" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [admin]
+      operationId: post_v1_tokens
+      x-roles: admin (unscoped token)
+      summary: Create a token; the secret is shown once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewToken" }
+      responses:
+        "201": { description: Ok, content: { application/json: { schema: { $ref: "#/components/schemas/TokenCreated" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /v1/tokens/{id}:
+    delete:
+      tags: [admin]
+      operationId: delete_v1_tokens_id
+      x-roles: admin (unscoped token)
+      summary: Revoke a token
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        errors: { type: array, items: { type: object, properties: { field: { type: string }, message: { type: string } } } }
+    Me: { type: object, properties: { subject: { type: string }, kind: { type: string }, token_id: { type: string }, role: { enum: [admin, recruiter, hiring_manager, interviewer] }, jobs: { type: array, items: { type: string } } } }
+    Ok: { type: object, properties: { ok: { type: boolean } } }
+    Generic: { type: object }
+    JobPostings: { type: array, items: { type: object } }
+    Job: { $ref: "../../../schemas/capabilities/jobs.v1.json#/$defs/Job" }
+    JobList: { $ref: "../../../schemas/capabilities/jobs.v1.json#/$defs/JobList" }
+    NewJob: { $ref: "../../../schemas/capabilities/jobs.v1.json#/$defs/NewJob" }
+    JobPatch: { type: object, description: Any NewJob field except valid_through semantics (a date); clear_salary removes the pay range }
+    TransitionRequest: { $ref: "../../../schemas/capabilities/jobs.v1.json#/$defs/TransitionRequest" }
+    ApprovalDecision: { type: object, required: [decision], properties: { decision: { enum: [approve, reject] } } }
+    BoardList: { $ref: "../../../schemas/capabilities/jobs.v1.json#/$defs/BoardList" }
+    BoardStateList: { type: object, properties: { items: { type: array, items: { type: object } } } }
+    StageList: { type: object, properties: { items: { type: array, items: { type: object, required: [key, name, kind], properties: { key: { type: string }, name: { type: string }, kind: { enum: [initial, active, offer, hired] }, position: { type: integer } } } } } }
+    Application: { $ref: "../../../schemas/capabilities/ats.v1.json#/$defs/Application" }
+    ApplicationList: { $ref: "../../../schemas/capabilities/ats.v1.json#/$defs/ApplicationList" }
+    ManualApplication: { type: object, required: [job_id, name, email, consent_recorded], properties: { job_id: { type: string }, name: { type: string }, email: { type: string }, phone: { type: string }, cover_letter: { type: string }, source: { type: string }, consent_recorded: { type: boolean }, talent_pool: { type: boolean } } }
+    MoveRequest: { $ref: "../../../schemas/capabilities/ats.v1.json#/$defs/MoveRequest" }
+    RejectRequest: { $ref: "../../../schemas/capabilities/ats.v1.json#/$defs/RejectRequest" }
+    Scorecard: { type: object, properties: { id: { type: string }, application_id: { type: string }, author: { type: string }, rating: { type: integer, minimum: 1, maximum: 4 }, recommendation: { enum: [strong_no, no, yes, strong_yes] }, comments: { type: string }, status: { enum: [draft, submitted] }, submitted_at: { type: [string, "null"] } } }
+    ScorecardInput: { type: object, required: [rating, recommendation], properties: { rating: { type: integer, minimum: 1, maximum: 4 }, recommendation: { enum: [strong_no, no, yes, strong_yes] }, comments: { type: string, maxLength: 5000 } } }
+    ScorecardList: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Scorecard" } }, hidden_until_submitted: { type: integer } } }
+    Candidate: { $ref: "../../../schemas/capabilities/ats.v1.json#/$defs/Candidate" }
+    CandidateList: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Candidate" } }, next_cursor: { type: string } } }
+    CandidatePatch: { type: object, properties: { tags: { type: array, items: { type: string } }, notes: { type: string }, address: { type: string }, salary_expectation: { type: string }, phone: { type: string } } }
+    TalentPoolRequest: { type: object, required: [member], properties: { member: { type: boolean } } }
+    LegalHoldRequest: { type: object, required: [hold], properties: { hold: { type: boolean } } }
+    PurgeRequest: { type: object, required: [subject, class], properties: { subject: { type: string, pattern: "^cand_[0-9a-f]{16}$" }, class: { enum: [candidate-pii, candidate-resumes, candidate-evaluations] } } }
+    Erasure: { type: object, properties: { subject: { type: string }, classes: { type: array, items: { type: string } }, date: { type: string } } }
+    ErasureList: { type: object, properties: { items: { type: array, items: { type: object, properties: { seq: { type: integer }, subject: { type: string }, class: { type: string }, date: { type: string } } } } } }
+    RetentionReport: { type: object, properties: { candidates_purged: { type: integer }, skipped_legal_hold: { type: integer }, jobs_expired: { type: integer }, jobs_deleted: { type: integer }, eeo_deleted: { type: integer } } }
+    EEOReport: { type: object, description: "Counts per answer; count is null when the cell has fewer than min_cell responses.", properties: { job_id: { type: string }, responses: { type: [integer, "null"] }, min_cell: { type: integer }, fields: { type: object } } }
+    NewToken: { type: object, required: [kind, subject, name, role], properties: { kind: { enum: [personal, service] }, subject: { type: string }, name: { type: string }, role: { enum: [admin, recruiter, hiring_manager, interviewer] }, jobs: { type: array, items: { type: string } }, expires_at: { type: [string, "null"] } } }
+    TokenCreated: { type: object, properties: { token: { type: object }, secret: { type: string, description: Shown once } } }
+    TokenList: { type: object, properties: { items: { type: array, items: { type: object } } } }
+    AuditList: { type: object, properties: { items: { type: array, items: { type: object } }, next_cursor: { type: string } } }
