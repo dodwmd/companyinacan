@@ -23,10 +23,11 @@ import (
 )
 
 type ticketEnv struct {
-	t   *testing.T
-	srv *httptest.Server
-	svc *ticket.Service
-	db  *store.DB
+	t    *testing.T
+	srv  *httptest.Server
+	svc  *ticket.Service
+	db   *store.DB
+	bind map[string]string // ticket -> launching browser's nonce
 }
 
 func newTicketEnv(t *testing.T) *ticketEnv {
@@ -57,7 +58,7 @@ func newTicketEnv(t *testing.T) *ticketEnv {
 			return subject == "user:alice" && strings.HasSuffix(perm, ".read"), nil
 		}}
 	s := &Server{Auth: modauth.New(tr, db), Registry: registry.New(db, "http://can-core"), Bus: events.NewBus(db), Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), Tickets: svc}
-	e := &ticketEnv{t: t, db: db, svc: svc, srv: httptest.NewServer(s.Handler())}
+	e := &ticketEnv{t: t, db: db, svc: svc, bind: map[string]string{}, srv: httptest.NewServer(s.Handler())}
 	t.Cleanup(e.srv.Close)
 	return e
 }
@@ -81,17 +82,18 @@ func (e *ticketEnv) call(path, token string, body any) (int, string) {
 
 func (e *ticketEnv) mint(module string) string {
 	e.t.Helper()
-	res, err := e.svc.Launch(context.Background(), "user:alice", module, "/x")
+	res, err := e.svc.Launch(context.Background(), "user:alice", module, "/x", time.Time{})
 	if err != nil {
 		e.t.Fatal(err)
 	}
+	e.bind[res.URL[strings.Index(res.URL, "t=")+2:]] = res.Binding
 	return res.URL[strings.Index(res.URL, "t=")+2:]
 }
 
 func TestRedeemOverHTTP(t *testing.T) {
 	e := newTicketEnv(t)
 	tk := e.mint("work")
-	code, body := e.call("/v1/tickets/redeem", "tok-work", map[string]string{"ticket": tk})
+	code, body := e.call("/v1/tickets/redeem", "tok-work", map[string]string{"ticket": tk, "binding": e.bind[tk]})
 	if code != 200 {
 		t.Fatalf("%d %s", code, body)
 	}
@@ -129,8 +131,18 @@ func TestRedeemOverHTTP(t *testing.T) {
 func TestInactiveAnswersAreByteIdentical(t *testing.T) {
 	e := newTicketEnv(t)
 	used := e.mint("work")
-	e.call("/v1/tickets/redeem", "tok-work", map[string]string{"ticket": used})
+	e.call("/v1/tickets/redeem", "tok-work", map[string]string{"ticket": used, "binding": e.bind[used]})
 	foreign := e.mint("work")
+	for _, p := range []string{"/v1/tickets/redeem", "/v1/tickets/peek"} {
+		for _, b := range []string{"", "canb_" + strings.Repeat("A", 43)} {
+			if code, body := e.call(p, "tok-work", map[string]string{"ticket": foreign, "binding": b}); code != 200 || body != `{"active":false}` {
+				t.Errorf("%s without the browser nonce: %d %s", p, code, body)
+			}
+		}
+	}
+	if code, body := e.call("/v1/tickets/peek", "tok-work", map[string]string{"ticket": foreign, "binding": e.bind[foreign]}); code != 200 || !strings.Contains(body, `"subject":"user:alice"`) || strings.Contains(body, "session") {
+		t.Errorf("peek: %d %s", code, body)
+	}
 	cases := map[string]struct{ tok, ticket string }{
 		"replayed":         {"tok-work", used},
 		"another audience": {"tok-people", foreign},
@@ -142,7 +154,7 @@ func TestInactiveAnswersAreByteIdentical(t *testing.T) {
 		"personal access token": {"tok-work", "canpat_" + strings.Repeat("a", 43)},
 	}
 	for name, c := range cases {
-		code, body := e.call("/v1/tickets/redeem", c.tok, map[string]string{"ticket": c.ticket})
+		code, body := e.call("/v1/tickets/redeem", c.tok, map[string]string{"ticket": c.ticket, "binding": e.bind[c.ticket]})
 		if code != 200 || body != `{"active":false}` {
 			t.Errorf("%s: %d %s", name, code, body)
 		}
@@ -152,7 +164,7 @@ func TestInactiveAnswersAreByteIdentical(t *testing.T) {
 func TestTicketsNeedAModuleTokenAndTheRoutesAreNotIntrospection(t *testing.T) {
 	e := newTicketEnv(t)
 	tk := e.mint("work")
-	if code, _ := e.call("/v1/tickets/redeem", "", map[string]string{"ticket": tk}); code != 401 {
+	if code, _ := e.call("/v1/tickets/redeem", "", map[string]string{"ticket": tk, "binding": e.bind[tk]}); code != 401 {
 		t.Fatalf("anonymous redeem -> %d", code)
 	}
 	if code, _ := e.call("/v1/tickets/revalidate", "forged", map[string]string{"session": "x"}); code != 401 {
@@ -164,7 +176,7 @@ func TestTicketsNeedAModuleTokenAndTheRoutesAreNotIntrospection(t *testing.T) {
 		t.Fatalf("a ticket introspected: %d %s", code, body)
 	}
 	// ... and it is still redeemable afterwards: introspection did not consume it.
-	if code, body := e.call("/v1/tickets/redeem", "tok-work", map[string]string{"ticket": tk}); code != 200 || !strings.Contains(body, `"active":true`) {
+	if code, body := e.call("/v1/tickets/redeem", "tok-work", map[string]string{"ticket": tk, "binding": e.bind[tk]}); code != 200 || !strings.Contains(body, `"active":true`) {
 		t.Fatalf("%d %s", code, body)
 	}
 }
@@ -177,7 +189,7 @@ func TestTicketRoutesAnswer503WithoutTheService(t *testing.T) {
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 	e.srv = srv
-	for _, p := range []string{"/v1/tickets/redeem", "/v1/tickets/revalidate"} {
+	for _, p := range []string{"/v1/tickets/peek", "/v1/tickets/redeem", "/v1/tickets/revalidate"} {
 		if code, _ := e.call(p, "tok-work", map[string]string{"ticket": "x"}); code != 503 {
 			t.Errorf("%s -> %d", p, code)
 		}

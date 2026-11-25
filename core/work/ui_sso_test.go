@@ -49,12 +49,20 @@ func (e *ssoEnv) ticket(perms ...string) string {
 
 var hiddenTicketRe = regexp.MustCompile(`name="ticket" value="([^"]+)"`)
 
-// land opens the link from the launcher and posts the interstitial's form, like a browser.
+// hold gives the browser the nonce cookie can-core set in it at launch.
+func (e *ssoEnv) hold(b *uiBrowser, ticket string) {
+	if n := e.core.Binding(ticket); n != "" {
+		b.cookies["can_launch_work"] = &http.Cookie{Name: "can_launch_work", Value: n}
+	}
+}
+
+// land is the launching browser: it holds the nonce, opens the link and posts the form.
 func (e *ssoEnv) land(b *uiBrowser, ticket string) uiResp {
+	e.hold(b, ticket)
 	e.t.Helper()
 	page := b.do("GET", "/ui/login/ticket?t="+ticket, nil)
-	if page.Code != 200 {
-		e.t.Fatalf("interstitial: %d %.300s", page.Code, page.Body)
+	if page.Code != 200 { // refused or unavailable before any form was offered
+		return page
 	}
 	return b.do("POST", "/ui/login/ticket", url.Values{"csrf": {uiCSRFRe.FindStringSubmatch(page.Body)[1]}, "ticket": {hiddenTicketRe.FindStringSubmatch(page.Body)[1]}})
 }
@@ -63,6 +71,7 @@ func TestTicketLinkOnlyShowsAFormAndDoesNotConsumeTheTicket(t *testing.T) {
 	e := newSSOEnv(t, nil)
 	b := newUIBrowser(t, e.harness)
 	tk := e.ticket()
+	e.hold(b, tk)
 	for i := 0; i < 3; i++ { // a link scanner, a prefetch, the person: GET never consumes
 		r := b.do("GET", "/ui/login/ticket?t="+tk, nil)
 		if r.Code != 200 || !strings.Contains(r.Body, `method="post" action="/ui/login/ticket"`) {
@@ -143,10 +152,84 @@ func TestTicketReplayAndForeignTicketsAreRefusedWithoutASession(t *testing.T) {
 	}
 }
 
+// Login CSRF with two browsers: the attacker launches their own account and sends the link to the
+// victim. The victim's browser lacks the launch nonce, so the link does nothing there.
+func TestALinkOpenedInAnotherBrowserSignsNobodyIn(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	attacker, victim := newUIBrowser(t, e.harness), newUIBrowser(t, e.harness)
+	tk := e.core.NewTicket(fakecore.Grant{Subject: "user:mallory", Name: "Mallory", Permissions: []string{PermWrite}})
+	e.hold(attacker, tk)
+	r := victim.do("GET", "/ui/login/ticket?t="+tk, nil)
+	if r.Code != 401 || strings.Contains(r.Body, "Mallory") || hiddenTicketRe.MatchString(r.Body) {
+		t.Fatalf("the victim was offered the attacker's account: %d %.300s", r.Code, r.Body)
+	}
+	// Even with a login token of their own (from the ordinary sign-in page) and, say, the nonce of
+	// a launch of their own, the victim's post signs nobody in.
+	csrf := victim.csrf("/ui/login")
+	if r := victim.do("POST", "/ui/login/ticket", url.Values{"csrf": {csrf}, "ticket": {tk}}); r.Code != 401 {
+		t.Fatalf("post without the nonce: %d", r.Code)
+	}
+	e.hold(victim, e.ticket())
+	csrf = victim.csrf("/ui/login")
+	if r := victim.do("POST", "/ui/login/ticket", url.Values{"csrf": {csrf}, "ticket": {tk}}); r.Code != 401 {
+		t.Fatalf("post with another launch's nonce: %d", r.Code)
+	}
+	for _, c := range victim.cookies {
+		if strings.Contains(c.Name, "session") {
+			t.Fatalf("the victim got a session: %s", c.Name)
+		}
+	}
+	// The ticket was not spent by any of that: it still works where it was launched.
+	if r := e.land(attacker, tk); r.Code != 303 {
+		t.Fatalf("the launching browser: %d", r.Code)
+	}
+}
+
+func TestAnotherAccountsSessionIsNeverReplacedSilently(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	b := newUIBrowser(t, e.harness)
+	e.land(b, e.core.NewTicket(fakecore.Grant{Subject: "user:bob", Name: "Bob", Permissions: []string{PermWrite}}))
+	tk := e.core.NewTicket(fakecore.Grant{Subject: "user:alice", Name: "Alice", Permissions: []string{PermWrite}})
+	e.hold(b, tk)
+	page := b.do("GET", "/ui/login/ticket?t="+tk, nil)
+	if page.Code != 200 || !strings.Contains(page.Body, "Alice") || !strings.Contains(page.Body, "Bob") || !strings.Contains(page.Body, `name="replace" value="user:alice"`) {
+		t.Fatalf("no warning naming both accounts: %d %.600s", page.Code, page.Body)
+	}
+	form := url.Values{"csrf": {uiCSRFRe.FindStringSubmatch(page.Body)[1]}, "ticket": {tk}}
+	before := e.core.Redeems
+	r := b.do("POST", "/ui/login/ticket", form)
+	if r.Code != 409 || e.core.Redeems != before {
+		t.Fatalf("replaced without confirmation: %d (redeems %d)", r.Code, e.core.Redeems-before)
+	}
+	if p := b.do("GET", "/ui/", nil); p.Code != 200 || !strings.Contains(p.Body, "Bob") {
+		t.Fatalf("the existing session was dropped: %d", p.Code)
+	}
+	form.Set("csrf", uiCSRFRe.FindStringSubmatch(r.Body)[1])
+	form.Set("replace", "user:alice")
+	if r := b.do("POST", "/ui/login/ticket", form); r.Code != 303 {
+		t.Fatalf("confirmed: %d %.300s", r.Code, r.Body)
+	}
+	if p := b.do("GET", "/ui/", nil); !strings.Contains(p.Body, "Alice") {
+		t.Fatalf("%.300s", p.Body)
+	}
+}
+
+func TestInterstitialNamesTheAccount(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	b := newUIBrowser(t, e.harness)
+	tk := e.ticket()
+	e.hold(b, tk)
+	page := b.do("GET", "/ui/login/ticket?t="+tk, nil)
+	if !strings.Contains(page.Body, "Alice") || !strings.Contains(page.Body, "<code>alice</code>") || strings.Contains(page.Body, `name="replace"`) {
+		t.Fatalf("%.600s", page.Body)
+	}
+}
+
 func TestTicketPostNeedsTheDoubleSubmitTokenAndSameSite(t *testing.T) {
 	e := newSSOEnv(t, nil)
 	tk := e.ticket()
 	b := newUIBrowser(t, e.harness)
+	e.hold(b, tk)
 	page := b.do("GET", "/ui/login/ticket?t="+tk, nil)
 	csrf := uiCSRFRe.FindStringSubmatch(page.Body)[1]
 	if r := b.do("POST", "/ui/login/ticket", url.Values{"csrf": {"wrong"}, "ticket": {tk}}); r.Code != 403 {
@@ -191,6 +274,7 @@ func TestOriginNullIsAcceptedOnlyForASameOriginPost(t *testing.T) {
 	} {
 		b := newUIBrowser(t, e.harness)
 		tk := e.ticket()
+		e.hold(b, tk)
 		page := b.do("GET", "/ui/login/ticket?t="+tk, nil)
 		r := b.do("POST", "/ui/login/ticket", url.Values{"csrf": {uiCSRFRe.FindStringSubmatch(page.Body)[1]}, "ticket": {tk}}, c.hdr...)
 		if r.Code != c.want {

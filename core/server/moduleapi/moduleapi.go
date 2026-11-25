@@ -68,6 +68,7 @@ func (s *Server) routes() []route {
 		{"POST /v1/approvals/{id}/cancel", s.authed(s.cancelApproval)},
 		{"POST /v1/notifications", s.authed(s.sendNotification)},
 		{"POST /v1/identity/revoke", s.authed(s.revokeIdentity)},
+		{"POST /v1/tickets/peek", s.authed(s.peekTicket)},
 		{"POST /v1/tickets/redeem", s.authed(s.redeemTicket)},
 		{"POST /v1/tickets/revalidate", s.authed(s.revalidateSession)},
 	}

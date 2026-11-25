@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/modauth"
@@ -63,7 +64,7 @@ func TestLaunchTicketSignsInToTheRealTracker(t *testing.T) {
 		t.Fatalf("root's apps: %+v %v", all, err)
 	}
 
-	launched, err := tickets.Launch(w.ctx, "user:alice", "work", "/dashboard")
+	launched, err := tickets.Launch(w.ctx, "user:alice", "work", "/dashboard", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +87,21 @@ func TestLaunchTicketSignsInToTheRealTracker(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		return resp, string(b)
 	}
+	// A browser without the launch cookie (the link passed to somebody else) is offered nothing.
+	if resp, page := read(browser.Get(module.URL + u.Path + "?" + u.RawQuery)); resp.StatusCode != 401 {
+		t.Fatalf("without the cookie %d %.300s", resp.StatusCode, page)
+	}
+	// can-core sets the cookie in the launching browser, for the company domain. The test server is
+	// not on that domain and not https, so it is carried over by hand.
+	ck, err := tickets.BindingCookie(launched, "admin.example.org")
+	if err != nil || ck.Domain != "example.org" || ck.Path != "/ui/login/ticket" {
+		t.Fatalf("%+v %v", ck, err)
+	}
+	moduleURL, err := url.Parse(module.URL + u.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jar.SetCookies(moduleURL, []*http.Cookie{{Name: ck.Name, Value: ck.Value, Path: ck.Path}})
 	resp, page := read(browser.Get(module.URL + u.Path + "?" + u.RawQuery))
 	csrf := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(page)
 	if resp.StatusCode != 200 || csrf == nil {
@@ -99,17 +115,5 @@ func TestLaunchTicketSignsInToTheRealTracker(t *testing.T) {
 	resp, page = read(browser.Get(module.URL + "/ui/dashboard"))
 	if resp.StatusCode != 200 || !strings.Contains(page, "alice") {
 		t.Fatalf("signed-in page %d %.300s", resp.StatusCode, page)
-	}
-	// Replayed in another browser: nothing.
-	other, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second := &http.Client{Jar: other, CheckRedirect: browser.CheckRedirect}
-	_, page = read(second.Get(module.URL + u.Path + "?" + u.RawQuery))
-	csrf = regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(page)
-	resp, _ = read(second.PostForm(module.URL+"/ui/login/ticket", url.Values{"csrf": {csrf[1]}, "ticket": {u.Query().Get("t")}}))
-	if resp.StatusCode != 401 {
-		t.Fatalf("replay %d", resp.StatusCode)
 	}
 }

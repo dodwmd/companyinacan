@@ -25,7 +25,9 @@ import (
 // the module session within the same half minute, privileged or not.
 const ssoRecheck = 30 * time.Second
 
-type uiTicketView struct{ Ticket string }
+// uiTicketView is the interstitial: who the ticket signs in and, when this browser already holds a
+// session of somebody else, who that is.
+type uiTicketView struct{ Ticket, Name, Account, Subject, Other string }
 
 // workPerms keeps the permissions this module defines.
 func workPerms(in []string) []string {
@@ -61,6 +63,58 @@ func (u *webUI) ssoPrincipal(r *http.Request, sess *uiSession) (*Principal, bool
 	return &Principal{Subject: sess.subject, Kind: "personal", Permissions: st.perms}, true
 }
 
+// launchModule is the module id can-core names the launch nonce cookie after.
+const launchModule = "work"
+
+// liveSession is the subject of the session this browser holds and the name to show for it.
+func (u *webUI) liveSession(r *http.Request) (subject, shown string) {
+	ck, err := r.Cookie(u.sessionCookieName(r))
+	if err != nil {
+		return "", ""
+	}
+	s, ok := u.sessions.get(ck.Value)
+	if !ok {
+		return "", ""
+	}
+	shown = s.subject
+	if s.sso != nil {
+		if n := u.sessions.ssoSnapshot(s).name; n != "" {
+			shown = n
+		}
+	}
+	return s.subject, shown
+}
+
+// peek asks who the ticket would sign in, for this browser only: the nonce cookie can-core set at
+// launch must come with it, so a link opened anywhere else names nobody. A page has been written
+// when ok is false.
+func (u *webUI) peek(c *uiCtx, t string, refuse func()) (modclient.LaunchSession, bool) {
+	p, err := u.a.sso.PeekTicket(c.r.Context(), t, modclient.LaunchBinding(c.r, launchModule, u.secure(c.r)))
+	switch {
+	case errors.Is(err, modclient.ErrUnavailable):
+		u.renderLogin(c, http.StatusServiceUnavailable, "login.sso_unavailable", "")
+	case err != nil || !p.Active || !canSubjectRe.MatchString(p.Subject):
+		refuse()
+	default:
+		return p, true
+	}
+	return modclient.LaunchSession{}, false
+}
+
+// showTicket renders the interstitial with a fresh double-submit token.
+func (u *webUI) showTicket(c *uiCtx, status int, t string, p modclient.LaunchSession) {
+	tok := randToken(24)
+	u.setCookie(c.w, c.r, u.loginCookieName(c.r), tok, 3600)
+	v := &uiTicketView{Ticket: t, Name: p.Name, Subject: p.Subject, Account: strings.TrimPrefix(p.Subject, "user:")}
+	if other, shown := u.liveSession(c.r); other != "" && other != p.Subject {
+		v.Other = shown
+	}
+	b := c.base(msg("ticket.title"), "")
+	b.CSRF = tok
+	b.D = v
+	c.render(status, "ticket", b)
+}
+
 // ticketPage is where the admin UI sends the browser. It never consumes the ticket.
 func (u *webUI) ticketPage(c *uiCtx) {
 	if u.a.sso == nil {
@@ -72,12 +126,11 @@ func (u *webUI) ticketPage(c *uiCtx) {
 		u.renderLogin(c, http.StatusBadRequest, "login.ticket_invalid", "")
 		return
 	}
-	tok := randToken(24)
-	u.setCookie(c.w, c.r, u.loginCookieName(c.r), tok, 3600)
-	b := c.base(msg("ticket.title"), "")
-	b.CSRF = tok
-	b.D = &uiTicketView{Ticket: t}
-	c.render(http.StatusOK, "ticket", b)
+	p, ok := u.peek(c, t, func() { u.renderLogin(c, http.StatusUnauthorized, "login.ticket_invalid", "") })
+	if !ok {
+		return
+	}
+	u.showTicket(c, http.StatusOK, t, p)
 }
 
 // ticketPost redeems the ticket. Failures are counted per client address (as login failures are)
@@ -105,7 +158,19 @@ func (u *webUI) ticketPost(c *uiCtx) {
 		}
 		u.renderLogin(c, http.StatusUnauthorized, "login.ticket_invalid", "")
 	}
-	ls, err := u.a.sso.RedeemTicket(r.Context(), r.PostFormValue("ticket"))
+	t := r.PostFormValue("ticket")
+	// A session of somebody else is never replaced without the person saying so.
+	if other, _ := u.liveSession(r); other != "" {
+		p, ok := u.peek(c, t, refuse)
+		if !ok {
+			return
+		}
+		if p.Subject != other && r.PostFormValue("replace") != p.Subject {
+			u.showTicket(c, http.StatusConflict, t, p)
+			return
+		}
+	}
+	ls, err := u.a.sso.RedeemTicket(r.Context(), t, modclient.LaunchBinding(r, launchModule, u.secure(r)))
 	if err != nil {
 		if errors.Is(err, modclient.ErrUnavailable) {
 			u.renderLogin(c, http.StatusServiceUnavailable, "login.sso_unavailable", "")

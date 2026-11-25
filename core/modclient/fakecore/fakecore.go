@@ -72,6 +72,8 @@ type Grant struct {
 	Permissions               []string
 	Module                    string // default: the calling module
 	Used                      bool
+	// Binding is the launching browser's nonce; NewTicket makes one when empty.
+	Binding string
 }
 
 type session struct {
@@ -101,6 +103,7 @@ func New(t *testing.T, moduleID string) *Core {
 		}
 	}
 	mux.HandleFunc("POST /v1/tokens/introspect", guard(c.introspect))
+	mux.HandleFunc("POST /v1/tickets/peek", guard(c.peek))
 	mux.HandleFunc("POST /v1/tickets/redeem", guard(c.redeem))
 	mux.HandleFunc("POST /v1/tickets/revalidate", guard(c.revalidate))
 	mux.HandleFunc("POST /v1/events", guard(c.publish))
@@ -176,6 +179,9 @@ func (c *Core) NewTicket(g Grant) string {
 		c.tickets = map[string]*Grant{}
 	}
 	t := modclient.TicketPrefix + randSecret()
+	if g.Binding == "" {
+		g.Binding = modclient.BindingPrefix + randSecret()
+	}
 	c.tickets[t] = &g
 	return t
 }
@@ -208,14 +214,37 @@ func (c *Core) EndSessions(subject string) {
 	}
 }
 
+// Binding is the nonce the launching browser holds for a ticket made by NewTicket.
+func (c *Core) Binding(ticket string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if g, ok := c.tickets[ticket]; ok {
+		return g.Binding
+	}
+	return ""
+}
+
+func (c *Core) peek(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Ticket, Binding string }
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	g, ok := c.tickets[in.Ticket]
+	if !ok || g.Used || g.Module != c.ModuleID || in.Binding != g.Binding {
+		_, _ = w.Write([]byte(`{"active":false}`))
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "subject": g.Subject, "name": g.Name})
+}
+
 func (c *Core) redeem(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Ticket string }
+	var in struct{ Ticket, Binding string }
 	_ = json.NewDecoder(r.Body).Decode(&in)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.Redeems++
 	g, ok := c.tickets[in.Ticket]
-	if !ok || g.Used || g.Module != c.ModuleID {
+	if !ok || g.Used || g.Module != c.ModuleID || in.Binding != g.Binding {
 		_, _ = w.Write([]byte(`{"active":false}`))
 		return
 	}

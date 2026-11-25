@@ -177,6 +177,13 @@ func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit fun
 		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=? AND source='sso'`, id.UserID); err != nil {
 			return err
 		}
+		// A local account that only loses the link: its module sessions may have come from the
+		// identity provider's sign-in, so they end too.
+		if id.UserSource != SourceSSO {
+			if err := endLaunchAccess(ctx, tx, "user:"+id.Username, db.Now()); err != nil {
+				return err
+			}
+		}
 		if id.UserSource == SourceSSO {
 			if err := revokeSubjectTokens(ctx, tx, "user:"+id.Username, db.Now()); err != nil {
 				return err
@@ -198,7 +205,7 @@ func revokeSubjectTokens(ctx context.Context, tx *sql.Tx, subject string, now ti
 		return err
 	}
 	// And to module sessions that began with a launch ticket (E11c).
-	if _, err := tx.ExecContext(ctx, `UPDATE ui_launch_sessions SET revoked_at=? WHERE subject=? AND revoked_at=0`, now.Unix(), subject); err != nil {
+	if err := endLaunchAccess(ctx, tx, subject, now); err != nil {
 		return err
 	}
 	// The same applies to Web Push devices (E19a): they belong to the account being deleted.

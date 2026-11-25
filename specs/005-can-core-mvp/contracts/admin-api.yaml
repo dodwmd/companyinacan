@@ -421,7 +421,8 @@ paths:
               properties:
                 return_path: { type: string, pattern: "^/[A-Za-z0-9/_-]{0,100}$" }
       responses:
-        "200": { description: "The URL to open (contains the ticket: do not log or store it)", content: { application/json: { schema: { $ref: "#/components/schemas/AppLaunch" } } } }
+        "200": { description: "The URL to open (contains the ticket: do not log or store it). Also sets the `__Secure-can_launch_<module>` nonce cookie (HttpOnly, SameSite=Strict, 60 s): the URL works only in the client holding it", content: { application/json: { schema: { $ref: "#/components/schemas/AppLaunch" } } } }
+        "409": { $ref: "#/components/responses/Problem" }
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }

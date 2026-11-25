@@ -261,21 +261,35 @@ paths:
         "409": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
-  /v1/tickets/redeem:
+  /v1/tickets/peek:
     post:
-      operationId: redeemTicket
-      summary: "Exchange a one-time launch ticket for the signed-in person (E11c)"
-      description: "Single sign-on from the admin UI into a module web UI (specs/036-module-ui-sso). The caller is the module the ticket was minted for (the audience is the authenticated caller, never a field of the body). A ticket lives at most 60 seconds, works once and only for its module; every other case (unknown, malformed, used, expired, another module's, the person disabled or without a permission in the module) is the identical answer `{\"active\": false}`. A valid answer carries the subject, a display name (never an email address or groups), the module permissions the person holds right now, the landing path chosen at launch and an opaque `session` handle the module keeps in memory and presents to `/v1/tickets/revalidate`. Failed redeems are slowed per module past a quota; a valid redeem never is. Audited with ids only."
+      operationId: peekTicket
+      summary: "Who would a launch ticket sign in? (E11c; does not consume it)"
+      description: "Same preconditions as redeem (the calling module is the audience, the ticket unused and unexpired, and the nonce of the launching browser), but nothing is consumed: the module shows the account before the person confirms. Inactive is `{\"active\": false}`."
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [ticket]
-              properties:
-                ticket: { type: string, pattern: "^cant_[A-Za-z0-9_-]{43}$" }
+            schema: { $ref: "#/components/schemas/TicketPresentation" }
+      responses:
+        "200":
+          description: The account (subject and display name only), or inactive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /v1/tickets/redeem:
+    post:
+      operationId: redeemTicket
+      summary: "Exchange a one-time launch ticket for the signed-in person (E11c)"
+      description: "Single sign-on from the admin UI into a module web UI (specs/036-module-ui-sso). The caller is the module the ticket was minted for (the audience is the authenticated caller, never a field of the body). `binding` is the nonce cookie can-core set in the browser that launched; without the right one nothing is redeemed and the ticket is not spent.A ticket lives at most 60 seconds, works once and only for its module; every other case (unknown, malformed, used, expired, another module's, the person disabled or without a permission in the module) is the identical answer `{\"active\": false}`. A valid answer carries the subject, a display name (never an email address or groups), the module permissions the person holds right now, the landing path chosen at launch and an opaque `session` handle the module keeps in memory and presents to `/v1/tickets/revalidate`. Failed redeems are slowed per module past a quota; a valid redeem never is. Audited with ids only."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketPresentation" }
       responses:
         "200":
           description: Active, or the identical inactive answer
@@ -368,6 +382,13 @@ components:
         title: { type: string }
         status: { type: integer }
         detail: { type: string }
+    TicketPresentation:
+      type: object
+      additionalProperties: false
+      required: [ticket, binding]
+      properties:
+        ticket: { type: string, pattern: "^cant_[A-Za-z0-9_-]{43}$" }
+        binding: { type: string, pattern: "^canb_[A-Za-z0-9_-]{43}$", description: "The launch nonce cookie of the browser that presented the ticket" }
     TicketSession:
       type: object
       required: [active]

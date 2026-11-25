@@ -3,10 +3,28 @@ package adminapi
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+// launchApp posts a launch as a browser at the admin address and returns the cookies set.
+func (h *pHarness) launchApp(s sess, path, body string) (int, string, []*http.Cookie) {
+	h.t.Helper()
+	req, _ := http.NewRequest("POST", h.srv.URL+path, strings.NewReader(body))
+	req.Host = "admin.example.org"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-Token", s.csrf)
+	req.AddCookie(s.cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b), resp.Cookies()
+}
 
 func TestAppsListAndLaunch(t *testing.T) {
 	h := newPHarness(t)
@@ -15,7 +33,7 @@ func TestAppsListAndLaunch(t *testing.T) {
 	if code != 200 || !strings.Contains(body, `"id":"expenses"`) {
 		t.Fatalf("list = %d %s", code, body)
 	}
-	code, body = h.call(root, "POST", "/api/v1/apps/expenses/launch", map[string]string{"return_path": "/reports"})
+	code, body, cookies := h.launchApp(root, "/api/v1/apps/expenses/launch", `{"return_path":"/reports"}`)
 	if code != 200 {
 		t.Fatalf("launch = %d %s", code, body)
 	}
@@ -27,7 +45,13 @@ func TestAppsListAndLaunch(t *testing.T) {
 		t.Fatalf("url %q", out.URL)
 	}
 	tk := out.URL[strings.Index(out.URL, "t=")+2:]
-	r, ok := h.tickets.Redeem(context.Background(), "expenses", tk)
+	if len(cookies) != 1 || cookies[0].Name != "__Secure-can_launch_expenses" || cookies[0].Domain != "example.org" {
+		t.Fatalf("launch cookie: %+v", cookies)
+	}
+	if _, ok := h.tickets.Redeem(context.Background(), "expenses", tk, ""); ok {
+		t.Fatal("redeemed without the cookie")
+	}
+	r, ok := h.tickets.Redeem(context.Background(), "expenses", tk, cookies[0].Value)
 	if !ok || r.Subject != "user:root" || r.ReturnPath != "/reports" {
 		t.Fatalf("redeem %+v %v", r, ok)
 	}

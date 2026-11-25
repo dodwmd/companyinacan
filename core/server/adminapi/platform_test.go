@@ -125,6 +125,7 @@ func (h *pHarness) call(s sess, method, path string, body any) (int, string) {
 		rd = bytes.NewReader(b)
 	}
 	req, _ := http.NewRequest(method, h.srv.URL+path, rd)
+	req.Host = "admin.example.org"
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

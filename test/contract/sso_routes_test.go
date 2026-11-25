@@ -43,7 +43,7 @@ func TestSSORoutesMatchTheContract(t *testing.T) {
 	want := map[string][]string{
 		"adminui":   {"GET /apps", "POST /apps/{id}/launch"},
 		"adminapi":  {"GET /api/v1/apps", "POST /api/v1/apps/{id}/launch"},
-		"moduleapi": {"POST /v1/tickets/redeem", "POST /v1/tickets/revalidate"},
+		"moduleapi": {"POST /v1/tickets/peek", "POST /v1/tickets/redeem", "POST /v1/tickets/revalidate"},
 		"work":      {"GET /ui/login/ticket", "POST /ui/login/ticket"},
 		"people":    {"GET /login/ticket", "POST /login/ticket"},
 		"jobs":      {"GET /login/ticket", "POST /login/ticket"},

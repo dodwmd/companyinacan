@@ -12,6 +12,8 @@ func init() {
 		"apps.opening":     "Opening the app",
 		"apps.refused":     "App not available",
 		"apps.refused_msg": "That app does not exist or your roles do not give you access to it.",
+		"apps.address":     "The app cannot be opened from this address",
+		"apps.address_msg": "Open the admin UI at its configured address (on the same domain as the app) and try again.",
 		"apps.busy":        "Too many launches",
 		"apps.busy_msg":    "You opened apps many times in the last minute. Wait a minute and try again.",
 	} {

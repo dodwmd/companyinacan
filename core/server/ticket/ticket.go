@@ -17,6 +17,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
@@ -26,6 +28,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -42,6 +45,7 @@ const (
 	MintPerMinute = 30
 	TicketPrefix  = "cant_"
 	HandlePrefix  = "cans_"
+	BindingPrefix = modclient.BindingPrefix
 	maxName       = 80
 	maxTracked    = 10000
 )
@@ -52,6 +56,9 @@ var (
 	ErrNotAllowed = errors.New("not allowed to open this app")
 	// ErrRateLimited means too many tickets were minted in the last minute.
 	ErrRateLimited = errors.New("too many launches; retry later")
+	// ErrCookieScope means the launching browser could not be given a cookie the module would
+	// receive: the admin UI was reached on a name that shares nothing with the module's.
+	ErrCookieScope = errors.New("the admin UI's address and the app's address share no cookie scope")
 	// ErrInvalid is a malformed request (return path).
 	ErrInvalid = errors.New("invalid launch request")
 
@@ -323,17 +330,56 @@ func (s *Service) Apps(ctx context.Context, subject string) ([]App, error) {
 	return out, nil
 }
 
-// LaunchResult is a minted ticket as a URL to send the browser to.
+// LaunchResult is a minted ticket as a URL to send the browser to, plus the nonce that browser
+// must hold (BindingCookie).
 type LaunchResult struct {
 	URL string
 	// ID is the ticket's record id (safe to log); the ticket value is only inside URL.
 	ID string
+	// Module is the audience and Base the base URL of its UI.
+	Module, Base string
+	// Binding is the nonce that ties the ticket to the launching browser. It goes into a cookie and
+	// nowhere else.
+	Binding string
+}
+
+// BindingCookie is the cookie the launching browser must be given along with the URL: the module
+// receives it and presents it at redeem, so a ticket opened in any other browser (an attacker's
+// link sent to a victim) is worthless. adminHost is the Host the admin UI was reached on. The
+// cookie is host-only when both are the same host (plain-http development on localhost, where ports
+// do not separate cookies) and carries Domain=<company domain> otherwise; when neither can work
+// the result is ErrCookieScope.
+func (s *Service) BindingCookie(r LaunchResult, adminHost string) (*http.Cookie, error) {
+	u, err := url.Parse(r.Base)
+	if err != nil || u.Hostname() == "" {
+		return nil, ErrCookieScope
+	}
+	if h, _, err := net.SplitHostPort(adminHost); err == nil {
+		adminHost = h
+	}
+	admin, mod := strings.ToLower(adminHost), strings.ToLower(u.Hostname())
+	secure := u.Scheme == "https"
+	c := &http.Cookie{Name: modclient.LaunchCookieName(r.Module, secure), Value: r.Binding, Path: u.Path + "/login/ticket",
+		MaxAge: int(MaxTicketTTL.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode}
+	if admin == mod {
+		return c, nil
+	}
+	d := strings.ToLower(s.Launcher.Domain)
+	under := func(h string) bool { return h == d || strings.HasSuffix(h, "."+d) }
+	// A browser refuses Domain= for a single label (such as "localhost").
+	if !strings.Contains(d, ".") || !under(admin) || !under(mod) {
+		return nil, ErrCookieScope
+	}
+	c.Domain = d
+	return c, nil
 }
 
 // Launch mints a ticket for subject to open module and returns the module's ticket URL. returnPath
-// is where to land inside the module (see ValidReturnPath). The ticket value is in the URL only.
-func (s *Service) Launch(ctx context.Context, subject, module, returnPath string) (LaunchResult, error) {
-	if !subjectRe.MatchString(subject) {
+// is where to land inside the module (see ValidReturnPath). notAfter, when not zero, is the latest
+// the module session may live (the identity provider's revalidation deadline of the launching
+// sign-in). The ticket value is in the URL only.
+func (s *Service) Launch(ctx context.Context, subject, module, returnPath string, notAfter time.Time) (LaunchResult, error) {
+	if !subjectRe.MatchString(subject) || (!notAfter.IsZero() && !notAfter.After(s.now())) {
 		return LaunchResult{}, ErrNotAllowed
 	}
 	if s.count(&s.mints, subject) > MintPerMinute {
@@ -361,8 +407,9 @@ func (s *Service) Launch(ctx context.Context, subject, module, returnPath string
 		return LaunchResult{}, ErrNotAllowed
 	}
 	now := s.now()
-	tk := randomSecret(TicketPrefix)
-	rec := store.LoginTicket{ID: randomID("tkt_"), TokenHash: hashOf(tk), Subject: subject, ModuleID: m.ID, ReturnPath: returnPath, CreatedAt: now, ExpiresAt: now.Add(MaxTicketTTL)}
+	tk, binding := randomSecret(TicketPrefix), randomSecret(modclient.BindingPrefix)
+	rec := store.LoginTicket{ID: randomID("tkt_"), TokenHash: hashOf(tk), Subject: subject, ModuleID: m.ID, ReturnPath: returnPath,
+		BindingHash: hashOf(binding), NotAfter: notAfter, CreatedAt: now, ExpiresAt: now.Add(MaxTicketTTL)}
 	err = s.DB.InTx(ctx, func(tx *sql.Tx) error {
 		if err := s.DB.InsertLoginTicket(ctx, tx, rec); err != nil {
 			return err
@@ -373,7 +420,36 @@ func (s *Service) Launch(ctx context.Context, subject, module, returnPath string
 	if err != nil {
 		return LaunchResult{}, err
 	}
-	return LaunchResult{URL: base + "/login/ticket?t=" + tk, ID: rec.ID}, nil
+	return LaunchResult{URL: base + "/login/ticket?t=" + tk, ID: rec.ID, Module: m.ID, Base: base, Binding: binding}, nil
+}
+
+// Peeked is who a ticket would sign in. Its zero value is "inactive".
+type Peeked struct {
+	Subject string
+	Name    string
+}
+
+// Peek names the account behind a ticket without consuming it, so the module can show it before
+// the person confirms. It answers only for what Redeem would accept, the browser's nonce included,
+// so a ticket alone learns nothing.
+func (s *Service) Peek(ctx context.Context, callerModule, ticket, binding string) (Peeked, bool) {
+	if !LooksLikeTicket(ticket) || !modclient.BindingShaped(binding) {
+		s.penalise(ctx, callerModule)
+		return Peeked{}, false
+	}
+	subject, ok, err := s.DB.PeekLoginTicket(ctx, hashOf(ticket), callerModule, hashOf(binding), s.now())
+	if err != nil || !ok {
+		s.penalise(ctx, callerModule)
+		return Peeked{}, false
+	}
+	if _, ok := s.enabledModule(ctx, callerModule); !ok {
+		return Peeked{}, false
+	}
+	name, ok := s.person(ctx, subject)
+	if !ok {
+		return Peeked{}, false
+	}
+	return Peeked{Subject: subject, Name: name}, true
 }
 
 // Redeemed is what a module learns when it redeems a ticket. Its zero value is "inactive".
@@ -414,10 +490,11 @@ func (s *Service) penalise(ctx context.Context, module string) {
 }
 
 // Redeem exchanges a ticket for the person and their permissions, on behalf of the calling module.
-// ok is false for every kind of failure (unknown, malformed, used, expired, another module's, the
-// person gone or without permission) and nothing tells them apart.
-func (s *Service) Redeem(ctx context.Context, callerModule, ticket string) (Redeemed, bool) {
-	if !LooksLikeTicket(ticket) {
+// binding is the nonce cookie of the browser that presented the ticket. ok is false for every kind
+// of failure (unknown, malformed, used, expired, another module's, another browser, the person gone
+// or without permission) and nothing tells them apart.
+func (s *Service) Redeem(ctx context.Context, callerModule, ticket, binding string) (Redeemed, bool) {
+	if !LooksLikeTicket(ticket) || !modclient.BindingShaped(binding) {
 		s.penalise(ctx, callerModule)
 		return Redeemed{}, false
 	}
@@ -425,7 +502,7 @@ func (s *Service) Redeem(ctx context.Context, callerModule, ticket string) (Rede
 	var rec store.LoginTicket
 	var found bool
 	err := s.DB.InTx(ctx, func(tx *sql.Tx) (err error) {
-		rec, found, err = s.DB.RedeemLoginTicket(ctx, tx, hashOf(ticket), callerModule, now)
+		rec, found, err = s.DB.RedeemLoginTicket(ctx, tx, hashOf(ticket), callerModule, hashOf(binding), now)
 		return err
 	})
 	if err != nil || !found {
@@ -446,6 +523,12 @@ func (s *Service) Redeem(ctx context.Context, callerModule, ticket string) (Rede
 	}
 	handle := randomSecret(HandlePrefix)
 	exp := now.Add(SessionLifetime)
+	if !rec.NotAfter.IsZero() && rec.NotAfter.Before(exp) {
+		exp = rec.NotAfter
+	}
+	if !exp.After(now) {
+		return Redeemed{}, false
+	}
 	err = s.DB.InTx(ctx, func(tx *sql.Tx) error {
 		if err := s.DB.InsertLaunchSession(ctx, tx, store.LaunchSession{HandleHash: hashOf(handle), TicketID: rec.ID, Subject: rec.Subject, ModuleID: m.ID, CreatedAt: now, ExpiresAt: exp}); err != nil {
 			return err

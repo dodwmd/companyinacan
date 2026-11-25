@@ -57,7 +57,7 @@ func (s *Server) launchApp(w http.ResponseWriter, r *http.Request, p principal) 
 	if r.ContentLength != 0 && !httpx.DecodeJSONMax(w, r, &b, 2<<10) {
 		return
 	}
-	res, err := s.Tickets.Launch(r.Context(), p.Subject(), r.PathValue("id"), b.ReturnPath)
+	res, err := s.Tickets.Launch(r.Context(), p.Subject(), r.PathValue("id"), b.ReturnPath, p.Session.RevalidateAt)
 	switch {
 	case errors.Is(err, ticket.ErrNotAllowed):
 		// No permission, an unknown module, one without a UI: the same answer.
@@ -70,6 +70,14 @@ func (s *Server) launchApp(w http.ResponseWriter, r *http.Request, p principal) 
 	case err != nil:
 		s.internal(w, r, err)
 	default:
+		// The URL works only in the client that holds this nonce cookie (a browser that called this
+		// endpoint), so it cannot be handed to somebody else.
+		ck, err := s.Tickets.BindingCookie(res, r.Host)
+		if err != nil {
+			httpx.Problem(w, http.StatusConflict, "call the API at the admin address on the app's domain: "+err.Error())
+			return
+		}
+		http.SetCookie(w, ck)
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		httpx.WriteJSON(w, http.StatusOK, launchView{URL: res.URL})

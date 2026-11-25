@@ -41,11 +41,14 @@ var messagesEN = map[string]string{
 
 	"login.sso_only":        "Sign in from the Apps page of the admin UI. Pasting an access token is switched off here.",
 	"login.token_off":       "Pasting an access token is switched off. Open the tracker from the Apps page of the admin UI.",
-	"login.ticket_invalid":  "That sign-in link was not accepted. A link works once and for about a minute. Open the tracker again from the Apps page of the admin UI.",
+	"login.ticket_invalid":  "That sign-in link was not accepted. A link works once, for about a minute, and only in the browser that opened it from the admin UI. Open the tracker again from the Apps page.",
 	"login.sso_unavailable": "Single sign-on is not available right now. Try again in a moment.",
 	"ticket.title":          "Continue with single sign-on",
-	"ticket.intro":          "You came here from the admin UI. Press Continue to sign in to the work tracker. Nothing happens until you do.",
+	"ticket.intro":          "You came here from the admin UI. Check the account, then press Continue. Nothing happens until you do. If it is not your account, close this page.",
 	"ticket.submit":         "Continue",
+	"ticket.account":        "You are about to sign in as",
+	"ticket.other":          "This browser is already signed in as another account:",
+	"ticket.replace":        "Sign that account out here and sign in as the one above",
 
 	"projects.title":    "Projects",
 	"projects.caption":  "Projects you can see",

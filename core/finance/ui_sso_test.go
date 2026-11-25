@@ -43,12 +43,20 @@ func (e *ssoEnv) ticket(perms ...string) string {
 
 var hiddenTicketRe = regexp.MustCompile(`name="ticket" value="([^"]+)"`)
 
+// hold gives the browser the nonce cookie can-core set in it at launch.
+func (e *ssoEnv) hold(c *client, ticket string) {
+	if n := e.core.Binding(ticket); n != "" {
+		c.cookies["__Secure-can_launch_finance"] = n
+	}
+}
+
 // land opens the link from the launcher and posts the interstitial's form, like a browser.
 func (e *ssoEnv) land(c *client, ticket string) *httptest.ResponseRecorder {
+	e.hold(c, ticket)
 	e.t.Helper()
 	page := c.do("GET", "/login/ticket?t="+ticket, nil)
-	if page.Code != 200 {
-		e.t.Fatalf("interstitial: %d %.300s", page.Code, page.Body)
+	if page.Code != 200 { // refused or unavailable before any form was offered
+		return page
 	}
 	return c.do("POST", "/login/ticket", url.Values{"csrf": {csrfRe.FindStringSubmatch(page.Body.String())[1]}, "ticket": {hiddenTicketRe.FindStringSubmatch(page.Body.String())[1]}}, "Sec-Fetch-Site", "same-origin")
 }
@@ -57,6 +65,7 @@ func TestTicketLinkOnlyShowsAFormAndDoesNotConsumeTheTicket(t *testing.T) {
 	e := newSSOEnv(t, nil)
 	c := e.client(t)
 	tk := e.ticket()
+	e.hold(c, tk)
 	for i := 0; i < 3; i++ { // a link scanner, a prefetch, the person: GET never consumes
 		r := c.do("GET", "/login/ticket?t="+tk, nil)
 		if r.Code != 200 || !strings.Contains(r.Body.String(), `method="post" action="/login/ticket"`) {
@@ -133,6 +142,7 @@ func TestTicketPostNeedsTheDoubleSubmitTokenAndSameSite(t *testing.T) {
 	e := newSSOEnv(t, nil)
 	tk := e.ticket()
 	c := e.client(t)
+	e.hold(c, tk)
 	page := c.do("GET", "/login/ticket?t="+tk, nil)
 	csrf := csrfRe.FindStringSubmatch(page.Body.String())[1]
 	same := "Sec-Fetch-Site"
@@ -326,5 +336,74 @@ func TestTicketNeverReachesLogsOrErrors(t *testing.T) {
 	c.get("/login/ticket?t=cant_" + strings.Repeat("Z", 43))
 	if strings.Contains(logs.String(), tk) || strings.Contains(logs.String(), "cant_") {
 		t.Fatalf("a ticket reached the log:\n%s", logs.String())
+	}
+}
+
+// Login CSRF with two browsers: the attacker launches their own account and sends the link to the
+// victim. The victim's browser lacks the launch nonce, so the link does nothing there.
+func TestALinkOpenedInAnotherBrowserSignsNobodyIn(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	attacker, victim := e.client(t), e.client(t)
+	tk := e.core.NewTicket(fakecore.Grant{Subject: "user:mallory", Name: "Mallory", Permissions: []string{PermRead, PermWrite}})
+	e.hold(attacker, tk)
+	r := victim.get("/login/ticket?t=" + tk)
+	if r.Code != 401 || strings.Contains(r.Body.String(), "<code>mallory</code>") || hiddenTicketRe.MatchString(r.Body.String()) {
+		t.Fatalf("the victim was offered the attacker's account: %d %.300s", r.Code, r.Body.String())
+	}
+	// With a login token of their own (from the ordinary sign-in page), and even the nonce of a
+	// launch of their own, the victim's post signs nobody in.
+	post := func() int {
+		page := victim.get("/login")
+		form := url.Values{"csrf": {csrfRe.FindStringSubmatch(page.Body.String())[1]}, "ticket": {tk}}
+		return victim.do("POST", "/login/ticket", form, "Sec-Fetch-Site", "same-origin").Code
+	}
+	if code := post(); code != 401 {
+		t.Fatalf("post without the nonce: %d", code)
+	}
+	e.hold(victim, e.ticket())
+	if code := post(); code != 401 {
+		t.Fatalf("post with another launch's nonce: %d", code)
+	}
+	if _, ok := victim.cookies[uiSessionCookie]; ok {
+		t.Fatal("the victim got a session")
+	}
+	if e.core.Redeems != 1 { // without a nonce nothing even reaches can-core
+		t.Fatalf("redeem calls: %d", e.core.Redeems)
+	}
+	// None of that spent the ticket: it still works where it was launched.
+	e.land(attacker, tk)
+	if _, ok := attacker.cookies[uiSessionCookie]; !ok {
+		t.Fatal("the launching browser could not sign in")
+	}
+}
+
+func TestAnotherAccountsSessionIsNeverReplacedSilently(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	b := e.client(t)
+	e.land(b, e.core.NewTicket(fakecore.Grant{Subject: "user:bob", Name: "Bob Existing", Permissions: []string{PermRead, PermWrite}}))
+	old := b.cookies[uiSessionCookie]
+	if old == "" {
+		t.Fatal("no first session")
+	}
+	tk := e.core.NewTicket(fakecore.Grant{Subject: "user:alice", Name: "Alice Incoming", Permissions: []string{PermRead, PermWrite}})
+	e.hold(b, tk)
+	page := b.get("/login/ticket?t=" + tk)
+	body := page.Body.String()
+	if page.Code != 200 || !strings.Contains(body, "Alice Incoming") || !strings.Contains(body, "<code>alice</code>") || !strings.Contains(body, "Bob Existing") || !strings.Contains(body, `name="replace" value="user:alice"`) {
+		t.Fatalf("no warning naming both accounts: %d %.900s", page.Code, body)
+	}
+	form := url.Values{"csrf": {csrfRe.FindStringSubmatch(body)[1]}, "ticket": {tk}}
+	before := e.core.Redeems
+	r := b.do("POST", "/login/ticket", form, "Sec-Fetch-Site", "same-origin")
+	if r.Code != 409 || e.core.Redeems != before || b.cookies[uiSessionCookie] != old {
+		t.Fatalf("replaced without confirmation: %d", r.Code)
+	}
+	if p := b.get("/"); p.Code != 200 {
+		t.Fatalf("the existing session was dropped: %d", p.Code)
+	}
+	form.Set("csrf", csrfRe.FindStringSubmatch(r.Body.String())[1])
+	form.Set("replace", "user:alice")
+	if r := b.do("POST", "/login/ticket", form, "Sec-Fetch-Site", "same-origin"); r.Code != 303 || b.cookies[uiSessionCookie] == old {
+		t.Fatalf("confirmed: %d %.300s", r.Code, r.Body.String())
 	}
 }

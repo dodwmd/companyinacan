@@ -14,6 +14,27 @@ import (
 
 type redeemRequest struct {
 	Ticket string `json:"ticket"`
+	// Binding is the nonce cookie of the browser that presented the ticket.
+	Binding string `json:"binding"`
+}
+
+// peekTicket names who a ticket would sign in, without consuming it.
+func (s *Server) peekTicket(w http.ResponseWriter, r *http.Request, m store.Module) {
+	if s.Tickets == nil {
+		s.unavailable(w)
+		return
+	}
+	var req redeemRequest
+	if !httpx.DecodeJSONMax(w, r, &req, 2<<10) {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	p, ok := s.Tickets.Peek(r.Context(), m.ID, req.Ticket, req.Binding)
+	if !ok {
+		httpx.WriteJSON(w, http.StatusOK, redeemResponse{})
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, redeemResponse{Active: true, Subject: p.Subject, Name: p.Name})
 }
 
 type redeemResponse struct {
@@ -38,7 +59,7 @@ func (s *Server) redeemTicket(w http.ResponseWriter, r *http.Request, m store.Mo
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	res, ok := s.Tickets.Redeem(r.Context(), m.ID, req.Ticket)
+	res, ok := s.Tickets.Redeem(r.Context(), m.ID, req.Ticket, req.Binding)
 	if !ok {
 		httpx.WriteJSON(w, http.StatusOK, redeemResponse{})
 		return

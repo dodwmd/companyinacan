@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
 )
 
@@ -46,7 +47,9 @@ func (s *Server) appLaunch(w http.ResponseWriter, r *http.Request, sc *sessionCt
 		s.fail(w, r, sc, http.StatusServiceUnavailable, "err.unavailable", "err.unavailable_msg")
 		return
 	}
-	res, err := s.Tickets.Launch(r.Context(), subjectOf(sc), r.PathValue("id"), r.PostFormValue("return"))
+	// A session from the identity provider has a revalidation deadline; the module session may not
+	// outlive it.
+	res, err := s.Tickets.Launch(r.Context(), subjectOf(sc), r.PathValue("id"), r.PostFormValue("return"), sc.Session.RevalidateAt)
 	switch {
 	case errors.Is(err, ticket.ErrNotAllowed):
 		s.fail(w, r, sc, http.StatusNotFound, "apps.refused", "apps.refused_msg")
@@ -62,6 +65,15 @@ func (s *Server) appLaunch(w http.ResponseWriter, r *http.Request, sc *sessionCt
 		s.internal(w, r, sc, err)
 		return
 	}
+	// The nonce that binds the ticket to this browser: without it the module refuses the ticket, so
+	// a link passed to somebody else signs nobody in.
+	ck, err := s.Tickets.BindingCookie(res, r.Host)
+	if err != nil {
+		s.Log.Warn("apps: cannot give this browser the app's launch cookie", "request_id", httpx.RequestID(r.Context()), "module", res.Module, "error", err)
+		s.fail(w, r, sc, http.StatusConflict, "apps.address", "apps.address_msg")
+		return
+	}
+	http.SetCookie(w, ck)
 	// Not a redirect: form-action 'self' stops a POST from being redirected to another origin.
 	// The page moves the browser by itself (meta refresh) and offers the link; the headers of every
 	// page here forbid caching and sending a Referer, so the ticket in the address goes nowhere.

@@ -22,7 +22,8 @@ admin API operations.
 
 | Route | Notes |
 |---|---|
-| `POST /v1/tickets/redeem` | `{"ticket"}` -> `{"active":true,"subject","name","permissions","return_path","session","session_expires_at"}` or `{"active":false}`. The audience is the authenticated caller |
+| `POST /v1/tickets/peek` | `{"ticket","binding"}` -> `{"active":true,"subject","name"}` or `{"active":false}`; does not consume |
+| `POST /v1/tickets/redeem` | `{"ticket","binding"}` -> `{"active":true,"subject","name","permissions","return_path","session","session_expires_at"}` or `{"active":false}`. The audience is the authenticated caller |
 | `POST /v1/tickets/revalidate` | `{"session"}` -> `{"active":true,"subject","name","permissions"}` or `{"active":false}`; only for the module that redeemed |
 
 ## Module web UIs (each module's own `contracts/ui-routes.md`)
@@ -34,8 +35,11 @@ admin API operations.
 | jobs | `GET /login/ticket`, `POST /login/ticket` | `/` |
 | finance | `GET /login/ticket`, `POST /login/ticket` | `/` |
 
-Common behaviour: `GET ?t=` shows a Continue form and never consumes; `POST` takes `csrf` (double-submit with
-the login cookie) and `ticket`; 303 to a clean URL on success; 401 one generic page for every refusal; 403
-stale form or cross-site; 429 after repeated failures (valid tickets never throttled); 503 when can-core cannot
+Common behaviour: both need the launch nonce cookie (`__Secure-can_launch_<module>`; `can_launch_<module>`
+only on a plain-http UI), set by can-core in the launching browser. `GET ?t=` peeks (never consumes) and shows a
+Continue form naming the account; if the browser holds a live session of a different account, it says so and
+requires a ticked confirmation. `POST` takes `csrf` (double-submit with the login cookie), `ticket` and, to
+replace a different account's session, `replace=<new subject>` (409 without it, nothing redeemed); 303 to a clean
+URL on success; 401 one generic page for every refusal (another browser included); 403 stale form or cross-site; 429 after repeated failures (valid tickets never throttled); 503 when can-core cannot
 answer; 404 when the module is not installed under can-core. `Referrer-Policy: no-referrer`, `Cache-Control:
 no-store`, CSP without scripts.

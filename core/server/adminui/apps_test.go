@@ -2,6 +2,7 @@ package adminui
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -34,7 +35,37 @@ func newAppsUI(t *testing.T) *pui {
 		Holds: func(ctx context.Context, subject, perm string) (bool, error) {
 			return p.rb.Check(ctx, subject, perm, "")
 		}}
+	p.host = "admin.example.org"
 	return p
+}
+
+// launchCookie is the nonce cookie the launching browser was given.
+func launchCookie(t *testing.T, r resp) *http.Cookie {
+	t.Helper()
+	c := cookieNamed(r.Response, "__Secure-can_launch_expenses")
+	if c == nil {
+		t.Fatalf("no launch cookie: %v", r.Header)
+	}
+	return c
+}
+
+func TestLaunchBindsTheTicketToThisBrowser(t *testing.T) {
+	p := newAppsUI(t)
+	root := p.loginAs("root")
+	r := p.do("POST", "/apps/expenses/launch", url.Values{"csrf": {root.csrf}}, root.with()...)
+	c := launchCookie(t, r)
+	if c.Domain != "example.org" || c.Path != "/login/ticket" || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode || c.MaxAge <= 0 || c.MaxAge > 60 {
+		t.Fatalf("%+v", c)
+	}
+	if strings.Contains(r.body, c.Value) {
+		t.Fatal("the nonce is in the page")
+	}
+	// Reached on a name the module cannot share a cookie with: no ticket is handed out.
+	p.host = "localhost:8080"
+	r = p.do("POST", "/apps/expenses/launch", url.Values{"csrf": {root.csrf}}, root.with()...)
+	if r.StatusCode != 409 || launchTicketRe.MatchString(r.body) || cookieNamed(r.Response, "__Secure-can_launch_expenses") != nil {
+		t.Fatalf("%d", r.StatusCode)
+	}
 }
 
 func TestAppsPageListsModulesEscapedAndOffersAPostToOpen(t *testing.T) {
@@ -91,7 +122,7 @@ func TestLaunchMintsATicketAndMovesTheBrowserOn(t *testing.T) {
 	if strings.Contains(r.Header.Get("Location"), "cant_") {
 		t.Fatal("the ticket is in a redirect header")
 	}
-	red, ok := p.ui.Tickets.Redeem(context.Background(), "expenses", m[1])
+	red, ok := p.ui.Tickets.Redeem(context.Background(), "expenses", m[1], launchCookie(t, r).Value)
 	if !ok || red.Subject != "user:root" || red.ReturnPath != "/reports" {
 		t.Fatalf("redeem %+v %v", red, ok)
 	}

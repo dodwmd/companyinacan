@@ -8,6 +8,11 @@ CREATE TABLE login_tickets (
   subject     TEXT NOT NULL,
   module_id   TEXT NOT NULL,
   return_path TEXT NOT NULL DEFAULT '',
+  -- SHA-256 of the nonce cookie set in the browser that launched: redeem needs it (login CSRF).
+  binding_hash TEXT NOT NULL,
+  -- Unix seconds the module session may not outlive (the identity provider revalidation of the
+  -- launching admin session); 0 = no such limit.
+  session_not_after INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
   expires_at  INTEGER NOT NULL,
   used_at     INTEGER NOT NULL DEFAULT 0

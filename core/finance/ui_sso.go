@@ -17,7 +17,9 @@ import (
 // person still allowed, and with what" for. The session is rechecked at the same intervals as a
 // token session (see current).
 
-type ticketData struct{ CSRF, Ticket string }
+// ticketData is the interstitial: who the ticket signs in and, when this browser already holds a
+// session of somebody else, who that is.
+type ticketData struct{ CSRF, Ticket, Name, Account, Subject, Other string }
 
 // revalidateSSO asks can-core again about a launch-ticket session. Any doubt (can-core unreachable,
 // handle unknown, subject changed, nothing left to do here) is false and ends the session.
@@ -36,6 +38,57 @@ func (u *UI) revalidateSSO(r *http.Request, handle, subject string) (*Principal,
 	return p, v.Name, true
 }
 
+// launchModule is the module id can-core names the launch nonce cookie after.
+const launchModule = "finance"
+
+// liveSession is the subject of the unexpired session this browser holds and the name to show.
+func (u *UI) liveSession(r *http.Request) (subject, shown string) {
+	ck, err := r.Cookie(u.sessionCookieName())
+	if err != nil {
+		return "", ""
+	}
+	ss := u.sessions.get(ck.Value)
+	if ss == nil {
+		return "", ""
+	}
+	u.sessions.mu.Lock()
+	last, created, name := ss.last, ss.created, ss.name
+	u.sessions.mu.Unlock()
+	if now := u.Now(); now.Sub(last) > u.IdleTimeout || now.Sub(created) > u.AbsoluteTimeout {
+		return "", ""
+	}
+	if name == "" {
+		name = ss.subject
+	}
+	return ss.subject, name
+}
+
+// peek asks who the ticket would sign in, for this browser only: the nonce cookie can-core set at
+// launch must come with it, so a link opened anywhere else names nobody. A page has been written
+// when ok is false.
+func (u *UI) peek(w http.ResponseWriter, r *http.Request, t string, refuse func()) (modclient.LaunchSession, bool) {
+	p, err := u.Sessions.PeekTicket(r.Context(), t, modclient.LaunchBinding(r, launchModule, u.Secure))
+	switch {
+	case errors.Is(err, modclient.ErrUnavailable):
+		u.loginForm(w, r, http.StatusServiceUnavailable, u.msg("login.sso_unavailable"))
+	case err != nil || !p.Active || !strings.HasPrefix(p.Subject, "user:"):
+		refuse()
+	default:
+		return p, true
+	}
+	return modclient.LaunchSession{}, false
+}
+
+// showTicket renders the interstitial.
+func (u *UI) showTicket(w http.ResponseWriter, r *http.Request, status int, t string, p modclient.LaunchSession) {
+	tok := u.loginCSRF(w, r)
+	v := ticketData{CSRF: tok, Ticket: t, Name: p.Name, Subject: p.Subject, Account: strings.TrimPrefix(p.Subject, "user:")}
+	if other, shown := u.liveSession(r); other != "" && other != p.Subject {
+		v.Other = shown
+	}
+	u.render(w, r, nil, status, "ticket.html", "ticket.title", v)
+}
+
 // ticketPage is where the admin UI sends the browser. It never consumes the ticket.
 func (u *UI) ticketPage(w http.ResponseWriter, r *http.Request) {
 	if u.Sessions == nil {
@@ -47,7 +100,11 @@ func (u *UI) ticketPage(w http.ResponseWriter, r *http.Request) {
 		u.loginForm(w, r, http.StatusBadRequest, u.msg("login.ticket_invalid"))
 		return
 	}
-	u.render(w, r, nil, http.StatusOK, "ticket.html", "ticket.title", ticketData{CSRF: u.loginCSRF(w, r), Ticket: t})
+	p, ok := u.peek(w, r, t, func() { u.loginForm(w, r, http.StatusUnauthorized, u.msg("login.ticket_invalid")) })
+	if !ok {
+		return
+	}
+	u.showTicket(w, r, http.StatusOK, t, p)
 }
 
 // ticketPost redeems the ticket. Failures are counted per client address (as login failures are) and
@@ -74,7 +131,19 @@ func (u *UI) ticketPost(w http.ResponseWriter, r *http.Request) {
 		}
 		u.loginForm(w, r, http.StatusUnauthorized, u.msg("login.ticket_invalid"))
 	}
-	ls, err := u.Sessions.RedeemTicket(r.Context(), r.PostForm.Get("ticket"))
+	t := r.PostForm.Get("ticket")
+	// A session of somebody else is never replaced without the person saying so.
+	if other, _ := u.liveSession(r); other != "" {
+		p, ok := u.peek(w, r, t, refuse)
+		if !ok {
+			return
+		}
+		if p.Subject != other && r.PostForm.Get("replace") != p.Subject {
+			u.showTicket(w, r, http.StatusConflict, t, p)
+			return
+		}
+	}
+	ls, err := u.Sessions.RedeemTicket(r.Context(), t, modclient.LaunchBinding(r, launchModule, u.Secure))
 	if err != nil {
 		if errors.Is(err, modclient.ErrUnavailable) {
 			u.loginForm(w, r, http.StatusServiceUnavailable, u.msg("login.sso_unavailable"))

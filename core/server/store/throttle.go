@@ -80,7 +80,10 @@ func (db *DB) SetAdminCredentials(ctx context.Context, id int64, hash, totpSecre
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=?`, id)
-		return err
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=?`, id); err != nil {
+			return err
+		}
+		// Module sessions and tickets that came from those sign-ins end with them.
+		return endLaunchAccessByUserID(ctx, tx, id, db.Now())
 	})
 }
