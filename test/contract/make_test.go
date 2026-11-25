@@ -1,38 +1,42 @@
 package contract
 
 import (
-	"errors"
 	"os/exec"
 	"strings"
 	"testing"
 )
 
-// The up target is a stub until epic E06: they must fail (make reports status 2;
-// the underlying `can up` exits 3) with a clear message and no side effects.
-func TestMakeStubTargets(t *testing.T) {
+// The make targets are thin wrappers over `can`; checked with -n so nothing runs
+// (no cluster, no server). dev and doctor are epic E02, up/down/status/server-down epic E06.
+// `make down` runs `can down`, which dispatches on provider.type (local -> `can dev down`).
+func TestMakeTargetsWrapCan(t *testing.T) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make not installed")
 	}
-	for target, epic := range map[string]string{"up": "E06"} {
-		cmd := exec.Command("make", "-s", target)
+	want := map[string]string{
+		"dev":         "can dev up",
+		"doctor":      "can dev doctor",
+		"down":        "can down",
+		"up":          "can up",
+		"status":      "can status",
+		"server-down": "can down",
+	}
+	for target, run := range want {
+		cmd := exec.Command("make", "-n", target)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
-		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() == 0 {
-			t.Fatalf("make %s: want a non-zero exit, got %v (%s)", target, err, out)
-		}
-		if !strings.Contains(string(out), "not implemented") || !strings.Contains(string(out), epic) {
-			t.Fatalf("make %s: unclear message %q", target, out)
+		if err != nil || !strings.Contains(string(out), run) {
+			t.Fatalf("make -n %s: err=%v out=%q, want it to run `%s`", target, err, out, run)
 		}
 	}
 }
 
-// make dev|down|doctor wrap `can dev up|down|doctor` (epic E02); checked with -n so no cluster is needed.
+// Restored from E02: make dev|doctor map to `can dev up|doctor`.
 func TestMakeDevTargets(t *testing.T) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make not installed")
 	}
-	for target, want := range map[string]string{"dev": "dev up", "down": "dev down", "doctor": "dev doctor"} {
+	for target, want := range map[string]string{"dev": "dev up", "doctor": "dev doctor"} {
 		cmd := exec.Command("make", "-n", target)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()

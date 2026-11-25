@@ -9,7 +9,7 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev down doctor up release-check
+.PHONY: help build test unit contract lint licences dev doctor up down status server-down release-check
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -39,14 +39,22 @@ test: lint unit contract ## full local check suite
 dev: ## create the local k3d cluster and apply the base manifests (epic E02)
 	@$(GO) run ./cmd/can dev up
 
-down: ## delete the local k3d cluster
-	@$(GO) run ./cmd/can dev down
+down: ## tear down: the local k3d cluster (provider local) or the server (ssh, hetzner; needs ARGS=--yes)
+	@$(GO) run ./cmd/can down $(ARGS)
 
 doctor: ## check the prerequisites for `make dev`
 	@$(GO) run ./cmd/can dev doctor
 
-up: ## provision a server and deploy (not implemented yet, epic E06)
-	@$(GO) run ./cmd/can up
+# Extra flags for the lifecycle targets, e.g. `make up ARGS=--plan` or `make down ARGS=--yes`.
+ARGS ?=
+
+up: ## provision a server, bootstrap k3s, print URL and DNS records (ARGS=--plan to preview)
+	@$(GO) run ./cmd/can up $(ARGS)
+
+server-down: down ## alias of down, kept for scripts that used the E06 name
+
+status: ## show the server state; exit 0 only when ready
+	@$(GO) run ./cmd/can status $(ARGS)
 
 release-check: ## fail if deploy Dockerfiles still have placeholder image digests
 	sh scripts/check-image-pins.sh

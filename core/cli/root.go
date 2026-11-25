@@ -73,7 +73,9 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newDoctorCmd(g),
 		newApplyCmd(),
 		newDevCmd(g),
-		newStubCmd("up", "Provision a server and deploy the company", "E06", "server providers and make up"),
+		newUpCmd(g),
+		newDownCmd(g),
+		newStatusCmd(g),
 		newLicencesCmd(g),
 	)
 	err := root.Execute()
