@@ -538,6 +538,14 @@ The Makefile targets in §6.1 call these.
 - **Security:** auto-TLS, firewall defaults (22/80/443; k3s API not exposed), NetworkPolicies default-deny, secrets encrypted at rest, fail2ban/CrowdSec option, per-module database credentials, non-root containers where possible, pod security `restricted` for module namespaces where the upstream image allows (can-system is exempt, §3.1).
 - **Multi-company:** each company is its own repo (`company.yaml`) and its own server/cluster; `can` selects it by directory or `--company`. Several companies on one server would need namespacing and a shared ingress and is deferred to Phase 3c.
 
+### 6.6 Clients: web and Android
+
+Supported client platforms are **web** and **Android**. iOS and macOS clients are out of scope for now (no Mac build hosts; Apple tooling requires them); revisit if that changes. The server-side CLI and CI are Linux-only for the same reason.
+
+- **Web (primary).** The admin UI (§6.3) and the portals (§3.7) are responsive web apps served by can-core and the portal pod, usable on phones, installable as a PWA (manifest, offline shell, web push where supported). No separate Node runtime in production (§7).
+- **Android (companion app).** A native app (Kotlin, Jetpack Compose) for the on-the-go slice of the product: the attention inbox and push notifications, approvals (leave, expenses, purchase orders, offers), timesheets, 1:1 agendas and action items, work-tracker issues assigned to me (including quick create/update of stories by managers), and the employee/investor views from the portals. It talks only to the same documented HTTPS APIs as the web UI (no private back door), authenticates with passkeys or magic links plus per-device tokens that an admin can revoke, and keeps sensitive data off the device where possible (no offline copies of salary, equity or performance data; screen-capture blocked on those screens). Push uses UnifiedPush or FCM, chosen per company, because FCM routes metadata through Google.
+- **API first.** Every client feature is an API feature first, with an OpenAPI description; the Android app, the web UI and integrations are all consumers. Build and test for Android happen on Linux CI (Gradle, emulator or Robolectric/unit tests), so no extra build hosts are needed.
+
 ## 7. Tech choices (proposed)
 
 | Area | Choice | Why |
@@ -639,6 +647,7 @@ companyinacan/
 | **Email deliverability** | Never self-host mail; relay + guided DNS (SPF/DKIM/DMARC); outbound via 587/443 |
 | **Security surface** (many apps = many CVEs) | Auto-update policy, default-deny NetworkPolicies, per-module DB credentials, k3s API not exposed, security-update notifications |
 | **Scope creep** | Strict module boundaries; ship Phase 1 before breadth |
+| Open: **Android app scope and stack** — native Kotlin as proposed, or PWA-only first? | Web/PWA ships first; the native app starts once the approvals, notifications and `work` APIs exist (Phase 3a); decide stack and push provider before starting |
 | Open: **Branding/naming** — "Company in a Can" final? | Check domain/trademark availability |
 | **Job-board access is gated by the boards** (LinkedIn/Indeed/Glassdoor partner programmes) | Layered approach (§5): careers page + JSON-LD and feeds work with no approval; API connectors are plugins the operator enables with their own access; apply for partner status later if the project grows |
 | **People data liability** (PII, salaries, candidate data; GDPR/CCPA, local employment law) | Isolation, retention timers, audit log, export/erase, encrypted backups; payroll integrated, never computed; docs state the operator owns compliance |
