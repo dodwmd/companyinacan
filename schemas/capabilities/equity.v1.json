@@ -136,6 +136,15 @@
       "description": "admin. A hold blocks erasure and retention purges."
     },
     {
+      "verb": "attest_external_holder",
+      "method": "POST",
+      "path": "/v1/stakeholders/{id}/attest-external",
+      "response": "Stakeholder",
+      "write": true,
+      "permission": "equity.write",
+      "description": "hr, finance, board or admin, never the person who created the stakeholder. A grant cannot leave draft for a holder with neither a person_id nor this attestation."
+    },
+    {
       "verb": "erase_stakeholder",
       "method": "POST",
       "path": "/v1/stakeholders/{id}/erasure",
@@ -882,6 +891,10 @@
         },
         "erased": {
           "type": "boolean"
+        },
+        "external_holder_attested": {
+          "type": "boolean",
+          "description": "A second person attested the holder as external (not a director or approver); stands in for a directory person link."
         }
       },
       "required": [

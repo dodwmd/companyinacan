@@ -346,7 +346,7 @@ func (s *Service) CreateConvertible(ctx context.Context, a Actor, entityID strin
 	if err != nil {
 		return nil, err
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "convertible.create", "convertible:"+c.ID, []string{FieldConvertible}, func(ctx context.Context, tx *sqlTx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO convertibles (id, entity_id, stakeholder_id, kind, issued_on, sens_terms, created_by, created_at) VALUES (?,?,?,?,?,?,?,?)`,
 			c.ID, entityID, in.StakeholderID, in.Kind, in.IssuedOn, sealed, canonSubject(a.Subject), s.now().Unix())
 		return err
@@ -354,7 +354,7 @@ func (s *Service) CreateConvertible(ctx context.Context, a Actor, entityID strin
 	if err != nil {
 		return nil, err
 	}
-	return c, s.auditWrite(ctx, a, "convertible.create", "convertible:"+c.ID, []string{FieldConvertible})
+	return c, nil
 }
 
 func (s *Service) loadConvertibles(ctx context.Context, q querier, entityID string) ([]Convertible, error) {

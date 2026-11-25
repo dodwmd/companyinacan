@@ -87,7 +87,7 @@ func (s *Service) CreateValuation(ctx context.Context, a Actor, entityID string,
 			return nil, err
 		}
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "valuation.create", "valuation:"+v.ID, []string{FieldValuation}, func(ctx context.Context, tx *sqlTx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO valuations (id, entity_id, class_id, kind, effective_date, expires_on, sens_fmv, sens_notes, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
 			v.ID, entityID, nullStr(in.ClassID), in.Kind, in.EffectiveDate, in.ExpiresOn, sealed, notes, canonSubject(a.Subject), s.now().Unix())
 		return err
@@ -95,7 +95,7 @@ func (s *Service) CreateValuation(ctx context.Context, a Actor, entityID string,
 	if err != nil {
 		return nil, err
 	}
-	return v, s.auditWrite(ctx, a, "valuation.create", "valuation:"+v.ID, []string{FieldValuation})
+	return v, nil
 }
 
 // ListValuations lists an entity's valuation records, newest first. Audited per record before return.

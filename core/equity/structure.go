@@ -40,14 +40,14 @@ func (s *Service) CreateEntity(ctx context.Context, a Actor, in EntityInput) (*E
 		return nil, err
 	}
 	e := &Entity{ID: newID("ent"), Name: in.Name, Jurisdiction: in.Jurisdiction, Currency: in.Currency}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "entity.create", "entity:"+e.ID, nil, func(ctx context.Context, tx *sqlTx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO entities (id, name, jurisdiction, currency, created_at) VALUES (?,?,?,?,?)`, e.ID, e.Name, e.Jurisdiction, e.Currency, s.now().Unix())
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return e, s.auditWrite(ctx, a, "entity.create", "entity:"+e.ID, nil)
+	return e, nil
 }
 
 // ListEntities lists entities.
@@ -140,7 +140,7 @@ func (s *Service) CreateShareClass(ctx context.Context, a Actor, entityID string
 		return nil, invalid("authorised must be a positive quantity")
 	}
 	c := &ShareClass{ID: newID("cls"), EntityID: entityID, Name: in.Name, Kind: in.Kind, ParMinor: in.ParMinor, Currency: in.Currency, Authorised: in.Authorised}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "class.create", "class:"+c.ID, nil, func(ctx context.Context, tx *sqlTx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO share_classes (id, entity_id, name, kind, par_minor, currency, authorised, created_at) VALUES (?,?,?,?,?,?,?,?)`,
 			c.ID, entityID, c.Name, c.Kind, c.ParMinor, c.Currency, int64(c.Authorised), s.now().Unix())
 		return err
@@ -151,7 +151,7 @@ func (s *Service) CreateShareClass(ctx context.Context, a Actor, entityID string
 		}
 		return nil, err
 	}
-	return c, s.auditWrite(ctx, a, "class.create", "class:"+c.ID, nil)
+	return c, nil
 }
 
 // RaiseAuthorised increases a class's authorised shares (never lowers them). board or admin.
@@ -165,7 +165,7 @@ func (s *Service) RaiseAuthorised(ctx context.Context, a Actor, classID string, 
 	if to <= 0 || to > MaxQty {
 		return nil, invalid("authorised must be a positive quantity")
 	}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "class.raise", "class:"+classID, nil, func(ctx context.Context, tx *sqlTx) error {
 		var cur int64
 		if err := tx.QueryRowContext(ctx, `SELECT authorised FROM share_classes WHERE id = ?`, classID).Scan(&cur); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -180,9 +180,6 @@ func (s *Service) RaiseAuthorised(ctx context.Context, a Actor, classID string, 
 		return err
 	})
 	if err != nil {
-		return nil, err
-	}
-	if err := s.auditWrite(ctx, a, "class.raise", "class:"+classID, nil); err != nil {
 		return nil, err
 	}
 	return s.getClass(ctx, s.db, classID)
@@ -286,7 +283,7 @@ func (s *Service) CreatePlan(ctx context.Context, a Actor, entityID string, in P
 		return nil, err
 	}
 	p := &Plan{ID: newID("pln"), EntityID: entityID, ClassID: in.ClassID, Name: in.Name, Authorised: in.Authorised, AdoptedOn: in.AdoptedOn, Status: "active"}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "plan.create", "plan:"+p.ID, nil, func(ctx context.Context, tx *sqlTx) error {
 		c, err := s.getClass(ctx, tx, in.ClassID)
 		if err != nil || c.EntityID != entityID {
 			return invalid("class_id is not a share class of this entity")
@@ -308,7 +305,7 @@ func (s *Service) CreatePlan(ctx context.Context, a Actor, entityID string, in P
 		}
 		return nil, err
 	}
-	return p, s.auditWrite(ctx, a, "plan.create", "plan:"+p.ID, nil)
+	return p, nil
 }
 
 func (s *Service) getPlan(ctx context.Context, q querier, id string) (*Plan, error) {
@@ -372,6 +369,9 @@ type Stakeholder struct {
 	PersonID  string `json:"person_id,omitempty"`
 	LegalHold bool   `json:"legal_hold"`
 	Erased    bool   `json:"erased"`
+	// ExternalAttested is true when a second person attested the holder as external (not a
+	// director or approver); it stands in for a directory person link.
+	ExternalAttested bool `json:"external_holder_attested"`
 }
 
 // Identity is the sealed part of a stakeholder.
@@ -449,7 +449,7 @@ func (s *Service) CreateStakeholder(ctx context.Context, a Actor, entityID strin
 	if err != nil {
 		return nil, err
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "stakeholder.create", "stakeholder:"+st.ID, []string{FieldIdentity}, func(ctx context.Context, tx *sqlTx) error {
 		now := s.now().Unix()
 		_, err := tx.ExecContext(ctx, `INSERT INTO stakeholders (id, entity_id, kind, person_id, sens_name, sens_email, sens_tax_id, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
 			st.ID, entityID, st.Kind, nullStr(st.PersonID), n, e, t, canonSubject(a.Subject), now, now)
@@ -461,7 +461,7 @@ func (s *Service) CreateStakeholder(ctx context.Context, a Actor, entityID strin
 		}
 		return nil, err
 	}
-	return st, s.auditWrite(ctx, a, "stakeholder.create", "stakeholder:"+st.ID, []string{FieldIdentity})
+	return st, nil
 }
 
 // SetIdentity replaces a stakeholder's identity (all three fields). Audited per field.
@@ -482,7 +482,7 @@ func (s *Service) SetIdentity(ctx context.Context, a Actor, id string, in Identi
 	if err != nil {
 		return err
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "stakeholder.identity.write", "stakeholder:"+id, []string{FieldIdentity}, func(ctx context.Context, tx *sqlTx) error {
 		var erased sql.NullInt64
 		if err := tx.QueryRowContext(ctx, `SELECT erased_at FROM stakeholders WHERE id = ?`, id).Scan(&erased); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -499,7 +499,7 @@ func (s *Service) SetIdentity(ctx context.Context, a Actor, id string, in Identi
 	if err != nil {
 		return err
 	}
-	return s.auditWrite(ctx, a, "stakeholder.identity.write", "stakeholder:"+id, []string{FieldIdentity})
+	return nil
 }
 
 func (s *Service) stakeholder(ctx context.Context, q querier, id string) (*Stakeholder, error) {
@@ -510,8 +510,8 @@ func (s *Service) stakeholder(ctx context.Context, q querier, id string) (*Stake
 	var pid sql.NullString
 	var hold int
 	var erased sql.NullInt64
-	err := q.QueryRowContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at FROM stakeholders WHERE id = ?`, id).
-		Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased)
+	err := q.QueryRowContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at, external_attested_by IS NOT NULL FROM stakeholders WHERE id = ?`, id).
+		Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased, &st.ExternalAttested)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -552,7 +552,7 @@ func (s *Service) ListStakeholders(ctx context.Context, a Actor, entityID string
 	}
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at FROM stakeholders WHERE entity_id = ? ORDER BY created_at, id LIMIT 5000`, entityID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at, external_attested_by IS NOT NULL FROM stakeholders WHERE entity_id = ? ORDER BY created_at, id LIMIT 5000`, entityID)
 	if err != nil {
 		return nil, err
 	}
@@ -563,7 +563,7 @@ func (s *Service) ListStakeholders(ctx context.Context, a Actor, entityID string
 		var pid sql.NullString
 		var hold int
 		var erased sql.NullInt64
-		if err := rows.Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased); err != nil {
+		if err := rows.Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased, &st.ExternalAttested); err != nil {
 			return nil, err
 		}
 		st.PersonID, st.LegalHold, st.Erased = pid.String, hold == 1, erased.Valid
@@ -620,4 +620,46 @@ func (s *Service) openIdentity(ctx context.Context, q querier, id string) (*Iden
 		out.Name = "[erased]"
 	}
 	return &out, nil
+}
+
+// AttestExternal records that a stakeholder with no directory link is an external holder: not a
+// director, not someone who approves grants. It exists so that the board's separation of duties
+// cannot be sidestepped by a holder the service cannot tie to a person. The attester must be
+// someone other than whoever created the stakeholder, and is audited. hr, finance, board or admin.
+func (s *Service) AttestExternal(ctx context.Context, a Actor, id string) (*Stakeholder, error) {
+	if err := validID("stk", id); err != nil {
+		return nil, err
+	}
+	if err := s.authorize(ctx, a, ActStakeholderEdit, Fact{}, "stakeholder:"+id); err != nil {
+		return nil, err
+	}
+	err := s.txAudit(ctx, a, "stakeholder.attest_external", "stakeholder:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
+		var created string
+		var pid, att sql.NullString
+		var erased sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT created_by, person_id, external_attested_by, erased_at FROM stakeholders WHERE id = ?`, id).Scan(&created, &pid, &att, &erased); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if erased.Valid {
+			return conflict("the stakeholder is erased")
+		}
+		if pid.Valid {
+			return conflict("the stakeholder is linked to a directory person; no attestation is needed")
+		}
+		if att.Valid {
+			return conflict("the stakeholder is already attested")
+		}
+		if !sodOK(a, created) {
+			return ErrSeparation
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE stakeholders SET external_attested_by = ?, external_attested_on = ?, updated_at = ? WHERE id = ?`, canonSubject(a.Subject), s.today(), s.now().Unix(), id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.stakeholder(ctx, s.db, id)
 }

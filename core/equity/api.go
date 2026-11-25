@@ -338,6 +338,13 @@ func (a *API) Handler() http.Handler {
 		}
 		return noContent()
 	})
+	route("POST /v1/stakeholders/{id}/attest-external", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
+		st, err := svc().AttestExternal(ctx, ac, r.PathValue("id"))
+		if err != nil {
+			return result{}, err
+		}
+		return ok(st)
+	})
 	route("PUT /v1/stakeholders/{id}/legal-hold", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
 		var in struct {
 			Hold   bool   `json:"hold"`

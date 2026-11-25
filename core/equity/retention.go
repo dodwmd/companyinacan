@@ -156,7 +156,7 @@ func (s *Service) RequestErasure(ctx context.Context, a Actor, id string) (*Eras
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM grants WHERE stakeholder_id = ? AND status != 'draft'`, id).Scan(&grants)
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM exercises WHERE stakeholder_id = ? AND status = 'issued'`, id).Scan(&exercises)
 	date := s.today()
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "erase", "stakeholder:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		for _, c := range PurgeClasses {
 			if err := s.purgeClass(ctx, tx, id, c); err != nil {
 				return err
@@ -171,9 +171,6 @@ func (s *Service) RequestErasure(ctx context.Context, a Actor, id string) (*Eras
 		return nil, err
 	}
 	// Audit first: the erasure has committed, so it must be on record even if the scrub fails.
-	if err := s.auditWrite(ctx, a, "erase", "stakeholder:"+id, nil); err != nil {
-		return nil, err
-	}
 	if err := s.scrub(ctx, true); err != nil {
 		return nil, fmt.Errorf("the stakeholder is erased and audited, but scrubbing the database files failed (repeat the request: it is idempotent and retries the scrub): %w", err)
 	}
@@ -212,10 +209,10 @@ func (s *Service) SetLegalHold(ctx context.Context, a Actor, id string, hold boo
 	} else {
 		reason = ""
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE stakeholders SET legal_hold = ?, legal_hold_reason = ?, updated_at = ? WHERE id = ?`, n, reason, s.now().Unix(), id); err != nil {
+	return s.txAudit(ctx, a, "hold", "stakeholder:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE stakeholders SET legal_hold = ?, legal_hold_reason = ?, updated_at = ? WHERE id = ?`, n, reason, s.now().Unix(), id)
 		return err
-	}
-	return s.auditWrite(ctx, a, "hold", "stakeholder:"+id, nil)
+	})
 }
 
 // ErasureEntry is one tombstone as can-core pulls it into the erasure ledger.

@@ -133,6 +133,40 @@ func (s *Service) auditDeny(ctx context.Context, a Actor, action, resource strin
 	_ = s.audit.Record(ctx, AuditEvent{Time: s.now(), Actor: a.auditID(), Action: action, Resource: resource, Fields: fields, Outcome: "denied"})
 }
 
-func (s *Service) auditWrite(ctx context.Context, a Actor, action, resource string, fields []string) error {
-	return s.audit.Record(ctx, AuditEvent{Time: s.now(), Actor: a.auditID(), Action: action, Resource: resource, Fields: fields, Outcome: "ok"})
+// RecordTx writes events inside the caller's transaction, so a mutation and its audit entry
+// commit together or not at all (the service holds one connection, so the chain stays ordered).
+func (a *SQLAuditor) RecordTx(ctx context.Context, tx *sql.Tx, es []AuditEvent) error {
+	var prev string
+	if err := tx.QueryRowContext(ctx, `SELECT hash FROM audit_log ORDER BY seq DESC LIMIT 1`).Scan(&prev); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	for _, e := range es {
+		if e.Time.IsZero() {
+			e.Time = a.now()
+		}
+		fields := strings.Join(e.Fields, ",")
+		h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s|%s|%s|%s|%s", prev, e.Time.Unix(), e.Actor, e.Action, e.Resource, fields, e.Outcome)))
+		hash := hex.EncodeToString(h[:])
+		if _, err := tx.ExecContext(ctx, `INSERT INTO audit_log (at, actor, action, resource, fields, outcome, prev, hash) VALUES (?,?,?,?,?,?,?,?)`,
+			e.Time.Unix(), e.Actor, e.Action, e.Resource, fields, e.Outcome, prev, hash); err != nil {
+			return err
+		}
+		prev = hash
+	}
+	return nil
+}
+
+// txAuditor is implemented by auditors that can join the caller's transaction.
+type txAuditor interface {
+	RecordTx(ctx context.Context, tx *sql.Tx, es []AuditEvent) error
+}
+
+// auditIn records a mutation's audit entry inside tx. With an auditor that cannot join the
+// transaction it records just before the commit, and the commit still fails if recording does.
+func (s *Service) auditIn(ctx context.Context, tx *sqlTx, a Actor, action, resource string, fields []string) error {
+	ev := AuditEvent{Time: s.now(), Actor: a.auditID(), Action: action, Resource: resource, Fields: fields, Outcome: "ok"}
+	if ta, ok := s.audit.(txAuditor); ok {
+		return ta.RecordTx(ctx, tx, []AuditEvent{ev})
+	}
+	return s.audit.Record(ctx, ev)
 }

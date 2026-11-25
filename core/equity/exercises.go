@@ -100,12 +100,12 @@ func (s *Service) RequestExercise(ctx context.Context, a Actor, grantID string, 
 		s.auditDeny(ctx, a, string(ActExerciseRequest), "grant:"+grantID, nil)
 		return "", false, ErrNotFound
 	}
-	return s.idempotent(ctx, a, "exercise.create:"+grantID, idemKey, body, func() (string, error) {
+	return s.idempotent(ctx, a, "exercise.create:"+grantID, idemKey, body, func(ctx context.Context) (string, error) {
 		if qty <= 0 || qty > MaxQty {
 			return "", invalid("quantity must be a positive quantity")
 		}
 		id := newID("exr")
-		err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+		err := s.txAudit(ctx, a, "exercise.request", "exercise:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 			g, err := s.loadGrant(ctx, tx, grantID)
 			if err != nil {
 				return err
@@ -140,6 +140,7 @@ func (s *Service) RequestExercise(ctx context.Context, a Actor, grantID string, 
 			if err != nil {
 				return err
 			}
+			setIdem(ctx, id)
 			now := s.now().Unix()
 			_, err = tx.ExecContext(ctx, `INSERT INTO exercises (id, entity_id, grant_id, stakeholder_id, quantity, currency, due_minor, status, requested_by, approval_ref, created_at, updated_at)
 				VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, id, g.EntityID, g.ID, g.StakeholderID, int64(qty), g.Currency, due, ExRequested, canonSubject(a.Subject), ref, now, now)
@@ -148,7 +149,7 @@ func (s *Service) RequestExercise(ctx context.Context, a Actor, grantID string, 
 		if err != nil {
 			return "", err
 		}
-		return id, s.auditWrite(ctx, a, "exercise.request", "exercise:"+id, nil)
+		return id, nil
 	})
 }
 
@@ -242,11 +243,11 @@ func (s *Service) listExercises(ctx context.Context, a Actor, where string, args
 }
 
 // step runs one transition of the exercise chain in a transaction.
-func (s *Service) exerciseStep(ctx context.Context, a Actor, id string, act Action, fn func(ctx context.Context, tx *sqlTx, e *exerciseRow, g *grantRow) error) (*Exercise, error) {
+func (s *Service) exerciseStep(ctx context.Context, a Actor, id string, act Action, audit string, fields []string, fn func(ctx context.Context, tx *sqlTx, e *exerciseRow, g *grantRow) error) (*Exercise, error) {
 	if err := s.authorize(ctx, a, act, Fact{}, "exercise:"+id); err != nil {
 		return nil, err
 	}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, audit, "exercise:"+id, fields, func(ctx context.Context, tx *sqlTx) error {
 		e, err := s.loadExercise(ctx, tx, id)
 		if err != nil {
 			return err
@@ -279,7 +280,7 @@ func (s *Service) exerciseStep(ctx context.Context, a Actor, id string, act Acti
 // (nor the holder), through the same sodOK as everything else. With an approval engine
 // configured, the engine must have approved.
 func (s *Service) ApproveExercise(ctx context.Context, a Actor, id string) (*Exercise, error) {
-	ex, err := s.exerciseStep(ctx, a, id, ActExerciseApprove, func(ctx context.Context, tx *sqlTx, e *exerciseRow, _ *grantRow) error {
+	ex, err := s.exerciseStep(ctx, a, id, ActExerciseApprove, "exercise.approve", nil, func(ctx context.Context, tx *sqlTx, e *exerciseRow, _ *grantRow) error {
 		if e.Status != ExRequested {
 			return conflict("only a requested exercise can be approved (status is %s)", e.Status)
 		}
@@ -307,12 +308,12 @@ func (s *Service) ApproveExercise(ctx context.Context, a Actor, id string) (*Exe
 	if err != nil {
 		return nil, err
 	}
-	return ex, s.auditWrite(ctx, a, "exercise.approve", "exercise:"+id, nil)
+	return ex, nil
 }
 
 // RejectExercise rejects a requested exercise.
 func (s *Service) RejectExercise(ctx context.Context, a Actor, id string) (*Exercise, error) {
-	ex, err := s.exerciseStep(ctx, a, id, ActExerciseApprove, func(ctx context.Context, tx *sqlTx, e *exerciseRow, _ *grantRow) error {
+	ex, err := s.exerciseStep(ctx, a, id, ActExerciseApprove, "exercise.reject", nil, func(ctx context.Context, tx *sqlTx, e *exerciseRow, _ *grantRow) error {
 		if e.Status != ExRequested {
 			return conflict("only a requested exercise can be rejected (status is %s)", e.Status)
 		}
@@ -322,7 +323,7 @@ func (s *Service) RejectExercise(ctx context.Context, a Actor, id string) (*Exer
 	if err != nil {
 		return nil, err
 	}
-	return ex, s.auditWrite(ctx, a, "exercise.reject", "exercise:"+id, nil)
+	return ex, nil
 }
 
 // CancelExercise withdraws an exercise before payment. The requester, hr, finance and admin may.
@@ -339,7 +340,7 @@ func (s *Service) CancelExercise(ctx context.Context, a Actor, id string) (*Exer
 		s.auditDeny(ctx, a, "exercise.cancel", "exercise:"+id, nil)
 		return nil, ErrNotFound
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "exercise.cancel", "exercise:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		e, err := s.loadExercise(ctx, tx, id)
 		if err != nil {
 			return err
@@ -351,9 +352,6 @@ func (s *Service) CancelExercise(ctx context.Context, a Actor, id string) (*Exer
 		return err
 	})
 	if err != nil {
-		return nil, err
-	}
-	if err := s.auditWrite(ctx, a, "exercise.cancel", "exercise:"+id, nil); err != nil {
 		return nil, err
 	}
 	return s.GetExercise(ctx, a, id)
@@ -379,7 +377,7 @@ func (s *Service) RecordPayment(ctx context.Context, a Actor, id string, in Paym
 	if err := validLine("reference", in.Reference, 200, false); err != nil {
 		return nil, err
 	}
-	ex, err := s.exerciseStep(ctx, a, id, ActExercisePay, func(ctx context.Context, tx *sqlTx, e *exerciseRow, _ *grantRow) error {
+	ex, err := s.exerciseStep(ctx, a, id, ActExercisePay, "exercise.payment", []string{FieldPaymentRef}, func(ctx context.Context, tx *sqlTx, e *exerciseRow, _ *grantRow) error {
 		if e.Status != ExApproved {
 			return conflict("payment is recorded on an approved exercise (status is %s)", e.Status)
 		}
@@ -406,7 +404,7 @@ func (s *Service) RecordPayment(ctx context.Context, a Actor, id string, in Paym
 	if err != nil {
 		return nil, err
 	}
-	return ex, s.auditWrite(ctx, a, "exercise.payment", "exercise:"+id, []string{FieldPaymentRef})
+	return ex, nil
 }
 
 // IssueShares completes an exercise: the shares go into the ledger and the grant's exercised
@@ -414,7 +412,7 @@ func (s *Service) RecordPayment(ctx context.Context, a Actor, id string, in Paym
 // are checked again here. finance, admin or hr, never the requester and never the person who
 // recorded the payment.
 func (s *Service) IssueShares(ctx context.Context, a Actor, id string) (*Exercise, error) {
-	ex, err := s.exerciseStep(ctx, a, id, ActExerciseIssue, func(ctx context.Context, tx *sqlTx, e *exerciseRow, g *grantRow) error {
+	ex, err := s.exerciseStep(ctx, a, id, ActExerciseIssue, "exercise.issue", nil, func(ctx context.Context, tx *sqlTx, e *exerciseRow, g *grantRow) error {
 		if e.Status != ExPaid {
 			return conflict("shares are issued after the payment is recorded (status is %s)", e.Status)
 		}
@@ -471,5 +469,5 @@ func (s *Service) IssueShares(ctx context.Context, a Actor, id string) (*Exercis
 	if err != nil {
 		return nil, err
 	}
-	return ex, s.auditWrite(ctx, a, "exercise.issue", "exercise:"+id, nil)
+	return ex, nil
 }

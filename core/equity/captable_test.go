@@ -113,7 +113,7 @@ func TestCapTableViewsAsOfDates(t *testing.T) {
 	}
 	// terminated 2027-07-15 after 18 months: from then only the vested part is outstanding, until the window closes
 	e.advance("2027-07-15")
-	m(e.s.TerminateGrant(e.ctx, e.hr, id, "2027-07-15", false))
+	m(e.s.TerminateGrant(e.ctx, e.hr2, id, "2027-07-15", false))
 	at := func(d string) Qty {
 		return m(e.s.GetCapTable(e.ctx, e.fin, e.ent.ID, d, "fully-diluted", false)).Totals.OptionsOutstanding
 	}

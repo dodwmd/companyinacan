@@ -109,6 +109,7 @@ func (e *env) draft(by Actor, stk string, qty Qty) string {
 // approved takes a grant to approved: drafted and submitted by hr, approved by the board.
 func (e *env) approved(stk string, qty Qty) string {
 	e.t.Helper()
+	e.link(stk)
 	id := e.draft(e.hr, stk, qty)
 	m(e.s.SubmitGrant(e.ctx, e.hr, id))
 	m(e.s.ApproveGrant(e.ctx, e.board, id))
@@ -162,4 +163,13 @@ func (f *fakeEngine) Request(_ context.Context, r ApprovalRequest) (string, erro
 
 func (f *fakeEngine) Status(context.Context, string) (ApprovalStatus, error) {
 	return ApprovalStatus{Outcome: f.outcome, DecidedBy: f.decider}, nil
+}
+
+// link attests a holder with no directory person as external, by a second person (admin).
+func (e *env) link(stk string) {
+	e.t.Helper()
+	st := m(e.s.GetStakeholder(e.ctx, e.admin, stk))
+	if st.PersonID == "" && !st.ExternalAttested {
+		m(e.s.AttestExternal(e.ctx, e.admin, stk))
+	}
 }

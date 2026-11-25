@@ -195,7 +195,7 @@ func TestCancelAndExpiryReleaseThePool(t *testing.T) {
 	// termination: the window closes, the sweep expires the grant and the pool recovers the unvested part
 	id2 := e.active(e.eveStk.ID, q(4800))
 	e.advance("2027-07-15") // 18 months vested
-	m(e.s.TerminateGrant(e.ctx, e.hr, id2, "2027-07-15", false))
+	m(e.s.TerminateGrant(e.ctx, e.hr2, id2, "2027-07-15", false))
 	e.advance("2027-10-13") // 90 days later: last day of the window
 	m(e.s.ApplyDue(e.ctx))
 	if g := m(e.s.GetGrant(e.ctx, e.hr, id2)); g.Status != GrantActive {
@@ -214,7 +214,7 @@ func TestCancelAndExpiryReleaseThePool(t *testing.T) {
 	}
 	// for cause forfeits at once
 	id3 := e.active(e.eveStk.ID, q(100))
-	g := m(e.s.TerminateGrant(e.ctx, e.hr, id3, "2027-10-14", true))
+	g := m(e.s.TerminateGrant(e.ctx, e.hr2, id3, "2027-10-14", true))
 	if g.Status != GrantForfeited {
 		t.Fatalf("for cause: %s", g.Status)
 	}
@@ -332,23 +332,23 @@ func TestMilestoneAndAccelerationFlowThroughTheService(t *testing.T) {
 	m(e.s.SubmitGrant(e.ctx, e.hr, id))
 	m(e.s.ApproveGrant(e.ctx, e.board, id))
 	m(e.s.ActivateGrant(e.ctx, e.hr, id, ""))
-	if err := e.s.RecordMilestone(e.ctx, e.hr, id, 1, "2026-03-01"); err == nil {
+	if err := e.s.RecordMilestone(e.ctx, e.hr2, id, 1, "2026-03-10"); err == nil {
 		t.Fatal("a dated tranche accepted as a milestone")
 	}
-	if err := e.s.RecordMilestone(e.ctx, e.hr, id, 0, "2026-12-31"); err == nil {
+	if err := e.s.RecordMilestone(e.ctx, e.hr2, id, 0, "2026-12-31"); err == nil {
 		t.Fatal("a future milestone accepted")
 	}
-	e.must(e.s.RecordMilestone(e.ctx, e.hr, id, 0, "2026-03-01"))
-	if err := e.s.RecordMilestone(e.ctx, e.hr, id, 0, "2026-03-02"); !isErr(err, ErrConflict) {
+	e.must(e.s.RecordMilestone(e.ctx, e.hr2, id, 0, "2026-03-10"))
+	if err := e.s.RecordMilestone(e.ctx, e.hr2, id, 0, "2026-03-10"); !isErr(err, ErrConflict) {
 		t.Fatalf("duplicate milestone: %v", err)
 	}
 	if v := m(e.s.Vesting(e.ctx, e.hr, id, "")); v.Vested != q(500) {
 		t.Fatalf("after milestone: %s", v.Vested)
 	}
-	if err := e.s.RecordAcceleration(e.ctx, e.hr, id, "nonsense", "2026-03-05"); err == nil {
+	if err := e.s.RecordAcceleration(e.ctx, e.hr2, id, "nonsense", "2026-03-10"); err == nil {
 		t.Fatal("unknown trigger accepted")
 	}
-	e.must(e.s.RecordAcceleration(e.ctx, e.hr, id, "change_of_control", "2026-03-09"))
+	e.must(e.s.RecordAcceleration(e.ctx, e.hr2, id, "change_of_control", "2026-03-10"))
 	if v := m(e.s.Vesting(e.ctx, e.hr, id, "")); v.Vested != q(1000) {
 		t.Fatalf("after acceleration: %s", v.Vested)
 	}

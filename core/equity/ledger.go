@@ -140,17 +140,20 @@ func (s *Service) ledgerWrite(ctx context.Context, a Actor, entityID, route, ide
 	if _, err := s.entity(ctx, s.db, entityID); err != nil {
 		return "", false, err
 	}
-	return s.idempotent(ctx, a, route+":"+entityID, idemKey, body, func() (string, error) {
+	return s.idempotent(ctx, a, route+":"+entityID, idemKey, body, func(ctx context.Context) (string, error) {
 		var id string
 		err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
 			var err error
-			id, err = fn(ctx, tx)
-			return err
+			if id, err = fn(ctx, tx); err != nil {
+				return err
+			}
+			setIdem(ctx, id)
+			return s.auditIn(ctx, tx, a, route, "ledger:"+id, []string{FieldHoldings})
 		})
 		if err != nil {
 			return "", err
 		}
-		return id, s.auditWrite(ctx, a, route, "ledger:"+id, []string{FieldHoldings})
+		return id, nil
 	})
 }
 

@@ -128,6 +128,9 @@ func (s *Service) loadGrant(ctx context.Context, q querier, id string) (*grantRo
 // view returns the grant as the actor may see it: notes only with field access.
 func (s *Service) view(a Actor, g *grantRow, f Fact) (*Grant, error) {
 	out := g.Grant
+	if !a.any() {
+		out.TerminalReason = "" // free text written by hr or the board is not for the holder; the status says what happened
+	}
 	if g.sealedNotes.Valid && FieldAccess(a, false, FieldGrantNotes, f) {
 		n, err := s.keys.Open(g.sealedNotes.String, g.ID+":notes")
 		if err != nil {
@@ -201,7 +204,7 @@ func (s *Service) CreateGrant(ctx context.Context, a Actor, planID string, in Gr
 	if err := s.authorize(ctx, a, ActGrantDraft, Fact{}, "plan:"+planID); err != nil {
 		return "", false, err
 	}
-	return s.idempotent(ctx, a, "grant.create:"+planID, idemKey, body, func() (string, error) {
+	return s.idempotent(ctx, a, "grant.create:"+planID, idemKey, body, func(ctx context.Context) (string, error) {
 		p, err := s.getPlan(ctx, s.db, planID)
 		if err != nil {
 			return "", err
@@ -217,6 +220,9 @@ func (s *Service) CreateGrant(ctx context.Context, a Actor, planID string, in Gr
 		if st.Erased {
 			return "", conflict("the stakeholder is erased")
 		}
+		if !sodOK(a, st.PersonID) {
+			return "", ErrSeparation
+		}
 		if p.Status != "active" {
 			return "", conflict("the plan is closed")
 		}
@@ -231,7 +237,8 @@ func (s *Service) CreateGrant(ctx context.Context, a Actor, planID string, in Gr
 			return "", err
 		}
 		sched, _ := json.Marshal(g.Schedule)
-		err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+		err = s.txAudit(ctx, a, "grant.create", "grant:"+g.ID, []string{FieldGrantTerms}, func(ctx context.Context, tx *sqlTx) error {
+			setIdem(ctx, g.ID)
 			now := s.now().Unix()
 			_, err := tx.ExecContext(ctx, `INSERT INTO grants (id, entity_id, plan_id, stakeholder_id, type, status, version, quantity, currency, strike_minor, grant_date, vest_start, schedule, expiry_date, ptep_days, sens_notes, created_by, created_at, updated_at)
 				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, g.ID, g.EntityID, g.PlanID, g.StakeholderID, g.Type, g.Status, g.Version, int64(g.Quantity), g.Currency, g.StrikeMinor,
@@ -241,7 +248,7 @@ func (s *Service) CreateGrant(ctx context.Context, a Actor, planID string, in Gr
 		if err != nil {
 			return "", err
 		}
-		return g.ID, s.auditWrite(ctx, a, "grant.create", "grant:"+g.ID, []string{FieldGrantTerms})
+		return g.ID, nil
 	})
 }
 
@@ -250,9 +257,12 @@ func (s *Service) UpdateGrant(ctx context.Context, a Actor, id string, p GrantPa
 	if err := s.authorize(ctx, a, ActGrantDraft, Fact{}, "grant:"+id); err != nil {
 		return nil, err
 	}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "grant.update", "grant:"+id, []string{FieldGrantTerms}, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantDraft {
@@ -312,9 +322,6 @@ func (s *Service) UpdateGrant(ctx context.Context, a Actor, id string, p GrantPa
 	if err != nil {
 		return nil, err
 	}
-	if err := s.auditWrite(ctx, a, "grant.update", "grant:"+id, []string{FieldGrantTerms}); err != nil {
-		return nil, err
-	}
 	return s.GetGrant(ctx, a, id)
 }
 
@@ -323,9 +330,12 @@ func (s *Service) DeleteGrant(ctx context.Context, a Actor, id string) error {
 	if err := s.authorize(ctx, a, ActGrantDraft, Fact{}, "grant:"+id); err != nil {
 		return err
 	}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "grant.delete", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantDraft || g.SupersedesID != "" {
@@ -337,7 +347,7 @@ func (s *Service) DeleteGrant(ctx context.Context, a Actor, id string) error {
 	if err != nil {
 		return err
 	}
-	return s.auditWrite(ctx, a, "grant.delete", "grant:"+id, nil)
+	return nil
 }
 
 // visibleTo applies record-level visibility: the holder sees their own grant only once it has
@@ -518,9 +528,12 @@ func (s *Service) SubmitGrant(ctx context.Context, a Actor, id string) (*Grant, 
 		return nil, err
 	}
 	var ref string
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "grant.submit", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantDraft {
@@ -532,6 +545,9 @@ func (s *Service) SubmitGrant(ctx context.Context, a Actor, id string) (*Grant, 
 		}
 		if st.Erased {
 			return conflict("the stakeholder is erased")
+		}
+		if _, err := s.holderLink(ctx, tx, g.StakeholderID); err != nil {
+			return err
 		}
 		avail, err := s.poolAvailable(ctx, tx, g.PlanID, s.today(), g.SupersedesID)
 		if err != nil {
@@ -545,13 +561,10 @@ func (s *Service) SubmitGrant(ctx context.Context, a Actor, id string) (*Grant, 
 				return err
 			}
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE grants SET status=?, submitted_by=?, approval_ref=?, updated_at=? WHERE id=?`, GrantPending, canonSubject(a.Subject), ref, s.now().Unix(), id)
+		_, err = tx.ExecContext(ctx, `UPDATE grants SET status=?, submitted_by=?, approval_ref=?, terminal_reason='', updated_at=? WHERE id=?`, GrantPending, canonSubject(a.Subject), ref, s.now().Unix(), id)
 		return err
 	})
 	if err != nil {
-		return nil, err
-	}
-	if err := s.auditWrite(ctx, a, "grant.submit", "grant:"+id, nil); err != nil {
 		return nil, err
 	}
 	return s.GetGrant(ctx, a, id)
@@ -565,9 +578,12 @@ func (s *Service) RejectGrant(ctx context.Context, a Actor, id, reason string) (
 	if err := validText("reason", reason, 500, false); err != nil {
 		return nil, err
 	}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "grant.reject", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantPending {
@@ -577,9 +593,6 @@ func (s *Service) RejectGrant(ctx context.Context, a Actor, id, reason string) (
 		return err
 	})
 	if err != nil {
-		return nil, err
-	}
-	if err := s.auditWrite(ctx, a, "grant.reject", "grant:"+id, nil); err != nil {
 		return nil, err
 	}
 	return s.GetGrant(ctx, a, id)
@@ -594,10 +607,12 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 	if err := s.authorize(ctx, a, ActGrantApprove, Fact{}, "grant:"+id); err != nil {
 		return nil, err
 	}
-	var granteePerson string
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "grant.approve", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantPending {
@@ -614,10 +629,11 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 			}
 			approver = canonSubject(st.DecidedBy)
 		}
-		if err := tx.QueryRowContext(ctx, `SELECT IFNULL(person_id, '') FROM stakeholders WHERE id = ?`, g.StakeholderID).Scan(&granteePerson); err != nil {
+		link, err := s.holderLink(ctx, tx, g.StakeholderID)
+		if err != nil {
 			return err
 		}
-		chain := append([]string{g.createdBy, g.submittedBy, granteePerson}, g.editedBy...)
+		chain := append([]string{g.createdBy, g.submittedBy, link.person, link.attester}, g.editedBy...)
 		if !sodOK(Actor{Subject: approver}, chain...) || !sodOK(a, chain...) {
 			return ErrSeparation
 		}
@@ -633,7 +649,7 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 		if avail < g.Quantity {
 			return conflict("the plan has %s shares available, the grant needs %s", avail, g.Quantity)
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE grants SET status=?, approved_by=?, approved_on=?, updated_at=? WHERE id=?`, GrantApproved, approver, s.today(), s.now().Unix(), id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE grants SET status=?, approved_by=?, approved_on=?, terminal_reason='', updated_at=? WHERE id=?`, GrantApproved, approver, s.today(), s.now().Unix(), id); err != nil {
 			return err
 		}
 		return s.enqueue(ctx, tx, EventGrantApproved, map[string]any{
@@ -643,9 +659,6 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 		if errors.Is(err, ErrSeparation) {
 			s.auditDeny(ctx, a, "grant.approve", "grant:"+id, nil)
 		}
-		return nil, err
-	}
-	if err := s.auditWrite(ctx, a, "grant.approve", "grant:"+id, nil); err != nil {
 		return nil, err
 	}
 	return s.GetGrant(ctx, a, id)
@@ -676,9 +689,12 @@ func (s *Service) AmendGrant(ctx context.Context, a Actor, id string) (*Grant, e
 		return nil, err
 	}
 	newID := newID("grt")
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "grant.amend", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantApproved && g.Status != GrantActive {
@@ -700,9 +716,6 @@ func (s *Service) AmendGrant(ctx context.Context, a Actor, id string) (*Grant, e
 		}
 		return nil, err
 	}
-	if err := s.auditWrite(ctx, a, "grant.amend", "grant:"+id, nil); err != nil {
-		return nil, err
-	}
 	return s.GetGrant(ctx, a, newID)
 }
 
@@ -722,9 +735,12 @@ func (s *Service) ActivateGrant(ctx context.Context, a Actor, id, on string) (*G
 	if d.After(s.now().UTC()) {
 		return nil, invalid("activated_on cannot be in the future")
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "grant.activate", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantApproved {
@@ -739,9 +755,6 @@ func (s *Service) ActivateGrant(ctx context.Context, a Actor, id, on string) (*G
 	if err != nil {
 		return nil, err
 	}
-	if err := s.auditWrite(ctx, a, "grant.activate", "grant:"+id, nil); err != nil {
-		return nil, err
-	}
 	return s.GetGrant(ctx, a, id)
 }
 
@@ -754,9 +767,12 @@ func (s *Service) CancelGrant(ctx context.Context, a Actor, id, reason string) (
 	if err := validText("reason", reason, 500, false); err != nil {
 		return nil, err
 	}
-	err := s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err := s.txAudit(ctx, a, "grant.cancel", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
 			return err
 		}
 		switch g.Status {
@@ -771,9 +787,6 @@ func (s *Service) CancelGrant(ctx context.Context, a Actor, id, reason string) (
 		return err
 	})
 	if err != nil {
-		return nil, err
-	}
-	if err := s.auditWrite(ctx, a, "grant.cancel", "grant:"+id, nil); err != nil {
 		return nil, err
 	}
 	return s.GetGrant(ctx, a, id)
@@ -791,9 +804,15 @@ func (s *Service) TerminateGrant(ctx context.Context, a Actor, id, on string, fo
 	if err != nil {
 		return nil, err
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "grant.terminate", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
+			return err
+		}
+		if err := s.secondActor(a, g); err != nil {
 			return err
 		}
 		if g.Status != GrantActive {
@@ -819,9 +838,6 @@ func (s *Service) TerminateGrant(ctx context.Context, a Actor, id, on string, fo
 		return err
 	})
 	if err != nil {
-		return nil, err
-	}
-	if err := s.auditWrite(ctx, a, "grant.terminate", "grant:"+id, nil); err != nil {
 		return nil, err
 	}
 	return s.GetGrant(ctx, a, id)
@@ -853,13 +869,22 @@ func (s *Service) RecordMilestone(ctx context.Context, a Actor, id string, idx i
 	if d.After(s.now().UTC()) {
 		return invalid("achieved_on cannot be in the future")
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "grant.milestone", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
 			return err
 		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
+			return err
+		}
+		if err := s.secondActor(a, g); err != nil {
+			return err
+		}
 		if g.Status != GrantApproved && g.Status != GrantActive {
 			return conflict("milestones are recorded on approved or active grants (status is %s)", g.Status)
+		}
+		if err := factDate(on, g.ApprovedOn, s.now()); err != nil {
+			return err
 		}
 		if g.Schedule.Kind != "tranches" || idx < 0 || idx >= len(g.Schedule.Tranches) || !g.Schedule.Tranches[idx].Milestone {
 			return invalid("tranche %d is not a milestone tranche of this grant", idx)
@@ -873,7 +898,7 @@ func (s *Service) RecordMilestone(ctx context.Context, a Actor, id string, idx i
 	if err != nil {
 		return err
 	}
-	return s.auditWrite(ctx, a, "grant.milestone", "grant:"+id, nil)
+	return nil
 }
 
 // RecordAcceleration records that an acceleration trigger happened (a change of control, a
@@ -890,13 +915,22 @@ func (s *Service) RecordAcceleration(ctx context.Context, a Actor, id, trigger, 
 	if d.After(s.now().UTC()) {
 		return invalid("occurred_on cannot be in the future")
 	}
-	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+	err = s.txAudit(ctx, a, "grant.acceleration", "grant:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		g, err := s.loadGrant(ctx, tx, id)
 		if err != nil {
 			return err
 		}
+		if err := s.guardGrantee(ctx, tx, a, g); err != nil {
+			return err
+		}
+		if err := s.secondActor(a, g); err != nil {
+			return err
+		}
 		if g.Status != GrantApproved && g.Status != GrantActive && g.Status != GrantForfeited && g.Status != GrantExpired {
 			return conflict("acceleration is recorded on approved or active grants (status is %s)", g.Status)
+		}
+		if err := factDate(on, g.ApprovedOn, s.now()); err != nil {
+			return err
 		}
 		known := false
 		for _, c := range g.Schedule.Acceleration {
@@ -914,7 +948,7 @@ func (s *Service) RecordAcceleration(ctx context.Context, a Actor, id, trigger, 
 	if err != nil {
 		return err
 	}
-	return s.auditWrite(ctx, a, "grant.acceleration", "grant:"+id, nil)
+	return nil
 }
 
 // vestInputFor builds the calculator input for a grant from the recorded facts.
@@ -1045,4 +1079,66 @@ func exercisable(g *Grant, vested, reserved Qty, asof string) Qty {
 		return 0
 	}
 	return n
+}
+
+// maxBackdateDays is how far back a milestone or acceleration trigger may be dated: facts that
+// change what has vested are recorded promptly, by someone other than the grantor.
+const maxBackdateDays = 90
+
+// factDate checks the date of a recorded vesting fact: not before the grant was approved, not in
+// the future, not further back than maxBackdateDays.
+func factDate(on, approvedOn string, now time.Time) error {
+	d, err := parseDate(on)
+	if err != nil {
+		return err
+	}
+	today := now.UTC().Truncate(24 * time.Hour)
+	if d.After(today) {
+		return invalid("the date cannot be in the future")
+	}
+	if approvedOn != "" && on < approvedOn {
+		return invalid("the date cannot be before the grant was approved (%s)", approvedOn)
+	}
+	if d.Before(today.AddDate(0, 0, -maxBackdateDays)) {
+		return invalid("the date cannot be more than %d days in the past", maxBackdateDays)
+	}
+	return nil
+}
+
+// guardGrantee refuses any change to a grant by its own grantee: whatever roles they hold,
+// nobody administers their own equity. The check is the same sodOK as everywhere else, against
+// the stakeholder's directory person id.
+func (s *Service) guardGrantee(ctx context.Context, q querier, a Actor, g *grantRow) error {
+	var person string
+	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, '') FROM stakeholders WHERE id = ?`, g.StakeholderID).Scan(&person); err != nil {
+		return err
+	}
+	if !sodOK(a, person) {
+		return ErrSeparation
+	}
+	return nil
+}
+
+// secondActor requires someone other than the grantor chain (creator, editors, submitter,
+// approver) to record a fact that changes what has vested.
+func (s *Service) secondActor(a Actor, g *grantRow) error {
+	if !sodOK(a, append([]string{g.createdBy, g.submittedBy, g.approvedBy}, g.editedBy...)...) {
+		return ErrSeparation
+	}
+	return nil
+}
+
+type holderLinkInfo struct{ person, attester string }
+
+// holderLink requires the stakeholder to be tied to a directory person, or to an external-holder
+// attestation made by a second actor. It returns whichever is recorded.
+func (s *Service) holderLink(ctx context.Context, q querier, stakeholderID string) (holderLinkInfo, error) {
+	var l holderLinkInfo
+	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), IFNULL(external_attested_by, '') FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&l.person, &l.attester); err != nil {
+		return l, err
+	}
+	if l.person == "" && l.attester == "" {
+		return l, conflict("the holder is not linked to a directory person: set person_id, or have a second person attest the holder as external (not a director or approver) before a grant can leave draft")
+	}
+	return l, nil
 }

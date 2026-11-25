@@ -46,6 +46,9 @@ func (c *csvOut) row(cells ...any) error {
 
 func (c *csvOut) close() error { c.cw.Flush(); return c.cw.Error() }
 
+// exportLimit is the most rows one export holds; beyond it the export fails rather than truncating.
+var exportLimit = 50000
+
 // ExportCSV writes one of "captable" (fully diluted), "grants" or "ledger" for an entity as CSV
 // with names and amounts, for lawyers, auditors and investors. Exports are the highest-risk read:
 // the whole data set is audited per record BEFORE a byte is written, and the CSV is built in
@@ -110,7 +113,7 @@ func (s *Service) ExportCSV(ctx context.Context, a Actor, entityID, name, asof s
 		}
 	case "grants":
 		fields = []string{FieldGrantTerms, FieldIdentity}
-		rows, err := s.db.QueryContext(ctx, `SELECT `+grantCols+` FROM grants g WHERE g.entity_id = ? ORDER BY g.rowid LIMIT 50000`, entityID)
+		rows, err := s.db.QueryContext(ctx, `SELECT `+grantCols+` FROM grants g WHERE g.entity_id = ? ORDER BY g.rowid LIMIT ?`, entityID, exportLimit+1)
 		if err != nil {
 			return err
 		}
@@ -124,6 +127,9 @@ func (s *Service) ExportCSV(ctx context.Context, a Actor, entityID, name, asof s
 			gs = append(gs, g)
 		}
 		_ = rows.Close()
+		if len(gs) > exportLimit {
+			return conflict("more than %d grants: an export is never truncated silently; export a narrower set", exportLimit)
+		}
 		out, err := newCSV(&buf, []string{"grant_id", "holder", "type", "status", "version", "quantity", "exercised", "strike", "currency", "grant_date", "vesting_start", "expiry_date", "approved_on"})
 		if err != nil {
 			return err
@@ -142,7 +148,7 @@ func (s *Service) ExportCSV(ctx context.Context, a Actor, entityID, name, asof s
 			return err
 		}
 	case "ledger":
-		rows, err := s.db.QueryContext(ctx, `SELECT `+ledgerCols+` FROM ledger WHERE entity_id = ? AND effective_date <= ? ORDER BY seq LIMIT 50000`, entityID, asof)
+		rows, err := s.db.QueryContext(ctx, `SELECT `+ledgerCols+` FROM ledger WHERE entity_id = ? AND effective_date <= ? ORDER BY seq LIMIT ?`, entityID, asof, exportLimit+1)
 		if err != nil {
 			return err
 		}
@@ -156,6 +162,9 @@ func (s *Service) ExportCSV(ctx context.Context, a Actor, entityID, name, asof s
 			es = append(es, *e)
 		}
 		_ = rows.Close()
+		if len(es) > exportLimit {
+			return conflict("more than %d ledger entries: an export is never truncated silently; narrow it with as_of or page through GET /ledger", exportLimit)
+		}
 		out, err := newCSV(&buf, []string{"ledger_id", "effective_date", "holder", "class_id", "kind", "quantity", "price", "currency", "group_id"})
 		if err != nil {
 			return err

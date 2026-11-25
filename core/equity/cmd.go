@@ -152,8 +152,8 @@ func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logg
 	maint()
 	hour := time.NewTicker(time.Hour)
 	defer hour.Stop()
-	minute := time.NewTicker(time.Hour) // vesting and expiry are dated in days; hourly is plenty
-	defer minute.Stop()
+	sweep := time.NewTicker(time.Hour) // vesting and expiry are dated in days: an hourly sweep is plenty
+	defer sweep.Stop()
 	var tick <-chan time.Time
 	if d != nil {
 		t := time.NewTicker(5 * time.Second)
@@ -164,7 +164,7 @@ func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logg
 		select {
 		case <-ctx.Done():
 			return
-		case <-minute.C:
+		case <-sweep.C:
 			due()
 		case <-hour.C:
 			maint()

@@ -180,7 +180,45 @@ func (s *Service) tx(ctx context.Context, fn func(ctx context.Context, tx *sqlTx
 		_ = tx.Rollback()
 		return err
 	}
+	// The idempotency record joins the same transaction as the create it protects.
+	if rec, _ := ctx.Value(idemCtxKey{}).(*idemRec); rec != nil && rec.resourceID != "" {
+		if err := s.insertIdem(ctx, tx, rec); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		rec.stored = true
+	}
 	return tx.Commit()
+}
+
+// txAudit runs fn and records the audit entry in the same transaction: no entry, no mutation.
+func (s *Service) txAudit(ctx context.Context, a Actor, action, resource string, fields []string, fn func(ctx context.Context, tx *sqlTx) error) error {
+	return s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+		if err := fn(ctx, tx); err != nil {
+			return err
+		}
+		return s.auditIn(ctx, tx, a, action, resource, fields)
+	})
+}
+
+type idemCtxKey struct{}
+
+type idemRec struct {
+	key, actor, route, hash string
+	resourceID              string
+	stored                  bool
+}
+
+// setIdem is called by a create inside its transaction with the id of what it made.
+func setIdem(ctx context.Context, id string) {
+	if rec, _ := ctx.Value(idemCtxKey{}).(*idemRec); rec != nil {
+		rec.resourceID = id
+	}
+}
+
+func (s *Service) insertIdem(ctx context.Context, tx *sqlTx, r *idemRec) error {
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO idempotency (key, actor, route, body_hash, resource_id, created_at) VALUES (?,?,?,?,?,?)`, r.key, r.actor, r.route, r.hash, r.resourceID, s.now().Unix())
+	return err
 }
 
 // readCtx bounds one read.
@@ -267,9 +305,9 @@ const maxIdemKey = 128
 // idempotent runs create at most once per (actor, route, key). A repeat with the same body
 // returns the id of the first result (the caller re-reads it under the caller's current
 // rights); the same key with another body is a conflict. Without a key it just runs create.
-func (s *Service) idempotent(ctx context.Context, a Actor, route, key string, body []byte, create func() (string, error)) (id string, replay bool, err error) {
+func (s *Service) idempotent(ctx context.Context, a Actor, route, key string, body []byte, create func(ctx context.Context) (string, error)) (id string, replay bool, err error) {
 	if key == "" {
-		id, err = create()
+		id, err = create(ctx)
 		return id, false, err
 	}
 	s.idemMu.Lock() // one create per key at a time: two concurrent first requests cannot both create
@@ -291,11 +329,14 @@ func (s *Service) idempotent(ctx context.Context, a Actor, route, key string, bo
 	case !errors.Is(err, sql.ErrNoRows):
 		return "", false, err
 	}
-	id, err = create()
+	rec := &idemRec{key: key, actor: actor, route: route, hash: hash}
+	id, err = create(context.WithValue(ctx, idemCtxKey{}, rec))
 	if err != nil {
 		return "", false, err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO idempotency (key, actor, route, body_hash, resource_id, created_at) VALUES (?,?,?,?,?,?)`, key, actor, route, hash, id, s.now().Unix())
+	if !rec.stored { // a create that did not record inside its own transaction
+		_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO idempotency (key, actor, route, body_hash, resource_id, created_at) VALUES (?,?,?,?,?,?)`, key, actor, route, hash, id, s.now().Unix())
+	}
 	return id, false, err
 }
 

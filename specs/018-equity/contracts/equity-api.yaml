@@ -928,6 +928,63 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}/attest-external":
+    "post":
+      "operationId": "attest_external_holder"
+      "summary": "hr, finance, board or admin"
+      "description": "Records that a stakeholder with no directory person link is an external holder (not a director or approver). The attester must not be the person who created the stakeholder. A grant cannot leave draft for a holder with neither a person_id nor this attestation. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Stakeholder"
+        "400":
+          "description": "invalid"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "not permitted, or separation of duties"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "not found, or not visible to the caller"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict with the current state"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "rate limited (failed authentications only)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
   "/v1/stakeholders/{id}/erasure":
     "post":
       "operationId": "erase_stakeholder"
@@ -3641,6 +3698,9 @@
           "type": "boolean"
         "erased":
           "type": "boolean"
+        "external_holder_attested":
+          "type": "boolean"
+          "description": "A second person attested the holder as external (not a director or approver); stands in for a directory person link."
       "required":
         - "id"
         - "entity_id"

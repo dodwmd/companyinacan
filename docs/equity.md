@@ -12,6 +12,11 @@ manifest `modules/equity/module.yaml`. "Stock" here means employee stock options
 > documented limit, never an enforcement. Equity law differs by jurisdiction and mistakes are expensive:
 > have counsel review plans, grants, conversions and the figures this tool produces.
 
+> **Plaintext terms, volume encryption required.** Grant quantity, strike, schedule and ledger quantities are
+> stored in the clear in the SQLite file (pool and dilution maths and the immutability triggers need them).
+> Only identity, notes, payment references, valuation figures and convertible terms are sealed. Run the
+> service on an encrypted volume, encrypt backups and snapshots, and treat the database file as sensitive.
+
 Status: **experimental**. Unit-, contract- and race-tested offline; not yet exercised on a cluster. See
 "Not implemented, limits and gaps" at the end.
 
@@ -83,6 +88,19 @@ variant are one person.
   (compared by subject and by directory person id). The board role is required; `admin` is not enough.
 - An exercise cannot be approved or paid by its requester or the holder; shares cannot be issued by the
   requester, the holder or the person who recorded the payment.
+- Nobody administers their own equity: every change to a grant (draft, edit, delete, submit, amend,
+  activate, cancel, terminate, reject, record a milestone or an acceleration trigger) is refused with
+  `separation_of_duties` when the caller's directory person id is the holder's, whatever roles the token
+  carries (a token holding `hr` and `employee` for the same person cannot touch their own grant).
+- Facts that change what has vested (milestones, acceleration triggers, termination) need a second
+  actor: not the person who created, edited, submitted or approved the grant. They are refused if dated
+  before the grant's approval date, in the future, or more than 90 days back.
+- A grant cannot leave draft for a holder the service cannot tie to a person. The holder needs a
+  directory `person_id`, or an external-holder attestation (`POST /v1/stakeholders/{id}/attest-external`)
+  by someone other than the person who created the stakeholder, saying the holder is external and not a
+  director or approver. The attester joins the grantor chain and cannot approve the grant. The service
+  has no directory of the board's own subjects: for holders without a person link, the attestation is the
+  control, and it is only as good as the people making it.
 - The same rules are repeated as database triggers (`migrations/002_immutability.sql`) so a bug in the
   service layer cannot bypass them.
 
@@ -210,7 +228,7 @@ Every write, every denied attempt (throttled per actor so it cannot fill the log
 sensitive field is recorded in an append-only table (triggers refuse UPDATE and DELETE) whose rows are
 hash-chained: each hash covers the previous one. A read that returns many records (lists, cap table,
 exports) is audited per record in one transaction. Reads are audited BEFORE the data is returned: if the
-audit cannot be written, nothing is returned (fail closed). The log holds actor ids, action, resource ids
+audit cannot be written, nothing is returned (fail closed). Mutations write their audit entry (and the idempotency record of a create) in the same database transaction as the change: if the entry cannot be written the change does not commit. The log holds actor ids, action, resource ids
 and field names only, never names, amounts or notes. `can-equity verify-audit` recomputes the chain. It
 detects accidental damage and edits by anyone who does not rewrite the whole chain; to defend against a
 database administrator, keep the latest hash somewhere they cannot write.
@@ -283,6 +301,24 @@ Create endpoints that make records (grants, exercises, ledger entries) honour an
 header: the same key and body replays the first result (200), the same key with another body is a 409.
 The table stores resource ids only, so a replay re-reads the record under the caller's current rights.
 
+## Notes on rate limiting, timing and permissions
+
+- Authentication runs before the limiter, so a valid credential is never throttled by failed ones; only
+  failures count. With an introspection endpoint configured, every request with an unknown token costs one
+  call to it (answers, including refusals, are cached briefly), so a flood of bad tokens is amplified into
+  introspection calls. Keep the endpoint behind network policy and rate limit it at can-core.
+- The per-user limit (burst 120, 20 per second) is keyed on the authenticated subject. can-core calls with
+  one service-account subject (`svc-can-core`), so all can-core traffic shares one bucket; bulk imports
+  must be paced. Keying on the end user passed by can-core is a later change.
+- A record that exists but is not yours and one that does not exist both answer 404, but the first writes a
+  denial audit row (throttled per actor) and the second does not, so a response-time difference is possible.
+  This is not equalised.
+- The coarse role permissions in `module.yaml` (`equity.read`, `equity.write`, `equity.approve`, ...) only
+  gate the capability verbs. They are broader than the service policy: for example `admin` and `finance`
+  hold `equity.approve` because they approve exercises, yet the service refuses both on grant approval,
+  which needs the `board` role. The service policy (`core/equity/policy.go`) is the authority.
+- Exports fail with 409 beyond 50,000 rows instead of truncating; narrow them with `as_of` or page the ledger.
+
 ## Not implemented, limits and gaps
 
 - **Not implemented, by design:** 409A or any valuation methodology and the rule that a strike must be at
@@ -292,9 +328,9 @@ The table stores resource ids only, so a replay re-reads the record under the ca
 - SAR cash settlement is not modelled (exercise requests on a SAR are refused). RSU settlement is modelled
   as an exercise with a zero strike. Partial payment and net or cashless exercise are not modelled: the
   payment must equal quantity x strike exactly.
-- Grant terms (quantity, strike, schedule) are stored unsealed so that pool and dilution queries and the
-  immutability triggers work; only identity, notes, payment references, valuations and convertible terms
-  are sealed. Protect the volume and backups accordingly.
+- **Grant terms and ledger quantities are plaintext in the database** (quantity, strike, schedule): pool and
+  dilution queries and the immutability triggers need them. Only identity, notes, payment references,
+  valuations and convertible terms are sealed. An encrypted volume and encrypted backups are required.
 - Strikes are integer minor units: sub-minor-unit strikes (for example USD 0.0001) cannot be represented.
 - No per-subject crypto-shredding: erasure pseudonymises and clears; backups keep older data until they expire.
 - No live can-core wiring: token introspection routing, the keyring Secret and the approval engine
