@@ -12,8 +12,10 @@ package people
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
@@ -466,9 +468,9 @@ func dayNum(date string) (int, error) {
 
 func dayDate(n int) string { return time.Unix(int64(n)*86400, 0).UTC().Format(dateLayout) }
 
-// halves counts the working half days in the slot range [from, to] (slot = day*2 + 0 am or 1 pm).
-func (w *workWeek) halves(from, to int) int {
-	n := 0
+// slots lists the working half-day slots in [from, to] (slot = day*2 + 0 am or 1 pm).
+func (w *workWeek) slots(from, to int) []int {
+	var out []int
 	for d := from / 2; d <= to/2; d++ {
 		wd := int(time.Unix(int64(d)*86400, 0).UTC().Weekday()+6) % 7 // Monday = 0
 		if w.mask&(1<<wd) == 0 || w.holidays[dayDate(d)] {
@@ -476,12 +478,15 @@ func (w *workWeek) halves(from, to int) int {
 		}
 		for _, sl := range []int{d * 2, d*2 + 1} {
 			if sl >= from && sl <= to {
-				n++
+				out = append(out, sl)
 			}
 		}
 	}
-	return n
+	return out
 }
+
+// halves counts the working half days in the slot range [from, to].
+func (w *workWeek) halves(from, to int) int { return len(w.slots(from, to)) }
 
 // BlackoutIn defines a period in which requests (other than types that ignore blackouts) are refused.
 type BlackoutIn struct {
@@ -619,18 +624,20 @@ type leaveRow struct {
 	startSlot, endSlot int
 	noteSealed         sql.NullString
 	approvalRef        string
+	useSlots           string
+	sensitiveType      bool
 	submittedBy        string
 	statusApplied      int
 	typeKey            string
 }
 
-const leaveCols = `r.id, r.person_id, r.type_id, t.key, r.status, r.start_date, r.end_date, r.start_part, r.end_part, r.start_slot, r.end_slot, r.halves, r.note_sealed, r.approval_ref, r.submitted_by, r.decided_by, r.status_applied, r.created_at`
+const leaveCols = `r.id, r.person_id, r.type_id, t.key, r.status, r.start_date, r.end_date, r.start_part, r.end_part, r.start_slot, r.end_slot, r.halves, r.note_sealed, r.approval_ref, r.use_slots, t.sensitive, r.submitted_by, r.decided_by, r.status_applied, r.created_at`
 
 func scanLeave(sc interface{ Scan(...any) error }) (*leaveRow, error) {
 	var r leaveRow
 	var at int64
 	if err := sc.Scan(&r.ID, &r.PersonID, &r.TypeID, &r.typeKey, &r.Status, &r.StartDate, &r.EndDate, &r.StartPart, &r.EndPart, &r.startSlot, &r.endSlot, &r.Halves,
-		&r.noteSealed, &r.approvalRef, &r.submittedBy, &r.DecidedBy, &r.statusApplied, &at); err != nil {
+		&r.noteSealed, &r.approvalRef, &r.useSlots, &r.sensitiveType, &r.submittedBy, &r.DecidedBy, &r.statusApplied, &at); err != nil {
 		return nil, err
 	}
 	r.Type, r.Days, r.CreatedAt = r.typeKey, float64(r.Halves)/2, ts(at)
@@ -832,7 +839,11 @@ func (s *Service) GetLeaveRequest(ctx context.Context, a Actor, id string) (*Lea
 		return nil, err
 	}
 	_ = f
-	if err := s.auditRead(ctx, a, "leave-request:"+id, []string{"type", "note"}); err != nil {
+	fields := []string{"type", "note"}
+	if r.sensitiveType {
+		fields = append(fields, "sensitive-type")
+	}
+	if err := s.auditRead(ctx, a, "leave-request:"+id, fields); err != nil {
 		return nil, errors.New("audit unavailable, read refused")
 	}
 	return v, nil
@@ -1071,10 +1082,12 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 		if err != nil {
 			return err
 		}
-		halves := ww.halves(r.startSlot, r.endSlot)
+		slots := ww.slots(r.startSlot, r.endSlot)
+		halves := len(slots)
 		if halves == 0 {
 			return conflict("the request contains no working days any more")
 		}
+		slotsJSON, _ := json.Marshal(slots)
 		if err := s.checkBalance(ctx, tx, t, r.PersonID, id, halves, false); err != nil {
 			return err
 		}
@@ -1084,7 +1097,7 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 				return err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE leave_requests SET status='approved', halves=?, decided_by=?, decided_at=?, updated_at=? WHERE id=?`, halves, approver.auditIDOrSubject(), now, now, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE leave_requests SET status='approved', halves=?, use_slots=?, decided_by=?, decided_at=?, updated_at=? WHERE id=?`, halves, string(slotsJSON), approver.auditIDOrSubject(), now, now, id); err != nil {
 			return err
 		}
 		started = r.StartDate <= s.today()
@@ -1094,9 +1107,7 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 		return nil, err
 	}
 	if started {
-		if _, err := s.ReconcileLeaveStatus(ctx); err != nil {
-			return nil, err
-		}
+		s.reconcileLogged(ctx)
 	}
 	return s.GetLeaveRequest(ctx, a, id)
 }
@@ -1129,12 +1140,24 @@ func (s *Service) CancelLeaveRequest(ctx context.Context, a Actor, id string) (*
 				return err
 			}
 			if t.Tracked {
-				from := max(r.startSlot, today*2)
-				ww, err := s.workWeekFor(ctx, tx, r.PersonID)
-				if err != nil {
+				// Credit back what was debited, from the slots stored at approval (a holiday added or
+				// removed since then must neither mint nor destroy balance), only for the part not yet
+				// taken, and never more than the unreversed `use` entry.
+				var used int
+				if err := tx.QueryRowContext(ctx, `SELECT COALESCE(-SUM(halves),0) FROM leave_ledger WHERE person_id = ? AND type_id = ? AND kind = 'use' AND ref = ?`, r.PersonID, r.TypeID, id).Scan(&used); err != nil {
 					return err
 				}
-				if back := ww.halves(from, r.endSlot); back > 0 {
+				var stored []int
+				_ = json.Unmarshal([]byte(r.useSlots), &stored)
+				from := max(r.startSlot, today*2)
+				back := 0
+				for _, sl := range stored {
+					if sl >= from {
+						back++
+					}
+				}
+				back = min(back, used)
+				if back > 0 {
 					if _, err := tx.ExecContext(ctx, `INSERT INTO leave_ledger (person_id, type_id, entry_date, kind, halves, ref, created_by, created_at) VALUES (?,?,?,?,?,?,?,?)`,
 						r.PersonID, r.TypeID, s.today(), "reversal", back, id, a.auditID(), now); err != nil {
 						return err
@@ -1153,10 +1176,16 @@ func (s *Service) CancelLeaveRequest(ctx context.Context, a Actor, id string) (*
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.ReconcileLeaveStatus(ctx); err != nil {
-		return nil, err
-	}
+	s.reconcileLogged(ctx)
 	return s.GetLeaveRequest(ctx, a, id)
+}
+
+// reconcileLogged applies the leave-status changes the committed request implies. A failure is
+// logged, not returned: the request has committed, and the next tick repeats the reconcile.
+func (s *Service) reconcileLogged(ctx context.Context) {
+	if _, err := s.ReconcileLeaveStatus(ctx); err != nil {
+		slog.Warn("leave status reconcile failed; the next tick retries", "error", err)
+	}
 }
 
 // ---- balances and the ledger ------------------------------------------------------------------
@@ -1267,7 +1296,7 @@ func (s *Service) LeaveLedger(ctx context.Context, a Actor, personID, typeID str
 		if err := rows.Scan(&e.Seq, &e.TypeID, &e.EntryDate, &e.Kind, &e.Halves, &e.Ref, &note); err != nil {
 			return nil, err
 		}
-		if note.Valid {
+		if note.Valid && (f.Self || a.hrAdmin()) { // the manager does not see why hr adjusted a balance
 			if e.Note, err = s.keys.Open(note.String, "leave_ledger:"+e.Ref+":note"); err != nil {
 				return nil, errors.New("cannot decrypt ledger note")
 			}
@@ -1610,10 +1639,15 @@ func (s *Service) ReconcileLeaveStatus(ctx context.Context) (int, error) {
 	for _, it := range starts {
 		err := s.wtx(ctx, func(ctx context.Context, tx *sqlTx) error {
 			var cur string
+			var still int
 			if err := tx.QueryRowContext(ctx, `SELECT status FROM people WHERE id = ?`, it.person).Scan(&cur); err != nil {
 				return err
 			}
-			if cur != string(StActive) {
+			// Re-check inside the transaction: the request may have been cancelled since the scan.
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM leave_requests WHERE id = ? AND status = 'approved' AND status_applied = 0 AND end_date >= ?`, it.id, today).Scan(&still); err != nil {
+				return err
+			}
+			if cur != string(StActive) || still == 0 {
 				return nil
 			}
 			if err := s.applyStatus(ctx, tx, it.person, StActive, StLeave, today, "timeoff", "", 0); err != nil {

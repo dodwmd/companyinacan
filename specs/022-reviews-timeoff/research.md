@@ -31,7 +31,11 @@ a manager seeing calibration notes would let them be quoted to the employee.
 Rows: a response in an anonymous cycle has no reviewer and no timestamp, and a random id. The request row
 only flips to `submitted` (no timestamp). Output: no response ids, no timestamps, no ETag; comments sorted by
 `sha256(response id : question id)`, so the order differs per question and carries no time information.
-Threshold: shown only from `min_responses` (>= 3) for everyone including HR; below it only a count.
+Threshold and timing: shown only from `min_responses` (>= 3; upward feedback >= 5) for everyone including HR,
+and only once, when the cycle leaves `open`. An incrementally updated view would let a watcher recover each
+later answer from the change in the average (QA finding), so nothing moves while the cycle is open, not even
+a count, and no per-reviewer submitted status is shown. The table is `WITHOUT ROWID` with random ids, and the
+anonymous audit entry names the cycle only.
 Limits, stated plainly: someone who can read the database file can correlate by write order in the WAL or
 by the audit table (which records that a reviewer answered a request, not what); the reviewer's free text
 can identify them by style or content; a cycle where one person is asked by only three reviewers is weakly

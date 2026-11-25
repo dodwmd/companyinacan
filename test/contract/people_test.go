@@ -350,10 +350,21 @@ func TestServiceEventsMatchSchemas(t *testing.T) {
 		_, err = s.ChangeStatus(ctx, hr, rep.ID, st, "", "")
 		must(err)
 	}
+	// Erasure also purges the person's review and leave events from the outbox, so read them first.
+	before, err := s.AllEvents(ctx)
+	must(err)
 	_, err = s.RequestErasure(ctx, hr, rep.ID)
 	must(err)
-	evs, err := s.AllEvents(ctx)
+	after, err := s.AllEvents(ctx)
 	must(err)
+	have := map[string]bool{}
+	var evs []people.Event
+	for _, ev := range append(before, after...) {
+		if !have[ev.ID] {
+			have[ev.ID] = true
+			evs = append(evs, ev)
+		}
+	}
 	seen := map[string]int{}
 	for _, ev := range evs {
 		raw, ok := peopleEvents[ev.Type]

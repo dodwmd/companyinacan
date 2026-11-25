@@ -1438,7 +1438,7 @@ paths:
   "/v1/reviews/{id}":
     get:
       summary: "Get one review, filtered for the caller"
-      description: "Parts the caller may not see are absent. The subject sees nothing of the manager part, outcome or feedback before release, never calibration notes or peer comments; the manager sees the self-assessment once submitted; a skip-level manager sees the released outcome only; hr sees all except for their own review. Peer feedback is shown only from min_responses answers and never attributed in an anonymous cycle. Every read is audited before it is returned. No ETag or Last-Modified."
+      description: "Parts the caller may not see are absent. The subject sees nothing of the manager part, outcome or feedback before release, never calibration notes or peer comments; the manager sees the self-assessment once submitted; a skip-level manager sees the released outcome only; hr sees all except for their own review. Peer feedback is shown only after the cycle leaves open and from min_responses answers (upward: at least 5), and never attributed in an anonymous cycle. Every read is audited before it is returned. No ETag or Last-Modified."
       tags:
         - "reviews"
       parameters:

@@ -93,8 +93,8 @@ role is necessary and the relationship, the cycle state and the review state are
 | Manager review | after release (answers only; not the proposed rating) | yes | no | yes | no |
 | Calibration rating and notes | never | no | no | yes | no |
 | Final outcome (rating, summary) | after release | after release | after release (summary only) | yes | no |
-| Peer and upward feedback | aggregates after release | yes, past the threshold | no | past the threshold | no |
-| Feedback comments | never | past the threshold | no | past the threshold | no |
+| Peer and upward feedback | aggregates after release | after the cycle leaves open, past the threshold | no | after the cycle leaves open, past the threshold | no |
+| Feedback comments | never | after the cycle leaves open, past the threshold | no | after the cycle leaves open, past the threshold | no |
 
 A personal access token from can-core (a *restricted* actor) additionally needs the matching permission for
 each action, on top of its role: `people.reviews.read|write|admin`, `people.timeoff.read|write|approve|admin`
@@ -117,14 +117,22 @@ the engine must have approved and its decider is held to the same rule. Approvin
 **Feedback and anonymity.** The employee proposes peers, the manager approves or declines (or adds
 directly); upward feedback comes only from direct reports and is added by the manager or HR. Reviewers see
 the subject and the questions, never who nominated them. The employee sees only the nominations they made.
-In an **anonymous** cycle a stored answer has no reviewer and no timestamp and a random id; comments are
+In an **anonymous** cycle a stored answer has no reviewer and no timestamp and a random id (the table is
+`WITHOUT ROWID`, so physical order is the order of the random ids, not of submission); comments are
 returned in an order derived from a hash of answer and question, different per question; no ETag or
-`Last-Modified` is sent; nothing reveals who has not answered. Nothing about a person's feedback is shown to
-anyone, HR included, until the cycle's `min_responses` answers exist (default 3, never lower). After
-release the employee sees aggregates, never comments. In an **attributed** cycle the manager and HR also see
+`Last-Modified` is sent. Feedback is revealed **once**, when the cycle leaves `open`, and only if at least
+`min_responses` answers exist (default 3, never lower; **upward** feedback needs at least 5). It is never
+shown incrementally: while the cycle is open the view does not change when another person answers (not even
+a count), because a view that moves lets a watcher compute the new answer from the change in the average.
+Nobody sees which reviewer has answered: a nomination reads `approved` whether or not it was answered
+(only the reviewer sees their own open requests). In an anonymous cycle the audit entry for an answer names
+the cycle, not the request or the person. After release the employee sees aggregates, never comments. In an **attributed** cycle the manager and HR also see
 who wrote each comment. Limits: anonymity holds against API users, not against someone who can read the
-database file or the audit table (which records that a reviewer answered a request, not what), and free text
-can identify its author by style or content; a threshold of 3 is weak for small teams, so raise it.
+database file and the WAL (write order, file offsets) together with the outbox and request tables, and free
+text can identify its author by style or content. A threshold of k = 3 does not stop collusion: if k-1 of
+the reviewers pool what they know, the last one is exposed; and a manager who asked exactly three peers knows
+the answers came from those three. Raise `min_responses` for small teams or do not run anonymous feedback
+for them.
 Anonymous feedback is not linked to its author, so erasing the author cannot remove it (it names nobody).
 
 ## Time off
@@ -136,24 +144,32 @@ rule engine; this is not legal advice.** Units are half days (`halves`; 2 = one 
 - **Leave types** (`POST /v1/leave-types`): `key` (vacation, sick, parental, unpaid or any custom), `accrual_mode` (`none` = untracked, no
   balance; `annual`; `monthly`), `grant_halves`, `carryover_cap_halves` (omit = unlimited), `allow_negative` with
   `negative_floor_halves`, `ignores_blackouts` (sick leave), `sensitive`, `sets_leave_status` with
-  `leave_status_min_halves`. Manually granted leave is `annual` with a grant of 0 and adjustments.
+  `leave_status_min_halves`. `sensitive` marks types such as sick and parental leave: reads of such requests are
+  tagged `sensitive-type` in the audit log (colleagues never see a type anyway). Manually granted leave is `annual` with a grant of 0 and adjustments.
 - **Ledger.** Append-only (database triggers): `grant`, `accrual`, `expire`, `use`, `reversal`, `adjust`; balance as of a date =
   sum of entries dated on or before it. Accruals run hourly and on demand (`POST /v1/timeoff/accruals/run`) for
   the current year, keyed by person, type, kind and period, so a rerun writes nothing; a balance above the cap
-  expires at the turn of the year, before the new grant. No proration: HR adjusts (`POST /v1/people/{id}/leave-adjustments`,
-  never for one's own record; the reason is sealed). `use` is dated at the request's start date.
+  expires at the turn of the year, before the new grant. Dates and the year turn use **UTC** (`today()`), so
+  near midnight a person east or west of UTC can see a request refused or a grant arrive a few hours off from
+  their local date. A `use` entry is dated at the request start: leave approved in December for January is
+  charged to January, after the carry-over cap has been applied to the old year's balance, so it can be
+  charged twice in effect (the cap may expire days the leave then consumes); correct with an adjustment. No proration: HR adjusts (`POST /v1/people/{id}/leave-adjustments`,
+  never for one's own record; the reason is sealed and readable by the person and HR, not the manager). `use` is dated at the request's start date.
 - **Requests.** `draft -> pending -> approved | rejected | cancelled`. Submitting computes working days from
   the person's location calendar (`POST /v1/holiday-calendars`: location matched case-folded, work week and
   holidays are data) and refuses, in one transaction, an overlap with another pending or approved request
   (half-day exact), a blackout period (company or team; not for types that ignore them), no working days, or
   an insufficient balance (pending requests reserve it). The check repeats on approval. Because the service
   holds one database connection, concurrent submissions and approvals serialise (tested with goroutines).
-- **Approval.** The live direct manager decides; HR when the person has no manager or HR steps in; nobody
+- **Approval.** The live direct manager decides; HR/admin can decide **any** request (not only when there is no
+  manager: it is the fallback and the escape hatch, and every decision is audited); nobody
   decides their own request, with the same single separation function as reviews. With an approval engine
   (type `timeoff`, default chain `manager`) the engine must have approved and its decider is held to the rule.
   A rejected request is final. A manager's own request goes to their manager.
 - **Cancellation.** The person until the leave starts, HR afterwards; an approved cancellation appends a
-  `reversal` for the days not yet taken. Both publish events.
+  `reversal` for the days not yet taken, taken from the half-day slots stored when the request was
+  approved and capped at the `use` entry: a holiday added or removed since then neither mints nor loses
+  balance. Both publish events.
 - **Privacy.** The leave type and note (sealed) are visible to the person, their direct manager and HR only;
   skip-level managers and colleagues get 404. The **calendar** (`GET /v1/timeoff/calendar`, at most 92 days)
   shows colleagues only `out`: no type, reason, request id, status, and no pending requests. Long leave of a

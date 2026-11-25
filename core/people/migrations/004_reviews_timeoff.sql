@@ -72,15 +72,16 @@ CREATE TABLE review_requests (
 );
 CREATE INDEX review_requests_reviewer ON review_requests (reviewer_id);
 
--- Submitted feedback. No timestamp, and no reviewer in anonymous cycles: the answer cannot be
--- tied to its author through this table (ids are random, so row order tells nothing either).
+-- Submitted feedback. No timestamp, and no reviewer in anonymous cycles. The table is WITHOUT ROWID
+-- and keyed by a random id, so the physical order of rows is the order of the random ids, not the
+-- order of submission (an ordinary rowid table would keep insertion order).
 CREATE TABLE review_responses (
     id             TEXT PRIMARY KEY,
     participant_id TEXT NOT NULL REFERENCES review_participants (id) ON DELETE CASCADE,
     kind           TEXT NOT NULL CHECK (kind IN ('peer', 'upward')),
     reviewer_id    TEXT REFERENCES people (id),   -- NULL when the cycle is anonymous
     answers_sealed TEXT NOT NULL
-);
+) WITHOUT ROWID;
 CREATE INDEX review_responses_participant ON review_responses (participant_id);
 
 -- ---- time off (data class people-timeoff) ----------------------------------------------------
@@ -142,6 +143,7 @@ CREATE TABLE leave_requests (
     start_slot     INTEGER NOT NULL,           -- day number * 2 + 0 (am) or 1 (pm): overlap tests are on slots
     end_slot       INTEGER NOT NULL,
     halves         INTEGER NOT NULL DEFAULT 0, -- working half days, computed when submitted
+    use_slots      TEXT NOT NULL DEFAULT '[]', -- JSON: the working half-day slots counted when approved (a later calendar change cannot change what a cancellation credits back)
     note_sealed    TEXT,
     approval_ref   TEXT NOT NULL DEFAULT '',
     submitted_by   TEXT NOT NULL DEFAULT '',

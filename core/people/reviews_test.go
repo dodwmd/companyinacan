@@ -434,13 +434,38 @@ func TestPeerFeedbackAnonymityThresholdAndNominations(t *testing.T) {
 	if rv.Peer == nil || rv.Peer.Shown {
 		t.Fatalf("hr sees anonymous feedback below the threshold: %+v", rv.Peer)
 	}
-	// The third response lifts the threshold.
+	// A third and a fourth response while the cycle is open change nothing anyone can see: a view
+	// that moved between answer 3 and answer 4 would give away the fourth rating (new average times
+	// the new count, minus the old total).
 	submit(r.danA, 4, "FB-DAN ok")
+	view := func(a Actor) string {
+		rv, err := r.s.GetReview(r.ctx, a, id)
+		r.must(err)
+		b, _ := jsonString(rv)
+		return b
+	}
+	mgrAt3, hrAt3 := view(r.mgrA), view(r.hr)
+	if strings.Contains(mgrAt3, "FB-") || strings.Contains(mgrAt3, `"responses"`) {
+		t.Fatalf("feedback visible while the cycle is open: %s", mgrAt3)
+	}
+	submit(r.eveA, 1, "FB-EVE harsh")
+	if view(r.mgrA) != mgrAt3 || view(r.hr) != hrAt3 {
+		t.Fatal("the view changed when the fourth person answered")
+	}
+	ns, _ = r.s.ListNominations(r.ctx, r.mgrA, id)
+	for _, n := range ns {
+		if n.Status == "submitted" {
+			t.Fatalf("manager sees who has answered: %+v", n)
+		}
+	}
+	// Once the cycle leaves open, everything is revealed at once.
+	_, err = r.s.SetCycleState(r.ctx, r.hr, r.cycle.ID, "calibration")
+	r.must(err)
 	rv, _ = r.s.GetReview(r.ctx, r.mgrA, id)
-	if rv.Peer == nil || !rv.Peer.Shown || rv.Peer.Responses != 3 || len(rv.Peer.Comments) != 3 {
+	if rv.Peer == nil || !rv.Peer.Shown || rv.Peer.Responses != 4 || len(rv.Peer.Comments) != 4 {
 		t.Fatalf("manager feedback = %+v", rv.Peer)
 	}
-	if got := rv.Peer.Ratings[0]; got.QuestionID != "q1" || got.Average != 4 || got.N != 3 {
+	if got := rv.Peer.Ratings[0]; got.QuestionID != "q1" || got.Average != 3.25 || got.N != 4 {
 		t.Fatalf("aggregate = %+v", got)
 	}
 	if b, _ := jsonString(rv.Peer); strings.Contains(b, "reviewer") || strings.Contains(b, r.ben.ID) || strings.Contains(b, "time") || strings.Contains(b, "_at") {
@@ -480,6 +505,12 @@ func TestAttributedFeedbackIsManagerAndHrOnly(t *testing.T) {
 		r.must(r.s.SubmitFeedback(r.ctx, a, l[0].ID, Answers{"q1": {Rating: rating(3 + i%2)}, "q2": {Text: "attributed text"}}))
 	}
 	rv, _ := r.s.GetReview(r.ctx, r.mgrA, id)
+	if rv.Peer != nil && rv.Peer.Shown {
+		t.Fatal("attributed feedback shown while the cycle is open")
+	}
+	_, err := r.s.SetCycleState(r.ctx, r.hr, r.cycle.ID, "calibration")
+	r.must(err)
+	rv, _ = r.s.GetReview(r.ctx, r.mgrA, id)
 	if rv.Peer == nil || !rv.Peer.Shown || len(rv.Peer.Comments) != 3 || rv.Peer.Comments[0].ReviewerID == "" {
 		t.Fatalf("manager view of attributed feedback = %+v", rv.Peer)
 	}

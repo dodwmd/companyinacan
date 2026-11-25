@@ -162,6 +162,7 @@ const (
 	maxReviewerSlots = 12
 	defaultRatingMax = 5
 	minAnonymity     = 3
+	minUpward        = 5 // upward feedback about a manager from fewer than five reports is too easy to attribute
 )
 
 // ---- templates and cycles --------------------------------------------------------------------
@@ -370,7 +371,18 @@ func (s *Service) GetCycle(ctx context.Context, a Actor, id string) (*Cycle, err
 func (s *Service) ListCycles(ctx context.Context, a Actor) ([]Cycle, error) {
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM review_cycles ORDER BY created_at, id LIMIT 500`)
+	// Visibility is applied in SQL, before the limit: a caller's own cycles must not be pushed out
+	// of the first 500 rows by other people's.
+	q := `SELECT id FROM review_cycles c ORDER BY created_at, id LIMIT 500`
+	var qargs []any
+	if !a.hrAdmin() {
+		q = `SELECT id FROM review_cycles c WHERE EXISTS (SELECT 1 FROM review_participants rp JOIN people p ON p.id = rp.person_id
+			WHERE rp.cycle_id = c.id AND (rp.person_id = ? OR p.manager_id = ?
+			OR EXISTS (SELECT 1 FROM review_requests rq WHERE rq.participant_id = rp.id AND rq.reviewer_id = ? AND rq.status IN ('approved','submitted'))))
+			ORDER BY created_at, id LIMIT 500`
+		qargs = []any{a.PersonID, a.PersonID, a.PersonID}
+	}
+	rows, err := s.db.QueryContext(ctx, q, qargs...)
 	if err != nil {
 		return nil, err
 	}
@@ -817,6 +829,12 @@ func (s *Service) ListReviews(ctx context.Context, a Actor, cycleID string) ([]R
 		}
 		q += ` AND rp.cycle_id = ?`
 		args = append(args, cycleID)
+	}
+	if !a.hrAdmin() {
+		// own review, or anyone below the caller in the reporting line; applied before the limit
+		q += ` AND (rp.person_id = ? OR rp.person_id IN (WITH RECURSIVE r(id) AS (SELECT id FROM people WHERE manager_id = ?
+			UNION SELECT p2.id FROM people p2 JOIN r ON p2.manager_id = r.id) SELECT id FROM r))`
+		args = append(args, a.PersonID, a.PersonID)
 	}
 	q += ` ORDER BY rp.created_at, rp.id LIMIT 1000`
 	rows, err := s.db.QueryContext(ctx, q, args...)

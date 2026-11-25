@@ -60,6 +60,8 @@ type Nomination struct {
 	Kind       string `json:"kind"`
 	Status     string `json:"status"`
 	ProposedBy string `json:"proposed_by,omitempty"` // manager and hr only
+	// Status is proposed, approved or declined. An answered request still reads approved: whether a
+	// particular reviewer has answered is not shown to anyone but the reviewer.
 }
 
 // FeedbackRequest is what a reviewer sees: who they review and the questions. Not who asked.
@@ -93,7 +95,7 @@ type FeedbackView struct {
 	Kind      string            `json:"kind"`
 	Shown     bool              `json:"shown"`
 	Required  int               `json:"required_responses"`
-	Responses int               `json:"responses"`
+	Responses int               `json:"responses,omitempty"`
 	Ratings   []RatingAgg       `json:"ratings,omitempty"`
 	Comments  []FeedbackComment `json:"comments,omitempty"`
 }
@@ -231,6 +233,9 @@ func (s *Service) ListNominations(ctx context.Context, a Actor, reviewID string)
 		if err := rows.Scan(&n.ID, &n.ReviewerID, &n.Kind, &n.Status, &n.ProposedBy); err != nil {
 			return nil, err
 		}
+		if n.Status == "submitted" {
+			n.Status = "approved"
+		}
 		if !full {
 			if n.ProposedBy != a.PersonID {
 				continue // the subject does not see who else was asked, or by whom
@@ -339,6 +344,10 @@ func (s *Service) SubmitFeedback(ctx context.Context, a Actor, reqID string, in 
 		}
 		// The audit entry says that a request was answered, never what. In an anonymous cycle it
 		// names the request, not the review.
+		if anonymity == "anonymous" {
+			// No actor and no request id: the audit trail must not link who answered to when.
+			return s.auditIn(ctx, tx, Actor{PersonID: "anonymous-reviewer", HasPerson: true}, "write", "review-cycle:"+cycleID, []string{"feedback"})
+		}
 		return s.auditIn(ctx, tx, a, "write", "feedback-request:"+reqID, []string{"feedback"})
 	})
 	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrForbidden) {
@@ -387,10 +396,18 @@ func (s *Service) feedbackView(ctx context.Context, cy *cycleRow, participantID,
 		rs = append(rs, r)
 	}
 	_ = rows.Close()
-	fv := &FeedbackView{Kind: kind, Required: cy.MinResponses, Responses: len(rs), Shown: len(rs) >= cy.MinResponses}
-	if !fv.Shown {
-		return fv, nil // below the threshold nothing is shown to anyone: a few answers can identify their authors
+	need := cy.MinResponses
+	if kind == "upward" {
+		need = max(need, minUpward)
 	}
+	// Feedback is revealed once, after the cycle leaves "open", and only from `min` answers. Never
+	// incrementally: a view that changes when one more person answers lets whoever watched it work
+	// out that person's rating (the new average times the new count, minus the old total).
+	fv := &FeedbackView{Kind: kind, Required: need, Shown: cy.State != "open" && len(rs) >= need}
+	if !fv.Shown {
+		return fv, nil // nothing, not even a count: a count that moves says who has answered
+	}
+	fv.Responses = len(rs)
 	for _, q := range audienceQuestions(cy.Questions, kind) {
 		switch q.Type {
 		case "rating":

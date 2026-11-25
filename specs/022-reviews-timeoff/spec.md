@@ -69,9 +69,10 @@ and the person to review, not who nominated them.
 1. In an anonymous cycle, an answer carries no reviewer and no timestamp, its id is random, and comments
    are returned in an order derived from a hash of response and question (different per question), never
    submission order. No response id, timestamp or ETag is exposed; nothing says who has not answered.
-2. Feedback (aggregates and comments) is shown only once the cycle's `min_responses` answers exist (at
-   least 3, never configurable below that), to everyone including HR. Below the threshold only the counts
-   exist. After release the employee sees aggregates, never comments, and never who was asked.
+2. Feedback (aggregates and comments) is shown only once the cycle has left `open` and the cycle's
+   `min_responses` answers exist (at least 3, never configurable below that; upward feedback at least 5), to
+   everyone including HR, and never incrementally: while the cycle is open the view does not change when
+   someone answers, and nobody sees who has answered. After release the employee sees aggregates, never comments, and never who was asked.
 3. The employee sees only the nominations they proposed themselves.
 4. In an attributed cycle the manager and HR see who wrote each comment; the employee never does.
 

@@ -2,6 +2,8 @@ package people
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -109,6 +111,9 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 	case ClassSensitive:
 		stmts = []string{`UPDATE people SET sens_dob=NULL, sens_national_id=NULL, sens_address=NULL, sens_phone=NULL, sens_salary=NULL WHERE id=?`}
 	case ClassReviews:
+		if err := s.dropTouched(ctx, q, id); err != nil {
+			return err
+		}
 		// What the person wrote as a reviewer (attributed feedback) and the requests addressed to
 		// them go; reviews about them go with their rows. Anonymous feedback they gave is not linked
 		// to them and stays (it names nobody): see docs/people.md.
@@ -116,6 +121,8 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 			`DELETE FROM review_responses WHERE reviewer_id=?`,
 			`DELETE FROM review_requests WHERE reviewer_id=?`,
 			`DELETE FROM review_participants WHERE person_id=?`,
+			// derived copies: the outbox keeps an event for a week after delivery
+			`DELETE FROM outbox WHERE type = 'review.released.v1' AND instr(payload, '"person_id":"' || ? || '"') > 0`,
 		}
 	case ClassTimeOff:
 		stmts = []string{
@@ -123,6 +130,7 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 			`DELETE FROM leave_ledger WHERE person_id=?`,
 			`UPDATE ledger_guard SET open=0`,
 			`DELETE FROM leave_requests WHERE person_id=?`,
+			`DELETE FROM outbox WHERE type IN ('timeoff.approved.v1', 'timeoff.cancelled.v1') AND instr(payload, '"person_id":"' || ? || '"') > 0`,
 		}
 	case ClassChecklists:
 		stmts = []string{`UPDATE checklist_tasks SET assignee_id=NULL WHERE assignee_id=?`, `DELETE FROM checklists WHERE person_id=?`}
@@ -614,4 +622,47 @@ func (s *Service) rotateE14b(ctx context.Context) (n, missed int, _ error) {
 		n++
 	}
 	return n, missed, nil
+}
+
+// dropTouched removes a person's identity hashes from every review's separation-of-duties history
+// when they are erased, so the history keeps no trace of them (the hashes are unkeyed).
+func (s *Service) dropTouched(ctx context.Context, q querier, id string) error {
+	mine := map[string]bool{hashID(id): true}
+	var subj sql.NullString
+	if err := q.QueryRowContext(ctx, `SELECT sso_subject FROM people WHERE id = ?`, id).Scan(&subj); err == nil && subj.Valid && subj.String != "" {
+		mine[hashID(subj.String)] = true
+	}
+	rows, err := q.QueryContext(ctx, `SELECT id, touched_by FROM review_participants WHERE touched_by != '[]'`)
+	if err != nil {
+		return err
+	}
+	type row struct{ id, touched string }
+	var rs []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.touched); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		rs = append(rs, r)
+	}
+	_ = rows.Close()
+	for _, r := range rs {
+		var hs []string
+		if json.Unmarshal([]byte(r.touched), &hs) != nil {
+			continue
+		}
+		kept := hs[:0:0]
+		for _, h := range hs {
+			if !mine[h] {
+				kept = append(kept, h)
+			}
+		}
+		if len(kept) != len(hs) {
+			if _, err := q.ExecContext(ctx, `UPDATE review_participants SET touched_by = ? WHERE id = ?`, touchedJSON(kept), r.id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
