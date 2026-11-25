@@ -169,7 +169,8 @@ UNITS=(can-firewall.service can-firewall-sync.service)
 log() { echo "can-firewall: $*"; }
 err() { echo "CAN_ERROR: can-firewall: $*" >&2; }
 
-# The ruleset. "add" keeps an existing set (and its elements); the chains are flushed and
+# The ruleset. DNS is matched on the port the pod ASKED for (ct original proto-dst): a resolver on
+# the host is often reached through DNAT to another port (k3d does this). "add" keeps an existing set (and its elements); the chains are flushed and
 # refilled, so loading it again converges. nft -f applies a file as one transaction.
 rules() {
   local t="$TABLE_FAMILY $TABLE_NAME"
@@ -183,8 +184,8 @@ flush chain $t forward
 add rule $t input iifname != { $IFACES } accept
 add rule $t input ct state established,related ct direction reply accept
 add rule $t input icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit } accept
-add rule $t input ip saddr @trusted4 tcp dport { 53, 6443 } accept
-add rule $t input ip saddr @trusted4 udp dport 53 accept
+add rule $t input ip saddr @trusted4 tcp dport 6443 accept
+add rule $t input ip saddr @trusted4 meta l4proto { tcp, udp } ct original proto-dst 53 accept
 add rule $t input counter drop
 add rule $t forward iifname != { $IFACES } accept
 add rule $t forward ip daddr 169.254.0.0/16 counter drop

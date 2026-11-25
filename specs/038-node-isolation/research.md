@@ -21,6 +21,11 @@ they do not own. kube-proxy's DNAT happens at prerouting, before the routing dec
 pod goes through forward, not input. Debian's `nftables.service`, if someone enables it, flushes the
 ruleset: our unit is ordered after it and the sync service reloads a missing table.
 
+A host resolver may be reached through DNAT to another port: k3d rewrites the node's resolver so that
+CoreDNS's upstream queries end on a random port of the node. A rule on `dport 53` broke upstream DNS
+there (found by running the existing cluster tests with the rules loaded), so DNS is matched with
+`ct original proto-dst 53`.
+
 ## R3: Identify pod traffic by interface, not by source address
 
 `iifname` `cni0`/`flannel.1` rather than the pod CIDR. An operator whose own address falls inside

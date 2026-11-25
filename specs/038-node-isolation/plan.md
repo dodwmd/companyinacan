@@ -17,8 +17,8 @@ inet can_isolation
     iifname not cni0/flannel.1       accept        <- the operator's SSH ends here
     replies to host connections      accept        <- kubelet probes
     IPv6 neighbour discovery         accept
-    @trusted4 tcp 53, 6443           accept
-    @trusted4 udp 53                 accept
+    @trusted4 tcp 6443               accept
+    @trusted4 asked for port 53      accept        <- ct original proto-dst: also a DNAT'd resolver
     drop
   chain forward (priority -10, policy accept)
     iifname not cni0/flannel.1       accept

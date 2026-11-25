@@ -39,7 +39,8 @@ func TestFirewallOwnsOnlyItsTable(t *testing.T) {
 	}
 	for _, must := range []string{
 		"ip daddr 169.254.0.0/16 counter drop",
-		"ip saddr @trusted4 tcp dport { 53, 6443 } accept",
+		"ip saddr @trusted4 tcp dport 6443 accept",
+		"ip saddr @trusted4 meta l4proto { tcp, udp } ct original proto-dst 53 accept",
 		"nft -c -f -",
 		"Before=k3s.service",
 		"Restart=always",

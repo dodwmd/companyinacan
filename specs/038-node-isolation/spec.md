@@ -65,7 +65,8 @@ does cover it); egress filtering to the internet.
 ## Functional Requirements
 
 - **FR-1** Traffic from a pod to any address of the node is dropped, except replies to connections the
-  host opened, IPv6 neighbour discovery, and TCP 6443/53 and UDP 53 from trusted pods.
+  host opened, IPv6 neighbour discovery, and, from trusted pods, TCP 6443 and TCP/UDP connections made to
+  port 53 (wherever the host DNATs them).
 - **FR-2** Trusted pods are the non-hostNetwork, unfinished pods of `kube-system`, can-core in
   `can-system`, and of namespaces the operator lists in `/etc/can/firewall/trusted-namespaces`
   (never `mod-*`). A failed listing keeps the previous set.

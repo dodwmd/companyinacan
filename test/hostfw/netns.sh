@@ -87,6 +87,9 @@ table ip proxy_like {
   chain prerouting {
     type nat hook prerouting priority -100;
     ip daddr 10.43.0.1 tcp dport 443 dnat to 192.0.2.1:6443
+    # A resolver of the node reached through DNAT on another port (k3d does this; so can a host).
+    ip daddr 198.18.0.53 udp dport 53 dnat to 192.0.2.1:5353
+    ip daddr 198.18.0.53 tcp dport 53 dnat to 192.0.2.1:5353
   }
 }
 table inet router_like {
@@ -112,7 +115,9 @@ serve() { # ns tcp-port
   nsenter --net="/var/run/netns/$1" socat "TCP6-LISTEN:$2,fork,reuseaddr,ipv6only=0" SYSTEM:'echo can-ok' >/dev/null 2>&1 &
   pids+=("$!")
 }
-for p in 22 53 6443 10250; do serve $NODE "$p"; done
+for p in 22 53 5353 6443 10250; do serve $NODE "$p"; done
+nsenter --net="/var/run/netns/$NODE" socat -T2 UDP4-RECVFROM:5353,bind=192.0.2.1,fork SYSTEM:'echo can-ok' >/dev/null 2>&1 &
+pids+=("$!")
 nsenter --net="/var/run/netns/$NODE" socat -T2 UDP4-RECVFROM:53,fork SYSTEM:'echo can-ok' >/dev/null 2>&1 &
 pids+=("$!")
 serve $MOD 8080
@@ -151,7 +156,12 @@ verdict() { # ns proto host port
   case $2 in
     tcp) out=$(in_ns "$1" timeout 4 socat -T2 - "TCP4:$3:$4,connect-timeout=2" </dev/null 2>/dev/null || true) ;;
     tcp6) out=$(in_ns "$1" timeout 4 socat -T2 - "TCP6:[$3]:$4,connect-timeout=2" </dev/null 2>/dev/null || true) ;;
-    udp) out=$(echo q | in_ns "$1" timeout 4 socat -t1 - "UDP4:$3:$4" 2>/dev/null || true) ;;
+    udp) # a datagram can be lost on a busy runner: only repeated silence counts as blocked
+      for _ in 1 2 3; do
+        out=$(echo q | in_ns "$1" timeout 4 socat -t1 - "UDP4:$3:$4" 2>/dev/null || true)
+        case $out in *can-ok*) break ;; esac
+      done
+      ;;
   esac
   case $out in *can-ok*) echo REACHED ;; *) echo BLOCKED ;; esac
 }
@@ -200,6 +210,9 @@ matrix() { # open|enforced: what the restricted paths should look like
   expect $m "module pod -> kubernetes Service (DNAT to node:6443)" $MOD tcp 10.43.0.1 443
   expect $m "module pod -> node TCP :53" $MOD tcp 10.42.0.1 53
   expect $m "module pod -> node UDP :53" $MOD udp 10.42.0.1 53
+  expect $m "module pod -> DNAT'd host resolver (UDP)" $MOD udp 198.18.0.53 53
+  expect $m "module pod -> the DNAT target port directly" $MOD tcp 192.0.2.1 5353
+  expect $m "system pod -> the DNAT target port directly" $SYS tcp 192.0.2.1 5353
   expect $m "module pod -> node IPv6 link-local :22" $MOD tcp6 "$LL%eth0" 22
   expect $m "module pod -> cloud metadata" $MOD tcp 169.254.169.254 80
   expect $m "system pod -> cloud metadata" $SYS tcp 169.254.169.254 80
@@ -209,6 +222,8 @@ matrix() { # open|enforced: what the restricted paths should look like
   expect REACHED "system pod -> kubernetes Service" $SYS tcp 10.43.0.1 443
   expect REACHED "system pod -> API server" $SYS tcp 192.0.2.1 6443
   expect REACHED "system pod -> node UDP :53" $SYS udp 10.42.0.1 53
+  expect REACHED "system pod -> DNAT'd host resolver (UDP)" $SYS udp 198.18.0.53 53
+  expect REACHED "system pod -> DNAT'd host resolver (TCP)" $SYS tcp 198.18.0.53 53
   expect REACHED "module pod -> internet" $MOD tcp 203.0.113.9 443
   expect REACHED "system pod -> module pod" $SYS tcp 10.42.0.20 8080
   expect REACHED "node -> pod (kubelet probes)" $NODE tcp 10.42.0.20 8080
