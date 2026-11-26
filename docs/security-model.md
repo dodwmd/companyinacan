@@ -68,10 +68,13 @@ flowchart TB
 | Webhook signature | can-core to modules | HMAC secret per module | 5-minute replay window; at-least-once, so receivers de-duplicate |
 | People and jobs UI sessions | browser | server memory only, SHA-256 of a 256-bit id | the people UI keeps the token in memory to re-check it every few minutes (revocation); a restart ends every session |
 
-Bad tokens are refused cheaply and counted per address; **valid credentials are never throttled by other
+Bad tokens are refused cheaply and counted per address (the address the service sees: behind a proxy it is not
+told to trust, that is the proxy's, shared by everyone); **valid credentials are never throttled by other
 callers' failures**. Failed-login and failed-token budgets exist in every service.
 
-can-core's admin sign-in has no limit per account, only per address: see the residual risks below.
+can-core's admin sign-in has no limit per account. With `CAN_TRUST_PROXY=true` (as shipped) it limits per client
+address; with it off (the binary's default) it limits nothing, per address or otherwise, and failures only add a
+delay: see the residual risks below.
 
 ## Sealed data, audit and erasure
 
