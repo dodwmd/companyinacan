@@ -261,7 +261,11 @@ names or addresses.
   or voided), how many records and until when
   (`retained[].until`), so the data subject can be told;
 * truncates the SQLite write-ahead log so the erased values do not linger in it
-  (`secure_delete` already zeroes freed pages).
+  (`secure_delete` already zeroes freed pages) and vacuums the database; a scrub that did not finish is retried
+  hourly;
+* records a tombstone (`GET /v1/erasures`, admin with an unlimited token; the report's `subject` is
+  `party-<id>-<creation time>`). can-core adds it to the erasure ledger, and `can restore` runs the same
+  erasure again with `can-finance purge` on a backup made before it, with the same legal retention.
 
 Retention is `retention_years` (default 7, counted from the invoice issue date, expense date, week
 start, contract end or purchase-order date). The hourly purge deletes expired records with their

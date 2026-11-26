@@ -1,9 +1,9 @@
 name: restore-e2e
 
 # specs/042-restore: seed a company on a k3d cluster, back it up with the installed script to a
-# local restic repository, erase one person, destroy the cluster, run `can restore` inside the
-# node of a new cluster and check the data, the Secrets, the admin login and that the erased
-# person stays erased. No real server, bucket or account is involved. Not a required check.
+# local restic repository, erase a person (people, work), a lead and a customer (finance), destroy
+# the cluster, run `can restore` inside the node of a new cluster and check the data, the Secrets,
+# the admin login and that what was erased stays erased. No real server, bucket or account is involved. Not a required check.
 on:
   workflow_dispatch:
   pull_request:
@@ -13,7 +13,10 @@ on:
       - "core/cli/restore.go"
       - "core/server/**"
       - "core/people/**"
+      - "core/finance/**"
+      - "core/work/**"
       - "deploy/**"
+      - "modules/finance/**"
       - "modules/forms/**"
       - "modules/people/**"
       - "modules/work/**"
@@ -58,7 +61,7 @@ jobs:
           docker pull -q gcr.io/distroless/static-debian12:nonroot >/dev/null
           GO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' golang:1.27 | cut -d@ -f2)
           DL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot | cut -d@ -f2)
-          for m in forms people work; do
+          for m in finance forms people work; do
             # the tag the chart asks for (modules/$m/chart/values.yaml)
             tag="$(awk '/^  tag:/ {print $2; exit}' "modules/$m/chart/values.yaml")"
             docker build -f "deploy/$m/Dockerfile" \
@@ -71,7 +74,7 @@ jobs:
         id: e2e
         env:
           CAN_IT_RESTORE: "1"
-          CAN_IT_RESTORE_IMAGES: "can-core:dev ghcr.io/dodwmd/can-forms:0.3.0 ghcr.io/dodwmd/can-people:0.1.0 ghcr.io/dodwmd/can-work:0.1.0"
+          CAN_IT_RESTORE_IMAGES: "can-core:dev ghcr.io/dodwmd/can-finance:0.1.0 ghcr.io/dodwmd/can-forms:0.3.0 ghcr.io/dodwmd/can-people:0.1.0 ghcr.io/dodwmd/can-work:0.1.0"
         run: go test -tags integration -count=1 -v -timeout 30m -run '^TestRestoreOnK3d$' ./test/integration/...
       - name: Cluster state on failure
         if: failure()

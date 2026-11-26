@@ -1070,7 +1070,7 @@ func (o *Restore) stepHooks(ctx context.Context, st *restoreState) error {
 
 // ErasureWarning is the limit of the replay: only what is in the ledger can be replayed.
 func ErasureWarning(snapshot string) string {
-	return fmt.Sprintf("only erasures in the erasure ledger were replayed. can-core records those of people, equity, board, entity, files, forms and jobs (and `can backup ledger-add` adds by hand); nothing erased in any other module is recorded, and an erasure that had not reached the bucket when the old server was lost (up to about a quarter of an hour, longer if `can backup` reported a ledger problem) is missing. Check the erasure requests made since snapshot %s and repeat what is not listed above", snapshot)
+	return fmt.Sprintf("only erasures in the erasure ledger were replayed. can-core records those of people, equity, board, entity, files, finance, forms, jobs and work (and `can backup ledger-add` adds by hand); nothing erased in any other module is recorded, and an erasure that had not reached the bucket when the old server was lost (up to about a quarter of an hour, longer if `can backup` reported a ledger problem) is missing. Check the erasure requests made since snapshot %s and repeat what is not listed above", snapshot)
 }
 
 // mergedLedger is every tombstone known: the bucket's ledger, the copy inside the snapshot and

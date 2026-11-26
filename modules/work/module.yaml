@@ -61,6 +61,10 @@ data_classes:
   # employees (personal data), but no health, financial or identity-document data, so standard.
   # Retention counts from resolution: resolved issues are deleted after the period. Open issues
   # are kept. The default matches 5 years (core/work Config.RetentionDays).
+  # The personal data is the identifiers people appear under (reporter, assignee, comment author,
+  # activity actor, watcher, token subject) and whatever texts mention. Erasing a person replaces the
+  # identifier with a pseudonym (POST /v1/people/erase), writes a tombstone of this class
+  # (GET /v1/erasures) and is replayed by a restore with `can-work purge`.
   - { class: work-issue, retention: 5y, sensitivity: standard }
   # Admin actions (token and project changes). Never holds secrets.
   - { class: work-audit, retention: 7y, sensitivity: standard }

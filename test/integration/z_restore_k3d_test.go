@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,7 @@ domain: restore.example
 provider:
   type: local
 modules:
+  finance: {}
   forms: {}
   people: {}
   work: {}
@@ -46,12 +48,13 @@ modules:
     settings:
       greeting: hello-before-the-disaster
 `
-	e2eRoot   = "/var/lib/can-e2e" // the "bucket": restic/ and ledger/
-	e2eRepo   = e2eRoot + "/restic"
-	keptName  = "Keptperson"
-	goneName  = "Erasedperson"
-	nationalA = "NID-KEPT-4471"
-	nationalB = "NID-GONE-9902"
+	e2eRoot    = "/var/lib/can-e2e" // the "bucket": restic/ and ledger/
+	e2eRepo    = e2eRoot + "/restic"
+	keptName   = "Keptperson"
+	goneName   = "Erasedperson"
+	nationalA  = "NID-KEPT-4471"
+	nationalB  = "NID-GONE-9902"
+	leaverName = "leaver@restore.example"
 )
 
 func run(t *testing.T, name string, args ...string) string {
@@ -102,7 +105,7 @@ func rcall(t *testing.T, method, u, token string, body any) (int, string) {
 
 func waitModules(t *testing.T) {
 	t.Helper()
-	for _, m := range []string{"forms", "people", "stub", "work"} {
+	for _, m := range []string{"finance", "forms", "people", "stub", "work"} {
 		eventually(t, 6*time.Minute, "module "+m+" to run", func() (bool, string) {
 			out, err := kubectl("-n", "mod-"+m, "rollout", "status", "deploy/"+m, "--timeout=5s")
 			if err != nil {
@@ -151,7 +154,8 @@ type seeded struct {
 	peopleToken, formsReadToken string
 	goneLeadID                  string
 	secretKeyring               string
-	workToken                   string
+	workToken, financeToken     string
+	keptParty, goneParty        int64
 }
 
 // seed deploys the company on the current cluster and creates the data.
@@ -230,6 +234,30 @@ func seed(t *testing.T) seeded {
 	if st, body := rcall(t, "POST", work+"/v1/projects/DR/issues", s.workToken, map[string]string{"type": "task", "title": "item kept across the restore"}); st != 201 {
 		t.Fatalf("work item: %d %s", st, body)
 	}
+
+	// an issue that names a person who is erased after the backup
+	if st, body := rcall(t, "POST", work+"/v1/projects/DR/issues", s.workToken, map[string]string{"type": "task", "title": "item of the leaver", "assignee": leaverName}); st != 201 {
+		t.Fatalf("work item: %d %s", st, body)
+	}
+
+	// --- finance: two customers, each with a draft invoice ---
+	s.financeToken = moduleToken(t, "mod-finance", "CAN_FINANCE_ADMIN_TOKEN")
+	finance := portForward(t, "mod-finance", "finance", 8080)
+	party := func(name string) int64 {
+		st, body := rcall(t, "POST", finance+"/v1/parties", s.financeToken, map[string]string{"name": name, "kind": "customer", "email": strings.ToLower(name) + "@restore.example"})
+		var p struct {
+			ID int64 `json:"id"`
+		}
+		if st != 201 || json.Unmarshal([]byte(body), &p) != nil || p.ID == 0 {
+			t.Fatalf("party: %d %s", st, body)
+		}
+		inv := map[string]any{"party_id": p.ID, "lines": []map[string]any{{"description": "x", "quantity_milli": 1000, "unit_price_minor": 100}}}
+		if st, body := rcall(t, "POST", finance+"/v1/invoices", s.financeToken, inv); st != 201 {
+			t.Fatalf("draft invoice: %d %s", st, body)
+		}
+		return p.ID
+	}
+	s.keptParty, s.goneParty = party("Keptcustomer"), party("Erasedcustomer")
 
 	// --- forms: a lead ---
 	forms := portForward(t, "mod-forms", "forms", 8080)
@@ -384,13 +412,13 @@ func TestRestoreOnK3d(t *testing.T) {
 	onNode(t, "test -s /var/lib/can/dumps/can-core/secrets.json && test -s /var/lib/can/dumps/modules/stub/probe.tar.gz")
 	// The in-house modules are dumped by their own binaries; their live SQLite files are then not
 	// in the snapshot, so what comes back below came back through their restore subcommands.
-	for _, m := range []string{"forms", "people", "work"} {
+	for _, m := range []string{"finance", "forms", "people", "work"} {
 		onNode(t, "test -s /var/lib/can/dumps/modules/"+m+"/database.sqlite3.gz && test -s /var/lib/can/dumps/modules/"+m+"/manifest.json")
 	}
 	password, can := backupHost(t)
 
 	for _, l := range strings.Split(mustSudo(t, "/usr/local/bin/restic", "-r", e2eRepo, "--password-file", backup.DefaultSettings().ConfigDir+"/"+backup.PasswordFileName, "ls", "latest"), "\n") {
-		for _, db := range []string{"_mod-forms_forms-data/forms.db", "_mod-people_people-data/people.db", "_mod-work_work-data/work.db"} {
+		for _, db := range []string{"_mod-finance_finance-data/finance.db", "_mod-forms_forms-data/forms.db", "_mod-people_people-data/people.db", "_mod-work_work-data/work.db"} {
 			if strings.Contains(l, db) {
 				t.Errorf("a live database file is in the snapshot: %s", l)
 			}
@@ -408,6 +436,20 @@ func TestRestoreOnK3d(t *testing.T) {
 	if st, body := rcall(t, "DELETE", leads+"/v1/leads/"+s.goneLeadID, moduleToken(t, "mod-forms", "CAN_FORMS_API_TOKEN"), nil); st != 200 {
 		t.Fatalf("lead erasure: %d %s", st, body)
 	}
+	// ... and a customer in finance and a person in work, whose tombstones can-core collects too
+	finance := portForward(t, "mod-finance", "finance", 8080)
+	st, body := rcall(t, "POST", finance+"/v1/parties/"+strconv.FormatInt(s.goneParty, 10)+"/erase", s.financeToken, nil)
+	var partyErasure, personErasure struct {
+		Subject string `json:"subject"`
+	}
+	if st != 200 || json.Unmarshal([]byte(body), &partyErasure) != nil || partyErasure.Subject == "" {
+		t.Fatalf("party erasure: %d %s", st, body)
+	}
+	work := portForward(t, "mod-work", "work", 8080)
+	st, body = rcall(t, "POST", work+"/v1/people/erase", s.workToken, map[string]string{"subject": leaverName})
+	if st != 200 || json.Unmarshal([]byte(body), &personErasure) != nil || personErasure.Subject == "" {
+		t.Fatalf("person erasure: %d %s", st, body)
+	}
 	ledger := backup.DefaultSettings().LedgerSource
 	collected := backup.DefaultSettings().DumpsDir + "/" + backup.CollectedDir
 	eventually(t, 4*time.Minute, "can-core to collect the erasure", func() (bool, string) {
@@ -417,7 +459,9 @@ func TestRestoreOnK3d(t *testing.T) {
 				return false, out
 			}
 		}
-		return strings.Contains(out, `"subject":"`+s.goneLeadID+`","class":"lead-submission"`), out
+		return strings.Contains(out, `"subject":"`+s.goneLeadID+`","class":"lead-submission"`) &&
+			strings.Contains(out, `"subject":"`+partyErasure.Subject+`","class":"finance-party-contact"`) &&
+			strings.Contains(out, `"subject":"`+personErasure.Subject+`","class":"work-issue"`), out
 	})
 	// the runner stands in for the host: take over what can-core wrote and run what the timer runs
 	mustSudo(t, "bash", "-o", "pipefail", "-c", fmt.Sprintf("docker exec %s tar -C / -cf - %s | tar -C / -xpf -", nodeName(), strings.TrimPrefix(collected, "/")))
@@ -466,7 +510,8 @@ func TestRestoreOnK3d(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resumed restore: %v", err)
 	}
-	for _, want := range []string{"already done", "restore complete", "erased: people: directory-basic " + s.goneID, "erased: forms: lead-submission " + s.goneLeadID} {
+	for _, want := range []string{"already done", "restore complete", "erased: people: directory-basic " + s.goneID, "erased: forms: lead-submission " + s.goneLeadID,
+		"erased: finance: finance-party-contact " + partyErasure.Subject, "erased: work: work-issue " + personErasure.Subject} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q", want)
 		}
@@ -491,7 +536,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	}
 
 	api = portForward(t, "mod-people", "people-api", 8081)
-	st, body := rcall(t, "GET", api+"/v1/people/"+s.keptID, s.peopleToken, nil)
+	st, body = rcall(t, "GET", api+"/v1/people/"+s.keptID, s.peopleToken, nil)
 	if st != 200 || !strings.Contains(body, keptName) {
 		t.Fatalf("the kept person: %d %s", st, body)
 	}
@@ -518,12 +563,28 @@ func TestRestoreOnK3d(t *testing.T) {
 		t.Error("the grep above proves nothing: the kept name is not found either")
 	}
 
-	if !strings.Contains(firstRun, "restore hooks run for: forms, people, stub, work") {
+	if !strings.Contains(firstRun, "restore hooks run for: finance, forms, people, stub, work") {
 		t.Errorf("every dump must be loaded by its hook")
 	}
-	work := portForward(t, "mod-work", "work", 8080)
-	if st, body := rcall(t, "GET", work+"/v1/issues?project=DR", s.workToken, nil); st != 200 || !strings.Contains(body, "item kept across the restore") {
-		t.Fatalf("the work item: %d %s", st, body)
+	work = portForward(t, "mod-work", "work", 8080)
+	if st, body := rcall(t, "GET", work+"/v1/issues?project=DR", s.workToken, nil); st != 200 || !strings.Contains(body, "item kept across the restore") || !strings.Contains(body, "item of the leaver") {
+		t.Fatalf("the work items: %d %s", st, body)
+	} else if strings.Contains(body, leaverName) {
+		t.Fatalf("THE ERASED PERSON IS BACK IN WORK: %s", body)
+	}
+
+	finance = portForward(t, "mod-finance", "finance", 8080)
+	if st, body := rcall(t, "GET", finance+"/v1/parties", s.financeToken, nil); st != 200 || !strings.Contains(body, "keptcustomer@restore.example") {
+		t.Fatalf("the kept customer: %d %s", st, body)
+	} else if strings.Contains(body, "erasedcustomer@restore.example") || strings.Contains(body, "Erasedcustomer") {
+		t.Fatalf("THE ERASED CUSTOMER IS BACK: %s", body)
+	}
+	_, body = rcall(t, "GET", finance+"/v1/invoices?party_id="+strconv.FormatInt(s.goneParty, 10), s.financeToken, nil)
+	if strings.Contains(body, `"draft"`) {
+		t.Fatalf("the erased customer's draft is back: %s", body)
+	}
+	if _, body = rcall(t, "GET", finance+"/v1/invoices?party_id="+strconv.FormatInt(s.keptParty, 10), s.financeToken, nil); !strings.Contains(body, `"draft"`) {
+		t.Fatalf("the kept customer's draft is gone: %s", body)
 	}
 
 	api = portForward(t, "mod-forms", "forms-api", 8081)
