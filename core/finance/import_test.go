@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/csvimport"
 )
@@ -39,7 +41,8 @@ func TestImportPartiesPreviewApplyAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Create != 2 || rep.Applied || rep.Items[0].ID != "" || e.count(`SELECT COUNT(*) FROM parties`)+e.count(`SELECT COUNT(*) FROM audit_log`) != 0 {
+	if rep.Create != 2 || rep.Applied || rep.Items[0].ID != "" || e.count(`SELECT COUNT(*) FROM parties`) != 0 ||
+		e.count(`SELECT COUNT(*) FROM audit_log WHERE action = 'party.import_preview'`) != 1 || e.count(`SELECT COUNT(*) FROM audit_log`) != 1 {
 		t.Fatalf("preview = %+v", rep)
 	}
 	rep, err = e.importParties(importer, true, partiesCSV)
@@ -49,7 +52,7 @@ func TestImportPartiesPreviewApplyAndRerun(t *testing.T) {
 	if !rep.Applied || rep.Create != 2 || rep.Items[0].ID == "" {
 		t.Fatalf("apply = %+v %v", rep, rep.Errors)
 	}
-	if n := e.count(`SELECT COUNT(*) FROM audit_log WHERE action = 'party.import'`); n != 3 { // two records and the file
+	if n := e.count(`SELECT COUNT(*) FROM audit_log WHERE action = 'party.import'`); n != 3 { // two records and the file; the preview has its own action
 		t.Fatalf("audit = %d", n)
 	}
 	if n := e.count(`SELECT COUNT(*) FROM audit_log WHERE detail LIKE '%Acme%' OR detail LIKE '%acme.example%'`) + e.count(`SELECT COUNT(*) FROM outbox`); n != 0 {
@@ -111,6 +114,57 @@ func TestImportPartiesAllOrNothingAndErased(t *testing.T) {
 	}
 }
 
+// Erase, purge (it deletes erased parties with no documents, at start and hourly), re-import.
+func TestImportAfterErasureAndPurgeDoesNotResurrect(t *testing.T) {
+	e := newEnv(t)
+	ctx, admin := context.Background(), &Principal{Subject: "admin", Permissions: []string{PermAdmin}}
+	rep, err := e.importParties(importer, true, partiesCSV)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range rep.Items {
+		id, _ := strconv.ParseInt(it.ID, 10, 64)
+		if _, err := e.app.store.ErasePartyData(ctx, admin, id, 7); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pr, err := e.app.store.Purge(ctx, 7, 0)
+	if err != nil || pr.ErasedParties != 2 || e.count(`SELECT COUNT(*) FROM parties`) != 0 {
+		t.Fatalf("purge = %+v %v", pr, err)
+	}
+	if e.count(`SELECT COUNT(*) FROM erased_external_ids WHERE length(hash) = 64`) != 2 || e.count(`SELECT COUNT(*) FROM erased_external_ids WHERE hash IN ('C-1', 'V-1')`) != 0 {
+		t.Fatal("the ids must remain as hashes only")
+	}
+	for _, apply := range []bool{false, true} {
+		rep, err = e.importParties(importer, apply, partiesCSV)
+		if err != nil || rep.Failed != 2 || rep.Applied || e.count(`SELECT COUNT(*) FROM parties`) != 0 {
+			t.Fatalf("apply=%v: %+v %v", apply, rep, err)
+		}
+	}
+}
+
+func TestImportKeepsAVendorWithPurchaseOrders(t *testing.T) {
+	e := newEnv(t)
+	rep, err := e.importParties(importer, true, partiesCSV)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vendor, _ := strconv.ParseInt(rep.Items[1].ID, 10, 64)
+	price := int64(250)
+	if _, _, err := e.app.store.CreatePurchaseOrder(context.Background(), importer, NewPurchaseOrder{VendorID: vendor, Currency: "USD",
+		Lines: []LineInput{{Description: "Widgets", QuantityMilli: 1000, UnitPriceMinor: &price}}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = e.importParties(importer, true, "external_id,name,kind\nV-1,Bolt Supplies,customer\n")
+	if err != nil || rep.Applied || rep.Failed != 1 || e.count(`SELECT COUNT(*) FROM parties WHERE kind = 'vendor'`) != 1 {
+		t.Fatalf("%+v %v", rep, err)
+	}
+	rep, err = e.importParties(importer, true, "external_id,name,kind\nV-1,Bolt Supplies,both\n")
+	if err != nil || !rep.Applied {
+		t.Fatalf("widening is fine: %+v %v", rep, err)
+	}
+}
+
 func TestImportPartiesNeedsAnUnscopedWriter(t *testing.T) {
 	e := newEnv(t)
 	w := []string{PermWrite}
@@ -162,6 +216,7 @@ func TestImportPartiesAPIAndFullFile(t *testing.T) {
 	for i := range fullFile {
 		fmt.Fprintf(&big, "C%d,Company %d,1 Example Street\n", i, i)
 	}
+	e.app.store.importTimeout = 5 * time.Minute // a slow runner under -race must not fail the test
 	if code, rep := post(adminTok, "?apply=true", big.String()); code != 200 || rep.Create != fullFile {
 		t.Fatalf("full file: %d %+v", code, rep.Errors)
 	}

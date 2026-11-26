@@ -55,8 +55,9 @@ type Store struct {
 	downloads    chan struct{}
 	downloadWait time.Duration
 	// sealer seals bank account numbers (nil when CAN_FINANCE_SEAL_KEY is not set).
-	sealer    *Sealer
-	importing sync.Mutex // one CSV import at a time (specs/047-csv-import)
+	sealer        *Sealer
+	importing     sync.Mutex // one CSV import at a time (specs/047-csv-import)
+	importTimeout time.Duration
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.
@@ -75,7 +76,7 @@ func OpenStore(path string) (*Store, error) {
 	// keeps idle memory minimal.
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db, now: time.Now, kick: make(chan struct{}, 1), base: "USD", approver: ScopeApprover{},
-		downloads: make(chan struct{}, exportDownloads), downloadWait: exportDownloadWait}
+		downloads: make(chan struct{}, exportDownloads), downloadWait: exportDownloadWait, importTimeout: defaultImportTimeout}
 	if err := s.migrate(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)

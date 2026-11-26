@@ -5,10 +5,13 @@ package finance
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +19,42 @@ import (
 	"github.com/dodwmd/companyinacan/core/csvimport"
 )
 
-const importTimeout = 15 * time.Second
+// defaultImportTimeout bounds the write transaction of an import (Store.importTimeout).
+const defaultImportTimeout = 15 * time.Second
+
+const erasedMessage = "this external_id belongs to an erased party; remove the row"
+
+// externalHash is what is left of an erased party's external id once the party is purged.
+func externalHash(id string) string {
+	h := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(h[:])
+}
+
+// keepErasedIDs records the ids of the parties the purge is about to delete.
+func (s *Store) keepErasedIDs(ctx context.Context, tx dbq) error {
+	rows, err := tx.QueryContext(ctx, `SELECT external_id FROM parties WHERE external_id IS NOT NULL AND `+purgeableParties)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erased_external_ids (hash, purged_at) VALUES (?, ?)`, externalHash(id), ts(s.now())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 var partyImportFields = []csvimport.Field{
 	{Name: csvimport.ExternalID, Required: true}, {Name: "name", Required: true}, {Name: "kind"}, {Name: "contact_name"},
@@ -39,8 +77,9 @@ func (s *Store) ImportParties(ctx context.Context, a *Principal, r io.Reader, o 
 		return nil, err
 	}
 	rep := csvimport.NewReport(f, o)
-	ctx, cancel := context.WithTimeout(ctx, importTimeout)
+	ctx, cancel := context.WithTimeout(ctx, s.importTimeout)
 	defer cancel()
+	summary := map[string]any{"file_sha256": f.SHA256, "rows": len(f.Rows)}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		names, err := partyNames(ctx, tx)
 		if err != nil {
@@ -58,9 +97,16 @@ func (s *Store) ImportParties(ctx context.Context, a *Principal, r io.Reader, o 
 		if !o.Apply || rep.HasErrors() {
 			return csvimport.ErrRollback
 		}
-		return s.audit(ctx, tx, a.Subject, "party.import", "", map[string]any{"file_sha256": f.SHA256, "rows": len(f.Rows)})
+		return s.audit(ctx, tx, a.Subject, "party.import", "", summary)
 	})
-	if err != nil && !errors.Is(err, csvimport.ErrRollback) {
+	switch {
+	case errors.Is(err, csvimport.ErrRollback):
+		// The report says which ids already exist and which match, so a run that wrote nothing
+		// is still recorded; without the record there is no report.
+		if err := s.auditRead(ctx, a, "party.import_preview", "", summary); err != nil {
+			return nil, err
+		}
+	case err != nil:
 		return nil, err
 	}
 	rep.Finish()
@@ -95,11 +141,19 @@ func (s *Store) importParty(ctx context.Context, tx *sql.Tx, a *Principal, row c
 	isNew := errors.Is(err, sql.ErrNoRows)
 	switch {
 	case isNew:
+		var purged int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM erased_external_ids WHERE hash = ?`, externalHash(external)).Scan(&purged); err != nil {
+			return err
+		}
+		if purged > 0 {
+			item.Error(csvimport.ExternalID, erasedMessage)
+			return nil
+		}
 		cur = NewParty{Kind: "customer"}
 	case err != nil:
 		return err
 	case erased.Valid:
-		item.Error(csvimport.ExternalID, "this external_id belongs to an erased party; remove the row")
+		item.Error(csvimport.ExternalID, erasedMessage)
 		return nil
 	}
 	var changed []string
@@ -126,6 +180,14 @@ func (s *Store) importParty(ctx context.Context, tx *sql.Tx, a *Principal, row c
 			item.Error(p.Field, p.Message)
 		}
 		return nil
+	}
+	if !isNew && cur.Kind == "customer" && slices.Contains(changed, "kind") {
+		if err := mustStayVendor(ctx, tx, id); errors.Is(err, errMustStayVendor) {
+			item.Error("kind", "the party has purchase orders and must stay a vendor")
+			return nil
+		} else if err != nil {
+			return err
+		}
 	}
 	switch {
 	case isNew:
