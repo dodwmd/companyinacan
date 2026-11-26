@@ -87,6 +87,23 @@ func TestSummaryAnswerShape(t *testing.T) {
 	}
 }
 
+// In the compose stack can-core reaches each module that offers a summary by its cluster name.
+func TestSummaryComposeAliases(t *testing.T) {
+	compose := asMap(readYAML(t, "docker-compose.yml")["services"])
+	for id := range asMap(readYAML(t, "dev/compose/config/company.yaml")["modules"]) {
+		for _, p := range asList(readYAML(t, "modules/"+id+"/module.yaml")["provides"]) {
+			pm := asMap(p)
+			if asStr(pm["capability"]) != modclient.SummaryCapability {
+				continue
+			}
+			host := asStr(pm["service"]) + ".mod-" + id + ".svc.cluster.local"
+			if !slices.Contains(strs(asMap(asMap(asMap(compose[id])["networks"])["default"])["aliases"]), host) {
+				t.Errorf("compose service %s has no network alias %s", id, host)
+			}
+		}
+	}
+}
+
 // can-core formats money without importing the finance module: the two must agree.
 func TestSummaryMoneyExponents(t *testing.T) {
 	for _, c := range []string{"AUD", "USD", "EUR", "GBP", "JPY", "KRW", "CLP", "VND", "ISK", "BHD", "KWD", "OMR", "JOD", "TND", "CHF", "INR"} {

@@ -128,6 +128,7 @@ services:
   work:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: work, args: *build-args }
     container_name: can-work
+    networks: { default: { aliases: [work.mod-work.svc.cluster.local] } }   # the business overview asks it
     env_file: [dev/compose/secrets/work.env]
     environment:
       <<: *metrics-env
