@@ -10,6 +10,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/dbprov"
 	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
 
 // A chart that names a Secret or a key can-core does not write starts no pod: the kubelet waits for
@@ -91,11 +92,12 @@ func TestChartsOnlyReferenceSecretKeysTheInstallerWrites(t *testing.T) {
 			}
 			in, api, _, spec := fixture(t, nil)
 			in.cfg.ModulesDir, in.cfg.Domain, in.cfg.DB = dir, "acme.example", dbprov.NewFake()
-			in.cfg.Relay = func(string) (*SMTPRelay, error) {
+			in.cfg.Relay = func(reconcile.Spec) (*SMTPRelay, error) {
 				return &SMTPRelay{Host: "smtp.example.net", Port: 587, Username: "u", Password: "p", From: "a@acme.example", Encryption: "tls"}, nil
 			}
 			spec.ID, spec.Namespace, spec.ServiceAccount, spec.Domain = id, "mod-"+id, id, "acme.example"
 			spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
+			spec.Email = optIn(id)
 			if sub, ok := inhouseSubdomains[id]; ok {
 				spec.Manifest.Runtime.Subdomain = sub
 			}

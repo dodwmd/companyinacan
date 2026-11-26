@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/dbprov"
 	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
 
 // The wrapped modules that are installed on a cluster in CI (specs/041): what the installer gives
@@ -19,7 +21,8 @@ func enableWrapped(t *testing.T, id string, relay *SMTPRelay) (*kube.Fake, func(
 	in.cfg.ModulesDir, in.cfg.Domain = "../../../modules", "acme.example"
 	in.cfg.DB = dbprov.NewFake()
 	current := relay
-	in.cfg.Relay = func(string) (*SMTPRelay, error) { return current, nil }
+	in.cfg.Relay = func(reconcile.Spec) (*SMTPRelay, error) { return current, nil }
+	spec.Email = optIn(id)
 	spec.ID, spec.Namespace, spec.ServiceAccount = id, "mod-"+id, id
 	spec.Domain = "acme.example"
 	spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
@@ -31,6 +34,12 @@ func enableWrapped(t *testing.T, id string, relay *SMTPRelay) (*kube.Fake, func(
 	}
 	enable()
 	return api, func() { current = nil; enable() }
+}
+
+// optIn is the company's explicit email.modules.<id>.enabled: true.
+func optIn(id string) *config.Email {
+	on := true
+	return &config.Email{Modules: map[string]config.EmailModule{id: {Enabled: &on}}}
 }
 
 func decoded(t *testing.T, api *kube.Fake, ns, name string) map[string]string {
@@ -95,6 +104,34 @@ func TestRelayIsGivenOnlyToSMTPAppsAndWithdrawnAgain(t *testing.T) {
 		api, _ := enableWrapped(t, id, relay)
 		if api.Objects["Secret/mod-"+id+"/can-smtp"] != nil {
 			t.Errorf("%s was handed the relay credentials", id)
+		}
+	}
+}
+
+// The relay's credentials go to a third-party image only when the company says so: no email block, a
+// block that does not name the module, and enabled: false all leave can-smtp empty.
+func TestRelayNeedsAnExplicitOptIn(t *testing.T) {
+	off := false
+	for name, e := range map[string]*config.Email{
+		"no email block":        nil,
+		"not named":             {Relay: &config.EmailRelay{Host: "smtp.example.net"}},
+		"named without enabled": {Modules: map[string]config.EmailModule{"support": {PerHour: 5}}},
+		"enabled: false":        {Modules: map[string]config.EmailModule{"support": {Enabled: &off}}},
+		"another module":        optIn("forms"),
+	} {
+		in, api, _, spec := fixture(t, nil)
+		in.cfg.ModulesDir, in.cfg.Domain, in.cfg.DB = "../../../modules", "acme.example", dbprov.NewFake()
+		in.cfg.Relay = func(reconcile.Spec) (*SMTPRelay, error) {
+			t.Errorf("%s: the relay was read", name)
+			return &SMTPRelay{Host: "smtp.example.net", Password: "p"}, nil
+		}
+		spec.ID, spec.Namespace, spec.ServiceAccount, spec.Domain, spec.Email = "support", "mod-support", "support", "acme.example", e
+		spec.Manifest = loadManifest(t, "../../../modules/support/module.yaml")
+		if err := in.Enable(context.Background(), spec); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := decoded(t, api, "mod-support", "can-smtp"); len(got) != 0 {
+			t.Errorf("%s: can-smtp holds %d keys", name, len(got))
 		}
 	}
 }

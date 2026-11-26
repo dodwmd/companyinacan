@@ -73,9 +73,10 @@ type Config struct {
 	// SecretsFor lists the secrets can-core generates into a module's `can-module` Secret
 	// (default modsecrets.For). Values are generated once and kept; see ensureSecrets.
 	SecretsFor func(module string) []modsecrets.Spec
-	// Relay returns the SMTP relay a wrapped app may be given (modsecrets.WantsRelay), or nil when none
-	// is configured or the company's rules switch the module's mail off.
-	Relay func(module string) (*SMTPRelay, error)
+	// Relay returns the SMTP relay of the company being applied, or nil when none is usable. It is
+	// asked only for a wrapped app that takes it (modsecrets.WantsRelay) and that the company has
+	// opted in (reconcile.RelayOptIn).
+	Relay func(s reconcile.Spec) (*SMTPRelay, error)
 
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
@@ -513,15 +514,15 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 }
 
 // ensureRelaySecret writes `can-smtp` for a module that speaks SMTP itself and declares email.send.
-// Without a usable relay the Secret is written empty, so credentials that were withdrawn do not stay
-// behind. It is written as `data` (not stringData) so that server-side apply removes dropped keys.
+// The company must opt the module in (reconcile.RelayOptIn). Otherwise, and without a usable relay, the
+// Secret is written empty, so credentials that were withdrawn do not stay behind. It is written as `data` (not stringData) so that server-side apply removes dropped keys.
 func (in *Installer) ensureRelaySecret(ctx context.Context, s reconcile.Spec) (map[string]string, error) {
 	if !modsecrets.WantsRelay(s.ID) || !slices.Contains(s.Manifest.Requires.Capabilities, "email.send") {
 		return nil, nil
 	}
 	vals := map[string]string{}
-	if in.cfg.Relay != nil {
-		r, err := in.cfg.Relay(s.ID)
+	if in.cfg.Relay != nil && reconcile.RelayOptIn(s.Email, s.ID) {
+		r, err := in.cfg.Relay(s)
 		if err != nil {
 			return nil, fmt.Errorf("reading the email relay settings: %w", err)
 		}

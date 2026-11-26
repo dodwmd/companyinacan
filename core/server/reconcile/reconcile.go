@@ -37,6 +37,9 @@ type Spec struct {
 	HMACSecret string
 	// Domain is the company domain from company.yaml (a module's public host is <subdomain>.<domain>).
 	Domain string
+	// Email is the email block of the company.yaml being applied (nil without one). It is the one
+	// being applied, not the mounted copy, which can lag behind.
+	Email *config.Email
 	// Rotate lists the keys of the module's `can-module` Secret to regenerate in this run (operator
 	// requests, see store.RequestRotation). CAN_WEBHOOK_SECRET is rotated by the reconciler itself
 	// through HMACSecret; the installer only validates the name.
@@ -178,6 +181,30 @@ func settingsHash(m *config.Module, settings map[string]any) string {
 	return hex.EncodeToString(h[:])
 }
 
+// RelayOptIn reports whether the company lets this module have the SMTP relay's credentials:
+// email.modules.<id>.enabled must be written as true. Absent means no, unlike for email.send,
+// because the credentials leave can-core for a third-party application.
+func RelayOptIn(e *config.Email, module string) bool {
+	if e == nil {
+		return false
+	}
+	on := e.Modules[module].Enabled
+	return on != nil && *on
+}
+
+// specHash is settingsHash of the module as company c has it. For a module that speaks SMTP itself
+// and is opted in it also covers email.relay, so that opting in, opting out (which empties the
+// module's Secret) or changing the relay is an upgrade.
+func specHash(c *config.Company, id string, man *config.Module) string {
+	h := settingsHash(man, c.Modules[id].Settings)
+	if !modsecrets.WantsRelay(id) || !RelayOptIn(c.Email, id) {
+		return h
+	}
+	b, _ := json.Marshal(c.Email.Relay)
+	sum := sha256.Sum256(append([]byte(h+"\x00relay\x00"), b...))
+	return hex.EncodeToString(sum[:])
+}
+
 func newSecret() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -227,7 +254,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 	for _, id := range installOrder(want) {
 		man := want[id]
 		rec, ok := have[id]
-		hash := settingsHash(man, d.Company.Modules[id].Settings)
+		hash := specHash(d.Company, id, man)
 		switch {
 		case !ok:
 			enables = append(enables, Action{Install, id, "not installed"})
@@ -363,9 +390,9 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	settings := d.Company.Modules[a.Module].Settings
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
-		State: store.StateEnabled, SettingsHash: settingsHash(man, settings), HMACSecret: secret, Manifest: *man,
+		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man), HMACSecret: secret, Manifest: *man,
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Rotate: rotate})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Email: d.Company.Email, Rotate: rotate})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.

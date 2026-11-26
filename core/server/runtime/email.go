@@ -12,6 +12,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/installer"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 )
@@ -58,15 +59,16 @@ func (c Config) emailSource() email.Source {
 	return email.Source{CompanyFile: c.CompanyFile, SecretDir: dir, Domain: c.CompanyDomain}
 }
 
-// appRelay is the relay handed to a wrapped app that speaks SMTP itself (docs/email-policy.md). Such
-// mail does not pass email.send, so the recipient allow-list and quotas do not apply to it; the
-// module's `enabled: false` still withholds the relay. A relay without TLS is never handed out.
-func (c Config) appRelay(module string) (*installer.SMTPRelay, error) {
-	p, err := c.emailSource().Load()
+// appRelay is the relay handed to a wrapped app that speaks SMTP itself and that the company opted
+// in (docs/email-policy.md). Such mail does not pass email.send, so the recipient allow-list and
+// quotas do not apply to it. The settings come from the company.yaml being applied, the credentials
+// from the relay Secret. A relay without TLS is never handed out.
+func (c Config) appRelay(spec reconcile.Spec) (*installer.SMTPRelay, error) {
+	p, err := c.emailSource().For(&config.Company{Domain: spec.Domain, Email: spec.Email})
 	if err != nil {
 		return nil, err
 	}
-	if p.RelayErr != nil || !p.Rules(module).Enabled {
+	if p.RelayErr != nil {
 		return nil, nil
 	}
 	r := p.Relay

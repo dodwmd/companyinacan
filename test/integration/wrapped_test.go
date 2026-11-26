@@ -39,7 +39,16 @@ const (
 )
 
 func wrappedCompany(id string, enabled bool) string {
-	return fmt.Sprintf("schema: 1\nname: Wrapped Co\ndomain: %s\nprovider:\n  type: local\nmodules:\n  %s:\n    enabled: %v\n", wrappedDomain, id, enabled)
+	y := fmt.Sprintf("schema: 1\nname: Wrapped Co\ndomain: %s\nprovider:\n  type: local\nmodules:\n  %s:\n    enabled: %v\n", wrappedDomain, id, enabled)
+	if id == "support" {
+		y += supportMail(true)
+	}
+	return y
+}
+
+// supportMail is the opt-in without which support is given no relay credentials.
+func supportMail(on bool) string {
+	return fmt.Sprintf("email:\n  modules:\n    support: {enabled: %v}\n", on)
 }
 
 // browser is a minimal client that carries cookies by hand (they are Secure and the port-forward is
@@ -133,8 +142,8 @@ func adminPassword(t *testing.T, module, key string) string {
 	return string(b)
 }
 
-// sql runs a query in a module's database inside the shared Postgres.
-func sql(t *testing.T, db, query string) string {
+// moduleSQL runs a query in a module's database inside the shared Postgres.
+func moduleSQL(t *testing.T, db, query string) string {
 	t.Helper()
 	out, err := kubectl("-n", "can-data", "exec", "deploy/postgres", "--", "psql", "-U", "postgres", "-d", db, "-tAc", query)
 	if err != nil {
@@ -283,17 +292,27 @@ func supportChecks(t *testing.T) {
 	if p.status != 302 {
 		t.Fatalf("creating a mailbox: %d", p.status)
 	}
-	if got := sql(t, "mod_support", "select email from mailboxes where name = 'CI mailbox'"); got != "help@"+wrappedDomain {
+	if got := moduleSQL(t, "mod_support", "select email from mailboxes where name = 'CI mailbox'"); got != "help@"+wrappedDomain {
 		t.Errorf("the mailbox is not in the database: %q", got)
 	}
 	// The company's relay was written into FreeScout's system mail settings (no mail is sent).
 	eventually(t, 3*time.Minute, "the SMTP relay settings to be applied", func() (bool, string) {
-		o := sql(t, "mod_support", "select name || '=' || value from options where name in ('mail_driver','mail_host','mail_port','mail_username','mail_encryption','mail_from') order by name")
+		o := moduleSQL(t, "mod_support", "select name || '=' || value from options where name in ('mail_driver','mail_host','mail_port','mail_username','mail_encryption','mail_from') order by name")
 		return strings.Contains(o, "mail_driver=smtp") && strings.Contains(o, "mail_host=smtp.relay.invalid") && strings.Contains(o, "mail_from=no-reply@"+wrappedDomain) && strings.Contains(o, "mail_encryption=tls"), o
 	})
-	if got := sql(t, "mod_support", "select value from options where name = 'mail_password'"); got == "" || strings.Contains(got, "relay") {
+	if got := moduleSQL(t, "mod_support", "select value from options where name = 'mail_password'"); got == "" || strings.Contains(got, "relay") {
 		t.Error("the relay password is missing or stored in clear text")
 	}
+	// Opting out is an apply of its own that empties the module's Secret. What FreeScout stored stays.
+	canApplyModules(t, strings.Replace(wrappedCompany("support", true), supportMail(true), supportMail(false), 1))
+	eventually(t, 4*time.Minute, "can-smtp to be emptied", func() (bool, string) {
+		o, err := kubectl("-n", "mod-support", "get", "secret", "can-smtp", "-o", "jsonpath={.data}")
+		return err == nil && (o == "" || o == "{}"), fmt.Sprintf("%d bytes of data", len(o))
+	})
+	eventually(t, 8*time.Minute, "support to be back after the opt-out", func() (bool, string) {
+		o, err := kubectl("-n", "mod-support", "rollout", "status", "deploy/support", "--timeout=5s")
+		return err == nil, o
+	})
 }
 
 func newsletterChecks(t *testing.T) {
@@ -314,7 +333,7 @@ func newsletterChecks(t *testing.T) {
 	if p = b.do(t, "POST", "/api/lists", "application/json", string(body), nil); p.status != 200 {
 		t.Fatalf("creating a list: %d %s", p.status, p.body)
 	}
-	if got := sql(t, "mod_newsletter", "select count(*) from lists where name = 'ci-list'"); got != "1" {
+	if got := moduleSQL(t, "mod_newsletter", "select count(*) from lists where name = 'ci-list'"); got != "1" {
 		t.Errorf("the list is not in the database: %q", got)
 	}
 }
@@ -364,7 +383,7 @@ func TestWrappedModulesThroughCanCore(t *testing.T) {
 		if t.Failed() {
 			return
 		}
-		if sql(t, "postgres", "select count(*) from pg_database where datname = 'mod_support'") == "1" {
+		if moduleSQL(t, "postgres", "select count(*) from pg_database where datname = 'mod_support'") == "1" {
 			if out, err := connect("mod_support"); err == nil {
 				t.Errorf("newsletter's user opened support's database: %s", out)
 			}
