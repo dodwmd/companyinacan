@@ -55,7 +55,8 @@ data_classes:
   - { class: campaign-engagement, retention: 2y, sensitivity: standard }
 settings_schema: ./settings.schema.json
 hooks:
-  image: ghcr.io/dodwmd/can-hooks:0.1.0
-  backup: ./hooks/backup.sh
-  restore: ./hooks/restore.sh
+  # can-core dumps and restores this module itself (specs/046-wrapped-backups).
+  backup: backup
+  restore: restore
+  builtin: {files: true}
 healthcheck: /health

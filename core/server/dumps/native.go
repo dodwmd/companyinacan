@@ -197,12 +197,11 @@ func (h *KubeHooks) explain(ctx context.Context, ns, job string, cause error) er
 	}
 	for _, p := range pods {
 		st, _ := p["status"].(obj)
-		cs, _ := st["containerStatuses"].([]any)
-		for _, c := range cs {
+		for _, c := range containerStatuses(st) {
 			m, _ := c.(obj)
 			state, _ := m["state"].(obj)
 			t, ok := state["terminated"].(obj)
-			if !ok {
+			if !ok || count(t["exitCode"]) == 0 { // a finished init container is not the cause
 				continue
 			}
 			code := count(t["exitCode"])

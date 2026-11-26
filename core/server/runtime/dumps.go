@@ -56,7 +56,7 @@ var moduleDirRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 // (specs/043-module-backup-hooks).
 func recordedManifest(modulesDir string, m store.Module) config.Module {
 	man := m.Manifest
-	if man.Hooks.Backup != "" || modulesDir == "" || !moduleDirRe.MatchString(m.ID) {
+	if modulesDir == "" || !moduleDirRe.MatchString(m.ID) {
 		return man
 	}
 	doc, _ := config.Load(filepath.Join(modulesDir, m.ID, "module.yaml"))
@@ -65,7 +65,11 @@ func recordedManifest(modulesDir string, m store.Module) config.Module {
 	}
 	// Subcommands only, and only for the same provider: a script hook needs its files and image
 	// to match what was installed.
-	if shipped, err := config.DecodeModule(doc); err == nil && shipped.Hooks.Command != "" && shipped.Provider.Name == man.Provider.Name {
+	// A wrapped module recorded with the scripts of the unpublished hooks image is dumped by
+	// can-core as the shipped manifest says (specs/046-wrapped-backups).
+	shipped, err := config.DecodeModule(doc)
+	if err == nil && shipped.Provider.Name == man.Provider.Name &&
+		(shipped.Hooks.Builtin != nil || man.Hooks.Backup == "" && shipped.Hooks.Command != "") {
 		man.Hooks = shipped.Hooks
 	}
 	return man

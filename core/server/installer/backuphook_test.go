@@ -35,7 +35,7 @@ func TestBackupHookReadsTheDatabaseSecretTheInstallerWrites(t *testing.T) {
 
 	// the variables every shipped database hook requires
 	required := map[string]bool{}
-	for _, m := range []string{"support", "newsletter", "crm"} {
+	for _, m := range []string{"crm"} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "..", "modules", m, "hooks", "backup.sh"))
 		if err != nil {
 			t.Fatal(err)

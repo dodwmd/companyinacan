@@ -51,8 +51,8 @@ data_classes:
   - { class: support-attachment, retention: 3y, sensitivity: standard }
 settings_schema: ./settings.schema.json
 hooks:
-  # The upstream image has neither curl nor the MariaDB client; see deploy/hooks/.
-  image: ghcr.io/dodwmd/can-hooks:0.1.0
-  backup: ./hooks/backup.sh
-  restore: ./hooks/restore.sh
+  # can-core dumps and restores this module itself (specs/046-wrapped-backups).
+  backup: backup
+  restore: restore
+  builtin: {files: true}
 healthcheck: /healthcheck
