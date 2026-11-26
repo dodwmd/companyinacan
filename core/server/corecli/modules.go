@@ -3,6 +3,7 @@ package corecli
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 
@@ -69,6 +70,15 @@ func modulesApproveCmd(getenv func(string) string) *cobra.Command {
 			return err
 		}
 		defer func() { _ = d.Close() }()
+		m, err := d.GetModule(c.Context(), args[0])
+		if errors.Is(err, store.ErrNotFound) {
+			return fail("no installed module %q", args[0])
+		} else if err != nil {
+			return fail("%v", err)
+		}
+		if p, ok := reconcile.ParsePending(m.Pending); !ok || p.Approval != args[1] {
+			return fail("no upgrade of %s is waiting with that code (can-core records a waiting upgrade at its next reconcile; read the plan again)", args[0])
+		}
 		if _, err := audit.New(d).Append(c.Context(), audit.Entry{Actor: "cli", Action: "module.upgrade-approve", Target: args[0], Detail: map[string]any{"approval": args[1]}}); err != nil {
 			return fail("%v", err)
 		}

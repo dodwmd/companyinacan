@@ -40,20 +40,23 @@ func TestApplyPreviewsTheClusterPlanAndApproves(t *testing.T) {
 	if code != ExitOK || len(f.calls) != 1 || len(f.written) != 0 {
 		t.Fatalf("--plan changed something: %d %v %q", code, f.calls, errs)
 	}
-	for _, want := range []string{"waiting for approval: upgrade: forms", "newly allowed: new permission leads.erase", "can apply --approve forms"} {
+	for _, want := range []string{"waiting for approval: upgrade: forms", "newly allowed: new permission leads.erase", "can apply --approve forms=0123456789abcdef"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("lacks %q in %q", want, out)
 		}
 	}
 
 	f = use()
-	code, out, errs = run(t, append(args, "--approve", "forms")...)
+	code, out, errs = run(t, append(args, "--approve", "forms=0123456789abcdef")...)
 	if code != ExitOK || !strings.Contains(out, "approved the upgrade of forms") || !strings.Contains(strings.Join(f.calls, "\n"), "modules approve forms 0123456789abcdef") {
 		t.Fatalf("%d %q %q %v", code, out, errs, f.calls)
 	}
 
-	f = use()
-	if code, _, errs := run(t, append(args, "--approve", "crm")...); code != ExitFailure || !strings.Contains(errs, "no upgrade of that module") || len(f.written) != 0 {
-		t.Fatalf("%d %q %v", code, errs, f.calls)
+	// Without the code shown, with another one, or for a module with nothing waiting: nothing changes.
+	for arg, want := range map[string]string{"forms": "give the code", "forms=ffffffffffffffff": "does not match", "crm=0123456789abcdef": "no upgrade of that module"} {
+		f = use()
+		if code, _, errs := run(t, append(args, "--approve", arg)...); code != ExitFailure || !strings.Contains(errs, want) || len(f.written) != 0 || len(f.calls) != 1 {
+			t.Fatalf("%s: %d %q %v", arg, code, errs, f.calls)
+		}
 	}
 }

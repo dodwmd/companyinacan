@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,7 +29,8 @@ func approvalOf(widens []string) string { return digest([]byte(strings.Join(wide
 
 // Widening lists what manifest next may do, reach or expose that the recorded manifest could not,
 // in words an operator can approve. Removals and other changes are not listed. Charts cannot widen
-// egress by themselves: their NetworkPolicies may only join pods of their own namespace.
+// egress by themselves: their NetworkPolicies may only join pods of their own namespace. Internet
+// access is judged from what was installed (newInternetAccess), not from the recorded manifest.
 func Widening(recorded, next *config.Module) []string {
 	have := grants(recorded)
 	var out []string
@@ -37,8 +39,42 @@ func Widening(recorded, next *config.Module) []string {
 			out = append(out, g)
 		}
 	}
+	out = append(out, weakenedApprovals(recorded, next)...)
 	sort.Strings(out)
 	return out
+}
+
+// weakenedApprovals lists approvals that need fewer people than before.
+func weakenedApprovals(recorded, next *config.Module) []string {
+	chains := map[string][]string{}
+	for _, a := range next.Approvals {
+		chains[a.Type] = a.DefaultChain
+	}
+	var out []string
+	for _, a := range recorded.Approvals {
+		chain, declared := chains[a.Type]
+		if !declared {
+			out = append(out, "no longer declares the approval "+a.Type)
+			continue
+		}
+		left := slices.Clone(chain)
+		for _, step := range a.DefaultChain {
+			if i := slices.Index(left, step); i >= 0 {
+				left = slices.Delete(left, i, i+1)
+			} else {
+				out = append(out, "approval "+a.Type+" no longer needs "+step)
+			}
+		}
+	}
+	return out
+}
+
+func imageRepository(ref string) string {
+	ref, _, _ = strings.Cut(ref, "@")
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref = ref[:i]
+	}
+	return ref
 }
 
 func grants(m *config.Module) map[string]bool {
@@ -94,12 +130,31 @@ func grants(m *config.Module) map[string]bool {
 			add("web UI paths when exposed under", p)
 		}
 	}
-	// Read by name, so that it is seen whether or not this build's manifest type declares it.
-	var rt map[string]any
-	b, _ := json.Marshal(r)
-	_ = json.Unmarshal(b, &rt)
-	if on, _ := rt["internet_egress"].(bool); on {
-		add("internet access")
+	for _, n := range m.Notifications {
+		for _, to := range n.Recipients {
+			add("notifies", to, "about", n.Event)
+		}
+	}
+	h := m.Hooks
+	if h.Command != "" {
+		add("hooks run the command", h.Command)
+	}
+	if h.Image != "" {
+		add("hooks run in the image", imageRepository(h.Image)) // a new tag of the same image is an update
+	}
+	for kind, v := range map[string]string{"install": h.Install, "backup": h.Backup, "restore": h.Restore, "purge": h.Purge, "export": h.Export, "import": h.Import} {
+		if v != "" {
+			add("runs the", kind, "hook", v)
+		}
+	}
+	if w := r.WebLogin; w != nil {
+		add("signs users into its web UI at", "/"+strings.TrimPrefix(w.BasePath, "/"))
+	}
+	if sso := m.Requires.SSO; sso != "" && sso != "none" {
+		add("uses single sign-on:", sso)
+	}
+	for _, c := range m.DataClasses {
+		add("keeps data of class", c.Class, "("+c.Sensitivity+") for", c.Retention)
 	}
 	return out
 }

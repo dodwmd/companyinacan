@@ -66,8 +66,10 @@ func TestModulesApproveAndPendingProblem(t *testing.T) {
 	if code, out := run("modules", "problems"); code != exitOK || !strings.Contains(out, `"state":"pending-approval"`) || !strings.Contains(out, "leads.erase") {
 		t.Fatal(code, out)
 	}
-	if code, out := run("modules", "approve", "forms", "yes"); code == exitOK {
-		t.Fatal(out)
+	for _, bad := range [][2]string{{"forms", "yes"}, {"forms", "ffffffffffffffff"}, {"ghost", "0123456789abcdef"}} {
+		if code, out := run("modules", "approve", bad[0], bad[1]); code == exitOK {
+			t.Fatal(bad, out)
+		}
 	}
 	if code, out := run("modules", "approve", "forms", "0123456789abcdef"); code != exitOK {
 		t.Fatal(code, out)

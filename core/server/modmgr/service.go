@@ -422,6 +422,9 @@ const (
 func resources(actions []reconcile.Action, cat *Catalogue, domain string) []ResourcePlan {
 	var out []ResourcePlan
 	for _, a := range actions {
+		if a.Kind == reconcile.Restrict {
+			continue // nothing is created or removed
+		}
 		rp := ResourcePlan{Module: a.Module, Action: string(a.Kind), Reason: Sanitise(a.Reason), Namespace: "mod-" + a.Module}
 		if a.Kind == reconcile.Disable {
 			rp.Keeps = []string{"namespace", "pvc", "secrets"}

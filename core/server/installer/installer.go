@@ -225,6 +225,55 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	return in.applyRoutes(ctx, s, traefikPolicy(policy, ports), plan)
 }
 
+// Restrict implements reconcile.Restricter: it changes the installed release without upgrading it.
+// Nothing is rendered: the objects of the release record are applied again, with routes that are no
+// longer wanted removed (none is added), the module's Secrets written again (rotation, mail relay)
+// and the pods rolled if those changed. s.Manifest is the manifest that release was installed from.
+func (in *Installer) Restrict(ctx context.Context, s reconcile.Spec) error {
+	if !idRE.MatchString(s.ID) || s.Namespace != "mod-"+s.ID || s.ServiceAccount == "" || s.Manifest == nil {
+		return fmt.Errorf("refusing module %q", s.ID)
+	}
+	if in.cfg.Quiesce {
+		return errors.New("nothing runs during a restore")
+	}
+	if err := in.checkRotations(s); err != nil {
+		return err
+	}
+	objs, err := in.loadRelease(ctx, s)
+	if err != nil {
+		return fmt.Errorf("the recorded release in Secret %s: %w", secretRelease, err)
+	}
+	if objs == nil {
+		return errors.New("there is no record of the installed release to apply this to; approve the upgrade instead")
+	}
+	plan, err := in.planRoutes(ctx, s)
+	if err != nil {
+		return err
+	}
+	// Routes go first, so that exposure is off even if what follows fails.
+	if err := in.pruneRoutes(ctx, s.ID, plan.objects, "IngressRoute"); err != nil {
+		return err
+	}
+	if !s.Expose.PublicOn() {
+		if err := in.closePublic(ctx, s); err != nil {
+			return err
+		}
+		objs = slices.DeleteFunc(objs, func(o kube.Object) bool { return o["kind"] == "IngressRoute" })
+	}
+	if len(plan.objects) == 0 && !slices.ContainsFunc(objs, func(o kube.Object) bool { return o["kind"] == "IngressRoute" }) {
+		err := in.cfg.API.MergePatch(ctx, "NetworkPolicy", s.Namespace, policyTraefik, kube.Object{"spec": map[string]any{"ingress": []any{}}})
+		if err != nil && !kube.IsNotFound(err) {
+			return err
+		}
+	}
+	version, err := in.ensureSecrets(ctx, s)
+	if err != nil {
+		return err
+	}
+	stampSecretVersion(objs, version)
+	return in.rollout(ctx, s, objs)
+}
+
 // Disable implements reconcile.ModuleInstaller: scales workloads to zero, keeps everything else.
 func (in *Installer) Disable(ctx context.Context, id string) error {
 	if !idRE.MatchString(id) {
@@ -1022,15 +1071,25 @@ func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.
 	if err != nil {
 		return nil, err
 	}
-	want, err := releaseMAC(s, raw)
-	if err != nil {
-		return nil, err
-	}
 	have, herr := in.secretKey(ctx, s.Namespace, secretRelease, "hmac")
 	if herr != nil {
 		return nil, herr
 	}
-	if !hmac.Equal([]byte(have), []byte(want)) {
+	// While the signing secret is being rotated the record is still under the previous one.
+	ok := false
+	for _, secret := range []string{s.HMACSecret, s.RecordSecret} {
+		if secret == "" {
+			continue
+		}
+		as := s
+		as.HMACSecret = secret
+		want, err := releaseMAC(as, raw)
+		if err != nil {
+			return nil, err
+		}
+		ok = ok || hmac.Equal([]byte(have), []byte(want))
+	}
+	if !ok {
 		return nil, errors.New("HMAC does not match (the record was not written by this can-core for this module)")
 	}
 	var objs []kube.Object
@@ -1070,4 +1129,7 @@ func (in *Installer) deleteOwned(ctx context.Context, s reconcile.Spec, kind, na
 	return in.cfg.API.Delete(ctx, kind, s.Namespace, name)
 }
 
-var _ reconcile.ModuleInstaller = (*Installer)(nil)
+var (
+	_ reconcile.ModuleInstaller = (*Installer)(nil)
+	_ reconcile.Restricter      = (*Installer)(nil)
+)

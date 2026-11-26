@@ -526,7 +526,7 @@ type actionView struct{ Kind, KindLabel, Module, Reason string }
 
 var actionLabels = map[reconcile.Kind]string{
 	reconcile.Install: "ch.act_install", reconcile.Upgrade: "ch.act_upgrade",
-	reconcile.Enable: "ch.act_enable", reconcile.Disable: "ch.act_disable",
+	reconcile.Enable: "ch.act_enable", reconcile.Disable: "ch.act_disable", reconcile.Restrict: "ch.act_restrict",
 }
 
 var keepLabels = map[string]string{

@@ -143,7 +143,7 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan and change nothing")
 	cmd.Flags().BoolVar(&recordOnly, "record-only", false, "update recorded state without deploying (development)")
 	cmd.Flags().BoolVar(&planOnly, "plan", false, "print what can-core in the cluster would do and change nothing")
-	cmd.Flags().StringSliceVar(&approve, "approve", nil, "approve the shown upgrade of these modules, which widens what they may do")
+	cmd.Flags().StringSliceVar(&approve, "approve", nil, "module=code of a waiting upgrade to approve, as the plan shows it")
 	cmd.Flags().StringVar(&kubeContext, "context", os.Getenv("CAN_DEV_CONTEXT"), "kubectl context of the cluster to sync company.yaml to (default $CAN_DEV_CONTEXT, else the current context)")
 	return cmd
 }

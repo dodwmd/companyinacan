@@ -30,23 +30,32 @@ func printActions(w io.Writer, verb string, actions []reconcile.Action) {
 			fmt.Fprintf(w, "    newly allowed: %s\n", x)
 		}
 		if a.Held == reconcile.HeldApproval {
-			fmt.Fprintf(w, "    the running release stays until you approve: can apply --approve %s\n", a.Module)
+			fmt.Fprintf(w, "    the running release stays until you approve what is listed: can apply --approve %s=%s\n", a.Module, a.Approval)
 		}
 	}
 }
 
-// approvalCodes maps each module named to the approval its held upgrade needs.
-func approvalCodes(planned []reconcile.Action, modules []string) (map[string]string, error) {
+// approvalCodes reads --approve module=code arguments. The code is the one the plan showed: it
+// stands for that list of what is newly allowed, so an upgrade that has changed since is refused.
+func approvalCodes(planned []reconcile.Action, args []string) (map[string]string, error) {
 	out := map[string]string{}
-	for _, id := range modules {
+	for _, arg := range args {
+		id, code, _ := strings.Cut(arg, "=")
+		want := ""
 		for _, a := range planned {
 			if a.Module == id && a.Held == reconcile.HeldApproval {
-				out[id] = a.Approval
+				want = a.Approval
 			}
 		}
-		if out[id] == "" {
+		switch {
+		case want == "":
 			return nil, fmt.Errorf("--approve %s: no upgrade of that module is waiting for approval", id)
+		case code == "":
+			return nil, fmt.Errorf("--approve %s: give the code the plan shows (`can apply --plan`): --approve %s=<code>", id, id)
+		case code != want:
+			return nil, fmt.Errorf("--approve %s: the code does not match the waiting upgrade; read `can apply --plan` again", id)
 		}
+		out[id] = code
 	}
 	return out, nil
 }

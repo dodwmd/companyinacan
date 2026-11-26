@@ -36,6 +36,8 @@ type Module struct {
 	// approval given for it. UpsertModule clears both.
 	Pending         string
 	ApprovedUpgrade string
+	// RestrictKey identifies the exposure and mail relay the running release has.
+	RestrictKey string
 }
 
 // Provider is one module's provision of a capability.
@@ -71,13 +73,13 @@ func (db *DB) UpsertModule(ctx context.Context, m Module, providers []Provider, 
 		return err
 	}
 	return db.InTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO modules(id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO modules(id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json,restrict_key)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(id) DO UPDATE SET version=excluded.version, namespace=excluded.namespace, service_account=excluded.service_account,
 			  state=excluded.state, settings_hash=excluded.settings_hash, hmac_secret=excluded.hmac_secret, manifest_json=excluded.manifest_json,
-			  last_error=excluded.last_error, updated_at=excluded.updated_at, content_json=excluded.content_json,
+			  last_error=excluded.last_error, updated_at=excluded.updated_at, content_json=excluded.content_json, restrict_key=excluded.restrict_key,
 			  pending_json='', approved_upgrade=''`,
-			m.ID, m.Version, m.Namespace, m.ServiceAccount, m.State, m.SettingsHash, m.HMACSecret, string(mj), m.LastError, db.Now().Unix(), m.Content); err != nil {
+			m.ID, m.Version, m.Namespace, m.ServiceAccount, m.State, m.SettingsHash, m.HMACSecret, string(mj), m.LastError, db.Now().Unix(), m.Content, m.RestrictKey); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM capability_providers WHERE module_id=?`, m.ID); err != nil {
@@ -102,13 +104,13 @@ func (db *DB) UpsertModule(ctx context.Context, m Module, providers []Provider, 
 	})
 }
 
-const moduleCols = `id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json,pending_json,approved_upgrade`
+const moduleCols = `id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json,pending_json,approved_upgrade,restrict_key`
 
 func scanModule(row interface{ Scan(...any) error }) (Module, error) {
 	var m Module
 	var mj string
 	var up int64
-	if err := row.Scan(&m.ID, &m.Version, &m.Namespace, &m.ServiceAccount, &m.State, &m.SettingsHash, &m.HMACSecret, &mj, &m.LastError, &up, &m.Content, &m.Pending, &m.ApprovedUpgrade); err != nil {
+	if err := row.Scan(&m.ID, &m.Version, &m.Namespace, &m.ServiceAccount, &m.State, &m.SettingsHash, &m.HMACSecret, &mj, &m.LastError, &up, &m.Content, &m.Pending, &m.ApprovedUpgrade, &m.RestrictKey); err != nil {
 		return m, notFound(err)
 	}
 	m.UpdatedAt = time.Unix(up, 0)
@@ -176,6 +178,19 @@ func (db *DB) ForgetSettingsHash(ctx context.Context, id string) error {
 // SetPendingUpgrade records ("" forgets) the upgrade of a module that waits for approval.
 func (db *DB) SetPendingUpgrade(ctx context.Context, id, pending string) error {
 	_, err := db.ExecContext(ctx, `UPDATE modules SET pending_json=? WHERE id=?`, pending, id)
+	return err
+}
+
+// RecordRestricted records what was applied to the running release of a module whose upgrade is
+// held: its signing secret and restrict key, and the UI host its record names. The manifest, content
+// and held upgrade stay.
+func (db *DB) RecordRestricted(ctx context.Context, m Module) error {
+	mj, err := json.Marshal(m.Manifest)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `UPDATE modules SET hmac_secret=?, restrict_key=?, manifest_json=?, last_error='', updated_at=? WHERE id=?`,
+		m.HMACSecret, m.RestrictKey, string(mj), db.Now().Unix(), m.ID)
 	return err
 }
 

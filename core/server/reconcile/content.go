@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -33,12 +34,70 @@ type Content struct {
 	Platform string `json:"platform,omitempty"`
 	// Images are the image references of the chart values, for the preview (Chart covers them).
 	Images []string `json:"images,omitempty"`
+	// Scripts are the hook scripts, so that a backup of a module whose upgrade is held runs the
+	// scripts of the release that is installed.
+	Scripts map[string]string `json:"scripts,omitempty"`
+	// Egress says whether the module was installed with internet access. nil: installed by a
+	// can-core whose manifests had no say in it, and every module had access.
+	Egress *bool `json:"egress,omitempty"`
+}
+
+// internetEgress reads runtime.internet_egress by name, so that this works whether or not this
+// build's manifest type declares it (known is false when it does not).
+func internetEgress(m *config.Module) (declared, known bool) {
+	v := reflect.ValueOf(m.Runtime).FieldByName("InternetEgress")
+	if !v.IsValid() || v.Kind() != reflect.Bool {
+		return false, false
+	}
+	return v.Bool(), true
+}
+
+func egressOf(m *config.Module) *bool {
+	if on, known := internetEgress(m); known {
+		return &on
+	}
+	return nil
+}
+
+// newInternetAccess reports whether next gives internet access to a module recorded without it. A
+// record from before the manifest had the field had access, so asking for it then is nothing new.
+func newInternetAccess(recorded string, next *config.Module) bool {
+	if on, _ := internetEgress(next); !on {
+		return false
+	}
+	var was Content
+	return recorded != "" && json.Unmarshal([]byte(recorded), &was) == nil && was.Egress != nil && !*was.Egress
+}
+
+// hookScripts reads the script files module.yaml's hooks name, keyed by the path as written.
+func hookScripts(dir string, m *config.Module) map[string]string {
+	if m.Hooks.Command != "" {
+		return nil // subcommands of the module's own image
+	}
+	out := map[string]string{}
+	for _, rel := range []string{m.Hooks.Install, m.Hooks.Backup, m.Hooks.Restore, m.Hooks.Purge, m.Hooks.Export, m.Hooks.Import} {
+		if rel == "" {
+			continue
+		}
+		p := filepath.Join(dir, filepath.Clean("/"+rel))
+		if fi, err := os.Lstat(p); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxScriptBytes {
+			continue
+		}
+		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // inside the module directory
+			out[rel] = string(b)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // Bounds on what is read from a module directory.
 const (
 	maxContentFiles = 500
 	maxContentBytes = 1 << 20
+	maxScriptBytes  = 64 << 10
 )
 
 // writePart length-prefixes p, so that moving bytes between parts changes the hash.
@@ -60,7 +119,7 @@ func manifestContent(m *config.Module) Content {
 	c := *m
 	c.Runtime.RoutedUIHost = "" // can-core's own addition to the recorded copy
 	b, _ := json.Marshal(&c)    // struct order and sorted map keys: stable
-	return Content{Manifest: digest(b)}
+	return Content{Manifest: digest(b), Egress: egressOf(m)}
 }
 
 // ContentOf reads the Content of the module whose manifest file is manifestPath.
@@ -77,11 +136,11 @@ func ContentOf(manifestPath string, m *config.Module) (Content, error) {
 	if err != nil { // a mapping with non-string keys: the bytes themselves
 		canonical = raw
 	}
-	c := Content{Manifest: digest(canonical), Platform: platformContent(m.ID)}
+	dir := filepath.Dir(manifestPath)
+	c := Content{Manifest: digest(canonical), Platform: platformContent(m.ID), Scripts: hookScripts(dir, m), Egress: egressOf(m)}
 	if m.Runtime.Chart == "" {
 		return c, nil
 	}
-	dir := filepath.Dir(manifestPath)
 	inside := func(rel string) string { return filepath.Join(dir, filepath.Clean("/"+rel)) }
 	chart := inside(m.Runtime.Chart)
 	h := sha256.New()
@@ -194,6 +253,9 @@ func (c Content) changes(rec Content) []string {
 			out = append(out, "chart changed")
 		}
 	}
+	if c.scriptsKey() != rec.scriptsKey() {
+		out = append(out, "hook scripts changed")
+	}
 	if c.Platform != rec.Platform {
 		out = append(out, "can-core's module templates changed")
 	}
@@ -218,7 +280,12 @@ func missing(a, b []string) []string {
 	return out
 }
 
-func (c Content) key() string { return c.Manifest + c.Chart + c.Platform }
+func (c Content) scriptsKey() string {
+	b, _ := json.Marshal(c.Scripts) // sorted keys
+	return digest(b)
+}
+
+func (c Content) key() string { return c.Manifest + c.Chart + c.Platform + c.scriptsKey() }
 
 func (c Content) encode() string {
 	b, _ := json.Marshal(c)
