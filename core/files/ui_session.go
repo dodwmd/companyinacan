@@ -99,5 +99,5 @@ func (u *UI) checkToken(ctx context.Context, token string, check func(context.Co
 // recheckFor is how often a session re-authenticates: every minute for one that can write or
 // administer, RecheckEvery for a reader.
 func (u *UI) recheckFor(p *Principal) time.Duration {
-	return session.Interval(u.RecheckEvery, p.Has(PermWrite) || p.Has(PermAdmin))
+	return session.Interval(u.RecheckEvery, p.Has(PermWrite)) // admin implies write
 }
