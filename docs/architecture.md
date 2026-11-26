@@ -11,7 +11,7 @@ flowchart LR
   E -->|"company.tld"| S[site: static, built from company.yaml]
   E -->|"company.tld/_forms"| F[forms: leads]
   E -->|"admin.company.tld"| C[can-core]
-  E -->|"work. / people. / jobs. / finance. / equity."| M[in-house modules]
+  E -->|"work. / people. / jobs. / finance. / files."| M[in-house modules]
   F -- "lead.created.v1" --> C
   M -- "events, token introspection, approvals" --> C
   C -- "signed webhooks" --> M
@@ -31,11 +31,14 @@ module charts. It keeps its state in SQLite.
 NetworkPolicy, each with its own SQLite file, bearer-token store and manifest (`modules/<id>/module.yaml`:
 permissions, approval types, published and subscribed events, provided capabilities, resource budget).
 The in-house modules are Go services in `core/<module>` with a `cmd/can-<module>` binary: `forms`, `work`,
-`people`, `jobs`, `finance`, `equity`. Wrapped open-source modules (support, newsletter, analytics, wiki, CRM,
+`people`, `jobs`, `finance`, `files`, `equity`, `provisioning` (`cmd/can-provision`), and `board` and `entity` (one
+binary, `cmd/can-board`, installed as two instances). What each can do once installed is in
+[status.md](status.md). Wrapped open-source modules (support, newsletter, analytics, wiki, CRM,
 status) are charts around upstream images. Analytics, support and newsletter are installed on k3d by an
 advisory CI job, with a Postgres can-core runs in `can-data` for the last two (`specs/041-wrapped-modules-live`);
-the others have never been started. Modules never call each other; they
-publish events and call can-core, which delivers to subscribers.
+the others have never been started. Modules publish events and call can-core, which delivers to subscribers. The
+direct module-to-module calls are `provisioning` and `equity` (in its optional directory mode) reading the people
+directory, which the platform's NetworkPolicies do not allow on a cluster.
 
 **Events** are small JSON envelopes with ids only (no names or email addresses), published by a module to
 can-core (`POST /v1/events`, idempotent on `source_id`) and delivered at least once as HMAC-signed webhooks to
@@ -47,20 +50,27 @@ verify the signature and the 5-minute replay window, check `source`, and de-dupl
 `TokenReview`; in compose a fake reviewer stands in). A person authenticates to a module with a personal access
 token (`canpat_...`) issued in the admin UI for one module with chosen permissions; the module asks can-core to
 introspect it. Each module also has a static bootstrap token for its own service account. Humans on the admin UI
-use a session cookie after password and TOTP, or OIDC SSO ([sso.md](sso.md)); SSO covers the admin UI only.
+use a session cookie after password and TOTP, or OIDC SSO ([sso.md](sso.md)). The `work`, `people`, `jobs`,
+`finance` and `files` web UIs accept a pasted token or a single-use launch ticket from the admin UI's **Apps** page.
 
 **Approvals** are one engine in can-core: a module creates a request (`POST /v1/approvals`), can-core resolves a
 chain of approvers from policy, records every step, and sends `approval.decided.v1` back to that module only
 ([approvals.md](approvals.md)).
+
+**Business overview.** The admin UI asks each module that serves `summary` for its totals on behalf of the
+signed-in person, with a single-use grant ([spec](../specs/053-business-overview/spec.md)).
+
+**Erasures.** can-core reads the erasure feed of the modules that have one and keeps a ledger, which the host takes
+to the backup bucket and a restore replays ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger)).
 
 **Backup** is a host-level restic timer over the dumps that can-core asks each module to write, plus the k3s
 datastore and secrets key, with a recovery kit printed at install time ([backup-restore.md](backup-restore.md)).
 `can restore` runs on the new server and has only been exercised on k3d in CI ([backup-restore.md](backup-restore.md)).
 
 **Local equivalents.** `make dev` is the same base manifests on k3d. The Docker Compose stack
-([local-compose.md](local-compose.md)) runs the same binaries without Kubernetes: can-core records state only, the
-modules run standalone and are not registered, and the Caddy edge replaces Traefik. That is why the flows below
-are tested with the real services in `test/wiring` and not in the compose end-to-end suite.
+([local-compose.md](local-compose.md)) runs the same binaries without Kubernetes: can-core records the modules and
+installs nothing, a fake token reviewer stands in for TokenReview, and the Caddy edge replaces Traefik. Its
+end-to-end suite covers parts of the flows below; the cross-service flows are tested in `test/wiring`.
 
 ## Lead capture
 
@@ -91,8 +101,8 @@ sequenceDiagram
 
 The event carries no personal data; the admin UI reads the lead itself from forms. forms has no durable
 outbox: if can-core is down for the four delivery attempts, the lead is kept but its event is lost
-([module-wiring.md](module-wiring.md), "What is not done"). In compose only steps 1 to 6 and a direct read of the
-leads API are exercised.
+([module-wiring.md](module-wiring.md), "What is not done"). In compose the form post, the stored lead, the notification email and a direct read of the leads API are
+exercised; the admin UI's Leads page has no credential there.
 
 ## Hire handoff (jobs to people)
 
