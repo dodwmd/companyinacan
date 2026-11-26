@@ -536,7 +536,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	}
 
 	api = portForward(t, "mod-people", "people-api", 8081)
-	st, body := rcall(t, "GET", api+"/v1/people/"+s.keptID, s.peopleToken, nil)
+	st, body = rcall(t, "GET", api+"/v1/people/"+s.keptID, s.peopleToken, nil)
 	if st != 200 || !strings.Contains(body, keptName) {
 		t.Fatalf("the kept person: %d %s", st, body)
 	}
