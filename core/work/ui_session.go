@@ -2,53 +2,67 @@ package work
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"sync"
+	"net/http"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
-// uiSession is a web UI login. The browser holds only a random session id; the server holds the
-// token the user presented (in memory, never written to disk, never logged) so every request can be
-// authenticated again: revoking the token, an expiry, or a permission change takes effect on the
-// next click instead of when the session ends. Sessions do not survive a restart: people sign in
-// again, which keeps the token out of the database.
-type uiSession struct {
-	token   string
-	subject string
-	csrf    string
-	created time.Time
-	last    time.Time
-	// sso is set for a session that began with a launch ticket (specs/036-module-ui-sso): there is
-	// no token, only the opaque handle can-core answers revalidation for. Its content is guarded by
-	// the table's mutex; the pointer never changes after creation.
-	sso *ssoState
-	// deadline is can-core's session_expires_at of a launch-ticket session (zero for a token
-	// session). The session ends then. Set at creation, never changed.
-	deadline time.Time
-}
+// Sessions of the web UI are those of core/uikit/session. A token session is authenticated again on
+// every request (through the introspection cache), so revoking the token, an expiry or a permission
+// change takes effect within that cache's lifetime instead of when the session ends; a
+// launch-ticket session asks can-core again every ssoRecheck. This file says who may sign in.
 
-// ssoState is what a launch-ticket session knows about its person.
-type ssoState struct {
-	handle  string
-	name    string
-	perms   []string
-	checked time.Time
-}
+const (
+	uiIdle          = 8 * time.Hour
+	uiAbsolute      = 24 * time.Hour
+	uiMaxSessions   = 5000
+	uiMaxPerSubject = 20
+	uiLoginCSRFAge  = 3600
+)
 
-// uiSessions is a bounded in-memory session table keyed by the hash of the session id, so a memory
-// dump does not hand out usable cookies.
-type uiSessions struct {
-	mu         sync.Mutex
-	m          map[[sha256.Size]byte]*uiSession
-	max        int
-	perSubject int
-	idle, abs  time.Duration
-	now        func() time.Time
-}
+type uiSession = session.Session[Principal]
 
-func newUISessions(now func() time.Time) *uiSessions {
-	return &uiSessions{m: map[[sha256.Size]byte]*uiSession{}, max: 5000, perSubject: 20, idle: 8 * time.Hour, abs: 24 * time.Hour, now: now}
+// ssoRecheck is how often a launch-ticket session asks can-core again: as often as a personal access
+// token is re-introspected here (its cache lifetime), so a removed role or a disabled account ends
+// the module session within the same half minute, privileged or not.
+const ssoRecheck = 30 * time.Second
+
+// newSessions builds the session table. u.a is only used per request.
+func (u *webUI) newSessions() *session.Manager[Principal] {
+	return session.New(session.Config[Principal]{
+		Module: "work", SessionCookie: "work_session", CSRFCookie: "work_login_csrf",
+		Secure:   u.secure,
+		Now:      u.now,
+		Timeouts: func() (time.Duration, time.Duration) { return uiIdle, uiAbsolute },
+		Max:      uiMaxSessions, PerSubject: uiMaxPerSubject,
+		CSRFMaxAge: uiLoginCSRFAge, RotateCSRF: true,
+		Recheck: func(_ Principal, sso bool) time.Duration {
+			if sso {
+				return ssoRecheck
+			}
+			return 0
+		},
+		Subject: func(p Principal) string { return p.Subject },
+		Reauth: func(r *http.Request, token string) (Principal, error) {
+			p, err := u.principalFor(r, token)
+			if err == nil && !p.Can(PermRead) {
+				err = ErrForbidden
+			}
+			if err != nil {
+				return Principal{}, err
+			}
+			return *p, nil
+		},
+		SSO: func() modclient.SessionAPI { return u.a.sso },
+		Grant: func(subject string, permissions []string) (Principal, bool) {
+			p := Principal{Subject: subject, Kind: "personal", Permissions: workPerms(permissions)}
+			return p, len(p.Permissions) > 0 && p.Can(PermRead)
+		},
+		ValidSubject: canSubjectRe.MatchString,
+	})
 }
 
 func randToken(n int) string {
@@ -57,112 +71,4 @@ func randToken(n int) string {
 		panic("work: no randomness: " + err.Error())
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-func (s *uiSessions) expired(v *uiSession, now time.Time) bool {
-	return now.Sub(v.last) > s.idle || now.Sub(v.created) > s.abs || (v.sso != nil && !now.Before(v.deadline))
-}
-
-// create always issues a fresh id (session fixation: a cookie sent with the login request is never
-// adopted) and evicts the oldest sessions when the table or the subject's share is full.
-func (s *uiSessions) create(token, subject string) (id string, sess *uiSession) {
-	return s.createWith(subject, func(v *uiSession) { v.token = token })
-}
-
-// createSSO is create for a launch-ticket session: no token, the can-core session handle instead.
-func (s *uiSessions) createSSO(subject, name, handle string, perms []string, deadline time.Time) (id string, sess *uiSession) {
-	return s.createWith(subject, func(v *uiSession) {
-		v.deadline = deadline
-		v.sso = &ssoState{handle: handle, name: name, perms: perms, checked: s.now()}
-	})
-}
-
-func (s *uiSessions) createWith(subject string, init func(*uiSession)) (id string, sess *uiSession) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := s.now()
-	for k, v := range s.m {
-		if s.expired(v, now) {
-			delete(s.m, k)
-		}
-	}
-	evict := func(match func(*uiSession) bool) {
-		var oldest [sha256.Size]byte
-		var ot time.Time
-		found := false
-		for k, v := range s.m {
-			if match(v) && (!found || v.created.Before(ot)) {
-				oldest, ot, found = k, v.created, true
-			}
-		}
-		if found {
-			delete(s.m, oldest)
-		}
-	}
-	n := 0
-	for _, v := range s.m {
-		if v.subject == subject {
-			n++
-		}
-	}
-	if n >= s.perSubject {
-		evict(func(v *uiSession) bool { return v.subject == subject })
-	}
-	if len(s.m) >= s.max {
-		evict(func(*uiSession) bool { return true })
-	}
-	id = randToken(32)
-	sess = &uiSession{subject: subject, csrf: randToken(24), created: now, last: now}
-	init(sess)
-	s.m[sha256.Sum256([]byte(id))] = sess
-	return id, sess
-}
-
-// ssoSnapshot copies the state of a launch-ticket session.
-func (s *uiSessions) ssoSnapshot(v *uiSession) ssoState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return *v.sso
-}
-
-// ssoUpdate stores the outcome of a revalidation.
-func (s *uiSessions) ssoUpdate(v *uiSession, perms []string, name string, checked time.Time) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	v.sso.perms, v.sso.checked = perms, checked
-	if name != "" {
-		v.sso.name = name
-	}
-}
-
-func (s *uiSessions) get(id string) (*uiSession, bool) {
-	if id == "" || len(id) > 100 {
-		return nil, false
-	}
-	k := sha256.Sum256([]byte(id))
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	v, ok := s.m[k]
-	if !ok {
-		return nil, false
-	}
-	now := s.now()
-	if s.expired(v, now) {
-		delete(s.m, k)
-		return nil, false
-	}
-	v.last = now
-	return v, true
-}
-
-func (s *uiSessions) delete(id string) {
-	s.mu.Lock()
-	delete(s.m, sha256.Sum256([]byte(id)))
-	s.mu.Unlock()
-}
-
-func (s *uiSessions) len() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.m)
 }
