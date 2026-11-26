@@ -493,7 +493,12 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 	if err := s.roleExists(ctx, role); err != nil {
 		return err
 	}
-	err := s.db.InTx(ctx, func(tx *sql.Tx) error {
+	// Read before the transaction: the single database connection cannot be used beside it.
+	roles, _, err := s.roleTable(ctx)
+	if err != nil {
+		return err
+	}
+	err = s.db.InTx(ctx, func(tx *sql.Tx) error {
 		if !s.breakGlass(actor) && subject == "user:"+actor {
 			return fmt.Errorf("%w: nobody assigns roles to themselves", ErrForbidden)
 		}
@@ -501,6 +506,12 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 			if err := s.requireOwner(ctx, tx, actor); err != nil {
 				return err
 			}
+		}
+		if err := s.mayManage(ctx, tx, actor, subject); err != nil {
+			return err
+		}
+		if err := s.holdsAll(ctx, tx, roles, actor, role, scope); err != nil {
+			return err
 		}
 		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO rbac_assignments(subject, role, scope, granted_by, granted_at) VALUES (?,?,?,?,?)`,
 			subject, role, scope, actor, s.db.Now().Unix())
@@ -536,26 +547,152 @@ func (s *Service) requireOwner(ctx context.Context, tx *sql.Tx, actor string) er
 	return nil
 }
 
-// Revoke removes an assignment. The last holder of owner cannot be removed.
+// mayManage refuses a change to an owner by anyone but an owner.
+func (s *Service) mayManage(ctx context.Context, tx *sql.Tx, actor, subject string) error {
+	owner, err := store.HoldsOwner(ctx, tx, subject)
+	if err != nil || !owner {
+		return err
+	}
+	return s.requireOwner(ctx, tx, actor)
+}
+
+// holdsAll fails unless the actor holds, on scope, every permission of role: nobody hands out more
+// than they hold. Owners hold everything.
+func (s *Service) holdsAll(ctx context.Context, tx *sql.Tx, roles map[string]map[string]bool, actor, role, scope string) error {
+	if s.breakGlass(actor) {
+		return nil
+	}
+	mine, err := assignmentsTx(ctx, tx, "user:"+actor)
+	if err != nil {
+		return err
+	}
+	if !covered(roles, mine, Assignment{Role: role, Scope: scope}) {
+		return fmt.Errorf("%w: the role grants permissions you do not hold yourself", ErrForbidden)
+	}
+	return nil
+}
+
+func assignmentsTx(ctx context.Context, tx *sql.Tx, subject string) ([]Assignment, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT subject, role, scope FROM rbac_assignments WHERE subject=? LIMIT 2000`, subject)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Assignment
+	for rows.Next() {
+		var a Assignment
+		if err := rows.Scan(&a.Subject, &a.Role, &a.Scope); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// scopeCovers reports whether an assignment on scope have reaches everything one on want does.
+func scopeCovers(have, want string) bool {
+	if have == "" || have == want {
+		return true
+	}
+	return want != "" && strings.HasSuffix(have, "/*") && strings.HasPrefix(want, strings.TrimSuffix(have, "*"))
+}
+
+// covered reports whether the holder of mine already has everything want gives. A role that no
+// enabled module defines (its permissions are unknown, and return when the module does) is covered
+// only by holding that same role.
+func covered(roles map[string]map[string]bool, mine []Assignment, want Assignment) bool {
+	for _, m := range mine {
+		if m.Role == Owner && m.Scope == "" {
+			return true
+		}
+	}
+	if want.Role == Owner {
+		return false
+	}
+	perms, known := roles[want.Role]
+	if !known {
+		for _, m := range mine {
+			if m.Role == want.Role && scopeCovers(m.Scope, want.Scope) {
+				return true
+			}
+		}
+		return false
+	}
+	for p := range perms {
+		ok := false
+		for _, m := range mine {
+			if scopeCovers(m.Scope, want.Scope) && (roles[m.Role][Wildcard] || roles[m.Role][p]) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// Covers reports whether actor (a user name) holds everything target (a subject) holds, so that
+// taking over target's sign-in would give actor nothing new. Only an owner covers an owner.
+func (s *Service) Covers(ctx context.Context, actor, target string) (bool, error) {
+	roles, _, err := s.roleTable(ctx)
+	if err != nil {
+		return false, err
+	}
+	mine, err := s.queryAssignments(ctx, `WHERE subject=?`, "user:"+actor)
+	if err != nil {
+		return false, err
+	}
+	theirs, err := s.queryAssignments(ctx, `WHERE subject=?`, target)
+	if err != nil {
+		return false, err
+	}
+	for _, a := range theirs {
+		if !covered(roles, mine, a) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// CanGrant reports whether actor (a user name) holds everything role gives (unscoped), for pages
+// that offer only the roles a person could assign.
+func (s *Service) CanGrant(ctx context.Context, actor, role string) (bool, error) {
+	roles, _, err := s.roleTable(ctx)
+	if err != nil {
+		return false, err
+	}
+	mine, err := s.queryAssignments(ctx, `WHERE subject=?`, "user:"+actor)
+	if err != nil {
+		return false, err
+	}
+	return covered(roles, mine, Assignment{Role: role}), nil
+}
+
+// Revoke removes an assignment. Only an owner changes an owner, and the last owner who can sign in
+// cannot be removed. In the same transaction the subject's personal access tokens, module sessions
+// and (unless they removed their own role) admin sessions end.
 func (s *Service) Revoke(ctx context.Context, actor, subject, role, scope string) error {
 	if !subjectRe.MatchString(subject) || !roleRe.MatchString(role) {
 		return ErrInvalid
 	}
 	err := s.db.InTx(ctx, func(tx *sql.Tx) error {
+		if err := s.mayManage(ctx, tx, actor, subject); err != nil {
+			return err
+		}
 		if role == Owner {
 			if err := s.requireOwner(ctx, tx, actor); err != nil {
-				return err
-			}
-			var others int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT subject) FROM rbac_assignments WHERE role=? AND scope='' AND subject<>?`, Owner, subject).Scan(&others); err != nil {
 				return err
 			}
 			var mine int
 			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments WHERE role=? AND scope=? AND subject=?`, Owner, scope, subject).Scan(&mine); err != nil {
 				return err
 			}
-			if mine > 0 && others == 0 {
-				return ErrLastOwner
+			if mine > 0 {
+				if err := keepsAnOwner(ctx, tx, subject); err != nil {
+					return err
+				}
 			}
 		}
 		res, err := tx.ExecContext(ctx, `DELETE FROM rbac_assignments WHERE subject=? AND role=? AND scope=?`, subject, role, scope)
@@ -565,10 +702,34 @@ func (s *Service) Revoke(ctx context.Context, actor, subject, role, scope string
 		if n, _ := res.RowsAffected(); n == 0 {
 			return store.ErrNotFound
 		}
+		if err := store.EndAccess(ctx, tx, subject, s.db.Now(), subject == "user:"+actor); err != nil {
+			return err
+		}
 		_, err = s.audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "rbac.revoke", Target: subject, Detail: map[string]any{"role": role, "scope": scope}})
 		return err
 	})
 	s.Invalidate()
+	return err
+}
+
+// keepsAnOwner fails when taking owner from subject would leave nobody who is one: no other owner
+// assignment at all, or subject can sign in and no other owner can.
+func keepsAnOwner(ctx context.Context, tx *sql.Tx, subject string) error {
+	var others int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT subject) FROM rbac_assignments WHERE role=? AND scope='' AND subject<>?`, Owner, subject).Scan(&others); err != nil {
+		return err
+	}
+	if others == 0 {
+		return ErrLastOwner
+	}
+	usable, err := store.IsUsable(ctx, tx, strings.TrimPrefix(subject, "user:"))
+	if err != nil || !usable {
+		return err
+	}
+	other, err := store.OtherUsableOwner(ctx, tx, subject)
+	if err == nil && !other {
+		return ErrLastOwner
+	}
 	return err
 }
 
@@ -587,6 +748,12 @@ func (s *Service) Override(ctx context.Context, actor, role, permission, effect 
 		if err := s.requireOwner(ctx, tx, actor); err != nil {
 			return err
 		}
+		// A change that takes the permission from the role ends the access of those who hold it.
+		var was string
+		if err := tx.QueryRowContext(ctx, `SELECT effect FROM rbac_overrides WHERE role=? AND permission=?`, role, permission).Scan(&was); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		takes := effect == EffectRevoke || (effect == EffectReset && was == EffectGrant)
 		var err error
 		if effect == EffectReset {
 			_, err = tx.ExecContext(ctx, `DELETE FROM rbac_overrides WHERE role=? AND permission=?`, role, permission)
@@ -598,11 +765,42 @@ func (s *Service) Override(ctx context.Context, actor, role, permission, effect 
 		if err != nil {
 			return err
 		}
+		if takes {
+			if err := s.endHolders(ctx, tx, actor, role); err != nil {
+				return err
+			}
+		}
 		_, err = s.audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "rbac.override", Target: role, Detail: map[string]any{"permission": permission, "effect": effect}})
 		return err
 	})
 	s.Invalidate()
 	return err
+}
+
+// endHolders ends the tokens and sessions of everyone who holds role; the actor stays signed in.
+func (s *Service) endHolders(ctx context.Context, tx *sql.Tx, actor, role string) error {
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT subject FROM rbac_assignments WHERE role=? LIMIT 5000`, role)
+	if err != nil {
+		return err
+	}
+	var holders []string
+	for rows.Next() {
+		var x string
+		if err := rows.Scan(&x); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		holders = append(holders, x)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, x := range holders {
+		if err := store.EndAccess(ctx, tx, x, s.db.Now(), x == "user:"+actor); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UserView is an admin user with their assignments.
@@ -723,19 +921,22 @@ func (s *Service) SyncSSORoles(ctx context.Context, subject string, want []strin
 				continue
 			}
 			if r == Owner {
-				var others int
-				if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT subject) FROM rbac_assignments WHERE role=? AND scope='' AND subject<>?`, Owner, subject).Scan(&others); err != nil {
-					return err
-				}
-				if others == 0 {
+				if err := keepsAnOwner(ctx, tx, subject); errors.Is(err, ErrLastOwner) {
 					res.Kept = append(res.Kept, r)
 					continue
+				} else if err != nil {
+					return err
 				}
 			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM rbac_assignments WHERE subject=? AND role=? AND scope='' AND granted_by=?`, subject, r, SSOActor); err != nil {
 				return err
 			}
 			res.Removed = append(res.Removed, r)
+		}
+		if len(res.Removed) > 0 {
+			if err := store.EndAccess(ctx, tx, subject, s.db.Now(), false); err != nil {
+				return err
+			}
 		}
 		have2 := map[string]bool{}
 		for r := range have {

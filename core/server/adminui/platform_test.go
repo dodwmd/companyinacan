@@ -280,8 +280,8 @@ func TestAccessPageAndLeastPrivilege(t *testing.T) {
 	if r := p.do("POST", "/access/alice/revoke", url.Values{"csrf": {root.csrf}, "role": {"operator"}}, root.with()...); r.StatusCode != 303 {
 		t.Fatal("revoke")
 	}
-	if r := p.do("GET", "/modules", nil, alice.with()...); r.StatusCode != 403 {
-		t.Fatal("revoked")
+	if r := p.do("GET", "/modules", nil, alice.with()...); r.StatusCode != 303 || r.Header.Get("Location") != "/login" {
+		t.Fatal("removing a role must end the person's sessions")
 	}
 	if r := p.do("POST", "/access/root/revoke", url.Values{"csrf": {root.csrf}, "role": {"owner"}}, root.with()...); r.StatusCode != 409 {
 		t.Fatalf("last owner = %d, want 409", r.StatusCode)

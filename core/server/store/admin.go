@@ -43,6 +43,9 @@ func (db *DB) CreateAdmin(ctx context.Context, username, passwordHash, totpSecre
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_users`).Scan(&n); err != nil {
 			return err
 		}
+		if err := nameNotDeleted(ctx, tx, username); err != nil {
+			return err
+		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO admin_users(username, password_hash, totp_secret, created_at) VALUES (?,?,?,?)`,
 			username, passwordHash, totpSecret, now.Unix())
 		if err != nil {
@@ -130,6 +133,17 @@ type Session struct {
 	// AuthAt is the identity provider's auth_time of an SSO session (zero = it did not say). Read
 	// it through AuthenticatedAt.
 	AuthAt time.Time
+	// ReauthAt is when the person last confirmed their password and code again (zero = never).
+	ReauthAt time.Time
+}
+
+// ProvedAt is the latest moment the person behind the session proved who they are: signing in, or a
+// later step-up. Zero means not known.
+func (s Session) ProvedAt() time.Time {
+	if at := s.AuthenticatedAt(); at.After(s.ReauthAt) {
+		return at
+	}
+	return s.ReauthAt
 }
 
 // AuthenticatedAt is when the person behind the session last proved who they are: password and TOTP
@@ -159,10 +173,10 @@ func (db *DB) CreateSession(ctx context.Context, s Session) error {
 // SessionByHash loads a session.
 func (db *DB) SessionByHash(ctx context.Context, idHash string) (Session, error) {
 	var s Session
-	var c, e, rv, auth int64
-	err := db.QueryRowContext(ctx, `SELECT id_hash,user_id,csrf_token,ip,created_at,expires_at,source,revalidate_at,auth_at FROM sessions WHERE id_hash=?`, idHash).
-		Scan(&s.IDHash, &s.UserID, &s.CSRF, &s.IP, &c, &e, &s.Source, &rv, &auth)
-	s.CreatedAt, s.ExpiresAt, s.AuthAt = time.Unix(c, 0), time.Unix(e, 0), timeOrZero(auth)
+	var c, e, rv, auth, re int64
+	err := db.QueryRowContext(ctx, `SELECT id_hash,user_id,csrf_token,ip,created_at,expires_at,source,revalidate_at,auth_at,reauth_at FROM sessions WHERE id_hash=?`, idHash).
+		Scan(&s.IDHash, &s.UserID, &s.CSRF, &s.IP, &c, &e, &s.Source, &rv, &auth, &re)
+	s.CreatedAt, s.ExpiresAt, s.AuthAt, s.ReauthAt = time.Unix(c, 0), time.Unix(e, 0), timeOrZero(auth), timeOrZero(re)
 	if rv > 0 {
 		s.RevalidateAt = time.Unix(rv, 0)
 	}

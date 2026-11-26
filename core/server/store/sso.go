@@ -218,18 +218,17 @@ func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit fun
 	})
 }
 
-// lastEnabledOwner reports whether the account is an enabled, unscoped owner and no other enabled
-// account is one. Disabled accounts and assignments without an account do not count.
+// lastEnabledOwner reports whether the account is a usable, unscoped owner and no other usable
+// account is one. Disabled and not yet set up accounts, and assignments without an account, do not
+// count.
 func lastEnabledOwner(ctx context.Context, tx *sql.Tx, userID int64, subject string) (bool, error) {
 	var mine int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments a JOIN admin_users u ON u.id=? AND u.disabled_at=0
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments a JOIN admin_users u ON u.id=? AND `+usableAccount+`
 		WHERE a.subject=? AND a.role='owner' AND a.scope=''`, userID, subject).Scan(&mine); err != nil || mine == 0 {
 		return false, err
 	}
-	var others int
-	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments a JOIN admin_users u ON a.subject='user:'||u.username
-		WHERE a.role='owner' AND a.scope='' AND a.subject<>? AND u.disabled_at=0`, subject).Scan(&others)
-	return others == 0, err
+	other, err := OtherUsableOwner(ctx, tx, subject)
+	return !other, err
 }
 
 // revokeSubjectTokens revokes the personal access tokens a user issued. The username of a provisioned
