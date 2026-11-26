@@ -38,44 +38,18 @@
 </ul>
 </nav>
 <h1>WEB settings</h1>
-<p class="empty">This project is archived: its issues can be read but not changed.</p>
-<section aria-labelledby="details">
-<h2 id="details">Name and description</h2>
-<form method="post" action="/ui/projects/WEB/settings" class="create">
-<input type="hidden" name="csrf" value="CSRF">
-<div class="wide"><label for="p-name">Name</label>
-<input id="p-name" name="name" type="text" required maxlength="100" value="Website"></div>
-<div class="wide"><label for="p-desc">Description</label>
-<textarea id="p-desc" name="description" rows="4" maxlength="2000"></textarea></div>
-<div class="actions"><button type="submit">Save changes</button></div>
-</form>
-</section>
+<p class="empty">This project is archived: it can be read, but nothing in it can change until it is restored.</p>
 <section aria-labelledby="members">
 <h2 id="members">Members</h2>
 <p class="hint">Who works on this project. Members are suggested as assignees and are listed in the workload view even when they have nothing to do. Membership does not change who can see or edit the project.</p>
 <ul class="plain">
-<li><form method="post" action="/ui/projects/WEB/members/remove" class="inline">
-<input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="subject" value="ann@example.com">
-<span>ann@example.com</span>
-<button type="submit" class="quiet">Remove<span class="sr"> ann@example.com</span></button>
-</form></li>
-<li><form method="post" action="/ui/projects/WEB/members/remove" class="inline">
-<input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="subject" value="idle@example.com">
-<span>idle@example.com</span>
-<button type="submit" class="quiet">Remove<span class="sr"> idle@example.com</span></button>
-</form></li>
+<li><span>ann@example.com</span></li>
+<li><span>idle@example.com</span></li>
 </ul>
-<form method="post" action="/ui/projects/WEB/members" class="inline">
-<input type="hidden" name="csrf" value="CSRF">
-<label for="m-subject">Person</label>
-<input id="m-subject" name="subject" type="text" required maxlength="254" autocomplete="off" aria-describedby="m-hint">
-<button type="submit">Add member</button>
-</form>
-<p id="m-hint" class="hint">As it should appear as assignee. People who sign in from the admin UI are user:name.</p>
 </section>
 <section aria-labelledby="archive">
 <h2 id="archive">Restore project</h2>
-<p>Restoring makes the project and its issues editable again.</p>
+<p>Restoring makes the project, its members and its issues editable again.</p>
 <form method="post" action="/ui/projects/WEB/archive">
 <input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="archived" value="0">
 <button type="submit" class="quiet">Restore this project</button>

@@ -118,7 +118,7 @@ one of them, archived projects left out:
 
 None of them calls the people service: a person is the identifier they are assigned under.
 
-**Saved filters** names a search, in one project or in all, private or shared. Save one with "Save
+**Saved filters** names a search, in one project or in all, private or shared; yours are listed first. Save one with "Save
 this filter" under a project's filter, or write the search on the Saved filters page. Running it shows
 what *you* may see; `assignee:me` in a shared filter means whoever runs it.
 
@@ -127,7 +127,8 @@ what *you* may see; `assignee:me` in a shared filter means whoever runs it.
 With `work.admin` (and a token that is not limited to projects) the project list has **New project**;
 when there is none yet, it says so and leads there. A project's **Settings** tab changes its name and
 description, adds and removes members, and archives or restores it. An archived project can be read
-but not changed. The key cannot be changed.
+but not changed: its issues, sprints, settings and members are frozen (the API answers 409) until it is
+restored. The key cannot be changed.
 
 Members are a roster, not an access list: they are suggested as assignees and appear in the workload,
 and they do not change who may see or edit the project. People who sign in from the admin UI appear
