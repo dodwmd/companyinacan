@@ -39,4 +39,9 @@ data_classes:
   # but not in a sensitive class (no health, financial, identity-document or HR data).
   - { class: lead-submission, retention: 2y, sensitivity: standard }
 settings_schema: ./settings.schema.json
+# `can-forms backup` and `restore`, run by can-core in this module's own image (specs/043-module-backup-hooks).
+hooks:
+  command: /can-forms
+  backup: backup
+  restore: restore
 healthcheck: /healthz

@@ -25,7 +25,9 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      a copy of the applied `company.yaml`. These two are replaced in place, so after a **failed** run they are newer
      than the module dumps beside them; without a marker the set is not backed up either way;
    - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
-     data is still there), as a Job in `mod-<id>`: restricted pod, projected audience-`can` token, the module's
+     data is still there), as a Job in `mod-<id>`. For the in-house modules the Job is `<binary> backup` in the
+     module's own image within the module's memory limit (see [In-house modules](#in-house-modules)). For the
+     wrapped modules it is a shell script in the `can-hooks` image: restricted pod, projected audience-`can` token, the module's
      volume at `/data`, `/storage` and `/app/data` (read-only unless SQLite; none for MariaDB/PostgreSQL modules).
      A module with neither a volume nor a database is skipped. A hook pod that cannot start (image pull, config)
      is given up after 2 minutes, a hook after 15;
@@ -89,6 +91,28 @@ Failures go to the journal (`journalctl -t can-backup`) and, through `OnFailure=
 when the unit fails. The unit runs with `ProtectSystem=strict` and a short `ReadWritePaths=` list. To also get a webhook, put its URL in
 `/etc/can/backup.d/webhook.url` (0600); the script POSTs `{"text": "can-backup failed: (code) message"}` (JSON-escaped); the URL is given to curl on stdin, never on a command line.
 `restic.env` values are single-quoted so any character in a secret survives sourcing.
+
+## In-house modules
+
+forms, work, people, jobs, finance, equity, board, entity, provisioning and files each dump their own SQLite
+database with `<binary> backup`: `VACUUM INTO` over a read-only connection of its own, `integrity_check`, upload.
+Their live database files are then left out of the snapshot. files and jobs also record every file the database
+refers to (size and SHA-256); the bytes themselves are in the volume copy, and the backup fails if one is missing
+(delete or purge the affected record, or put the file back). With the files `s3` backend the bucket is **not**
+backed up by this project.
+
+To dump or restore one instance by hand, with the service stopped for a restore:
+
+```
+can-forms backup -config forms.yaml -out ./set
+can-forms restore -config forms.yaml -from ./set            # add -replace to overwrite a database
+can-files restore -config files.yaml -from ./set -blobs <restored volume>/blobs
+```
+
+**Keys are not in the dumps.** people, jobs, files, finance, equity and board seal data with keys held in
+Kubernetes Secrets. Without the original keys the restored data is unreadable. They are in the snapshot only
+inside the k3s datastore copy; export them and keep them with the recovery kit. Which keys, and the contract
+`can restore` follows: [specs/043-module-backup-hooks/contracts/hooks.md](../specs/043-module-backup-hooks/contracts/hooks.md).
 
 ## Retention and erasure of dumps
 
@@ -217,10 +241,12 @@ measured by a person:
 - In: `can-core/state.db`, `company.yaml`, each module hook's dump, the local-path volumes (except can-core's
   live database and the SQLite files of the modules dumped in that run), a copy of the k3s datastore, node
   token and encryption key, the erasure ledger copy.
-- Modules without a backup hook (forms, work, people, jobs, finance, files and the other in-house modules) are covered
-  only by the raw volume copy of live SQLite files, which may be inconsistent. `can backup install` warns.
+- A module without a backup hook that keeps SQLite on a volume is covered only by the raw copy of live files, which
+  may be inconsistent. `can backup install` warns. Every shipped module has a hook.
 - Not there: a separate export of Kubernetes Secrets (SPEC 6.5). Module keys exist only inside the k3s datastore
-  copy, so recovering them needs a raw datastore restore.
+  copy, so recovering them needs a raw datastore restore. Without them the sealed data of people, jobs, files,
+  finance, equity and board cannot be read.
+- Not there: the content of an S3 bucket used by files.
 
 ## Measured (k3d in CI)
 
@@ -241,10 +267,13 @@ a module backup hook Job. The numbers are in
 - **Restore.** `can restore` is not functional (the provisioning and can-core adapters return exit 3). Restoring
   onto a blank host, importing can-core state, module `restore` hooks and PVC data have never run. can-core has no
   restore mode: whoever implements it must keep dump runs off until the import is done.
-- The shipped module hooks (wiki, support, newsletter, analytics, crm, status) and the `can-hooks` image: the
-  image is not built or published, so while one of them is enabled the dump run fails (and no marker is written);
-  disabled, it is skipped. The
-  hook Job mechanism was run with a test module and a public curl image.
+- The shipped script hooks (wiki, support, newsletter, analytics, crm, status): CI builds the `can-hooks` image and
+  parses them in it, but the image is not published, so while one of these modules is enabled the dump run fails (and
+  no marker is written); disabled, it is skipped. None of these hooks has run against its application. A release
+  publishes the image (docs/releasing.md); until then there is nothing to pull.
+- In-house hooks on a cluster: forms, work and files only (`module-backup` in CI). jobs, people, finance and
+  provisioning are covered by unit tests; equity, board and entity cannot be installed by can-core yet. Restore ran
+  by hand on fresh instances (docker), not through can-core.
 - `can-hooks` Jobs against a database module (DB credentials come from the `can-db` Secret). The wrapped
   database charts themselves still name a `can-database` Secret that can-core does not write.
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps

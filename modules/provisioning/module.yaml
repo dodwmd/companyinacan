@@ -72,4 +72,9 @@ data_classes:
   # The hash-chained audit trail of every provisioning action (actor, action, ids, counts).
   - { class: provisioning-audit, retention: 7y, sensitivity: standard }
 settings_schema: ./settings.schema.json
+# `can-provision backup` and `restore`, run by can-core in this module's own image (specs/043-module-backup-hooks).
+hooks:
+  command: /can-provision
+  backup: backup
+  restore: restore
 healthcheck: /healthz

@@ -233,7 +233,8 @@ jobs:
           args=$(grep "^$IMAGE " check/base-digests.txt | cut -d' ' -f2- | sed 's/^/--build-arg /' | tr '\n' ' ')
           [ -n "$args" ] || { echo "no resolved base digests for $IMAGE" >&2; exit 1; }
           context=.; [ "$dir" = deploy/hooks ] && context=deploy/hooks
-          tags="-t $repo:$VERSION"
+          # Charts and hooks.image name the version without the "v" (X.Y.Z): push both forms.
+          tags="-t $repo:$VERSION -t $repo:${VERSION#v}"
           case "$VERSION" in *-*) ;; *) tags="$tags -t $repo:latest" ;; esac
           # shellcheck disable=SC2086
           docker buildx build --platform linux/amd64 --provenance=false \
