@@ -1,6 +1,7 @@
 # Company in a Can — Project Spec
 
 > Working name: **Company in a Can** (`can`).
+> This document says what the project intends. What exists today is marked in §13 and [docs/status.md](docs/status.md).
 
 ## 1. Vision
 
@@ -686,3 +687,28 @@ companyinacan/
 - **Third-party modules:** upstream apps keep their own licences; wrapper manifests/charts/hooks in this repo are Apache-2.0. Module manifests record the upstream licence; CI fails if one is missing.
 - **Repo hygiene from day one:** `README`, `LICENSE`, `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY.md`, issue/PR templates, CI (lint, schema validation, module smoke tests and footprint checks on k3d), no secrets or personal company data in git (use `examples/` with fake data).
 - **Later (only if it proves good):** managed hosting, paid support, premium/enterprise modules, a hosted module registry. These must live outside the open core and never degrade the self-hosted experience.
+
+## 13. Implementation status (2026-11-27)
+
+Status of the promises above, section by section. It changes no intent. Nothing has run on a real server, so none
+of the success criteria in §10 is met yet. Detail: [docs/status.md](docs/status.md).
+
+| Section | Promise | Today |
+|---|---|---|
+| §1, §3.4, §10 | `make up` gives a live site, forms and a support inbox in five minutes | `make up` deploys can-core, the site (its `contact` section links to the form page) and forms; `support` is enabled separately. Timed only on k3d, without server creation |
+| §1, §6.1 | `make init`, `make enable`, `make backup`, `make restore`, `make email` | Not implemented as make targets. `can init`, `can apply`, `can backup`, `can restore` exist |
+| §2, §3.2 | Starter stack on a 2 GB server | Not measured on one |
+| §3.1 | SSO with Authelia, forward-auth for apps | Not built. can-core has its own OIDC sign-in for the admin UI and launch tickets into module web UIs |
+| §3.1 | Postgres and MariaDB on demand | Postgres only |
+| §3.5 | `local` and `static` providers | `make up` rejects both as not implemented (`make dev` is the local path) |
+| §3.7 | Approvals, notifications, RBAC, audit | Built. Only jobs requisitions and finance invoices use the approval engine |
+| §3.7 | Portals, unified search, outbound webhooks, workflow module, central retention engine | Not built. Retention and erasure are per module |
+| §3.7 | Reporting and import | Business overview (totals only) and CSV import of people, parties and issues |
+| §3.7, §6.5 | Erasure ledger written by can-core | Built for people, equity, board, entity, files, forms and jobs; not for finance, work, provisioning or wrapped apps |
+| §5 | Catalogue | In `modules/`: forms, work, people, jobs, finance, files, equity, board, entity, provisioning, and wrapped analytics, newsletter, support, wiki, status, crm. Contracts, invoices, time and expenses live inside `finance`. Not built: booking, wrapped e-sign (`documents`), vendors module, assets, policies, simple tasks, password manager |
+| §6.1, §6.4 | `can module`, `can pull`, `can upgrade`, `can export`, `can email` | Not implemented. `can import` takes CSV for three record types, not a company export |
+| §6.3 | Dashboard with open tickets, expiring certificates and domains, a restore button | Not built. The overview and status pages show approvals, module totals and the last database dump |
+| §6.5 | Restore from the recovery kit | Built, verified on k3d with a local restic repository only; the new server is made first with `can up --provision-only` |
+| §6.5 | Updates with snapshot and rollback (`can upgrade`) | Not implemented; no release exists |
+| §6.6 | Android | Installable web app with Web Push; checked at phone size in headless Chrome, never tried on a phone |
+| §12 | Contributions once the repository is public | The repository is public; whether to accept contributions is undecided |

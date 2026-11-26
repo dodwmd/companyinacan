@@ -4,51 +4,50 @@ A self-hosted business control panel, in the spirit of Webmin but for business p
 one admin login, a company site with lead capture, and modules for the rest of the company life
 cycle (support, work tracking, people, hiring, invoices, equity, ...) that you switch on and off.
 
-> **Status: pre-release. Nothing has been run on a real server yet.**
-> Everything is built and tested offline, in CI and on throwaway local clusters. No `make up` has ever
-> provisioned a real server, no real DNS, ACME certificate, email relay, identity provider, payment
-> provider or browser has been used against it, and no release has been cut. The full stack runs
-> end to end on one machine with Docker Compose (see below) and that run is tested in CI, but that
-> stack is [insecure on purpose](docs/local-compose.md). Treat this as a design and a working
-> prototype, not as something to put real company data into. [What is verified and what is not](#what-is-verified)
-> is listed below, and [the security model](docs/security-model.md) lists the known weaknesses.
+> **Status: pre-release. Nothing has been run on a real server yet, and no release has been cut.**
+> No real server, DNS, certificate, email relay, identity provider, payment provider or phone has been used.
+> The Docker Compose stack runs end to end on one machine, tested in CI over HTTP and with headless Chrome, but it is
+> [insecure on purpose](docs/local-compose.md). Treat this as a working prototype, not as somewhere to put real
+> company data. **[What works today, what is experimental, what is unverified](docs/status.md)** is the
+> module-by-module table, and [the security model](docs/security-model.md) lists the known weaknesses.
 
 ## Try it in two commands (Docker Compose, dev only)
 
 ```sh
 make e2e-up        # builds and starts the whole stack as compose project "can-e2e" (first build: a few minutes)
-make e2e           # runs the end-to-end suite through the Caddy edge (about 30 seconds)
+make e2e           # runs the end-to-end suite through the Caddy edge (about 2 minutes; needs Go)
 ```
 
 Then open <http://localhost:8080> (the example site), <http://admin.localhost:8080> (admin UI, user `admin`,
-password and TOTP as in [docs/local-compose.md](docs/local-compose.md)), <http://work.localhost:8080/ui/>
-(work tracker), <http://jobs.localhost:8080> (careers and recruiter UI) and the other hosts listed there.
-`make compose-up` starts the same stack as project `companyinacan` without the test overlay. Everything
-there uses public fake secrets and plain HTTP, so never expose it. More paths (local k3d cluster, a real
-server) are in [docs/getting-started.md](docs/getting-started.md).
+password `dev-only-admin-password`, TOTP secret from `COMPOSE_PROJECT_NAME=can-e2e dev/compose/bootstrap-admin.sh`),
+<http://work.localhost:8080/ui/> (work tracker), <http://jobs.localhost:8080> (careers and recruiter UI) and the
+other hosts listed in [docs/local-compose.md](docs/local-compose.md). `make e2e-down` removes it.
+`make compose-up` starts the same stack as project `companyinacan` without the test overlay (run only one of the
+two at a time). Everything there uses public fake secrets and plain HTTP, so never expose it. More paths (local
+k3d cluster, a real server) are in [docs/getting-started.md](docs/getting-started.md).
 
 ## What is in it
 
 | Module | What it is | Status | Declared RAM | Notes |
 |---|---|---|---|---|
-| can-core | Control plane: admin UI (password + TOTP, optional OIDC SSO), module registry, RBAC, approvals, notifications, events, audit log, personal access tokens | experimental | 48 MB (soft limit 64) | Runs in compose with module management off; the Kubernetes installer is exercised only on k3d |
-| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: no status set (treated as stable); the site is rendered by `can` | 15 MB (forms) | Verified end to end in compose; forms has never run on a cluster |
-| `work` | Jira-like tracker with API, CLI and web UI | experimental | 28 MB | Installed through can-core on k3d once (advisory CI) |
-| `people` | Directory, org, 1:1s, goals, reviews, time off, web UI | experimental | 30 MB | Sensitive fields sealed, one policy layer |
-| `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | Board connectors are stubs |
-| `finance` | Parties, invoices, payments, contracts, timesheets, expenses, purchase orders, web UI | experimental | 28 MB | Fake payment and e-sign providers only |
-| `provisioning` | Joiner, mover and leaver account provisioning (SCIM) driven by people events | experimental | 20 MB | Tested against a fake directory and a fake SCIM server only; not in the compose stack ([docs/provisioning.md](docs/provisioning.md)) |
-| `files` | Spaces with access lists, versions, share links, scan hook, retention, legal hold, erasure; local or S3 storage | experimental | 28 MB | API and a web UI; no scanner ships, so uploads are closed by default (off in compose); runs in the compose stack and its e2e suite ([docs/files.md](docs/files.md)) |
-| `equity` | Cap table, option grants with vesting, exercises, ledger | experimental | 16 MB | A tool, not legal or tax advice; quantities stored in plaintext |
-| `board` | Boards and committees, meetings, quorum, resolutions (roll call, written consent, secret ballot), minutes | experimental | 20 MB | A tool, not legal advice; not in the compose stack; secret ballots are unlinkable only after the vote closes |
-| `entity` | Legal entities, officers and directors, statutory registers with as-of views, filings calendar | experimental | 20 MB | A tool, not legal advice; same binary as `board`; register share counts stored in plaintext |
-| `support`, `newsletter`, `analytics` | Wrapped FreeScout, Listmonk, GoatCounter | experimental | 192, 50, 64 MB | Installed on k3d in an advisory CI job; no real server, domain or mail relay |
+| can-core | Control plane: admin UI (password + TOTP, optional OIDC SSO), users and roles, module catalogue, approvals, notifications, events, audit log, personal access tokens, business overview | experimental | 48 MB (soft limit 64) | Installed on k3d in CI; in compose it records modules but does not install them |
+| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: no status marker (treated as ready); the site is rendered by `can` | 15 MB (forms) | What `make up` deploys; run on k3d in CI and in compose. A `contact` section in `company.yaml` links the site to the form ([docs/site-contact.md](docs/site-contact.md)) |
+| `work` | Jira-like tracker with API, CLI and web UI | experimental | 28 MB | Installed through can-core on k3d in CI |
+| `people` | Directory, org, 1:1s, goals, reviews, time off, web UI | experimental | 30 MB | Sensitive fields sealed; backup and restore run on k3d |
+| `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | Installs on k3d in CI. Resume uploads need a virus scanner. Board connectors are stubs |
+| `finance` | Parties, invoices, payments, contracts and emailed-link signing, accounting, timesheets, expenses, purchase orders, web UI | experimental | 28 MB | Fake payment provider; the signature is a *simple* electronic signature |
+| `provisioning` | Joiner, mover and leaver account provisioning (SCIM) driven by people events | experimental | 20 MB | Installs, but cannot yet reach `people` on a cluster; tested against fakes only; not in compose ([docs/provisioning.md](docs/provisioning.md)) |
+| `files` | Spaces with access lists, versions, share links, scan hook, retention, legal hold, erasure, web UI; local or S3 storage | experimental | 28 MB | No virus scanner ships, so uploads are closed by default (compose switches the requirement off) ([docs/files.md](docs/files.md)) |
+| `equity` | Cap table, option grants with vesting, exercises, ledger, holder identity checks | experimental | 16 MB | API only; installs on k3d in CI. Not legal or tax advice; quantities stored in plaintext |
+| `board` | Boards and committees, meetings, quorum, resolutions, minutes | experimental | 20 MB | API only; installs on k3d in CI; not in compose. Not legal advice; secret ballots are unlinkable only after the vote closes |
+| `entity` | Legal entities, officers and directors, statutory registers, filings calendar | experimental | 20 MB | Same binary and limits as `board`. Not legal advice; register share counts stored in plaintext |
+| `support`, `newsletter`, `analytics` | Wrapped FreeScout, Listmonk, GoatCounter | experimental | 192, 50, 64 MB | Installed, backed up and restored on k3d in CI; no real domain or mail relay |
 | `crm` | Wrapped EspoCRM | **not-deployable** | 350 MB | Image needs root, tags unresolved |
 | `wiki`, `status` | Wrapped DokuWiki, Uptime Kuma | experimental | 64, 128 MB | Charts checked offline only, never started |
 
-Status values are the ones in each `modules/<id>/module.yaml`; the full table with what was verified is
-[docs/modules-catalogue.md](docs/modules-catalogue.md). `can validate` refuses a `not-deployable` module and
-warns for `experimental` ones.
+Status values are the ones in each `modules/<id>/module.yaml`. What each module can actually do (install, UI,
+backup, restore, erasure) is in [docs/status.md](docs/status.md). `can validate` refuses a `not-deployable` module
+and warns for `experimental` ones.
 
 ## How it fits together
 
@@ -78,13 +77,15 @@ and iOS apps are out of scope.
 
 ## What is verified
 
+The module-by-module table and what each CI workflow proves are in [docs/status.md](docs/status.md). In brief:
+
 | Claim | Evidence | Not verified |
 |---|---|---|
-| Unit, race and contract tests, licence check, lint | `make test`, required CI checks (`lint`, `unit`, `contract`, `licences`, `dco`) | |
-| The whole stack, through its edge, on Docker Compose: site and lead capture, admin login with TOTP, work, people, jobs, finance, equity flows, cross-module negative checks, restart persistence | `make e2e`, advisory [e2e workflow](.github/workflows/e2e.yml) | personal access tokens verified by modules (compose has no Kubernetes TokenReview); TLS; backups |
-| `make dev` creates a k3d cluster; the `work` module installs through can-core and a personal access token works | advisory `dev-cluster` workflow | forms, people, jobs, finance, equity on a cluster; event delivery between modules; approvals |
-| Idle memory of k3s, can-static and forms on a CI runner | [docs/measurements/phase0-ci.md](docs/measurements/phase0-ci.md) | any 2 GB or 4 GB server |
-| `make up` on a real server, DNS, ACME, backups to object storage, restore from the recovery kit (backups and restore are exercised on k3d with a local restic repository only) | built offline against fakes | **everything real**: needs a provider account |
+| Unit, race and contract tests, licence check, lint | `make test`; CI checks `lint`, `unit`, `contract`, `licences`, `dco` | |
+| The stack on Docker Compose, through its edge: site and lead capture, admin login with TOTP, work, people, jobs, finance, equity and files flows, personal access tokens, Apps sign-in, business overview, restart persistence | `make e2e`, [e2e workflow](.github/workflows/e2e.yml) | Kubernetes (TokenReview, NetworkPolicy), TLS, backups |
+| The web pages in a real browser engine, at desktop and phone size | `make e2e-browser` (headless Chrome), advisory `browser-e2e` job | https, other browsers, screen readers, real devices |
+| On k3d: `make up` phases, module install through can-core, routing, backup and restore | `make-up-e2e`, `dev-cluster`, `modules-k3d`, `module-routing`, `module-backup`, `restore-e2e`, `wrapped-modules`, `wrapped-backup` workflows | using each module there ([status](docs/status.md#modules)) |
+| A real server, DNS, ACME certificates, backups to object storage, restore on new hardware | built offline against fakes | **all of it**: needs a provider account; [the runbook](docs/real-server-verification.md) and `can verify --server` are ready for it |
 
 ## Footprint: measured against claimed
 
@@ -101,10 +102,10 @@ and iOS apps are out of scope.
 Deny by default, hashed or sealed secrets, hash-chained audit log, TOTP on the admin account, separation of
 duties on approvals, and one policy layer per sensitive module. Known open issues, stated plainly, are in
 [docs/security-model.md](docs/security-model.md): the host rules that keep pods off the server (NetworkPolicy
-cannot on k3s, [node-isolation.md](docs/node-isolation.md)) have never run on a real server, equity quantities
-are stored in plaintext, SSO into module web pages works only for modules whose UI address you configure (not
-browser-verified), nothing here encrypts Kubernetes Secrets at rest, and the compose
-stack is not safe to expose. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+cannot on k3s, [node-isolation.md](docs/node-isolation.md)) have never run on a real server; someone who has the
+admin password can keep guessing authentication codes; equity quantities are stored in plaintext; what is erased in
+`finance`, `work`, `provisioning` or a wrapped app comes back with a restore of an older backup; and the compose stack is not safe to expose. Report
+vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## Observability
 
@@ -113,7 +114,7 @@ optional Prometheus and Grafana profile: see [docs/observability.md](docs/observ
 
 ## Documentation map
 
-Start at [docs/index.md](docs/index.md). The architecture and roadmap are in [SPEC.md](SPEC.md), the epic
+Start at [docs/index.md](docs/index.md); [docs/status.md](docs/status.md) says what works. The architecture and roadmap are in [SPEC.md](SPEC.md), the epic
 list with statuses in [docs/epics/README.md](docs/epics/README.md), and each feature's spec, plan and tasks
 under [specs/](specs/).
 
@@ -128,16 +129,16 @@ make docs-check                # offline check of every relative Markdown link
 make build                     # builds bin/can, bin/can-static, bin/can-core
 bin/can init my-company --name "My Co" --domain myco.example --non-interactive
 bin/can validate my-company --modules-dir modules
-make up ARGS="./my-company --plan"   # a real server: see docs/getting-started.md; images: docs/make-up.md
+make up ARGS="./my-company --plan" IMAGES_FROM=build/images   # real server: docs/getting-started.md (make images first)
 ```
 
 The project is developed spec-first with [GitHub Spec Kit](https://github.com/github/spec-kit).
 
 ## Contributing
 
-Not yet open for outside contributions while the design settles; the rules are in
-[CONTRIBUTING.md](CONTRIBUTING.md) (DCO sign-off, Spec Kit workflow) and [SECURITY.md](SECURITY.md). Ideas and
-feedback via issues are welcome once the repository is public.
+Not yet open for outside contributions while the design settles. Ideas and feedback via issues are welcome. The
+rules are in [CONTRIBUTING.md](CONTRIBUTING.md) (DCO sign-off, Spec Kit workflow); report vulnerabilities as in
+[SECURITY.md](SECURITY.md).
 
 ## Licence
 
