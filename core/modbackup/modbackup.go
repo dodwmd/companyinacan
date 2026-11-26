@@ -65,13 +65,17 @@ type spec struct {
 	defaultDB     string
 	blobs         *blobSpec
 	latest        int // the newest schema this binary knows
+	// afterRestore changes the staged database before it is installed, for work the restored
+	// service must not take up on its own. The note is printed.
+	afterRestore func(ctx context.Context, path string, now time.Time) (note string, err error)
 }
 
 var specs = map[string]spec{
-	"can-forms":     {configEnv: "CAN_FORMS_CONFIG", defaultConfig: "/etc/can-forms/forms.yaml", defaultDB: "/data/forms.db"},
-	"can-work":      {configEnv: "CAN_WORK_CONFIG", defaultConfig: "/etc/can-work/work.yaml", defaultDB: "/data/work.db"},
-	"can-people":    {configEnv: "CAN_PEOPLE_CONFIG", defaultConfig: "/etc/can-people/people.yaml", defaultDB: "/data/people.db"},
-	"can-finance":   {configEnv: "CAN_FINANCE_CONFIG", defaultConfig: "/etc/can-finance/finance.yaml", defaultDB: "/data/finance.db"},
+	"can-forms":  {configEnv: "CAN_FORMS_CONFIG", defaultConfig: "/etc/can-forms/forms.yaml", defaultDB: "/data/forms.db"},
+	"can-work":   {configEnv: "CAN_WORK_CONFIG", defaultConfig: "/etc/can-work/work.yaml", defaultDB: "/data/work.db"},
+	"can-people": {configEnv: "CAN_PEOPLE_CONFIG", defaultConfig: "/etc/can-people/people.yaml", defaultDB: "/data/people.db"},
+	"can-finance": {configEnv: "CAN_FINANCE_CONFIG", defaultConfig: "/etc/can-finance/finance.yaml", defaultDB: "/data/finance.db",
+		afterRestore: holdFinanceMail},
 	"can-equity":    {configEnv: "CAN_EQUITY_CONFIG", defaultConfig: "/etc/can-equity/equity.yaml", defaultDB: "/data/equity.db"},
 	"can-board":     {configEnv: "CAN_BOARD_CONFIG", defaultConfig: "/etc/can-board/board.yaml", defaultDB: "/data/board.db"},
 	"can-provision": {configEnv: "CAN_PROVISIONING_CONFIG", defaultConfig: "/etc/can-provisioning/provisioning.yaml", defaultDB: "/data/provision.db"},

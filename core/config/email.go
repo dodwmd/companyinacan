@@ -36,7 +36,7 @@ type EmailModule struct {
 	// text. Off: a fixed text with the notification type and a link to the inbox.
 	NotificationText bool `yaml:"notification_text"`
 	// ExternalRecipients lets the module's own mail go to any address. Only finance may set it: it
-	// mails contract signers (specs/049-contract-esign).
+	// mails contract signers (specs/049-contract-esign) and invoiced customers (specs/062-invoice-email).
 	ExternalRecipients bool `yaml:"external_recipients"`
 }
 

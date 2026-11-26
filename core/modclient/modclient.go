@@ -213,14 +213,48 @@ type Email struct {
 // SendEmail queues mail through can-core. ErrUnavailable (retry later) covers network errors, 5xx
 // and quota refusals; a refusal is a *StatusError.
 func (c *Client) SendEmail(ctx context.Context, e Email) error {
+	_, err := c.QueueEmail(ctx, e)
+	return err
+}
+
+// QueueEmail is SendEmail that also returns can-core's message ids, one per recipient, which
+// EmailStatus takes.
+func (c *Client) QueueEmail(ctx context.Context, e Email) ([]string, error) {
 	status, b, err := c.do(ctx, http.MethodPost, "/v1/email", e, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if status != http.StatusAccepted && status != http.StatusOK {
-		return fmt.Errorf("can-core refused the email: %w", &StatusError{Status: status, Detail: problemDetail(b)})
+		return nil, fmt.Errorf("can-core refused the email: %w", &StatusError{Status: status, Detail: problemDetail(b)})
 	}
-	return nil
+	var out struct {
+		IDs []string `json:"ids"`
+	}
+	_ = json.Unmarshal(b, &out) // accepted is accepted; without ids the status cannot be asked for
+	return out.IDs, nil
+}
+
+// EmailStatus is what became of one of the module's own messages: pending, sent (the relay took
+// it) or dead.
+type EmailStatus struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+// EmailStatus asks for the delivery status of a message. An unknown id is a *StatusError with 404.
+func (c *Client) EmailStatus(ctx context.Context, id string) (EmailStatus, error) {
+	var out EmailStatus
+	status, b, err := c.do(ctx, http.MethodGet, "/v1/email/"+url.PathEscape(id), nil, nil)
+	if err != nil {
+		return out, err
+	}
+	if status != http.StatusOK {
+		return out, fmt.Errorf("can-core did not give the email status: %w", &StatusError{Status: status, Detail: problemDetail(b)})
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return out, errors.New("email status answer is not valid JSON")
+	}
+	return out, nil
 }
 
 func problemDetail(b []byte) string {

@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>{{t "remind.title"}}</h1>
+<p>{{t "remind.intro"}}</p>
+{{with .Data.Restored}}<p class="notice">{{t "remind.restored" .}}</p>{{end}}
+{{if not .Data.Ready}}<p class="notice">{{t "mail.off"}}</p>{{end}}
+{{if .Data.CanEdit}}
+<form method="post" action="/settings/reminders" class="card">
+{{template "csrf" .}}
+<p><label for="rem-enabled">{{t "remind.enabled"}}</label>
+<select id="rem-enabled" name="enabled"><option value="0">{{t "common.no"}}</option><option value="1"{{if .Data.P.Enabled}} selected{{end}}>{{t "common.yes"}}</option></select></p>
+<p><label for="rem-days">{{t "remind.days"}}</label>
+<input id="rem-days" name="days" required maxlength="40" value="{{.Data.Days}}" aria-describedby="rem-days-hint"></p>
+<p id="rem-days-hint" class="hint">{{t "remind.days_hint"}}</p>
+<p><label for="rem-max">{{t "remind.max"}}</label>
+<input id="rem-max" name="max_overdue_days" inputmode="numeric" maxlength="4" value="{{.Data.P.MaxOverdueDays}}" aria-describedby="rem-max-hint"></p>
+<p id="rem-max-hint" class="hint">{{t "remind.max_hint"}}</p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+{{else}}
+<dl class="facts">
+<dt>{{t "remind.enabled"}}</dt><dd>{{if .Data.P.Enabled}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</dd>
+<dt>{{t "remind.days"}}</dt><dd>{{.Data.Days}}</dd>
+<dt>{{t "remind.max"}}</dt><dd>{{.Data.P.MaxOverdueDays}}</dd>
+</dl>
+{{end}}
+{{end}}

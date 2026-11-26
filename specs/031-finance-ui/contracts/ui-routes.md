@@ -65,6 +65,11 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `POST /invoices/{id}/link` | yes | write | `IssueLink` | Create a signed public link; the response shows it once |
 | `POST /invoices/{id}/link/revoke` | yes | write | `RevokeLinks` | Revoke every link of the invoice |
 | `GET /invoices/{id}/html` | yes | read | `GetInvoice` | The printable invoice, rendered by the service's own renderer |
+| `GET /invoices/{id}/pdf` | yes | read | GetInvoice | The invoice or credit note as a PDF (`specs/062-invoice-email`) |
+| `POST /invoices/{id}/email` | yes | write | EmailInvoice | Email the document link to the party |
+| `POST /invoices/{id}/reminders` | yes | write | SetInvoiceReminders | Field `state`: `on`, `stopped`, `disputed` |
+| `POST /parties/{id}/statement` | yes | write | EmailStatement | Email a statement of open invoices (refused for project-scoped tokens) |
+| `POST /parties/{id}/reminders` | yes | write | SetPartyReminders | Field `state`: `on`, `stopped` |
 | `GET /exports/invoices.csv` | yes | read | `ExportInvoicesCSV` | CSV, formula-safe, audited |
 | `GET /exports/payments.csv` | yes | read | `ExportPaymentsCSV` | CSV, formula-safe, audited |
 | `GET /exports/expenses.csv` | yes | read | `ExportExpensesCSV` | CSV, formula-safe, audited |
@@ -116,3 +121,5 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `POST /bank/transactions/{id}/ignore` | yes | ledger.write | `IgnoreTransaction` | E15c: fields `reason`, `account`; final, like confirm |
 | `GET /reports/statement` | yes | read | `ListParties`, `GetParty`, `ListInvoices`, `ListPayments` | One customer's documents and payments (newest 100) |
 | `GET /settings` | yes | read | `ListSeries`, `ListTaxRates`, `PeriodLock` | Read-only: series (unscoped tokens only: the counters are company-wide), tax rates, company settings |
+| `GET /settings/reminders` | yes | read | Dunning | The payment reminder schedule |
+| `POST /settings/reminders` | yes | admin | SetDunning | Fields `enabled`, `days`, `max_overdue_days` (unscoped tokens only) |

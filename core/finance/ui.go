@@ -105,6 +105,11 @@ func (u *UI) routes() []route {
 		{"POST /invoices/{id}/link", w, false, u.linkCreate},
 		{"POST /invoices/{id}/link/revoke", w, false, u.linkRevoke},
 		{"GET /invoices/{id}/html", r, false, u.invoiceHTML},
+		{"GET /invoices/{id}/pdf", r, false, u.invoicePDF},
+		{"POST /invoices/{id}/email", w, false, u.invoiceEmail},
+		{"POST /invoices/{id}/reminders", w, false, u.invoiceRemindersPost},
+		{"POST /parties/{id}/statement", w, false, u.partyStatement},
+		{"POST /parties/{id}/reminders", w, false, u.partyRemindersPost},
 
 		{"GET /exports/invoices.csv", r, false, u.exportInvoices},
 		{"GET /exports/payments.csv", r, false, u.exportPayments},
@@ -163,6 +168,8 @@ func (u *UI) routes() []route {
 		{"GET /reports/aging", r, false, u.aging},
 		{"GET /reports/statement", r, false, u.statement},
 		{"GET /settings", r, false, u.settings},
+		{"GET /settings/reminders", r, false, u.dunning},
+		{"POST /settings/reminders", d, false, u.dunningPost},
 	}
 }
 
