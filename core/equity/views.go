@@ -110,8 +110,11 @@ func (s *Service) self(ctx context.Context, a Actor) (Actor, error) {
 	me, ok := selfOnly(a)
 	if !ok {
 		s.auditDeny(ctx, a, string(ActSelfList), "self", nil)
-		if a.DirectoryDown {
+		switch {
+		case a.DirectoryDown:
 			return me, ErrIdentityUnavailable
+		case len(me.Roles) > 0 && me.PersonID == "":
+			return me, ErrIdentityRequired // a holder's role, but no person to be the holder
 		}
 		return me, ErrForbidden
 	}
