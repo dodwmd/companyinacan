@@ -213,7 +213,11 @@ type stepRow struct {
 }
 
 func requestHash(r CreateRequest) string {
-	b, _ := json.Marshal([]any{r.Type, r.Requester, r.Ref, r.Title, r.Amount, string(r.Payload)})
+	parts := []any{r.Type, r.Requester, r.Ref, r.Title, r.Amount, string(r.Payload)}
+	if r.Manager != "" { // only then, so a repeat of a request made before this field still matches
+		parts = append(parts, r.Manager)
+	}
+	b, _ := json.Marshal(parts)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
@@ -224,6 +228,9 @@ func (r *CreateRequest) validate() error {
 	}
 	if !rbac.ValidSubject(r.Requester) {
 		return fmt.Errorf("%w: requester must be user:<name> or party:<id>", ErrInvalid)
+	}
+	if r.Manager != "" && !rbac.ValidSubject(r.Manager) {
+		return fmt.Errorf("%w: manager must be user:<name> or party:<id>", ErrInvalid)
 	}
 	if r.IdempotencyKey == "" || len(r.IdempotencyKey) > 200 {
 		return fmt.Errorf("%w: idempotency key is required (at most 200 characters)", ErrInvalid)
@@ -288,6 +295,9 @@ func (e *Engine) Create(ctx context.Context, cr CreateRequest) (Request, bool, e
 	pol, err := e.policyFor(ctx, cr.Type, cr.DefaultChain)
 	if err != nil {
 		return Request{}, false, err
+	}
+	if cr.Manager != "" {
+		pol = nameManager(pol, cr.Manager)
 	}
 	// Build the steps and staff the first stage before writing anything.
 	var rows []stepRow
