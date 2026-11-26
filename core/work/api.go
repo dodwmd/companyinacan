@@ -73,6 +73,9 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("POST /v1/issues/{key}/attachments", a.guard(write, a.addAttachment))
 	mux.HandleFunc("DELETE /v1/issues/{key}/attachments/{id}", a.guard(write, a.removeAttachment))
 
+	mux.HandleFunc("POST /v1/people/erase", a.guard(admin, a.erasePerson))
+	mux.HandleFunc("GET /v1/erasures", a.guard(admin, a.erasures))
+
 	mux.HandleFunc("GET /v1/tokens", a.guard(admin, a.listTokens))
 	mux.HandleFunc("POST /v1/tokens", a.guard(admin, a.createToken))
 	mux.HandleFunc("DELETE /v1/tokens/{id}", a.guard(admin, a.revokeToken))

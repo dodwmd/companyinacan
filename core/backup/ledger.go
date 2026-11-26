@@ -247,7 +247,7 @@ func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	f, err := os.OpenFile(l.Path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600) //nolint:gosec // can-core's own path
+	f, err := os.OpenFile(l.Path, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o600) //nolint:gosec // can-core's own path
 	if err != nil {
 		return nil, 0, err
 	}
@@ -263,6 +263,16 @@ func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 		if err := f.Truncate(int64(valid)); err != nil { // drop a torn tail before appending
 			return nil, 0, err
 		}
+	}
+	// A crash can leave the last line whole but without its newline: it is an entry like any other,
+	// and the next one must not be written onto the same line.
+	unterminated := false
+	if valid > 0 {
+		last := make([]byte, 1)
+		if _, err := f.ReadAt(last, int64(valid)-1); err != nil {
+			return nil, 0, err
+		}
+		unterminated = last[0] != '\n'
 	}
 	have := map[string]Entry{}
 	prev := ""
@@ -288,6 +298,9 @@ func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 	}
 	if added == 0 {
 		return out, 0, nil
+	}
+	if unterminated {
+		b = append([]byte{'\n'}, b...)
 	}
 	if _, err := f.Write(b); err != nil {
 		return nil, 0, err

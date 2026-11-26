@@ -118,7 +118,8 @@ approvals:
 data_classes:
   # Name, address and tax id of a customer or vendor, contact person, email and phone. Personal data:
   # reads are audited and erasure pseudonymises the record. The name, address and tax id frozen onto an
-  # issued invoice are kept under finance-invoice until that period ends.
+  # issued invoice are kept under finance-invoice until that period ends. A party erasure writes a
+  # tombstone of this class (GET /v1/erasures), which a restore replays with `can-finance purge`.
   - { class: finance-party-contact, retention: legal, sensitivity: sensitive }
   # Issued invoices, credit notes, payments and their frozen buyer snapshot. Legal retention overrides
   # erasure: kept 7 years from the issue date (core/finance Config.RetentionYears), then deleted.

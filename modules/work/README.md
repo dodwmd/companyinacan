@@ -53,7 +53,8 @@ Tokens are `cwt_<id>_<secret>`; only a SHA-256 of the secret is stored. Scopes `
 what a token can do, and a project outside the list answers 404 like a missing one. Requests are
 size-limited, rate-limited per token, bad tokens are throttled per client address, unknown JSON
 fields are rejected, the search language only ever binds parameters, and admin actions are written to
-an audit log without secrets.
+an audit log without secrets. A person can be erased (`POST /v1/people/erase`), and a restore repeats it
+([privacy](../../docs/work-tracker.md#privacy-and-retention)).
 
 ## Footprint
 

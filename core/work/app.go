@@ -200,6 +200,9 @@ func (a *App) purgeLoop(ctx context.Context) {
 		} else if n > 0 {
 			a.log.Info("retention purge", "deleted", n)
 		}
+		if err := a.store.ResumeScrub(ctx); err != nil && ctx.Err() == nil {
+			a.log.Error("scrubbing after an erasure", "error", err)
+		}
 		select {
 		case <-ctx.Done():
 			return

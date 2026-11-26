@@ -1991,6 +1991,24 @@ paths:
         "412": { description: "If-Match version is stale" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
+  /v1/erasures:
+    get:
+      summary: "Erasure tombstones after a cursor, for the erasure ledger (admin, unscoped token)"
+      operationId: GET_v1_erasures
+      x-scope: finance.admin
+      parameters:
+        - { name: after, in: query, required: false, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200":
+          description: "items: seq, subject (party-<id>-<creation time>), class, date, at"
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Bad cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or a limited token" }
+        "429": { description: "Rate limited" }
   /v1/audit:
     get:
       summary: "Read the append-only audit log (admin)"

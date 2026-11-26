@@ -7,13 +7,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 // Scrub truncates the write-ahead log so erased personal data does not linger in it
 // (secure_delete already zeroes freed pages in the main file).
 func (s *Store) Scrub(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
-	return err
+	var busy, logFrames, checkpointed int
+	if err := s.db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &checkpointed); err != nil {
+		return fmt.Errorf("wal checkpoint: %w", err)
+	}
+	if busy != 0 {
+		return errors.New("wal checkpoint was blocked; erased data may remain in the write-ahead log")
+	}
+	return nil
 }
 
 // idemRun runs fn at most once per (subject, key). A retry with the same key and the same

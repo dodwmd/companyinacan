@@ -280,6 +280,22 @@ years; 0 keeps them), audit entries after `audit_retention_days` (default 7 year
 are kept, and so is a resolved parent that still has a child to keep (no subtask is orphaned). A
 purge runs hourly. The manifest's `data_classes` mirror these defaults.
 
+**Erasing a person.** The tracker holds a person as the identifier they appear under: reporter, assignee,
+comment author, activity actor, watcher, who added a link or attachment, API tokens, and copies of these in
+activity details, cached replies and events.
+
+```sh
+curl -X POST "$CAN_WORK_URL/v1/people/erase" -H "Authorization: Bearer $CAN_WORK_TOKEN" -d '{"subject":"user:alice"}'
+```
+
+It needs `work.admin` and a token not limited to projects. The identifier is replaced by a random pseudonym,
+the person's tokens are revoked, watcher entries and cached replies are deleted, and the database is scrubbed.
+**Not changed:** titles, descriptions, comment texts and file names that mention the person, and the admin
+audit log. Each spelling is a separate identifier. No event is published, so copies elsewhere (webhook
+receivers, can-core's queued events and notifications) stay. The erasure is recorded as a hash of the
+identifier (`GET /v1/erasures`) for the erasure ledger, and `can restore` repeats it with `can-work purge` on
+a backup made before it ([specs/056](../specs/056-erasure-finance-work/spec.md)).
+
 ## Operating it
 
 ```sh

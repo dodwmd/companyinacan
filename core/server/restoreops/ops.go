@@ -346,13 +346,15 @@ type purgeMethod struct {
 
 // inHouse are the in-house modules that implement purge without a hooks.purge script.
 var inHouse = map[string]purgeMethod{
-	"people": {cli: true},
-	"equity": {cli: true},
-	"board":  {cli: true},
-	"entity": {cli: true},
-	"files":  {tokenKey: "CAN_FILES_RESTORE_TOKEN"},
-	"forms":  {tokenKey: "CAN_FORMS_API_TOKEN"},
-	"jobs":   {tokenKey: "CAN_JOBS_ADMIN_TOKEN"},
+	"people":  {cli: true},
+	"equity":  {cli: true},
+	"board":   {cli: true},
+	"entity":  {cli: true},
+	"finance": {cli: true},
+	"work":    {cli: true},
+	"files":   {tokenKey: "CAN_FILES_RESTORE_TOKEN"},
+	"forms":   {tokenKey: "CAN_FORMS_API_TOKEN"},
+	"jobs":    {tokenKey: "CAN_JOBS_ADMIN_TOKEN"},
 }
 
 // skipped notes an erasure that is not replayed because the backup already reflects it. Entries

@@ -30,10 +30,10 @@ Columns:
 | site | - | CI (published by `make up`) | the public site; browser | rebuilt from your company repository, not backed up | same | no personal data |
 | can-core | - | CI | admin UI; browser | CI | CI | its own copies are cleared at restore (unit) |
 | `forms` | ready | CI | a hosted form page (browser). The admin Leads page works in no shipped setup (no credential is wired) | CI | CI | CI |
-| `work` | experimental | CI | yes; browser | CI | CI | **no**: no erasure feed |
+| `work` | experimental | CI | yes; browser | CI | CI | CI (a person's identifier; texts and the audit log are kept) |
 | `people` | experimental | CI | yes; browser | CI (restore test) | CI | CI |
 | `files` | experimental | CI; **uploads are refused** (no virus scanner, and no supported way to configure one or switch the requirement off) | yes; browser | CI | CI (into a fresh instance, not through `can restore`) | unit |
-| `finance` | experimental | CI | yes; browser, with contract signing | unit | unit | **no** |
+| `finance` | experimental | CI | yes; browser, with contract signing | CI (restore test) | CI | CI (a customer or vendor; what legal retention keeps stays) |
 | `jobs` | experimental | CI; resume uploads are refused (same scanner requirement) | yes; browser, with a careers application | unit | unit | unit |
 | `provisioning` | experimental | CI, **but cannot do its job**: the network rules do not let it reach `people`, and connector credentials cannot be supplied | none | unit | unit | **no** |
 | `equity` | experimental | CI | none | unit | unit | unit |
@@ -51,6 +51,9 @@ Limits of the erasure column ([backup-restore.md](backup-restore.md#erasure-tomb
 - The ledger reaches the backup bucket only if the `can` binary is at `/usr/local/bin/can` on the server.
   `can up` does not copy it.
 - An erasure made in about the last quarter hour before a server is lost may be missing.
+- `finance` erases customers and vendors only, not what it holds about staff (timesheets, expenses). `work`
+  replaces the identifier a person appears under, not mentions in texts
+  ([specs/056](../specs/056-erasure-finance-work/spec.md)).
 - Where a module is marked **no**, what was erased there comes back with a restore of an older backup. Erase it
   again afterwards, by hand.
 
@@ -74,7 +77,7 @@ applications are not in it.
 | Outbound email | fake relays and the compose sink | a real relay, deliverability |
 | `make up` phases, backup script, `can verify --server` | `make-up-e2e` on k3d with a fake host and a local restic repository | creating a server, cloud-init, k3s install on a fresh OS, ACME certificates, the five-minute target, `can verify` against a real server |
 | Hetzner, DigitalOcean, Cloudflare DNS | fake HTTP APIs | any real account |
-| Restore onto a new cluster | `restore-e2e` (forms, work, people, with erasures) | a real server or bucket, systemd, restore time, large data |
+| Restore onto a new cluster | `restore-e2e` (forms, work, people, finance, with erasures) | a real server or bucket, systemd, restore time, large data |
 | Module routing, TLS redirect, edge rate limits | `module-routing` on k3d with Traefik's self-signed certificate | real DNS and certificates, client addresses through ServiceLB |
 | Pod-to-node isolation | `node-isolation`: network namespaces, a runner's systemd, k3d | `ufw` on a real server, a reboot, a cloud metadata service |
 | Release pipeline | shell self-tests, local reproducible build | it has never run |
