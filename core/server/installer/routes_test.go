@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/files"
 	"github.com/dodwmd/companyinacan/core/routing"
 	"github.com/dodwmd/companyinacan/core/server/kube"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
@@ -91,6 +92,7 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 		{"people", "8081", "PathPrefix(`/people/`)"},
 		{"jobs", "8080", "PathPrefix(`/applications/`)"},
 		{"finance", "8080", "PathPrefix(`/invoices/`)"},
+		{"files", "8095", "PathPrefix(`/spaces/`)"},
 	} {
 		t.Run(c.id, func(t *testing.T) {
 			in, api, spec := routed(t, c.id, config.Expose{UI: true})
@@ -140,16 +142,50 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 			if exists(api, "IngressRoute", spec.Namespace, routeWeb) || exists(api, "Middleware", spec.Namespace, middlewareWeb) {
 				t.Error("route left behind")
 			}
-			// jobs keeps its careers route, so its port stays open
-			if got := traefikPorts(t, api, spec.Namespace); (got != "[]") != (c.id == "jobs") {
+			// jobs keeps its careers route and files its share links, so their ports stay open
+			if got := traefikPorts(t, api, spec.Namespace); (got != "[]") != (c.id == "jobs" || c.id == "files") {
 				t.Errorf("NetworkPolicy: %s", got)
 			}
 			d = get(t, api, "Deployment", spec.Namespace, c.id)
-			// jobs keeps its public_config while the careers pages are routed
-			if c.id != "jobs" && dig(d, "spec", "template", "metadata", "annotations", annotationRoute) != nil {
+			// jobs and files keep their public_config while their public pages are routed
+			if c.id != "jobs" && c.id != "files" && dig(d, "spec", "template", "metadata", "annotations", annotationRoute) != nil {
 				t.Error("exposure annotation left behind")
 			}
 		})
+	}
+}
+
+// files already routes its share links from its chart (/s/, specs/034-files). Exposing the web UI
+// (specs/050-files-ui) adds the UI's paths on the same host, and neither takes the other's.
+func TestExposedFilesUIKeepsTheShareLinkRoute(t *testing.T) {
+	in, api, spec := routed(t, "files", config.Expose{UI: true})
+	enable(t, in, spec)
+	chart := toJSON(get(t, api, "IngressRoute", spec.Namespace, "files")["spec"])
+	if !strings.Contains(chart, "PathPrefix(`/s/`)") || strings.Contains(chart, "/v1") || strings.Contains(chart, "/spaces") {
+		t.Errorf("share link route: %s", chart)
+	}
+	if web := toJSON(get(t, api, "IngressRoute", spec.Namespace, routeWeb)["spec"]); strings.Contains(web, "PathPrefix(`/s/`)") || strings.Contains(web, "Path(`/s`)") {
+		t.Errorf("the UI route takes the share links: %s", web)
+	}
+}
+
+// The files web UI offers share links only while /s/ is routed: the config can-core writes says so.
+func TestExposedFilesUIKnowsWhetherShareLinksArePublished(t *testing.T) {
+	off := false
+	for _, public := range []*bool{nil, &off} {
+		in, api, spec := routed(t, "files", config.Expose{UI: true, Public: public})
+		enable(t, in, spec)
+		raw, _ := dig(get(t, api, "ConfigMap", spec.Namespace, "files-config"), "data", "files.yaml").(string)
+		c, err := files.ParseConfig([]byte(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.UI.ShareLinks == nil || *c.UI.ShareLinks || c.Share.Published != (public == nil) {
+			t.Errorf("public %v: share_links %v published %v", public == nil, c.UI.ShareLinks, c.Share.Published)
+		}
+		if exists(api, "IngressRoute", spec.Namespace, "files") != (public == nil) {
+			t.Errorf("public %v: the /s/ route does not match", public == nil)
+		}
 	}
 }
 

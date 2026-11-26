@@ -21,7 +21,7 @@ for svc in people jobs equity files; do
 done
 
 TOKENS=/tokens
-for svc in work people jobs finance equity; do
+for svc in work people jobs finance equity files; do
   f="$TOKENS/$svc/token"
   if [ ! -s "$f" ]; then
     echo "init: generating dev module token for $svc"

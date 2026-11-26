@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>People and access - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Spaces</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>People and access</h1>
+<p><a href="/spaces/spc_000000000000000000000001">Back to the space</a></p>
+<p class="hint">Viewers read and download. Editors also add, change, delete and share. Managers also decide who has access. A space keeps at least one manager.</p>
+<div class="scroll">
+<table>
+<caption>Who may use this space</caption>
+<thead><tr><th scope="col">Person or group</th><th scope="col">Kind</th><th scope="col">Role</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr><th scope="row">grp-legal</th><td>Group</td><td>Editor</td><td><form method="post" action="/spaces/spc_000000000000000000000001/members/remove" class="inline"><input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="kind" value="group"><input type="hidden" name="principal" value="grp-legal"><button type="submit" aria-label="Remove grp-legal">Remove</button></form></td></tr>
+<tr><th scope="row">user:alice</th><td>Person</td><td>Manager</td><td><form method="post" action="/spaces/spc_000000000000000000000001/members/remove" class="inline"><input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="kind" value="user"><input type="hidden" name="principal" value="user:alice"><button type="submit" aria-label="Remove user:alice">Remove</button></form></td></tr>
+<tr><th scope="row">user:bob</th><td>Person</td><td>Viewer</td><td><form method="post" action="/spaces/spc_000000000000000000000001/members/remove" class="inline"><input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="kind" value="user"><input type="hidden" name="principal" value="user:bob"><button type="submit" aria-label="Remove user:bob">Remove</button></form></td></tr>
+<tr><th scope="row">user:ro</th><td>Person</td><td>Editor</td><td><form method="post" action="/spaces/spc_000000000000000000000001/members/remove" class="inline"><input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="kind" value="user"><input type="hidden" name="principal" value="user:ro"><button type="submit" aria-label="Remove user:ro">Remove</button></form></td></tr>
+</tbody>
+</table>
+</div>
+<h2>Add or change access</h2>
+<form method="post" action="/spaces/spc_000000000000000000000001/members" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="kind">Kind</label>
+<select id="kind" name="kind"><option value="user">Person</option><option value="group">Group</option></select></p>
+<p><label for="principal">User name or group id</label>
+<input id="principal" name="principal" required maxlength="80" aria-describedby="principal-hint"></p>
+<p id="principal-hint" class="hint">For a person, the user name (alice or user:alice). A group id comes from your directory. Groups are stored, but this installation does not yet look up who is in them.</p>
+<p><label for="role">Role</label>
+<select id="role" name="role"><option value="viewer">Viewer</option><option value="editor">Editor</option><option value="manager">Manager</option></select></p>
+<p class="hint">Lowering or removing access revokes the share links that relied on it.</p>
+<p><button type="submit">Save access</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>

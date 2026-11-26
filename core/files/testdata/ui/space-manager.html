@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Space - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Spaces</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Contracts &lt;b&gt;2026&lt;/b&gt;</h1>
+<p class="actions">
+<a href="/spaces/spc_000000000000000000000001/upload">Upload a file</a>
+<a href="/spaces/spc_000000000000000000000001/members">People and access</a>
+<a href="/spaces/spc_000000000000000000000001/trash">Trash</a>
+</p>
+
+<h2>Folders</h2>
+<ul class="list">
+<li><a href="/spaces/spc_000000000000000000000001?folder=fld_000000000000000000000002">Leases</a></li>
+</ul>
+
+<h2>Files</h2>
+<div class="scroll">
+<table>
+<caption>Every file in this space</caption>
+<thead><tr><th scope="col">Name</th><th scope="col">Folder</th><th scope="col">Size</th><th scope="col">Version</th><th scope="col">Updated</th><th scope="col">Virus scan</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/files/fil_000000000000000000000004">lease.pdf</a></th><td>Leases</td><td>25 B</td><td>2</td><td>2026-06-01 09:00 UTC</td><td>Clean</td><td><a href="/files/fil_000000000000000000000004/content" aria-label="Download lease.pdf">Download</a></td></tr>
+<tr><th scope="row"><a href="/files/fil_000000000000000000000005">script&gt; &amp; co.pdf</a></th><td></td><td>22 B</td><td>1</td><td>2026-06-01 09:00 UTC</td><td>Clean</td><td><a href="/files/fil_000000000000000000000005/content" aria-label="Download script&gt; &amp; co.pdf">Download</a></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>New folder</h2>
+<form method="post" action="/spaces/spc_000000000000000000000001/folders" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="parent" value="">
+<p><label for="folder-name">Name</label>
+<input id="folder-name" name="name" required maxlength="100"></p>
+<p><button type="submit">Create folder</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>

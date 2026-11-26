@@ -184,6 +184,64 @@ func (s *Store) uploadSlot(subject string) (func(), error) {
 	}, nil
 }
 
+type slotHeld struct{}
+
+// ReserveUpload makes the checks of Upload that need no byte of the body (permission, scanner, role)
+// and takes one of the bounded upload slots, for a caller that has to read part of a request before
+// it can call Upload (the web UI's multipart form). The returned context carries the slot to Upload;
+// call release when done with it.
+func (s *Store) ReserveUpload(ctx context.Context, p *Principal, spaceID string) (context.Context, func(), error) {
+	if !p.Has(PermWrite) {
+		return nil, nil, ErrForbidden
+	}
+	if !validID("spc", spaceID) {
+		return nil, nil, ErrNotFound
+	}
+	if err := s.scannerReady(); err != nil {
+		return nil, nil, err
+	}
+	if err := s.checkWritable(ctx, p, spaceID, "file.upload"); err != nil {
+		return nil, nil, err
+	}
+	return s.reserveSlot(ctx, p.Subject)
+}
+
+// ReserveVersion is ReserveUpload for UploadVersion.
+func (s *Store) ReserveVersion(ctx context.Context, p *Principal, fileID string) (context.Context, func(), error) {
+	if !p.Has(PermWrite) {
+		return nil, nil, ErrForbidden
+	}
+	if err := s.scannerReady(); err != nil {
+		return nil, nil, err
+	}
+	cctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	f, _, err := s.getFile(cctx, s.db, p, fileID, RoleEditor)
+	cancel()
+	if err != nil {
+		return nil, nil, s.forbid(ctx, p, "file.version", "file:"+fileID, err)
+	}
+	if f.status != "active" {
+		return nil, nil, conflict("restore the file before adding a version")
+	}
+	return s.reserveSlot(ctx, p.Subject)
+}
+
+func (s *Store) reserveSlot(ctx context.Context, subject string) (context.Context, func(), error) {
+	release, err := s.uploadSlot(subject)
+	if err != nil {
+		return nil, nil, err
+	}
+	return context.WithValue(ctx, slotHeld{}, subject), release, nil
+}
+
+// takeSlot is uploadSlot, unless the context already carries the subject's slot (ReserveUpload).
+func (s *Store) takeSlot(ctx context.Context, subject string) (func(), error) {
+	if held, ok := ctx.Value(slotHeld{}).(string); ok && held == subject {
+		return func() {}, nil
+	}
+	return s.uploadSlot(subject)
+}
+
 // checkRoom refuses, before a byte is read or staged, an upload the space owner's quota cannot
 // take. The transaction that records the file checks again with the real size.
 func (s *Store) checkRoom(ctx context.Context, spaceID string, declared int64) error {
@@ -316,7 +374,7 @@ func (s *Store) Upload(ctx context.Context, p *Principal, req UploadRequest) (*F
 	if err := s.checkRoom(ctx, req.SpaceID, req.Size); err != nil {
 		return nil, err
 	}
-	release, err := s.uploadSlot(p.Subject)
+	release, err := s.takeSlot(ctx, p.Subject)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +520,7 @@ func (s *Store) UploadVersion(ctx context.Context, p *Principal, fileID string, 
 	if err := s.checkRoom(ctx, f.spaceID, size); err != nil {
 		return nil, err
 	}
-	release, err := s.uploadSlot(p.Subject)
+	release, err := s.takeSlot(ctx, p.Subject)
 	if err != nil {
 		return nil, err
 	}

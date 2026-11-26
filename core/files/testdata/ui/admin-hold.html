@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Legal hold and retention - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Spaces</a></li>
+<li><a href="/admin/files" aria-current="page">Holds and retention</a></li>
+<li><a href="/admin/erasure">Erasure</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Legal hold and retention</h1>
+<p>File <code>fil_000000000000000000000004</code></p>
+<form method="post" action="/admin/files/fil_000000000000000000000004/hold" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<fieldset>
+<legend>Legal hold</legend>
+<p><input id="hold-on" type="radio" name="hold" value="on" required> <label for="hold-on" class="check">On: the file cannot be deleted, swept or erased</label></p>
+<p><input id="hold-off" type="radio" name="hold" value="off" required> <label for="hold-off" class="check">Off</label></p>
+</fieldset>
+<p><label for="retain_until">Keep until (optional)</label>
+<input id="retain_until" name="retain_until" type="date" aria-describedby="date-hint"></p>
+<p id="date-hint" class="hint">Leave empty to keep the current retention date.</p>
+<p><input id="clear_retention" name="clear_retention" type="checkbox" value="1"> <label for="clear_retention" class="check">Remove the retention date</label></p>
+<p><button type="submit">Save</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>

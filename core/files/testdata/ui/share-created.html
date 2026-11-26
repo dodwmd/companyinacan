@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Share link created - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Spaces</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Share link created</h1>
+<p class="notice">Copy it now. It is shown only this once and cannot be recovered.</p>
+<p>Link</p>
+<code class="link">https://files.example.org/s/LINKTOKEN</code>
+<dl class="facts">
+<dt>Version</dt><dd>2</dd>
+<dt>Expires</dt><dd>2026-06-02 09:00 UTC</dd>
+<dt>Downloads</dt><dd>One download only</dd>
+</dl>
+<p class="hint">The link only works from outside if this installation publishes the files share address.</p>
+<p><a href="/files/fil_000000000000000000000004">Back to the file</a></p>
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>

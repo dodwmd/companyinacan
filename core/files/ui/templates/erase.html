@@ -1,0 +1,34 @@
+{{define "content"}}
+<h1>{{t "erase.title"}}</h1>
+<p>{{t "erase.intro"}}</p>
+<form method="get" action="/admin/erasure" class="inline filter">
+<label for="find">{{t "erase.subject"}}</label>
+<input id="find" name="subject" value="{{.Data.Subject}}" required maxlength="128">
+<button type="submit">{{t "erase.find"}}</button>
+</form>
+{{if .Data.Subject}}
+<p><strong>{{t "erase.found" .Data.Erasable}}</strong></p>
+{{if .Data.More}}<p class="notice">{{t "erase.more"}}</p>
+{{end}}{{if .Data.Blocked}}<p class="notice">{{t "erase.blocked" .Data.Blocked}}</p>
+{{end}}{{if .Data.IsFileID}}<p class="notice">{{t "erase.is_file"}}</p>
+{{end}}{{if .Data.Files}}<div class="scroll">
+<table>
+<caption>{{t "admin.caption"}}</caption>
+<thead><tr><th scope="col">{{t "admin.file"}}</th><th scope="col">{{t "common.state"}}</th><th scope="col">{{t "admin.hold"}}</th><th scope="col">{{t "admin.retain"}}</th></tr></thead>
+<tbody>
+{{range .Data.Files}}<tr><th scope="row"><code>{{.ID}}</code></th><td>{{state .Status}}</td><td>{{if .LegalHold}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</td><td>{{with .RetainUntil}}{{day .}}{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{end}}
+<form method="post" action="/admin/erasure" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="subject" value="{{.Data.Subject}}">
+<p><label for="confirm">{{t "erase.confirm"}}</label>
+<input id="confirm" name="confirm" required maxlength="10" autocomplete="off"></p>
+{{if .Data.SSO}}<p class="hint">{{t "erase.sso_note"}}</p>
+{{else}}<p><label for="token">{{t "erase.token"}}</label>
+<input id="token" name="token" type="password" required autocomplete="off" maxlength="4096"></p>
+{{end}}<p><button type="submit">{{t "erase.submit"}}</button></p>
+</form>
+{{end}}{{end}}

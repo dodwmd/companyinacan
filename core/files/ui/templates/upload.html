@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>{{t "upload.title"}}</h1>
+<p><a href="/spaces/{{.Data.Space.ID}}">{{.Data.Space.Name}}</a></p>
+<p id="limits" class="hint">{{t "upload.limits" .Data.MaxSize .Data.Types}}</p>
+<p class="hint">{{if .Data.ScannerRequired}}{{t "upload.scanned"}}{{else}}{{t "upload.not_scanned"}}{{end}}</p>
+<form method="post" action="/spaces/{{.Data.Space.ID}}/files" enctype="multipart/form-data" class="card">
+{{template "csrf" .}}
+<p><label for="folder">{{t "upload.folder"}}</label>
+<select id="folder" name="folder"><option value="">{{t "file.top"}}</option>{{range .Data.Folders}}<option value="{{.ID}}"{{if eq .ID $.Data.Folder}} selected{{end}}>{{.Path}}</option>{{end}}</select></p>
+<p><label for="description">{{t "upload.description"}}</label>
+<textarea id="description" name="description" rows="3" maxlength="1000"></textarea></p>
+<details>
+<summary>{{t "upload.advanced"}}</summary>
+<p><label for="subject">{{t "upload.subject"}}</label>
+<input id="subject" name="subject" maxlength="128" aria-describedby="subject-hint"></p>
+<p id="subject-hint" class="hint">{{t "upload.subject_hint"}}</p>
+<p><label for="ref">{{t "upload.ref"}}</label>
+<input id="ref" name="ref" maxlength="160" aria-describedby="ref-hint"></p>
+<p id="ref-hint" class="hint">{{t "upload.ref_hint"}}</p>
+</details>
+<p><label for="file">{{t "upload.file"}}</label>
+<input id="file" name="file" type="file" required accept="{{.Data.Accept}}" aria-describedby="limits"></p>
+<p class="hint">{{t "upload.wait"}}</p>
+<p><button type="submit">{{t "upload.submit"}}</button></p>
+</form>
+{{end}}

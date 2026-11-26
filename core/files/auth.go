@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
@@ -56,28 +57,53 @@ func (s StaticRestoreToken) Authenticate(_ context.Context, tok string) (*Princi
 // is "not valid"; an introspection outage is an error.
 type CanAuth struct{ In *modclient.Introspector }
 
+// freshAuthenticator is an Authenticator whose answers may be cached and that can also ask now.
+type freshAuthenticator interface {
+	AuthenticateFresh(ctx context.Context, token string) (*Principal, error)
+}
+
 // Authenticate implements Authenticator.
 func (a *CanAuth) Authenticate(ctx context.Context, tok string) (*Principal, error) {
+	return a.authenticate(ctx, tok, a.In.Lookup)
+}
+
+// AuthenticateFresh implements freshAuthenticator: introspection without the cache.
+func (a *CanAuth) AuthenticateFresh(ctx context.Context, tok string) (*Principal, error) {
+	return a.authenticate(ctx, tok, a.In.Fresh)
+}
+
+func (a *CanAuth) authenticate(ctx context.Context, tok string, lookup func(context.Context, string) (modclient.Identity, error)) (*Principal, error) {
 	if !modclient.TokenShaped(tok) {
 		return nil, nil
 	}
-	id, err := a.In.Lookup(ctx, tok)
+	id, err := lookup(ctx, tok)
 	if err != nil {
 		return nil, fmt.Errorf("%w: token introspection", ErrUnavailable)
 	}
-	if !id.Active || id.Kind != "user" || !userRe.MatchString(id.Subject) {
+	if !id.Active || id.Kind != "user" {
 		return nil, nil
 	}
+	p, _ := personalPrincipal(id.Subject, id.Permissions)
+	return p, nil
+}
+
+// personalPrincipal maps what can-core says about a person (a personal access token or a launch
+// ticket session of the web UI) to a Principal: the permissions are limited to those this module
+// defines, and nothing left means no principal. Shared so the two sign-in paths cannot drift.
+func personalPrincipal(subject string, in []string) (*Principal, bool) {
+	if !userRe.MatchString(subject) {
+		return nil, false
+	}
 	var perms []string
-	for _, p := range id.Permissions {
-		if p == PermRead || p == PermWrite || p == PermAdmin {
+	for _, p := range in {
+		if (p == PermRead || p == PermWrite || p == PermAdmin) && !slices.Contains(perms, p) {
 			perms = append(perms, p)
 		}
 	}
 	if len(perms) == 0 {
-		return nil, nil
+		return nil, false
 	}
-	return &Principal{Subject: id.Subject, Perms: perms}, nil
+	return &Principal{Subject: subject, Perms: perms}, true
 }
 
 // MultiAuth tries each authenticator in turn.
@@ -85,9 +111,22 @@ type MultiAuth []Authenticator
 
 // Authenticate implements Authenticator.
 func (m MultiAuth) Authenticate(ctx context.Context, tok string) (*Principal, error) {
+	return m.each(ctx, tok, false)
+}
+
+// AuthenticateFresh implements freshAuthenticator.
+func (m MultiAuth) AuthenticateFresh(ctx context.Context, tok string) (*Principal, error) {
+	return m.each(ctx, tok, true)
+}
+
+func (m MultiAuth) each(ctx context.Context, tok string, fresh bool) (*Principal, error) {
 	var firstErr error
 	for _, a := range m {
-		p, err := a.Authenticate(ctx, tok)
+		check := a.Authenticate
+		if f, ok := a.(freshAuthenticator); ok && fresh {
+			check = f.AuthenticateFresh
+		}
+		p, err := check(ctx, tok)
 		if p != nil {
 			return p, nil
 		}

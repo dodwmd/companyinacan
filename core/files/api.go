@@ -65,9 +65,28 @@ func (a *API) guard(perm string, fn apiFn) http.HandlerFunc {
 	return a.guardWhen(perm, func(p *Principal) bool { return p.Has(perm) }, fn)
 }
 
-// guardPurge opens the purge hook to administrators and to the restore-only credential.
+// guardPurge opens the purge hook to administrators and to the restore-only credential. The latter
+// ignores legal holds, so it is refused on a request that came through a proxy: a restore calls the
+// module's Service directly, and `expose.api` must not put that power on the internet.
 func (a *API) guardPurge(fn apiFn) http.HandlerFunc {
-	return a.guardWhen(PermAdmin, func(p *Principal) bool { return p.Restore || p.Has(PermAdmin) }, fn)
+	return a.guardWhen(PermAdmin, func(p *Principal) bool { return p.Restore || p.Has(PermAdmin) }, func(w http.ResponseWriter, r *http.Request, p *Principal) error {
+		if p.Restore && proxied(r) {
+			problem(w, http.StatusForbidden, "the restore credential is accepted only from inside the cluster, never through a proxy")
+			return nil
+		}
+		return fn(w, r, p)
+	})
+}
+
+// proxied reports whether a request carries any header a reverse proxy adds (Traefik always does;
+// a client cannot remove them).
+func proxied(r *http.Request) bool {
+	for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"} {
+		if len(r.Header.Values(h)) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *API) guardWhen(perm string, allowed func(*Principal) bool, fn apiFn) http.HandlerFunc {
@@ -379,9 +398,20 @@ func (a *API) deleteFolder(w http.ResponseWriter, r *http.Request, p *Principal)
 // ---- files ---------------------------------------------------------------------------------------
 
 // uploadBudget is the time receiving, scanning and storing one upload may take.
-func (a *API) uploadBudget() time.Duration {
-	d := a.Store.cfg.UploadDeadline()
+func uploadBudget(cfg *Config) time.Duration {
+	d := cfg.UploadDeadline()
 	return d + d/2
+}
+
+// uploadDeadlines gives one upload its time limits, for the API and the web UI alike.
+func uploadDeadlines(w http.ResponseWriter, cfg *Config) {
+	// one deadline for the whole upload: a client that trickles bytes cannot hold a slot
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(cfg.UploadDeadline()))
+	// The server's WriteTimeout would otherwise run while the file is received, scanned and stored,
+	// and a stored file would be answered with a dropped connection (which a client retries, making
+	// a duplicate). The answer may be written until after the work's own deadline.
+	_ = rc.SetWriteDeadline(time.Now().Add(uploadBudget(cfg) + answerGrace))
 }
 
 // longOperation lets an administrative request that deletes many objects outlive the server's
@@ -397,13 +427,7 @@ func (a *API) body(w http.ResponseWriter, r *http.Request) (io.Reader, error) {
 	if r.ContentLength > max {
 		return nil, ErrTooLarge
 	}
-	// one deadline for the whole upload: a client that trickles bytes cannot hold a slot
-	rc := http.NewResponseController(w)
-	_ = rc.SetReadDeadline(time.Now().Add(a.Store.cfg.UploadDeadline()))
-	// The server's WriteTimeout would otherwise run while the file is received, scanned and stored,
-	// and a stored file would be answered with a dropped connection (which a client retries, making
-	// a duplicate). The answer may be written until after the work's own deadline.
-	_ = rc.SetWriteDeadline(time.Now().Add(a.uploadBudget() + answerGrace))
+	uploadDeadlines(w, a.Store.cfg)
 	return http.MaxBytesReader(w, r.Body, max+1), nil
 }
 
@@ -416,7 +440,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request, p *Principal) error
 		return err
 	}
 	q := r.URL.Query()
-	ctx, cancel := context.WithTimeout(r.Context(), a.uploadBudget())
+	ctx, cancel := context.WithTimeout(r.Context(), uploadBudget(a.Store.cfg))
 	defer cancel()
 	f, err := a.Store.Upload(ctx, p, UploadRequest{SpaceID: r.PathValue("id"), FolderID: q.Get("folder"), Name: q.Get("name"), Description: q.Get("description"),
 		Subject: q.Get("subject"), Ref: q.Get("ref"), Body: body, Size: r.ContentLength})
@@ -435,7 +459,7 @@ func (a *API) uploadVersion(w http.ResponseWriter, r *http.Request, p *Principal
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), a.uploadBudget())
+	ctx, cancel := context.WithTimeout(r.Context(), uploadBudget(a.Store.cfg))
 	defer cancel()
 	f, err := a.Store.UploadVersion(ctx, p, r.PathValue("id"), body, r.ContentLength)
 	if err != nil {
@@ -518,14 +542,19 @@ func methodNotAllowed(w http.ResponseWriter) error {
 	return nil
 }
 
-// serve writes a Content: always an attachment of application/octet-stream, nosniff, sandboxed,
+// serve writes a Content for the API: the caller may ask for inline display with ?inline=1.
+func (a *API) serve(w http.ResponseWriter, r *http.Request, c *Content) error {
+	serveContent(w, r, c, c.InlineOK && r.URL.Query().Get("inline") == "1", a.log())
+	return nil
+}
+
+// serveContent writes a Content, for the API and the web UI alike: always an attachment of application/octet-stream, nosniff, sandboxed,
 // not cached. Inline display exists only for the raster image types the operator listed, only when
 // the caller asks, and still sandboxed. If the stored bytes fail their checksum the connection is
 // aborted: the declared length is never reached, so the client sees a failed transfer.
-func (a *API) serve(w http.ResponseWriter, r *http.Request, c *Content) error {
+func serveContent(w http.ResponseWriter, r *http.Request, c *Content, inline bool, log *slog.Logger) {
 	defer func() { _ = c.Body.Close() }()
 	h := w.Header()
-	inline := c.InlineOK && r.URL.Query().Get("inline") == "1"
 	if inline {
 		h.Set("Content-Type", c.StoredType)
 	} else {
@@ -541,11 +570,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request, c *Content) error {
 	w.WriteHeader(http.StatusOK)
 	if err := c.Stream(r.Context(), w); err != nil {
 		if errors.Is(err, ErrIntegrity) {
-			a.log().Error("download aborted: stored content failed its checksum", "route", r.Pattern, "file_id", c.FileID)
+			log.Error("download aborted: stored content failed its checksum", "route", r.Pattern, "file_id", c.FileID)
 		}
 		panic(http.ErrAbortHandler)
 	}
-	return nil
 }
 
 func (a *API) content(w http.ResponseWriter, r *http.Request, p *Principal) error {
