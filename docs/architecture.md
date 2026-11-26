@@ -38,7 +38,8 @@ status) are charts around upstream images. Analytics, support and newsletter are
 advisory CI job, with a Postgres can-core runs in `can-data` for the last two (`specs/041-wrapped-modules-live`);
 the others have never been started. Modules publish events and call can-core, which delivers to subscribers. The
 direct module-to-module calls are `provisioning` and `equity` (in its optional directory mode) reading the people
-directory, which the platform's NetworkPolicies do not allow on a cluster.
+directory; can-core opens exactly those connections when both modules are enabled
+([specs/057](../specs/057-module-capability-wiring/spec.md)).
 
 **Events** are small JSON envelopes with ids only (no names or email addresses), published by a module to
 can-core (`POST /v1/events`, idempotent on `source_id`) and delivered at least once as HMAC-signed webhooks to

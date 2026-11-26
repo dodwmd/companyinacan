@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/modclient"
 	"github.com/dodwmd/companyinacan/core/obs"
 	obslog "github.com/dodwmd/companyinacan/core/obs/log"
@@ -99,6 +100,9 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	defer func() { _ = svc.Close() }()
+	if cfg.Directory.URL == "" {
+		log.Warn("attestation mode: accounts are not checked against a people directory; with the people module, consider modules.equity.settings.identity: directory in company.yaml (docs/equity.md)")
+	}
 	if time.Now().Before(until) {
 		log.Warn("break-glass is open: the service account may act without a person", "until", until.UTC().Format(time.RFC3339))
 	}
@@ -174,23 +178,8 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 // that only someone who controls the deployment can set it.
 const breakGlassEnv = "CAN_EQUITY_BREAK_GLASS_UNTIL"
 
-const maxBreakGlass = 7 * 24 * time.Hour
-
 func parseBreakGlass(v string, now time.Time) (time.Time, error) {
-	if v == "" {
-		return time.Time{}, nil
-	}
-	t, err := time.Parse(time.RFC3339, v)
-	if err != nil {
-		if t, err = time.Parse(dateLayout, v); err != nil {
-			return time.Time{}, fmt.Errorf("%s must be YYYY-MM-DD or an RFC 3339 time", breakGlassEnv)
-		}
-		t = t.AddDate(0, 0, 1)
-	}
-	if t.After(now.Add(maxBreakGlass)) {
-		return time.Time{}, fmt.Errorf("%s must end within 7 days from now (a date counts to its end, so at most 6 days from today): break-glass is for one task, not a mode", breakGlassEnv)
-	}
-	return t, nil
+	return config.ParseBreakGlass(breakGlassEnv, v, now)
 }
 
 // background expires lapsed grants, announces vesting and runs the retention sweep, and delivers events.

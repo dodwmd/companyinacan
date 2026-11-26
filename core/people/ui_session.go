@@ -69,7 +69,7 @@ func (u *UI) authenticateToken(r *http.Request, token string) (*Principal, error
 	req.RemoteAddr = r.RemoteAddr
 	req.Header.Set("Authorization", "Bearer "+token)
 	p, err := u.Auth.Authenticate(req)
-	if err != nil || p == nil {
+	if err != nil || p == nil || p.Lookup {
 		return nil, ErrUnauthenticated
 	}
 	return p, nil

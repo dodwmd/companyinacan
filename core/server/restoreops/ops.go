@@ -207,7 +207,8 @@ func (o *Ops) Apply(ctx context.Context, overwrite bool) (backup.ApplyReport, er
 				settings = ce.Settings
 			}
 			err = inst.Enable(ctx, reconcile.Spec{ID: m.ID, Version: man.Version, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount,
-				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain, CompanyName: co.Name})
+				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain, CompanyName: co.Name,
+				Links: m.Manifest.Runtime.Wired}) // connected as it was when it was backed up
 		}
 		switch {
 		case err == nil:

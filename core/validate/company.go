@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
@@ -148,6 +149,29 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		}
 		if r := m.Runtime.SiteRoute; r != nil && routing.SitePrefixes[id] != r.Path {
 			add("semantic.module-site-route", "/modules/"+id, fmt.Sprintf("module %q may not claim %s on the public site", id, r.Path))
+		}
+	}
+
+	if _, ok := manifests["equity"]; ok {
+		settings := c.Modules["equity"].Settings
+		_, people := manifests["people"]
+		st, err := config.ReadEquitySettings(settings)
+		if err != nil {
+			add("semantic.equity-settings", "/modules/equity/settings", "modules.equity.settings."+err.Error())
+		}
+		if _, err := config.ParseBreakGlass("modules.equity.settings."+config.SettingBreakGlass, st.BreakGlassUntil, time.Now()); err != nil {
+			add("semantic.equity-break-glass", "/modules/equity/settings/"+config.SettingBreakGlass, err.Error())
+		}
+		primary := c.Primary["directory"]
+		switch {
+		case st.Identity == config.IdentityDirectory && (!people || (primary != "" && primary != "people")):
+			// equity never falls back by itself: turning people off means saying so for equity too
+			add("semantic.equity-directory", "/modules/equity/settings/"+config.SettingIdentity,
+				"equity is set to identity: directory, which needs the people module enabled and providing the directory: enable people, or set modules.equity.settings.identity: attestation")
+		case st.Identity == config.IdentityAttestation && err == nil && people:
+			add("semantic.equity-identity", "/modules/equity",
+				"equity runs in attestation mode although the people module is enabled: consider modules.equity.settings.identity: directory (read docs/equity.md first: acting users need linked records)")
+			ps[len(ps)-1].Severity = problem.Warning
 		}
 	}
 
