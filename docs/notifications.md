@@ -80,6 +80,12 @@ holds for contract renewals too. A person is told about one P0 issue at most onc
 Overdue invoices and filings are checked hourly; the invoice check can be run now with
 `POST /v1/invoices/overdue-sweep` (finance admin; `as_of` not in the future).
 
+**After a restore.** finance marks the invoices already overdue and the renewals already due as
+announced, so nothing is repeated (the restore says how many; the same moment it switches customer
+payment reminders off, [finance.md](finance.md)). Entity filing deadlines are **not** held: a reminder
+point reached since the dump is announced again, summarised when more than five. A backup taken before
+this release behaves like the upgrade.
+
 **For event consumers.** `contract.expiring.v1` and `entity.filing.due.v1` now have two forms (the
 schema is a `oneOf`): the per-record one as before, or `{"count": n}` for a backlog.
 

@@ -34,6 +34,8 @@ reminders reached nobody.
   own per-module quota, never can-core's. A module opens at most 120 approvals an hour, 600 a day.
   `application.received` and `lead.created` are digested beyond five an hour. A rule on an event its
   module publishes ignores other publishers. A P0 is repeated to a person at most hourly.
+- **Restore.** `can-finance restore` marks what is already overdue or due for renewal as announced
+  (`core/modbackup/finance.go`). Filing reminders are not held: deadlines matter more than a repeat.
 - **Standalone entity.** Migration 005 also runs there: see docs/entity.md.
 - **Manifests.** Module versions and images are bumped (`core/modimages/images.txt`): finance, jobs,
   work 0.2.0; entity and board 0.2.0; people module 0.4.0 (image 0.2.0). New `publishes` entries and

@@ -1,12 +1,16 @@
 package finance
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modbackup"
 )
 
 // queued returns the data of the outbox events of one type, oldest first.
@@ -179,5 +183,47 @@ func TestRenewalBacklogIsOneEvent(t *testing.T) {
 	got := e.queued(EventContractExpiring)
 	if len(got) != 1 || len(got[0]) != 1 || got[0]["count"] != float64(summaryAbove+2) {
 		t.Fatalf("%v", got)
+	}
+}
+
+// A restored server does not repeat, or newly send, what was already overdue at the restore; what
+// falls due later is announced.
+func TestRestoreHoldsTheStaffReminders(t *testing.T) {
+	dir := t.TempDir()
+	src, dst := filepath.Join(dir, "src.db"), filepath.Join(dir, "dst.db")
+	// The restore works with the real clock: these dates are long past it, or far ahead of it.
+	e := newEnv(t, func(c *Config, _ *Options) { c.DBPath = src })
+	e.now = time.Date(2020, 1, 10, 9, 0, 0, 0, time.UTC)
+	maker := e.token("maker", []string{"finance.write"}, nil, nil, false)
+	party := e.party(adminTok, "Customer One", "customer")
+	for range summaryAbove + 3 {
+		e.dueToday(maker, party) // due 2020-01-10, never swept
+	}
+	var later Invoice
+	e.must(201, maker, "POST", "/v1/invoices", obj{"party_id": party, "lines": []obj{line("work", 1000, 100)}, "issue_date": "2020-01-10", "due_date": "2099-01-01"}, &later)
+	e.must(200, adminTok, "POST", "/v1/invoices/"+id(later.ID)+"/approve", nil, nil)
+
+	var out bytes.Buffer
+	set := t.TempDir()
+	for _, run := range [][]string{{"backup", src, "-out"}, {"restore", dst, "-from"}} {
+		cfg := filepath.Join(t.TempDir(), "finance.yaml")
+		if err := os.WriteFile(cfg, []byte("db_path: "+run[1]+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if code := modbackup.Main("can-finance", Migrations(), []string{run[0], "-config", cfg, run[2], set}, func(string) string { return "" }, &out, &out); code != 0 {
+			t.Fatalf("%s: %d %s", run[0], code, out.String())
+		}
+	}
+	if !strings.Contains(out.String(), "8 overdue invoice(s)") {
+		t.Fatalf("the restore does not say what it held: %s", out.String())
+	}
+	r := newEnv(t, func(c *Config, _ *Options) { c.DBPath = dst })
+	r.now = time.Date(2020, 2, 1, 9, 0, 0, 0, time.UTC)
+	if n := r.sweepOverdue("2020-02-01"); n != 0 || len(r.queued(EventInvoiceOverdue)) != 0 {
+		t.Fatalf("a restored server announced %d", n)
+	}
+	r.now = time.Date(2099, 2, 1, 9, 0, 0, 0, time.UTC)
+	if n := r.sweepOverdue("2099-02-01"); n != 1 {
+		t.Fatalf("what falls due later is announced: %d", n)
 	}
 }
