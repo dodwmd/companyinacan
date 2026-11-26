@@ -88,7 +88,7 @@ from a made-up one. The module then maps the permissions to its own model:
 |---|---|
 | work, finance, forms | the module's own permissions, directly |
 | jobs | the strongest role the permissions fully cover: every jobs permission including `jobs.admin`: admin (`jobs.admin` alone is refused); `jobs.read`, `jobs.write`, `ats.read`, `ats.write`, `ats.hire` recruiter; `jobs.read`, `ats.read`, `ats.write`, `ats.interview` hiring manager; `ats.interview` interviewer. Otherwise refused. |
-| people | `people.read` employee; plus `people.team.manage` (only the manifest's manager role carries it) manager; `people.write` hr; `people.admin` admin. A person is linked to a token by setting their `sso_subject` to `user:<username>`. Roles follow only from permissions that are present, so a token with a subset of someone's permissions never gets a role they lack. |
+| people | `people.read` employee; plus `people.team.manage` (only the manifest's manager role carries it) manager; `people.write` hr; `people.admin` admin. A person is linked to a token by setting their `sso_subject` to `user:<username>`; someone else sets it (nobody changes their own link; the first one is made with the people service token). Roles follow only from permissions that are present, so a token with a subset of someone's permissions never gets a role they lack. |
 
 A token never outlives its issuer's rights: at every introspection can-core checks that the issuing
 administrator still exists and intersects the token's permissions with what that administrator holds

@@ -523,10 +523,10 @@ func (s *Service) SetIdentity(ctx context.Context, a Actor, id string, in Identi
 		}
 		return nil
 	})
-	if err != nil {
-		return err
+	if errors.Is(err, ErrSeparation) {
+		s.auditDeny(ctx, a, "stakeholder.identity.write", "stakeholder:"+id, []string{FieldIdentity})
 	}
-	return nil
+	return err
 }
 
 func (s *Service) stakeholder(ctx context.Context, q querier, id string) (*Stakeholder, error) {
@@ -688,6 +688,9 @@ func (s *Service) AttestExternal(ctx context.Context, a Actor, id string) (*Stak
 		return err
 	})
 	if err != nil {
+		if errors.Is(err, ErrSeparation) {
+			s.auditDeny(ctx, a, "stakeholder.attest_external", "stakeholder:"+id, nil)
+		}
 		return nil, err
 	}
 	return s.stakeholder(ctx, s.db, id)

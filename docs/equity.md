@@ -38,8 +38,7 @@ currency. No floats anywhere.
 Roles come from the caller's token: `employee`, `manager`, `hr`, `finance`, `board`, `admin`. A caller
 with no known role is blocked. Deny by default: the single policy layer (`core/equity/policy.go`,
 `Decide` and `FieldAccess`) is the only place that looks at roles. An employee is linked to their own
-stakeholder record by the directory person id the token carries (`person_id` in the introspection
-answer); "own" means that link.
+stakeholder record by their directory person id ([Holder identity](#holder-identity)); "own" means that link.
 
 A caller who may not see a record gets 404 (no existence oracle); a caller who may see it but not do the
 action gets 403.
@@ -52,7 +51,7 @@ action gets 403.
 | Create, edit, submit, amend, cancel, terminate, activate grants | no | no | yes | no | no | yes |
 | Approve a grant (board step) | no | no | no | no | **yes** | no |
 | Entities, share classes, plans | no | no | read | read | write | write |
-| Create stakeholders, change identity | no | no | yes | yes | yes | yes |
+| Create, link, confirm and attest stakeholders, change identity | no | no | yes | yes | yes | yes |
 | Request an exercise | own | own | on behalf | on behalf | no | on behalf |
 | Approve or reject an exercise | no | no | no | yes | yes | yes |
 | Record exercise payment | no | no | no | yes | no | yes |
@@ -65,13 +64,10 @@ action gets 403.
 **Personal access tokens.** Installed under can-core (`CAN_API_URL`, `CAN_TOKEN_FILE`, `CAN_MODULE_ID`) the
 service also accepts can-core's personal access tokens. A token gets a role only when it carries **every**
 permission that role needs (`core/equity/canauth.go`): `hr`, `finance`, `admin`, or `employee`. It is **never**
-`board`, because the board's permissions are a subset of the admin's. It carries no `person_id`, so it has no
-self-service, and because the grantee separation-of-duties checks need one it is **refused** grant drafting and
-administration (create, edit, submit, amend, activate, cancel, terminate, milestones, acceleration) and
-exercise approval or rejection, payment and share issue. Those need the service account or an introspection
-endpoint that supplies `person_id`. Ledger entries and exercise requests are not covered by this refusal: share
-ledger writes have no holder separation-of-duties check for any caller that carries no `person_id`, personal access
-tokens included (see below).
+`board`, because the board's permissions are a subset of the admin's. In directory mode a token whose account
+the directory links to a person acts as that person, self-service and grant administration included. Without
+that link (always so in attestation mode) it has no self-service and is **refused** grant drafting and
+administration and exercise approval, rejection, payment and share issue.
 
 The can-core service-account token carries `hr`, `finance` and `admin`; never `board`. So the service
 account cannot approve a grant.
@@ -108,25 +104,45 @@ variant are one person.
   check on ledger writes, and it can apply only to a caller that carries a `person_id`: for every other caller
   (the service accounts, every can-core personal access token, an introspected token without the claim) there is
   **no** holder separation-of-duties check at all. A refused entry is audited.
-- **These two checks only stop the straightforward self-dealing case.** A stakeholder's `person_id` is not
-  verified: it is whatever was entered when the record was created, and a record need not have one. A second
-  record of one's own, one with no `person_id` or with a made-up one, gets around both, and no manual ledger write
-  needs a second person. A design with verified identities is follow-up work
-  ([epics backlog](epics/README.md#follow-ups)).
+- These checks compare person ids. What makes them mean something, and where they stop, is
+  [Holder identity](#holder-identity). Manual ledger writes need an established holder, which takes a second
+  actor once per holder record, not once per entry.
 - Nobody erases their own stakeholder record (`separation_of_duties`, audited): erasure removes the
   `person_id` these checks compare. After another administrator has erased it, the record has no link and the
   former holder is not recognised on it. Like the rest, this needs a caller with a `person_id`.
 - Facts that change what has vested (milestones, acceleration triggers, termination) need a second
   actor: not the person who created, edited, submitted or approved the grant. They are refused if dated
   before the grant's approval date, in the future, or more than 90 days back.
-- A grant cannot leave draft for a holder the service cannot tie to a person. The holder needs a
-  directory `person_id`, or an external-holder attestation (`POST /v1/stakeholders/{id}/attest-external`)
-  by someone other than the person who created the stakeholder, saying the holder is external and not a
-  director or approver. The attester joins the grantor chain and cannot approve the grant. The service
-  has no directory of the board's own subjects: for holders without a person link, the attestation is the
-  control, and it is only as good as the people making it.
+- A grant cannot leave draft, an exercise cannot be approved, paid or issued, and no manual ledger entry is
+  accepted, for a holder that is not **established**: confirmed as a directory person or attested as external
+  by a second actor. The confirmer joins the grantor chain and cannot approve the grant.
 - The same rules are repeated as database triggers (`migrations/002_immutability.sql`) so a bug in the
   service layer cannot bypass them.
+
+## Holder identity
+
+Specification and threat model: [`specs/051-holder-identity`](../specs/051-holder-identity/spec.md).
+
+| Mode | Configured by | Caller's person | A holder record is established by |
+|---|---|---|---|
+| directory | `directory.url` | the person whose `sso_subject` in the people directory is the caller's subject | `POST /v1/stakeholders/{id}/verify-person` (linked) or `/attest-external` (no link), by a second actor |
+| attestation | no `directory.url` | the introspection claim, if any; none for tokens | `/attest-external` by a second actor; a `person_id` proves nothing |
+
+- Directory mode: a `person_id` must exist in the directory; `PUT /v1/stakeholders/{id}/person` links or
+  relinks (never to or away from oneself); actions about people need a linked caller (403
+  `identity_required`); with the directory unreachable they answer 503 `directory_unavailable`.
+- The second actor is not whoever created the record, linked it or last set its identity. A holder may
+  confirm their own linked record when other people (not the service account) created and linked it.
+- Changing the identity or the link clears the confirmation and attestation.
+- `GET /v1/identity/review` (and `can-equity identity-report`) lists unestablished records;
+  `GET /v1/me/identity` shows what the service concluded about the caller.
+- **After upgrading, every existing record is unestablished.** Nothing is lost and reads are unchanged, but
+  grants leaving draft, exercises and ledger entries wait until each holder is confirmed or attested.
+- **Break-glass** for a single-administrator company or recovery:
+  `CAN_EQUITY_BREAK_GLASS_UNTIL=YYYY-MM-DD` (at most 7 days ahead) on the process, restart, use the service
+  account token, remove it. Each use is audited as `break_glass:<action>`.
+- **can-core does not wire directory mode yet** (no NetworkPolicy from equity to people, no generated
+  directory token): configure it by hand where equity can reach people, or run in attestation mode.
 
 ## Grant lifecycle and immutability
 
@@ -310,17 +326,19 @@ keyring_file: /etc/can-equity/keys/keyring   # required
 webhook: { url: "" }                          # can-core event endpoint; needs CAN_EQUITY_WEBHOOK_SECRET
 introspect: { url: "", allow_insecure_http: false }
 retention: { equity-stakeholder: 7y, equity-grants: 7y, equity-valuation: 7y }
+directory: { url: "", allow_insecure_http: false }   # the people module's API; empty = attestation mode
 ```
 
 Environment: `CAN_EQUITY_API_TOKEN` (at least 24 characters, the service account), `CAN_EQUITY_WEBHOOK_SECRET`,
-`CAN_EQUITY_INTROSPECT_TOKEN`, optional `CAN_EQUITY_CONFIG`, `CAN_EQUITY_KEY_FILE`. The introspection
+`CAN_EQUITY_INTROSPECT_TOKEN`, `CAN_EQUITY_DIRECTORY_TOKEN` (with `directory.url`: a people token with
+`people.read` and `people.write`), optional `CAN_EQUITY_BREAK_GLASS_UNTIL`, `CAN_EQUITY_CONFIG`, `CAN_EQUITY_KEY_FILE`. The introspection
 endpoint answers `{active, subject, roles, person_id}`; unknown roles are dropped and a malformed
 `person_id` fails the request. Failed authentications are rate limited per address; a request with a
 valid credential is never refused because of what else the same address sent. Request bodies are
 limited to 64 KiB and strict JSON; database work has deadlines and list sizes are capped.
 
 Commands: `can-equity serve | check-config | healthcheck | rotate-keys | retention | verify-audit |
-purge -subject <stk id> -class <class|all> | version`.
+identity-report | purge -subject <stk id> -class <class|all> | version`.
 
 Create endpoints that make records (grants, exercises, ledger entries) honour an `Idempotency-Key`
 header: the same key and body replays the first result (200), the same key with another body is a 409.
@@ -346,25 +364,17 @@ The table stores resource ids only, so a replay re-reads the record under the ca
 
 ## Residual separation-of-duties limits
 
-- **Identity contract.** The grantee checks compare the caller's directory person id with the holder's.
-  Human `hr`, `board` and `admin` tokens must therefore carry a `person_id` claim from the identity
-  provider (the introspection answer). The service does not require it, because the can-core service
-  account legitimately has none and fails closed would break it; a human token without `person_id` is
-  checked by subject only. This is an explicit IdP contract: issue `person_id` to every human who also
-  holds equity. can-core personal access tokens carry no `person_id`, so they are refused the grant and
-  exercise actions above. Share ledger writes are different: they are refused only when the caller's `person_id`
-  is a holder's, so no caller without a `person_id` gets any holder separation-of-duties check on them, whether a
-  personal access token, a service account or a human token. Do not give ledger permissions to such a caller
-  when its owner also holds equity. The same goes for erasure: a caller without a `person_id` is not recognised
-  as the holder.
-- **`person_id` is unverified.** Nothing checks a stakeholder's `person_id` against a directory, so every check
-  that compares it can be sidestepped by whoever can create stakeholder records: a second record, or a made-up
-  id. They are guards against mistakes and the straightforward case, not against a determined insider.
-- **One human, two subjects.** Subjects are compared after folding, but two different subjects for the
-  same human (a personal and an admin account) are two people to the service unless both carry the same
-  `person_id`.
-- **Attestation is not re-validated.** An external-holder attestation stays in force when the identity is
-  later replaced with `PUT /identity`; it attests a stakeholder record, not a name.
+- **Two people are enough.** Collusion, or a confirmer who does not read what they confirm, passes every check.
+- **One confirmation covers all later ledger entries** to that record.
+- **The directory is trusted.** Whoever can edit it (or holds the people service token, or equity's own
+  directory token) can invent persons and link accounts; with the power to create accounts that is two actors.
+- **Attestation mode** does not connect accounts to holders: a holder can write their own ledger entries once
+  someone else attested the record, and can attest a record of their own that someone else entered. The service
+  account runs grants and ledger writes on established holders there. Human `hr`, `board` and `admin` tokens
+  should carry a `person_id` claim from the identity provider, or they are checked by subject only.
+- **One human, two subjects.** In directory mode the directory links one account per person and an unlinked
+  account cannot act; in attestation mode two accounts of one human are two people.
+- **Deployment control** (environment, secrets, the database file) defeats all of it.
 - **Triggers are not access control.** The database triggers repeat the rules for bugs in the service, not
   for someone with write access to the SQLite file, who can drop them. Keep the file out of reach and keep
   a copy of the audit chain head elsewhere.
