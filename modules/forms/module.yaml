@@ -10,7 +10,7 @@ category: sales
 # counting as one character against max_length. 0.2.0: leads.erase, forms:admin, lead.erased.v1.
 # A new version makes `apply` record the manifest again and upgrade the release; the image tag in the
 # chart changes with it, so that the pod is replaced.
-# 0.4.0: consent checkboxes (specs/067-lead-adapters).
+# 0.4.0: consent checkboxes (specs/069-lead-adapters).
 version: 0.4.0
 provider:
   type: inhouse

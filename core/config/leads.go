@@ -1,6 +1,6 @@
 package config
 
-// Which website leads can-core hands to which module (specs/067-lead-adapters). One reading of
+// Which website leads can-core hands to which module (specs/069-lead-adapters). One reading of
 // company.yaml serves `can validate`, the installer and the adapters.
 
 import (

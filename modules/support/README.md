@@ -35,7 +35,7 @@ modules:
 ```
 
 Each lead of a named form becomes a conversation in that mailbox, from the address the visitor typed (**not
-verified**; no automatic reply is sent). can-core hands it over ([specs/067](../../specs/067-lead-adapters/spec.md)):
+verified**; no automatic reply is sent). can-core hands it over ([specs/069](../../specs/069-lead-adapters/spec.md)):
 failures are retried and listed in the admin UI under Events, where a dead one can be requeued. FreeScout has no API
 here, so the chart runs a listener inside the pod (port 8081, in-cluster only, requests signed by can-core).
 

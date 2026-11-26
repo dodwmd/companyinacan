@@ -117,7 +117,7 @@ and introspected through can-core (`leads.read`, `leads.write`, `leads.erase`). 
 A field of type `consent` (with a `label`: the wording) is an unticked checkbox on the hosted page. It cannot be
 required. Only `yes` or `on` count, and the lead records the field name in `consents`. For the shipped contact form,
 set `modules.forms.settings.newsletter_consent: {text: "..."}` in `company.yaml`; the newsletter module subscribes
-only such senders ([specs/067](../../specs/067-lead-adapters/spec.md)). A page of your own must show the box
+only such senders ([specs/069](../../specs/069-lead-adapters/spec.md)). A page of your own must show the box
 unticked and send `newsletter=yes` when it is ticked. The wording is not stored with the lead.
 
 ## Erasure requests

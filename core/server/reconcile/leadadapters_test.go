@@ -10,7 +10,7 @@ import (
 )
 
 // An installation from before the lead adapters is not given leads by an unattended upgrade: the
-// shipped manifests widen it, so the upgrade waits for approval (specs/067-lead-adapters).
+// shipped manifests widen it, so the upgrade waits for approval (specs/069-lead-adapters).
 func TestLeadAdaptersWaitForApproval(t *testing.T) {
 	for _, id := range []string{"support", "newsletter"} {
 		md, ps := validate.LoadManifest("../../../modules/" + id + "/module.yaml")

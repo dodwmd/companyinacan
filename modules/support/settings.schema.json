@@ -33,7 +33,7 @@
         }
       }
     },
-    "tickets_from_forms": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$"}, "default": [], "description": "Form ids whose submissions become conversations in the support mailbox (specs/067-lead-adapters). An empty list takes no new lead and still carries out erasures.", "x-can": {"value": "app.ticketsFromForms", "widens": "added", "unset": [], "risk": "can-core sends the names, addresses and messages of this form's new leads to the helpdesk"}},
+    "tickets_from_forms": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$"}, "default": [], "description": "Form ids whose submissions become conversations in the support mailbox (specs/069-lead-adapters). An empty list takes no new lead and still carries out erasures.", "x-can": {"value": "app.ticketsFromForms", "widens": "added", "unset": [], "risk": "can-core sends the names, addresses and messages of this form's new leads to the helpdesk"}},
     "retention_days": {"type": "integer", "minimum": 30, "default": 1095, "description": "Matches the support-conversation data class (3y).", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}}
   }
 }

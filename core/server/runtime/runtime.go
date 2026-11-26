@@ -334,7 +334,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		log.Warn("apps: " + w)
 	}
 	leads := &adminui.HTTPLeads{Resolver: reg, Token: cfg.leadsToken(reg, log)}
-	// Website leads to the modules company.yaml names (specs/067-lead-adapters).
+	// Website leads to the modules company.yaml names (specs/069-lead-adapters).
 	var companyStore atomic.Pointer[modmgr.CompanyStore]
 	adapters := cfg.newLeadAdapter(db, al, leads, &companyStore, log)
 	disp.Adapter, bus.Extra = adapters.Deliver, adapters.Targets

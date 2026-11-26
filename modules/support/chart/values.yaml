@@ -29,7 +29,7 @@ mail:                      # filled by can-core from the settings it could valid
   name: ""
   imapWanted: false
   invalid: ""              # why nothing is applied
-leadIntake:                # website leads become conversations (specs/067-lead-adapters); the listener runs once
+leadIntake:                # website leads become conversations (specs/069-lead-adapters); the listener runs once
                            # can-core sets app.ticketsFromForms from modules.support.settings.tickets_from_forms
   port: 8081               # in-cluster only; no route ever reaches it
 resources:

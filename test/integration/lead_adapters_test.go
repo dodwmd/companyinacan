@@ -2,7 +2,7 @@
 
 package integration
 
-// specs/067-lead-adapters: website leads on a real cluster, through can-core, to the pinned FreeScout
+// specs/069-lead-adapters: website leads on a real cluster, through can-core, to the pinned FreeScout
 // and Listmonk images, with the in-memory mail server of dev/mailsink. It proves that
 //
 //   - a lead from the hosted contact form becomes a support conversation, with no automatic reply;

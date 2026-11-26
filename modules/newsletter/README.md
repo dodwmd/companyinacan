@@ -3,7 +3,7 @@
 > **Status: experimental.** Installed through can-core on k3d in the advisory `wrapped-modules` CI job
 > ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or mail relay. The `newsletter`
 > capability is marked `planned` (adapter not built, T031); website leads are subscribed by can-core
-> ([specs/067](../../specs/067-lead-adapters/spec.md)). The
+> ([specs/069](../../specs/069-lead-adapters/spec.md)). The
 > **SMTP/bulk-relay settings are manual**: enter the relay in Listmonk Settings, SMTP. can-core gives
 > this module no mail credentials.
 
@@ -60,7 +60,7 @@ until they follow the link in the confirmation mail. A list that is not public a
 
 Deliveries and their errors are in the admin UI under Events; a dead one can be requeued once the cause is fixed.
 Erasing a lead deletes the subscriber that lead created. A subscriber who was there before is **not** deleted
-(audit: `lead.copy_kept`); erase them in Listmonk. All limits: [specs/067](../../specs/067-lead-adapters/spec.md#limits).
+(audit: `lead.copy_kept`); erase them in Listmonk. All limits: [specs/069](../../specs/069-lead-adapters/spec.md#limits).
 
 Adding a form to `subscribe_from_forms` on an installed module **waits for your approval**, as does an unattended
 upgrade from 0.1.0: can-core may then send the module personal data of leads. Nothing is sent before it is approved;

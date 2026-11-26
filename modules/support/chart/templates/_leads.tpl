@@ -1,5 +1,5 @@
 {{- /*
-Website leads become conversations (specs/067-lead-adapters). FreeScout has no API in its free
+Website leads become conversations (specs/069-lead-adapters). FreeScout has no API in its free
 core, so this listener runs beside it, inside the pod, with FreeScout's own models. can-core is its
 only intended caller: no route reaches the port, and every request must carry can-core's signature
 made with this module's webhook secret. Nothing a request holds is written to a log: an error is

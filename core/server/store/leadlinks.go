@@ -2,7 +2,7 @@ package store
 
 import "context"
 
-// LeadLink is what an adapter made from one lead (specs/067-lead-adapters). Ids only.
+// LeadLink is what an adapter made from one lead (specs/069-lead-adapters). Ids only.
 type LeadLink struct {
 	ModuleID, LeadID string
 	// Ref is the application's own id of the record, "" while it is not known.

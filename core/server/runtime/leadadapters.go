@@ -1,6 +1,6 @@
 package runtime
 
-// The lead adapters' connections to can-core (specs/067-lead-adapters).
+// The lead adapters' connections to can-core (specs/069-lead-adapters).
 
 import (
 	"context"

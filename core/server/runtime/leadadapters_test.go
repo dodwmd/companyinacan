@@ -10,7 +10,7 @@ import (
 )
 
 // Only what the installed module was given is handed over: a form added to company.yaml behind a
-// held upgrade is not, and one taken out stops before any upgrade (specs/067-lead-adapters).
+// held upgrade is not, and one taken out stops before any upgrade (specs/069-lead-adapters).
 func TestInstalledIntake(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.Open(ctx, t.TempDir()+"/state.db")

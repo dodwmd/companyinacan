@@ -1,6 +1,6 @@
 name: lead-adapters
 
-# Website leads to the support inbox and the newsletter (specs/067-lead-adapters): forms, support
+# Website leads to the support inbox and the newsletter (specs/069-lead-adapters): forms, support
 # (FreeScout) and newsletter (Listmonk), from the images pinned in their charts, installed through
 # can-core on a throw-away k3d cluster with an in-memory mail server (dev/mailsink). Not a required
 # check, and a failure fails the job. No real mail provider is involved.

@@ -1,5 +1,5 @@
 // Package leadadapter hands website leads to the modules company.yaml names and takes them back
-// when a lead is erased (specs/067-lead-adapters). It is driven by the event outbox: a delivery
+// when a lead is erased (specs/069-lead-adapters). It is driven by the event outbox: a delivery
 // that fails is retried with backoff, dead-lettered, shown in the admin UI and can be requeued.
 //
 // The events carry ids only. The adapter reads the lead from the forms module when it delivers, and

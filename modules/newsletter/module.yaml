@@ -9,7 +9,7 @@ category: marketing
 # adapter is not built (T031), and the SMTP settings are MANUAL: paste the relay credentials into
 # Listmonk Settings, SMTP (Listmonk keeps them in its database; can-core does not give it any).
 status: experimental
-# 0.2.0: website leads with consent are subscribed, double opt-in (specs/067-lead-adapters).
+# 0.2.0: website leads with consent are subscribed, double opt-in (specs/069-lead-adapters).
 version: 0.2.0
 provider:
   type: oss-wrapper

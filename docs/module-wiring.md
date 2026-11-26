@@ -359,7 +359,7 @@ through can-core only.
 | Event | From | To | What happens |
 |---|---|---|---|
 | `lead.created.v1` | forms | notification rule `role:sales` | an inbox item for people holding `forms:sales`. The event carries ids only: no name, e-mail address or message. |
-| `lead.created.v1`, `lead.erased.v1` | forms | support, newsletter, through an adapter in can-core | only for forms company.yaml names: a conversation, or a double opt-in subscription with consent; the erasure removes or notes it ([specs/067](../specs/067-lead-adapters/spec.md)). |
+| `lead.created.v1`, `lead.erased.v1` | forms | support, newsletter, through an adapter in can-core | only for forms company.yaml names: a conversation, or a double opt-in subscription with consent; the erasure removes or notes it ([specs/069](../specs/069-lead-adapters/spec.md)). |
 | `candidate.hired.v1` | jobs | people | a person in onboarding ("New hire" and the candidate id: the event has no personal data, HR fills in the details) and the onboarding checklist, once per candidate; a default template is created if none starts on onboarding |
 | `approval.decided.v1` | can-core | jobs, finance | the decision of a requisition or invoice request, delivered only to the module that asked |
 | `person.*` | people | any subscriber | a person on leave is `active` in every event and no event is published for the change |

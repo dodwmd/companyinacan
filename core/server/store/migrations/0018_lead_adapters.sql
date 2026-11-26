@@ -1,4 +1,4 @@
--- Lead adapters (specs/067-lead-adapters). `via` marks a subscription served by an adapter inside
+-- Lead adapters (specs/069-lead-adapters). `via` marks a subscription served by an adapter inside
 -- can-core. lead_links records what an adapter made from a lead, so that erasing the lead can undo
 -- it. Ids only: no name, address or message is ever stored here.
 ALTER TABLE subscriptions ADD COLUMN via TEXT NOT NULL DEFAULT '';

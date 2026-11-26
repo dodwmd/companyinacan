@@ -8,7 +8,7 @@ category: support
 # never on a real server, domain, mail relay or mail provider (mail is tested against an in-cluster fake, specs/059);
 # the `tickets` adapter is not built (T030). The image is a third party build of FreeScout (PikaPods).
 status: experimental
-# 0.3.0: website leads become conversations (specs/067-lead-adapters).
+# 0.3.0: website leads become conversations (specs/069-lead-adapters).
 version: 0.3.0
 provider:
   type: oss-wrapper

@@ -78,7 +78,7 @@ type Module struct {
 		Webhook string `yaml:"webhook"`
 		Status  string `yaml:"status"` // available (default) or planned
 		// Via says who takes the delivery: "" the module's own webhook, "can-core" an adapter
-		// inside can-core that calls the module (specs/067-lead-adapters).
+		// inside can-core that calls the module (specs/069-lead-adapters).
 		Via string `yaml:"via" json:",omitempty"`
 	} `yaml:"subscribes"`
 	// Hooks are the lifecycle scripts the module ships (schema module.v1 hooks).
