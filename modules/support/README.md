@@ -15,7 +15,7 @@ provides the `tickets` capability and publishes `ticket.created.v1`.
 |---|---|
 | Licence | AGPL-3.0 (`AGPL-3.0-only` in SPDX). Network copyleft: see [modules/README.md](../README.md#licences-and-network-copyleft). We run it unmodified. |
 | Image | `pikapods/docker-freescout:1.8.252-r2`, pinned by digest. FreeScout publishes no image: this is a **third party** build, non-root, **amd64 only** |
-| Footprint | 192 MB request, 672 MB limit, 2 GiB disk. Measured 63 to 66 MiB idle on k3d, 90 to 115 MB locally and 140 MB while migrating, plus the shared Postgres (35 to 50 MB) |
+| Footprint | 192 MB request, 672 MB limit, 2 GiB disk. Measured 63 to 86 MiB idle on k3d over two runs, 90 to 115 MB locally and 140 MB while migrating, plus the shared Postgres (35 to 50 MB) |
 | Database | Postgres (can-core's shared server in `can-data`, own database and role) |
 | Public host | `support.<domain>` (the whole app, including its sign-in page) |
 | Sign in | `admin@<domain>` (setting `admin_email`, used on the first start only); password below |

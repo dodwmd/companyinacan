@@ -78,5 +78,9 @@ Not the ten settled minutes the module catalogue asks for before a module may be
 Rollout times include the image pull on a fast network; a small server will be slower, and the
 installer removes and retries a rollout that takes more than five minutes.
 
+A later run of the same job (run 45745208703, commit 7fd4821: relay opted in, module routing merged)
+read analytics 25 to 35 MiB, support **85 to 86 MiB**, newsletter 29 MiB and Postgres 35 to 36 MiB. The
+figures vary between runs; plan with the higher ones.
+
 The manifests keep headroom above these figures (64, 192, 50 MB): the local runs on a larger machine
 read higher (R3), and none of them had real data or traffic.

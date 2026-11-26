@@ -43,9 +43,9 @@ image is published ([backup-restore.md](backup-restore.md)).
 
 | Module | Wraps | Status | RAM (MB) | Licence | Capability | Notes |
 |---|---|---|---|---|---|---|
-| `support` | FreeScout | experimental | 192 | AGPL-3.0-only | `tickets` | Third-party non-root image (PikaPods); Postgres; admin password generated; relay applied to system mail only, mailboxes (in and out) configured by hand; 63 to 66 MiB idle measured on k3d |
-| `newsletter` | Listmonk | experimental | 50 | AGPL-3.0-only | `newsletter` | Upstream image; Postgres; admin password generated; SMTP settings manual; 26 to 27 MiB idle measured on k3d |
-| `analytics` | GoatCounter | experimental | 64 | EUPL-1.2 | `analytics` | Upstream image; SQLite; first site and user created with a generated password; 26 to 33 MiB idle measured on k3d |
+| `support` | FreeScout | experimental | 192 | AGPL-3.0-only | `tickets` | Third-party non-root image (PikaPods); Postgres; admin password generated; relay applied to system mail only, mailboxes (in and out) configured by hand; 63 to 86 MiB idle measured on k3d |
+| `newsletter` | Listmonk | experimental | 50 | AGPL-3.0-only | `newsletter` | Upstream image; Postgres; admin password generated; SMTP settings manual; 26 to 29 MiB idle measured on k3d |
+| `analytics` | GoatCounter | experimental | 64 | EUPL-1.2 | `analytics` | Upstream image; SQLite; first site and user created with a generated password; 25 to 35 MiB idle measured on k3d |
 | `wiki` | DokuWiki | experimental | 64 | GPL-2.0-only | `wiki` | No database (flat files); upstream documents a non-root uid; "only" vs "or later" unverified; heavier alternative BookStack (MIT) |
 | `crm` | EspoCRM | not-deployable | 350 | AGPL-3.0-only | `crm` | MariaDB; official image serves port 80 and names no non-root user; `lead.created.v1` subscription planned; personal data, erasure documented |
 | `status` | Uptime Kuma | experimental | 128 | MIT | `status` | SQLite; rootless image tag seen on Docker Hub, not run; only public status paths are routed, admin not exposed |

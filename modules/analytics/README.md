@@ -15,7 +15,7 @@ Cookie-free web analytics for the company site. Wraps [GoatCounter](https://gith
 |---|---|
 | Licence | EUPL-1.2. Network copyleft: see [modules/README.md](../README.md#licences-and-network-copyleft). We run it unmodified. |
 | Image | `arp242/goatcounter:2.7.0` (upstream), pinned by digest |
-| Footprint | 64 MB request, 160 MB limit, 1 GiB disk. Measured 26 to 33 MiB idle on k3d, about 41 MB locally (SPEC.md estimated 20 MB) |
+| Footprint | 64 MB request, 160 MB limit, 1 GiB disk. Measured 25 to 35 MiB idle on k3d, about 41 MB locally (SPEC.md estimated 20 MB) |
 | Database | SQLite file on the module's PVC (`/data/goatcounter.sqlite3`), so no shared database is needed |
 | Public host | `stats.<domain>` (dashboard, and `/count` for the tracker) |
 | Capability | `analytics` (`schemas/capabilities/analytics.v1.json`), served by `analytics-adapter` (:8081, off until the adapter image exists) |
