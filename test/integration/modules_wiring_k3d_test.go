@@ -42,13 +42,14 @@ func wiringCompany(t *testing.T, equitySettings string, without ...string) strin
 const asksDirectory = "identity: directory"
 
 // applyOutput runs `can apply` and returns what it said, whether or not it succeeded.
-func applyOutput(t *testing.T, companyYAML string) (string, error) {
+func applyOutput(t *testing.T, companyYAML string, extra ...string) (string, error) {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/company.yaml", []byte(companyYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "run", "./cmd/can", "apply", dir, "--modules-dir", "modules", "--context", kubeContext(), "--skip-image-check") //nolint:gosec // test helper
+	args := append([]string{"run", "./cmd/can", "apply", dir, "--modules-dir", "modules", "--context", kubeContext(), "--skip-image-check"}, extra...)
+	cmd := exec.Command("go", args...) //nolint:gosec // test helper
 	cmd.Dir = repoRoot(t)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -59,6 +60,26 @@ func mustApply(t *testing.T, companyYAML, says string) {
 	out, err := applyOutput(t, companyYAML)
 	if err != nil || !strings.Contains(out, says) {
 		t.Fatalf("can apply: %v, want %q in:\n%s", err, says, out)
+	}
+}
+
+var approvalRe = regexp.MustCompile(`can apply --approve equity=([0-9a-f]{16})`)
+
+// mustApplyApproved applies a change of equity's connections or modes, which waits for approval:
+// the plan shows what is newly allowed and the code, and the apply that gives it says `says`. The
+// plan is read until it lists `allows`: can-core records the previous apply only once its rollout
+// is over, which is a little after the pods the test waited for.
+func mustApplyApproved(t *testing.T, companyYAML, allows, says string) {
+	t.Helper()
+	var m []string
+	eventually(t, 3*time.Minute, "can apply --plan to ask approval for equity: "+allows, func() (bool, string) {
+		plan, err := applyOutput(t, companyYAML, "--plan")
+		m = approvalRe.FindStringSubmatch(plan)
+		return err == nil && m != nil && strings.Contains(plan, "newly allowed: "+allows), plan
+	})
+	out, err := applyOutput(t, companyYAML, "--approve", "equity="+m[1])
+	if err != nil || !strings.Contains(out, says) {
+		t.Fatalf("can apply --approve: %v, want %q in:\n%s", err, says, out)
 	}
 }
 
@@ -199,7 +220,7 @@ func TestModuleWiringOnK3d(t *testing.T) {
 	if hasPolicy("mod-equity", "can-wire-to-people") || strings.Contains(equityObject("configmap", "equity-config", ".data"), "directory:") {
 		t.Fatal("equity was connected without identity: directory")
 	}
-	mustApply(t, wiringCompany(t, asksDirectory), "note: equity verifies holders (directory mode)")
+	mustApplyApproved(t, wiringCompany(t, asksDirectory), "connects to people", "note: equity verifies holders (directory mode)")
 	for _, p := range [][2]string{{"mod-equity", "can-wire-to-people"}, {"mod-people", "can-wire-from-equity"}, {"mod-provisioning", "can-wire-to-people"}, {"mod-people", "can-wire-from-provisioning"}} {
 		eventually(t, 3*time.Minute, p[0]+"/"+p[1], func() (bool, string) { return hasPolicy(p[0], p[1]), "missing" })
 	}
@@ -355,7 +376,7 @@ spec:
 		if out, err := applyOutput(t, wiringCompany(t, asksDirectory, "people", "provisioning")); err == nil || !strings.Contains(out, "semantic.equity-directory") {
 			t.Fatalf("people was disabled under equity's directory mode: %v\n%s", err, out)
 		}
-		mustApply(t, wiringCompany(t, "identity: attestation", "people", "provisioning"), "note: equity returns to attestation mode")
+		mustApplyApproved(t, wiringCompany(t, "identity: attestation", "people", "provisioning"), "disconnects from people", "note: equity returns to attestation mode")
 		eventually(t, 4*time.Minute, "every connection to be removed", func() (bool, string) {
 			left, err := kubectl("get", "networkpolicy", "-A", "-l", "can.dev/wire", "-o", "name")
 			return err == nil && left == "", left
@@ -369,7 +390,7 @@ spec:
 
 		// Opting in again reconnects it, with a break-glass window from company.yaml.
 		tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
-		mustApply(t, wiringCompany(t, asksDirectory+`, break_glass_until: "`+tomorrow+`"`, "provisioning"), "note: equity break-glass until "+tomorrow)
+		mustApplyApproved(t, wiringCompany(t, asksDirectory+`, break_glass_until: "`+tomorrow+`"`, "provisioning"), "connects to people", "note: equity break-glass until "+tomorrow)
 		eventually(t, 5*time.Minute, "equity to be connected again, with break-glass", func() (bool, string) {
 			conf := equityObject("configmap", "equity-config", ".data")
 			env := equityObject("deploy", "equity", ".spec.template.spec.containers[0].env")

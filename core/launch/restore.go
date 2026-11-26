@@ -53,6 +53,14 @@ func (c *RestoreCluster) image() string {
 	return c.Images.Ref(ImageCore)
 }
 
+// imageSHA is the tarball checksum that goes with image(), "" when the image was given by name.
+func (c *RestoreCluster) imageSHA() string {
+	if c.CoreImage != "" {
+		return ""
+	}
+	return c.Images.Images[ImageCore].SHA256
+}
+
 func lines(s string) []string {
 	var out []string
 	for _, l := range strings.Split(s, "\n") {
@@ -170,7 +178,7 @@ func (c *RestoreCluster) Start(ctx context.Context, o backup.StartOptions) error
 	if err != nil {
 		return err
 	}
-	c.core = CoreOptions{Image: c.image(), CompanyName: name, Domain: domain, CookieSecure: true, RestoreID: o.ID}
+	c.core = CoreOptions{Image: c.image(), ImageSHA256: c.imageSHA(), CompanyName: name, Domain: domain, CookieSecure: true, RestoreID: o.ID}
 	if o.Overwrite {
 		c.core.RestoreOverwrite = o.ID
 	}
@@ -384,7 +392,7 @@ func (c *RestoreCluster) Complete(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		c.core = CoreOptions{Image: c.image(), CompanyName: name, Domain: domain, CookieSecure: true}
+		c.core = CoreOptions{Image: c.image(), ImageSHA256: c.imageSHA(), CompanyName: name, Domain: domain, CookieSecure: true}
 	}
 	c.core.RestoreID, c.core.RestoreOverwrite = "", ""
 	manifests, err := CoreManifests(c.core)

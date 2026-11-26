@@ -82,6 +82,44 @@ func linkedHash(hash string, ls []config.Link) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// linkWidening is what an upgrade's connections and equity's modes newly allow or stop checking: a
+// new connection (network access and a credential of another module), leaving a mode the company
+// had opted into, and a new break-glass window.
+func linkWidening(d Desired, id string, recorded store.Module, wanted []config.Link) []string {
+	had := recorded.Manifest.Runtime.Wired
+	var out []string
+	// Also a provider that has failed: if this apply brings it back, the consumer is connected.
+	for _, l := range links(d, nil, id, true) {
+		if g, ok := modsecrets.GrantFor(id, l.Provider); ok && !linksTo(had, l.Provider) {
+			out = append(out, "connects to "+l.Provider+": "+g.Gains)
+		}
+	}
+	for _, l := range had {
+		if g, ok := modsecrets.GrantFor(id, l.Provider); ok && g.OptInKey != "" && !linksTo(wanted, l.Provider) {
+			out = append(out, "disconnects from "+l.Provider+": "+g.Loses)
+		}
+	}
+	if until := breakGlass(d, id); until != "" {
+		var was Applied
+		if json.Unmarshal([]byte(recorded.Applied), &was) != nil || was.BreakGlass != until {
+			out = append(out, "equity break-glass until "+until+": its service account may act without a person")
+		}
+	}
+	return out
+}
+
+// breakGlass is the end of equity's break-glass window in company.yaml, "" for none.
+func breakGlass(d Desired, id string) string {
+	if id != "equity" {
+		return ""
+	}
+	st, err := config.ReadEquitySettings(d.Company.Modules[id].Settings)
+	if err != nil {
+		return ""
+	}
+	return st.BreakGlassUntil
+}
+
 // linkNote says what a step changes about a module's connections ("" for nothing).
 func linkNote(consumer string, had, want []config.Link) string {
 	var out []string

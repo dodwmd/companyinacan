@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/dumps"
 	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -68,12 +70,29 @@ func recordedManifest(modulesDir string, m store.Module) config.Module {
 	// to match what was installed.
 	// A wrapped module recorded with the scripts of the unpublished hooks image is dumped by
 	// can-core as the shipped manifest says (specs/046-wrapped-backups).
+	// While an upgrade is held the installed image is the old one: it may lack a subcommand the
+	// shipped manifest names. What can-core dumps itself (builtin) does not depend on the image.
+	_, held := reconcile.ParsePending(m.Pending)
 	shipped, err := config.DecodeModule(doc)
 	if err == nil && shipped.Provider.Name == man.Provider.Name &&
-		(shipped.Hooks.Builtin != nil || man.Hooks.Backup == "" && shipped.Hooks.Command != "") {
+		(shipped.Hooks.Builtin != nil || !held && man.Hooks.Backup == "" && shipped.Hooks.Command != "") {
 		man.Hooks = shipped.Hooks
 	}
 	return man
+}
+
+// installedScript is the hook script recorded for a module whose running release is not the shipped
+// one: its upgrade is held or failed. Records made before scripts were kept have none.
+func installedScript(m store.Module, rel string) (string, bool) {
+	if _, held := reconcile.ParsePending(m.Pending); !held && m.LastError == "" {
+		return "", false
+	}
+	var c reconcile.Content
+	if json.Unmarshal([]byte(m.Content), &c) != nil {
+		return "", false
+	}
+	s, ok := c.Scripts[rel]
+	return s, ok
 }
 
 // backupModules lists every recorded module that has a backup hook, whatever its state: a
@@ -104,6 +123,13 @@ func (c Config) kubeHooks(api kube.API, db *store.DB) *dumps.KubeHooks {
 			}
 			man := recordedManifest(c.ModulesDir, m)
 			return &man, nil
+		},
+		Installed: func(ctx context.Context, id, rel string) (string, bool) {
+			m, err := db.GetModule(ctx, id)
+			if err != nil {
+				return "", false
+			}
+			return installedScript(m, rel)
 		}}
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/modsecrets"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -30,7 +31,8 @@ func secretsCmd(getenv func(string) string) *cobra.Command {
 		}
 		defer func() { _ = d.Close() }()
 		module, key := args[0], args[1]
-		if _, err := d.GetModule(c.Context(), module); errors.Is(err, store.ErrNotFound) {
+		rec, err := d.GetModule(c.Context(), module)
+		if errors.Is(err, store.ErrNotFound) {
 			return fail("no installed module %q", module)
 		} else if err != nil {
 			return fail("%v", err)
@@ -43,6 +45,9 @@ func secretsCmd(getenv func(string) string) *cobra.Command {
 		}
 		if _, err := audit.New(d).Append(c.Context(), audit.Entry{Actor: "cli", Action: "secret.rotate.request", Target: module, Detail: map[string]any{"key": key}}); err != nil {
 			return fail("%v", err)
+		}
+		if _, held := reconcile.ParsePending(rec.Pending); held && rec.State == store.StateEnabled {
+			return fail("NOT APPLIED: rotation of %s for %s is recorded, but an upgrade of %s is waiting for approval and no change reaches the module until then: the old value stays valid. Two ways out: %s. The rotation then happens with the upgrade, or when the module is enabled again.", key, module, module, reconcile.WaysOut)
 		}
 		fmt.Fprintf(c.OutOrStdout(), "Rotation of %s for %s recorded. It is applied at the next reconcile (within a minute) and the module is restarted with the new value.\n", key, module)
 		return nil

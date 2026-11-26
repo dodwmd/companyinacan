@@ -751,7 +751,8 @@ func (o *Ops) Complete(ctx context.Context) (backup.CompleteReport, error) {
 		{`DELETE FROM user_invites`, nil},
 		{`DELETE FROM login_tickets`, nil},
 		{`DELETE FROM ui_launch_sessions`, nil},
-		{`UPDATE modules SET settings_hash='' WHERE state='enabled'`, nil},
+		// The restore leaves these stopped: the apply that starts them must not wait for an approval.
+		{`UPDATE modules SET settings_hash='', approved_upgrade='*' WHERE state='enabled'`, nil},
 	} {
 		if _, err := o.DB.ExecContext(ctx, q.sql, q.args...); err != nil {
 			return rep, err

@@ -169,9 +169,12 @@ type Preview struct {
 	Diff         []DiffLine
 	DiffTooLarge bool
 	Actions      []reconcile.Action
-	Resources    []ResourcePlan
-	Footprint    FootprintResult
-	Analysis     Analysis
+	// Held are upgrades that applying this change would not run: they wait for approval
+	// (UpgradeAck) or for a retry.
+	Held      []reconcile.Action
+	Resources []ResourcePlan
+	Footprint FootprintResult
+	Analysis  Analysis
 	// Issues that stop the change from being proposed or applied.
 	Problems      []string
 	Blockers      []string
@@ -384,9 +387,11 @@ func (s *Service) build(ctx context.Context, cur Snapshot, patch Patch, acks []s
 	}
 	pv.desired = d
 	if s.Runner != nil {
-		if pv.Actions, err = s.Runner.Plan(ctx, d); err != nil {
+		planned, err := s.Runner.Plan(ctx, d)
+		if err != nil {
 			return nil, err
 		}
+		pv.Actions, pv.Held = reconcile.SplitHeld(planned)
 	}
 	pv.Resources = resources(pv.Actions, cat, newC.Domain)
 	return pv, nil
@@ -668,6 +673,9 @@ func (s *Service) Apply(ctx context.Context, actor, id string, confirmed ...stri
 	}
 	_, _ = s.audit(ctx, actor, "company.change.saved", ch.ID, map[string]any{"version": newVersion, "run": runID})
 	_, _ = s.DB.ExecContext(ctx, `UPDATE company_changes SET state='applied', applied_at=?, run_id=? WHERE id=?`, s.now().Unix(), runID, ch.ID)
+	if err := s.approveConfirmed(ctx, actor, pv.Held, confirmed); err != nil {
+		return fail(err)
+	}
 	s.start(runID, actor, ch.ID, pv.desired)
 	return s.Run(ctx, runID)
 }
@@ -709,6 +717,11 @@ func (s *Service) start(runID, actor, changeID string, d reconcile.Desired) {
 		}
 		if err != nil {
 			msg = err.Error()
+		}
+		// A run that leaves out what was asked for must not read as a success.
+		if left := notAppliedSummary(res.Held); left != "" {
+			state = RunFailed
+			msg = strings.TrimSpace(left + " " + msg)
 		}
 		s.finishRun(ctx, runID, state, msg, res.Actions, res.Failed)
 		s.RecordReconcile(ctx, res, err)
