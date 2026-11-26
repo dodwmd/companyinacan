@@ -93,7 +93,7 @@ report() {
   logger -t can-backup -p user.err -- "FAILED($1): $2" || true
   echo "can-backup: FAILED($1): $2" >&2
   if [ "$LEDGER_ONLY" -eq 1 ]; then
-    [ -z "$(find "$ALERTS" -mmin +1440 2>/dev/null)" ] || rm -f "$ALERTS"
+    if [ -f "$ALERTS" ] && [ -n "$(find "$ALERTS" -mmin +1440)" ]; then rm -f "$ALERTS"; fi
     if grep -qxF -- "($1) $2" "$ALERTS" 2>/dev/null; then return 0; fi
     printf '%s\n' "($1) $2" >>"$ALERTS" || true
   fi

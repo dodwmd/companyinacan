@@ -588,7 +588,7 @@ paths:
           description: The token or the role does not allow it
   /v1/subjects/{subject}/erasure:
     post:
-      summary: 'Erase every file of a data subject and write tombstones for the backup ledger. 409 under a legal hold. Idempotent.'
+      summary: 'Erase every file of a data subject and write a tombstone per erased file id for the backup ledger. 409 under a legal hold. Idempotent.'
       operationId: postV1SubjectsSubjectErasure
       x-permission: files.admin
       parameters:

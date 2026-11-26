@@ -232,9 +232,10 @@ run the same command again):
    installed with 0 replicas, no seeding Jobs and no public routes.
 5. **Volume files** are copied into the new volumes (matched on `<namespace>_<claim>`, ownership preserved).
 6. **Restore hooks** load the module dumps (replace-all).
-7. **Erasure replay.** The ledger is read again, united with the copy in the snapshot, and each tombstone is applied by
-   the module that declares its data class: its `hooks.purge` script; `people`, `equity`, `board` and `entity` by their own
-   `purge` command (`board-private` and `entity-person` in whichever of the last two are installed); `files` and `jobs` over `/v1/purge` while running without a route. can-core drops its queued
+7. **Erasure replay.** The ledger is read again, united with the copy in the snapshot, and each erasure made after the
+   module's dump is applied by the module that reported it (one added by hand: by the modules that declare its data
+   class): its `hooks.purge` script; `people`, `equity`, `board` and `entity` by their own
+   `purge` command; `files` and `jobs` over `/v1/purge` while running without a route. can-core drops its queued
    events, notifications and mail that name the subject.
 8. **Go live.** The ledger and the repository credentials are written to the server, queued mail is discarded (it may
    already have been sent), sessions are deleted, can-core restarts normally and puts the modules' workloads and routes
@@ -282,9 +283,27 @@ script does this nightly and `can-erasure-sync.timer` every quarter of an hour (
 is `(subject id, data class, date)`; subject ids must be opaque, and one that is not (an e-mail address, say) is
 refused, counted and reported with exit 22, never written or logged.
 
+**What a module may order.** Its feed is taken only for the data classes its manifest declares (`board` and
+`entity` also for `board-private` and `entity-person`, which one binary writes), each entry names the module that
+reported it, and a restore applies it to that module alone. Each module has a bounded share of the ledger (8 MiB,
+about 30,000 erasures, 5,000 new a minute; 56 MiB in all). A full share is reported like an unreadable feed. The
+ledger is never compacted, so a very large company would reach this after years.
+
+**What a restore replays.** Each entry says when the data was erased. A module dump taken after that already
+reflects the erasure and may hold data created since for the same subject, so **nothing is purged from it**; only
+erasures made after the dump (its `manifest.json`, else the start of the dump run) are replayed. `files` records the
+ids of the erased files, never the data subject. An entry added by hand is dated when it was added: a snapshot made
+after that is left alone. Entries without a time (added by an earlier release) are always replayed. Two limits:
+an erasure made while a module's own database was being copied is replayed although the copy reflects it; and if a
+restore was told `--accept-unerased`, later backups are taken as reflecting those erasures, so they are not asked
+again: erase that data by hand.
+
 **The import and upload need the `can` binary at `/usr/local/bin/can` on the server, which `can up` does not copy
 there.** Without it can-core still collects, but nothing reaches the bucket; once there is an erasure to record, every
 run fails with exit 22.
+
+**Update the `can` binary on the server with each release**: the script names one that has no `ledger-import`
+(exit 22). The frequent sync calls the webhook once per fault, again after a day or after a successful run.
 
 **Servers set up by an earlier release** need `can up` (or `can backup install`) once, for the new script and timer.
 
@@ -298,8 +317,8 @@ run fails with exit 22.
   the bucket. A failing collection or upload (exit 22, journal, webhook) makes the window as long as it lasts.
 - A module that is disabled is not asked; what was collected while it ran stays. An erasure made in the last minute
   before disabling it is collected when it is enabled again.
-- A tombstone of a module that is not installed in the restored company stops the restore until
-  `--accept-unerased '*:<class>'`.
+- An erasure made after the dump by a module that is not installed in the restored company stops the restore
+  until `--accept-unerased <module>:<class>` (`*:<class>` for one added by hand).
 
 The ledger is hash-chained, so editing, reordering or removing early entries is detected.
 `can backup ledger-sync` merges it into the encrypted object `ledger/erasure-ledger.v1.enc` in the bucket,
