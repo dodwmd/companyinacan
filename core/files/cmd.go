@@ -232,7 +232,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	obs.DefaultHealth.Add("blobstore", true, be.Ping) // /readyz: the backend must answer too
 	if cfg.UI.Enabled && getenv("GOMEMLIMIT") == "" {
 		// Rendering pages allocates; collecting a little earlier keeps the module within its declared
-		// RAM (specs/049-files-ui/research.md). A soft limit: nothing fails above it.
+		// RAM (specs/050-files-ui/research.md). A soft limit: nothing fails above it.
 		debug.SetMemoryLimit(uiMemLimit)
 	}
 	var sessions modclient.SessionAPI
@@ -287,7 +287,7 @@ type logger interface{ Error(msg string, args ...any) }
 
 // newHandler is what the listener serves: the API alone, or, with ui.enabled, the API, the public
 // share-link route and the health checks on their paths and the web UI on everything else
-// (specs/049-files-ui). sessions is nil when the module does not run under can-core.
+// (specs/050-files-ui). sessions is nil when the module does not run under can-core.
 func newHandler(api *API, sessions modclient.SessionAPI) http.Handler {
 	h := api.Handler()
 	cfg := api.Store.cfg

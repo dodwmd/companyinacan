@@ -53,7 +53,7 @@ config:
   share: { default_ttl_hours: 24, max_ttl_hours: 720, failures_per_minute: 20, base_url: "" }
   retention: { trash_days: 30, sweep_interval_hours: 6 }
   download: { inline: false }
-  # Web UI (specs/049-files-ui): off by default. modules.files.expose.ui turns it on and routes it
+  # Web UI (specs/050-files-ui): off by default. modules.files.expose.ui turns it on and routes it
   # (module.yaml runtime.public_ui); it needs TLS (Secure, __Host- cookies).
 keyring:
   enabled: true            # can-core generates it once into the can-module Secret (key `keyring`)

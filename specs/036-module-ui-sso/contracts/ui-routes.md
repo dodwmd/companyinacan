@@ -34,7 +34,7 @@ admin API operations.
 | people | `GET /login/ticket`, `POST /login/ticket` | `/` |
 | jobs | `GET /login/ticket`, `POST /login/ticket` | `/` |
 | finance | `GET /login/ticket`, `POST /login/ticket` | `/` |
-| files (`specs/049-files-ui`) | `GET /login/ticket`, `POST /login/ticket` | `/` |
+| files (`specs/050-files-ui`) | `GET /login/ticket`, `POST /login/ticket` | `/` |
 
 Common behaviour: both need the launch nonce cookie (`__Secure-can_launch_<module>`; `can_launch_<module>`
 only on a plain-http UI), set by can-core in the launching browser. `GET ?t=` peeks (never consumes) and shows a

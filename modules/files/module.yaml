@@ -6,7 +6,7 @@
 # ledger. File bytes live on a local volume or in an S3 bucket; the database holds only sealed
 # metadata. Other modules (jobs resumes, board packs, finance receipts and contract PDFs, people
 # documents) reference a file by its opaque id and never hold its bytes.
-# A server-rendered web UI (E13f, specs/049-files-ui) ships in the same binary, off by default
+# A server-rendered web UI (E13f, specs/050-files-ui) ships in the same binary, off by default
 # (ui.enabled) and routed only with expose.ui.
 # This is a tool, not legal advice: what must be kept, for how long and when it must be erased is
 # the operator's responsibility (docs/files.md lists what is and is not verified).

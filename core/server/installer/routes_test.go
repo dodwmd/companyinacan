@@ -155,7 +155,7 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 }
 
 // files already routes its share links from its chart (/s/, specs/034-files). Exposing the web UI
-// (specs/049-files-ui) adds the UI's paths on the same host, and neither takes the other's.
+// (specs/050-files-ui) adds the UI's paths on the same host, and neither takes the other's.
 func TestExposedFilesUIKeepsTheShareLinkRoute(t *testing.T) {
 	in, api, spec := routed(t, "files", config.Expose{UI: true})
 	enable(t, in, spec)

@@ -100,7 +100,7 @@ type DownloadCfg struct {
 	InlineTypes []string `yaml:"inline_types"` // png, jpg, gif, webp only
 }
 
-// UIConfig is the server-rendered web UI (specs/049-files-ui). Off by default.
+// UIConfig is the server-rendered web UI (specs/050-files-ui). Off by default.
 type UIConfig struct {
 	Enabled bool `yaml:"enabled"`
 	// InsecureCookies drops the Secure attribute (and the __Host- cookie prefix) for plain-HTTP

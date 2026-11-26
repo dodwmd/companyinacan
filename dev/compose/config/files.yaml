@@ -11,7 +11,7 @@ scanner:
   required: false    # no virus scanner ships and none is in the compose stack; dev stores files labelled "skipped"
 share:
   base_url: http://files.localhost:8080
-# Web UI (specs/049-files-ui), at http://files.localhost:8080/ (token sign-in) and http://localhost:8185/
+# Web UI (specs/050-files-ui), at http://files.localhost:8080/ (token sign-in) and http://localhost:8185/
 # (from the admin UI's Apps page). Plain HTTP in dev, so cookies are not Secure.
 ui:
   enabled: true

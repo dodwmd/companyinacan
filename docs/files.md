@@ -217,7 +217,7 @@ can-core (standalone) nothing is queued. Schemas: `schemas/events/file.*.v1.json
 
 `can-files` serves a server-rendered web UI on the same listener when `ui.enabled: true` (off by default):
 html/template, one stylesheet, no JavaScript, a strict CSP. It is another client of the same service as the
-API, with the same checks, audit entries and answers ([`specs/049-files-ui`](../specs/049-files-ui/spec.md)).
+API, with the same checks, audit entries and answers ([`specs/050-files-ui`](../specs/050-files-ui/spec.md)).
 
 | What you can do | Who |
 |---|---|

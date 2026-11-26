@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Sessions of the web UI (specs/049-files-ui). A session begins with a launch ticket from the admin
+// Sessions of the web UI (specs/050-files-ui). A session begins with a launch ticket from the admin
 // UI, or with a token pasted at /login that the Authenticator chain of the JSON API accepts. The
 // server keeps it, keyed by the SHA-256 of a random identifier; the browser holds only that
 // identifier, in an HttpOnly, SameSite=Strict cookie. A pasted token is kept in memory (never

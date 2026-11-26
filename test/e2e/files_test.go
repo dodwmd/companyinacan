@@ -73,7 +73,7 @@ func TestFilesUploadShareHoldAndErase(t *testing.T) {
 	}
 }
 
-// The files web UI through the edge (specs/049-files-ui): sign in with the service token, make a
+// The files web UI through the edge (specs/050-files-ui): sign in with the service token, make a
 // space, upload a file in a multipart form, download it as an attachment and make a share link.
 func TestFilesWebUI(t *testing.T) {
 	const host = "files.localhost"

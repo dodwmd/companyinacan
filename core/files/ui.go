@@ -1,6 +1,6 @@
 package files
 
-// The server-rendered web UI of the files module (epic E13f, specs/049-files-ui). html/template,
+// The server-rendered web UI of the files module (epic E13f, specs/050-files-ui). html/template,
 // an embedded stylesheet, no JavaScript. It is a client of the Store exactly like the JSON API:
 // every page calls the same Store methods, which decide access by the caller's permissions and
 // space role, audit what the API audits and refuse what the API refuses. There is no second
@@ -129,7 +129,7 @@ func (u *UI) publicRoutes() []struct {
 }
 
 // UIRoutes lists the "METHOD /path" patterns the UI serves, with the permission each needs; the
-// contract test compares them with specs/049-files-ui/contracts/ui-routes.md.
+// contract test compares them with specs/050-files-ui/contracts/ui-routes.md.
 func UIRoutes() (patterns []string, scope map[string]string) {
 	u := &UI{}
 	scope = map[string]string{}

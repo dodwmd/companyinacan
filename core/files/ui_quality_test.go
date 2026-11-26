@@ -22,7 +22,7 @@ type docRoute struct{ session, scope, methods string }
 
 func readRouteContract(t *testing.T) map[string]docRoute {
 	t.Helper()
-	b, err := os.ReadFile("../../specs/049-files-ui/contracts/ui-routes.md")
+	b, err := os.ReadFile("../../specs/050-files-ui/contracts/ui-routes.md")
 	if err != nil {
 		t.Fatal(err)
 	}
