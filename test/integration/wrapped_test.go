@@ -273,7 +273,8 @@ func analyticsChecks(t *testing.T) {
 
 var csrfRE = regexp.MustCompile(`name="_token" value="([^"]+)"`)
 
-func supportChecks(t *testing.T) {
+// supportMailbox signs in to FreeScout with the generated password and creates a mailbox.
+func supportMailbox(t *testing.T) {
 	host := "support." + wrappedDomain
 	pw := adminPassword(t, "support", "CAN_SUPPORT_ADMIN_PASSWORD")
 	throughTraefik(t, host, "/login", `name="password"`)
@@ -297,6 +298,10 @@ func supportChecks(t *testing.T) {
 	if got := moduleSQL(t, "mod_support", "select email from mailboxes where name = 'CI mailbox'"); got != "help@"+wrappedDomain {
 		t.Errorf("the mailbox is not in the database: %q", got)
 	}
+}
+
+func supportChecks(t *testing.T) {
+	supportMailbox(t)
 	// The company's relay was written into FreeScout's system mail settings (no mail is sent).
 	eventually(t, 3*time.Minute, "the SMTP relay settings to be applied", func() (bool, string) {
 		o := moduleSQL(t, "mod_support", "select name || '=' || value from options where name in ('mail_driver','mail_host','mail_port','mail_username','mail_encryption','mail_from') order by name")

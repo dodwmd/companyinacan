@@ -1,0 +1,69 @@
+name: wrapped-backup
+
+# Epic E08e (specs/046-wrapped-backups). Not a required check, and a failure fails the job.
+# analytics, support and newsletter installed through can-core on a throw-away k3d cluster from
+# their pinned upstream images, data made in each, dumped by can-core's hook Jobs, and the dumps
+# restored into fresh databases and checked.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "modules/analytics/**"
+      - "modules/support/**"
+      - "modules/newsletter/**"
+      - "core/modbackup/**"
+      - "core/server/dumps/**"
+      - "core/server/corecli/**"
+      - "core/server/runtime/**"
+      - "core/server/installer/**"
+      - "core/server/restoreops/**"
+      - "deploy/**"
+      - "test/integration/wrapped_backup_k3d_test.go"
+      - ".github/workflows/wrapped-backup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: wrapped module backup on k3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Build the can-core image and import it into the cluster
+        run: |
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:dev .
+          k3d image import can-core:dev -c companyinacan-dev
+      - name: Deploy can-core
+        run: |
+          kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
+          kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
+      - name: Make data, dump, restore into fresh databases
+        env:
+          CAN_IT_WRAPPED_BACKUP: "1"
+        run: go test -tags integration -count=1 -v -timeout 30m -run '^TestWrappedModuleBackupOnK3d$' ./test/integration/
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,pvc,jobs -A -o wide || true
+          kubectl --context k3d-companyinacan-dev -n can-system logs deploy/can-core --tail=200 || true
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down
