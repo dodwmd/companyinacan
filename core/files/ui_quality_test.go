@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite the golden HTML files of the files UI")
@@ -266,6 +268,9 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 				used[m[1]] = f
 			}
 		}
+	}
+	for _, k := range session.MessageKeys { // used by the shared launch-ticket flow
+		used[k] = "core/uikit/session"
 	}
 	for k, where := range used {
 		if _, ok := uiMessagesEN[k]; !ok && k != "files.css" {

@@ -7,6 +7,7 @@ package finance
 // only an unscoped token in.
 
 import (
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 	"net/http"
 	"net/url"
 	"slices"
@@ -154,7 +155,7 @@ func (u *UI) bankReconciliation(c *uiCtx) error {
 			}
 		}
 		for _, t := range txns {
-			d.Rows = append(d.Rows, reconRow{Txn: t, Suggestions: sg[t.ID], Idem: newToken()[:32]})
+			d.Rows = append(d.Rows, reconRow{Txn: t, Suggestions: sg[t.ID], Idem: session.NewToken()[:32]})
 		}
 		d.Pager = pager{nextLink("/bank/reconciliation", c.r.URL.Query(), next)}
 	}

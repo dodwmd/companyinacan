@@ -1,6 +1,8 @@
 package finance
 
 import (
+	"errors"
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -308,7 +310,7 @@ func (u *UI) partyEraseForm(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "party_erase.html", "erase.title", eraseForm{P: *p, RetentionYears: u.Cfg.RetentionYears, SSO: c.ss.ssoHandle != ""})
+	u.render(c.w, c.r, c, http.StatusOK, "party_erase.html", "erase.title", eraseForm{P: *p, RetentionYears: u.Cfg.RetentionYears, SSO: c.ss.SSO()})
 	return nil
 }
 
@@ -329,19 +331,19 @@ func (u *UI) partyErase(c *uiCtx) error {
 	// Step-up: erasing is irreversible, so a session left open on an unlocked screen is not enough.
 	// A token session is asked for its sign-in token again, which can-core (or the token store) must
 	// accept now, not from a cache: it may have been revoked since. A launch-ticket session needs a recent admin sign-in, confirmed by can-core (stepUpSSO).
-	if c.ss.ssoHandle != "" {
+	if c.ss.SSO() {
 		if err := u.stepUpSSO(c); err != nil {
 			return err
 		}
 	} else {
-		if !constEq(strings.TrimSpace(c.r.PostForm.Get("token")), c.ss.token) {
+		p, err := u.sessions.StepUp(c.r, c.ss, strings.TrimSpace(c.r.PostForm.Get("token")), func(p Principal) bool { return allowedBy(&p, PermAdmin, false) })
+		switch {
+		case errors.Is(err, session.ErrStepUpReenter):
 			return invalid("token", "re-enter your sign-in token to confirm the erasure")
-		}
-		p, err := u.authenticateNow(c.r, c.ss.token)
-		if err != nil || p.Subject != c.ss.subject || !allowedBy(p, PermAdmin, false) {
+		case err != nil:
 			return invalid("token", "your sign-in token could not be confirmed as still allowed to erase; sign in again")
 		}
-		c.p = p
+		c.p = &p
 	}
 	rep, err := u.Store.ErasePartyData(c.ctx(), c.p, id, u.Cfg.RetentionYears)
 	warn := false
