@@ -37,8 +37,8 @@ reminders reached nobody.
 - **Restore.** `can-finance restore` marks what is already overdue or due for renewal as announced
   (`core/modbackup/finance.go`). Filing reminders are not held: deadlines matter more than a repeat.
 - **Standalone entity.** Migration 005 also runs there: see docs/entity.md.
-- **Manifests.** Module versions and images are bumped (`core/modimages/images.txt`): finance, jobs,
-  work 0.2.0; entity and board 0.2.0; people module 0.4.0 (image 0.2.0). New `publishes` entries and
+- **Manifests.** Module versions and images are bumped (`core/modimages/images.txt`): finance 0.3.0 (migration 009);
+  jobs, work, entity and board 0.2.0; people module 0.4.0 (image 0.2.0). New `publishes` entries and
   rules widen the manifests: can-core holds those
   upgrades until the operator approves them (docs/releasing.md, "Upgrade note: reminders"); a first
   install and a restore do not ask (`core/server/reconcile/reminders_upgrade_test.go`).
