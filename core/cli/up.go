@@ -149,7 +149,9 @@ type upResult struct {
 	SiteURLs      []string    `json:"site_urls,omitempty"`
 	AdminURLs     []string    `json:"admin_urls,omitempty"`
 	SiteReachable bool        `json:"site_reachable,omitempty"`
-	AdminUser     string      `json:"admin_user,omitempty"`
+	// ModulesNotReady are the enabled modules can-core had not installed when `can up` stopped waiting.
+	ModulesNotReady []string `json:"modules_not_ready,omitempty"`
+	AdminUser       string   `json:"admin_user,omitempty"`
 	// Admin and Kit are present only with --print-secrets (or never, without a terminal).
 	Admin        *credsJSON `json:"admin,omitempty"`
 	Kit          string     `json:"recovery_kit,omitempty"`
@@ -168,7 +170,8 @@ func newUpCmd(g *globalOpts) *cobra.Command {
 		Long: `Provision the server named by company.yaml (provider.type: ssh, hetzner, digitalocean),
 install k3s, then deploy the company: platform base, container images, can-core, the admin account,
 company.yaml, the site, the routes, the backup timer (with --backup-*), DNS, and wait until it is ready.
-It ends with the URLs, the one-time admin password and TOTP secret and the recovery kit.
+It ends with the URLs, the one-time admin password and TOTP secret and the recovery kit, after waiting
+(at most --module-wait) for can-core to install the enabled modules.
 
 Phases are checkpointed in .can/state.json: after an interruption at any point run the same command
 again and it resumes. Nothing is ever wiped by running it again.

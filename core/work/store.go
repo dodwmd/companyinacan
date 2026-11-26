@@ -364,7 +364,8 @@ type ProjectPatch struct {
 }
 
 // UpdateProject changes a project's settings. A new workflow must still contain every
-// status in use; resolved_at follows the new status categories.
+// status in use; resolved_at follows the new status categories. An archived project takes no
+// change unless the same patch restores it.
 func (s *Store) UpdateProject(ctx context.Context, a *Principal, key string, in ProjectPatch) (*Project, error) {
 	var p problems
 	if in.Name != nil && (strings.TrimSpace(*in.Name) == "" || !validText(*in.Name, 100) || strings.ContainsAny(*in.Name, "\r\n")) {
@@ -390,6 +391,10 @@ func (s *Store) UpdateProject(ctx context.Context, a *Principal, key string, in 
 		cur, err := s.loadProject(ctx, tx, a, key)
 		if err != nil {
 			return err
+		}
+		restoring := in.Archived != nil && !*in.Archived
+		if cur.archived && !restoring && (in.Name != nil || in.Description != nil || in.Workflow != nil || in.SLA != nil) {
+			return fmt.Errorf("%w: project %s is archived; restore it first", ErrConflict, key)
 		}
 		changed := map[string]any{}
 		now := ts(s.now())

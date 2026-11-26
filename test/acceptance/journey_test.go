@@ -225,6 +225,7 @@ type upOutput struct {
 	KitFile       string   `json:"recovery_kit_file"`
 	Warnings      []string `json:"warnings"`
 	SiteReachable bool     `json:"site_reachable"`
+	NotReady      []string `json:"modules_not_ready"`
 }
 
 // up runs `can up` (what `make up` runs) and records its phases and warnings.
@@ -411,12 +412,16 @@ func (j *journey) enableModules(t *testing.T) string {
 		// support is routed by its own chart on support.<domain>; it takes no expose.
 		m["support"] = map[string]any{}
 	})
-	_, took := j.up(t, "enabling work and support", "kit-2.enc", budgetModules)
+	r, took := j.up(t, "enabling work and support", "kit-2.enc", budgetModules)
 	returned := time.Now()
 	j.rollout(t, 5*time.Minute, "work")
 	j.rollout(t, 12*time.Minute, "support")
 	j.status(t)
-	return fmt.Sprintf("`can up` returned after %.0f s; both modules ready %.0f s later", took.Seconds(), time.Since(returned).Seconds())
+	waited := "it waited for both modules"
+	if len(r.NotReady) > 0 {
+		waited = "it gave up waiting for " + strings.Join(r.NotReady, ", ")
+	}
+	return fmt.Sprintf("`can up` returned after %.0f s (%s); rollout confirmed %.0f s later", took.Seconds(), waited, time.Since(returned).Seconds())
 }
 
 // firstProject creates the company's first project in the work web UI, as a new owner does: no
@@ -525,14 +530,23 @@ const supportData = `k3s kubectl -n can-data exec deploy/postgres -- psql -U pos
 k3s kubectl -n mod-support exec deploy/support -c app -- cat /data/can-acceptance.txt`
 
 func (j *journey) supportMailbox(t *testing.T) string {
-	j.supportPW = strings.TrimSpace(j.mustSSH(t, time.Minute, `k3s kubectl -n mod-support get secret can-module -o jsonpath='{.data.CAN_SUPPORT_ADMIN_PASSWORD}' | base64 -d`))
-	j.secret(j.supportPW)
+	// As the operator gets it (specs/059-support-mailbox). Its stdout holds the password: not logged.
+	out, _ := j.mustCan(t, 2*time.Minute, "support", "credentials", ".", "--print-secrets", "--output", "json")
+	var creds struct{ URL, Email, Password string }
+	if err := json.Unmarshal([]byte(out), &creds); err != nil || creds.Password == "" {
+		t.Fatalf("`can support credentials --output json` did not print the credentials (%d bytes)", len(out))
+	}
+	j.secret(creds.Password)
+	if creds.URL != supportURL || creds.Email != "admin@"+domain {
+		t.Fatalf("`can support credentials` names %s and %s", creds.URL, creds.Email)
+	}
+	j.supportPW = creds.Password
 	b := j.supportSignIn(t)
 	form := b.get(t, supportURL+"/mailbox/new", 200)
 	b.post(t, supportURL+"/mailbox/new", url.Values{"_token": {match(t, "mailbox CSRF", reLaravelToken, form.body)}, "email": {"help@" + domain}, "name": {supportMailboxName}}, 302)
 	j.mustSSH(t, time.Minute, `k3s kubectl -n mod-support exec deploy/support -c app -- sh -c 'echo attachment-marker >/data/can-acceptance.txt'`)
 	j.checkSupportData(t)
-	return "a mailbox through the web UI, a file on its volume; the password is read from the cluster Secret"
+	return "a mailbox through the web UI, a file on its volume; the password from `can support credentials`"
 }
 
 func (j *journey) checkSupportData(t *testing.T) {

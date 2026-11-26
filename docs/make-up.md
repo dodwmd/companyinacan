@@ -64,6 +64,7 @@ development path, not a supply-chain guarantee. Release images are signed and at
 10 backup     -- can over ssh, sha256 checked ---------> /usr/local/bin/can   (phase "cli" without backups)
               -- files over ssh (only with --backup-*) -> pinned restic, dumps dir, timer, repository initialised
 11 ready      -- kubectl wait Available ----------------> can-core, site, forms
+   modules    -- kubectl get deploy, up to --module-wait > every module company.yaml enables (installed by can-core)
 12 dns / probe / summary   Cloudflare records or printed records; URL probe; credentials and kit shown once
 ```
 
@@ -137,7 +138,15 @@ once are refused (`another can up or can down is already running`).
 | ready / dns / summary | repeated |
 
 A failure prints `phase "<id>" failed: <cause>`, a `look:` line with the commands to inspect, and a `resume:`
-line. Every wait has a bound (rollouts 3 min, k3s CRDs 3 min, module install 5 min, public probe 60 s).
+line. Every wait has a bound (rollouts 3 min, k3s CRDs 3 min, forms install 5 min, public probe 60 s, then the
+enabled modules `--module-wait`, 5 min by default).
+
+**Modules.** can-core installs them after it has received `company.yaml`, so `can up` ends by waiting for
+each enabled module's deployments, with a progress line, before it prints the summary. A module that is not
+ready in time does not fail the run: the summary says `NOT READY YET` (JSON: `modules_not_ready`) and
+can-core goes on retrying; `can status` shows failures. Ctrl-C skips the wait and still prints the summary;
+`--module-wait 0` does not wait. For a module that was already running, this shows that it is up, not that a
+changed setting has reached it.
 
 ## `make down`
 
