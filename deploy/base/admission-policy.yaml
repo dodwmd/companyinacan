@@ -337,10 +337,13 @@ spec:
   policyName: can-core-networkpolicies
   validationActions: [Deny]
 ---
-# The website editor of the admin UI (specs/067-site-editor). can-core's RoleBinding in can-system
-# lets it manage workloads and ConfigMaps there; publishing needs far less, and these two policies
-# hold it to that: it may roll the site (the digest annotation of the pod template, nothing else)
-# and rewrite the one key of ConfigMap site-content. It creates and deletes no workload here.
+# The website editor of the admin UI (specs/067-site-editor). Publishing rolls the site (the digest
+# annotation of Deployment site's pod template) and rewrites one key of ConfigMap site-content; these
+# two policies refuse every other change by can-core to that ConfigMap and to Deployments,
+# StatefulSets and DaemonSets here. They do NOT confine can-core in can-system: its RoleBinding still
+# lets it write Jobs, CronJobs, Services, NetworkPolicies, Secrets and other ConfigMaps and exec into
+# pods there, so a compromised can-core could still change what visitors get (for example with a Job
+# pod carrying the site Service's labels, or by editing that Service).
 # can-core refuses to publish while either is missing. Proven by test/integration/site_publish_test.go.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy

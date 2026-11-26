@@ -35,7 +35,9 @@ editing `company.yaml` and running the CLI, and the renderer produced one page a
   phishing.
 - **Publish path**: before this feature only `can up` wrote the site. can-core's RoleBinding in `can-system`
   already allowed the writes (and far more); no RBAC was added except `get` on the two new admission
-  policies, which narrow it.
+  policies. They narrow can-core's changes to long-running workloads and the site content there; Jobs,
+  CronJobs, pod exec, Services, NetworkPolicies and Secrets in `can-system` remain open to it
+  (docs/site-editor.md, "What this does not do").
 - **Order of a publish**: audit, record the previous content, write `company.yaml` (conditional), replace the
   site. If the last step fails the same draft can be published again.
 - **Careers** is opt-in (`site.careers`), like `site.contact`, so an upgrade changes no published page.

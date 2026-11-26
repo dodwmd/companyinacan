@@ -55,8 +55,12 @@ not part of the history.
   `can apply --force-company` discards what is in the cluster instead.
 - **`can up`** refuses in the same way (`--force-company`), so it does not rebuild the site from an older
   directory over what you published.
-- **`can pull`** does not overwrite a `company.yaml` that has edits which were never applied: compare with
-  `can pull --out cluster.yaml`, or `--force` (a copy stays in `company.yaml.bak`).
+- **`can pull`** reads the server `can up` made for the directory (its `.can/kubeconfig`, through the SSH
+  tunnel), or the cluster `--context` names. `can apply` uses kubectl's current context, as before.
+- **`can pull`** does not overwrite a `company.yaml` that has edits which were never applied, or one last synced
+  with another cluster: compare with `can pull --out cluster.yaml`, or `--force` (a copy stays in
+  `company.yaml.bak`, numbered if there is one already). A symlinked `company.yaml` stays a symlink and the file
+  keeps its mode. A rebuilt or restored server counts as another cluster.
 
 A change of `site:` made with `can apply` is saved but **not published** by it: the editor says the saved
 content is newer than the public site, and publishing from there (or `can up`) updates it. A restore
@@ -70,10 +74,17 @@ What the directory has seen is recorded in `.can/state.json`. A directory that h
 The preview and the published pages come from the same renderer as `can up` and `can site build`. can-core
 writes the packed site into ConfigMap `can-system/site-content` and stamps its digest on the pod template of
 Deployment `site`, which rolls the pod; this is what `can up` does. The admission policies `can-core-site` and
-`can-core-site-content` ([deploy/base/admission-policy.yaml](../deploy/base/admission-policy.yaml)) limit
-can-core to exactly that: no other change to the site's workload, no new or deleted workload in `can-system`,
-no other key in the ConfigMap. can-core refuses to publish while a policy is missing, so after upgrading run
-`can up` once. The site must fit in 700 KiB compressed. The logo is taken from the published site: after
+`can-core-site-content` ([deploy/base/admission-policy.yaml](../deploy/base/admission-policy.yaml)) refuse
+can-core's other changes to that ConfigMap and to Deployments, StatefulSets and DaemonSets in `can-system`.
+can-core refuses to publish while a policy is missing, so after upgrading run `can up` once.
+
+**What this does not do.** The policies do not confine can-core in `can-system`. Its existing permissions there
+still let it create Jobs and CronJobs, exec into pods, and write Services, NetworkPolicies, Secrets and other
+ConfigMaps. A compromised can-core could therefore still change what visitors get. The site Service selects a
+label only the site Deployment's pods carry (`can.dev/site-server`), so a pod that merely has the site's name
+label receives no traffic, but a Job can copy the label on purpose and the Service itself can be edited. The
+first `can up` after this change replaces the Service selector together with the pod: the site can be
+unavailable for the few seconds until the new pod is ready. The site must fit in 700 KiB compressed. The logo is taken from the published site: after
 adding or changing a logo, publish once with `can up`.
 
 The preview frame is served with `Content-Security-Policy: sandbox; default-src 'none'` plus the hash of the

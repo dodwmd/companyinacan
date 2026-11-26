@@ -162,3 +162,15 @@ func readFile(t *testing.T, rel string) string {
 	}
 	return string(b)
 }
+
+// The site Service selects a label beyond the name, which only the site Deployment's pods carry: a
+// Job pod with the name label alone gets no visitors.
+func TestSiteServiceSelectsOnlyTheDeploymentsPods(t *testing.T) {
+	docs := loadDocs(t, "deploy/site/site.yaml")
+	sel := toJSON(ofKind(docs, "Service")[0].get("spec", "selector"))
+	labels := toJSON(ofKind(docs, "Deployment")[0].get("spec", "template", "metadata", "labels"))
+	const own = `"can.dev/site-server":"true"`
+	if !strings.Contains(sel, own) || !strings.Contains(labels, own) {
+		t.Fatalf("selector %s, pod labels %s", sel, labels)
+	}
+}
