@@ -98,7 +98,7 @@ func TestChartsOnlyReferenceSecretKeysTheInstallerWrites(t *testing.T) {
 			}
 			spec.ID, spec.Namespace, spec.ServiceAccount, spec.Domain = id, "mod-"+id, id, "acme.example"
 			spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
-			spec.Email = optIn(id)
+			spec.Email, spec.Links = optIn(id), testLinks(id)
 			if sub, ok := inhouseSubdomains[id]; ok {
 				spec.Manifest.Runtime.Subdomain = sub
 			}

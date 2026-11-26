@@ -32,6 +32,9 @@ resources:
 provides:
   - { capability: equity, schema: equity.v1, service: equity-api, port: 8081 }
   - { capability: summary, schema: summary.v1, service: equity-api, port: 8081 }   # aggregates for the business overview
+# When the people module is enabled can-core connects equity to it and equity runs in the verified
+# holder identity (directory) mode; without it, attestation mode (specs/056-module-capability-wiring).
+consumes: [directory]
 publishes:
   # ids and dates only: never names, quantities or prices
   - { event: equity.grant.approved.v1, schema: ./events/equity.grant.approved.v1.json }

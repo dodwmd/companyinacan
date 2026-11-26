@@ -22,8 +22,9 @@ type Directory interface {
 	PersonExists(ctx context.Context, id string) (bool, error)
 }
 
-// HTTPDirectory talks to the people module's directory API. The token must map to the hr role
-// there (people.read and people.write): only then does the API answer with sso_subject.
+// HTTPDirectory talks to the people module's directory API. The token must be one the API answers
+// with sso_subject: the read-only identity lookup token can-core copies to this module
+// (CAN_PEOPLE_LOOKUP_TOKEN, specs/056-module-capability-wiring), or one with the hr role there.
 type HTTPDirectory struct {
 	BaseURL string
 	Token   string

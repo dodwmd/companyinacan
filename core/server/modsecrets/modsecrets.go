@@ -31,12 +31,53 @@ const (
 // KeyringKey is the key name of a sealed-field keyring in the module Secret.
 const KeyringKey = "keyring"
 
-// PeopleDirectoryKey is the key in the people module's Secret of the credential can-core copies into
-// the provisioning module's Secret as ProvisioningDirectoryKey.
+// Keys of the credentials can-core copies from the people module's Secret into a consumer's.
 const (
+	// PeopleDirectoryKey (people.read and people.write) goes to provisioning as ProvisioningDirectoryKey.
 	PeopleDirectoryKey       = "CAN_PEOPLE_DIRECTORY_TOKEN"
 	ProvisioningDirectoryKey = "CAN_PROVISIONING_DIRECTORY_TOKEN"
+	// PeopleLookupKey (read-only: who has this account, does this person exist) goes to equity as
+	// EquityDirectoryKey.
+	PeopleLookupKey    = "CAN_PEOPLE_LOOKUP_TOKEN"
+	EquityDirectoryKey = "CAN_EQUITY_DIRECTORY_TOKEN"
 )
+
+// Grant is a module-to-module connection can-core is willing to make
+// (specs/056-module-capability-wiring). The list is here, not in the manifests: handing a module the
+// credential of another one is can-core's decision. A manifest only asks, by naming the capability
+// under requires.capabilities or consumes.
+type Grant struct {
+	Capability, Consumer, Provider string
+	// ProviderKey in the provider's Secret is copied to ConsumerKey in the consumer's.
+	ProviderKey, ConsumerKey string
+	// ConfigKey is the block of the consumer's chart `config:` that takes `url` and
+	// `allow_insecure_http`.
+	ConfigKey string
+	// Gains and Loses say what the connection and its removal change, for the plan an operator reads.
+	Gains, Loses string
+}
+
+var grants = []Grant{
+	{Capability: "directory", Consumer: "equity", Provider: "people", ProviderKey: PeopleLookupKey, ConsumerKey: EquityDirectoryKey, ConfigKey: "directory",
+		Gains: "equity verifies holders (directory mode): acting needs a linked directory record, holders need verify-person",
+		Loses: "equity returns to attestation mode, which checks less"},
+	{Capability: "directory", Consumer: "provisioning", Provider: "people", ProviderKey: PeopleDirectoryKey, ConsumerKey: ProvisioningDirectoryKey, ConfigKey: "directory",
+		Gains: "reads and updates the directory",
+		Loses: "it cannot work without it"},
+}
+
+// Grants returns the connections can-core makes.
+func Grants() []Grant { return append([]Grant(nil), grants...) }
+
+// GrantFor returns the grant of consumer to provider.
+func GrantFor(consumer, provider string) (Grant, bool) {
+	for _, g := range grants {
+		if g.Consumer == consumer && g.Provider == provider {
+			return g, true
+		}
+	}
+	return Grant{}, false
+}
 
 // WebhookKey is the module Secret key holding the HMAC secret that signs can-core's webhooks.
 const WebhookKey = "CAN_WEBHOOK_SECRET"
@@ -58,9 +99,9 @@ var table = map[string][]Spec{
 	// The hash key makes candidate e-mail dedupe work; a new one would split every existing
 	// candidate from their duplicates without any error, so it is generated once and never rotated.
 	"jobs": {{Key: "CAN_JOBS_ADMIN_TOKEN"}, {Key: "CAN_JOBS_HASH_KEY", NoRotate: true}, {Key: "CAN_JOBS_FORM_SECRET"}, {Key: KeyringKey, Kind: Keyring}},
-	// The directory token is a second, smaller credential (people.read and people.write) that can-core copies to
-	// the provisioning module; rotating it would leave that copy behind, so it is not rotatable.
-	"people": {{Key: "CAN_PEOPLE_API_TOKEN"}, {Key: PeopleDirectoryKey, NoRotate: true}, {Key: KeyringKey, Kind: Keyring}},
+	// The directory and lookup tokens are smaller credentials that can-core copies to the consumers of the
+	// directory (Grants); they are not rotatable through `secrets rotate`.
+	"people": {{Key: "CAN_PEOPLE_API_TOKEN"}, {Key: PeopleDirectoryKey, NoRotate: true}, {Key: PeopleLookupKey, NoRotate: true}, {Key: KeyringKey, Kind: Keyring}},
 	// Governance and equity. The board admin token carries erasure, legal hold and the erasure feed. `board` and
 	// `entity` are one binary installed as two instances, each with its own values.
 	"board":  {{Key: "CAN_BOARD_API_TOKEN"}, {Key: "CAN_BOARD_ADMIN_TOKEN"}, {Key: KeyringKey, Kind: Keyring}},

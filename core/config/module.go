@@ -45,6 +45,9 @@ type Module struct {
 		// RoutedUIHost is set by can-core in its recorded copy of the manifest when it routes the
 		// web UI; never read from module.yaml. The Apps launcher derives the address from it.
 		RoutedUIHost string `yaml:"-"`
+		// Wired is set by can-core in its recorded copy of the manifest: the capabilities it has
+		// connected the module to (specs/056-module-capability-wiring). Never read from module.yaml.
+		Wired []Link `yaml:"-" json:",omitempty"`
 	} `yaml:"runtime"`
 	Requires struct {
 		Database     string   `yaml:"database"`
@@ -106,6 +109,15 @@ type Module struct {
 		Retention   string `yaml:"retention"`
 		Sensitivity string `yaml:"sensitivity"`
 	} `yaml:"data_classes"`
+}
+
+// Link is a connection can-core makes from a consuming module to the module that provides a
+// capability: network access to Service on Port, and a scoped credential.
+type Link struct {
+	Capability string `json:"capability"`
+	Provider   string `json:"provider"`
+	Service    string `json:"service"`
+	Port       int    `json:"port"`
 }
 
 // BuiltinBackup is module.yaml `hooks.builtin`: what the module keeps on its volume.

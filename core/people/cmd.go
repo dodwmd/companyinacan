@@ -94,6 +94,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	st := &StaticTokens{}
 	st.Add(sec.APIToken, Principal{Subject: "svc-can-core", Roles: []string{RoleHR, RoleAdmin}})
 	addDirectoryToken(st, sec.DirectoryToken)
+	AddLookupToken(st, sec.LookupToken)
 	auth := MultiAuth{st}
 	if cfg.Introspect.URL != "" {
 		auth = append(auth, &IntrospectAuthenticator{URL: cfg.Introspect.URL, Token: sec.IntrospectToken})

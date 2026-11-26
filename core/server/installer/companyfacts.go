@@ -2,14 +2,12 @@ package installer
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/dodwmd/companyinacan/core/server/modsecrets"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
 
-// Configuration a module needs that no chart can hold: facts of company.yaml, and credentials of
-// another module. reconcile.companyRevision makes a change of either an upgrade.
+// Configuration a module needs that no chart can hold: facts of company.yaml (links.go has what
+// comes from another module). reconcile.companyRevision makes a change of them an upgrade.
 
 // companyValues are the chart value overrides built from company.yaml. jobs does not start without
 // company.name and company.base_url; files puts share.base_url in front of the share links it
@@ -43,40 +41,4 @@ func (in *Installer) companyValues(ctx context.Context, s reconcile.Spec) (map[s
 		return nil, nil
 	}
 	return map[string]any{"config": conf}, nil
-}
-
-// wireSecrets copies into a module's Secret the credentials it needs of another module: the
-// provisioning module reads the people directory with a token the people module accepts. A value
-// that is already there is kept when the people module's Secret cannot supply one (a restore).
-func (in *Installer) wireSecrets(ctx context.Context, s reconcile.Spec, data map[string]string) error {
-	if s.ID != "provisioning" {
-		return nil
-	}
-	tok, err := in.secretKey(ctx, "mod-people", secretModule, modsecrets.PeopleDirectoryKey)
-	if err != nil {
-		return err
-	}
-	if tok == "" {
-		if tok, err = in.secretKey(ctx, s.Namespace, secretModule, modsecrets.ProvisioningDirectoryKey); err != nil {
-			return err
-		}
-	}
-	if tok == "" {
-		return fmt.Errorf("the provisioning module reads the people directory: enable the people module (it is installed first, and creates %s)", modsecrets.PeopleDirectoryKey)
-	}
-	data[modsecrets.ProvisioningDirectoryKey] = tok
-	return nil
-}
-
-// WiringFingerprint implements reconcile.WiringAware: a digest of the people directory token as the
-// provisioning module was or would be given it, "" while there is none.
-func (in *Installer) WiringFingerprint(ctx context.Context, s reconcile.Spec) (string, error) {
-	if s.ID != "provisioning" {
-		return "", nil
-	}
-	tok, err := in.secretKey(ctx, "mod-people", secretModule, modsecrets.PeopleDirectoryKey)
-	if err != nil || tok == "" {
-		return "", err
-	}
-	return secretVersion(s.HMACSecret, map[string]string{modsecrets.PeopleDirectoryKey: tok}), nil
 }

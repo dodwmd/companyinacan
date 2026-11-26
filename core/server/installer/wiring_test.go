@@ -17,7 +17,7 @@ func TestProvisioningFollowsAReinstalledPeopleModule(t *testing.T) {
 	s := spec
 	s.ID, s.Namespace, s.ServiceAccount = "provisioning", "mod-provisioning", "provisioning"
 	s.Manifest = loadManifest(t, "../../../modules/provisioning/module.yaml")
-	s.Manifest.Requires.Database = "none"
+	s.Manifest.Requires.Database, s.Links = "none", testLinks("provisioning")
 	print := func() string {
 		t.Helper()
 		f, err := in.WiringFingerprint(context.Background(), s)
