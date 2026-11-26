@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="/public/sign/assets/sign.css">
+</head>
+<body>
+<main>
+{{if eq .Kind "form"}}
+<h1>{{.View.Title}}</h1>
+<p>{{if .View.Company}}{{.View.Company}} asks you{{else}}You are asked{{end}} to sign this document as <strong>{{.View.Name}}</strong>.</p>
+{{with .Problems}}<ul class="problems" role="alert">{{range .}}<li>{{.Message}}</li>{{end}}</ul>{{end}}
+<section aria-labelledby="h-doc">
+<h2 id="h-doc">The document</h2>
+<div class="prose box">{{.View.Body}}</div>
+<p class="hint">Version {{.View.Version}}. SHA-256 of the text: <code>{{.View.SHA256}}</code></p>
+<p class="actions"><a href="/public/sign/{{.Token}}/document">Download a copy</a></p>
+<p class="hint">Keep your own copy before you answer: this link stops working once you have.</p>
+</section>
+<section aria-labelledby="h-sign">
+<h2 id="h-sign">Sign</h2>
+<form method="post" action="/public/sign/{{.Token}}" class="card">
+<input type="hidden" name="sha256" value="{{.View.SHA256}}">
+<input type="hidden" name="action" value="sign">
+<p><label for="typed">Type your full name</label>
+<input id="typed" name="typed_name" required maxlength="200" autocomplete="name" value="{{.Name}}"></p>
+<p><label class="check"><input type="checkbox" name="consent" value="yes" required> {{.Consent}}</label></p>
+<p><button type="submit">Sign</button></p>
+<p class="hint">Your typed name, the time and, depending on the sender's settings, part or all of your network address are kept with the signature.</p>
+</form>
+</section>
+<section aria-labelledby="h-decline">
+<h2 id="h-decline">Or decline</h2>
+<form method="post" action="/public/sign/{{.Token}}" class="card">
+<input type="hidden" name="action" value="decline">
+<p><label for="reason">Reason (optional, the sender can read it)</label>
+<textarea id="reason" name="reason" rows="3" maxlength="500">{{.Reason}}</textarea></p>
+<p><button type="submit">Decline to sign</button></p>
+</form>
+</section>
+{{else if eq .Kind "signed"}}
+<h1>Your signature is recorded</h1>
+<dl class="facts">
+<dt>Document</dt><dd>{{.Receipt.View.Title}} (version {{.Receipt.View.Version}})</dd>
+<dt>Signed as</dt><dd>{{.Receipt.TypedName}}</dd>
+<dt>Time</dt><dd>{{when .Receipt.SignedAt}}</dd>
+<dt>SHA-256 of the text</dt><dd><code>{{.Receipt.View.SHA256}}</code></dd>
+<dt>Evidence reference</dt><dd><code>{{.Receipt.ChainHead}}</code></dd>
+</dl>
+{{if .Receipt.Completed}}<p>Everyone has signed. A certificate is being emailed to each signer.</p>
+{{else}}<p>Others still have to sign. You will be emailed a certificate when everyone has.</p>{{end}}
+<p><strong>Save or print this page now.</strong> It cannot be opened again.</p>
+<div class="prose box">{{.Receipt.View.Body}}</div>
+{{else if eq .Kind "declined"}}
+<h1>You declined to sign</h1>
+<p>Nothing was signed. The sender will see that you declined.</p>
+{{else if eq .Kind "invalid"}}
+<h1>This link does not work</h1>
+<p>It may have expired, been used already, or been replaced or withdrawn. If you have just signed, your signature was recorded. Ask the sender for a new link if you need one.</p>
+{{else if eq .Kind "busy"}}
+<h1>Too many requests</h1>
+<p>Wait a minute and try again.</p>
+{{else}}
+<h1>{{.Title}}</h1>
+<p>Please try again in a moment.</p>
+{{end}}
+</main>
+</body>
+</html>

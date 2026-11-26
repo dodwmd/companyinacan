@@ -37,6 +37,13 @@ type Config struct {
 	} `yaml:"seller"`
 	// PublicBaseURL prefixes the signed invoice links the API returns (no trailing slash).
 	PublicBaseURL string `yaml:"public_base_url"`
+	// SignBaseURL is the public origin of the contract signing links (https://finance.<domain>, no
+	// trailing slash). Empty (the default) turns signing by link off and /public/sign/ answers 404.
+	// can-core sets it when company.yaml says modules.finance.expose.signing: true.
+	SignBaseURL string `yaml:"sign_base_url"`
+	// SigningRecordIP is the client address kept with a signature: truncated (default, /24 or /48),
+	// full or none.
+	SigningRecordIP string `yaml:"signing_record_ip"`
 	// PaymentProvider and ESignProvider: "none" (default) or "fake" (development only).
 	PaymentProvider string `yaml:"payment_provider"`
 	ESignProvider   string `yaml:"esign_provider"`
@@ -139,6 +146,15 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.New("public_base_url must be an http(s) URL without a trailing slash"))
 		}
 	}
+	if u := c.SignBaseURL; u != "" {
+		p, err := url.Parse(u)
+		if err != nil || p.Host == "" || p.User != nil || p.Path != "" || p.RawQuery != "" || p.Fragment != "" || (p.Scheme != "https" && !(p.Scheme == "http" && localHost(p.Hostname()))) {
+			errs = append(errs, errors.New("sign_base_url must be an https origin without a path or trailing slash (http only for localhost)"))
+		}
+	}
+	if m := c.SigningRecordIP; m != "" && m != IPTruncated && m != IPFull && m != IPNone {
+		errs = append(errs, errors.New("signing_record_ip must be truncated, full or none"))
+	}
 	if c.RetentionYears < 0 || (c.AuditRetentionDays != 0 && c.AuditRetentionDays < 365) {
 		errs = append(errs, errors.New("retention_years must be >= 0 and audit_retention_days at least 365 (or 0 to keep everything)"))
 	}
@@ -157,4 +173,8 @@ func (c *Config) Validate() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func localHost(h string) bool {
+	return h == "127.0.0.1" || h == "localhost" || strings.HasSuffix(h, ".localhost")
 }

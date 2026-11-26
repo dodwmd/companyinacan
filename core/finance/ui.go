@@ -26,7 +26,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
-//go:embed ui/templates ui/static
+//go:embed ui/templates ui/static ui/public
 var uiAssets embed.FS
 
 // UI serves the web UI.

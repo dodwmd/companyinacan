@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"sort"
 	"strconv"
@@ -58,6 +59,7 @@ type Store struct {
 	sealer        *Sealer
 	importing     sync.Mutex // one CSV import at a time (specs/047-csv-import)
 	importTimeout time.Duration
+	sign          signing // contract signing by emailed link (specs/049-contract-esign)
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.
@@ -77,6 +79,7 @@ func OpenStore(path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db, now: time.Now, kick: make(chan struct{}, 1), base: "USD", approver: ScopeApprover{},
 		downloads: make(chan struct{}, exportDownloads), downloadWait: exportDownloadWait, importTimeout: defaultImportTimeout}
+	s.sign.log, s.sign.ipMode = slog.Default(), IPTruncated
 	if err := s.migrate(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -97,7 +100,10 @@ func OpenStore(path string) (*Store, error) {
 }
 
 // Close releases the database.
-func (s *Store) Close() error { return errors.Join(s.rdb.Close(), s.db.Close()) }
+func (s *Store) Close() error {
+	s.sign.wg.Wait() // mails of signatures already answered
+	return errors.Join(s.rdb.Close(), s.db.Close())
+}
 
 // Ping checks that the database answers.
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
