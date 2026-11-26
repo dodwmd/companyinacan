@@ -93,7 +93,9 @@ link; there is no JavaScript) and shows each module's state and a sanitised last
 the chart, its image references or can-core's own module templates (a can-core upgrade brings all of these)
 upgrades the module. Comments in `module.yaml` and the chart's documentation do not count. Pods restart only
 when what is rendered for them changes. The first reconcile after upgrading can-core from a release without
-this applies every installed module once, to record what it has.
+this applies every installed module once, to record what it has. `can up --images-from` replaces the
+running can-core (and site) pod whenever the image tarball differs, although the tag stays `can-core:dev`.
+A module image rebuilt under the same tag does not restart its module: change the tag in the chart.
 
 An upgrade of a running module that would let it **do more than before** waits for your approval: a new
 permission or role grant, an event it may publish or receives, a capability it serves or uses, a database, a

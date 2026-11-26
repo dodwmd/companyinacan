@@ -292,7 +292,7 @@ func Run(ctx context.Context, o Options, d Deps) (*Result, error) {
 		}
 		body, r.res.BundleAdded = nb, added
 	}
-	core := CoreOptions{Image: o.Images.Ref(ImageCore), CompanyName: o.Company.Name, Domain: o.Company.Domain, CookieSecure: o.Routes.TLS}
+	core := CoreOptions{Image: o.Images.Ref(ImageCore), ImageSHA256: o.Images.Images[ImageCore].SHA256, CompanyName: o.Company.Name, Domain: o.Company.Domain, CookieSecure: o.Routes.TLS}
 
 	steps := []struct {
 		name, title string
@@ -636,7 +636,7 @@ func (r *runner) site(ctx context.Context) error {
 	if _, err := r.apply(ctx, []byte(SiteContentConfigMap(a)), true); err != nil {
 		return err
 	}
-	m, err := SiteManifests(r.o.Images.Ref(ImageStatic), a.SHA256)
+	m, err := SiteManifests(r.o.Images.Ref(ImageStatic), a.SHA256, r.o.Images.Images[ImageStatic].SHA256)
 	if err != nil {
 		return err
 	}
