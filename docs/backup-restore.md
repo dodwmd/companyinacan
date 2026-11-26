@@ -100,9 +100,10 @@ The backup script and the erasure sync run `/usr/local/bin/can`. You do not copy
    otherwise from the GitHub release, and refused unless its sha256 is the one in the manifest. Verify the
    manifest first ([SECURITY.md](../SECURITY.md#verifying-a-release)): its checksums are only as good as it is.
 3. The running binary, when it is a static linux `can` of the server's architecture.
-4. A cross-compile of the source checkout you run it from (needs Go; `make up` takes this path).
+4. A cross-compile of the source checkout you run it from (needs Go; `make up` takes this path). The checkout
+   must belong to you, and its path is printed before it is built.
 
-The upload goes beside the target, its sha256 is checked and it is run on the server, and only then is it renamed
+The upload goes to a new temporary file beside the target, its sha256 is checked and it is run on the server, and only then is it renamed
 over `/usr/local/bin/can`; any failure leaves the previous binary. The installed build is recorded in
 `.can/state.json` (`cli`). With backups configured a failure **fails the `backup` phase** (and with `--can-binary`
 or no possible source, `can up` stops before touching the server); without backups it is a warning.

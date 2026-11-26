@@ -134,6 +134,7 @@ trap 'rm -f "%[2]s"' EXIT
 got=$(sha256sum '%[2]s' | cut -d' ' -f1)
 if [ "$got" != '%[3]s' ]; then echo "CAN_CLI_SHA_MISMATCH $got"; exit 3; fi
 if ! v=$('%[2]s' version --output json); then echo CAN_CLI_DOES_NOT_RUN; exit 4; fi
+case "$v" in *'"version":"'[A-Za-z0-9]*) ;; *) echo "CAN_CLI_NO_VERSION $v"; exit 7 ;; esac
 %[4]sif [ -d '%[1]s' ]; then echo CAN_CLI_IS_A_DIRECTORY; exit 5; fi
 mv -f '%[2]s' '%[1]s'
 echo "CAN_CLI_VERSION $(printf '%%s' "$v" | tr -d '\n')"
@@ -172,15 +173,18 @@ func Install(ctx context.Context, r provider.Runner, dest string, src Source) (R
 		return Result{}, fmt.Errorf("invalid version %q from %s", b.Version, b.Origin)
 	}
 	dir := path.Dir(dest)
-	tmp := path.Join(dir, "."+path.Base(dest)+".new")
-	if _, err := r.Run(ctx, fmt.Sprintf("# can: prepare the upload\nmkdir -p '%s'\nrm -f '%s'\n", dir, tmp)); err != nil {
+	tmp, err := tempFile(ctx, r, dir, path.Base(dest))
+	if err != nil {
 		return Result{}, fmt.Errorf("prepare %s on the server: %w", dir, err)
 	}
 	if err := upload(ctx, r, tmp, b.Data); err != nil {
+		_, _ = r.Run(ctx, fmt.Sprintf("# can: discard the upload\nrm -f '%s'\n", tmp))
 		return Result{}, fmt.Errorf("upload can to the server: %w", err)
 	}
 	out, err := r.Run(ctx, installScript(dest, tmp, res.SHA256, b.Version))
 	switch {
+	case strings.Contains(out, "CAN_CLI_NO_VERSION"):
+		return Result{}, fmt.Errorf("the binary from %s did not answer `version --output json` with a version: it is not a can, nothing was replaced", b.Origin)
 	case strings.Contains(out, "CAN_CLI_WRONG_VERSION"):
 		return Result{}, fmt.Errorf("the can from %s does not report version %s, as expected: nothing was replaced: %s", b.Origin, b.Version, strings.TrimSpace(out))
 	case strings.Contains(out, "CAN_CLI_SHA_MISMATCH"):
@@ -202,6 +206,22 @@ func Install(ctx context.Context, r provider.Runner, dest string, src Source) (R
 	}
 	res.Changed = true
 	return res, nil
+}
+
+// tempFile makes a new, uniquely named file in dir to upload to, so that two runs cannot write
+// over each other and nothing already there is followed.
+func tempFile(ctx context.Context, r provider.Runner, dir, base string) (string, error) {
+	out, err := r.Run(ctx, fmt.Sprintf("# can: prepare the upload\nset -eu\nmkdir -p '%[1]s'\necho \"CAN_CLI_TMP $(mktemp '%[1]s/.%[2]s.XXXXXXXX')\"\n", dir, base))
+	if err != nil {
+		return "", err
+	}
+	prefix := path.Join(dir, "."+base+".")
+	for _, l := range strings.Split(out, "\n") {
+		if p, ok := strings.CutPrefix(strings.TrimSpace(l), "CAN_CLI_TMP "); ok && strings.HasPrefix(p, prefix) && rePath.MatchString(p) && path.Dir(p) == dir {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("no temporary file was made: %s", strings.TrimSpace(out))
 }
 
 func upload(ctx context.Context, r provider.Runner, dest string, data []byte) error {

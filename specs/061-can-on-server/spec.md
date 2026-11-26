@@ -1,4 +1,4 @@
-# Feature 060: `can` on the server (E08g)
+# Feature 061: `can` on the server (E08g)
 
 Status: built. Unit tested with SSH fakes and a real shell; the install runs against a k3d node in the
 `make-up-e2e` workflow. Not run on a real server over SSH, never on an arm64 server, and no release (so no
@@ -38,6 +38,7 @@ Operator-facing: [docs/backup-restore.md](../../docs/backup-restore.md#the-can-o
 ## Limits
 
 - The release archive is trusted as far as the manifest is: `can` does not verify the Sigstore signature.
+- Only a checkout owned by the user running `can` is built, and its path is printed first.
 - A cross-compile ships whatever is in the checkout, including uncommitted changes, which the recorded commit
   does not show.
 - An older operator `can` replaces a newer server binary (the images it deploys are its own too); the run says

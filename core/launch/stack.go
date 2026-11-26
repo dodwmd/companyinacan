@@ -80,7 +80,7 @@ type Options struct {
 	SMTP         *SMTPRelay   // nil leaves the relay Secret as it is
 	IMAP         *SupportIMAP // nil leaves the support mailbox Secret as it is
 	Backup       *BackupInstall
-	// CLI supplies the `can` installed on the server (specs/060-can-on-server). Required when
+	// CLI supplies the `can` installed on the server (specs/061-can-on-server). Required when
 	// Backup is set and there is a server.
 	CLI canbin.Source
 	// Mods are the manifests of the company's modules that could be read, for backup warnings.

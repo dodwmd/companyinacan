@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -38,12 +39,19 @@ func (h *shellHost) Run(ctx context.Context, script string) (string, error) {
 	return string(out), err
 }
 
-func (h *shellHost) Copy(_ context.Context, p string, b []byte, _ string) error {
+func (h *shellHost) Copy(_ context.Context, p string, b []byte, mode string) error {
 	h.copies++
 	if h.corrupt {
 		b = append(append([]byte{}, b...), '\n')
 	}
-	return os.WriteFile(p, b, 0o700) //nolint:gosec // test
+	if err := os.WriteFile(p, b, 0o600); err != nil {
+		return err
+	}
+	m, err := strconv.ParseUint(mode, 8, 32) // as SSHRunner does: the file exists already (mktemp)
+	if err != nil {
+		return err
+	}
+	return os.Chmod(p, os.FileMode(m))
 }
 
 type bytesSource struct {
@@ -126,6 +134,8 @@ func TestAFailedInstallKeepsThePreviousBinary(t *testing.T) {
 	}{
 		"corrupted upload": {next: script("v2.0.0"), corrupt: true, want: "different sha256"},
 		"does not run":     {next: []byte("#!/bin/sh\nexit 1\n"), want: "does not run"},
+		"says nothing":     {next: []byte("#!/bin/sh\nexit 0\n"), want: "not a can"},
+		"empty version":    {next: script(""), want: "not a can"},
 		"wrong version":    {next: script("v2.0.0"), version: "v3.0.0", want: "does not report version v3.0.0"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -381,5 +391,38 @@ func TestCompareAndParseVersion(t *testing.T) {
 	}
 	if _, err := ParseVersion("command not found"); err == nil {
 		t.Fatal("want an error")
+	}
+}
+
+func TestASomeoneElsesCheckoutIsNotBuilt(t *testing.T) {
+	co := checkout(t)
+	old := ownedByUser
+	ownedByUser = func(p string) bool { return !strings.HasPrefix(p, co) }
+	t.Cleanup(func() { ownedByUser = old })
+	r := &Resolver{Dirs: []string{filepath.Join(co, "cmd")}, Compile: func(context.Context, string, string, string, string) error {
+		t.Fatal("compiled another user's checkout")
+		return nil
+	}}
+	if got := FindCheckout(r.Dirs...); got != "" {
+		t.Fatal(got)
+	}
+	for _, err := range []error{r.Available(), func() error { _, err := r.Binary(context.Background(), "amd64"); return err }()} {
+		if err == nil || !strings.Contains(err.Error(), co+" belongs to another user") {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTheCheckoutIsNamedBeforeItIsBuilt(t *testing.T) {
+	co := checkout(t)
+	var log bytes.Buffer
+	r := &Resolver{Dirs: []string{co}, Log: &log, Compile: func(_ context.Context, _, _, _, out string) error {
+		if !strings.Contains(log.String(), co) {
+			t.Fatalf("not said before compiling: %q", log.String())
+		}
+		return os.WriteFile(out, []byte("x"), 0o600)
+	}}
+	if _, err := r.Binary(context.Background(), "amd64"); err != nil {
+		t.Fatal(err)
 	}
 }

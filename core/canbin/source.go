@@ -86,11 +86,12 @@ type Resolver struct {
 	Dirs    []string               // where to look for a source checkout (this directory or above)
 	// Compile builds cmd/can of the checkout for linux/arch into out.
 	Compile func(ctx context.Context, checkout, arch, ldflags, out string) error
+	Log     io.Writer // where the checkout is named before it is built
 }
 
 // NewResolver is a Resolver with the real seams.
 func NewResolver(b Build, file string) *Resolver {
-	r := &Resolver{Build: b, File: file, BaseURL: DefaultBaseURL, HTTP: &http.Client{Timeout: 10 * time.Minute}, Self: os.Executable, Compile: goBuild}
+	r := &Resolver{Build: b, File: file, BaseURL: DefaultBaseURL, HTTP: &http.Client{Timeout: 10 * time.Minute}, Self: os.Executable, Compile: goBuild, Log: os.Stderr}
 	if wd, err := os.Getwd(); err == nil {
 		r.Dirs = append(r.Dirs, wd)
 	}
@@ -100,14 +101,27 @@ func NewResolver(b Build, file string) *Resolver {
 	return r
 }
 
-// FindCheckout returns the root of the companyinacan source checkout at or above one of dirs.
+// FindCheckout returns the root of the companyinacan source checkout at or above one of dirs that
+// belongs to the current user. Someone else's (a go.mod planted in /tmp or another shared parent
+// of the working directory) is never built: the result runs as root on the server.
 func FindCheckout(dirs ...string) string {
+	own, _ := findCheckouts(dirs)
+	return own
+}
+
+// findCheckouts also reports the first checkout passed over because another user owns it.
+func findCheckouts(dirs []string) (own, foreign string) {
 	for _, d := range dirs {
 		for d != "" {
 			b, err := os.ReadFile(filepath.Join(d, "go.mod")) //nolint:gosec // fixed file name
 			if err == nil && strings.HasPrefix(strings.TrimSpace(string(b)), "module "+module+"\n") {
 				if st, err := os.Stat(filepath.Join(d, "cmd", "can")); err == nil && st.IsDir() {
-					return d
+					if ownedByUser(d) && ownedByUser(filepath.Join(d, "go.mod")) {
+						return d, foreign
+					}
+					if foreign == "" {
+						foreign = d
+					}
 				}
 			}
 			up := filepath.Dir(d)
@@ -116,6 +130,14 @@ func FindCheckout(dirs ...string) string {
 			}
 			d = up
 		}
+	}
+	return "", foreign
+}
+
+// foreignNote explains why a checkout that is there was not used.
+func (r *Resolver) foreignNote() string {
+	if _, f := findCheckouts(r.Dirs); f != "" {
+		return fmt.Sprintf(" (the source checkout %s belongs to another user and is not built)", f)
 	}
 	return ""
 }
@@ -163,7 +185,7 @@ func (r *Resolver) Available() error {
 		}
 		return errors.New("there is a source checkout but no `go` in PATH to build the server's can with: install Go, or pass --can-binary FILE (a linux can) or --release-manifest FILE")
 	}
-	return errors.New("no way to get a can binary for the server: pass --release-manifest FILE (a release's release-images.json), --can-binary FILE (a static linux build), or run from a source checkout with Go installed")
+	return errors.New("no way to get a can binary for the server: pass --release-manifest FILE (a release's release-images.json), --can-binary FILE (a static linux build), or run from a source checkout with Go installed" + r.foreignNote())
 }
 
 // Binary implements Source.
@@ -198,7 +220,7 @@ func (r *Resolver) Binary(ctx context.Context, arch string) (Binary, error) {
 		return Binary{Data: data, Origin: "this can binary"}, nil
 	}
 	if co == "" {
-		return Binary{}, fmt.Errorf("no linux/%s can binary for the server: pass --release-manifest FILE (a release's release-images.json), --can-binary FILE, or run from a source checkout with Go installed", arch)
+		return Binary{}, fmt.Errorf("no linux/%s can binary for the server: pass --release-manifest FILE (a release's release-images.json), --can-binary FILE, or run from a source checkout with Go installed%s", arch, r.foreignNote())
 	}
 	return r.compile(ctx, co, arch)
 }
@@ -382,6 +404,9 @@ func (r *Resolver) compile(ctx context.Context, checkout, arch string) (Binary, 
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	out := filepath.Join(dir, "can")
+	if r.Log != nil {
+		fmt.Fprintf(r.Log, "building can for linux/%s from the source checkout %s\n", arch, checkout)
+	}
 	if err := r.Compile(ctx, checkout, arch, flags, out); err != nil {
 		return Binary{}, fmt.Errorf("build can for linux/%s from %s: %w (or pass --can-binary FILE or --release-manifest FILE)", arch, checkout, err)
 	}

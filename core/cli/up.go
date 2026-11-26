@@ -279,7 +279,7 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		if prep, err = t.stackPreflight(ctx, cmd.ErrOrStderr(), sf); err != nil {
 			return t.fail(err)
 		}
-	} else if provisionCLI, err = provisionCanSource(sf); err != nil {
+	} else if provisionCLI, err = provisionCanSource(sf, cmd.ErrOrStderr()); err != nil {
 		return t.fail(fmt.Errorf("%w (nothing has been provisioned yet)", err))
 	}
 	if err := t.prov.Create(ctx, t.spec, t.store, out); err != nil {

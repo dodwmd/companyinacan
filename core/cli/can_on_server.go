@@ -1,6 +1,6 @@
 package cli
 
-// The `can` on the company's server (specs/060-can-on-server): which one `can up` installs, and
+// The `can` on the company's server (specs/061-can-on-server): which one `can up` installs, and
 // what `can status` says about the one there. `can backup install` and `can restore` run on the
 // server and install the running binary.
 
@@ -41,7 +41,7 @@ var newCanSource = func(file string, set launch.ImageSet) canSource {
 
 // provisionCanSource is the source for `can up --provision-only`, which needs no images: the
 // release manifest is read only if one is named (or the checkout has the default one).
-func provisionCanSource(f *stackFlags) (canSource, error) {
+func provisionCanSource(f *stackFlags, warn io.Writer) (canSource, error) {
 	set := launch.ImageSet{}
 	manifest := f.releaseManifest
 	if manifest == "" && f.imagesFrom == "" {
@@ -50,9 +50,16 @@ func provisionCanSource(f *stackFlags) (canSource, error) {
 		}
 	}
 	if manifest != "" {
-		var err error
-		if set, err = launch.LoadRelease(manifest); err != nil {
+		loaded, err := launch.LoadRelease(manifest)
+		switch {
+		case err == nil:
+			set = loaded
+		case f.releaseManifest != "":
 			return nil, err
+		default:
+			// Nobody asked for the default manifest here: it must not stop a run that only
+			// provisions.
+			fmt.Fprintf(warn, "warning: %v; not using it for the server's can\n", err)
 		}
 	}
 	src := newCanSource(f.canBinary, set)

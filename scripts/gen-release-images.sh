@@ -6,7 +6,7 @@
 #     [linux/amd64=sha256:<64 hex> linux/arm64=sha256:<64 hex>]
 #
 # The linux/<arch> pairs are the digests of the release's can_<version>_linux_<arch>.tar.gz archives: `can up`
-# installs that `can` on the server after checking it against them (specs/060-can-on-server). Give both or neither.
+# installs that `can` on the server after checking it against them (specs/061-can-on-server). Give both or neither.
 #
 # The release pipeline calls this after publish-images, with the digests the registry reported for
 # the images it pushed and signed, and attaches the result to the release as release-images.json. A hand-edited or

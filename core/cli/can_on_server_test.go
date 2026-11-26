@@ -80,9 +80,9 @@ func (h *canHost) Run(ctx context.Context, script string) (string, error) {
 		}
 		return out + "CAN_CLI_PROBED\n", nil
 	case strings.HasPrefix(script, "# can: prepare the upload"):
-		return "", nil
+		return "CAN_CLI_TMP /usr/local/bin/.can.Ab12Cd34\n", nil
 	case strings.HasPrefix(script, "# can: install the can binary"):
-		h.installed = string(h.copied["/usr/local/bin/.can.new"])
+		h.installed = string(h.copied["/usr/local/bin/.can.Ab12Cd34"])
 		return "CAN_CLI_VERSION " + version(h.installed) + "\nCAN_CLI_INSTALLED\n", nil
 	}
 	return h.cliRunner.Run(ctx, script)
@@ -196,5 +196,23 @@ func TestInstallSelfPutsCanUnderRoot(t *testing.T) {
 	}
 	if line, err = installSelf(root); err != nil || !strings.Contains(line, "already holds") {
 		t.Fatal(line, err)
+	}
+}
+
+// `up --provision-only` never read the default release manifest before: a broken one must not stop it.
+func TestABrokenDefaultManifestDoesNotStopProvisioning(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll("deploy", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(launch.DefaultReleaseManifest, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var warn strings.Builder
+	if src, err := provisionCanSource(&stackFlags{}, &warn); err != nil || src == nil || !strings.Contains(warn.String(), "release-images.json") {
+		t.Fatalf("%v %q", err, warn.String())
+	}
+	if _, err := provisionCanSource(&stackFlags{releaseManifest: launch.DefaultReleaseManifest}, &warn); err == nil {
+		t.Fatal("a manifest the operator names must be readable")
 	}
 }

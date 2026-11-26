@@ -30,7 +30,7 @@ func (f *fakeCLI) Binary(_ context.Context, arch string) (canbin.Binary, error) 
 
 const (
 	cliPath = "/usr/local/bin/can"
-	cliTmp  = "/usr/local/bin/.can.new"
+	cliTmp  = "/usr/local/bin/.can.Ab12Cd34"
 )
 
 // cli simulates the server's side of canbin.Install on the hostFake: what was uploaded to the
@@ -54,7 +54,7 @@ func (h *hostFake) cli(script string) (string, bool, error) {
 		return out + "CAN_CLI_PROBED\n", true, nil
 	case strings.HasPrefix(script, "# can: prepare the upload"):
 		delete(h.copied, cliTmp)
-		return "", true, nil
+		return "CAN_CLI_TMP " + cliTmp + "\n", true, nil
 	case strings.HasPrefix(script, "# can: install the can binary"):
 		b := h.copied[cliTmp]
 		delete(h.copied, cliTmp)

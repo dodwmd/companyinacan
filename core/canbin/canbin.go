@@ -1,4 +1,4 @@
-// Package canbin puts a `can` binary on the company's server (specs/060-can-on-server).
+// Package canbin puts a `can` binary on the company's server (specs/061-can-on-server).
 //
 // The host's backup script and erasure sync timer run /usr/local/bin/can, so `can up`,
 // `can backup install` and `can restore` install one that matches the running tool and the
