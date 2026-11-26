@@ -88,7 +88,7 @@ func TestReleaseWorkflowBuildsTheImageList(t *testing.T) {
 		t.Errorf("release.yml publishes %v, want %v", got, modimages.Names())
 	}
 	// each image is pushed under the version its chart pulls, and a published one is never moved
-	for _, want := range []string{`core/modimages/images.txt`, `tags="$tags -t $repo:$own"`, "is already published and is not moved"} {
+	for _, want := range []string{`core/modimages/images.txt`, `tags="$tags -t $repo:$own"`, `sh scripts/check-image-versions.sh "ghcr.io/$owner"`, "dev.companyinacan.source=$source", `[ "$state" != published ]`} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("release.yml lacks %q", want)
 		}
@@ -257,5 +257,95 @@ esac
 	}
 	if out, err := run("can-core can-static can-nothing"); err == nil {
 		t.Fatalf("unknown image: %s", out)
+	}
+}
+
+// A release fails when an image changed since its version was published: the registry is a stand-in
+// that answers from files.
+func TestReleaseRefusesAChangedImageUnderAPublishedVersion(t *testing.T) {
+	for _, tool := range []string{"sh", "go", "jq", "sha256sum"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skip("no " + tool)
+		}
+	}
+	digest := func(name string) string {
+		out, err := exec.Command("sh", filepath.Join(root, "scripts", "image-source-digest.sh"), name, root).Output() //nolint:gosec // repository script
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	work, hooks := digest("can-work"), digest("can-hooks")
+	if len(work) != 64 || work != digest("can-work") || work == hooks || work == digest("can-forms") {
+		t.Fatalf("digests: %s %s", work, hooks)
+	}
+
+	tmp := t.TempDir()
+	// $1 is the reference; a file named after the image answers with its label.
+	inspect := filepath.Join(tmp, "inspect")
+	body := "#!/bin/sh\nn=${1##*/}; n=${n%%:*}\n[ -f \"" + tmp + "/$n\" ] || { echo \"ERROR: $1: ${NOPE:-not found}\" >&2; exit 1; }\ncat \"" + tmp + "/$n\"\n"
+	if err := os.WriteFile(inspect, []byte(body), 0o700); err != nil { //nolint:gosec // test stand-in
+		t.Fatal(err)
+	}
+	publish := func(name, label string) {
+		if err := os.WriteFile(filepath.Join(tmp, name), []byte(`{"config":{"Labels":{"dev.companyinacan.source":"`+label+`"}}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(env ...string) (string, error) {
+		cmd := exec.Command("sh", filepath.Join(root, "scripts", "check-image-versions.sh"), "ghcr.io/o", root) //nolint:gosec // repository script
+		cmd.Env = append(append(os.Environ(), "IMAGE_INSPECT=sh "+inspect), env...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	publish("can-work", work)
+	out, err := check()
+	if err != nil || !strings.Contains(out, "can-work published "+work) || !strings.Contains(out, "can-hooks absent "+hooks) || !strings.Contains(out, "can-core release -") {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	for _, label := range []string{strings.Repeat("0", 64), ""} {
+		publish("can-work", label)
+		if out, err := check(); err == nil || !strings.Contains(out, "set-image-version.sh can-work") {
+			t.Fatalf("label %q: %v:\n%s", label, err, out)
+		}
+	}
+	publish("can-work", work)
+	if out, err := check("NOPE=denied"); err == nil || !strings.Contains(out, "cannot tell") {
+		t.Fatalf("an unreadable registry must fail: %v:\n%s", err, out)
+	}
+}
+
+// What image-source-digest.sh assumes: each Go image is one command, and nothing but its binary
+// reaches the final image; can-hooks copies nothing.
+func TestImageDockerfilesHaveTheShapeTheDigestAssumes(t *testing.T) {
+	for _, i := range modimages.All() {
+		var lines []string
+		for _, l := range strings.Split(readRepo(t, root, i.Dockerfile), "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(l), "#") {
+				lines = append(lines, l)
+			}
+		}
+		body := strings.Join(lines, "\n")
+		cmds := map[string]bool{}
+		for _, c := range regexp.MustCompile(`\./cmd/[a-z-]+`).FindAllString(body, -1) {
+			cmds[c] = true
+		}
+		final := body[strings.LastIndex(body, "\nFROM "):]
+		if i.Name == "can-hooks" {
+			if len(cmds) != 0 || regexp.MustCompile(`(?m)^(COPY|ADD) `).MatchString("\n"+body) {
+				t.Errorf("%s now builds or copies files: teach scripts/image-source-digest.sh", i.Dockerfile)
+			}
+			continue
+		}
+		if len(cmds) != 1 {
+			t.Errorf("%s builds %v, want one command", i.Dockerfile, cmds)
+		}
+		for _, l := range regexp.MustCompile(`(?m)^(COPY|ADD) .*$`).FindAllString(final, -1) {
+			// can-core also ships the module directories; it has no version of its own, so no digest decides
+			shipped := i.Name == "can-core" && l == "COPY modules /modules"
+			if !shipped && !strings.HasPrefix(l, "COPY --from=build /out/") {
+				t.Errorf("%s: %q reaches the image but not its source digest", i.Dockerfile, l)
+			}
+		}
 	}
 }
