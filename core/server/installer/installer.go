@@ -384,9 +384,11 @@ func (in *Installer) secretKey(ctx context.Context, ns, name, key string) (strin
 // would sit unused in the Secret until the pod happened to restart.
 const secretVersionAnnotation = "can.dev/secret-version"
 
-// secretVersion is a short digest of the Secret data (never the data itself).
-func secretVersion(maps ...map[string]string) string {
-	h := sha256.New()
+// secretVersion is a short digest of the Secret data (never the data itself). It is keyed with the
+// module's webhook secret: the data includes passwords, some chosen by a person (the SMTP relay's),
+// and the digest is readable by anyone who can read pods.
+func secretVersion(key string, maps ...map[string]string) string {
+	h := hmac.New(sha256.New, []byte(key))
 	for _, m := range maps {
 		keys := make([]string, 0, len(m))
 		for k := range m {
@@ -505,9 +507,9 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 		return "", err
 	}
 	if smtp != nil {
-		return secretVersion(mod, db, smtp), nil
+		return secretVersion(s.HMACSecret, mod, db, smtp), nil
 	}
-	return secretVersion(mod, db), nil
+	return secretVersion(s.HMACSecret, mod, db), nil
 }
 
 // ensureRelaySecret writes `can-smtp` for a module that speaks SMTP itself and declares email.send.

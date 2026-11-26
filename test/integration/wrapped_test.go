@@ -204,7 +204,7 @@ func measureNote(t *testing.T, line string) {
 
 // measureIdle lets the app settle and records the working set of its container's cgroup (current
 // minus inactive file pages, what `kubectl top` reports), read from inside the container.
-func measureIdle(t *testing.T, label, ns, deploy string) {
+func measureIdle(t *testing.T, label, ns, deploy, container string) {
 	t.Helper()
 	settle := 180 * time.Second
 	if v, err := strconv.Atoi(os.Getenv("CAN_IT_SETTLE_SECONDS")); err == nil {
@@ -213,7 +213,8 @@ func measureIdle(t *testing.T, label, ns, deploy string) {
 	time.Sleep(settle)
 	var samples []int
 	for range 6 {
-		out := mustKubectl(t, "-n", ns, "exec", "deploy/"+deploy, "--", "sh", "-c",
+		// -c: without it kubectl prints "Defaulted container ..." into the output of a pod with init containers
+		out := mustKubectl(t, "-n", ns, "exec", "deploy/"+deploy, "-c", container, "--", "sh", "-c",
 			"cat /sys/fs/cgroup/memory.current; grep -E '^inactive_file ' /sys/fs/cgroup/memory.stat")
 		f := strings.Fields(out)
 		if len(f) != 3 {
@@ -253,7 +254,7 @@ func analyticsChecks(t *testing.T) {
 		t.Fatalf("count: %d", p.status)
 	}
 	eventually(t, 60*time.Second, "the page view to be in the database", func() (bool, string) {
-		o, err := kubectl("-n", "mod-analytics", "exec", "deploy/analytics", "--",
+		o, err := kubectl("-n", "mod-analytics", "exec", "deploy/analytics", "-c", "app", "--",
 			"goatcounter", "db", "query", "select path from paths where path = '/ci-page'", "-db", "sqlite+/data/goatcounter.sqlite3")
 		return err == nil && strings.Contains(o, "/ci-page"), o
 	})
@@ -334,20 +335,20 @@ func TestWrappedModulesThroughCanCore(t *testing.T) {
 	t.Run("analytics", func(t *testing.T) {
 		enableWrapped(t, "analytics")
 		analyticsChecks(t)
-		measureIdle(t, "analytics (GoatCounter)", "mod-analytics", "analytics")
+		measureIdle(t, "analytics (GoatCounter)", "mod-analytics", "analytics", "app")
 		removeWrapped(t, "analytics")
 	})
 	t.Run("support", func(t *testing.T) {
 		enableWrapped(t, "support")
 		supportChecks(t)
-		measureIdle(t, "support (FreeScout)", "mod-support", "support")
-		measureIdle(t, "shared Postgres (with the support database)", "can-data", "postgres")
+		measureIdle(t, "support (FreeScout)", "mod-support", "support", "app")
+		measureIdle(t, "shared Postgres (with the support database)", "can-data", "postgres", "postgres")
 		removeWrapped(t, "support")
 	})
 	t.Run("newsletter", func(t *testing.T) {
 		enableWrapped(t, "newsletter")
 		newsletterChecks(t)
-		measureIdle(t, "newsletter (Listmonk)", "mod-newsletter", "newsletter")
+		measureIdle(t, "newsletter (Listmonk)", "mod-newsletter", "newsletter", "app")
 		// One database and one user per module: newsletter's credentials do not open support's database.
 		pw, err := base64.StdEncoding.DecodeString(mustKubectl(t, "-n", "mod-newsletter", "get", "secret", "can-db", "-o", "jsonpath={.data.DB_PASSWORD}"))
 		if err != nil {
