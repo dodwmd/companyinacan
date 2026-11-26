@@ -100,6 +100,7 @@ func (b *blobSpec) path(dir, key string) string {
 
 // layout is where one instance keeps its data, read from its config file.
 type layout struct {
+	keyring string // the field keyring named by the config ("" = none named)
 	db      string
 	blobDir string
 	backend string // "local", "s3" or "" (no blobs)
@@ -110,9 +111,11 @@ type layout struct {
 // the built-in defaults, unless the path was given explicitly.
 func (s spec) loadLayout(path string, must bool) (layout, error) {
 	var c struct {
-		DBPath    string `yaml:"db_path"`
-		ResumeDir string `yaml:"resume_dir"`
-		Backend   struct {
+		KeyringFile string `yaml:"keyring_file"`
+		KeyringPath string `yaml:"keyring_path"`
+		DBPath      string `yaml:"db_path"`
+		ResumeDir   string `yaml:"resume_dir"`
+		Backend     struct {
 			Type  string `yaml:"type"`
 			Local struct {
 				Dir string `yaml:"dir"`
@@ -129,7 +132,7 @@ func (s spec) loadLayout(path string, must bool) (layout, error) {
 			return layout{}, fmt.Errorf("config %s: %w", path, err)
 		}
 	}
-	l := layout{db: or(c.DBPath, s.defaultDB)}
+	l := layout{db: or(c.DBPath, s.defaultDB), keyring: or(c.KeyringFile, c.KeyringPath)}
 	if s.blobs != nil {
 		l.backend = or(c.Backend.Type, "local")
 		l.blobDir = or(c.ResumeDir, c.Backend.Local.Dir, s.blobs.defaultDir)
@@ -148,10 +151,10 @@ func or(v ...string) string {
 
 // Handles reports whether args name one of the subcommands of this package.
 func Handles(args []string) bool {
-	return len(args) > 0 && (args[0] == "backup" || args[0] == "restore")
+	return len(args) > 0 && (args[0] == "backup" || args[0] == "restore" || args[0] == "export")
 }
 
-// Main runs `<binary> backup|restore` and returns the exit code. migrations is the service's
+// Main runs `<binary> backup|restore|export` and returns the exit code. migrations is the service's
 // embedded migration set: restore refuses a database from a newer schema than it knows.
 func Main(binary string, migrations fs.FS, args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	s, ok := specs[binary]
@@ -167,6 +170,9 @@ func Main(binary string, migrations fs.FS, args []string, getenv func(string) st
 	}
 	s.latest = latest
 	cmd := args[0]
+	if cmd == "export" {
+		return exportMain(s, args[1:], getenv, stdout, stderr)
+	}
 	flags := flag.NewFlagSet(binary+" "+cmd, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	cfgPath := flags.String("config", "", "path to the service config file (default "+s.defaultConfig+" when present)")
