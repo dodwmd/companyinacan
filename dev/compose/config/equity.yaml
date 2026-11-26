@@ -3,3 +3,8 @@
 listen: ":8081"
 db_path: /data/equity.db
 keyring_file: /secrets/equity-keyring
+# Web UI (specs/066-equity-ui), at http://equity.localhost:8080/. Plain HTTP in dev, so cookies are not Secure.
+ui:
+  enabled: true
+  insecure_cookies: true
+  trust_proxy: true

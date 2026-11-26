@@ -40,6 +40,7 @@ to the file.
 | work | `work.<domain>` (`/ui`) | - |
 | files | `files.<domain>` | share-link downloads on `files.<domain>/s/` |
 | people | `people.<domain>` | - |
+| equity | `equity.<domain>` | - |
 | jobs | `jobs.<domain>` | careers pages and feeds on `careers.<domain>` |
 | finance | `finance.<domain>` | signed invoice links on `finance.<domain>/public/invoices/`, only with `public: true`; contract signing pages on `/public/sign/`, only with `signing: true` |
 | forms | none | `/_forms` on the site hosts |

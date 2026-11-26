@@ -73,6 +73,7 @@ func peopleURL() string  { return appURL(2) }
 func jobsURL() string    { return appURL(3) }
 func financeURL() string { return appURL(4) }
 func filesURL() string   { return appURL(5) }
+func equityURL() string  { return appURL(6) }
 
 func host(name string) string { return "http://" + name + ".localhost:" + env.Port }
 
@@ -192,6 +193,7 @@ func journey(t *testing.T, vp viewport) {
 	t.Run("jobs_and_careers", func(t *testing.T) { jobsFlow(t, r) })
 	t.Run("finance_and_signing", func(t *testing.T) { financeFlow(t, r) })
 	t.Run("files", func(t *testing.T) { filesFlow(t, r) })
+	t.Run("equity", func(t *testing.T) { equityFlow(t, r) })
 	t.Run("overview_links", func(t *testing.T) { overviewLinks(t, r) })
 	t.Run("token_login_pages", func(t *testing.T) { tokenLogins(t, r) })
 	t.Run("cross_site_posts", func(t *testing.T) { crossSite(t, r) })
@@ -638,7 +640,7 @@ func leadForm(t *testing.T, r *run) {
 func tokenLogins(t *testing.T, r *run) {
 	for _, m := range []struct{ id, base, key string }{
 		{"work", "/ui", "CAN_WORK_ADMIN_TOKEN"}, {"people", "", "CAN_PEOPLE_API_TOKEN"}, {"jobs", "", "CAN_JOBS_ADMIN_TOKEN"},
-		{"finance", "", "CAN_FINANCE_ADMIN_TOKEN"}, {"files", "", "CAN_FILES_API_TOKEN"},
+		{"finance", "", "CAN_FINANCE_ADMIN_TOKEN"}, {"files", "", "CAN_FILES_API_TOKEN"}, {"equity", "", "CAN_EQUITY_API_TOKEN"},
 	} {
 		t.Run(m.id, func(t *testing.T) {
 			c := newSession(t, r.vp)
@@ -647,8 +649,8 @@ func tokenLogins(t *testing.T, r *run) {
 			c.allow(`HTTP 401|status of 401|HTTP 403|status of 403`)
 			c.fill(`input[name="token"]`, "not-a-token-0123456789abcdef0123456789")
 			c.submit(m.base + "/login")
-			if m.id == "people" {
-				return // the static people token is a service, not a person: it has no web session
+			if m.id == "people" || m.id == "equity" {
+				return // these static tokens are services, not people: they have no web session
 			}
 			c.goTo(base + "/login")
 			c.fill(`input[name="token"]`, env.Secret(t, m.id, m.key))
@@ -668,7 +670,7 @@ func tokenLogins(t *testing.T, r *run) {
 // administrator is signed in to. Nothing may happen.
 func crossSite(t *testing.T, r *run) {
 	s := r.admin.in(t)
-	targets := []string{adminURL() + "/logout", workURL() + "/logout", peopleURL() + "/logout", jobsURL() + "/logout", financeURL() + "/logout", filesURL() + "/logout"}
+	targets := []string{adminURL() + "/logout", workURL() + "/logout", peopleURL() + "/logout", jobsURL() + "/logout", financeURL() + "/logout", filesURL() + "/logout", equityURL() + "/logout"}
 	attacker := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		fmt.Fprintf(w, `<!doctype html><link rel="icon" href="data:,"><form method="post" action=%q><input name="csrf" value="guess"><button>go</button></form>`, r.URL.Query().Get("to"))
@@ -694,7 +696,7 @@ func crossSite(t *testing.T, r *run) {
 	s.allowed = nil
 	s.drain()
 	// Every session survived.
-	for _, p := range []string{adminURL() + "/overview", workURL() + "/", peopleURL() + "/", jobsURL() + "/", financeURL() + "/", filesURL() + "/"} {
+	for _, p := range []string{adminURL() + "/overview", workURL() + "/", peopleURL() + "/", jobsURL() + "/", financeURL() + "/", filesURL() + "/", equityURL() + "/"} {
 		s.navigate(chromedp.Navigate(p))
 		if strings.HasSuffix(s.path(), "/login") {
 			t.Errorf("a cross-origin post ended the session at %s", p)

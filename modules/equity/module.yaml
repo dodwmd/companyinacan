@@ -10,10 +10,13 @@ id: equity
 name: Equity and cap table
 description: Cap table and employee stock options. Entities, share classes, plans and pools, stakeholders, option grants with a vesting calculator, board approval with separation of duties, exercises, an append-only share ledger, cap-table views as of any date (basic and fully diluted), valuation records and illustrative round modelling. Per-field access, audited reads, sealed sensitive fields, retention, legal hold and erasure. Record-keeping and reporting only.
 category: finance
-version: 0.1.0
+# 0.2.0: the web UI (specs/066-equity-ui). The new version makes `apply` record the manifest again.
+version: 0.2.0
 # experimental: unit-, contract- and race-tested offline. The chart installs through can-core, which
-# generates the keyring and tokens (CI only waits for Ready on k3d). No admin UI or portal; token
-# introspection, the approval engine and events are not wired. See modules/equity/README.md.
+# generates the keyring and tokens (CI only waits for Ready on k3d). A server-rendered web UI (E17g,
+# specs/066-equity-ui) ships in the same binary, off by default (ui.enabled), routed only with expose.ui, checked
+# against the Compose stack and not on a cluster. Token introspection, the approval engine and events are not
+# wired: nothing can-core issues carries the board role. See modules/equity/README.md.
 status: experimental
 provider:
   type: inhouse
@@ -21,6 +24,17 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
+  # The web UI accepts can-core launch tickets (specs/036-module-ui-sso).
+  web_login: {}
+  # Routed on equity.<domain> only when company.yaml sets modules.equity.expose.ui (specs/040-module-routing).
+  # An allowlist of the web UI's own paths (/v1 is not one); test/contract checks it covers every UI route.
+  public_ui:
+    service: equity-api
+    port: 8081
+    exact: [/, /manifest.webmanifest]
+    prefixes: [/company, /login, /logout, /me, /static]
+    config:
+      ui: { enabled: true, trust_proxy: true }
 requires:
   database: sqlite
   sso: none

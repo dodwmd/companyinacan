@@ -63,15 +63,6 @@ type UI struct {
 	perUser  *rateLimiter
 }
 
-// withUI serves the web UI beside the API: /v1 and the health check stay the API's.
-func withUI(api, ui http.Handler) http.Handler {
-	top := http.NewServeMux()
-	top.Handle("/v1/", api)
-	top.Handle("GET /healthz", api)
-	top.Handle("/", ui)
-	return top
-}
-
 type route struct {
 	pattern string
 	h       http.HandlerFunc

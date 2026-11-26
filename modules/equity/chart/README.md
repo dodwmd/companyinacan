@@ -4,7 +4,8 @@ Helm-compatible templates for the in-house equity module, rendered by can-core's
 (not Helm) and applied by its installer. Same templates as the other in-house charts; see
 `modules/work/chart/README.md` for the object table.
 
-- Port 8081 only, Service `equity-api`, ClusterIP, no route.
+- Port 8081 only, Service `equity-api`, ClusterIP. No route of its own: with `modules.equity.expose.ui`
+  can-core routes the web UI's paths (never `/v1`) on `equity.<domain>` and sets `config.ui`.
 - The sealed-field keyring is the `keyring` key of the `can-module` Secret, mounted `0440` with
   `fsGroup: 65532` as one file with `subPath`.
 - Events stay in the service's outbox: this service has no can-core client yet.

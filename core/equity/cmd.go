@@ -182,6 +182,15 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	return 0
 }
 
+// withUI serves the web UI beside the API: /v1 and the health check stay the API's.
+func withUI(api, ui http.Handler) http.Handler {
+	top := http.NewServeMux()
+	top.Handle("/v1/", api)
+	top.Handle("GET /healthz", api)
+	top.Handle("/", ui)
+	return top
+}
+
 // breakGlassEnv holds a date (YYYY-MM-DD, inclusive, UTC) or an RFC 3339 time until which the
 // service account may act as it did before verified identities. It is an environment variable so
 // that only someone who controls the deployment can set it.
