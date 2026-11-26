@@ -149,6 +149,29 @@ func validMinor(name string, v int64) error {
 	return nil
 }
 
+var minorRe = regexp.MustCompile(`^(0|[1-9][0-9]{0,15})(\.[0-9]+)?$`)
+
+// ParseMinor reads a plain decimal amount ("1.25") as minor units of a currency, textually. More
+// decimals than the currency has are refused, never rounded.
+func ParseMinor(s, cur string) (int64, error) {
+	if err := validCurrency(cur); err != nil {
+		return 0, err
+	}
+	exp := currencyExp[cur]
+	whole, frac, _ := strings.Cut(s, ".")
+	if !minorRe.MatchString(s) || len(frac) > exp {
+		return 0, invalid("amount %q must be a plain decimal with at most %d decimal places (%s)", s, exp, cur)
+	}
+	var v int64
+	for _, c := range whole + frac + strings.Repeat("0", exp-len(frac)) {
+		v = v*10 + int64(c-'0')
+		if v > maxMinor {
+			return 0, invalid("amount %q is too large", s)
+		}
+	}
+	return v, nil
+}
+
 // FormatMinor renders minor units as a plain decimal string ("1234.56").
 func FormatMinor(minor int64, cur string) string {
 	exp := currencyExp[cur]

@@ -1,0 +1,17 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>{{t "grant.list_title"}}</h1>
+<p><a href="/company/entities/{{$d.Entity.ID}}">{{$d.Entity.Name}}</a></p>
+{{if .Caps.GrantDraft}}<p class="actions"><a href="/company/entities/{{$d.Entity.ID}}/grants/new">{{t "grant.new_title"}}</a></p>
+{{else if .Caps.NeedsPerson}}<p class="notice">{{t "home.needs_person"}}</p>{{end}}
+<form method="get" action="/company/entities/{{$d.Entity.ID}}/grants" class="card">
+<p><label for="status">{{t "grant.status"}}</label><select id="status" name="status"><option value="">{{t "common.all"}}</option>{{range $d.Statuses}}<option value="{{.}}"{{if eq . $d.Status}} selected{{end}}>{{label "gstatus" .}}</option>{{end}}</select></p>
+<p><button type="submit">{{t "common.filter"}}</button></p>
+</form>
+{{if $d.Items}}
+<ul class="list">
+{{range $d.Items}}<li><a href="/company/grants/{{.ID}}">{{if .Holder}}{{.Holder}}{{else}}<code>{{.StakeholderID}}</code>{{end}}: {{t "mine.grant" .Type (qty .Quantity) (date .GrantDate)}}</a> <span class="badge">{{label "gstatus" .Status}}</span></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "grant.none"}}</p>{{end}}
+{{with $d.Next}}<p><a href="/company/entities/{{$d.Entity.ID}}/grants?status={{$d.Status}}&amp;after={{.}}">{{t "common.more"}}</a></p>{{end}}
+{{end}}

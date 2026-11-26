@@ -1,0 +1,21 @@
+{{define "content"}}
+{{$p := .Data.Preview}}
+<h1>{{t "ex.review_title"}}</h1>
+{{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<dl class="facts">
+<dt>{{t "ex.quantity"}}</dt><dd class="num">{{qty $p.Quantity}}</dd>
+<dt>{{t "grant.strike"}}</dt><dd class="num">{{money $p.Position.Grant.StrikeMinor $p.Position.Grant.Currency}}</dd>
+<dt>{{t "ex.due"}}</dt><dd class="num">{{money $p.DueMinor $p.Position.Grant.Currency}}</dd>
+<dt>{{t "vest.window"}}</dt><dd>{{date $p.Position.Vesting.WindowEnd}}</dd>
+</dl>
+<p>{{t "ex.next_steps"}}</p>
+{{template "disclaimer" .Data.Notice}}
+<form method="post" action="/me/grants/{{$p.Position.Grant.ID}}/exercise" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="idem" value="{{.Data.Idem}}">
+<input type="hidden" name="quantity" value="{{$p.Quantity}}">
+<p><input id="accept" type="checkbox" name="accept" value="yes" required> <label for="accept" class="check">{{t "ex.accept"}}</label></p>
+<p><button type="submit">{{t "ex.send"}}</button></p>
+</form>
+<p><a href="/me/grants/{{$p.Position.Grant.ID}}">{{t "common.cancel"}}</a></p>
+{{end}}

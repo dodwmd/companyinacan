@@ -1,0 +1,41 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>{{t "cap.title"}}</h1>
+<p><a href="/company/entities/{{$d.Entity.ID}}">{{$d.Entity.Name}}</a></p>
+<form method="get" action="/company/entities/{{$d.Entity.ID}}/captable" class="card">
+<p><label for="as_of">{{t "cap.asof"}}</label><input id="as_of" type="date" name="as_of" value="{{$d.AsOf}}"></p>
+<p><label for="view">{{t "cap.view"}}</label><select id="view" name="view"><option value="fully-diluted"{{if $d.Full}} selected{{end}}>{{t "cap.fd"}}</option><option value="basic"{{if not $d.Full}} selected{{end}}>{{t "cap.basic"}}</option></select></p>
+<p><label for="names">{{t "cap.names"}}</label><select id="names" name="names"><option value="yes"{{if $d.Names}} selected{{end}}>{{t "common.yes"}}</option><option value="no"{{if not $d.Names}} selected{{end}}>{{t "common.no"}}</option></select></p>
+<p><button type="submit">{{t "cap.show"}}</button></p>
+</form>
+{{range $d.Table.Warnings}}<p class="error" role="alert">{{.}}</p>{{end}}
+<h2>{{t "cap.holders"}}</h2>
+{{if $d.Rows}}
+<div class="scroll" role="region" aria-label="{{t "cap.holders"}}" tabindex="0">
+<table>
+<caption>{{t "cap.caption" (date $d.AsOf)}}</caption>
+<thead><tr><th scope="col">{{t "holder.name"}}</th><th scope="col">{{t "cap.by_class"}}</th><th scope="col" class="num">{{t "cap.shares"}}</th><th scope="col" class="num">{{t "cap.basic_pct"}}</th>
+{{if $d.Full}}<th scope="col" class="num">{{t "cap.options"}}</th><th scope="col" class="num">{{t "cap.vested"}}</th><th scope="col" class="num">{{t "cap.fd_shares"}}</th><th scope="col" class="num">{{t "cap.fd_pct"}}</th>{{end}}</tr></thead>
+<tbody>
+{{range $d.Rows}}<tr><th scope="row"><a href="/company/stakeholders/{{.StakeholderID}}">{{if .Name}}{{.Name}}{{else}}<code>{{.StakeholderID}}</code>{{end}}</a></th>
+<td>{{range .Classes}}<span class="nowrap">{{.Name}}: {{qty .Shares}}</span> {{end}}</td><td class="num">{{qty .BasicShares}}</td><td class="num">{{pct .BasicPPM}}</td>
+{{if $d.Full}}<td class="num">{{qty .OptionsOutstanding}}</td><td class="num">{{qty .OptionsVested}}</td><td class="num">{{qty .FullyDiluted}}</td><td class="num">{{pct .FullyDilutedPPM}}</td>{{end}}</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "cap.none"}}</p>{{end}}
+{{if and $d.Full $d.Table.Pool}}
+<h2>{{t "cap.pool"}}</h2>
+<ul class="list">
+{{range $d.Table.Pool}}<li><span>{{.Name}}</span> <span class="num">{{t "cap.pool_line" (qty .Available) (pct .FullyDilutedPPM)}}</span></li>
+{{end}}</ul>
+{{end}}
+<h2>{{t "cap.totals"}}</h2>
+<dl class="facts">
+<dt>{{t "cap.shares"}}</dt><dd class="num">{{qty $d.Table.Totals.BasicShares}}</dd>
+{{if $d.Full}}<dt>{{t "cap.options"}}</dt><dd class="num">{{qty $d.Table.Totals.OptionsOutstanding}}</dd>
+<dt>{{t "pool.available"}}</dt><dd class="num">{{qty $d.Table.Totals.PoolAvailable}}</dd>
+<dt>{{t "cap.fd_shares"}}</dt><dd class="num">{{qty $d.Table.Totals.FullyDiluted}}</dd>{{end}}
+</dl>
+{{template "disclaimer" $d.Table.Notice}}
+{{end}}

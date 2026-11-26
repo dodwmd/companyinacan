@@ -1,0 +1,63 @@
+{{define "content"}}
+{{$d := .Data}}{{$g := .Data.Grant}}
+<h1>{{t "grant.title"}}</h1>
+<p><a href="/company/stakeholders/{{$g.StakeholderID}}">{{if $d.Holder}}{{$d.Holder}}{{else}}<code>{{$g.StakeholderID}}</code>{{end}}</a> <span class="muted">{{$d.Entity.Name}}, {{$d.Plan}}</span></p>
+<h2>{{t "grant.approval"}}</h2>
+<p><span class="badge">{{label "gstatus" $g.Status}}</span> {{label "gnext" $g.Status}}</p>
+{{if and (eq $g.Status "draft") $g.TerminalReason}}<p class="notice">{{t "grant.rejected_because"}} {{$g.TerminalReason}}</p>{{end}}
+{{if and $d.Pending (or (eq $g.Status "draft") (eq $g.Status "pending_approval"))}}<p class="notice">{{t "grant.holder_unconfirmed"}} <a href="/company/stakeholders/{{$g.StakeholderID}}">{{t "holder.confirm_title"}}</a></p>{{end}}
+{{if .Caps.NeedsPerson}}<p class="notice">{{t "home.needs_person"}}</p>{{end}}
+{{if eq $g.Status "draft"}}
+{{if .Caps.GrantDraft}}
+<form method="post" action="/company/grants/{{$g.ID}}/submit" class="card">
+{{template "csrf" .}}
+<p>{{t "grant.submit_what"}}</p>
+<p><button type="submit">{{t "grant.submit"}}</button></p>
+</form>
+{{if not $g.SupersedesID}}
+<h3>{{t "grant.delete_title"}}</h3>
+<form method="post" action="/company/grants/{{$g.ID}}/delete" class="card">
+{{template "csrf" .}}
+{{template "stepup" .}}
+<p><button type="submit">{{t "grant.delete"}}</button></p>
+</form>
+{{end}}
+{{end}}
+{{else if eq $g.Status "pending_approval"}}
+{{if .Caps.GrantApprove}}
+<form method="post" action="/company/grants/{{$g.ID}}/approve" class="card">
+{{template "csrf" .}}
+<p>{{t "grant.approve_what"}}</p>
+{{template "stepup" .}}
+<p><button type="submit">{{t "grant.approve"}}</button></p>
+</form>
+<form method="post" action="/company/grants/{{$g.ID}}/reject" class="card">
+{{template "csrf" .}}
+<p><label for="reason">{{t "grant.reason"}}</label><input id="reason" name="reason" maxlength="500" autocomplete="off"></p>
+<p><button type="submit">{{t "grant.reject"}}</button></p>
+</form>
+{{end}}
+{{else if eq $g.Status "approved"}}
+{{if .Caps.GrantAdmin}}
+<form method="post" action="/company/grants/{{$g.ID}}/activate" class="card">
+{{template "csrf" .}}
+<p>{{t "grant.activate_what"}}</p>
+<p><label for="activated_on">{{t "grant.activated_on"}}</label><input id="activated_on" type="date" name="activated_on"></p>
+{{template "stepup" .}}
+<p><button type="submit">{{t "grant.activate"}}</button></p>
+</form>
+{{end}}
+{{end}}
+<h2>{{t "grant.terms"}}</h2>
+{{template "terms" (dict2 $g $d.Schedule)}}
+{{with $g.Notes}}<h3>{{t "grant.notes"}}</h3><p class="prose">{{.}}</p>{{end}}
+<h2>{{t "vest.today"}}</h2>
+{{template "position" $d}}
+{{template "timeline" $d}}
+<h2>{{t "ex.list_title"}}</h2>
+{{if $d.Exercises}}
+<ul class="list">
+{{range $d.Exercises}}<li><a href="/company/exercises/{{.ID}}">{{t "mine.request" (qty .Quantity) (money .DueMinor .Currency)}}</a> <span class="badge">{{label "xstatus" .Status}}</span></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "ex.none"}}</p>{{end}}
+{{end}}

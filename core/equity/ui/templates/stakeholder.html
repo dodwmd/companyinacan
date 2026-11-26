@@ -1,0 +1,31 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>{{$d.Name}}</h1>
+<p><a href="/company/entities/{{$d.Entity.ID}}/stakeholders">{{$d.Entity.Name}}</a></p>
+<dl class="facts">
+<dt>{{t "holder.kind"}}</dt><dd>{{label "kind" $d.Holder.Kind}}</dd>
+{{with $d.Email}}<dt>{{t "holder.email"}}</dt><dd>{{.}}</dd>{{end}}
+<dt>{{t "holder.tax_id"}}</dt><dd>{{if $d.TaxID}}{{t "holder.on_file"}}{{else}}{{t "holder.not_on_file"}}{{end}}</dd>
+<dt>{{t "holder.person"}}</dt><dd>{{if $d.Holder.PersonID}}<code>{{$d.Holder.PersonID}}</code>{{else}}{{t "common.none"}}{{end}}</dd>
+<dt>{{t "holder.confirmation"}}</dt><dd>{{if $d.Holder.Erased}}{{t "holder.erased"}}{{else if $d.Pending}}{{t "holder.unconfirmed"}}{{else}}{{t "holder.confirmed"}}{{end}}</dd>
+<dt>{{t "holder.id"}}</dt><dd><code>{{$d.Holder.ID}}</code></dd>
+</dl>
+{{if $d.Pending}}
+<h2>{{t "holder.confirm_title"}}</h2>
+<p>{{t "holder.confirm_rule"}}</p>
+{{if .Caps.StakeholderEdit}}
+<form method="post" action="/company/stakeholders/{{$d.Holder.ID}}/{{if eq $d.Pending "verify"}}verify{{else}}attest{{end}}" class="card">
+{{template "csrf" .}}
+<p>{{if eq $d.Pending "verify"}}{{t "holder.verify_what"}}{{else}}{{t "holder.attest_what"}}{{end}}</p>
+{{template "stepup" .}}
+<p><button type="submit">{{if eq $d.Pending "verify"}}{{t "holder.verify"}}{{else}}{{t "holder.attest"}}{{end}}</button></p>
+</form>
+{{else if .Caps.NeedsPerson}}<p class="notice">{{t "home.needs_person"}}</p>{{end}}
+{{end}}
+<h2>{{t "grant.list_title"}}</h2>
+{{if $d.Grants}}
+<ul class="list">
+{{range $d.Grants}}<li><a href="/company/grants/{{.ID}}">{{t "mine.grant" .Type (qty .Quantity) (date .GrantDate)}}</a> <span class="badge">{{label "gstatus" .Status}}</span></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "grant.none"}}</p>{{end}}
+{{end}}

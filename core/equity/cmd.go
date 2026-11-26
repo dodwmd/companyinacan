@@ -146,6 +146,15 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	if can != nil {
 		handler = withSummary(handler, can, svc, log, api.summaryLimit()) // the business overview (specs/053-business-overview)
 	}
+	if cfg.UI.Enabled {
+		ui := &UI{Svc: svc, Auth: auth, Log: log, Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.UI.TrustProxy,
+			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour,
+			NoTokenLogin: !cfg.UI.tokenLogin()}
+		if can != nil {
+			ui.Sessions = can // single sign-on: launch tickets from the admin UI's Apps page
+		}
+		handler = withUI(handler, ui.Handler())
+	}
 	srv := &http.Server{Handler: obs.Instrument(handler), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup
 	wg.Add(1)
