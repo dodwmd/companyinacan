@@ -632,7 +632,7 @@ type revealData struct {
 // appReveal shows the sealed and contact fields of the candidate behind an application. It is a
 // POST so a link or a prefetch cannot trigger it; the Store audits the read before returning.
 func (u *UI) appReveal(c *uiCtx) error {
-	if ok, _ := u.reveals.allow(c.ss.subject); !ok {
+	if ok, _ := u.reveals.allow(c.ss.Subject); !ok {
 		c.w.Header().Set("Retry-After", "30")
 		u.renderError(c.w, c.r, c.ss, c.p, http.StatusTooManyRequests, "err.busy_title", "err.busy")
 		return nil

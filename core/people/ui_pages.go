@@ -150,7 +150,7 @@ func (u *UI) home(c *uiCtx) error {
 	}
 	if u.Approvals != nil {
 		d.ApprovalsWired = true
-		if items, err := u.Approvals.Waiting(ctx, c.ss.subject); err == nil {
+		if items, err := u.Approvals.Waiting(ctx, c.ss.Subject); err == nil {
 			d.Approvals = items
 		} else {
 			u.Log.Warn("approvals seam failed", "error", err)
@@ -334,7 +334,7 @@ func (u *UI) sensitiveReveal(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	if id != c.a.PersonID && !u.reveals.allow(c.ss.subject) {
+	if id != c.a.PersonID && !u.reveals.allow(c.ss.Subject) {
 		c.w.Header().Set("Retry-After", "30")
 		u.renderError(c.w, c.r, c.ss, c.a, http.StatusTooManyRequests, "err.busy_title", "err.busy")
 		return nil
