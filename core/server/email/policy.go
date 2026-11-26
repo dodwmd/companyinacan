@@ -30,6 +30,14 @@ const (
 // possible module id.
 const SystemSource = "@core"
 
+// approvalPrefix begins the outbox source of mail about the approvals one module opened. Like
+// SystemSource it is not a possible module id.
+const approvalPrefix = "@approvals:"
+
+// ApprovalSource is the outbox source of approval mail of module: its switch and limits, counted
+// apart from the module's other mail.
+func ApprovalSource(module string) string { return approvalPrefix + module }
+
 // externalRecipientsModule is the only module external_recipients applies to.
 const externalRecipientsModule = "finance"
 
@@ -113,6 +121,7 @@ func (p Policy) Rules(source string) Rules {
 	if source == SystemSource {
 		return Rules{Enabled: true, PerHour: systemPerHour, PerDay: systemPerDay}
 	}
+	source = strings.TrimPrefix(source, approvalPrefix)
 	m := p.modules[source]
 	r := Rules{Enabled: m.Enabled == nil || *m.Enabled, PerHour: m.PerHour, PerDay: m.PerDay, Recipients: m.Recipients,
 		AnyRecipient: m.ExternalRecipients && source == externalRecipientsModule}

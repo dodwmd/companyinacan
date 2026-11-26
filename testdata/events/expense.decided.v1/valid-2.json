@@ -1,0 +1,10 @@
+{
+  "id": "evt_0123456789abcdef01234561",
+  "type": "expense.decided.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "expense_id": 8,
+    "owner": "person-42"
+  }
+}

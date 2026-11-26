@@ -4,7 +4,7 @@
 # receives as environment. No public listener and no ingress.
 image:
   repository: ghcr.io/dodwmd/can-board
-  tag: 0.1.0
+  tag: 0.2.0
   # Set to a sha256 digest at release time; empty = the tag.
   digest: ""
   pullPolicy: IfNotPresent
@@ -27,8 +27,8 @@ persistence:
   storageClass: ""
   mountPath: /data
 configMountPath: /etc/can-board-config
-# Written verbatim to entity.yaml; only keys the can-board config accepts. webhook.url stays unset: this
-# service has no can-core client yet, so its events stay in its outbox.
+# Written verbatim to entity.yaml; only keys the can-board config accepts. webhook.url stays unset: events
+# go through can-core's module API (CAN_API_URL, injected by can-core).
 config:
   keyring_file: /etc/can-board/keys/keyring
   retention: {}            # see modules/entity/settings.schema.json (the legal record stays `legal`)

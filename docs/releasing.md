@@ -82,6 +82,23 @@ Say this in the release notes of the first release that has it:
   opt-out included. To take something away at once, approve the upgrade or disable the module (offline).
 - can-core uses the forms module's read and write token for it; users with `leads.erase` can erase from the UI.
 
+## Upgrade note: reminders
+
+Say this in the release notes of the first release that has it (what is announced:
+[notifications.md](notifications.md#reminders)):
+
+- The `finance`, `jobs`, `work`, `people` and `entity` modules **wait for approval**: they publish new events
+  or gain notification recipients. **Nothing of the new reminders works for a module until it is approved**,
+  and until then it gets no other change either. `board` is upgraded without asking.
+- To approve: `can apply --plan` shows each waiting module, what it widens and its code; then
+  `can apply --approve finance=<code>,jobs=<code>,work=<code>,people=<code>,entity=<code>` (name only the
+  modules you run). Or use the admin UI's catalogue page. `can status` lists what still waits.
+- A first install and a restore ask for nothing.
+- Outside consumers of `contract.expiring.v1` or `entity.filing.due.v1` must accept the `{"count": n}` form.
+- Time off requests pending at the upgrade do not tell their requester about the decision.
+- After approval the first sweep announces what is already overdue or due, as one summary per kind when
+  there are more than five. Contract renewal reminders raised before the upgrade are not raised again.
+
 ## Cutting a release
 
 ```sh

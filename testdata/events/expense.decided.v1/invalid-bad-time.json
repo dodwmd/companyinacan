@@ -1,0 +1,10 @@
+{
+  "id": "evt_0123456789abcdef01234560",
+  "type": "expense.decided.v1",
+  "time": 7,
+  "source": "finance",
+  "data": {
+    "expense_id": 7,
+    "owner": "user:ann"
+  }
+}

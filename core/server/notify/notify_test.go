@@ -273,7 +273,7 @@ func TestRateLimitSuppressesExternalButNotInApp(t *testing.T) {
 	e.s.opt.RateLimitPerHour = 3
 	e.setEmail("user:alice", "alice@example.com")
 	for i := 0; i < 6; i++ {
-		e.notify("user:alice", "lead.created", "")
+		e.notify("user:alice", "deal.won", "")
 	}
 	if len(e.mail.Sent()) != 3 {
 		t.Fatalf("emails = %d, want 3 (the limit)", len(e.mail.Sent()))
@@ -292,7 +292,7 @@ func TestRateLimitSuppressesExternalButNotInApp(t *testing.T) {
 		t.Fatalf("suppressed log rows = %d, want 3", suppressed)
 	}
 	e.now = e.now.Add(61 * time.Minute)
-	e.notify("user:alice", "lead.created", "")
+	e.notify("user:alice", "deal.won", "")
 	if len(e.mail.Sent()) != 4 {
 		t.Fatal("the window must slide")
 	}

@@ -119,6 +119,9 @@ func (s *Server) createApproval(w http.ResponseWriter, r *http.Request, m store.
 	switch {
 	case errors.Is(err, approvals.ErrInvalid):
 		httpx.Problem(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, approvals.ErrRateLimited):
+		w.Header().Set("Retry-After", "300")
+		httpx.Problem(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, approvals.ErrIdempotencyConflict):
 		httpx.Problem(w, http.StatusConflict, err.Error())
 	case errors.Is(err, approvals.ErrNoPolicy), errors.Is(err, approvals.ErrNoApprover):

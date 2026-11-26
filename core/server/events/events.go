@@ -50,6 +50,9 @@ var Catalogue = []string{
 	"approval.decided.v1", "notification.sent.v1",
 	// E15c: accounting (ids, numbers, counts and minor-unit totals only).
 	"journal.posted.v1", "bank.statement.imported.v1",
+	// Reminders and attention items (specs/060-reminders).
+	"invoice.overdue.v1", "contract.declined.v1", "expense.submitted.v1", "expense.decided.v1", "timesheet.submitted.v1", "timesheet.decided.v1",
+	"work.issue.p0.v1", "timeoff.requested.v1", "timeoff.decided.v1",
 }
 
 var typeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+\.v[1-9][0-9]*$`)

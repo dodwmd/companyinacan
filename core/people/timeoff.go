@@ -1021,8 +1021,20 @@ func (s *Service) SubmitLeaveRequest(ctx context.Context, a Actor, id string) (*
 				return err
 			}
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE leave_requests SET status='pending', halves=?, approval_ref=?, submitted_by=?, updated_at=? WHERE id=?`, halves, ref, canonSubject(a.Subject), s.now().Unix(), id)
-		return err
+		if _, err = tx.ExecContext(ctx, `UPDATE leave_requests SET status='pending', halves=?, approval_ref=?, submitted_by=?, submitted_account=?, updated_at=? WHERE id=?`, halves, ref, canonSubject(a.Subject), a.Subject, s.now().Unix(), id); err != nil {
+			return err
+		}
+		// The request id and, when the directory links one, the manager's account: no dates, type or person.
+		ev := map[string]any{"request_id": id}
+		var manager sql.NullString
+		err = tx.QueryRowContext(ctx, `SELECT m.sso_subject FROM people p JOIN people m ON m.id = p.manager_id WHERE p.id = ?`, r.PersonID).Scan(&manager)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if manager.String != "" {
+			ev["approver"] = manager.String
+		}
+		return s.enqueue(ctx, tx, EventTimeOffRequested, ev)
 	})
 	if err != nil {
 		return nil, err
@@ -1052,7 +1064,19 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 			return conflict("only a pending request can be decided (status is %s)", r.Status)
 		}
 		now := s.now().Unix()
+		decided := map[string]any{"request_id": id}
+		// submitted_by is folded for separation of duties; an account to notify is not.
+		var account string
+		if err := tx.QueryRowContext(ctx, `SELECT submitted_account FROM leave_requests WHERE id = ?`, id).Scan(&account); err != nil {
+			return err
+		}
+		if account != "" {
+			decided["requester"] = account
+		}
 		if !approve {
+			if err := s.enqueue(ctx, tx, EventTimeOffDecided, decided); err != nil {
+				return err
+			}
 			if s.approvals != nil && r.approvalRef != "" {
 				_ = s.approvals.Cancel(ctx, r.approvalRef)
 			}
@@ -1101,6 +1125,9 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 			return err
 		}
 		started = r.StartDate <= s.today()
+		if err := s.enqueue(ctx, tx, EventTimeOffDecided, decided); err != nil {
+			return err
+		}
 		return s.enqueue(ctx, tx, EventTimeOffApproved, timeoffEvent(r, halves))
 	})
 	if err != nil {

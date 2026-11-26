@@ -1,0 +1,10 @@
+{
+  "id": "evt_0123456789abcdef01234560",
+  "type": "timeoff.requested.v1",
+  "time": 7,
+  "source": "people",
+  "data": {
+    "request_id": "lvr_0123456789abcdef01234567",
+    "approver": "user:ann"
+  }
+}

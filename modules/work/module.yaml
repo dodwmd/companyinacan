@@ -11,7 +11,8 @@ category: operations
 # job builds the image and installs work through can-core (see docs/module-wiring.md for what that
 # proves). `can validate` warns so it is not offered as enable-ready until that is checked.
 status: experimental
-version: 0.1.0
+# 0.2.0: reminder events and notification rules (specs/060-reminders). The new version makes `apply` record the manifest again.
+version: 0.2.0
 provider:
   type: inhouse
   name: can-work
@@ -50,6 +51,10 @@ publishes:
   - { event: work.issue.updated.v1, schema: ./events/work.issue.updated.v1.json }
   - { event: work.issue.transitioned.v1, schema: ./events/work.issue.transitioned.v1.json }
   - { event: work.comment.created.v1, schema: ./events/work.comment.created.v1.json }
+  - { event: work.issue.p0.v1, schema: ./events/work.issue.p0.v1.json }
+# A P0 reaches its assignee and the managers, e-mail without waiting for quiet hours to end.
+notifications:
+  - { event: work.issue.p0.v1, recipients: ["field:assignee", "role:manager"], urgent: true }
 permissions: [work.read, work.write, work.admin]
 roles:
   member: [work.read, work.write]

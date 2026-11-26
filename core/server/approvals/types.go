@@ -31,11 +31,13 @@ var (
 	ErrNoApprover          = errors.New("no approver can be found for a step")
 	ErrIdempotencyConflict = errors.New("idempotency key already used with a different request")
 	ErrNotPending          = errors.New("the request is no longer pending")
-	ErrNotEligible         = errors.New("you are not an approver of an open step of this request")
-	ErrSelfApproval        = errors.New("a requester cannot decide their own request")
-	ErrAlreadyVoted        = errors.New("you have already voted on this request")
-	ErrNoManager           = errors.New("requester has no manager")
-	ErrResolver            = errors.New("reporting line lookup failed")
+	// ErrRateLimited: the module opened too many requests lately (cancelled ones count too).
+	ErrRateLimited  = errors.New("this module has opened too many approval requests; retry later")
+	ErrNotEligible  = errors.New("you are not an approver of an open step of this request")
+	ErrSelfApproval = errors.New("a requester cannot decide their own request")
+	ErrAlreadyVoted = errors.New("you have already voted on this request")
+	ErrNoManager    = errors.New("requester has no manager")
+	ErrResolver     = errors.New("reporting line lookup failed")
 )
 
 // Limits.
