@@ -151,26 +151,25 @@ type Notice struct {
 	// module supplied part of its content (its own API call, or data of an event).
 	Module   string
 	Authored bool
+	// Platform marks an approval notice of can-core's own engine, which has its own allowances. Only
+	// the engine sets it: no manifest rule, event or module request can.
+	Platform bool
 }
 
 var errInvalid = errors.New("invalid notification")
 
-// IsPlatformType reports whether typ is an approval notice of can-core's engine. Modules cannot name
-// one: their types carry their id, "approval" is no module's id and approval events are reserved.
-func IsPlatformType(typ string) bool { return strings.HasPrefix(typ, "approval.") }
-
 // publicTypes are raised by anyone on the internet: a website form, a job application.
 var publicTypes = map[string]bool{"lead" + ".created": true, "application" + ".received": true}
 
-// bucket restricts a count of notifications n to those that share limits with a notice of this origin
-// and type: can-core's own notices on one side, each origin on its own on the other, so that no module
-// (or the public, through one) can use up the allowance of an approval.
-func bucket(origin, typ string) (string, []any) {
-	const platform = `n.type LIKE 'approval.%'`
-	if IsPlatformType(typ) {
-		return platform, nil
+// bucket restricts a count of notifications n to those that share limits with a notice: the same
+// origin, and approval notices of the engine apart from everything else, so that neither a module nor
+// the public through it can use up the allowance of an approval, nor one module that of another.
+func bucket(origin string, platform bool) (string, []any) {
+	p := 0
+	if platform {
+		p = 1
 	}
-	return `n.origin=? AND NOT ` + platform, []any{origin}
+	return `n.origin=? AND n.platform=?`, []any{origin, p}
 }
 
 // burst reports whether the recipient has had more than PublicBurst notices of this public type in
@@ -264,7 +263,7 @@ func (s *Service) Notify(ctx context.Context, n Notice) (id int64, created bool,
 		}
 	}
 	var recent int
-	where, args := bucket(n.Module, n.Type)
+	where, args := bucket(n.Module, n.Platform)
 	args = append(append([]any{n.Subject, s.opt.Now().Add(-time.Hour).Unix()}, args...), MaxInAppPerHour)
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM notifications n WHERE n.subject=? AND n.created_at>? AND `+where+` LIMIT ?)`,
 		args...).Scan(&recent); err != nil {
@@ -290,8 +289,8 @@ func (s *Service) insert(ctx context.Context, n Notice, data map[string]string) 
 	if n.Urgent {
 		urgent = 1
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO notifications(subject, type, dedupe_key, data_json, link, urgent, created_at, origin, authored) VALUES (?,?,?,?,?,?,?,?,?)`,
-		n.Subject, n.Type, n.DedupeKey, string(dj), n.Link, urgent, s.opt.Now().Unix(), n.Module, n.Authored)
+	res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO notifications(subject, type, dedupe_key, data_json, link, urgent, created_at, origin, authored, platform) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		n.Subject, n.Type, n.DedupeKey, string(dj), n.Link, urgent, s.opt.Now().Unix(), n.Module, n.Authored, n.Platform)
 	if err != nil {
 		return 0, false, err
 	}
@@ -321,9 +320,9 @@ func (s *Service) emitSent(ctx context.Context, id int64, subject, typ, channel 
 	}
 }
 
-func (s *Service) externalCount(ctx context.Context, subject, channel, origin, typ string, since time.Time) (int, error) {
+func (s *Service) externalCount(ctx context.Context, subject, channel, origin string, platform bool, since time.Time) (int, error) {
 	var c int
-	where, args := bucket(origin, typ)
+	where, args := bucket(origin, platform)
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM notify_deliveries d JOIN notifications n ON n.id=d.notification_id
 		WHERE n.subject=? AND d.channel=? AND d.status='sent' AND d.detail<>? AND d.at>? AND `+where, append([]any{subject, channel, burstSent, since.Unix()}, args...)...).Scan(&c)
 	return c, err
@@ -363,7 +362,7 @@ func (s *Service) deliverEmail(ctx context.Context, id int64, n Notice, data map
 			return
 		}
 	}
-	cnt, err := s.externalCount(ctx, n.Subject, ChannelEmail, n.Module, n.Type, now.Add(-time.Hour))
+	cnt, err := s.externalCount(ctx, n.Subject, ChannelEmail, n.Module, n.Platform, now.Add(-time.Hour))
 	if err != nil {
 		s.opt.Log.Error("rate limit lookup failed", "error", err)
 		return
@@ -375,7 +374,7 @@ func (s *Service) deliverEmail(ctx context.Context, id int64, n Notice, data map
 	r := renderMail(n.Type, data)
 	cctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
-	if err := s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: r.Subject, Text: r.Text, HTML: r.HTML, ForUser: n.Subject, Module: n.Module, Authored: n.Authored, Type: n.Type}); err != nil {
+	if err := s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: r.Subject, Text: r.Text, HTML: r.HTML, ForUser: n.Subject, Module: n.Module, Authored: n.Authored, Platform: n.Platform, Type: n.Type}); err != nil {
 		s.logDelivery(ctx, id, ChannelEmail, "failed", err.Error())
 		return
 	}
@@ -404,7 +403,7 @@ func (s *Service) NotifyChannel(ctx context.Context, name string, n Notice) erro
 	if err != nil || !created {
 		return err
 	}
-	cnt, err := s.externalCount(ctx, n.Subject, "webhook", n.Module, n.Type, s.opt.Now().Add(-time.Hour))
+	cnt, err := s.externalCount(ctx, n.Subject, "webhook", n.Module, n.Platform, s.opt.Now().Add(-time.Hour))
 	if err != nil {
 		return err
 	}
@@ -724,7 +723,7 @@ type queued struct {
 	deliveryID, notificationID int64
 	subject, typ, dataJSON     string
 	module                     string
-	authored, burst            bool
+	authored, burst, platform  bool
 	at                         time.Time
 }
 
@@ -732,7 +731,7 @@ type queued struct {
 // over, and digest subscribers' batches once an hour or day has passed since the oldest queued
 // item. It returns how many digest emails were sent. Work per call is bounded.
 func (s *Service) FlushDigests(ctx context.Context) (int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.notification_id, n.subject, n.type, n.data_json, n.origin, n.authored, d.detail=?, d.at FROM notify_deliveries d
+	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.notification_id, n.subject, n.type, n.data_json, n.origin, n.authored, n.platform, d.detail=?, d.at FROM notify_deliveries d
 		JOIN notifications n ON n.id=d.notification_id WHERE d.channel='email' AND d.status='queued'
 		AND (d.detail<>? OR n.subject IN (SELECT m.subject FROM notify_deliveries b JOIN notifications m ON m.id=b.notification_id
 			WHERE b.status='queued' AND b.channel='email' AND b.detail=? AND b.at<=?))
@@ -752,12 +751,12 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 	for rows.Next() {
 		var q queued
 		var at int64
-		if err := rows.Scan(&q.deliveryID, &q.notificationID, &q.subject, &q.typ, &q.dataJSON, &q.module, &q.authored, &q.burst, &at); err != nil {
+		if err := rows.Scan(&q.deliveryID, &q.notificationID, &q.subject, &q.typ, &q.dataJSON, &q.module, &q.authored, &q.platform, &q.burst, &at); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
 		q.at = time.Unix(at, 0)
-		g := group{q.subject, q.module, q.authored, IsPlatformType(q.typ), q.burst}
+		g := group{q.subject, q.module, q.authored, q.platform, q.burst}
 		if _, ok := groups[g]; !ok {
 			order = append(order, g)
 		}
@@ -801,7 +800,7 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 		}
 		cctx, cancel := context.WithTimeout(ctx, sendTimeout)
 		err = s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: fmt.Sprintf("%d notifications", len(items)), Text: b.String(), HTML: "<pre>" + htmlEscape(b.String()) + "</pre>",
-			ForUser: subj, Module: g.module, Authored: g.authored, Type: items[0].typ, Count: len(items)})
+			ForUser: subj, Module: g.module, Authored: g.authored, Platform: g.platform, Type: items[0].typ, Count: len(items)})
 		cancel()
 		status, detail := "sent", "digest"
 		if g.burst {

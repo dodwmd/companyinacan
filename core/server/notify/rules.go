@@ -131,6 +131,10 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 	}
 	data := idData(env.Data)
 	data["event_id"] = env.ID
+	// approval.* are the engine's types: a rule on such an event is the module's own notice.
+	if mr.rule.Type == "" && strings.HasPrefix(typ, "approval.") {
+		typ = mr.module + "." + typ
+	}
 	// The project's own wording is for the module it was written for: another module using the same
 	// event name is shown as itself.
 	if owner, ok := wordingOwner[typ]; ok && mr.rule.Type == "" && env.Source != "can-core" && env.Source != owner {

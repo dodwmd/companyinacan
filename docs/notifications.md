@@ -13,8 +13,10 @@ offline (epic E11a). Email goes through the `email.send` outbox of [email.md](em
 - **Preferences** per notification type and channel (`email`, `inapp`); `*` is the default for types
   without their own setting. Urgent notices ignore the in-app mute.
 - **Limits**: at most 30 emails per person per hour **per origin** (the rest are logged as suppressed;
-  the inbox still gets the notice). can-core's approval notices are counted apart from every module's, so
-  no module's notices can use up their allowance. Job applications and website leads, which anyone on the
+  the inbox still gets the notice). The approval engine's notices are counted apart from other notices,
+  and per module that opened the approval: a module's other notices do not use up their allowance, nor do
+  another module's approvals. A module's own approvals share one allowance, and all mail still shares the
+  relay. Job applications and website leads, which anyone on the
   internet can raise, are e-mailed and pushed one by one up to five an hour per person; further ones
   go into one digest e-mail an hour later, without push. Nothing here throttles logins or valid API credentials.
 
@@ -77,6 +79,12 @@ at once (the first run after the upgrade, or after downtime) raises one summary 
 holds for contract renewals too. A person is told about one P0 issue at most once an hour.
 Overdue invoices and filings are checked hourly; the invoice check can be run now with
 `POST /v1/invoices/overdue-sweep` (finance admin; `as_of` not in the future).
+
+**For event consumers.** `contract.expiring.v1` and `entity.filing.due.v1` now have two forms (the
+schema is a `oneOf`): the per-record one as before, or `{"count": n}` for a backlog.
+
+Time off requests already pending when people is upgraded do not notify their requester of the decision:
+the account that submitted them was not recorded.
 
 **Upgrading.** The new manifests publish new events and add notification rules, which widens what the
 modules may do: the `finance`, `jobs`, `work`, `people` and `entity` upgrades **wait for your approval**

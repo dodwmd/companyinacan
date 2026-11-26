@@ -24,17 +24,11 @@ func (m NotifyMailer) Send(ctx context.Context, msg notify.Message) error {
 	if msg.Module != "" && msg.Module != "can-core" {
 		source = msg.Module
 	}
-	// An approval a module opened still obeys that module's switch, but is not counted against its
-	// quota: mail the module (or the public, through it) caused cannot crowd out an approval.
-	if source != SystemSource && !msg.Authored && notify.IsPlatformType(msg.Type) {
-		p, err := m.S.source.Load()
-		if err != nil {
-			return fmt.Errorf("%w: the email rules cannot be read", ErrNotConfigured)
-		}
-		if !p.Rules(source).Enabled {
-			return fmt.Errorf("%w: email is turned off for this module", ErrNotAllowed)
-		}
-		source = SystemSource
+	// Mail about an approval a module opened has an allowance of its own for that module: what the
+	// module (or the public, through it) sends cannot crowd it out, and a module opening approvals
+	// cannot use up can-core's, which invitations and password resets need.
+	if msg.Platform && source != SystemSource {
+		source = ApprovalSource(source)
 	}
 	subject, text := msg.Subject, msg.Text
 	if msg.Authored && source != SystemSource {

@@ -131,6 +131,11 @@ A notification caused by a module (its `POST /v1/notifications`, its approval re
 the module's own sends. can-core's own notices are limited to 300 per hour and 2000 per day. There is
 also the limit per person.
 
+Mail about the approvals a module opened is the one case counted separately: it has a second allowance per
+module (source `@approvals:<module>`), with the module's switch and the same `per_hour` and `per_day`
+figures. So it is not counted against the module's other mail, nor against can-core's own (invitations,
+password set-up links). A module may open at most 120 approval requests an hour and 600 a day.
+
 When the module wrote any of the content, the email carries a **fixed text**: the module id, the
 notification type and a link to `https://admin.<domain>/notifications`. The module's title and body
 stay in the inbox. To mail the module's wording, opt in per module:

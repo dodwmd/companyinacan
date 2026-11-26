@@ -94,6 +94,8 @@ Say this in the release notes of the first release that has it (what is announce
   `can apply --approve finance=<code>,jobs=<code>,work=<code>,people=<code>,entity=<code>` (name only the
   modules you run). Or use the admin UI's catalogue page. `can status` lists what still waits.
 - A first install and a restore ask for nothing.
+- Outside consumers of `contract.expiring.v1` or `entity.filing.due.v1` must accept the `{"count": n}` form.
+- Time off requests pending at the upgrade do not tell their requester about the decision.
 - After approval the first sweep announces what is already overdue or due, as one summary per kind when
   there are more than five. Contract renewal reminders raised before the upgrade are not raised again.
 

@@ -63,8 +63,8 @@ func TestPublicSpamDoesNotCrowdOutApprovals(t *testing.T) {
 		t.Fatalf("%d pushes, want %d", n, PublicBurst)
 	}
 	for _, typ := range []string{"approval.requested", "approval.escalated"} {
-		// Approvals carry their module, as the engine sends them.
-		_, created, err := e.s.Notify(ctx, Notice{Subject: "user:rita", Type: typ, DedupeKey: typ, Module: "jobs"})
+		// Approvals as the engine sends them.
+		_, created, err := e.s.Notify(ctx, Notice{Subject: "user:rita", Type: typ, DedupeKey: typ, Module: "jobs", Platform: true})
 		e.s.WaitPush()
 		if err != nil || !created {
 			t.Fatalf("%s was dropped: %v %v", typ, created, err)
@@ -146,5 +146,51 @@ func TestP0IsNotRepeatedWithinTheHour(t *testing.T) {
 	raise("WEB-1", "user:ann")
 	if n := len(e.inbox("user:ann")); n != 3 {
 		t.Fatalf("after an hour: %d", n)
+	}
+}
+
+// A manifest rule cannot make a notice of the engine's kind: a rule on an approval event yields the
+// module's own type, which counts with the module's other notices.
+func TestARuleCannotRaisePlatformNotices(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.module("acme-widgets", nil, config.NotifyRule{Event: "approval.requested.v1", Recipients: []string{"user:user:rita"}})
+	e.setEmail("user:rita", "rita@example.com")
+	e.bus.SubscribeAll(e.s.HandleEvent)
+	for range MaxInAppPerHour + 5 {
+		e.publish("can-core", "approval.requested.v1", `{"request_id":"apr_x"}`)
+	}
+	got := e.inbox("user:rita")
+	if len(got) == 0 || got[0].Type != "acme-widgets.approval.requested" {
+		t.Fatalf("%+v", got[:1])
+	}
+	var platform int
+	if err := e.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM notifications WHERE platform=1`).Scan(&platform); err != nil || platform != 0 {
+		t.Fatalf("%d platform notices from a rule: %v", platform, err)
+	}
+	for _, m := range e.mail.Sent() {
+		if m.Platform {
+			t.Fatalf("a rule's mail is marked as the engine's: %+v", m)
+		}
+	}
+	// The engine's own, for the same module and the same person, still arrives; so does it for a
+	// second module when the first one's approvals have used up their allowance.
+	engine := func(module, key string) bool {
+		_, created, err := e.s.Notify(ctx, Notice{Subject: "user:rita", Type: "approval.requested", DedupeKey: key, Module: module, Platform: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return created
+	}
+	for i := range MaxInAppPerHour {
+		if !engine("acme-widgets", "a"+strconv.Itoa(i)) {
+			t.Fatalf("approval %d was dropped", i)
+		}
+	}
+	if engine("acme-widgets", "over") {
+		t.Fatal("the module's own approvals are capped")
+	}
+	if !engine("jobs", "other") {
+		t.Fatal("another module's approval was dropped")
 	}
 }

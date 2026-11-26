@@ -29,8 +29,9 @@ reminders reached nobody.
 - **Backlog.** A sweep with more than five new items queues one event with `count`. The can-board
   migration `005_reminders.sql` retires events that were never attempted and re-arms pending filings
   that nobody heard of, so the first sweep announces them (summarised) once.
-- **Isolation.** In-app, e-mail and push limits are per recipient and origin; approval notices have
-  their own allowance and are not counted against a module's e-mail quota (its switch still applies).
+- **Isolation.** In-app, e-mail and push limits are per recipient and origin; the approval engine's
+  notices (marked by the engine, never by type) have their own allowance per module, and their mail its
+  own per-module quota, never can-core's. A module opens at most 120 approvals an hour, 600 a day.
   `application.received` and `lead.created` are digested beyond five an hour. A rule on an event its
   module publishes ignores other publishers. A P0 is repeated to a person at most hourly.
 - **Standalone entity.** Migration 005 also runs there: see docs/entity.md.
@@ -44,7 +45,7 @@ reminders reached nobody.
 
 Purchase order drafts, review releases, equity and board approvals; re-announcing contract reminders
 raised before the upgrade; digests for types other than the publicly triggered ones. There are no
-security notices in the engine today; one added later needs its prefix in `IsPlatformType`.
+security notices in the engine today; one added later has to set `Notice.Platform`.
 
 ## Verification
 

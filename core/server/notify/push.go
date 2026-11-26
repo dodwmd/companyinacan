@@ -382,7 +382,7 @@ func (s *Service) deliverPush(ctx context.Context, id int64, n Notice) {
 			return
 		}
 	}
-	cnt, err := s.externalCount(ctx, n.Subject, ChannelWebPush, n.Module, n.Type, now.Add(-time.Hour))
+	cnt, err := s.externalCount(ctx, n.Subject, ChannelWebPush, n.Module, n.Platform, now.Add(-time.Hour))
 	if err != nil {
 		s.opt.Log.Error("rate limit lookup failed", "error", err)
 		return
