@@ -28,8 +28,9 @@ The UI is served on the module's listener: `/v1/*`, `/careers*`, `/feeds/*`, `/r
 `GET /healthz` stay the API and the public pages; every other path is the UI. In the dev compose stack
 it is at `http://jobs.localhost:8080/` (`dev/compose/config/jobs.yaml` turns it on). Behind TLS leave
 the cookie flags at their defaults. Put the UI behind an ingress that is **not** the public careers
-route if you want it off the internet: the public paths are `/careers*`, `/feeds/*`, `/robots.txt`. The
-Helm chart does not expose the `ui` block or a route yet (follow-up).
+route if you want it off the internet: the public paths are `/careers*`, `/feeds/*`, `/robots.txt`. On a cluster, `modules.jobs.expose.ui: true` turns it on and routes
+`https://jobs.<domain>` ([`module-routing.md`](module-routing.md)); not yet run on a cluster for jobs. It uses its own host,
+not the careers one.
 
 ## Signing in
 

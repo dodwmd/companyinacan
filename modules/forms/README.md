@@ -112,9 +112,9 @@ Delivery is retried in-process, best effort: network errors, 5xx and 429 are ret
 `form_id`, `submitted_at`, an empty `fields`), never the name, e-mail address or message, because
 can-core keeps events for 30 days and feeds notifications from them. The manifest's notification rule
 turns each lead into an inbox item for the `sales` role. Four attempts with backoff, then the event is
-dropped: the lead is stored, but forms still has no outbox. The public listener has no route through
-can-core's Traefik (the installer allows only `<subdomain>.<domain>` hosts, not the same-origin
-`/_forms` path), so the chart's ingress stays off: see [`docs/module-wiring.md`](../../docs/module-wiring.md).
+dropped: the lead is stored, but forms still has no outbox. can-core routes the public listener at `/_forms` on the site
+hosts (`runtime.site_route`; turn it off with `modules.forms.expose.public: false`), not the chart: see
+[`docs/module-routing.md`](../../docs/module-routing.md).
 
 Retries live in memory: if the process stops mid-retry the event is not resent (the outcome so far is in `lead_deliveries`, and the lead is stored). Consumers should still de-duplicate on the event `id`. This is the interim path until the can-core event bus (at-least-once outbox) exists.
 

@@ -26,6 +26,7 @@ and the code is the truth.
 | [backup-restore.md](backup-restore.md) | Backups, the recovery kit, `can restore` (not functional yet) |
 | [observability.md](observability.md) | Metrics, `/readyz`, request ids, log redaction, alert rules, `can diagnose` support bundles, measured cost |
 | [releasing.md](releasing.md), [maintainers.md](maintainers.md) | Cutting a release, required checks, branch protection, advisories |
+| [module-routing.md](module-routing.md) | Which module pages are reachable from the internet and how to switch them on |
 | [module-wiring.md](module-wiring.md) | Installing modules through can-core: secrets, personal access tokens, events, approvals, what ran where |
 
 ## Platform (can-core)

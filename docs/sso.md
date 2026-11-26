@@ -192,16 +192,18 @@ that module's session only.
 | Setting | Meaning |
 |---|---|
 | module manifest `runtime.web_login {base_path, via_subdomain}` | the module's UI accepts tickets. Declared by work, people, jobs and finance. An app without it (wiki, CRM, ...) is never offered. With `via_subdomain: true` the address is `https://<runtime.subdomain>.<company domain><base_path>` |
+| `modules.<id>.expose.ui` (company.yaml) | can-core routes the UI and derives its address ([`module-routing.md`](module-routing.md)) |
 | `CAN_MODULE_UI_URLS` (can-core env) | `work=https://work.acme.example/ui,people=https://people.acme.example`: the operator's address (https, on the company domain or below, not the admin host); wins over the manifest; a bare origin gets `base_path` appended |
 | `CAN_COMPANY_DOMAIN` | module UI hosts must be this domain or below; the admin host is refused; it is also the launch cookie's `Domain`. can-core warns at start-up when it is missing or a single label, and about unacceptable `CAN_MODULE_UI_URLS` entries and entries that name a module that is not installed |
 | plain-http development (`CAN_COOKIE_SECURE=false`) | the cookie has no `__Secure-` prefix; run the admin UI and the module on the same host name (for example both on `localhost`, different ports). `admin.localhost` + `work.localhost` cannot share a cookie |
 | `ui.token_login` (each module's `ui:` block / env, see its UI doc) | `true` (default, for compatibility) keeps the paste-a-token form; set `false` once SSO is used so the only way in is a ticket. Scripts keep using tokens against the APIs |
 
-**Not routed by default.** The charts shipped today do not expose work, people or finance on a public host
-(jobs exposes only `/careers`). Until you route a module's UI and set its address in `CAN_MODULE_UI_URLS`, it
-does not appear under **Apps**; the paste-a-token page keeps working. The people, jobs and finance web UIs also
-need `ui.enabled: true`. A module installed before this version is offered after its next upgrade or re-enable. The compose stack (`CAN_INSTALLER=none`) installs no
-module, so Apps is empty there and the modules' token login is the way in.
+**Not routed by default.** Set `modules.<id>.expose.ui: true` in `company.yaml`
+([`module-routing.md`](module-routing.md)): can-core routes the UI on `<id>.<domain>`, switches it on in
+the module, and offers it under **Apps** without `CAN_MODULE_UI_URLS`. Without that, and without an
+address of your own in `CAN_MODULE_UI_URLS`, a module does not appear. The compose stack
+(`CAN_INSTALLER=none`) installs no module, so Apps is empty there and the modules' token login is the
+way in.
 
 **Not verified:** no browser or cluster run. See `specs/036-module-ui-sso/tasks.md`.
 
