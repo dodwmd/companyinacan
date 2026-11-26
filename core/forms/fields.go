@@ -104,7 +104,8 @@ func (f *Form) Validate(in map[string]string) (map[string]string, []FieldError) 
 
 	for _, fl := range f.Fields {
 		declared[fl.Name] = true
-		v := strings.TrimSpace(in[fl.Name])
+		// A browser posts a line break as CR LF but counts it as one character against maxlength.
+		v := strings.TrimSpace(strings.ReplaceAll(in[fl.Name], "\r\n", "\n"))
 		if v == "" {
 			if fl.Required {
 				add(fl.Name, "required", "this field is required")

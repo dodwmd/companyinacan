@@ -18,6 +18,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/routing"
+	"github.com/dodwmd/companyinacan/core/site"
 )
 
 // Phase ids, in the order Run executes them. The ids are the keys of .can/state.json
@@ -69,6 +70,8 @@ type Options struct {
 	AdminUser   string // default admin
 	// DefaultBundle adds the forms module to the pushed company when company.yaml does not mention it.
 	DefaultBundle bool
+	// SiteForms are the forms of the forms module, for site.contact; nil means the shipped ones.
+	SiteForms []config.HostedForm
 	// ForceCompany overwrites a company.yaml in the cluster that changed since `can up` last pushed it.
 	ForceCompany bool
 	SiteBaseURL  string     // canonical origin baked into the site (sitemap, canonical links)
@@ -629,10 +632,16 @@ func (r *runner) site(ctx context.Context) error {
 	if base == "" {
 		base = "https://" + r.o.Company.Domain
 	}
-	a, err := BuildSiteArchive(r.o.Dir, base, MaxSiteArchive)
+	// The default bundle is what is pushed, not what company.yaml on disk says.
+	absent := config.AbsentOff
+	if r.o.DefaultBundle {
+		absent = config.AbsentAdded
+	}
+	a, err := BuildSiteArchive(r.o.Dir, site.Options{BaseURL: base, Forms: r.o.SiteForms, AbsentForms: absent}, MaxSiteArchive)
 	if err != nil {
 		return err
 	}
+	r.res.Warnings = append(r.res.Warnings, a.Warnings...)
 	if _, err := r.apply(ctx, []byte(SiteContentConfigMap(a)), true); err != nil {
 		return err
 	}

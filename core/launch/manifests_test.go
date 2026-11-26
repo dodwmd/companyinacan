@@ -11,6 +11,9 @@ import (
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/site"
 )
 
 func decodeDocs(t *testing.T, b []byte) []map[string]any {
@@ -209,11 +212,11 @@ func repoRoot(t *testing.T) string {
 
 func TestBuildSiteArchiveIsDeterministicAndComplete(t *testing.T) {
 	dir := filepath.Join(repoRoot(t), "examples", "acme-co")
-	a, err := BuildSiteArchive(dir, "http://acme.example", 900<<10)
+	a, err := BuildSiteArchive(dir, site.Options{BaseURL: "http://acme.example"}, 900<<10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := BuildSiteArchive(dir, "http://acme.example", 900<<10)
+	b, err := BuildSiteArchive(dir, site.Options{BaseURL: "http://acme.example"}, 900<<10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,11 +243,28 @@ func TestBuildSiteArchiveIsDeterministicAndComplete(t *testing.T) {
 	if !strings.Contains(files["index.html"], "Heavy things, handled.") {
 		t.Fatalf("index.html lacks the example headline; files: %d", len(files))
 	}
-	if _, err := BuildSiteArchive(dir, "http://acme.example", 100); err == nil || !strings.Contains(err.Error(), "ConfigMap") {
+	if _, err := BuildSiteArchive(dir, site.Options{BaseURL: "http://acme.example"}, 100); err == nil || !strings.Contains(err.Error(), "ConfigMap") {
 		t.Fatalf("a site over the ConfigMap limit must be refused with a clear message, got %v", err)
 	}
 	cm := SiteContentConfigMap(a)
 	if !strings.Contains(cm, "binaryData") || !strings.Contains(cm, "site.tar.gz") || !strings.Contains(cm, "name: site-content") {
 		t.Fatalf("configmap:\n%.300s", cm)
+	}
+}
+
+// What `can up` pushes decides what a company without the forms module gets, and the operator hears it.
+func TestBuildSiteArchiveContactSection(t *testing.T) {
+	dir := t.TempDir()
+	src := "schema: 1\nname: A\ndomain: a.example\nprovider: {type: local}\nsite: {contact: {}}\n"
+	if err := os.WriteFile(filepath.Join(dir, "company.yaml"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	added, err := BuildSiteArchive(dir, site.Options{AbsentForms: config.AbsentAdded}, MaxSiteArchive)
+	if err != nil || len(added.Warnings) != 0 {
+		t.Fatalf("with the default bundle: %v %v", err, added.Warnings)
+	}
+	off, err := BuildSiteArchive(dir, site.Options{AbsentForms: config.AbsentOff}, MaxSiteArchive)
+	if err != nil || len(off.Warnings) != 1 || off.SHA256 == added.SHA256 {
+		t.Fatalf("without it: %v %v", err, off.Warnings)
 	}
 }

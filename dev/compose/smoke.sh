@@ -49,9 +49,10 @@ for i in $(seq 1 30); do
 done
 ok "edge healthz"
 
-# 1. site, contact page, form gateway reachable on the same origin
+# 1. site, its link to the contact form, form gateway reachable on the same origin
 expect_status "site /" 200 "http://localhost:$port/"
-expect_status "site /contact/" 200 "http://localhost:$port/contact/"
+case "$(curlx "http://localhost:$port/")" in *'href="/_forms/contact/form"'*) ok "site links to the contact form" ;; *) die "the landing page does not link to /_forms/contact/form" ;; esac
+expect_status "contact form page" 200 "http://localhost:$port/_forms/contact/form"
 
 # 2. form POST creates a lead: fetch the timing token, wait out min_fill_seconds, submit
 token="$(curlx "http://localhost:$port/_forms/contact/token" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"

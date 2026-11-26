@@ -15,6 +15,7 @@ type Site struct {
 	Pricing     *SitePricing  `yaml:"pricing"`
 	FAQ         []SiteFAQ     `yaml:"faq"`
 	CTA         *SiteCTA      `yaml:"cta"`
+	Contact     *SiteContact  `yaml:"contact"`
 	Footer      SiteFooter    `yaml:"footer"`
 }
 
@@ -73,6 +74,23 @@ type SiteCTA struct {
 	Headline string   `yaml:"headline"`
 	Text     string   `yaml:"text"`
 	Button   SiteLink `yaml:"button"`
+}
+
+// SiteContact is the contact section: a button to the form the forms module serves on the site's own
+// origin (/_forms/<form>/form). Every field is optional.
+type SiteContact struct {
+	Title  string `yaml:"title"`
+	Text   string `yaml:"text"`
+	Form   string `yaml:"form"` // default DefaultContactForm
+	Button string `yaml:"button"`
+}
+
+// FormID is the form the section links to.
+func (c *SiteContact) FormID() string {
+	if c.Form == "" {
+		return DefaultContactForm
+	}
+	return c.Form
 }
 
 // SiteFooter is the footer content.

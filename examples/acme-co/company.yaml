@@ -6,6 +6,12 @@ provider:
   type: local
 modules:
   example: {}
+  forms:
+    settings:
+      notify_email: [sales@acme.example]   # emailed about every new contact message
+# The relay that mail goes through; the credentials never go here (make up SMTP_CREDENTIALS=file).
+email:
+  relay: { host: smtp.acme.example, from: no-reply@acme.example }
 site:
   tagline: Anvils, delivered.
   description: Acme Co ships industrial-grade anvils to your door, fast.
@@ -38,8 +44,10 @@ site:
   faq:
     - question: Do you ship internationally?
       answer: Yes, to most countries. Customs fees may apply.
-  cta:
-    headline: Ready to drop one?
-    button: { label: Contact sales, href: "mailto:sales@acme.example" }
+  contact:
+    title: Ready to drop one?
+    text: Tell us what you need and our sales team will get back to you.
+    form: contact
+    button: Contact sales
   footer:
     text: Fake company, fake anvils.

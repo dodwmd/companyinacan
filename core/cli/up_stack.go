@@ -82,6 +82,7 @@ type stackPrep struct {
 	companyYAML []byte
 	mods        map[string]*config.Module
 	smtp        *launch.SMTPRelay
+	siteForms   []config.HostedForm
 }
 
 // stackPlanActions lists the phases after the server exists, for --plan.
@@ -125,6 +126,9 @@ func (t *target) stackPreflight(f *stackFlags) (*stackPrep, error) {
 	}
 	// Best effort, for warnings: what cannot be read is judged by the install below, if any.
 	md := resolveModulesDir(f.modulesDir, t.dir)
+	if p.siteForms, err = config.FormsOfModules(md); err != nil {
+		return nil, fmt.Errorf("%w (nothing has been provisioned yet)", err)
+	}
 	for id := range t.company.Modules {
 		if m, err := loadModule(md, id); err == nil {
 			p.mods[id] = m
@@ -274,7 +278,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	o := launch.Options{
 		Dir: t.dir, Company: t.company, CompanyYAML: prep.companyYAML, Images: prep.images, Routes: routes,
-		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, Backup: prep.backup, Mods: prep.mods, SMTP: prep.smtp,
+		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, SiteForms: prep.siteForms, Backup: prep.backup, Mods: prep.mods, SMTP: prep.smtp,
 	}
 	d := launch.Deps{
 		Kube: lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)), Loader: launch.SSHImageLoader{Host: host}, Host: host,

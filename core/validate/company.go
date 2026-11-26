@@ -71,6 +71,19 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		add(is.Rule, is.Path, is.Message)
 	}
 
+	if c.Site.Contact != nil {
+		if forms, err := config.FormsOfModules(modulesDir); err != nil {
+			add("semantic.contact-form", "/site/contact", err.Error())
+		} else {
+			for _, is := range config.CheckContact(c, forms, config.AbsentUnknown).Issues {
+				add(is.Rule, is.Path, is.Message)
+				if is.Warning {
+					ps[len(ps)-1].Severity = problem.Warning
+				}
+			}
+		}
+	}
+
 	ids := make([]string, 0, len(c.Modules))
 	for id := range c.Modules {
 		ids = append(ids, id)

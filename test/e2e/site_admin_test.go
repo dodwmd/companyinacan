@@ -18,7 +18,10 @@ func TestSiteAndLeadCapture(t *testing.T) {
 	if !strings.Contains(r.String(), "Acme") {
 		t.Fatalf("site / does not look like the example site (no \"Acme\" in the page): %.200s", r.String())
 	}
-	web.Do(t, harness.Req{Host: "localhost", Path: "/contact/"}).Expect(t, "site /contact/", 200)
+	if !strings.Contains(r.String(), `href="/_forms/contact/form"`) {
+		t.Fatal("the landing page does not link to the contact form")
+	}
+	web.Do(t, harness.Req{Host: "localhost", Path: "/_forms/contact/form"}).Expect(t, "the hosted contact form", 200)
 
 	tok := web.Do(t, harness.Req{Host: "localhost", Path: "/_forms/contact/token"}).Expect(t, "forms timing token", 200).Str("token")
 	if tok == "" {

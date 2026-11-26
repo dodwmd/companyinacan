@@ -16,7 +16,8 @@ browser --POST /_forms/contact--> Traefik (prefix stripped) --> :8080 can-forms
 
 There are two ways to put a form on a site. The simple one is to link to `/_forms/<id>/form`, a page
 the gateway renders itself with the timing token in it; it needs no script. It is not offered for a form
-with a CAPTCHA.
+with a CAPTCHA. `site.contact` in company.yaml puts that link on the site
+([site-contact.md](../../docs/site-contact.md)).
 
 A page of your own instead fetches a signed timestamp with `GET /_forms/<id>/token` when the page loads and
 submits it as the hidden field `_t`. A submission that arrives sooner than `min_fill_seconds`
