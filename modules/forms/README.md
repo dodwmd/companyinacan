@@ -123,8 +123,8 @@ Retries live in memory: if the process stops mid-retry the event is not resent (
 Stored: submitted field values, status, note, timestamps. Not stored: client IP, user agent,
 spam tokens. The access log omits query strings, client addresses and submitted data.
 Every lead gets `retention_until` at insert time (`retention_days`, default 2 years, matching
-`data_classes` in `module.yaml`) and an hourly job deletes expired rows. Backups are SQLite
-online copies (module backup hook arrives with E08).
+`data_classes` in `module.yaml`) and an hourly job deletes expired rows. Backups are a
+`VACUUM INTO` copy made by `can-forms backup` ([backup and restore](../../docs/backup-restore.md#in-house-modules)).
 
 ## Footprint
 

@@ -209,9 +209,6 @@ func (r *runner) warnBackupLimits(ctx context.Context, mods map[string]*config.M
 	}
 	r.res.Warnings = append(r.res.Warnings, RestoreCaveat)
 	r.res.Warnings = append(r.res.Warnings, plan.Warnings...)
-	if r.res.BundleAdded {
-		r.res.Warnings = append(r.res.Warnings, `module "forms" keeps SQLite on a PVC but has no backup hook: raw database files are backed up and may be inconsistent`)
-	}
 	// Modules the server still records (removed from company.yaml, say) show up in its last run.
 	out, err := r.d.Host.Run(ctx, "cat "+path.Join(s.DumpsDir, backup.DumpRunName)+" 2>/dev/null || true\n")
 	if err != nil {

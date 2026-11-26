@@ -1,0 +1,107 @@
+name: module-backup
+
+# Epic E08d (specs/043-module-backup-hooks). Not a required check (not in branch protection), and a
+# failure fails the job. Two things:
+#  * hooks-image: deploy/hooks builds, has the tools the shell hooks call and parses every hook.
+#    Nothing is pushed.
+#  * modules: forms, work and files installed through can-core on k3d, dumped by their own `backup`
+#    subcommands, integrity-checked and restored into fresh instances of the same images.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "cmd/**"
+      - "core/modbackup/**"
+      - "core/server/dumps/**"
+      - "core/server/installer/**"
+      - "core/config/**"
+      - "core/forms/**"
+      - "core/work/**"
+      - "core/files/**"
+      - "modules/**"
+      - "deploy/**"
+      - "test/integration/modulebackup_k3d_test.go"
+      - ".github/workflows/module-backup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  hooks-image:
+    name: can-hooks image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build with the base digest resolved now
+        run: |
+          set -euo pipefail
+          ref=$(awk '$1 == "image:" && $2 ~ /can-hooks/ {print $2; exit}' modules/wiki/module.yaml)
+          [ -n "$ref" ] || { echo "no hooks.image in the wiki manifest" >&2; exit 1; }
+          args=""
+          for kv in $(sh scripts/resolve-base-digests.sh deploy/hooks/Dockerfile); do args="$args --build-arg $kv"; done
+          # shellcheck disable=SC2086
+          docker build -f deploy/hooks/Dockerfile $args -t "$ref" deploy/hooks
+          echo "HOOKS_IMAGE=$ref" >>"$GITHUB_ENV"
+      - name: The tools are there, unprivileged, and every shipped hook parses
+        run: |
+          set -euo pipefail
+          docker run --rm --network none -v "$PWD/modules:/modules:ro" "$HOOKS_IMAGE" sh -euc '
+            [ "$(id -u)" = 1000 ]
+            for t in curl gzip mariadb mariadb-dump pg_dump psql sqlite3; do command -v "$t" >/dev/null || { echo "missing $t"; exit 1; }; done
+            for f in /modules/*/hooks/*.sh; do sh -n "$f" || exit 1; done
+            apk info -v 2>/dev/null | grep -E "^(curl|mariadb-client|postgresql17-client|sqlite)-[0-9]"
+          '
+
+  modules:
+    name: in-house module dumps on k3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Build can-core and the module images and import them
+        # Plain tags for this throwaway cluster (release builds pin by digest); the module images are
+        # tagged as their charts name them.
+        run: |
+          set -euo pipefail
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:dev .
+          images=can-core:dev
+          for m in forms work files; do
+            args=""
+            for kv in $(sh scripts/resolve-base-digests.sh "deploy/$m/Dockerfile"); do args="$args --build-arg $kv"; done
+            tag="ghcr.io/dodwmd/can-$m:$(awk '/^  tag:/ {print $2; exit}' "modules/$m/chart/values.yaml")"
+            # shellcheck disable=SC2086
+            docker build -f "deploy/$m/Dockerfile" $args --build-arg VERSION=ci -t "$tag" .
+            images="$images $tag"
+          done
+          # shellcheck disable=SC2086
+          k3d image import $images -c companyinacan-dev
+      - name: Deploy can-core
+        run: |
+          kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
+          kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
+      - name: Dump, check and restore forms, work and files
+        env:
+          CAN_IT_MODULE_BACKUP: "1"
+        run: go test -tags integration -count=1 -v -timeout 25m -run '^TestModuleBackupHooksOnK3d$' ./test/integration/
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down

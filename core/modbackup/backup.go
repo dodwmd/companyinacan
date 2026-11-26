@@ -85,7 +85,7 @@ func runBackup(ctx context.Context, s spec, l layout, module string, api *client
 
 	copyPath := filepath.Join(tmp, "copy.db")
 	var blobs []blob
-	taken := time.Now().UTC()
+	var taken time.Time
 	for try := 1; ; try++ {
 		taken = time.Now().UTC()
 		if err := snapshot(ctx, l.db, copyPath); err != nil {
