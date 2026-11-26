@@ -356,3 +356,39 @@ func TestConnectionsAndEquityModesNeedApproval(t *testing.T) {
 	glass.Company.Modules["equity"] = e
 	approve(glass, "break-glass until 2026-12-01")
 }
+
+type approvingInstaller struct {
+	*FakeInstaller
+	during func()
+}
+
+func (f *approvingInstaller) Enable(ctx context.Context, s Spec) error {
+	if f.during != nil {
+		f.during()
+	}
+	return f.FakeInstaller.Enable(ctx, s)
+}
+
+// An approval given while an apply of the module runs is not lost with that apply's record; the one
+// an apply ran under is used up.
+func TestApprovalSurvivesARunningApplyAndIsConsumed(t *testing.T) {
+	ctx := context.Background()
+	g := newRig(t)
+	inst := &approvingInstaller{FakeInstaller: g.fk}
+	g.r.Installer = inst
+	apply(t, g, desired(nil, nil, mf("work", "1", nil)))
+	inst.during = func() {
+		if err := g.db.ApproveUpgrade(ctx, "work", "0123456789abcdef"); err != nil {
+			t.Error(err)
+		}
+	}
+	apply(t, g, desired(nil, nil, mf("work", "2", nil)))
+	if rec, _ := g.db.GetModule(ctx, "work"); rec.ApprovedUpgrade != "0123456789abcdef" {
+		t.Fatalf("lost: %q", rec.ApprovedUpgrade)
+	}
+	inst.during = nil
+	apply(t, g, desired(nil, nil, mf("work", "3", nil)))
+	if rec, _ := g.db.GetModule(ctx, "work"); rec.ApprovedUpgrade != "" {
+		t.Fatalf("not consumed: %q", rec.ApprovedUpgrade)
+	}
+}

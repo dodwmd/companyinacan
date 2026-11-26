@@ -32,8 +32,9 @@ type Module struct {
 	UpdatedAt      time.Time
 	// Content is what the module was installed from (JSON, core/server/reconcile.Content).
 	Content string
-	// Pending is the upgrade held for approval (JSON, reconcile.Pending), ApprovedUpgrade the
-	// approval given for it. UpsertModule clears both.
+	// Pending is the upgrade held for approval (JSON, reconcile.Pending), which UpsertModule clears.
+	// ApprovedUpgrade is the approval given for it; only ConsumeApproval clears it, so that one
+	// given while an apply of the module is running is not lost.
 	Pending         string
 	ApprovedUpgrade string
 	// Applied is what of company.yaml the running release was installed with (JSON, reconcile.Applied).
@@ -78,7 +79,7 @@ func (db *DB) UpsertModule(ctx context.Context, m Module, providers []Provider, 
 			ON CONFLICT(id) DO UPDATE SET version=excluded.version, namespace=excluded.namespace, service_account=excluded.service_account,
 			  state=excluded.state, settings_hash=excluded.settings_hash, hmac_secret=excluded.hmac_secret, manifest_json=excluded.manifest_json,
 			  last_error=excluded.last_error, updated_at=excluded.updated_at, content_json=excluded.content_json, applied_json=excluded.applied_json,
-			  pending_json='', approved_upgrade=''`,
+			  pending_json=''`,
 			m.ID, m.Version, m.Namespace, m.ServiceAccount, m.State, m.SettingsHash, m.HMACSecret, string(mj), m.LastError, db.Now().Unix(), m.Content, m.Applied); err != nil {
 			return err
 		}
@@ -214,6 +215,15 @@ func (db *DB) ApproveUpgrade(ctx context.Context, id, approval string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ConsumeApproval forgets the approval an apply ran under; a different one given since stays.
+func (db *DB) ConsumeApproval(ctx context.Context, id, approval string) error {
+	if approval == "" {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `UPDATE modules SET approved_upgrade='' WHERE id=? AND approved_upgrade=?`, id, approval)
+	return err
 }
 
 // DeleteDisabledModule removes the record of a module that is disabled (its providers and

@@ -734,6 +734,12 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	if err := r.reg.Register(ctx, rec); err != nil {
 		return err
 	}
+	// The approval there was when this started is used up (and a restore's, which covers one apply).
+	if ierr == nil {
+		if err := r.db.ConsumeApproval(ctx, a.Module, prev.ApprovedUpgrade); err != nil {
+			return err
+		}
+	}
 	if ierr != nil {
 		r.log(ctx, "module.failed", a, map[string]any{"error": ierr.Error()})
 		return ierr
