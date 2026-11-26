@@ -15,4 +15,4 @@ Test-first: each implementation task is preceded by its failing test (red), then
 - [x] T011 `test/integration/makeup_test.go` and `.github/workflows/make-up-e2e.yml` (advisory, SHA-pinned, `contents: read`)
 - [x] T012 docs: `docs/make-up.md` (rewritten), `docs/providers.md` notes, SPEC.md section 6 note
 - [ ] T013 (human-gated) time `make up` on a fresh Hetzner server three times; record in `specs/000-*/measurements.md`
-- [ ] T014 (follow-up) mount the host dumps directory into can-core so the backup marker is produced; wire `gen-release-images.sh` into `release.yml`
+- [ ] T014 (follow-up) mount the host dumps directory into can-core so the backup marker is produced (`gen-release-images.sh` is wired into `release.yml`)
