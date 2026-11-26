@@ -61,6 +61,19 @@ provisioned, can-core in restore mode. The Job is `can-core module-data restore`
 that loads the dump, so it works on a fresh database and on one the application already wrote to. A raw volume copy
 restored before it is replaced by the archive, which belongs to the database dump.
 
+## Postgres versions
+
+Server major **17** only, the major of the pinned image, for the managed server and for an external one
+(`CAN_POSTGRES_ADMIN_URL`). `pg_dump` 17 refuses a newer server; what `pg_restore` 17 writes does not load into 16 or
+older (`SET transaction_timeout`), and replacing the schema `public` needs 15's ownership. The dump and the restore
+check `server_version_num` first and fail with the reason. So a company on an external 15 or 16 server has **no**
+backup while such a module is enabled, and is told so by every dump run.
+
+## Disk
+
+The work volume (`emptyDir`, node disk) is bounded at 9 GiB: the dump store's 8 GiB per module plus a margin. A restore
+downloads the whole set into it, so the server needs that much free disk on top of the volume it restores into.
+
 ## Design choices
 
 - **can-core's image, not `can-hooks` and not the module image.** The upstream images have no uploader; publishing
@@ -91,8 +104,8 @@ restarts can-core after creating the ConfigMap.
 
 ## Not verified / out of scope
 
-- A real server, large databases or volumes, an external Postgres (`CAN_POSTGRES_ADMIN_URL`; its major version must
-  not be newer than 17).
+- A real server, large databases or volumes, an external Postgres (the version check is tested with stand-in tools, not
+  against a 15 or 16 server).
 - wiki, status (image digests are still placeholders, so they cannot be verified) and crm (not deployable, MariaDB).
 - A restore through restic of these modules (`restore-e2e` does not install them).
 - Quiescing the application during the dump (FR-004's window stays).

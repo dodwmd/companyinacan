@@ -23,18 +23,30 @@ import (
 )
 
 const (
-	pgUID       = 70 // the postgres user of the alpine image
-	pgWorkDir   = "/work"
-	pgDumpFile  = pgWorkDir + "/database.pgdump"
-	dataLimit   = "96Mi"
-	pgLimit     = "128Mi"
-	workMaxSize = "5Gi" // the per-file cap of the dump store is 4 GiB
+	pgUID      = 70 // the postgres user of the alpine image
+	pgWorkDir  = "/work"
+	pgDumpFile = pgWorkDir + "/database.pgdump"
+	dataLimit  = "96Mi"
+	pgLimit    = "128Mi"
+	// pgMajor is the only server major the dumps are taken from and restored into: that of the
+	// pinned image. pg_dump refuses a newer server, and what this pg_restore writes does not load
+	// into an older one.
+	pgMajor = "17"
 )
+
+// workMaxSize bounds the work volume. A restore downloads a module's whole set into it, so it
+// holds everything the dump store accepts from one module, plus a margin.
+var workMaxSize = fmt.Sprintf("%dGi", DefaultMaxModuleBytes>>30+1)
 
 // pgWait waits for the server: a new pod's network rules may not be programmed yet.
 const pgWait = `export PGHOST="$DB_HOST" PGPORT="${DB_PORT:-5432}" PGUSER="$DB_USER" PGPASSWORD="$DB_PASSWORD" PGDATABASE="$DB_NAME" PGCONNECT_TIMEOUT=10
 n=0
 until pg_isready -q; do n=$((n+1)); [ "$n" -lt 60 ] || { echo "the database server does not answer" >&2; exit 1; }; sleep 2; done
+v=$(psql -X -tA -c 'SHOW server_version_num') || exit 1
+case "$v" in
+` + pgMajor + `????) ;;
+*) echo "unsupported Postgres server (server_version_num $v): module databases are backed up and restored on major ` + pgMajor + ` only" >&2; exit 1 ;;
+esac
 `
 
 // pgDumpScript writes one consistent snapshot (a single transaction) of the module's database.
@@ -85,6 +97,8 @@ func (h *KubeHooks) builtinJob(ctx context.Context, module string, m *config.Mod
 	ns := "mod-" + module
 	if ok, err := h.hasData(ctx, ns, postgres); err != nil {
 		return err
+	} else if !ok && restore {
+		return errors.New("the module's database or volume is not there: it must be installed before its data can be restored")
 	} else if !ok {
 		return ErrNoData
 	}

@@ -138,6 +138,9 @@ module's own database role, and can-core's image uploads and downloads.
   the set although the dumped database refers to it. The application is not stopped.
 - The files are in the dumps directory as well as on their volume, so they take disk twice, and a set is limited to
   4 GiB per file and 8 GiB per module. A bigger module fails the dump run (and then nothing is backed up).
+- A restore downloads the whole set before changing anything: it needs up to 8 GiB of free disk for that, besides the
+  space on the module's volume.
+- Databases are dumped from and restored into Postgres **17** only (see [The shared Postgres](#the-shared-postgres)).
 - A restore replaces the whole schema `public` of the module's database and the whole content of its volume.
 - A server installed before this is covered from the next dump run; no module upgrade is needed.
 - wiki, status and crm still need the unpublished `can-hooks` image: enabling one stops every backup.
@@ -319,8 +322,8 @@ can-core runs a Postgres in `can-data` for modules that need one (today `support
   running server's files is not a backup.
 - Each module's database is in the backup as that module's [dump](#wrapped-modules). A database no module dumps (one
   you made by hand, or the server's roles and settings) is **not** backed up. can-core creates the roles again.
-- An operator's own server (`CAN_POSTGRES_ADMIN_URL`) is dumped the same way; its major version must not be newer
-  than 17, or the dump run fails. If it runs in `can-data` with a claim named `postgres-data`, that volume is
+- An operator's own server (`CAN_POSTGRES_ADMIN_URL`) is dumped the same way, and **must be major 17**. On any other
+  major the dump run fails (and then nothing is backed up) and a restore into it is refused. If it runs in `can-data` with a claim named `postgres-data`, that volume is
   excluded too.
 - The backup script of an existing server excludes the directory only after it is generated again
   (`can backup install` or `can up`).
