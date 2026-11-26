@@ -36,6 +36,17 @@ what makes the build reproducible).
 - [ ] Dependency graph, secret scanning and private vulnerability reporting enabled.
 - [ ] A dry run of this workflow succeeded and its artifacts were inspected.
 
+## Upgrade note: module upgrades and the leads view
+
+Say this in the release notes of the first release that has it:
+
+- Modules are upgraded when their content changes. An upgrade that widens what a module may do waits for
+  approval (`can apply --plan`, then `--approve <module>=<code>`, or the admin UI catalogue). The forms module
+  0.2.0 is one: until it is approved there is no `leads.erase`.
+- **The admin UI's leads page now works without setup, so everyone with `platform.view`, the auditor role
+  included, can read the leads** (names, addresses, messages). Check who holds those roles.
+- can-core uses the forms module's read and write token for it; users with `leads.erase` can erase from the UI.
+
 ## Cutting a release
 
 ```sh

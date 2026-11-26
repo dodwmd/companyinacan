@@ -99,10 +99,17 @@ A module image rebuilt under the same tag does not restart its module: change th
 
 An upgrade of a running module that would let it **do more than before** waits for your approval: a new
 permission or role grant, an event it may publish or receives, a capability it serves or uses, a database, a
-public host or path, or internet access. Until then the running release and its recorded manifest stay, and
-so do other changes to that module (settings, secret rotation). Approve it on the catalogue page, with the
-tick on a change's apply form, or with `can apply --approve <module>`; `can status` and `can up` name the
-modules that wait. The approval covers exactly the list shown. A restore applies without asking.
+public host or path, internet access (not for a module installed before manifests declared it: every module had
+it), a shorter approval chain, a new notification recipient, a new hook, hook command or hook image, signing
+users into its web UI, or a changed data class. Until then the running release and its recorded manifest stay.
+**What takes something away is still applied to that release**: secret rotation, switching exposure off and
+mail relay changes (including opt-out). Settings and newly exposed routes wait with the upgrade; the app's own
+configuration for a removed route is only rewritten by the upgrade. If these cannot be applied (no record of the
+installed release), `can status` says so. Backups of a waiting module use the hooks of what is installed (a
+module installed before hook scripts were recorded uses the shipped script). Approve on the catalogue page, with
+the tick on a change's apply form, or with `can apply --approve <module>=<code>`, where the code is the one the
+plan shows; `can status` and `can up` name the modules that wait. The approval covers exactly the list shown. A
+restore applies without asking.
 `can apply` prints can-core's plan before it syncs `company.yaml`; `can apply --plan` prints it and changes
 nothing (`--dry-run` plans against the local state file, not the cluster).
 
