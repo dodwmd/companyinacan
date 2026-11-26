@@ -86,7 +86,8 @@ This is a **simple electronic signature**. It is not an advanced or qualified el
 - **FR-010** Each request has a hash chain over `sent`, `invited`, `signed`, `declined`, `revoked`
   and `completed`, with digests (not copies) of the personal data. `GET /v1/contracts/{id}/verify`
   checks the chain, the records against it, and the text against the hash, in one read transaction. It
-  also compares a request's creation and closing times with the chain's, refuses signature or refusal
+  also compares a request's creation and closing times with the chain's (an event may be dated up to 5 seconds after
+  the stored time, never before), refuses signature or refusal
   fields a signer's status does not allow, and checks that a completed request's contract still has the
   signing time, title, link provider and a signed status.
   The "erased" mark is accepted only on a declined or revoked request whose personal fields are all

@@ -1147,7 +1147,7 @@ func (s *Store) verifySigning(ctx context.Context, q dbq, c *Contract) ([]string
 			if c.SignedAt == nil || c.SignedSHA256 != e.SHA256 || c.CurrentVersion != e.Version {
 				out = append(out, "the contract's signed record does not match the completed signing request")
 			}
-			if at, ok := eventTime(chain, "completed"); c.SignedAt != nil && (!ok || at.Unix() != c.SignedAt.Unix()) {
+			if at, ok := eventTime(chain, "completed"); c.SignedAt != nil && (!ok || !sameMoment(at, *c.SignedAt)) {
 				out = append(out, "the contract's signing time does not match the evidence")
 			}
 			if !slices.Contains([]string{CtSigned, CtActive, CtExpired, CtTerminated}, c.Status) {
@@ -1175,6 +1175,16 @@ func eventTime(chain []evidence, kind string) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+// eventSkew is how long after the stored time its event may be dated: earlier versions read the
+// clock once for the record and again for the event, so a second could turn in between.
+const eventSkew = 5 * time.Second
+
+// sameMoment reports whether an event dated at belongs to a stored time.
+func sameMoment(at, stored time.Time) bool {
+	d := at.Unix() - stored.Unix()
+	return d >= 0 && d <= int64(eventSkew/time.Second)
 }
 
 // checkEnvelope compares one request with its evidence chain.
@@ -1222,10 +1232,10 @@ func checkEnvelope(e *Envelope, chain []evidence, textOK bool) []string {
 	if (closing != "" && last != closing) || (closing == "" && (last == "completed" || last == "declined" || last == "revoked")) {
 		bad("the status does not match the evidence")
 	}
-	if at, ok := eventTime(chain, "sent"); !ok || at.Unix() != e.CreatedAt.Unix() {
+	if at, ok := eventTime(chain, "sent"); !ok || !sameMoment(at, e.CreatedAt) {
 		bad("the creation time was changed")
 	}
-	if at, ok := eventTime(chain, closing); (closing == "" && e.ClosedAt != nil) || (closing != "" && (!ok || e.ClosedAt == nil || at.Unix() != e.ClosedAt.Unix())) {
+	if at, ok := eventTime(chain, closing); (closing == "" && e.ClosedAt != nil) || (closing != "" && (!ok || e.ClosedAt == nil || !sameMoment(at, *e.ClosedAt))) {
 		bad("the closing time was changed")
 	}
 	if len(sent.Signers) != len(e.Signers) {

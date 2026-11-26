@@ -61,6 +61,24 @@ func TestSigningVerifyCatchesTimesContractAndDeclineFields(t *testing.T) {
 	}
 }
 
+// QA: records signed before this check read the clock twice, so their event may be dated a second
+// or so after the stored time. That is not tampering; an event dated before it, or long after, is.
+func TestSigningVerifyAllowsALaterEvent(t *testing.T) {
+	for _, column := range []string{"signing_envelopes.created_at", "signing_envelopes.closed_at", "contracts.signed_at"} {
+		table, col, _ := strings.Cut(column, ".")
+		for later, ok := range map[int]bool{1: true, 5: true, 6: false, -1: false} {
+			e := signedWithoutTriggers(t)
+			// the event is `later` seconds after the stored time
+			if _, err := e.app.store.db.Exec(`UPDATE `+table+` SET `+col+` = `+col+` - ?`, later); err != nil {
+				t.Fatal(err)
+			}
+			if v := e.verify(); v.OK != ok {
+				t.Errorf("%s, event %d s later: ok=%v %v", column, later, v.OK, v.Problems)
+			}
+		}
+	}
+}
+
 func TestSigningNames(t *testing.T) {
 	e := newSignEnv(t)
 	blanks := []string{"\u3164", "\u2800\u2800", "\u3164 \u115f\uffa0", "---"}
