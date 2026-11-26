@@ -185,6 +185,7 @@ func TestRelayPasswordGoesToASecretAndIsNeverStoredOrAudited(t *testing.T) {
 		"host w/ url": {Host: "smtp://x", Port: 587, Username: "a", Password: "p", From: "a@b.example"},
 		"bad from":    {Host: "smtp.example", Port: 587, Username: "a", Password: "p", From: "nope"},
 		"no password": {Host: "smtp.example", Port: 587, Username: "a", From: "a@b.example"},
+		"no username": {Host: "smtp.example", Port: 587, Password: "p", From: "a@b.example"},
 	} {
 		if err := r.svc.SetRelay(ctx, "root", in); err == nil {
 			t.Errorf("%s accepted", name)

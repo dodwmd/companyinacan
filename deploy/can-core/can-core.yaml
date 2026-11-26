@@ -152,6 +152,10 @@ spec:
             # SSO client secret (docs/sso.md): create the Secret `sso-client` (key client-secret) in
             # can-system and set `client_secret_ref: sso-client` in company.yaml. Optional.
             - {name: sso-client, mountPath: /etc/can/sso/sso-client, readOnly: true}
+            # The SMTP relay of email.send (docs/email.md), written by `can up --smtp-credentials-file`,
+            # the setup wizard or by hand: keys host, username, password and optionally port, tls, from.
+            # Optional; re-read on every send, so no restart is needed.
+            - {name: smtp-relay, mountPath: /etc/can/smtp, readOnly: true}
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: can-core-data}
@@ -163,3 +167,5 @@ spec:
           configMap: {name: company, optional: true}
         - name: sso-client
           secret: {secretName: sso-client, optional: true}
+        - name: smtp-relay
+          secret: {secretName: can-smtp-relay, optional: true}

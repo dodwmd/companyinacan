@@ -15,6 +15,8 @@ type Company struct {
 	Notifications NotificationConfig        `yaml:"notifications"`
 	// SSO is OpenID Connect sign-in for the admin UI (epic E11b); nil = local login only.
 	SSO *SSO `yaml:"sso"`
+	// Email is the outbound relay and the per-module sending rules (epic E03d); nil = nothing set here.
+	Email *Email `yaml:"email"`
 }
 
 // Provider selects where the company runs.

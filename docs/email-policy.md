@@ -2,7 +2,9 @@
 
 Implements the email policy of SPEC.md section 5 for the starter modules (`support`, `newsletter`).
 We do not self-host a mail server: deliverability is a trap that costs more than it saves.
-Everything below is design; the pieces that need can-core (E03) and the adapters are marked.
+Everything below is design; the pieces that need can-core (E03) and the adapters are marked. **Built (E03d):**
+the REST path, `email.send`, with its relay settings, allow-lists and delivery status ([email.md](email.md)).
+**Not built:** the `can-smtp` Secret for SMTP-speaking apps, `make email`, DNS records and inbound mail.
 
 ## Outbound: relay credentials injection
 

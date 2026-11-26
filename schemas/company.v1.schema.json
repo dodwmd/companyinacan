@@ -362,9 +362,28 @@
           "additionalProperties": false,
           "required": ["host"],
           "properties": {
-            "host": { "type": "string", "minLength": 1 },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "secret_ref": { "$ref": "#/$defs/secretRef" }
+            "host": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9.:-]+$", "description": "SMTP relay host name or IP address (no scheme, no port)." },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "Default 587." },
+            "tls": { "enum": ["starttls", "implicit", "none"], "description": "Default implicit for port 465, otherwise starttls. `none` is refused unless can-core runs with CAN_SMTP_ALLOW_INSECURE=true (development)." },
+            "from": { "type": "string", "maxLength": 254, "description": "Sender address of all mail; default no-reply@<domain>." },
+            "secret_ref": { "$ref": "#/$defs/secretRef", "description": "Reserved. can-core reads the relay credentials only from the Secret can-system/can-smtp-relay (docs/email.md)." }
+          }
+        },
+        "notification_recipients": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 254 }, "description": "Where notification mail may go: addresses or whole domains (@b.example). Default: the company domain. A person's verified single sign-on address is always accepted." },
+        "modules": {
+          "type": "object",
+          "description": "Per-module sending rules of the email.send capability (docs/email.md).",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9-]{1,30}$" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean", "description": "false refuses all mail from the module." },
+              "recipients": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 254 }, "description": "Addresses (a@b.example) or whole domains (@b.example) the module may mail. Replaces the default (the company domain and the module's notify_email setting)." },
+              "per_hour": { "type": "integer", "minimum": 1, "maximum": 10000 },
+              "per_day": { "type": "integer", "minimum": 1, "maximum": 100000 },
+              "notification_text": { "type": "boolean", "description": "Let notification mail caused by this module carry the module's own title and text. Default false: a fixed text with the type and a link to the admin inbox." }
+            }
           }
         },
         "inbound": {

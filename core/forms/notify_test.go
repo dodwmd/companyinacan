@@ -188,12 +188,12 @@ func TestHTTPMailer(t *testing.T) {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer srv.Close()
-	m := &HTTPMailer{URL: srv.URL, Token: "tok", From: "forms@example.com", Client: srv.Client()}
+	m := &HTTPMailer{URL: srv.URL, Token: "tok", Client: srv.Client()}
 	err := m.Send(context.Background(), Email{To: []string{"o@example.com"}, ReplyTo: "a@example.com", Subject: "S", Text: "T"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if auth != "Bearer tok" || got["subject"] != "S" || got["text"] != "T" || got["reply_to"] != "a@example.com" || got["from"] != "forms@example.com" {
+	if auth != "Bearer tok" || got["subject"] != "S" || got["text"] != "T" || got["reply_to"] != "a@example.com" || got["from"] != nil {
 		t.Fatalf("request: auth=%q body=%v", auth, got)
 	}
 	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "no", 500) }))

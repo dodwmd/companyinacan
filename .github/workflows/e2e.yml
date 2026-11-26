@@ -63,7 +63,7 @@ jobs:
           mkdir -p e2e-logs
           docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml ps -a > e2e-logs/ps.txt 2>&1 || true
           # The init log is deliberately not collected: it prints the throwaway admin TOTP secret of the dev stack.
-          for s in site forms core work people jobs finance equity introstub edge; do
+          for s in site forms core work people jobs finance equity introstub smtpsink edge; do
             docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml logs --no-color --timestamps "$s" > "e2e-logs/$s.log" 2>&1 || true
           done
       - name: Upload logs

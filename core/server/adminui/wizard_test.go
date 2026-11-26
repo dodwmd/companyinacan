@@ -149,15 +149,16 @@ func TestEmailRelayPasswordIsNeverEchoedStoredOrAudited(t *testing.T) {
 	}
 	// a failing Secret write is an error, not a silent success, and shows no detail
 	m.secrets.Err = errors.New("kube says: password " + pw)
-	bad := m.post(root, "/setup/email", url.Values{"host": {"smtp.relay.example"}, "port": {"587"}, "password": {pw}, "from": {"hello@acme.example"}})
+	bad := m.post(root, "/setup/email", url.Values{"host": {"smtp.relay.example"}, "port": {"587"}, "username": {"apikey"}, "password": {pw}, "from": {"hello@acme.example"}})
 	if bad.StatusCode != http.StatusBadGateway || strings.Contains(bad.body, pw) {
 		t.Fatalf("%d %s", bad.StatusCode, bad.body)
 	}
 	for _, form := range []url.Values{
-		{"host": {"smtp://x"}, "port": {"587"}, "password": {"p"}, "from": {"a@b.example"}},
-		{"host": {"smtp.example"}, "port": {"99999"}, "password": {"p"}, "from": {"a@b.example"}},
-		{"host": {"smtp.example"}, "port": {"587"}, "password": {""}, "from": {"a@b.example"}},
-		{"host": {"smtp.example"}, "port": {"587"}, "password": {"p"}, "from": {"nope"}},
+		{"host": {"smtp://x"}, "username": {"u"}, "port": {"587"}, "password": {"p"}, "from": {"a@b.example"}},
+		{"host": {"smtp.example"}, "username": {"u"}, "port": {"99999"}, "password": {"p"}, "from": {"a@b.example"}},
+		{"host": {"smtp.example"}, "username": {"u"}, "port": {"587"}, "password": {""}, "from": {"a@b.example"}},
+		{"host": {"smtp.example"}, "username": {"u"}, "port": {"587"}, "password": {"p"}, "from": {"nope"}},
+		{"host": {"smtp.example"}, "port": {"587"}, "password": {"p"}, "from": {"a@b.example"}},
 	} {
 		m.secrets.Err = nil
 		if r := m.post(root, "/setup/email", form); r.StatusCode != http.StatusBadRequest {

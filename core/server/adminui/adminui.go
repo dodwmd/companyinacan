@@ -25,6 +25,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
+	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/notify"
@@ -69,6 +70,8 @@ type Server struct {
 	SSO *sso.Service
 	// Tickets mints the launch tickets of single sign-on into module UIs (E11c); nil hides the Apps page.
 	Tickets *ticket.Service
+	// Email is the email.send outbox (E03d, email.go); nil hides the delivery page.
+	Email *email.Service
 	// Leads reads leads through the `leads` capability; nil means "not configured".
 	Leads   LeadsClient
 	Company Company
@@ -92,7 +95,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), s.appRoutes()...)
+	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(s.appRoutes(), s.emailRoutes()...)...)
 }
 
 func (s *Server) coreRoutes() []route {

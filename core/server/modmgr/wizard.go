@@ -9,12 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/mail"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 )
 
@@ -409,10 +409,11 @@ func (s *Service) SetRelay(ctx context.Context, actor string, in RelayInput) err
 		return fmt.Errorf("%w: relay port must be 1 to 65535", ErrInvalid)
 	case in.Password == "" || len(in.Password) > 1024 || strings.ContainsAny(in.Password, "\x00"):
 		return fmt.Errorf("%w: relay password is required", ErrInvalid)
-	case len(in.Username) > 256 || strings.ContainsAny(in.Username, "\r\n\x00"):
-		return fmt.Errorf("%w: relay username is not valid", ErrInvalid)
+	case in.Username == "" || len(in.Username) > 256 || strings.ContainsAny(in.Username, "\r\n\x00"):
+		// email.send refuses a password without a user name (and the other way round).
+		return fmt.Errorf("%w: relay username is required", ErrInvalid)
 	}
-	if a, err := mail.ParseAddress(in.From); err != nil || a.Address != in.From {
+	if !config.ValidAddress(in.From) {
 		return fmt.Errorf("%w: from must be an email address", ErrInvalid)
 	}
 	ws, err := s.WizardState(ctx)

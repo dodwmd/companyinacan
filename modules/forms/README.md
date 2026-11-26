@@ -49,7 +49,10 @@ max_body_bytes: 65536
 cors_allowed_origins: []    # empty = same-origin only
 rate_limit: { per_minute: 10, max_tracked_ips: 10000 }
 retention_days: 730
-email: { url: http://can-core.can-system.svc/v1/email/send, from: forms@example.com }
+# Notification email goes through can-core's email.send (docs/email.md). An installed module uses its
+# projected token and needs nothing here; elsewhere set the endpoint (token: CAN_FORMS_EMAIL_TOKEN).
+# email: { url: http://core:8090/v1/email }
+# notify_email: [owner@example.com]   # default for forms without their own (the module setting notify_email)
 webhook: { url: https://hooks.example.com/leads, max_attempts: 5 }
 captcha: { provider: none }  # none | turnstile | hcaptcha
 forms:

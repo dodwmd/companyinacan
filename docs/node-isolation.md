@@ -63,7 +63,7 @@ not dormant, `cni0` exists, both units are enabled, the sync service is running,
   reports (not counting `hostNetwork` pods) is not trusted until the records agree again; a terminating
   trusted pod stays trusted only until its grace period ends.
 - **A pod needs another host service** (a Prometheus pod scraping `node_exporter` on the node, a mail
-  relay on the server, the kubelet): not supported. Run it as a pod, or elsewhere.
+  relay on the server (so [`email.send`](email.md) needs a relay elsewhere), the kubelet): not supported. Run it as a pod, or elsewhere.
 - **Turn it off**: `can-firewall disable` on the server (stays off across reboots).
   Turn it on again with `can-firewall install`.
 

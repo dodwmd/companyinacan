@@ -65,7 +65,7 @@
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <p><label for="r-host">{{t "wz.relay_host"}}</label><input id="r-host" name="host" type="text" maxlength="253" value="{{.Data.Relay.Host}}" required></p>
 <p><label for="r-port">{{t "wz.relay_port"}}</label><input id="r-port" name="port" type="text" inputmode="numeric" maxlength="5" value="587" required></p>
-<p><label for="r-user">{{t "wz.relay_user"}}</label><input id="r-user" name="username" type="text" maxlength="256" value="{{.Data.Relay.Username}}" autocomplete="off"></p>
+<p><label for="r-user">{{t "wz.relay_user"}}</label><input id="r-user" name="username" type="text" maxlength="256" value="{{.Data.Relay.Username}}" autocomplete="off" required></p>
 <p><label for="r-pass">{{t "wz.relay_pass"}}</label><input id="r-pass" name="password" type="password" maxlength="1024" autocomplete="new-password" required><span class="hint">{{t "wz.relay_pass_hint"}}</span></p>
 <p><label for="r-from">{{t "wz.relay_from"}}</label><input id="r-from" name="from" type="text" maxlength="254" value="{{.Data.Relay.From}}" required></p>
 <p><button type="submit">{{t "wz.relay_save"}}</button></p>

@@ -67,7 +67,8 @@ type Options struct {
 	DefaultBundle bool
 	// ForceCompany overwrites a company.yaml in the cluster that changed since `can up` last pushed it.
 	ForceCompany bool
-	SiteBaseURL  string // canonical origin baked into the site (sitemap, canonical links)
+	SiteBaseURL  string     // canonical origin baked into the site (sitemap, canonical links)
+	SMTP         *SMTPRelay // nil leaves the relay Secret as it is
 	Backup       *BackupInstall
 	// Mods are the manifests of the company's modules that could be read, for backup warnings.
 	Mods     map[string]*config.Module
@@ -463,6 +464,9 @@ func (r *runner) core(ctx context.Context, c CoreOptions) error {
 	}
 	m, err := CoreManifests(c)
 	if err != nil {
+		return err
+	}
+	if err := r.relaySecret(ctx); err != nil {
 		return err
 	}
 	if _, err := r.apply(ctx, m, false); err != nil {

@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>{{t "mail.title"}}</h1>
+{{if .Data.Configured}}<p>{{t "mail.relay_ok" .Data.Host .Data.Port .Data.TLS .Data.From}}</p>
+{{else}}<p class="flash" role="status">{{t "mail.relay_none" .Data.Problem}}</p>{{end}}
+<p class="hint">{{t "mail.help"}}</p>
+{{if .Data.Rows}}<div class="table-wrap" role="region" aria-labelledby="cap-mail" tabindex="0">
+<table>
+<caption id="cap-mail" class="sr">{{t "mail.title"}}</caption>
+<thead><tr><th scope="col">{{t "mail.when"}}</th><th scope="col">{{t "mail.source"}}</th><th scope="col">{{t "mail.to"}}</th><th scope="col">{{t "mail.status"}}</th><th scope="col">{{t "mail.attempts"}}</th><th scope="col">{{t "mail.error"}}</th>{{if .Data.CanRequeue}}<th scope="col">{{t "mail.action"}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr>
+<th scope="row"><time datetime="{{iso .Created}}">{{ts .Created}}</time></th><td>{{.Source}}</td><td>{{.Recipient}}</td>
+<td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td><td>{{.Attempts}}</td><td>{{.LastError}}</td>
+{{if $.Data.CanRequeue}}<td>{{if .Requeue}}<form method="post" action="/email/{{.ID}}/requeue" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button type="submit" aria-label="{{t "mail.requeue_label" .ID}}">{{t "mail.requeue"}}</button>
+</form>{{end}}</td>{{end}}
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "mail.empty"}}</p>{{end}}
+{{end}}

@@ -87,6 +87,7 @@ needs its namespace in `/etc/can/firewall/trusted-namespaces`.
 | `can_reconcile_last_success_timestamp_seconds`, `can_reconcile_consecutive_failures` | gauge | | can-core |
 | `can_webhook_deliveries_total` | counter | `result` (`delivered`, `retry`, `dead`) | can-core |
 | `can_webhook_dead_letters`, `can_webhook_pending` | gauge | | can-core, refreshed every 30 s |
+| `can_email_messages_total` | counter | `result` (`queued`, `sent`, `retry`, `dead`, `refused`) | can-core, [email.md](email.md) |
 | `can_approvals_pending` | gauge | | can-core |
 | `can_audit_entries` | gauge | | length of the audit chain |
 | `can_audit_verify_ok`, `can_audit_verify_last_run_timestamp_seconds` | gauge | | full chain verification, hourly |

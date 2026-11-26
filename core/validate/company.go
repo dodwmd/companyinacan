@@ -66,6 +66,10 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		add(is.Rule, is.Path, is.Message)
 	}
 
+	for _, is := range config.ValidateEmail(c.Email) {
+		add(is.Rule, is.Path, is.Message)
+	}
+
 	ids := make([]string, 0, len(c.Modules))
 	for id := range c.Modules {
 		ids = append(ids, id)

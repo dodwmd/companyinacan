@@ -218,7 +218,7 @@ func (s *Server) sendNotification(w http.ResponseWriter, r *http.Request, m stor
 	if key != "" {
 		key = m.ID + ":" + key // keys are per module: one module cannot suppress another's notices
 	}
-	_, created, err := s.Notify.Notify(r.Context(), notify.Notice{Subject: b.Subject, Type: b.Type, DedupeKey: key, Data: b.Data, Link: b.Link, Urgent: b.Urgent, RespectMute: true})
+	_, created, err := s.Notify.Notify(r.Context(), notify.Notice{Subject: b.Subject, Type: b.Type, DedupeKey: key, Data: b.Data, Link: b.Link, Urgent: b.Urgent, RespectMute: true, Module: m.ID, Authored: true})
 	switch {
 	case notify.ErrInvalid(err):
 		httpx.Problem(w, http.StatusBadRequest, err.Error())

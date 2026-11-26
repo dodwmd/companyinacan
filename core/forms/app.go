@@ -93,14 +93,21 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		captcha = v
 	}
 
+	// email.url wins (a static endpoint and token); otherwise an installed module uses can-core.
 	mailer := opt.Mailer
 	if mailer == nil && cfg.Email.URL != "" {
-		mailer = &HTTPMailer{URL: cfg.Email.URL, Token: sec.EmailToken, From: cfg.Email.From, Client: opt.Client}
+		mailer = &HTTPMailer{URL: cfg.Email.URL, Token: sec.EmailToken, Client: opt.Client}
+	}
+	if mailer == nil && opt.Can != nil {
+		mailer = &CanMailer{Client: opt.Can}
+	}
+	if cfg.Email.From != "" {
+		log.Warn("email.from is ignored: the sender address is set by the operator in can-core (company.yaml email.relay.from)")
 	}
 	if mailer == nil {
 		for _, f := range cfg.Forms {
 			if len(f.NotifyEmail) > 0 {
-				log.Warn("notify_email is set but email.url is not; no notification emails will be sent", "form", f.ID)
+				log.Warn("notify_email is set but there is no email.send (neither email.url nor can-core); no notification emails will be sent", "form", f.ID)
 			}
 		}
 	}
@@ -137,6 +144,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	store.now = now
 
 	d := NewDispatcher(store, mailer, hook, log)
+	d.forms = cfg.Form
 	d.can = opt.Can
 	d.now = now
 	d.Start(2)
@@ -206,10 +214,16 @@ func (a *App) Serve(ctx context.Context, pub, api net.Listener) error {
 	}{{pubSrv, pub}, {apiSrv, api}} {
 		go func() { errc <- s.srv.Serve(s.ln) }()
 	}
-	purgeDone := make(chan struct{})
+	purgeDone, retryDone := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(purgeDone)
 		a.purgeLoop(ctx)
+	}()
+	retryCtx, stopRetry := context.WithCancel(ctx)
+	defer stopRetry()
+	go func() {
+		defer close(retryDone)
+		a.dispatcher.retryLoop(retryCtx)
 	}()
 	a.log.Info("can-forms listening", "public", pub.Addr().String(), "api", api.Addr().String(), "forms", len(a.cfg.Forms))
 
@@ -227,6 +241,8 @@ func (a *App) Serve(ctx context.Context, pub, api net.Listener) error {
 	a.log.Info("shutting down")
 	err := errors.Join(runErr, pubSrv.Shutdown(shutCtx), apiSrv.Shutdown(shutCtx))
 	<-purgeDone
+	stopRetry()
+	<-retryDone
 	// Notifications get their own deadline so slow HTTP shutdown cannot starve the drain.
 	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelDrain()

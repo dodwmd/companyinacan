@@ -92,6 +92,6 @@ steps ran. Nothing below was run against a cluster locally.
 - [ ] T036b CI footprint check on can-core's cluster RSS (the workflow prints the node-side RSS; it does not fail on it yet)
 
 ### Still open
-- [ ] T032 `email.send` and SMTP credential injection
+- [ ] T032 `email.send` and SMTP credential injection (`email.send` built in E03d, `specs/039-email-send/`; injection into SMTP-speaking apps still open)
 - [ ] T034 Admin enable/disable endpoints; minimal admin UI
 - [ ] T037 Uninstall with keep/purge (the installer has no code path that deletes a PVC, Secret or namespace)
