@@ -617,8 +617,10 @@ func TestBackupResumeRebuildsKitFromHostWhenNotShown(t *testing.T) {
 	if res.Kit == nil || res.Kit.Restic.Password != "hostpw-0123456789abcdef" {
 		t.Fatalf("an interrupted run must hand over the same kit the host already uses: %+v", res.Kit)
 	}
-	if len(h.copied) != 0 {
-		t.Fatal("nothing is reinstalled")
+	for p := range h.copied {
+		if p != "/etc/can/backup.d/restic.env" { // the credentials file follows the flags
+			t.Fatalf("nothing is reinstalled: %s", p)
+		}
 	}
 	if err := MarkKitShown(d.Store); err != nil {
 		t.Fatal(err)

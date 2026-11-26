@@ -17,7 +17,7 @@ import (
 
 // BackupInstallVersion is the generation of what the backup step installs on the host (script,
 // units, tools). Raise it whenever an existing install must be redone by the next `can up`.
-const BackupInstallVersion = 2
+const BackupInstallVersion = 3
 
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
@@ -61,17 +61,28 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
+	envPath := path.Join(s.ConfigDir, backup.EnvFileName)
 	// Does the operator's kit still match what the server will use?
-	changed := false
+	changed, hostEnv := false, ""
 	if installed {
+		if hostEnv, err = r.d.Host.Run(ctx, fmt.Sprintf("if [ -e %[1]s ]; then cat %[1]s; fi\n", envPath)); err != nil {
+			return false, "", fmt.Errorf("read the bucket credentials file from the server: %w", err)
+		}
 		old, err := r.d.Host.Run(ctx, fmt.Sprintf("if [ -e %[1]s ]; then grep -m1 '^export RESTIC_REPOSITORY=' %[1]s; fi\n", s.ScriptPath))
 		if err != nil {
 			return false, "", fmt.Errorf("read the installed repository from the server: %w", err)
 		}
 		repo := strings.Trim(strings.TrimPrefix(strings.TrimSpace(old), "export RESTIC_REPOSITORY="), "'")
 		changed = strings.HasPrefix(strings.TrimSpace(old), "export RESTIC_REPOSITORY=") && repo != kit.Restic.Repository
-		if st.Launch.KitFingerprint != "" && st.Launch.KitFingerprint != kitFingerprint(kit) {
-			changed = true
+		switch {
+		case st.Launch.KitFingerprint != "":
+			changed = changed || st.Launch.KitFingerprint != kitFingerprint(kit)
+		case strings.TrimSpace(hostEnv) != "":
+			// no fingerprint yet: compare the bucket credentials the server holds
+			creds := backup.FormatEnvFile(kit.Repo("").Env[:2])
+			for _, line := range strings.Split(strings.TrimSpace(creds), "\n") {
+				changed = changed || !strings.Contains(hostEnv, line)
+			}
 		}
 	}
 	if changed && shown {
@@ -79,9 +90,15 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).KitShown = false; return nil }); err != nil {
 			return false, "", err
 		}
-		r.res.Warnings = append(r.res.Warnings, "the restic password or repository differs from the recovery kit you hold: store the NEW kit; the old one only opens the old repository")
+		r.res.Warnings = append(r.res.Warnings, "the restic password, repository or bucket credentials differ from the recovery kit you hold: store the NEW kit")
 	}
 	if installed && !changed && st.Launch.BackupVersion >= BackupInstallVersion {
+		// The credentials file follows the flags even when nothing else is redone.
+		if want := backup.HostEnvFile(kit); strings.TrimSpace(hostEnv) != strings.TrimSpace(want) {
+			if err := r.d.Host.Copy(ctx, envPath, []byte(want), "0600"); err != nil {
+				return false, "", fmt.Errorf("install %s: %w", envPath, err)
+			}
+		}
 		if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).KitFingerprint = kitFingerprint(kit); return nil }); err != nil {
 			return false, "", err
 		}
@@ -101,7 +118,6 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	envPath := path.Join(s.ConfigDir, backup.EnvFileName)
 	// The dumps directory belongs to can-core's user (the can-dumps volume); servers bootstrapped
 	// before E08b have it root-owned.
 	if _, err := r.d.Host.Run(ctx, fmt.Sprintf("install -d -m 0700 %s\ninstall -d -m 0755 %s /etc/systemd/system\ninstall -d -o 65532 -g 65532 -m 0700 %s\n", shq(s.ConfigDir), shq(path.Dir(s.ScriptPath)), shq(s.DumpsDir))); err != nil {
@@ -148,10 +164,10 @@ echo CAN_BACKUP_OK
 	return false, "", nil
 }
 
-// kitFingerprint identifies the repository and password a kit opens, without holding either: an
-// argon2id digest of the password salted with the repository.
+// kitFingerprint identifies the repository, password and bucket credentials of a kit without
+// holding the secrets: an argon2id digest of them, salted with the repository.
 func kitFingerprint(k *backup.Kit) string {
-	sum := argon2.IDKey([]byte(k.Restic.Password), []byte("can-kit\x00"+k.Restic.Repository), 1, 64*1024, 4, 32)
+	sum := argon2.IDKey([]byte(k.Restic.Password+"\x00"+k.Bucket.AccessKeyID+"\x00"+k.Bucket.SecretAccessKey), []byte("can-kit\x00"+k.Restic.Repository), 1, 64*1024, 4, 32)
 	return hex.EncodeToString(sum)
 }
 

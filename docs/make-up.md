@@ -110,7 +110,7 @@ once are refused (`another can up or can down is already running`).
 | admin, created but the credentials were never shown | issues a new password and TOTP secret (nobody has the old ones) and shows them |
 | admin, credentials already shown | leaves the account alone and says so; lost them: `kubectl -n can-system exec -i deploy/can-core -- /can-core admin reset-password --rotate-totp` (new password on stdin) |
 | backup, timer installed, kit not shown | rebuilds the kit from the password already on the server and shows it |
-| backup, kit already shown | nothing, unless the repository flags or the password on the server differ from that kit: then the install is redone and the new kit is shown |
+| backup, kit already shown | nothing, unless the repository, the bucket credentials or the password on the server differ from that kit: then the install is redone and the new kit is shown (rotated bucket keys are written to the server) |
 | backup installed, password file on the server missing or unreadable | stops without changing anything; put the password from your kit back |
 | ready / dns / summary | repeated |
 

@@ -58,11 +58,11 @@ func TestOlderBackupInstallIsRedone(t *testing.T) {
 	if st.Launch.BackupVersion != BackupInstallVersion {
 		t.Fatalf("version %d", st.Launch.BackupVersion)
 	}
-	h.copied = nil
+	delete(h.copied, "/usr/local/sbin/can-backup")
 	if _, err := Run(context.Background(), o, d); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.copied) != 0 {
+	if _, ok := h.copied["/usr/local/sbin/can-backup"]; ok {
 		t.Fatal("a current install must be left alone")
 	}
 }
