@@ -7,8 +7,12 @@ import (
 	"os"
 
 	"github.com/dodwmd/companyinacan/core/finance"
+	"github.com/dodwmd/companyinacan/core/modbackup"
 )
 
 func main() {
+	if modbackup.Handles(os.Args[1:]) { // `backup` and `restore` (specs/043-module-backup-hooks)
+		os.Exit(modbackup.Main("can-finance", os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
+	}
 	os.Exit(finance.Main(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
 }

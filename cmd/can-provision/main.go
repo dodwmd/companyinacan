@@ -6,9 +6,13 @@ package main
 import (
 	"os"
 
+	"github.com/dodwmd/companyinacan/core/modbackup"
 	"github.com/dodwmd/companyinacan/core/provision"
 )
 
 func main() {
+	if modbackup.Handles(os.Args[1:]) { // `backup` and `restore` (specs/043-module-backup-hooks)
+		os.Exit(modbackup.Main("can-provision", os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
+	}
 	os.Exit(provision.Main(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
 }

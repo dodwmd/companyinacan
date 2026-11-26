@@ -74,4 +74,9 @@ data_classes:
   # link to a candidate, read as suppressed aggregates by admins only.
   - { class: eeo-aggregate, retention: 3y, sensitivity: sensitive }
 settings_schema: ./settings.schema.json
+# `can-jobs backup` and `restore`, run by can-core in this module's own image (specs/043-module-backup-hooks).
+hooks:
+  command: /can-jobs
+  backup: backup
+  restore: restore
 healthcheck: /healthz
