@@ -107,7 +107,8 @@ Apart from `ci`, `security`, `e2e` and `flaky-hunt`, nothing runs again after a 
 
 - **Enabling a module in the admin UI does not check that its image is there** (`can up` and `can apply` do). The
   install then fails; a first install that failed is reported by the backup and does not stop it.
-- The release workflow does not generate `deploy/release-images.json` ([make-up.md](make-up.md#getting-the-images)).
+- The release workflow's `release-images.json` ([make-up.md](make-up.md#getting-the-images)) has not been produced by a
+  real release yet.
 - The admin UI's Leads page has no credential on an install. Messages arrive by notification email (needs a relay)
   or are read through the forms API.
 - `make up` does not copy the `can` binary to the server; without it erasures never reach the backup bucket

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"log/slog"
+	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
@@ -42,6 +43,9 @@ func TestUISecurityConformance(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = app.Close() })
 			return &conformance.Env{H: app.Handler(), Core: core, Advance: clk.Add}
+		},
+		Gated: func(*testing.T, *conformance.Env, *conformance.Browser) (string, string, url.Values) {
+			return "GET", "/jobs/new", nil
 		},
 	})
 }

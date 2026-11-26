@@ -61,8 +61,9 @@ func (s *Store) ListErasures(ctx context.Context, after int64) ([]ErasureEntry, 
 // PurgeSubject replays one erasure: exactly what the live party erasure does, with the same legal
 // retention. A party that is not in this database (created after the backup, or already deleted at
 // the end of its retention) is not an error and gives a nil report; a different party that was
-// given the same id is left alone. Repeating it removes nothing more.
-func (s *Store) PurgeSubject(ctx context.Context, subject, class string, retentionYears int) (*ErasureReport, error) {
+// given the same id is left alone. Repeating it removes nothing more. erasedAt is when the erasure
+// was first made (zero: unknown, now is recorded).
+func (s *Store) PurgeSubject(ctx context.Context, subject, class string, retentionYears int, erasedAt time.Time) (*ErasureReport, error) {
 	if class != ClassPartyContact {
 		return nil, fmt.Errorf("purge handles class %s only", ClassPartyContact)
 	}
@@ -82,7 +83,7 @@ func (s *Store) PurgeSubject(ctx context.Context, subject, class string, retenti
 	if err != nil {
 		return nil, err
 	}
-	return s.ErasePartyData(ctx, &Principal{Subject: replayActor, Permissions: []string{PermAdmin}}, id, retentionYears)
+	return s.erasePartyData(ctx, &Principal{Subject: replayActor, Permissions: []string{PermAdmin}}, id, retentionYears, erasedAt)
 }
 
 // ResumeScrub clears the free pages and truncates the write-ahead log if an erasure was committed and the truncation that

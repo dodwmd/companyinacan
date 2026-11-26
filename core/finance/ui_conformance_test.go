@@ -13,7 +13,7 @@ import (
 func TestUISecurityConformance(t *testing.T) {
 	conformance.Run(t, conformance.Module{
 		Name: "finance", SessionCookie: "can_finance_session", CSRFCookie: "can_finance_login_csrf",
-		User: []string{PermWrite}, Privileged: []string{PermAdmin},
+		User: []string{PermRead}, Privileged: []string{PermAdmin},
 		Idle: 30 * time.Minute, Absolute: 8 * time.Hour,
 		Recheck: 5 * time.Minute, PrivilegedRecheck: time.Minute,
 		SSORecheck: 5 * time.Minute, SSOPrivilegedRecheck: time.Minute,
@@ -29,6 +29,9 @@ func TestUISecurityConformance(t *testing.T) {
 			now := func() time.Time { u.mu.Lock(); defer u.mu.Unlock(); return u.now }
 			core.Now = now
 			return &conformance.Env{H: u.h, Core: core, Advance: u.advance}
+		},
+		Gated: func(*testing.T, *conformance.Env, *conformance.Browser) (string, string, url.Values) {
+			return "GET", "/approvals", nil
 		},
 		StepUp: func(t *testing.T, _ *conformance.Env, b *conformance.Browser) (string, url.Values) {
 			w := b.Do("POST", "/parties", url.Values{"csrf": {b.CSRF("/")}, "kind": {"customer"}, "name": {"Acme Pty"}, "currency": {"USD"}})

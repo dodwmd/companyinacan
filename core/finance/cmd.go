@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/modclient"
 	"github.com/dodwmd/companyinacan/core/obs"
 	obslog "github.com/dodwmd/companyinacan/core/obs/log"
@@ -77,7 +78,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 0
 	}
 	if cmd == "purge" { // the replay of one erasure, run by `can restore` (specs/056-erasure-finance-work)
-		return runPurge(cfg, subject, class, stdout, stderr)
+		return runPurge(cfg, subject, class, backup.ReplayedAt(getenv(backup.PurgeAtEnv), time.Now()), stdout, stderr)
 	}
 	log := obslog.New(stderr, obslog.Options{Service: "can-finance", Version: Version, Level: getenv("CAN_LOG_LEVEL"), Format: getenv("CAN_LOG_FORMAT")})
 	can, err := modclient.FromEnv(getenv)
@@ -109,7 +110,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	return 0
 }
 
-func runPurge(cfg *Config, subject, class string, stdout, stderr io.Writer) int {
+func runPurge(cfg *Config, subject, class string, erasedAt time.Time, stdout, stderr io.Writer) int {
 	if subject == "" || class == "" {
 		fmt.Fprintln(stderr, "purge needs -subject and -class")
 		return 2
@@ -119,7 +120,7 @@ func runPurge(cfg *Config, subject, class string, stdout, stderr io.Writer) int 
 		fmt.Fprintf(stderr, "purge: %v\n", err)
 		return 1
 	}
-	rep, err := st.PurgeSubject(context.Background(), subject, class, cfg.RetentionYears)
+	rep, err := st.PurgeSubject(context.Background(), subject, class, cfg.RetentionYears, erasedAt)
 	if err = errors.Join(err, st.Close()); err != nil {
 		fmt.Fprintf(stderr, "purge: %v\n", err)
 		return 1

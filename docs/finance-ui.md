@@ -40,7 +40,8 @@ compose stack it is at `http://finance.localhost:8080/` (`dev/compose/config/fin
    API uses, once.
 3. You get a session: a random id in an `HttpOnly`, `SameSite=Strict` cookie, scoped to the finance origin. The server
    stores only its SHA-256. The token stays in server memory (never on disk, never sent back) so that revocation is
-   noticed: a session re-checks its token every minute when it holds `finance.approve` or `finance.admin`, every five
+   noticed: a session re-checks its token every minute when it can write, approve or administer (`finance.write`,
+   `finance.approve`, `finance.admin`, `finance.ledger.write`, `.approve`, `.admin`), every five
    minutes otherwise, and a token that no longer authenticates ends the session. Idle timeout 30 minutes, absolute 8
    hours, at most 5 sessions per subject. A restart signs everyone out. Failed sign-ins are throttled per address;
    a valid token is never throttled.
@@ -133,7 +134,7 @@ erasure failed, the page says so and the report is still shown.
 - **One authorisation path.** The UI never reads the database and never decides an approval; a test fails if `ui*.go` does.
   The per-route scope check (`allowedBy`) is the function the API's guard uses. A record outside a token's party or project
   scope is the same 404 page as one that does not exist.
-- **CSRF** token on every POST (constant-time compare) plus a `Sec-Fetch-Site` check; sign-in uses a double-submit cookie.
+- **CSRF** token on every POST (constant-time compare) plus a `Sec-Fetch-Site` check; sign-in uses a double-submit cookie. A browser that does not send `Sec-Fetch-Site` (for example Safari before 16.4) cannot sign in or submit forms.
 - **Idempotent create forms.** Every create form carries a random key made when the page was rendered; a double submit
   creates one record (invoices, credit notes, payments, expenses, purchase orders). Every state-change form carries the record version: a post without it is a 400, a stale one a 409 (as in the other UIs).
 - **XSS.** `html/template` everywhere, no raw HTML, no inline script or style, CSP `default-src 'none'; script-src 'none'`,

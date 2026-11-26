@@ -322,6 +322,12 @@ type ErasureReport struct {
 // period with the frozen snapshot of name, address and tax id they were issued with, and
 // the report says which and until when. After the retention period the purge deletes them.
 func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, retentionYears int) (*ErasureReport, error) {
+	return s.erasePartyData(ctx, a, id, retentionYears, time.Time{})
+}
+
+// erasePartyData is ErasePartyData; erasedAt, when set, is when a replayed erasure was first made,
+// which the tombstone keeps.
+func (s *Store) erasePartyData(ctx context.Context, a *Principal, id int64, retentionYears int, erasedAt time.Time) (*ErasureReport, error) {
 	if !a.CanParty(id) {
 		return nil, ErrNotFound
 	}
@@ -392,8 +398,12 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 		// that the later erasure is replayed into a backup made between the two.
 		rep.Subject = erasureSubject(id, cur.CreatedAt)
 		if !cur.Erased || rep.DeletedDrafts > 0 {
+			stamp := erasedAt
+			if stamp.IsZero() {
+				stamp = s.now()
+			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO erasures (subject, class, created_at) VALUES (?, ?, ?)
-				ON CONFLICT (subject, class) DO UPDATE SET created_at = excluded.created_at, scrubbed = 0`, rep.Subject, ClassPartyContact, ts(s.now())); err != nil {
+				ON CONFLICT (subject, class) DO UPDATE SET created_at = MAX(created_at, excluded.created_at), scrubbed = 0`, rep.Subject, ClassPartyContact, ts(stamp)); err != nil {
 				return err
 			}
 		}

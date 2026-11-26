@@ -266,6 +266,10 @@ names or addresses.
 * records a tombstone (`GET /v1/erasures`, admin with an unlimited token; the report's `subject` is
   `party-<id>-<creation time>`). can-core adds it to the erasure ledger, and `can restore` runs the same
   erasure again with `can-finance purge` on a backup made before it, with the same legal retention.
+  **A replay on an older backup can delete records that were later made legal ones**: an invoice or purchase
+  order that was still a draft when the backup was made is deleted, even if it was approved (or the contract
+  sent) afterwards, because the backup holds only the draft. Take those from your own copies. The tombstone
+  keeps the time of the first erasure, so a later restore of a backup made since then does not replay it.
 
 Retention is `retention_years` (default 7, counted from the invoice issue date, expense date, week
 start, contract end or purchase-order date). The hourly purge deletes expired records with their

@@ -168,6 +168,15 @@ func (c *Core) Revoke(token string) {
 	c.tokens[token] = t
 }
 
+// SetTokenPermissions changes what introspection answers for a token (a demoted person).
+func (c *Core) SetTokenPermissions(token string, perms []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := c.tokens[token]
+	t.Permissions = perms
+	c.tokens[token] = t
+}
+
 // SetDown makes every call fail with 503 (can-core outage).
 func (c *Core) SetDown(down bool) {
 	c.mu.Lock()
