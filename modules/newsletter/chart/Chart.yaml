@@ -3,4 +3,4 @@ name: newsletter
 description: Newsletter and email campaigns (Listmonk) for companyinacan
 type: application
 version: 0.1.0
-appVersion: "5.x"
+appVersion: "6.2.0"
