@@ -9,15 +9,15 @@
     "dry_run": {"type": "boolean", "description": "Record every run and its plan but call no connector. On by default in the chart: turn it off only after reading docs/provisioning.md.", "default": true, "x-can": {"config": "workflows.dry_run", "widens": "becomes_false", "unset": true, "risk": "connectors are called: accounts in other systems are changed"}},
     "privileged_groups": {"type": "array", "maxItems": 50, "items": {"type": "string", "maxLength": 100, "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._:@/+-]{0,99}$"}, "description": "SCIM group names whose members are privileged: granting them access, and removing their access on leaving, needs a second person (an approval).", "x-can": {"config": "workflows.privileged_groups", "widens": "removed", "unset": [], "risk": "access of a group no longer needs a second person"}},
     "delete_after_days": {"type": "integer", "minimum": 0, "maximum": 3650, "description": "Delete a leaver's downstream accounts this many days after their last day (0 keeps them, disabled). Deleting always needs an approval.", "x-can": {"config": "workflows.delete_after_days", "widens": "keep_less", "unset": 0, "risk": "leavers' downstream accounts are deleted (sooner)"}},
-    "timezone": {"type": "string", "maxLength": 64, "description": "IANA time zone in which a leaver's last day ends; defaults to organisation.timezone, else UTC.", "format": "timezone", "pattern": "^[A-Za-z0-9_+/-]+$", "x-can": {"config": "workflows.timezone", "fact": ["timezone"]}},
+    "timezone": {"type": "string", "maxLength": 64, "description": "IANA time zone in which a leaver's last day ends; defaults to organisation.timezone, else UTC.", "format": "timezone", "pattern": "^[A-Za-z0-9_+/-]+$", "x-can": {"config": "workflows.timezone", "fact": ["timezone"], "widens": "changed", "unset": "UTC", "risk": "leavers lose their access at a different time"}},
     "leaver_cutoff": {"enum": ["start_of_day", "end_of_day"], "default": "start_of_day", "description": "When a leaver loses access on their last day.", "x-can": {"config": "workflows.leaver_cutoff", "widens": "becomes:end_of_day", "unset": "start_of_day", "risk": "a leaver keeps access through their last day"}},
     "compensate_with_delete": {"type": "boolean", "default": false, "description": "When a joiner workflow fails, delete the accounts it created (default: disable them).", "x-can": {"config": "workflows.compensate_with_delete", "widens": "becomes_true", "unset": false, "risk": "failed joiner workflows delete accounts"}},
     "tasks": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "joiner_template": {"type": "string", "maxLength": 100, "pattern": "^[^\\x00-\\x1f\\x7f]*$", "description": "People checklist template used for joiner tasks.", "x-can": {"config": "tasks.joiner_template"}},
-        "leaver_template": {"type": "string", "maxLength": 100, "pattern": "^[^\\x00-\\x1f\\x7f]*$", "description": "People checklist template used for leaver tasks.", "x-can": {"config": "tasks.leaver_template"}}
+        "joiner_template": {"type": "string", "maxLength": 100, "pattern": "^[^\\x00-\\x1f\\x7f]*$", "description": "People checklist template used for joiner tasks.", "x-can": {"config": "tasks.joiner_template", "widens": "changed", "unset": "", "risk": "different manager and IT tasks are created for joiners"}},
+        "leaver_template": {"type": "string", "maxLength": 100, "pattern": "^[^\\x00-\\x1f\\x7f]*$", "description": "People checklist template used for leaver tasks.", "x-can": {"config": "tasks.leaver_template", "widens": "changed", "unset": "", "risk": "different manager and IT tasks are created for leavers"}}
       }
     }
   }

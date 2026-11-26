@@ -3,10 +3,12 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/modsettings"
 	"github.com/dodwmd/companyinacan/core/server/modsecrets"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
@@ -30,12 +32,14 @@ type Applied struct {
 	BreakGlass string        `json:"break_glass,omitempty"`
 	// Values are what of the settings and company facts reached the module, by chart value.
 	Values map[string]any `json:"values,omitempty"`
+	// Mapped: written by a release that maps settings. Without it Values says nothing about what
+	// the module ran with.
+	Mapped bool `json:"mapped,omitempty"`
 }
 
 func appliedOf(d Desired, id, relay string, links []config.Link) Applied {
 	entry := d.Company.Modules[id]
-	settings, _ := json.Marshal(entry.Settings) // sorted keys
-	a := Applied{Expose: entry.Exposure(), Settings: digest(settings), Links: links, BreakGlass: breakGlass(d, id), Values: d.values(id)}
+	a := Applied{Expose: entry.Exposure(), Settings: settingsDigest(entry.Settings), Links: links, BreakGlass: breakGlass(d, id), Values: d.values(id), Mapped: true}
 	var mail []byte
 	if modsecrets.WantsRelay(id) && RelayOptIn(d.Company.Email, id) {
 		a.RelayOptIn = true
@@ -134,7 +138,7 @@ func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec s
 		hadRelay, herr := r.relay(ctx, old, a.Module, rec.HMACSecret, had)
 		if err == nil && herr == nil && linkedHash(specHash(d.Company, a.Module, &rec.Manifest, rt.Fingerprint, hadRelay), had) == rec.SettingsHash {
 			was, known = appliedOf(d, a.Module, hadRelay, had), true
-			was.Values = nil // that release mapped nothing
+			was.Values, was.Mapped = nil, false // that release mapped nothing
 			a.baseline = was.encode()
 		}
 	}
@@ -145,8 +149,14 @@ func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec s
 	}
 	diff, urgent := differences(was, now)
 	// A stricter setting that cannot arrive while the module is held: it stays as loose as it is.
-	for _, c := range d.Schemas[a.Module].Widening(now.Values, was.Values) {
-		diff, urgent = append(diff, "the stricter setting "+c.Setting+" (the module keeps the looser one)"), true
+	var stricter []string
+	for _, c := range d.Schemas[a.Module].Widening(modsettings.Normalise(now.Values), modsettings.Normalise(was.Values)) {
+		if !slices.Contains(stricter, c.Setting) {
+			stricter = append(stricter, c.Setting)
+		}
+	}
+	for _, name := range stricter {
+		diff, urgent = append(diff, "the stricter setting "+name+" (the module keeps the looser one)"), true
 	}
 	a.NotApplied, a.Urgent = append(a.NotApplied, diff...), a.Urgent || urgent
 	return nil

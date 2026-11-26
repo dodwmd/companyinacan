@@ -119,7 +119,8 @@ the new version without asking). Backups of a waiting module use the hooks of wh
 module installed before hook scripts were recorded uses the shipped script). Approve on the catalogue page, with
 the tick on a change's apply form, or with `can apply --approve <module>=<code>`, where the code is the one the
 plan shows; `can status` and `can up` name the modules that wait. The approval covers exactly the list shown. A
-restore applies without asking.
+restore applies without asking, but no setting that widens
+([module-wiring.md](module-wiring.md#settings)).
 `can apply` prints can-core's plan before it syncs `company.yaml`; `can apply --plan` prints it and changes
 nothing (`--dry-run` plans against the local state file, not the cluster).
 

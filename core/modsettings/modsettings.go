@@ -53,6 +53,9 @@ type Annotation struct {
 	Unset any `json:"unset,omitempty"`
 	// Risk says, to the person approving, what the change does.
 	Risk string `json:"risk,omitempty"`
+	// PreviouslyApplied: releases before the mapping already gave the module this setting, so an
+	// installation of theirs ran with it, not with Unset.
+	PreviouslyApplied bool `json:"previously_applied,omitempty"`
 }
 
 // Target is the chart value path the annotation maps to, "" when it maps to none.
@@ -76,6 +79,7 @@ const (
 	widensKeepLess  = "keep_less" // days or years kept, 0 meaning for ever (or never delete)
 	widensLimit     = "limit"     // a limit, 0 meaning none
 	widensRetention = "retention" // 30d, 12m, 7y, 0 (at once) or legal (for ever)
+	widensRises     = "rises:"    // followed by the values from the least to the most, comma separated
 )
 
 var widenKinds = []string{widensTrue, widensFalse, widensChanged, widensAdded, widensRemoved, widensLower, widensHigher, widensKeepLess, widensLimit, widensRetention}
@@ -237,7 +241,7 @@ func annotation(raw any) (*Annotation, error) {
 		return nil, errors.New("widens needs a mapped value")
 	case a.Risk == "":
 		return nil, errors.New("widens needs a risk")
-	case !strings.HasPrefix(w, widensValue) && !slices.Contains(widenKinds, w):
+	case !strings.HasPrefix(w, widensValue) && !strings.HasPrefix(w, widensRises) && !slices.Contains(widenKinds, w):
 		return nil, fmt.Errorf("unknown widens %q", w)
 	}
 	a.Unset = normal(a.Unset)

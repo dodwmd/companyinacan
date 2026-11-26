@@ -74,7 +74,7 @@ func TestEveryInHouseModuleOnK3d(t *testing.T) {
 	})
 	prepareDumpsDir(t)
 	company := "schema: 1\nname: Every Module Co\ndomain: modules.example\nprovider:\n  type: local\n" +
-		"organisation: {legal_name: Every Module Pty Ltd, address: \"1 Anvil Way\\nBrisbane\", tax_id: TAX-1, timezone: Australia/Brisbane}\nmodules:\n"
+		"organisation: {legal_name: Every Module Pty Ltd, address: \"1 Anvil Way\\nBrisbane\", tax_id: TAX-1}\nmodules:\n"
 	// Settings that each module's own loader reads at start (specs/064-module-settings): a pod that is
 	// Ready accepted its configuration. None is looser to remove than to keep: TestModuleWiringOnK3d
 	// applies a company.yaml without them to this cluster next, and a widening upgrade waits.
@@ -85,9 +85,9 @@ func TestEveryInHouseModuleOnK3d(t *testing.T) {
 		"files":        `{max_file_mb: 100, quota_gb_per_owner: 20, inline_images: true, share: {max_ttl_hours: 800}, ui: {idle_minutes: 60}}`,
 		"finance":      `{payment_instructions: "Pay by transfer\nRef $(NOT_EXPANDED)", retention_years: 5, ui: {idle_minutes: 60}}`,
 		"forms":        `{rate_limit_per_minute: 20, cors_allowed_origins: ["https://app.modules.example"]}`,
-		"jobs":         `{collect_eeo: true, max_resume_mb: 10, consent_text: "I agree that my application is kept.", retention: {rejected_days: 100}}`,
+		"jobs":         `{collect_eeo: true, max_resume_mb: 10, default_valid_days: 30, retention: {rejected_days: 100}}`,
 		"people":       `{retention: {people-timeoff: 1y}, ui: {absolute_hours: 12}}`,
-		"provisioning": `{leaver_cutoff: end_of_day, tasks: {joiner_template: Joiner}}`,
+		"provisioning": `{leaver_cutoff: end_of_day}`,
 		"work":         `{retention_days: 365, max_body_bytes: 2097152}`,
 	}
 	for _, id := range ids {
@@ -118,7 +118,7 @@ func TestEveryInHouseModuleOnK3d(t *testing.T) {
 	for id, want := range map[string][]string{
 		"finance":      {"name: Every Module Pty Ltd", "Pay by transfer", "$(NOT_EXPANDED)", "retention_years: 5", "tax_id: TAX-1"},
 		"files":        {"max_file_bytes: 104857600", "quota_bytes_per_owner: 21474836480", "inline: true"},
-		"provisioning": {"timezone: Australia/Brisbane", "leaver_cutoff: end_of_day"},
+		"provisioning": {"leaver_cutoff: end_of_day"},
 	} {
 		got := mustKubectl(t, "-n", "mod-"+id, "get", "configmap", id+"-config", "-o", "jsonpath={.data}")
 		for _, w := range want {

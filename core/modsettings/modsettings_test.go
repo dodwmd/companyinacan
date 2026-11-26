@@ -20,6 +20,8 @@ func TestWidens(t *testing.T) {
 		{widensHigher, i(5), i(10), true}, {widensHigher, i(10), i(5), false},
 		{widensKeepLess, i(0), i(10), true}, {widensKeepLess, i(10), i(0), false}, {widensKeepLess, i(10), i(5), true}, {widensKeepLess, i(5), i(10), false},
 		{widensLimit, i(30), i(0), true}, {widensLimit, i(30), i(60), true}, {widensLimit, i(0), i(60), false}, {widensLimit, i(60), i(30), false},
+		{"rises:none,truncated,full", "none", "truncated", true}, {"rises:none,truncated,full", "truncated", "none", false},
+		{"becomes:0", i(600), i(0), true}, {"becomes:0", i(600), i(6000), false},
 		{widensRetention, "7y", "0", true}, {widensRetention, "legal", "10y", true}, {widensRetention, "7y", "legal", false},
 		{widensRetention, "1y", "12m", true}, {widensRetention, "1y", "13m", false},
 	} {

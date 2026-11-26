@@ -39,6 +39,9 @@ type Spec struct {
 	Manifest       *config.Module
 	// Organisation is company.yaml's facts about the company, which some settings default to.
 	Organisation config.Organisation
+	// Within, when set, is what the module was installed with: nothing that widens it is installed
+	// (a restore, and the apply that follows one).
+	Within *Applied
 	// HMACSecret signs can-core's webhooks to this module; the installer injects it into the
 	// module's environment (SPEC §3.1).
 	HMACSecret string
@@ -496,8 +499,14 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			if newInternetAccess(rec.Content, man) {
 				a.Widens = append(a.Widens, "internet access")
 			}
-			a.Widens = append(a.Widens, linkWidening(d, id, rec, wanted)...)
-			a.Widens = append(a.Widens, d.settingWidening(id, rec)...)
+			// After a restore ("*") settings that widen are not applied by this step (see enable):
+			// the next plan lists them and holds them.
+			if rec.ApprovedUpgrade == restored {
+				a.Widens = append(a.Widens, slices.DeleteFunc(linkWidening(d, id, rec, wanted), keptAfterRestore)...)
+			} else {
+				a.Widens = append(a.Widens, linkWidening(d, id, rec, wanted)...)
+				a.Widens = append(a.Widens, d.settingWidening(id, rec)...)
+			}
 		}
 		if a.Kind == Upgrade {
 			r.hold(a, rec)
@@ -516,7 +525,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 func (r *Reconciler) hold(a *Action, rec store.Module) {
 	if r.RequireApproval && len(a.Widens) > 0 {
 		approval := approvalOf(a.Widens)
-		if rec.ApprovedUpgrade != approval && rec.ApprovedUpgrade != "*" {
+		if rec.ApprovedUpgrade != approval && rec.ApprovedUpgrade != restored {
 			a.Held, a.Approval = HeldApproval, approval
 			return
 		}
@@ -726,6 +735,15 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		return err
 	}
 	wired := links(d, byID(recorded), a.Module, false)
+	// The apply after a restore waits for no approval, so it installs nothing wider than what was
+	// recorded.
+	var within *Applied
+	keptLinks := false
+	if perr == nil && prev.ApprovedUpgrade == restored {
+		was := ParseApplied(prev.Applied)
+		within = &was
+		wired, keptLinks = keepOptIns(d, prev, wired)
+	}
 	// Read before the installer does: a relay that changes in between differs from this and is
 	// applied by the next run. An unreadable one fails in the installer.
 	relay, lerr := r.relay(ctx, d, a.Module, secret, wired)
@@ -735,9 +753,20 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
 		State: store.StateEnabled, SettingsHash: linkedHash(d.valuesHash(a.Module, specHash(d.Company, a.Module, man, rt.Fingerprint, relay)), wired), HMACSecret: secret, Manifest: *man,
-		Content: d.content(a.Module).encode(), Applied: appliedOf(d, a.Module, relay, wired).encode(),
+		Content: d.content(a.Module).encode(),
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, RecordSecret: prev.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure(), Links: wired, Organisation: d.Company.Organisation})
+	applied := appliedOf(d, a.Module, relay, wired)
+	if within != nil {
+		values := WithinValues(d.Schemas[a.Module], *within, settings, applied.Values)
+		until := WithinBreakGlass(*within, applied.BreakGlass)
+		// Whatever was kept back must show up in the next plan: no desired state matches "".
+		if keptLinks || until != applied.BreakGlass || !sameValues(values, applied.Values) {
+			rec.SettingsHash = ""
+		}
+		applied.Values, applied.BreakGlass = values, until
+	}
+	rec.Applied = applied.encode()
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, RecordSecret: prev.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure(), Links: wired, Organisation: d.Company.Organisation, Within: within})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.
@@ -756,6 +785,9 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		if prev.HMACSecret != "" {
 			rec.HMACSecret = prev.HMACSecret
 		}
+		if prev.Applied != "" { // what it last ran with, not what failed to arrive
+			rec.Applied = prev.Applied
+		}
 	} else {
 		rec.Manifest.Runtime.RoutedUIHost = rt.UIHost
 		rec.Manifest.Runtime.Wired = wired
@@ -765,7 +797,7 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	}
 	// An approval is used up by the upgrade it covered (a restore's by the next one). One for
 	// something else, such as for a company.yaml not synced yet, stays.
-	if ierr == nil && (prev.ApprovedUpgrade == "*" || (len(a.Widens) > 0 && prev.ApprovedUpgrade == approvalOf(a.Widens))) {
+	if ierr == nil && (prev.ApprovedUpgrade == restored || (len(a.Widens) > 0 && prev.ApprovedUpgrade == approvalOf(a.Widens))) {
 		if err := r.db.ConsumeApproval(ctx, a.Module, prev.ApprovedUpgrade); err != nil {
 			return err
 		}

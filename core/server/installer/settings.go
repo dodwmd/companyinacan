@@ -28,5 +28,9 @@ func (in *Installer) settingValues(s reconcile.Spec) (map[string]any, error) {
 		}
 		return nil, fmt.Errorf("module %s: %w", s.ID, err)
 	}
-	return schema.Map(s.Settings, modsettings.FactsOf(s.CompanyName, s.Organisation)).Nested(), nil
+	r := schema.Map(s.Settings, modsettings.FactsOf(s.CompanyName, s.Organisation))
+	if s.Within != nil {
+		r.Values = reconcile.WithinValues(schema, *s.Within, s.Settings, r.Values)
+	}
+	return r.Nested(), nil
 }

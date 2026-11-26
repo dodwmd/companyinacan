@@ -103,6 +103,95 @@ func TestASettingIgnoredUntilNowIsHeldWhenItWidens(t *testing.T) {
 	}
 }
 
+// Every entry a list gains is shown whole, and an approval of one list does not cover another:
+// not even one that differs only past what a line could show.
+func TestAnApprovalCoversTheWholeValue(t *testing.T) {
+	g := newRig(t)
+	g.r.RequireApproval = true
+	apply(t, g, fromShipped(t, "  forms: {}\n", ""))
+	long := "https://" + strings.Repeat("a", 90) + ".example"
+	of := func(origins ...string) Action {
+		t.Helper()
+		a := plan(t, g, fromShipped(t, "  forms: {settings: {cors_allowed_origins: [\""+strings.Join(origins, "\", \"")+"\"]}}\n", ""))
+		if len(a) != 1 || a[0].Held != HeldApproval || len(a[0].Widens) != len(origins) {
+			t.Fatalf("%+v", a)
+		}
+		for i, o := range origins {
+			if !strings.Contains(a[0].Widens[i], `setting cors_allowed_origins adds "`+o+`"`) {
+				t.Fatalf("%q is not shown: %q", o, a[0].Widens[i])
+			}
+		}
+		return a[0]
+	}
+	one := of(long)
+	if err := g.db.ApproveUpgrade(context.Background(), "forms", one.Approval); err != nil {
+		t.Fatal(err)
+	}
+	two := of(long, "https://evil.example")
+	if two.Approval == one.Approval {
+		t.Fatal("adding an entry reuses the approval")
+	}
+	// Long scalar values that start alike are still told apart.
+	finance := newRig(t)
+	finance.r.RequireApproval = true
+	apply(t, finance, fromShipped(t, "  jobs: {}\n", ""))
+	text := func(end string) string {
+		a := plan(t, finance, fromShipped(t, "  jobs: {settings: {consent_text: \""+strings.Repeat("I agree. ", 50)+end+"\"}}\n", ""))
+		if len(a) != 1 || a[0].Held != HeldApproval {
+			t.Fatalf("%+v", a)
+		}
+		return a[0].Approval
+	}
+	if text("Yes.") == text("No.") {
+		t.Fatal("the approval does not cover the end of a long value")
+	}
+}
+
+func TestSettingsThatWeakenOrRedirectAreHeld(t *testing.T) {
+	for module, c := range map[string][2]string{
+		"finance":      {"{signing_record_ip: none}", "{signing_record_ip: truncated}"},
+		"work":         {"{}", "{rate_limit_per_minute: 0}"},
+		"provisioning": {"{}", "{timezone: Australia/Brisbane}"},
+		"forms":        {"{notify_email: [a@acme.example]}", "{notify_email: [a@acme.example, b@elsewhere.example]}"},
+		"jobs":         {"{consent_version: v2}", "{consent_version: v3}"},
+	} {
+		g := newRig(t)
+		g.r.RequireApproval = true
+		d := fromShipped(t, "  "+module+": {settings: "+c[0]+"}\n", "")
+		apply(t, g, d)
+		if a := plan(t, g, d); len(a) != 0 {
+			t.Fatalf("%s: %+v", module, a)
+		}
+		if a := plan(t, g, fromShipped(t, "  "+module+": {settings: "+c[1]+"}\n", "")); len(a) != 1 || a[0].Held != HeldApproval {
+			t.Errorf("%s %s -> %s is not held: %+v", module, c[0], c[1], a)
+		}
+	}
+}
+
+// Releases before the mapping gave forms its notify_email: upgrading can-core does not hold it.
+func TestWhatWasAppliedBeforeTheMappingIsNotNew(t *testing.T) {
+	g := newRig(t)
+	g.r.RequireApproval = true
+	d := fromShipped(t, "  forms: {settings: {notify_email: [a@acme.example]}}\n", "")
+	apply(t, g, d)
+	// The record such a release leaves: what it was installed with, without the mapped values.
+	rec, err := g.db.GetModule(context.Background(), "forms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := ParseApplied(rec.Applied)
+	old.Values, old.Mapped = nil, false
+	if _, err := g.db.ExecContext(context.Background(), `UPDATE modules SET applied_json=?, settings_hash='old'`, old.encode()); err != nil {
+		t.Fatal(err)
+	}
+	if a := plan(t, g, d); len(a) != 1 || a[0].Held != "" {
+		t.Fatalf("%+v", a)
+	}
+	if got := WithinValues(d.Schemas["forms"], old, d.Company.Modules["forms"].Settings, d.values("forms")); got["config.notify_email"] == nil {
+		t.Fatalf("a restore of such a record keeps the recipients: %v", got)
+	}
+}
+
 // Wrapped modules and settings that map to nothing do not change what is installed.
 func TestSettingsNotAppliedAreWarned(t *testing.T) {
 	y := "schema: 1\nname: A\ndomain: a.example\nprovider: {type: local}\nmodules:\n  analytics: {settings: {retention_days: 90, site_domain: x.example}}\n  newsletter: {settings: {double_opt_in: false, nonsense: 1, smtp_password: hunter2}}\n"

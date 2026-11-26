@@ -33,10 +33,19 @@ and session settings could not be set on a real install; settings of wrapped mod
 - **Approval.** An upgrade waits for approval (as in PR #77) when the new values widen what the module does,
   exposes or destroys compared with what it was installed with (its defaults where nothing was mapped).
   The list is the `widens` annotations: shorter retention, relaxed protections (virus scan, dry run,
-  approvals, anonymity threshold, authentication limit, session length), more exposure (CORS origins, inline
+  approvals, anonymity threshold, authentication and request limits, session length), who is mailed, what
+  applicants consent to, when and with which tasks leavers are processed, more exposure (CORS origins, inline
   images, trusted proxy headers), diversity data collection, a changed reporting currency or invoice link
   base, development providers. Returning to a stricter value while held is reported as urgent.
-  A fresh install is not held, as for everything else.
+  A fresh install is not held, as for everything else, and neither is enabling a disabled module again (the
+  plan lists what it newly allows).
+- **What is approved is what is shown.** One line per new value or per entry a list gains or loses, ending in a
+  digest of the whole value; the approval identifier covers those lines.
+- **Restore.** A restore, and the apply that follows it, install nothing wider than the record in the backup
+  (`Applied.values`; the module's default where there is none), record that, and leave the difference to the next
+  plan, which holds it. The modules start all the same.
+- **Earlier releases.** `forms.notify_email` was already applied: unchanged settings of such an installation do not
+  count as new recipients. A record from before `Applied` existed cannot tell, and is held.
 - **Admin UI.** The settings form shows nested settings, lists and multi-line text, lists what is not applied
   with the reason, and does not write a default into `company.yaml` that was only shown.
 

@@ -64,7 +64,17 @@ A module setting wins over a company fact, a fact over the module's default, and
 runs with the fact or the default, and `can validate`, `can apply` and the admin UI warn. A change is planned as an
 upgrade. An upgrade that widens what the module does, compared with what it was installed with, waits for approval
 (the "approval" column); this includes a setting that was written before settings were mapped and takes effect only
-now, and removing a setting whose default is looser than the value it had.
+now, and removing a setting whose default is looser than the value it had. Each line to approve shows the new value, or
+the entry a list gains or loses, and a digest of the whole value: an approval covers that value only.
+
+**Restore.** `can restore` asks nobody, so it installs nothing wider than what the backup recorded as installed: a
+setting that widens (and equity's break-glass window, or leaving its directory mode) stays as it was, or at the module's
+default where nothing was recorded. The apply that starts the modules does the same; the next one lists the difference
+and holds it for approval. A module that was disabled or failed at backup time gets the same on its first apply.
+
+**Re-enabling.** Enabling a disabled module is not held, as for a new permission in its manifest: it applies
+`company.yaml` as it is, including settings that widen compared with its last installation. The plan (`can apply --plan`,
+the admin UI preview) lists them as "newly allowed" first.
 
 ### What is applied
 
@@ -107,9 +117,9 @@ now, and removing a setting whose default is looser than the value it had.
 | `finance` | `audit_retention_days` | `config.audit_retention_days` | approval: the audit trail is deleted sooner |
 | `finance` | `trust_proxy` | `config.trust_proxy` | approval: client addresses are taken from a request header |
 | `finance` | `max_body_bytes` | `config.max_body_bytes` |  |
-| `finance` | `rate_limit_per_minute` | `config.rate_limit.per_minute` |  |
+| `finance` | `rate_limit_per_minute` | `config.rate_limit.per_minute` | approval: the request limit per API token is switched off |
 | `finance` | `auth_failures_per_minute` | `config.rate_limit.auth_failures_per_minute` | approval: more password and link guessing is let through |
-| `finance` | `signing_record_ip` | `config.signing_record_ip` | approval: signers' full IP addresses are stored |
+| `finance` | `signing_record_ip` | `config.signing_record_ip` | approval: more of signers' IP addresses is stored |
 | `finance` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
 | `finance` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
 | `forms` | `trust_proxy` | `config.trust_proxy` |  |
@@ -117,7 +127,7 @@ now, and removing a setting whose default is looser than the value it had.
 | `forms` | `rate_limit_per_minute` | `config.rate_limit.per_minute` | approval: one address may submit more often |
 | `forms` | `retention_days` | `config.retention_days` | approval: submissions are deleted sooner |
 | `forms` | `cors_allowed_origins` | `config.cors_allowed_origins` | approval: pages of another origin may submit the forms from a visitor's browser |
-| `forms` | `notify_email` | `config.notify_email` |  |
+| `forms` | `notify_email` | `config.notify_email` | approval: this address is emailed the content of new submissions |
 | `jobs` | `approval_required` | `config.approval.required` | approval: jobs open without an approved requisition |
 | `jobs` | `collect_eeo` | `config.apply.collect_eeo` | approval: diversity data about applicants is collected |
 | `jobs` | `retention.rejected_days` | `config.retention.rejected_days` | approval: rejected candidates are deleted sooner |
@@ -129,8 +139,8 @@ now, and removing a setting whose default is looser than the value it had.
 | `jobs` | `scanner_required` | `config.apply.scanner_required` | approval: resumes are accepted without a virus scan |
 | `jobs` | `apply_per_hour` | `config.rate_limit.apply_per_hour` | approval: one address may apply more often |
 | `jobs` | `default_valid_days` | `config.apply.default_valid_days` |  |
-| `jobs` | `consent_version` | `config.apply.consent_version` |  |
-| `jobs` | `consent_text` | `config.apply.consent_text` |  |
+| `jobs` | `consent_version` | `config.apply.consent_version` | approval: another consent version is recorded for applicants |
+| `jobs` | `consent_text` | `config.apply.consent_text` | approval: applicants consent to different wording |
 | `jobs` | `eeo_min_cell` | `config.eeo.min_cell` | approval: smaller groups of applicants can be told apart in diversity reports |
 | `jobs` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
 | `jobs` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
@@ -147,11 +157,11 @@ now, and removing a setting whose default is looser than the value it had.
 | `provisioning` | `dry_run` | `config.workflows.dry_run` | approval: connectors are called: accounts in other systems are changed |
 | `provisioning` | `privileged_groups` | `config.workflows.privileged_groups` | approval: access of a group no longer needs a second person |
 | `provisioning` | `delete_after_days` | `config.workflows.delete_after_days` | approval: leavers' downstream accounts are deleted (sooner) |
-| `provisioning` | `timezone` | `config.workflows.timezone` | default: `organisation.timezone` |
+| `provisioning` | `timezone` | `config.workflows.timezone` | default: `organisation.timezone`; approval: leavers lose their access at a different time |
 | `provisioning` | `leaver_cutoff` | `config.workflows.leaver_cutoff` | approval: a leaver keeps access through their last day |
 | `provisioning` | `compensate_with_delete` | `config.workflows.compensate_with_delete` | approval: failed joiner workflows delete accounts |
-| `provisioning` | `tasks.joiner_template` | `config.tasks.joiner_template` |  |
-| `provisioning` | `tasks.leaver_template` | `config.tasks.leaver_template` |  |
+| `provisioning` | `tasks.joiner_template` | `config.tasks.joiner_template` | approval: different manager and IT tasks are created for joiners |
+| `provisioning` | `tasks.leaver_template` | `config.tasks.leaver_template` | approval: different manager and IT tasks are created for leavers |
 | `support` | `admin_email` | can-core reads it (specs/059-support-mailbox) |  |
 | `support` | `support_address` | can-core reads it (specs/059-support-mailbox) |  |
 | `support` | `mailbox_name` | can-core reads it (specs/059-support-mailbox) |  |
@@ -164,7 +174,7 @@ now, and removing a setting whose default is looser than the value it had.
 | `wiki` | `php_memory_limit` | `app.phpMemoryLimit` |  |
 | `work` | `trust_proxy` | `config.trust_proxy` | approval: client addresses are taken from a request header |
 | `work` | `max_body_bytes` | `config.max_body_bytes` |  |
-| `work` | `rate_limit_per_minute` | `config.rate_limit.per_minute` |  |
+| `work` | `rate_limit_per_minute` | `config.rate_limit.per_minute` | approval: the request limit per API token is switched off |
 | `work` | `auth_failures_per_minute` | `config.rate_limit.auth_failures_per_minute` | approval: more password guessing is let through |
 | `work` | `retention_days` | `config.retention_days` | approval: resolved issues are deleted sooner |
 | `work` | `audit_retention_days` | `config.audit_retention_days` | approval: the audit trail is deleted sooner |

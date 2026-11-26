@@ -1,6 +1,8 @@
 package modsettings
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -11,24 +13,40 @@ import (
 // Change is a mapped value that lets a module do, expose or destroy more than before.
 type Change struct {
 	Setting string // dotted settings path
-	Value   any    // what the module would run with
-	Risk    string
+	// Verb is "becomes", or "adds" or "removes" for one entry of a list.
+	Verb  string
+	Shown any // the new value, or the entry added or removed
+	Whole any // the whole value the module would run with
+	Risk  string
 }
 
-// String is what an operator approves: it names the value, so that the approval covers that one.
+// maxShown is how much of one value a line shows. The entries of lists and the addresses the
+// schemas allow are shorter.
+const maxShown = 300
+
+// String is what an operator reads and approves. It ends in a digest of the whole value, so that an
+// approval covers that value and no other, however long it is.
 func (c Change) String() string {
-	b, err := json.Marshal(c.Value)
-	if err != nil || c.Value == nil {
-		b = []byte("its default")
+	shown := "its default"
+	switch v := c.Shown.(type) {
+	case nil:
+	case string:
+		shown = strconv.QuoteToGraphic(v) // no control or direction characters on a terminal
+	default:
+		b, _ := json.Marshal(v)
+		shown = string(b)
 	}
-	if r := []rune(string(b)); len(r) > 60 {
-		b = []byte(string(r[:60]) + "...")
+	if r := []rune(shown); len(r) > maxShown {
+		shown = fmt.Sprintf("%s... (%d characters)", string(r[:maxShown]), len(r))
 	}
-	return fmt.Sprintf("setting %s becomes %s: %s", c.Setting, b, c.Risk)
+	b, _ := json.Marshal(c.Whole)
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("setting %s %s %s: %s (sha256 %s)", c.Setting, c.Verb, shown, c.Risk, hex.EncodeToString(sum[:8]))
 }
 
-// Widening lists which mapped values of now widen what a module running with was does. A value that
-// is in neither is the module's default (Annotation.Unset), so removing a setting counts too.
+// Widening lists which mapped values of now widen what a module running with was does, one Change
+// for each entry a list gains or loses. A value that is in neither is the module's default
+// (Annotation.Unset), so removing a setting counts too.
 func (s *Schema) Widening(was, now map[string]any) []Change {
 	var out []Change
 	for _, p := range s.Properties() {
@@ -37,8 +55,63 @@ func (s *Schema) Widening(was, now map[string]any) []Change {
 			continue
 		}
 		before, after := effective(a, was), effective(a, now)
-		if widens(a.Widens, before, after) {
-			out = append(out, Change{Setting: p.Name(), Value: after, Risk: a.Risk})
+		if !widens(a.Widens, before, after) {
+			continue
+		}
+		c := Change{Setting: p.Name(), Verb: "becomes", Shown: after, Whole: after, Risk: a.Risk}
+		var entries []any
+		switch a.Widens {
+		case widensAdded:
+			c.Verb, entries = "adds", missing(before, after)
+		case widensRemoved:
+			c.Verb, entries = "removes", missing(after, before)
+		default:
+			out = append(out, c)
+		}
+		for _, e := range entries {
+			c.Shown = e
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Within is next, except that every value that widens what was does stays as in was (absent there:
+// the module's default). A restore installs this: nothing wider than what was installed arrives
+// without an approval.
+func (s *Schema) Within(was, next map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range next {
+		out[k] = v
+	}
+	restore := func(target string) {
+		if v, ok := was[target]; ok {
+			out[target] = normal(v)
+		} else {
+			delete(out, target)
+		}
+	}
+	for _, p := range s.Properties() {
+		a := p.Annotation
+		if a == nil || a.Widens == "" || !widens(a.Widens, effective(a, was), effective(a, next)) {
+			continue
+		}
+		restore(a.Target())
+		for k := range a.AlsoWhenTrue {
+			restore("config." + k)
+		}
+	}
+	return out
+}
+
+// PreviouslyApplied are those of values that releases before the mapping gave the module too.
+func (s *Schema) PreviouslyApplied(values map[string]any) map[string]any {
+	out := map[string]any{}
+	for _, p := range s.Properties() {
+		if a := p.Annotation; a != nil && a.PreviouslyApplied {
+			if v, ok := values[a.Target()]; ok {
+				out[a.Target()] = v
+			}
 		}
 	}
 	return out
@@ -69,9 +142,9 @@ func widens(how string, was, now any) bool {
 	case widensChanged:
 		return true
 	case widensAdded:
-		return gains(was, now)
+		return len(missing(was, now)) > 0
 	case widensRemoved:
-		return gains(now, was)
+		return len(missing(now, was)) > 0
 	case widensLower, widensHigher, widensKeepLess, widensLimit:
 		w, wok := was.(int64)
 		n, nok := now.(int64)
@@ -93,17 +166,25 @@ func widens(how string, was, now any) bool {
 		n, nok := retentionDays(now)
 		return !wok || !nok || n < w
 	}
+	if order, ok := strings.CutPrefix(how, widensRises); ok {
+		l := strings.Split(order, ",")
+		return slices.Index(l, fmt.Sprint(now)) > slices.Index(l, fmt.Sprint(was))
+	}
 	v, ok := strings.CutPrefix(how, widensValue)
 	return ok && fmt.Sprint(now) == v
 }
 
-// gains reports whether next has an entry that have does not.
-func gains(have, next any) bool {
+// missing returns the entries of next that have does not have.
+func missing(have, next any) []any {
 	h, _ := have.([]any)
 	n, _ := next.([]any)
-	return slices.ContainsFunc(n, func(x any) bool {
-		return !slices.ContainsFunc(h, func(y any) bool { return same(x, y) })
-	})
+	var out []any
+	for _, x := range n {
+		if !slices.ContainsFunc(h, func(y any) bool { return same(x, y) }) {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 const forever = int(^uint(0) >> 1)
