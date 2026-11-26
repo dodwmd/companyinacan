@@ -70,7 +70,8 @@ kubectl -n can-system get configmap can-routing -o yaml
 
 `can up` writes it on every run. `can apply` only writes it when it is missing or names another
 domain, and then reads it off the site's route; where there is no site route it writes nothing and
-says so. can-core cannot write it. Changing the domain in the admin UI therefore also needs `can apply` (or `can up`): until
+says so. can-core cannot write it. A cluster without it (set up without `can up`) still installs
+modules, with no public routes; `expose.ui` and `expose.api` fail there. Changing the domain in the admin UI therefore also needs `can apply` (or `can up`): until
 then routed modules fail with a message saying so.
 
 ## Upgrading an existing installation

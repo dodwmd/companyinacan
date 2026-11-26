@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -72,8 +73,30 @@ func (in *Installer) routingData(ctx context.Context) (data map[string]string, f
 	return data, true, nil
 }
 
-// routingConfig is the routing facts. In a cluster (RequireAdmission) they must exist: the admission
-// policy refuses every module route without them. Elsewhere the defaults for the domain apply.
+// withoutFacts is the plan for a cluster that has no routing facts (installed without `can up`):
+// the admission policy would refuse any route, so an exposed UI or API is an error, and a module's
+// public surface is left unrouted so that the module still installs. A public route that is already
+// there is left alone (the upgrade then fails on it rather than taking it offline).
+func (in *Installer) withoutFacts(ctx context.Context, s reconcile.Spec, p routePlan) (routePlan, error) {
+	missing := fmt.Sprintf("ConfigMap %s/%s does not exist, so nothing can be routed: run `can up`", routing.Namespace, routing.ConfigMapName)
+	if s.Expose.UI || s.Expose.API {
+		return p, errors.New(missing)
+	}
+	in.cfg.Log.Warn("not routing: "+missing, "module", s.ID)
+	if s.Manifest.Runtime.Subdomain != "" {
+		have, err := in.cfg.API.List(ctx, "IngressRoute", s.Namespace, labelModule+"="+s.ID+","+labelManaged+"=can-core")
+		if err != nil && !kube.IsNotFound(err) && !kube.IsForbidden(err) { // a new namespace has no RoleBinding yet
+			return p, fmt.Errorf("listing routes: %w", err)
+		}
+		if len(have) == 0 {
+			p.values = deepMerge(p.values, map[string]any{"ingress": map[string]any{"enabled": false}})
+		}
+	}
+	return p, nil
+}
+
+// routingConfig is the routing facts. In a cluster (RequireAdmission) planRoutes has already
+// handled their absence; elsewhere the defaults for the domain apply.
 func (in *Installer) routingConfig(ctx context.Context, s reconcile.Spec) (routing.Config, error) {
 	data, found, err := in.routingData(ctx)
 	switch {
@@ -81,8 +104,6 @@ func (in *Installer) routingConfig(ctx context.Context, s reconcile.Spec) (routi
 		return routing.Config{}, err
 	case found:
 		return routing.Parse(data)
-	case in.cfg.RequireAdmission:
-		return routing.Config{}, fmt.Errorf("ConfigMap %s/%s does not exist, so nothing can be routed: run `can up`", routing.Namespace, routing.ConfigMapName)
 	}
 	return routing.Default(in.domain(s)), nil
 }
@@ -95,6 +116,16 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 	siteWanted := m.Runtime.SiteRoute != nil && x.PublicOn()
 	if !x.PublicOn() && m.Runtime.Subdomain != "" {
 		p.values = deepMerge(p.values, map[string]any{"ingress": map[string]any{"enabled": false}})
+	}
+	publicPages := m.Runtime.Subdomain != "" && x.PublicOn()
+	if in.cfg.RequireAdmission && (ui || api || siteWanted || publicPages) {
+		_, found, err := in.routingData(ctx)
+		if err != nil {
+			return p, err
+		}
+		if !found {
+			return in.withoutFacts(ctx, s, p)
+		}
 	}
 	if (!ui && !api && !siteWanted) || domain == "" {
 		if (ui || api) && domain == "" {

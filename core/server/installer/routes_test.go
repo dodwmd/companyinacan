@@ -369,3 +369,30 @@ func TestInAClusterTheFactsMustExist(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// A cluster set up without `can up` has no facts: modules still install, unrouted.
+func TestWithoutFactsModulesInstallUnrouted(t *testing.T) {
+	for _, id := range []string{"forms", "jobs", "files"} {
+		in, api, spec := routed(t, id, config.Expose{})
+		in.cfg.RequireAdmission = true
+		for _, n := range []string{"can-core-rolebindings", "can-core-namespaces"} {
+			for _, o := range []kube.Object{
+				{"apiVersion": "admissionregistration.k8s.io/v1", "kind": "ValidatingAdmissionPolicy", "metadata": map[string]any{"name": n}},
+				{"apiVersion": "admissionregistration.k8s.io/v1", "kind": "ValidatingAdmissionPolicyBinding", "metadata": map[string]any{"name": n}, "spec": map[string]any{"validationActions": []any{"Deny"}}},
+			} {
+				if err := api.Apply(context.Background(), o); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		enable(t, in, spec)
+		for k := range api.Objects {
+			if strings.HasPrefix(k, "IngressRoute/") {
+				t.Errorf("%s: %s without routing facts", id, k)
+			}
+		}
+		if got := traefikPorts(t, api, spec.Namespace); got != "[]" {
+			t.Errorf("%s: %s", id, got)
+		}
+	}
+}

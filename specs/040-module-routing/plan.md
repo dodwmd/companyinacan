@@ -18,7 +18,8 @@
   written by `can up` on every run, as its own phase, and by `can apply` only when missing or for
   another domain, read off `can-system/site` (never assumed). The admission policy takes it as its
   parameter, so it cannot be a can-core environment variable. A routing read that fails does not stop
-  the reconcile plan; a ConfigMap that does not parse fails only the modules that need it.
+  the reconcile plan; a ConfigMap that does not parse fails only the modules that need it. Without
+  the ConfigMap modules install unrouted (an exposed UI or API fails).
 - **Reconcile**: the installer's routing fingerprint is part of the settings hash; exposure changes
   that alter chart configuration also annotate the pod template so pods restart.
 - **Apps**: the reconciler records the routed host in its copy of the manifest; the ticket launcher
