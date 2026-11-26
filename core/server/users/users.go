@@ -144,6 +144,23 @@ func ownerGuard(ctx context.Context, tx *sql.Tx, a Actor, subject string) error 
 	return err
 }
 
+// keepsAnOwner refuses, inside tx, to take away the sign-in of the only owner who has one.
+func keepsAnOwner(ctx context.Context, tx *sql.Tx, subject string) error {
+	owner, err := store.HoldsOwner(ctx, tx, subject)
+	if err != nil || !owner {
+		return err
+	}
+	usable, err := store.IsUsable(ctx, tx, strings.TrimPrefix(subject, "user:"))
+	if err != nil || !usable {
+		return err
+	}
+	other, err := store.OtherUsableOwner(ctx, tx, subject)
+	if err == nil && !other {
+		return ErrLastOwner
+	}
+	return err
+}
+
 // mapErr turns the errors of the services underneath into this package's.
 func mapErr(err error) error {
 	switch {

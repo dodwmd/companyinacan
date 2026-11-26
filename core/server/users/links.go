@@ -215,6 +215,12 @@ func (s *Service) SendLink(ctx context.Context, a Actor, username, purpose, addr
 		case kind == store.LinkInvite:
 			return fmt.Errorf("%w: the account is already set up", ErrInvalid)
 		}
+		// Two owners resetting each other must not leave nobody who can sign in.
+		if kind != store.LinkInvite {
+			if err := keepsAnOwner(ctx, tx, subject); err != nil {
+				return err
+			}
+		}
 		// The delegations an account received are power its next holder must not pick up.
 		if err := store.EndPending(ctx, tx, subject); err != nil {
 			return err
