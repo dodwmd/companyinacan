@@ -137,6 +137,17 @@ func (f *Form) Validate(in map[string]string) (map[string]string, []FieldError) 
 				continue
 			}
 			v = e
+		case TypeConsent:
+			// A browser sends the checkbox's value only when it is ticked.
+			switch v {
+			case "yes", "on":
+				v = "yes"
+			case "no":
+				continue
+			default:
+				add(fl.Name, "not_allowed", "not one of the allowed values")
+				continue
+			}
 		case TypeSelect:
 			if !slices.Contains(fl.Options, v) {
 				add(fl.Name, "not_allowed", "not one of the allowed values")
@@ -158,6 +169,17 @@ func (f *Form) Validate(in map[string]string) (map[string]string, []FieldError) 
 		add(truncate(k, 40), "unknown_field", "this field is not accepted by the form")
 	}
 	return clean, errs
+}
+
+// Consents are the names of the consent checkboxes ticked in clean values.
+func (f *Form) Consents(clean map[string]string) []string {
+	var out []string
+	for _, fl := range f.Fields {
+		if fl.Type == TypeConsent && clean[fl.Name] == "yes" {
+			out = append(out, fl.Name)
+		}
+	}
+	return out
 }
 
 func hasControl(s string) bool {

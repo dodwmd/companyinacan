@@ -69,6 +69,12 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		ps[len(ps)-1].Severity = problem.Warning
 	}
 
+	_, leads := config.LeadIntakeOf(c)
+	for _, is := range leads {
+		add("semantic.lead-intake", is.Path, is.Message)
+		ps[len(ps)-1].Severity = problem.Warning
+	}
+
 	if _, warning := config.SiteSupportAddress(c); warning != "" {
 		add("semantic.support-section-off", "/site/support", warning)
 		ps[len(ps)-1].Severity = problem.Warning

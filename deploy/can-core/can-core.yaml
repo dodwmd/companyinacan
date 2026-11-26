@@ -160,6 +160,9 @@ spec:
             # `can up --support-imap-credentials-file` or by hand: keys host, username, password and
             # optionally port, encryption, tls_verify. Optional.
             - {name: support-imap, mountPath: /etc/can/support-imap, readOnly: true}
+            # The Listmonk API user of the newsletter lead adapter (modules/newsletter/README.md):
+            # keys username and token. Optional; re-read on every use.
+            - {name: newsletter-api, mountPath: /etc/can/newsletter-api, readOnly: true}
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: can-core-data}
@@ -175,3 +178,5 @@ spec:
           secret: {secretName: can-smtp-relay, optional: true}
         - name: support-imap
           secret: {secretName: can-support-imap, optional: true}
+        - name: newsletter-api
+          secret: {secretName: can-newsletter-api, optional: true}

@@ -106,7 +106,7 @@ func TestRestoreRefusesANewerSchema(t *testing.T) {
 	must(t, "can-forms", "backup", "-config", src.cfg, "-out", set)
 	man, err := os.ReadFile(filepath.Join(set, modbackup.ManifestName))
 	check(t, err)
-	if !regexp.MustCompile(`"schema_version": 4`).Match(man) {
+	if !regexp.MustCompile(`"schema_version": 5`).Match(man) {
 		t.Fatalf("the manifest records the schema version: %s", man)
 	}
 	db, err := sql.Open("sqlite", "file:"+src.db)
