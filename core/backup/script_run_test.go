@@ -46,7 +46,7 @@ func newScriptEnv(t *testing.T, resticExit string) *scriptEnv {
 	write(s.ConfigDir+"/"+EnvFileName, "AWS_ACCESS_KEY_ID=fake\n", 0o600)
 	write(s.ConfigDir+"/"+PasswordFileName, "pw\n", 0o600)
 	write(dir+"/bin/restic", fmt.Sprintf("#!/bin/sh\necho \"restic $*\" >> %s\ncase \"$1\" in backup) [ -x %s/on-backup ] && %s/on-backup; exit %s;; esac\nexit 0\n", e.calls, dir, dir, resticExit), 0o755)
-	write(dir+"/bin/can", fmt.Sprintf("#!/bin/sh\n[ \"$*\" = \"backup --help\" ] && { cat %s/can-help 2>/dev/null || echo ledger-import; exit 0; }\necho \"can $*\" >> %s\nexit $(cat %s/can-rc 2>/dev/null || echo 0)\n", dir, e.calls, dir), 0o755)
+	write(dir+"/bin/can", fmt.Sprintf("#!/bin/sh\n[ \"$*\" = \"backup --help\" ] && { cat %s/can-help 2>/dev/null || echo ledger-import; exit 0; }\necho \"can $*\" >> %s\n[ \"$2\" = ledger-import ] && [ -e %s/import-rc ] && exit $(cat %s/import-rc)\nexit $(cat %s/can-rc 2>/dev/null || echo 0)\n", dir, e.calls, dir, dir, dir), 0o755)
 	write(dir+"/bin/curl", fmt.Sprintf("#!/bin/sh\necho \"curl $*\" >> %s\ncat >> %s/curl.stdin\n", e.calls, dir), 0o755)
 	write(dir+"/bin/logger", "#!/bin/sh\nexit 0\n", 0o755)
 	p, _ := testPlan()
@@ -240,46 +240,105 @@ func TestScriptRunLedgerFailureCode(t *testing.T) {
 	}
 }
 
-// A company that never erased anything must still be restorable: the bucket gets an empty ledger.
-// Without `can` on the host nothing changes, and a ledger that vanished is not replaced.
+// collection makes the directory can-core writes its collected erasures to.
+func (e *scriptEnv) collection(t *testing.T) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(e.s.DumpsDir, CollectedDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (e *scriptEnv) synced() bool {
+	return strings.Contains(e.calledRestic(), "can backup ledger-sync")
+}
+
+// A company that never erased anything must still be restorable: after a successful import the
+// bucket gets an empty ledger.
 func TestScriptRunUploadsAnEmptyLedger(t *testing.T) {
 	e := newScriptEnv(t, "0")
 	e.fresh(t)
+	e.collection(t)
 	if code, out := e.run(t); code != 0 {
 		t.Fatalf("code %d\n%s", code, out)
 	}
-	if b, _ := os.ReadFile(e.calls); !strings.Contains(string(b), "can backup ledger-sync") {
-		t.Errorf("the empty ledger was not synced:\n%s", b)
+	if !e.synced() {
+		t.Errorf("the empty ledger was not synced:\n%s", e.calledRestic())
 	}
 	if st, err := os.Stat(e.s.LedgerSource); err != nil || st.Size() != 0 {
 		t.Errorf("no empty ledger: %v", err)
 	}
+}
 
-	without := newScriptEnv(t, "0")
-	without.fresh(t)
-	if err := os.Remove(without.s.CanBin); err != nil {
-		t.Fatal(err)
+// An empty ledger tells a restore that nothing was erased. Whenever this run did not read a
+// complete collection that is not known, so none is made and none is uploaded.
+func TestScriptRunNoEmptyLedgerWithoutASuccessfulImport(t *testing.T) {
+	for name, tc := range map[string]struct {
+		setup func(t *testing.T, e *scriptEnv)
+		code  int
+	}{
+		// a failed feed, a corrupt or stale collection and refused tombstones all fail ledger-import
+		"the import fails": {func(t *testing.T, e *scriptEnv) {
+			e.collection(t)
+			if err := os.WriteFile(e.dir+"/import-rc", []byte("1"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, ExitLedgerFailed},
+		"can is too old": {func(t *testing.T, e *scriptEnv) {
+			e.collection(t)
+			if err := os.WriteFile(e.dir+"/can-help", []byte("ledger-sync\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, ExitLedgerFailed},
+		"nothing was collected": {func(*testing.T, *scriptEnv) {}, 0},
+		"can is not installed": {func(t *testing.T, e *scriptEnv) {
+			e.collection(t)
+			if err := os.Remove(e.s.CanBin); err != nil {
+				t.Fatal(err)
+			}
+		}, 0},
+	} {
+		for _, leftOver := range []bool{false, true} {
+			// leftOver: an earlier run made the empty ledger and could not upload it.
+			e := newScriptEnv(t, "0")
+			e.fresh(t)
+			tc.setup(t, e)
+			if leftOver {
+				if err := os.WriteFile(e.s.LedgerSource, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if code, out := e.run(t); code != tc.code {
+				t.Errorf("%s (left over %v): code %d, want %d\n%s", name, leftOver, code, tc.code, out)
+			}
+			if e.synced() {
+				t.Errorf("%s (left over %v): an empty ledger was uploaded:\n%s", name, leftOver, e.calledRestic())
+			}
+			if _, err := os.Stat(e.s.LedgerSource); !leftOver && !os.IsNotExist(err) {
+				t.Errorf("%s: an empty ledger was made", name)
+			}
+		}
 	}
-	if code, out := without.run(t); code != 0 {
-		t.Fatalf("without can: code %d\n%s", code, out)
-	}
-	if _, err := os.Stat(without.s.LedgerSource); !os.IsNotExist(err) {
-		t.Error("a ledger was made that nothing can upload")
-	}
+}
 
-	vanished := newScriptEnv(t, "0")
-	vanished.fresh(t)
-	if err := os.MkdirAll(vanished.s.HostStateDir, 0o700); err != nil {
+// A ledger that held erasures and is gone is reported, never replaced by an empty one.
+func TestScriptRunDoesNotReplaceAVanishedLedger(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	e.collection(t)
+	if err := os.MkdirAll(e.s.HostStateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(vanished.s.HostStateDir+"/"+LedgerCopy, []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(e.s.HostStateDir+"/"+LedgerCopy, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if code, out := vanished.run(t); code != ExitLedgerFailed || !strings.Contains(out, "vanished") {
-		t.Fatalf("vanished ledger: code %d\n%s", code, out)
+	if code, out := e.run(t); code != ExitLedgerFailed || !strings.Contains(out, "vanished") {
+		t.Fatalf("code %d\n%s", code, out)
 	}
-	if _, err := os.Stat(vanished.s.LedgerSource); !os.IsNotExist(err) {
+	if _, err := os.Stat(e.s.LedgerSource); !os.IsNotExist(err) {
 		t.Error("a vanished ledger was replaced by an empty one")
+	}
+	if e.synced() {
+		t.Error("uploaded")
 	}
 }
 

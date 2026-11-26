@@ -55,7 +55,7 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
 2. The host timer `can-backup.timer` (default 03:30 plus up to 15 min) starts `can-backup.service`, which runs
    `/usr/local/sbin/can-backup`. The script, in order:
    - imports into the erasure ledger what can-core collected from the modules (`can backup ledger-import`) and
-     syncs it to the bucket, an empty ledger too when nothing was ever erased, so that a restore finds one (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
+     syncs it to the bucket, an empty ledger too when this run's import succeeded and nothing was ever erased, so that a restore finds one (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
      regular file, is reported and exits 22 rather than being skipped; first and independently, so a failing backup never holds back erasures) and copies it
      into the root-owned host-state directory so every snapshot carries a copy;
    - refuses a dumps directory that is world-writable or contains a symlink (can-core can write there, the script is root),
@@ -353,9 +353,15 @@ run fails with exit 22.
 The ledger is hash-chained, so editing, reordering or removing early entries is detected.
 `can backup ledger-sync` merges it into the encrypted object `ledger/erasure-ledger.v1.enc` in the bucket,
 outside the `restic/` prefix. The key is derived from the restic password. Sync never shrinks the remote ledger and
-refuses to overwrite one it cannot read. The first backup run uploads an empty ledger, so a restore of a company
-that never erased anything needs no override; a bucket without a ledger means it was deleted or never uploaded, and
-the restore stops. Requirement: the `can` binary at `/usr/local/bin/can` on the host. The S3 client
+refuses to overwrite one it cannot read. A company that never erased anything gets an empty ledger from the first
+run whose import succeeds, so its restore needs no override. No empty ledger is made or uploaded when the import
+fails (a feed that cannot be read, a corrupt, missing or stale collection, a refused tombstone), when `can` is too
+old or absent, or when there is no collection; a bucket without a ledger stops the restore. **What this does not
+cover:** a ledger already in the bucket, empty or not, stays there while later imports fail, and a restore accepts
+it. Erasures made since the last successful import are then not replayed and their data comes back; so is an erasure
+made in the last quarter hour, or collected from a collection up to two hours old, before the server was lost, and
+anything erased in a module that has no erasure feed or was not running. Exit 22 (journal, webhook) is the only
+sign: treat it as urgent. Requirement: the `can` binary at `/usr/local/bin/can` on the host. The S3 client
 requires https, and treats only an S3 `NoSuchKey` 404 as "no ledger" (a missing bucket is an error). A torn last line left by a
 crash is ignored and truncated on the next append. Subject ids are checked against a character pattern only: nothing can
 enforce that an id is opaque, so callers must never pass an email address or name.
