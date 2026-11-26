@@ -107,3 +107,8 @@ var ResolutionsV1 []byte
 //
 //go:embed entity.v1.json
 var EntityV1 []byte
+
+// SummaryV1 is the contract of the `summary` capability (aggregates for the business overview).
+//
+//go:embed summary.v1.json
+var SummaryV1 []byte

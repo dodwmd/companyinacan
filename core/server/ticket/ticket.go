@@ -215,6 +215,8 @@ type Service struct {
 	mu    sync.Mutex
 	mints map[string]*window
 	fails map[string]*window
+	// grants are the outstanding summary grants by token hash (summary.go); never persisted.
+	grants map[string]grant
 }
 
 type window struct {

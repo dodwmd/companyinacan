@@ -128,6 +128,9 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	}
 	api := &API{Svc: svc, Auth: auth, Log: log, Can: canEvents, TrustProxy: cfg.TrustProxy}
 	handler := api.Handler()
+	if can != nil {
+		handler = withSummary(handler, can, svc, log) // the business overview (specs/053-business-overview)
+	}
 	if cfg.UI.Enabled {
 		ui := &UI{Svc: svc, Auth: auth, Log: log, Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.UI.TrustProxy, NotificationsURL: cfg.UI.NotificationsURL,
 			IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour,

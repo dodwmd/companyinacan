@@ -160,10 +160,14 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		now:      now,
 	}
 	api := &leadsAPI{store: store, auth: auth, log: log}
+	h := api.handler()
+	if opt.Can != nil {
+		h = withSummary(h, opt.Can, store, log) // the business overview (specs/053-business-overview)
+	}
 	return &App{
 		cfg: cfg, store: store, dispatcher: d, log: log, now: now,
 		public: withMiddleware(log, "public", pub),
-		api:    withMiddleware(log, "api", api.handler()),
+		api:    withMiddleware(log, "api", h),
 	}, nil
 }
 

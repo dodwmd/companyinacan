@@ -29,6 +29,7 @@ resources:
   disk_mb: 200
 provides:
   - { capability: entity, schema: entity.v1, service: board-api, port: 8082 }
+  - { capability: summary, schema: summary.v1, service: board-api, port: 8082 }   # aggregates for the business overview
 publishes:
   # ids and dates only
   - { event: entity.filing.due.v1, schema: ./events/entity.filing.due.v1.json }
