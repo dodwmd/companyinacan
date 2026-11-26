@@ -85,15 +85,11 @@ func restoreCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 				if err != nil {
 					return fail("%v", err)
 				}
-				id, err := restoreops.Pending(cfg.DBPath)
+				s, err := restoreops.Status(cfg.DBPath)
 				if err != nil {
 					return fail("%v", err)
 				}
-				if id == "" {
-					fmt.Fprintln(c.OutOrStdout(), "normal")
-				} else {
-					fmt.Fprintln(c.OutOrStdout(), "restoring "+id)
-				}
+				fmt.Fprintln(c.OutOrStdout(), s)
 				return nil
 			}})
 	return cmd

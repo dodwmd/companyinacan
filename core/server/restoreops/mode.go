@@ -57,6 +57,25 @@ func Pending(dbPath string) (string, error) {
 	return readID(filepath.Join(filepath.Dir(dbPath), pendingFile))
 }
 
+// Restored returns the id of the last completed restore of this server, "" if it never was.
+func Restored(dbPath string) (string, error) {
+	return readID(filepath.Join(filepath.Dir(dbPath), completeFile))
+}
+
+// Status is the line `can-core restore status` prints: "restoring <id>", "normal restored <id>"
+// or "normal".
+func Status(dbPath string) (string, error) {
+	id, err := Pending(dbPath)
+	if err != nil || id != "" {
+		return "restoring " + id, err
+	}
+	done, err := Restored(dbPath)
+	if err != nil || done == "" {
+		return "normal", err
+	}
+	return "normal restored " + done, nil
+}
+
 // Boot is the start-up part: it latches restore mode when requested (id, from CAN_RESTORE) and,
 // in restore mode, imports the state dump once. It returns whether can-core is in restore mode.
 // A database that already holds an admin or modules is replaced only when overwrite is set (the

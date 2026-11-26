@@ -401,7 +401,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	waitModules(t)
 
 	// --- the company is back ----------------------------------------------------------------------
-	if got := mustKubectl(t, "-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "restore", "status"); got != "normal" {
+	if got := mustKubectl(t, "-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "restore", "status"); !strings.HasPrefix(got, "normal restored ") {
 		t.Fatalf("status after the restore: %q", got)
 	}
 	core = portForward(t, "can-system", "can-core", 8080)
