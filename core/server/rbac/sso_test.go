@@ -42,6 +42,9 @@ func TestSyncSSORolesOwnerNeedsConfirmationAndLastOwnerStays(t *testing.T) {
 	if _, err := e.db.CreateAdmin(ctx, "root", "x", "y"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := e.db.CreateSSOUser(ctx, strings.TrimPrefix(sub, "user:"), store.SSOIdentity{IssuerHash: "abcd1234", Subject: "s"}, nil); err != nil {
+		t.Fatal(err)
+	}
 	res, _ := e.s.SyncSSORoles(ctx, sub, []string{"owner"}, false)
 	if len(res.Added) != 0 || len(res.Skipped) != 1 {
 		t.Fatalf("an unconfirmed owner mapping assigns nothing: %+v", res)

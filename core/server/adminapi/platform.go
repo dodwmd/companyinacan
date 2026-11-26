@@ -13,6 +13,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
 // Shared platform services on the admin API: approvals, notifications, users and roles.
@@ -476,7 +477,7 @@ type roleBody struct {
 	Scope string `json:"scope"`
 }
 
-func (s *Server) roleChange(w http.ResponseWriter, r *http.Request, p principal, change func(actor, subject, role, scope string) error) {
+func (s *Server) roleChange(w http.ResponseWriter, r *http.Request, p principal, change func(a users.Actor, name, role, scope string) error) {
 	if s.RBAC == nil {
 		s.unavailable(w)
 		return
@@ -486,40 +487,27 @@ func (s *Server) roleChange(w http.ResponseWriter, r *http.Request, p principal,
 		httpx.Problem(w, http.StatusNotFound, "no such user")
 		return
 	}
-	if _, err := s.DB.AdminByUsername(r.Context(), name); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			httpx.Problem(w, http.StatusNotFound, "no such user")
-			return
-		}
-		s.internal(w, r, err)
-		return
-	}
 	var b roleBody
 	if !httpx.DecodeJSON(w, r, &b) {
 		return
 	}
-	switch err := change(p.User.Username, "user:"+name, b.Role, b.Scope); {
-	case errors.Is(err, rbac.ErrUnknownRole), errors.Is(err, rbac.ErrInvalid):
-		httpx.Problem(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, rbac.ErrForbidden):
-		httpx.Problem(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, rbac.ErrLastOwner):
-		httpx.Problem(w, http.StatusConflict, err.Error())
-	case errors.Is(err, store.ErrNotFound):
-		httpx.Problem(w, http.StatusNotFound, "the user does not hold that role")
-	case err != nil:
-		s.internal(w, r, err)
-	default:
-		w.WriteHeader(http.StatusNoContent)
+	if err := change(actorOf(p), name, b.Role, b.Scope); err != nil {
+		s.usersErr(w, r, err)
+		return
 	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) grantRole(w http.ResponseWriter, r *http.Request, p principal) {
-	s.roleChange(w, r, p, func(a, subj, role, scope string) error { return s.RBAC.Grant(r.Context(), a, subj, role, scope) })
+	s.roleChange(w, r, p, func(a users.Actor, name, role, scope string) error {
+		return s.users().Grant(r.Context(), a, name, role, scope)
+	})
 }
 
 func (s *Server) revokeRole(w http.ResponseWriter, r *http.Request, p principal) {
-	s.roleChange(w, r, p, func(a, subj, role, scope string) error { return s.RBAC.Revoke(r.Context(), a, subj, role, scope) })
+	s.roleChange(w, r, p, func(a users.Actor, name, role, scope string) error {
+		return s.users().Revoke(r.Context(), a, name, role, scope)
+	})
 }
 
 type overrideBody struct {
@@ -536,16 +524,11 @@ func (s *Server) overrideRole(w http.ResponseWriter, r *http.Request, p principa
 	if !httpx.DecodeJSON(w, r, &b) {
 		return
 	}
-	switch err := s.RBAC.Override(r.Context(), p.User.Username, r.PathValue("role"), b.Permission, b.Effect); {
-	case errors.Is(err, rbac.ErrForbidden):
-		httpx.Problem(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, rbac.ErrUnknownRole), errors.Is(err, rbac.ErrInvalid):
-		httpx.Problem(w, http.StatusBadRequest, err.Error())
-	case err != nil:
-		s.internal(w, r, err)
-	default:
-		w.WriteHeader(http.StatusNoContent)
+	if err := s.users().Override(r.Context(), actorOf(p), r.PathValue("role"), b.Permission, b.Effect); err != nil {
+		s.usersErr(w, r, err)
+		return
 	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func auditEntry(p principal, action, target string) audit.Entry {

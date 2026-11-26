@@ -101,6 +101,8 @@ func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request, p principal
 		return
 	}
 	switch err := s.PATs.Revoke(r.Context(), p.Subject(), r.PathValue("id"), manage); {
+	case errors.Is(err, pat.ErrForbidden):
+		httpx.Problem(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, store.ErrNotFound):
 		httpx.Problem(w, http.StatusNotFound, "no such token")
 	case err != nil:

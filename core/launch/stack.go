@@ -542,6 +542,18 @@ func (r *runner) admin(ctx context.Context) (bool, string, error) {
 		r.res.AdminNote = "the admin account was created by an earlier run and its credentials were shown then"
 		return true, "credentials already handed over", nil
 	}
+	if st.Launch == nil || !st.Launch.AdminCreated {
+		// A server restored from a backup has the accounts it had before, whatever they are
+		// called: never create or reset one there.
+		s, serr := r.kube(ctx, nil, "-n", SystemNS, "exec", "deploy/can-core", "--", "/can-core", "restore", "status")
+		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "normal restored ") {
+			r.res.AdminNote = "this server was restored from a backup: the admin logins are the ones from before the restore"
+			return true, "restored accounts kept", nil
+		}
+		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "restoring ") {
+			return false, "", errors.New("this server is in the middle of a restore: finish `can restore` on it first")
+		}
+	}
 	pw, err := NewPassword(r.d.Rand, 24)
 	if err != nil {
 		return false, "", err
@@ -553,17 +565,6 @@ func (r *runner) admin(ctx context.Context) (bool, string, error) {
 	// Kubernetes Secret that would outlive this command.
 	out, err := r.exec(ctx, pw, "bootstrap", "--username", r.o.AdminUser)
 	note := ""
-	if err != nil && strings.Contains(err.Error()+out, "already exists") && (st.Launch == nil || !st.Launch.AdminCreated) {
-		// A server restored from a backup has the account it had before: never replace it.
-		s, serr := r.kube(ctx, nil, "-n", SystemNS, "exec", "deploy/can-core", "--", "/can-core", "restore", "status")
-		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "normal restored ") {
-			r.res.AdminNote = "this server was restored from a backup: the admin login is the one from before the restore"
-			return true, "restored admin account kept", nil
-		}
-		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "restoring ") {
-			return false, "", errors.New("this server is in the middle of a restore: finish `can restore` on it first")
-		}
-	}
 	if err != nil && strings.Contains(err.Error()+out, "already exists") {
 		// Created by a run that stopped before showing the credentials: nobody holds them, so issue new ones.
 		out, err = r.exec(ctx, pw, "reset-password", "--username", r.o.AdminUser, "--rotate-totp")

@@ -340,6 +340,7 @@ func TestComplete(t *testing.T) {
 	for _, q := range []string{
 		`INSERT INTO admin_users(username,password_hash,totp_secret,created_at) VALUES ('a','h','s',1)`,
 		`INSERT INTO sessions(id_hash,user_id,csrf_token,ip,created_at,expires_at) SELECT 'x', id, 'c', 'ip', 1, 9999999999 FROM admin_users`,
+		`INSERT INTO user_invites(user_id,token_hash,totp_secret,purpose,created_by,created_at,expires_at) SELECT id,'h','s','reset','user:a',1,9999999999 FROM admin_users`,
 		`INSERT INTO email_outbox(id,source,recipient,recipient_mask,subject,body,status,next_attempt_at,created_at,queued_at) VALUES ('m1','@core','a@b.example','a','s','b','pending',0,1,1)`,
 	} {
 		if _, err := o.DB.ExecContext(ctx, q); err != nil {
@@ -356,7 +357,7 @@ func TestComplete(t *testing.T) {
 		}
 		return
 	}
-	if count(`SELECT COUNT(*) FROM email_outbox WHERE status='pending'`) != 0 || count(`SELECT COUNT(*) FROM sessions`) != 0 {
+	if count(`SELECT COUNT(*) FROM email_outbox WHERE status='pending'`) != 0 || count(`SELECT COUNT(*) FROM sessions`) != 0 || count(`SELECT COUNT(*) FROM user_invites`) != 0 {
 		t.Error("queued mail or sessions survived")
 	}
 	if count(`SELECT COUNT(*) FROM modules WHERE settings_hash='' AND state='enabled'`) != 1 || count(`SELECT COUNT(*) FROM modules WHERE settings_hash='h'`) != 1 {

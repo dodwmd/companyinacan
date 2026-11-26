@@ -47,6 +47,8 @@ type Identity struct {
 	EmailVerified bool
 	Name          string
 	Groups        []string
+	// GroupsUnknown: group mapping is configured and the groups could not be read.
+	GroupsUnknown bool
 	AMR           []string
 	// AuthTime is the auth_time claim: when the person last authenticated at the provider (zero =
 	// the provider did not say).
@@ -203,7 +205,7 @@ func (p *Provider) fetchKeys(ctx context.Context) ([]Key, error) {
 }
 
 // AuthURL is the authorization request for the browser.
-func (p *Provider) AuthURL(ctx context.Context, state, nonce, challenge string) (string, error) {
+func (p *Provider) AuthURL(ctx context.Context, state, nonce, challenge string, fresh ...bool) (string, error) {
 	d, err := p.Discover(ctx)
 	if err != nil {
 		return "", err
@@ -224,6 +226,10 @@ func (p *Provider) AuthURL(ctx context.Context, state, nonce, challenge string) 
 	// OpenID Connect makes auth_time a required claim when max_age is requested. A year forces no
 	// new sign-in; it is asked so that irreversible actions can tell how fresh a sign-in is.
 	q.Set("max_age", "31536000")
+	if len(fresh) > 0 && fresh[0] { // step-up: the person authenticates again now
+		q.Set("max_age", "0")
+		q.Set("prompt", "login")
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -327,14 +333,21 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, wantNonce, accessToke
 		}
 	}
 	if (id.Email == "" || len(id.Groups) == 0 && len(p.cfg.GroupRoles) > 0) && accessToken != "" {
-		if d, derr := p.Discover(ctx); derr == nil && d.UserinfoEndpoint != "" {
+		answered := false
+		d, derr := p.Discover(ctx)
+		if derr == nil && d.UserinfoEndpoint != "" {
 			var ui map[string]any
 			if err := call(ctx, p.client, http.MethodGet, d.UserinfoEndpoint, nil, [2]string{}, accessToken, maxInfoBytes, &ui); err == nil {
 				if s, _ := ui["sub"].(string); s == sub { // a userinfo answer for another subject is ignored
 					p.fillClaims(id, ui)
+					answered = true
 				}
 			}
 		}
+		// The token says nothing about groups and the call that would have is not answered: they are
+		// unknown, which must not be mistaken for "in no group".
+		_, claimed := c[p.cfg.Claims.Groups]
+		id.GroupsUnknown = !answered && !claimed && len(p.cfg.GroupRoles) > 0 && (derr != nil || d.UserinfoEndpoint != "")
 	}
 	return id, nil
 }

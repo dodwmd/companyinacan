@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -268,7 +269,8 @@ func (s *Service) countLive(ctx context.Context, module, issuer string, now time
 }
 
 // Revoke ends a token's validity at once. Unless manage is set the actor may revoke only their
-// own tokens; someone else's token answers store.ErrNotFound, as an unknown one does.
+// own tokens; someone else's token answers store.ErrNotFound, as an unknown one does. An owner's
+// token is revoked only by that owner or another one. The audit entry commits with the revocation.
 func (s *Service) Revoke(ctx context.Context, actor, id string, manage bool) error {
 	t, err := s.db.GetAPIToken(ctx, id)
 	if err != nil {
@@ -277,11 +279,26 @@ func (s *Service) Revoke(ctx context.Context, actor, id string, manage bool) err
 	if !manage && t.CreatedBy != actor {
 		return store.ErrNotFound
 	}
-	if err := s.db.RevokeAPIToken(ctx, id); err != nil {
+	return s.db.InTx(ctx, func(tx *sql.Tx) error {
+		if t.Subject != actor {
+			owner, err := store.HoldsOwner(ctx, tx, t.Subject)
+			if err != nil {
+				return err
+			}
+			if owner {
+				if mine, err := store.HoldsOwner(ctx, tx, actor); err != nil {
+					return err
+				} else if !mine {
+					return fmt.Errorf("%w: only an owner revokes an owner's token", ErrForbidden)
+				}
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=? WHERE id=? AND revoked_at=0`, s.Now().Unix(), id); err != nil {
+			return err
+		}
+		_, err := s.audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "token.revoke", Target: id})
 		return err
-	}
-	_, err = s.audit.Append(ctx, audit.Entry{Actor: actor, Action: "token.revoke", Target: id})
-	return err
+	})
 }
 
 // ListFor returns the token records an actor may see for the admin views: their own, or every

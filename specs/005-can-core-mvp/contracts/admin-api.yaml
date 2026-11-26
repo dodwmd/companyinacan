@@ -716,7 +716,7 @@ paths:
   /api/v1/roles/{role}/overrides:
     post:
       operationId: overrideRole
-      summary: "Grant, revoke or reset one permission of a role (rbac.manage)"
+      summary: "Grant, revoke or reset one permission of a role (owner, step-up)"
       description: "The owner role cannot be edited."
       security: [{ session: [], csrf: [] }]
       parameters:
@@ -745,10 +745,172 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createUser
+      summary: "Create a local account with no role and a one-time set-up link (rbac.manage, step-up)"
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { username: { type: string }, email: { type: string }, send_email: { type: boolean } } }
+      responses:
+        "201":
+          description: The link, or that it was mailed
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/reauth:
+    post:
+      operationId: reauthenticate
+      summary: "Step-up: confirm password and a fresh code for this session. Sensitive user administration needs a sign-in or this within 10 minutes. Five wrong tries end the session"
+      security: [{ session: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { password: { type: string }, totp: { type: string } } }
+      responses:
+        "204": { description: Recorded }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}:
+    get:
+      operationId: getUser
+      summary: "One account with its roles, sessions, tokens, identity and what each role grants (rbac.manage)"
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteUser
+      summary: "Delete an account and everything it signs in with; the name is never reused (rbac.manage, step-up; owners by owners; 409 for the last owner)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/link:
+    post:
+      operationId: userSetupLink
+      summary: "End the credentials and make a one-time set-up link: purpose invite, mfa (code only) or reset (password and code) (rbac.manage, step-up)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { purpose: { type: string }, email: { type: string }, send_email: { type: boolean } } }
+      responses:
+        "201":
+          description: The link, or that it was mailed
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/disable:
+    post:
+      operationId: disableUser
+      summary: "Disable an account and end its sessions and tokens (rbac.manage, step-up)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/enable:
+    post:
+      operationId: enableUser
+      summary: "Enable a disabled account (owner, step-up)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/sessions:
+    delete:
+      operationId: revokeUserSessions
+      summary: "End every session of the account (rbac.manage; owners by owners)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/sessions/{sid}:
+    delete:
+      operationId: revokeUserSession
+      summary: "End one session of the account (rbac.manage; owners by owners)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+        - { name: sid, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/users/{username}/tokens/{id}:
+    delete:
+      operationId: revokeUserToken
+      summary: "Revoke one personal access token of the account (rbac.manage; owners by owners)"
+      security: [{ session: [], csrf: [] }]
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/users/{username}/roles:
     post:
       operationId: grantRole
-      summary: "Assign a role (rbac.manage)"
+      summary: "Assign a role (rbac.manage, step-up; only permissions you hold; owners by owners)"
       security: [{ session: [], csrf: [] }]
       parameters:
         - { name: username, in: path, required: true, schema: { type: string } }
@@ -767,7 +929,7 @@ paths:
   /api/v1/users/{username}/roles/revoke:
     post:
       operationId: revokeRole
-      summary: "Remove a role (rbac.manage)"
+      summary: "Remove a role; the tokens and sessions of the account end (rbac.manage, step-up; owners by owners)"
       description: "409 when it would leave the installation without an owner."
       security: [{ session: [], csrf: [] }]
       parameters:
@@ -812,7 +974,7 @@ paths:
               additionalProperties: false
               required: [subject]
               properties:
-                subject: { type: string, pattern: "^user:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" }
+                subject: { type: string, pattern: "^user:[A-Za-z0-9_.@-]{1,64}$" }
       responses:
         "200":
           description: Revoked (counts are zero on a repeat)
@@ -837,7 +999,7 @@ paths:
               additionalProperties: false
               required: [subject]
               properties:
-                subject: { type: string, pattern: "^user:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" }
+                subject: { type: string, pattern: "^user:[A-Za-z0-9_.@-]{1,64}$" }
       responses:
         "204": { description: Enabled }
         "400": { $ref: "#/components/responses/Problem" }

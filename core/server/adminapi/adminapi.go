@@ -24,6 +24,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
+	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
 // Server holds the admin API's dependencies.
@@ -43,6 +44,9 @@ type Server struct {
 	PATs *pat.Service
 	// SSO is OpenID Connect sign-in (epic E11b); nil answers 503 on its endpoints.
 	SSO *sso.Service
+	// Users is user and role administration (E11e, users.go); nil builds one over the fields here,
+	// without e-mail.
+	Users *users.Service
 	// Identity ends the access of someone who left at once (E13d); nil answers 503.
 	Identity *identity.Service
 	// Tickets mints the launch tickets of single sign-on into module UIs (E11c); nil answers 503.
@@ -65,7 +69,7 @@ type principal struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.pushRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), s.identityRoutes()...), s.appRoutes()...)
+	return append(append(append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.pushRoutes()...), s.modRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), s.identityRoutes()...), s.appRoutes()...), s.userRoutes()...)
 }
 
 func (s *Server) coreRoutes() []route {

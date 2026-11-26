@@ -210,7 +210,7 @@ non-secret options. Nothing else is needed; everything else is in the snapshot.
    account. Modules with `expose.ui` or `expose.api` stay stopped until this `can up` has written the routing facts
    (docs/module-routing.md); can-core then starts them by itself.
 5. Check that the old server is gone, and review users, roles and API tokens: they are those of the backup, so anything
-   revoked since then is valid again.
+   revoked since then is valid again, and an account deleted since then is back. Pending set-up links are dropped.
 
 The steps `can restore` runs (progress is kept in `/var/lib/can/restore-state.json`; after a failure fix the cause and
 run the same command again):
