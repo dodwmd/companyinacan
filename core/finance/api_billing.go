@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -406,15 +407,15 @@ func (a *api) invoiceHTML(w http.ResponseWriter, r *http.Request, p *Principal) 
 }
 
 func (a *api) writeInvoiceHTML(w http.ResponseWriter, v *Invoice) {
-	if err := serveInvoiceHTML(w, v, a.seller); err != nil {
+	if err := serveInvoiceHTML(w, v, a.seller, ""); err != nil {
 		a.fail(w, err)
 	}
 }
 
 // serveInvoiceHTML writes the printable invoice. The API and the web UI share it, so there is one
 // renderer, one escaping policy and one set of headers.
-func serveInvoiceHTML(w http.ResponseWriter, v *Invoice, seller Seller) error {
-	b, err := RenderInvoiceHTML(v, seller)
+func serveInvoiceHTML(w http.ResponseWriter, v *Invoice, seller Seller, pdfHref string) error {
+	b, err := renderInvoiceHTML(v, seller, pdfHref)
 	if err != nil {
 		return err
 	}
@@ -459,6 +460,24 @@ func (a *api) revokeLinks(w http.ResponseWriter, r *http.Request, p *Principal) 
 // not an oracle for invoice ids. Bad links count against the client address, never valid
 // ones, so a valid link is never throttled.
 func (a *api) publicInvoice(w http.ResponseWriter, r *http.Request) {
+	v, ok := a.linkedInvoice(w, r)
+	if !ok {
+		return
+	}
+	// The link to the PDF is relative, so it works under whatever path prefix serves this page.
+	if err := serveInvoiceHTML(w, v, a.seller, url.PathEscape(r.PathValue("token"))+"/pdf"); err != nil {
+		a.fail(w, err)
+	}
+}
+
+func (a *api) publicInvoicePDF(w http.ResponseWriter, r *http.Request) {
+	if v, ok := a.linkedInvoice(w, r); ok {
+		serveInvoicePDF(w, r, v, a.seller)
+	}
+}
+
+// linkedInvoice resolves the signed link of a request; false means the answer is written.
+func (a *api) linkedInvoice(w http.ResponseWriter, r *http.Request) (*Invoice, bool) {
 	v, err := a.store.PublicInvoice(r.Context(), a.linkSecret, r.PathValue("token"))
 	if err != nil {
 		if err == ErrNotFound {
@@ -468,15 +487,15 @@ func (a *api) publicInvoice(w http.ResponseWriter, r *http.Request) {
 				case <-r.Context().Done():
 				}
 				tooMany(w, wait)
-				return
+				return nil, false
 			}
 			writeError(w, http.StatusNotFound, "not_found", "not found")
-			return
+			return nil, false
 		}
 		a.fail(w, err)
-		return
+		return nil, false
 	}
-	a.writeInvoiceHTML(w, v)
+	return v, true
 }
 
 func (a *api) checkout(w http.ResponseWriter, r *http.Request, p *Principal) {

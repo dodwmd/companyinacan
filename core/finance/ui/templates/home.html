@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1>{{t "nav.home"}}</h1>
+{{with .Data.RemindersRestored}}<p class="notice">{{t "remind.restored" .}} <a href="/settings/reminders">{{t "remind.schedule"}}</a></p>{{end}}
 {{if not .Data.Business}}
 <p>{{t "home.own_only"}}</p>
 <ul class="list">

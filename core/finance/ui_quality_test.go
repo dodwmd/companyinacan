@@ -67,6 +67,7 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 		{"rec.", []string{"active", "paused", "ended"}}, {"interval.", []string{"weekly", "monthly", "quarterly", "yearly"}},
 		{"kind.", []string{"customer", "vendor", "both", "invoice", "credit_note"}},
 		{"account.", accountTypes},
+		{"dm.", documentMailStatuses}, {"dmk.", []string{DocDocument, DocStatement, DocReminder}}, {"hold.", holdStates},
 		{"env.", []string{EnvPending, EnvCompleted, EnvDeclined, EnvRevoked}}, {"role.", []string{RoleCounterparty, RoleCompany}},
 		{"signer.", []string{SignerWaiting, SignerInvited, SignerSigned, SignerDeclined}}, {"mailst.", []string{MailPending, MailQueued, MailNotAllowed, MailFailed}}, {"jsource.", journalSources}, {"bank.s.", []string{"open", "ready", "reconciled"}},
 	} {
@@ -77,7 +78,7 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 		}
 	}
 	// every catalogue entry is used somewhere (no dead text), except the dynamic families
-	dyn := regexp.MustCompile(`^(inv|ts|ex|ct|po|rec|interval|kind|account|jsource|env|role|signer|mailst|bank\.s)\.`)
+	dyn := regexp.MustCompile(`^(inv|ts|ex|ct|po|rec|interval|kind|account|jsource|env|role|signer|mailst|bank\.s|dm|dmk|hold)\.`)
 	for k := range uiMessagesEN {
 		if _, ok := used[k]; !ok && !dyn.MatchString(k) && !strings.HasPrefix(k, "flash.") && !strings.HasPrefix(k, "err.") {
 			t.Errorf("catalogue entry %q is not used", k)
@@ -243,6 +244,8 @@ func renderAllPages(t *testing.T) []shot {
 	add("aging", ro, "/reports/aging?as_of=2027-01-31")
 	add("statement", ro, "/reports/statement?party="+cust)
 	add("settings", ro, "/settings")
+	add("reminders", ro, "/settings/reminders")
+	add("reminders-admin", adm, "/settings/reminders")
 	add("err-not-found", maker, "/invoices/99999")
 	add("err-forbidden", ro, "/invoices/new")
 	erased := adm.post("/parties/"+vendor+"/erase", url.Values{"confirm": {"ERASE"}, "token": {admTok}})

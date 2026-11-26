@@ -132,6 +132,10 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	if cfg.SigningRecordIP != "" {
 		store.sign.ipMode = cfg.SigningRecordIP
 	}
+	store.docs.secret, store.docs.base, store.docs.company = []byte(sec.LinkSecret), cfg.PublicBaseURL, cfg.Seller.Name
+	if u, err := url.Parse(cfg.PublicBaseURL); err == nil && store.docs.company == "" {
+		store.docs.company = u.Host
+	}
 	store.sign.mailer = opt.Mailer
 	if store.sign.mailer == nil && opt.Can != nil {
 		store.sign.mailer = opt.Can
@@ -189,6 +193,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		top.Handle("/v1/", h)
 		top.Handle("GET /healthz", h)
 		top.Handle("GET /public/invoices/{token}", h)
+		top.Handle("GET /public/invoices/{token}/pdf", h)
 		top.Handle("/", ui.Handler())
 		h = top
 	}
@@ -239,6 +244,8 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { defer wg.Done(); a.purgeLoop(bg) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); a.mailLoop(bg) }()
 	if a.dispatcher != nil {
 		wg.Add(1)
 		go func() { defer wg.Done(); a.dispatcher.Run(bg) }()

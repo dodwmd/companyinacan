@@ -20,6 +20,13 @@
 </div>
 <p class="hint">{{t "lines.hint"}}</p>
 {{end}}
+{{define "maillog"}}
+<div class="scroll"><table>
+<caption>{{t "mail.caption"}}</caption>
+<thead><tr><th scope="col">{{t "f.date"}}</th><th scope="col">{{t "f.kind"}}</th><th scope="col">{{t "f.status"}}</th></tr></thead>
+<tbody>{{range .}}<tr><th scope="row">{{when .CreatedAt}}</th><td>{{st "dmk" .Kind}}{{if .Step}} {{.Step}}{{end}}</td><td>{{st "dm" .Status}}</td></tr>
+{{end}}</tbody></table></div>
+{{end}}
 {{define "sod_hint"}}<p class="hint" id="{{.}}">{{t "sod.hint"}}</p>{{end}}
 {{define "partysearch"}}
 <form method="get" action="{{.Path}}" class="inline filter">

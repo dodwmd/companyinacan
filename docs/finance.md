@@ -96,8 +96,11 @@ same states from `draft`.
   database, so overlapping or repeated runs cannot duplicate. Month steps clamp to the end of a
   short month and do not remember the original day: start on days 1 to 28 for stable dates.
 * **Rendering**: `GET /v1/invoices/{id}/html` is a print-friendly page (no JavaScript, no images,
-  strict CSP). Every value is escaped, so a description such as `<script>` shows as text. There is no
-  PDF generator: use the browser's "print to PDF".
+  strict CSP). Every value is escaped, so a description such as `<script>` shows as text.
+* **PDF**: `GET /v1/invoices/{id}/pdf`, and `.../pdf` after a public link. A plain A4 layout in
+  Courier, written by finance itself. **It can only write Western European text** (Windows-1252);
+  other characters appear as `?` and the page says so. It is not PDF/A or a structured e-invoice
+  ([limits](../specs/062-invoice-email/spec.md#the-pdf-what-it-can-and-cannot-do)).
 * **Public link**: `POST /v1/invoices/{id}/link` returns a URL with an HMAC-signed, expiring token
   (default 14 days, at most 90). It shows the invoice and the payment instructions text, needs no
   login and exposes nothing else. It is customer-facing, so it shows only: the seller block from
@@ -114,6 +117,54 @@ same states from `draft`.
   webhook). The shipped `fake` provider never opens a socket (checkout URLs use the reserved
   `.invalid` TLD) and signs webhooks like Stripe (`t=...,v1=<HMAC>`), so a real Stripe adapter only
   adds the HTTP calls. Enable the fake for development with `payment_provider: fake`.
+
+## Emailing documents and payment reminders
+
+Invoices, credit notes and statements go to the **customer's email address on the party record**, as
+a plain-text message with the public link and its PDF link. Nothing is attached (can-core's
+`email.send` has no attachments). Spec and limits:
+[specs/062-invoice-email](../specs/062-invoice-email/spec.md). Experimental: tested against the
+compose stack's SMTP sink, never against a real relay.
+
+Set up in `company.yaml`, then `can apply`:
+
+```yaml
+email:
+  relay: { host: smtp.example.com }          # docs/email.md
+  modules:
+    finance:
+      external_recipients: true              # or list customers under recipients:
+modules:
+  finance:
+    expose:
+      public: true                           # the links in the mail need this
+```
+
+`external_recipients` is off by default and is the same switch as for contract signers.
+
+* **Send**: "Email to customer" on an issued invoice or credit note
+  (`POST /v1/invoices/{id}/email`). An approved document becomes `sent` once the mail service has
+  accepted the message. "Mark as sent" still only records that it left some other way.
+* **Statement**: "Email a statement" on a customer (`POST /v1/parties/{id}/statement/email`).
+* **Delivery status**: on the invoice and customer pages and `GET /v1/invoices/{id}/emails`.
+  "Accepted by the mail relay" does not mean it arrived; bounces are not read. "Refused: address not
+  on the allow-list" means the setting above is missing.
+* **Links** work for 60 days; "Revoke all links" ends them.
+* **Reminders** are **off** until an administrator turns them on under *Settings, Payment reminders*
+  or with `PUT /v1/dunning`
+  (`{"enabled": true, "days_after_due": [7, 14, 30], "max_overdue_days": 90}`). They go for sent
+  invoices that are overdue with a balance, once per step, at least 3 days apart, never for debts
+  older than `max_overdue_days`. Mark an invoice **disputed** or **stopped**, or stop them for a
+  customer, on the pages or with `PUT /v1/invoices/{id}/reminders` and
+  `PUT /v1/parties/{id}/reminders`. Record payments promptly: finance only knows what it was told,
+  and a message already queued cannot be recalled.
+* **After a restore reminders are off.** Restoring a backup switches them off and cancels waiting
+  messages, because the restored books do not know who has paid or disputed since. Record those
+  payments and disputes first, then save the schedule with reminders on. Steps whose records were
+  lost in the restore are sent again if still due. A database brought back by copying a volume or
+  disk is not held: turn reminders off before it can reach the mail service.
+* **A lost answer** from the mail service shows as "Unknown": the message may have left. Ask the
+  customer before sending again, and use "Mark as sent" if they have it.
 
 ## Contracts
 

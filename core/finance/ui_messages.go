@@ -60,6 +60,44 @@ var uiMessagesEN = map[string]string{
 	"ticket.other":          "This browser is already signed in as another account:",
 	"ticket.replace":        "Sign that account out here and sign in as the one above",
 
+	"mail.pdf":            "Download PDF",
+	"mail.title":          "Email",
+	"mail.send":           "Email to customer",
+	"mail.send_hint":      "Sends a link to this document to the customer's email address. The PDF is not attached; the link offers it.",
+	"mail.statement":      "Email a statement",
+	"mail.statement_hint": "Sends the customer a list of what is still to be paid, with a link to each invoice.",
+	"mail.off":            "Emailing is off: it needs can-core's email service and a published public invoice link (docs/finance.md).",
+	"mail.caption":        "Messages and their delivery status",
+	"mail.pdf_incomplete": "The PDF of this document cannot show some of its characters: they appear as \"?\". The online view shows all text. Check before you email it.",
+
+	"dmk.document": "Document", "dmk.statement": "Statement", "dmk.reminder": "Reminder",
+	"dm.pending": "Being handed over", "dm.retry": "Waiting to be retried", "dm.queued": "Queued by the mail service",
+	"dm.sent": "Accepted by the mail relay", "dm.failed": "Failed", "dm.not_allowed": "Refused: address not on the allow-list",
+	"dm.cancelled": "Cancelled", "dm.unknown": "Unknown: it may or may not have been sent",
+
+	"remind.title":         "Payment reminders",
+	"remind.intro":         "Reminders are emailed to customers about sent invoices that are overdue and not fully paid. Never about paid, void, disputed or stopped invoices.",
+	"remind.enabled":       "Send reminders",
+	"remind.days":          "Days after the due date",
+	"remind.days_hint":     "Up to five increasing numbers, for example 7, 14, 30. One reminder for each, at least three days apart.",
+	"remind.max":           "Stop chasing after (days overdue)",
+	"remind.max_hint":      "Older debts get no automatic reminder.",
+	"remind.set":           "Reminders for this invoice",
+	"remind.restored":      "A backup was restored on %s and payment reminders were switched off. Record the payments and disputes made since the backup, then turn them on again.",
+	"remind.off_restore":   "The reminder schedule was switched off when a backup was restored.",
+	"remind.schedule":      "Reminder schedule",
+	"remind.schedule_off":  "The company's reminder schedule is off.",
+	"remind.party_stopped": "Reminders are stopped for this customer.",
+	"remind.party_stop":    "Stop reminders for this customer",
+	"remind.party_resume":  "Allow reminders for this customer",
+
+	"hold.on": "Reminders allowed", "hold.stopped": "Reminders stopped", "hold.disputed": "Disputed: no reminders",
+
+	"flash.mail_queued":  "Handed to the mail service. The delivery status is below.",
+	"flash.mail_refused": "Not sent: the address is not on finance's allow-list (company.yaml email.modules.finance).",
+	"flash.mail_failed":  "Not sent: the mail service did not accept it. Try again later.",
+	"flash.mail_unknown": "The mail service did not answer: the message may or may not have been sent. Check with the customer before sending it again.",
+
 	"flash.saved":     "Saved.",
 	"flash.deleted":   "The draft was deleted.",
 	"flash.approved":  "Approved.",
@@ -187,7 +225,7 @@ var uiMessagesEN = map[string]string{
 	"invoice.new": "New invoice", "invoice.edit": "Edit draft invoice", "invoice.title": "Invoice", "invoice.draft_n": "Draft #%d",
 	"invoice.approve": "Approve", "invoice.approve_hint": "Approving gives the invoice its number and freezes it: it can never be edited afterwards, only voided or credited.",
 	"invoice.request": "Request approval", "invoice.delete": "Delete draft", "invoice.send": "Mark as sent",
-	"invoice.send_hint": "Sending itself (email) is up to you; this records that the invoice left the building.",
+	"invoice.send_hint": "This only records that the invoice left the building. It sends nothing: to email it, use Email to customer.",
 	"invoice.print":     "Printable view", "invoice.void": "Void", "invoice.void_hint": "Voiding keeps the number used. Invoices with payments or credit notes cannot be voided: issue a credit note.",
 	"invoice.void_reason": "Void reason", "invoice.approved_by": "Approved by", "invoice.original": "Credit note for", "invoice.original_link": "The original invoice",
 	"invoice.immutable": "This invoice is issued and cannot be edited. Void it or issue a credit note.",
@@ -305,7 +343,7 @@ func (u *UI) msgOr(key, fallback string) string {
 
 // flashKeys are the only flash messages the "ok" query parameter can select, so a crafted link
 // cannot put text of its choosing on the page.
-var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn", "flash.link_resent", "flash.cert_resent"}
+var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn", "flash.link_resent", "flash.cert_resent", "flash.mail_queued", "flash.mail_refused", "flash.mail_failed", "flash.mail_unknown"}
 
 func flashMsg(u *UI, key string) string {
 	for _, k := range flashKeys {

@@ -416,7 +416,7 @@
               "recipients": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 254 }, "description": "Addresses (a@b.example) or whole domains (@b.example) the module may mail. Replaces the default (the company domain and the module's notify_email setting)." },
               "per_hour": { "type": "integer", "minimum": 1, "maximum": 10000 },
               "per_day": { "type": "integer", "minimum": 1, "maximum": 100000 },
-              "external_recipients": { "type": "boolean", "description": "finance only: let it mail contract signers at any address, not only those under recipients (docs/email.md). Default false." },
+              "external_recipients": { "type": "boolean", "description": "finance only: let it mail contract signers and invoiced customers at any address, not only those under recipients (docs/email.md). Default false." },
               "notification_text": { "type": "boolean", "description": "Let notification mail caused by this module carry the module's own title and text. Default false: a fixed text with the type and a link to the admin inbox." }
             }
           }
