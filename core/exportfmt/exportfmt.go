@@ -25,7 +25,7 @@ const FormatVersion = 1
 const ManifestName = "manifest.json"
 
 // maxNameLen bounds an entry name.
-const maxNameLen = 200
+const maxNameLen = 255
 
 // ValidName reports whether name is acceptable as an entry of an archive: relative, clean, with
 // no element that could leave the directory it is unpacked into.

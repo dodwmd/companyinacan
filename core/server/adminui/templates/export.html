@@ -1,0 +1,19 @@
+{{define "content"}}
+<h1>{{t "ex.title"}}</h1>
+<p>{{t "ex.help"}}</p>
+<p>{{t "ex.slow"}}</p>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+{{if .Data.Recent}}<form method="post" action="/export" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="ex-pass">{{t "ex.passphrase"}}</label>
+<input id="ex-pass" name="passphrase" type="password" autocomplete="new-password" aria-describedby="ex-pass-help"></p>
+<p><label for="ex-pass2">{{t "ex.passphrase2"}}</label>
+<input id="ex-pass2" name="passphrase2" type="password" autocomplete="new-password"></p>
+<p id="ex-pass-help">{{t "ex.pass_help" .Data.MinPassword}}</p>
+<p><label><input type="checkbox" name="sealed" value="yes"{{if .Data.Sealed}} checked{{end}}> {{t "ex.sealed"}}</label></p>
+<p class="alert warn">{{t "ex.sealed_warn"}}</p>
+<p><label><input type="checkbox" name="understood" value="yes"> {{t "ex.understood"}}</label></p>
+<p><button type="submit">{{t "ex.submit"}}</button></p>
+</form>
+{{else}}<p class="alert warn">{{t "us.confirm_first"}} <a href="{{.Data.StepUpURL}}">{{t "us.confirm_link"}}</a></p>{{end}}
+{{end}}

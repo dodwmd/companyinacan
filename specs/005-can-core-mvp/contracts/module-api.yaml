@@ -307,6 +307,25 @@ paths:
         "409": { $ref: "#/components/responses/Problem" }
         "429": { $ref: "#/components/responses/Problem" }
         "503": { $ref: "#/components/responses/Problem" }
+  /v1/exports/{module}:
+    put:
+      operationId: putExport
+      summary: "The export stream of one module (specs/070-company-export)"
+      description: "Called by a module's export Job. `module` is the caller's own module id. Accepted only while `can export` is running this module's Job, once. The body is a tar stream copied into the export as it arrives; nothing is stored."
+      parameters:
+        - { name: module, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9-]{0,31}$" } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Taken }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /v1/dumps/{module}/{name}:
     put:
       operationId: putDump

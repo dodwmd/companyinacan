@@ -54,6 +54,7 @@ const (
 	PermOperate       = "platform.operate"    // requeue deliveries, change lead status, change modules and their settings
 	PermSetup         = "platform.setup"      // onboarding wizard: company identity, domain, email relay (owner only by default)
 	PermPurge         = "platform.purge"      // destroy a disabled module's data (owner only by default)
+	PermExport        = "platform.export"     // download all company data (owner only by default)
 )
 
 // builtin roles besides owner. Least privilege: a new admin user holds none of them.

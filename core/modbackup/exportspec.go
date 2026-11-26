@@ -50,7 +50,7 @@ func idAAD(row, field string) exportfmt.Sealed { return bound(row, "", ":"+field
 
 var exportTables = map[string][]table{
 	"can-forms": common(
-		plain("leads", "Form submissions", "seq id form_id status email name fields note created_at updated_at retention_until"),
+		plain("leads", "Form submissions", "seq id form_id status email name fields note created_at updated_at retention_until consents"),
 		table{Name: "lead_deliveries", Description: "Notification attempts per submission", Columns: "id lead_id kind ok attempts at",
 			Omitted: omit{"last_error": "may quote a notification URL that carries a token"}},
 		plain("lead_audit", "Audit log: who did what to submissions", "id at actor action target count"),

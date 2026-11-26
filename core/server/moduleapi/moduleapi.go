@@ -52,6 +52,8 @@ type Server struct {
 	Identity *identity.Service
 	// Dumps stores the backup hooks' dumps (E08b); nil answers 503 on /v1/dumps.
 	Dumps Dumps
+	// Exports takes the stream of a module's export Job (`can export`); nil answers 503.
+	Exports Exports
 	// Tickets redeems the launch tickets of single sign-on into module UIs (E11c); nil answers 503.
 	Tickets *ticket.Service
 	// Email is the email.send capability (E03d, email.go); nil answers 503.
@@ -79,6 +81,7 @@ func (s *Server) routes() []route {
 		{"PUT /v1/dumps/{module}/{name}", s.authedAnyState(s.putDump)},
 		// In restore mode a disabled module is admitted too: its dump is restored as well.
 		{"GET /v1/dumps/{module}/{name}", s.authn(s.Restoring, s.getDump)},
+		{"PUT /v1/exports/{module}", s.authedAnyState(s.putExport)},
 		{"POST /v1/tickets/peek", s.authed(s.peekTicket)},
 		{"POST /v1/tickets/redeem", s.authed(s.redeemTicket)},
 		{"POST /v1/tickets/revalidate", s.authed(s.revalidateSession)},
