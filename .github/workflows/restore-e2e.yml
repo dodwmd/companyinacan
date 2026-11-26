@@ -1,0 +1,80 @@
+name: restore-e2e
+
+# specs/042-restore: seed a company on a k3d cluster, back it up with the installed script to a
+# local restic repository, erase one person, destroy the cluster, run `can restore` inside the
+# node of a new cluster and check the data, the Secrets, the admin login and that the erased
+# person stays erased. No real server, bucket or account is involved. Not a required check.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "core/backup/**"
+      - "core/launch/**"
+      - "core/cli/restore.go"
+      - "core/server/**"
+      - "core/people/**"
+      - "deploy/**"
+      - "modules/forms/**"
+      - "modules/people/**"
+      - "test/integration/**"
+      - ".github/workflows/restore-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    name: backup, destroy, restore on k3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the first cluster (the old server)
+        run: make dev
+      - name: Build the images
+        # Base images are plain tags here: the release Dockerfiles pin digests (placeholders until
+        # a release). The test layer adds the stub module under /modules.
+        run: |
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:base .
+          docker build -f test/integration/testdata/Dockerfile.can-core-test \
+            --build-arg BASE=can-core:base -t can-core:dev test/integration/testdata
+          docker pull -q golang:1.27 >/dev/null
+          docker pull -q gcr.io/distroless/static-debian12:nonroot >/dev/null
+          GO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' golang:1.27 | cut -d@ -f2)
+          DL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot | cut -d@ -f2)
+          for m in forms people; do
+            docker build -f "deploy/$m/Dockerfile" \
+              --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
+              --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
+              --build-arg VERSION=ci \
+              -t "ghcr.io/dodwmd/can-$m:0.1.0" .
+          done
+      - name: Backup, destroy, restore
+        id: e2e
+        env:
+          CAN_IT_RESTORE: "1"
+          CAN_IT_RESTORE_IMAGES: "can-core:dev ghcr.io/dodwmd/can-forms:0.1.0 ghcr.io/dodwmd/can-people:0.1.0"
+        run: go test -tags integration -count=1 -v -timeout 30m -run '^TestRestoreOnK3d$' ./test/integration/...
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,svc,pvc -A || true
+          kubectl --context k3d-companyinacan-dev -n can-system logs deploy/can-core --tail=200 || true
+          kubectl --context k3d-companyinacan-dev -n mod-people logs deploy/people --tail=60 || true
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down
