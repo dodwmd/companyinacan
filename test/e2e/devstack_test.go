@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +20,26 @@ var (
 	revokeForm = regexp.MustCompile(`action="/tokens/([^"/]+)/revoke"`)
 	launchLink = regexp.MustCompile(`class="button" href="(http://localhost:[^"]+)"`)
 )
+
+var (
+	sharedOnce  sync.Once
+	sharedAdmin *harness.Client
+)
+
+// adminSession is one admin session at admin.localhost shared by these scenarios: each login needs a
+// fresh authentication code, so signing in for every scenario would wait for one every time.
+func adminSession(t *testing.T) *harness.Client {
+	t.Helper()
+	sharedOnce.Do(func() {
+		s := harness.NewSession(env)
+		adminLogin(t, s)
+		sharedAdmin = s
+	})
+	if sharedAdmin == nil {
+		t.Fatalf("the shared admin sign-in failed in an earlier scenario")
+	}
+	return sharedAdmin
+}
 
 // issuePAT issues a personal access token in the admin UI session s (signed in at admin.localhost).
 func issuePAT(t *testing.T, s *harness.Client, module string, perms ...string) string {
@@ -52,9 +73,7 @@ func approveInCanCore(t *testing.T, fin harness.API, invoiceID, u string) {
 	}
 	env.Run(t, "exec", "-T", "core", "/can-core", "admin", "roles", "grant", name, "finance:finance")
 
-	requester := harness.NewSession(env)
-	adminLogin(t, requester)
-	tok := issuePAT(t, requester, "finance", "finance.read", "finance.write")
+	tok := issuePAT(t, adminSession(t), "finance", "finance.read", "finance.write")
 	fin.WithToken(tok).Post(t, "/v1/invoices/"+invoiceID+"/request-approval", nil).Expect(t, "request approval through can-core", 200, 201, 202)
 
 	s := harness.NewSession(env)
@@ -79,8 +98,7 @@ func approveInCanCore(t *testing.T, fin harness.API, invoiceID, u string) {
 // equity, with exactly the permissions chosen, and only by the module it was issued for.
 func TestPersonalAccessTokensAgainstModules(t *testing.T) {
 	const host = "admin.localhost"
-	s := harness.NewSession(env)
-	adminLogin(t, s)
+	s := adminSession(t)
 	origin := adminOrigin()
 	issue := func(module string, perms ...string) string { return issuePAT(t, s, module, perms...) }
 	api := func(module, tok string) harness.API {
@@ -180,8 +198,7 @@ func TestAppsLaunchSignsInToModuleUIs(t *testing.T) {
 	}
 
 	// Reached by a name that shares no cookie with the modules, launching is refused.
-	other := harness.NewSession(env)
-	adminLogin(t, other)
+	other := adminSession(t)
 	page := other.Do(t, harness.Req{Host: "admin.localhost", Path: "/apps"}).Expect(t, "apps on admin.localhost", 200)
 	other.Do(t, harness.Req{Method: "POST", Host: "admin.localhost", Path: "/apps/work/launch",
 		Headers: map[string]string{"Origin": "http://admin.localhost:" + env.Port}, Body: url.Values{"csrf": {harness.CSRF(page.String())}}}).
@@ -192,8 +209,7 @@ func TestAppsLaunchSignsInToModuleUIs(t *testing.T) {
 // running) stops its personal access tokens, and enabling it again brings them back.
 func TestCatalogueDisableAndEnableAModule(t *testing.T) {
 	const host = "admin.localhost"
-	s := harness.NewSession(env)
-	adminLogin(t, s)
+	s := adminSession(t)
 	enabled := regexp.MustCompile(`name="enable" value="([a-z-]+)" checked`)
 	version := regexp.MustCompile(`name="version" value="([^"]+)"`)
 	applyPath := regexp.MustCompile(`action="(/changes/[^"]+/apply)"`)
