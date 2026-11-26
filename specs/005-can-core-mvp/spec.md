@@ -49,8 +49,8 @@ password-only path. Repeated failures lock the account and the client address ou
 3. **Given** five failures for a (username, address) pair (or twenty from one address) within fifteen minutes, **When**
    the next attempt from that address arrives even with valid credentials, **Then** it is refused with 429 and
    `Retry-After` and the credentials are not evaluated; after the lock expires login works again. Failures from
-   another address without the password never lock the real admin out. Whatever the addresses, only about 15 codes
-   per 15 minutes can be tried for an account, and attempts sent side by side are counted before they are checked. More than ten attempts a minute from one address are refused before
+   another address without the password never lock the real admin out. Whatever the addresses, someone with the password gets a
+   bounded number of code guesses per account, and attempts sent side by side are counted before they are checked. More than ten attempts a minute from one address are refused before
    any hashing, and password hashing runs under a concurrency cap.
 7. **Given** a locked-out admin or a lost authenticator, **Then** `can-core admin unlock` and
    `can-core admin reset-password [--rotate-totp]` recover access from inside the pod.

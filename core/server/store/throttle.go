@@ -14,6 +14,10 @@ const (
 	LoginCodeKey    = "login-code:"
 )
 
+// LoginGuardWindow is how long the per-account counters remember. It is much longer than the window of
+// the address counters: someone who knows the password could otherwise wait each window out.
+const LoginGuardWindow = 24 * time.Hour
+
 // ReleaseFailure takes back one attempt that was counted before it was checked, lifting the lock
 // when what remains is below max.
 func (db *DB) ReleaseFailure(ctx context.Context, key string, max int) error {
@@ -55,7 +59,9 @@ func (db *DB) RegisterFailure(ctx context.Context, key string, max int, window, 
 
 // PruneLoginAttempts deletes counters whose lock has expired and whose window has passed.
 func (db *DB) PruneLoginAttempts(ctx context.Context, now time.Time, window time.Duration) (int64, error) {
-	res, err := db.ExecContext(ctx, `DELETE FROM login_attempts WHERE locked_until <= ? AND first_failure <= ?`, now.Unix(), now.Add(-window).Unix())
+	res, err := db.ExecContext(ctx, `DELETE FROM login_attempts WHERE locked_until <= ?
+		AND first_failure <= CASE WHEN key LIKE ? OR key LIKE ? THEN ? ELSE ? END`,
+		now.Unix(), LoginAccountKey+"%", LoginCodeKey+"%", now.Add(-max(window, LoginGuardWindow)).Unix(), now.Add(-window).Unix())
 	if err != nil {
 		return 0, err
 	}

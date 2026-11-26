@@ -102,6 +102,7 @@ type Service struct {
 	opt       Options
 	dummy     string // hash verified for unknown users so timing does not reveal them
 	slots     chan struct{}
+	pf        *passwordFirst
 	dummyTOTP string
 	sleepers  atomic.Int64
 
@@ -141,7 +142,7 @@ func NewService(db *store.DB, a Appender, opt Options) *Service {
 	if opt.HashWait == 0 {
 		opt.HashWait = 3 * time.Second
 	}
-	return &Service{db: db, audit: a, opt: opt, dummy: dummyHash(), dummyTOTP: NewTOTPSecret(), slots: make(chan struct{}, opt.HashSlots), rate: map[string]*window{}}
+	return &Service{db: db, audit: a, opt: opt, dummy: dummyHash(), dummyTOTP: NewTOTPSecret(), slots: make(chan struct{}, opt.HashSlots), pf: newPasswordFirst(), rate: map[string]*window{}}
 }
 
 // LoginRequest is one login attempt.
@@ -365,9 +366,15 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		secret, hash = u.TOTPSecret, u.PasswordHash
 	}
 	step, totpOK := ValidateTOTP(secret, r.Code, now)
-	ok, codeLocking := false, false
+	ok, codeLocking, evaluated := false, false, true
 	if totpOK || guard.passwordFirst {
-		pwOK, verr := s.verify(ctx, r.Password, hash)
+		var pwOK bool
+		var verr error
+		if guard.passwordFirst {
+			pwOK, evaluated, verr = s.checkPasswordFirst(ctx, r.Password, hash)
+		} else {
+			pwOK, verr = s.verify(ctx, r.Password, hash)
+		}
 		if verr != nil {
 			s.release(ctx, held) // nothing was compared
 			return LoginResult{}, verr
@@ -375,6 +382,7 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		// A disabled account is refused before anything is consumed or cleared: the TOTP step
 		// stays unused and the failure counts like any other bad login.
 		if uerr == nil && pwOK && !s.db.AdminDisabled(ctx, u.ID) {
+			s.pf.remember(u.PasswordHash, r.Password)
 			allowed, locking, err := s.takeCodeAttempt(ctx, guard, now)
 			if err != nil {
 				return LoginResult{}, err
@@ -390,7 +398,9 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 			s.opt.Log.Warn("sign-in: the password was right but the codes kept being wrong, so no code is taken for a while; if this was not you, change the password", "username", u.Username)
 			s.recordBestEffort(ctx, u.Username, "admin.login.code_locked", r.IP)
 		}
-		if pol.HardLock { // already counted: only the audit entries are left
+		if pol.HardLock && !evaluated {
+			s.release(ctx, held) // turned away: nothing was compared
+		} else if pol.HardLock { // already counted: only the audit entries are left
 			for _, h := range held {
 				s.auditFailure(ctx, h.key, h.locked, r.Username, r.IP)
 			}

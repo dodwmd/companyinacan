@@ -40,13 +40,20 @@ mitigation against a sustained flood saturating the waiter cap or the hashing sl
 
 **Per-account limit (both modes).** Checking the code first would let someone who knows the password try codes as fast
 as requests arrive. So every attempt on a username is counted before it is checked, and after 10 attempts (in flight or
-failed) in 15 minutes the password is checked first. A wrong password then changes nothing else, so **nobody without the
-password can lock the owner out**. With the right password the code attempt is counted before its outcome is used, and
-after 5 the account takes no code for 15 minutes. The answer stays the ordinary 401; the audit log records
-`admin.login.code_locked` and can-core logs a warning. This lock means someone has the password (or the owner's
-authenticator is wrong): change the password. `can-core admin unlock` lifts it, and so does a new password. Someone who
-has the password can therefore keep the owner locked out until it is changed. While an account is over its 10 attempts,
-each attempt on it costs one argon2 run, so a flood can make sign-in answer 503 for as long as it lasts.
+failed) in 24 hours without a successful sign-in the password is checked first. A wrong password then changes nothing
+else, so **nobody without the password can lock the owner out**. With the right password the code attempt is counted
+before its outcome is used, and after 5 in 24 hours the account takes no code for 15 minutes. The answer stays the
+ordinary 401; the audit log records `admin.login.code_locked` and can-core logs a warning. This lock means someone has
+the password (or the owner's authenticator is wrong): change the password. `can-core admin unlock` lifts it, and so
+does a new password. Someone who has the password can keep the owner locked out until it is changed. Staying under both
+limits they get about 14 codes a day; guessing on through the locks, a few hundred a day, each lock audited.
+
+Password-first checks must not take the single argon2 slot from everyone else. At most one of them holds or waits for
+it; the others are refused at once, so a valid sign-in, a step-up, a password change or a set-up link waits for at most
+two hashes. A password that has been verified since can-core started is recognised by a keyed MAC kept in memory only
+(random key per process), without argon2, so a flood on the owner's own name does not keep the owner out. The remaining
+case: right after a restart, before the owner's first sign-in, a flood on the owner's name that is still running can
+have the owner's attempts refused until it stops.
 
 Recovery from inside the pod: `can-core admin unlock [--username]` and `can-core admin reset-password
 [--rotate-totp]`.

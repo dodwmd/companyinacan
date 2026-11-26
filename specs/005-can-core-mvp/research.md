@@ -55,11 +55,15 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   admin to still log in. See [deployment.md](deployment.md).
 - **Per-account guard** (`auth/guard.go`, both modes). The back-off did not bound guesses sent side by side: someone
   who knew the password could try about 128 codes a second without the proxy. Attempts per username are counted before
-  checking; above 10 per window the password is checked before the code, and only right-password attempts count toward
-  a 15-minute code lock (5). About 15 codes per window can be tried, and only a password holder can cause a refusal.
+  checking; above 10 in 24 hours the password is checked before the code, and only right-password attempts count toward
+  a 15-minute code lock (5 in 24 hours). Only a password holder can cause that refusal. The day-long window is so that
+  waiting between guesses gains little.
   The attempt that is refused answers like any other, so the lock confirms nothing. Alternatives rejected: a cap on
   all attempts per account (anyone could lock the owner out); verifying the password for every attempt (junk would
-  always cost argon2). With the proxy, the (username, address) and address counters are also taken before checking and
+  always cost argon2); queueing password-first checks for the argon2 slot (a flood on any name starved valid sign-ins);
+  letting a valid code skip the one-at-a-time gate (wrong codes turned away would be unlimited, uncounted guesses).
+  Hence the gate plus the in-memory MAC of verified passwords (`auth/passwordfirst.go`); the MAC is a fast verifier,
+  accepted because whoever can read can-core's memory already sees passwords as they arrive. With the proxy, the (username, address) and address counters are also taken before checking and
   given back on success or when nothing was compared.
 - **Limits of the back-off (documented, accepted)**:
   - `maxSleepers` (256) bounds logins waiting out a back-off, not a burst of concurrent junk logins that all start at zero failure counters; those are bounded only by the HTTP server timeouts and connection limits.

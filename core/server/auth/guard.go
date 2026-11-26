@@ -16,11 +16,12 @@ import (
 // without looking at the password, so it cannot be told from junk. The guard therefore:
 //
 //  1. counts every attempt on an account, before anything is compared; a success clears the count.
-//     Up to accountFreeAttempts (in flight or failed) per window the cheap order is used;
+//     Up to accountFreeAttempts (in flight or failed) per store.LoginGuardWindow the cheap order is
+//     used. The window is a day, so that guessing slowly gains little;
 //  2. beyond that, checks the password first. A wrong password is an ordinary failure and counts
 //     against nothing else, so nobody without the password can lock the owner out;
 //  3. with the right password, counts the attempt before the code's outcome is used. After
-//     accountCodeFailures of those the account takes no code for Policy.LockFor.
+//     accountCodeFailures of those within the window the account takes no code for Policy.LockFor.
 //
 // Every refusal is ErrInvalidCredentials: a different answer would confirm the password.
 const (
@@ -38,7 +39,7 @@ type accountGuard struct {
 func (s *Service) guardAccount(ctx context.Context, username string, now time.Time) (accountGuard, error) {
 	name := strings.ToLower(username)
 	g := accountGuard{attemptsKey: store.LoginAccountKey + name, codeKey: store.LoginCodeKey + name}
-	a, _, err := s.db.RegisterFailure(ctx, g.attemptsKey, math.MaxInt32, s.opt.Policy.Window, s.opt.Policy.LockFor, now)
+	a, _, err := s.db.RegisterFailure(ctx, g.attemptsKey, math.MaxInt32, store.LoginGuardWindow, s.opt.Policy.LockFor, now)
 	g.passwordFirst = a.Failures > accountFreeAttempts
 	return g, err
 }
@@ -50,7 +51,7 @@ func (s *Service) takeCodeAttempt(ctx context.Context, g accountGuard, now time.
 		a, err := s.db.GetLoginAttempt(ctx, g.codeKey)
 		return err == nil && !now.Before(a.LockedUntil), false, err
 	}
-	a, locked, err := s.db.RegisterFailure(ctx, g.codeKey, accountCodeFailures, s.opt.Policy.Window, s.opt.Policy.LockFor, now)
+	a, locked, err := s.db.RegisterFailure(ctx, g.codeKey, accountCodeFailures, store.LoginGuardWindow, s.opt.Policy.LockFor, now)
 	return err == nil && (locked || !now.Before(a.LockedUntil)), locked, err
 }
 

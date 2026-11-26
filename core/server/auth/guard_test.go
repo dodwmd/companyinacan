@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
+	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
 func (e *env) wrongCode(t *testing.T) string {
@@ -50,6 +51,10 @@ func TestParallelCodeGuessesWithTheRightPasswordRunOut(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	// Some of those were turned away without being looked at; how many depends on the scheduling.
+	for range accountCodeFailures {
+		_ = login(bad)
+	}
 	if err := login(e.code(t)); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("the guesser's right code was taken after 100 wrong ones: %v", err)
 	}
@@ -79,15 +84,15 @@ func TestCodeLockEndsByItself(t *testing.T) {
 		_, err := e.svc.Login(ctx, LoginRequest{Username: "root", Password: e.pw, Code: code, IP: "10.42.0.7"})
 		return err
 	}
-	// The lock starts late in the first window: the window ending must not lift it.
-	for range accountFreeAttempts {
+	// The lock starts just before the counting window ends: that must not lift it.
+	for range accountFreeAttempts + 1 {
 		_ = login(e.wrongCode(t))
 	}
-	*e.now = e.now.Add(14 * time.Minute)
-	for range accountCodeFailures {
+	*e.now = e.now.Add(store.LoginGuardWindow - time.Minute)
+	for range accountCodeFailures - 1 {
 		_ = login(e.wrongCode(t))
 	}
-	*e.now = e.now.Add(2 * time.Minute) // a new window for attempts; the lock still runs
+	*e.now = e.now.Add(2 * time.Minute) // a new window; the lock still runs
 	if err := login(e.code(t)); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("lock lifted with the window: %v", err)
 	}
