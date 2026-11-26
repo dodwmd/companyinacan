@@ -109,9 +109,10 @@ can-forms restore -config forms.yaml -from ./set            # add -replace to ov
 can-files restore -config files.yaml -from ./set -blobs <restored volume>/blobs
 ```
 
-**Keys are not in the dumps.** people, jobs, files, finance, equity and board seal data with keys held in
-Kubernetes Secrets. Without the original keys the restored data is unreadable. They are in the snapshot only
-inside the k3s datastore copy; export them and keep them with the recovery kit. Which keys, and the contract
+**Keys are not in the module dumps.** people, jobs, files, finance, equity and board seal data with keys held in
+Kubernetes Secrets. Without the original keys the restored data is unreadable. can-core exports every Secret of
+each module's namespace (`can-module` and the operator-made `can-equity-keys` / `can-board-keys` among them) into
+`can-core/secrets.json`, and `can restore` re-creates them before the modules. Which keys, and the contract
 `can restore` follows: [specs/043-module-backup-hooks/contracts/hooks.md](../specs/043-module-backup-hooks/contracts/hooks.md).
 
 ## Retention and erasure of dumps
@@ -223,9 +224,11 @@ Snapshot choice: snapshots are walked newest first and every decision is printed
 one not tagged `can` is ignored, a newer `can` snapshot that fails its marker check stops the restore, and a transient
 restic error while checking also stops it. The chosen snapshot is pinned for resumes.
 
-Which modules lose what, today: in-house modules without a backup hook come back from the raw copy of their SQLite files
-(which may be inconsistent if they were being written); `forms` and `finance` have no purge by subject and class, so
-tombstones of their classes need `--accept-unerased`.
+Which modules lose what, today: every shipped in-house module is restored from its own consistent dump, by
+`<binary> restore -replace`; `forms`, `finance`, `work`, `provisioning` and `entity` have no purge by subject and class,
+so tombstones of their classes need `--accept-unerased`. If `files` or `jobs` refuse to restore because files their
+database names are missing, and those files were destroyed after the backup's dump was taken,
+`--allow-missing-blobs <module>` goes on without them; otherwise it means the volume was not restored.
 
 ## Erasure tombstone ledger
 

@@ -29,7 +29,7 @@ import (
 
 // Hooks runs the module restore and purge Jobs (*dumps.KubeHooks).
 type Hooks interface {
-	RunRestore(ctx context.Context, module string) error
+	RunRestore(ctx context.Context, module string, missingBlobs bool) error
 	// HasSubcommandRestore: the shipped module restores with its own binary, whatever the
 	// recorded manifest says (specs/043-module-backup-hooks).
 	HasSubcommandRestore(module string) bool
@@ -247,7 +247,8 @@ func (o *Ops) dumpedModules() (map[string]bool, error) {
 
 // RunHooks runs the replace-all restore hook of every module with a dump. A dump that cannot be
 // loaded fails the step unless the module is listed in accept.
-func (o *Ops) RunHooks(ctx context.Context, accept []string) (backup.HookReport, error) {
+func (o *Ops) RunHooks(ctx context.Context, opt backup.HookOptions) (backup.HookReport, error) {
+	accept := opt.Accept
 	var rep backup.HookReport
 	if err := o.check(); err != nil {
 		return rep, err
@@ -276,7 +277,11 @@ func (o *Ops) RunHooks(ctx context.Context, accept []string) (backup.HookReport,
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q: its dump is NOT loaded (no restore hook)", m.ID))
 			continue
 		}
-		if err := o.Hooks.RunRestore(ctx, m.ID); err != nil {
+		missing := slices.Contains(opt.MissingBlobs, m.ID)
+		if missing {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q: --allow-missing-blobs: files its database names may be absent", m.ID))
+		}
+		if err := o.Hooks.RunRestore(ctx, m.ID, missing); err != nil {
 			if slices.Contains(accept, m.ID) {
 				rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q: its dump is NOT loaded: %v", m.ID, err))
 				continue

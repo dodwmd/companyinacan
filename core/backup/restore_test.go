@@ -69,7 +69,7 @@ func (r *rec) ApplyModules(context.Context, bool) (ApplyReport, error) {
 func (r *rec) Volumes(context.Context, []VolumeRef) ([]Volume, error) {
 	return r.volumes, r.step("volumes")
 }
-func (r *rec) RunHooks(context.Context, []string) (HookReport, error) {
+func (r *rec) RunHooks(context.Context, HookOptions) (HookReport, error) {
 	return HookReport{}, r.step("hooks")
 }
 func (r *rec) Erase(_ context.Context, es []Entry, accept []string) (EraseReport, error) {

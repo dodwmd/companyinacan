@@ -49,6 +49,15 @@ type ApplyReport struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
+// HookOptions are the overrides of the restore hooks.
+type HookOptions struct {
+	// Accept are modules whose dump may stay unloaded.
+	Accept []string `json:"accept,omitempty"`
+	// MissingBlobs are modules (files, jobs) restored although files their database names are not
+	// in the volume copy.
+	MissingBlobs []string `json:"missing_blobs,omitempty"`
+}
+
 // HookReport is what the module restore hooks did.
 type HookReport struct {
 	Restored []string `json:"restored"`
@@ -88,7 +97,7 @@ type Cluster interface {
 	// Volumes makes sure the claims exist on disk and returns their directories.
 	Volumes(ctx context.Context, want []VolumeRef) ([]Volume, error)
 	// RunHooks runs the replace-all restore hook of every module with a dump.
-	RunHooks(ctx context.Context, acceptUnrestored []string) (HookReport, error)
+	RunHooks(ctx context.Context, o HookOptions) (HookReport, error)
 	// Erase replays the tombstones against the restored data. It fails, naming them, when a
 	// tombstone cannot be replayed and is not listed in accept.
 	Erase(ctx context.Context, es []Entry, accept []string) (EraseReport, error)
@@ -140,6 +149,7 @@ type Restore struct {
 	WithoutSecrets     bool     // restore a set without a Secrets export
 	AcceptUnrestored   []string // module ids, or namespace/claim volumes, that may stay unrestored
 	AcceptUnerased     []string // module:class tombstones that may stay unapplied
+	AllowMissingBlobs  []string // modules restored without files destroyed after their dump
 
 	// StopTimer stops the backup timer of a server being overwritten (nil: nothing to stop).
 	StopTimer func(ctx context.Context) error
@@ -838,7 +848,7 @@ func (o *Restore) copyVolume(src, dst string, overwrite bool) error {
 }
 
 func (o *Restore) stepHooks(ctx context.Context, _ *restoreState) error {
-	rep, err := o.Cluster.RunHooks(ctx, o.AcceptUnrestored)
+	rep, err := o.Cluster.RunHooks(ctx, HookOptions{Accept: o.AcceptUnrestored, MissingBlobs: o.AllowMissingBlobs})
 	o.warn(rep.Warnings)
 	if err != nil {
 		return err

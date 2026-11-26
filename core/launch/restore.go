@@ -243,9 +243,9 @@ func (c *RestoreCluster) ApplyModules(ctx context.Context, overwrite bool) (back
 }
 
 // RunHooks implements backup.Cluster.
-func (c *RestoreCluster) RunHooks(ctx context.Context, accept []string) (backup.HookReport, error) {
+func (c *RestoreCluster) RunHooks(ctx context.Context, o backup.HookOptions) (backup.HookReport, error) {
 	var rep backup.HookReport
-	err := c.report(ctx, map[string]any{"accept": accept}, &rep, "hooks")
+	err := c.report(ctx, o, &rep, "hooks")
 	return rep, err
 }
 

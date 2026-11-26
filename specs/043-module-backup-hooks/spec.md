@@ -70,6 +70,6 @@ which includes reclaimable page cache). Restore is not limited by a Job yet.
 - entity and board are meant to be one release with one database (docs/entity.md); can-core does not merge them,
   and their hooks assume each module's own volume.
 - A real server, large file stores, the s3 backend, ClamAV.
-- `can restore` itself (epic E08c) and can-core's restore mode (`GET /v1/dumps` is still refused).
+- `can restore` itself and can-core's restore mode: epic E08c, specs/042-restore.
 - Publishing `can-hooks` or any image. Until a release publishes `can-hooks`, enabling analytics, crm,
   newsletter, status, support or wiki still stops backups; disabling it brings them back.

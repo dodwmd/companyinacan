@@ -37,7 +37,7 @@ func TestRunRestoreScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	created := finishJob(api, "succeeded")
-	if err := h.RunRestore(deadline(t), "wiki"); err != nil {
+	if err := h.RunRestore(deadline(t), "wiki", false); err != nil {
 		t.Fatal(err)
 	}
 	job := asJSON(t, <-created)
@@ -90,7 +90,7 @@ func TestRunPurgeCLI(t *testing.T) {
 func TestRunSubcommandRestore(t *testing.T) {
 	h, api, _ := hookFixture(t)
 	manifest := filepath.Join(h.ModulesDir, "wiki", "module.yaml")
-	if err := os.WriteFile(manifest, []byte("hooks:\n  command: /can-wiki\n  restore: restore\nresources:\n  ram_limit_mb: 64\n"), 0o600); err != nil {
+	if err := os.WriteFile(manifest, []byte("id: wiki\nhooks:\n  command: /can-wiki\n  restore: restore\nresources:\n  ram_limit_mb: 64\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	deployment(t, api)
@@ -101,7 +101,7 @@ func TestRunSubcommandRestore(t *testing.T) {
 		t.Fatal("detection")
 	}
 	created := finishJob(api, "succeeded")
-	if err := h.RunRestore(deadline(t), "wiki"); err != nil {
+	if err := h.RunRestore(deadline(t), "wiki", false); err != nil {
 		t.Fatal(err)
 	}
 	job := asJSON(t, <-created)
@@ -110,10 +110,17 @@ func TestRunSubcommandRestore(t *testing.T) {
 			t.Errorf("missing %s in %s", want, job)
 		}
 	}
-	if err := os.WriteFile(manifest, []byte("hooks:\n  command: /bin/sh\n  restore: restore\n"), 0o600); err != nil {
+	created = finishJob(api, "succeeded")
+	if err := h.RunRestore(deadline(t), "wiki", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.RunRestore(deadline(t), "wiki"); err == nil {
+	if job := asJSON(t, <-created); !strings.Contains(job, `"-replace","-allow-missing-blobs"]`) {
+		t.Error(job)
+	}
+	if err := os.WriteFile(manifest, []byte("id: wiki\nhooks:\n  command: /bin/sh\n  restore: restore\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.RunRestore(deadline(t), "wiki", false); err == nil {
 		t.Fatal("only /can-* binaries")
 	}
 }

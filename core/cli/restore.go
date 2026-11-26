@@ -23,7 +23,7 @@ type restoreFlags struct {
 	kubeconfig, kubeContext, kubectl, imagesFrom, releaseManifest, coreImage, acme string
 	confirm                                                                        string
 	plan, allowNoLedger, acceptBehind, forceOlder, withoutSecrets                  bool
-	acceptUnrestored, acceptUnerased                                               []string
+	acceptUnrestored, acceptUnerased, missingBlobs                                 []string
 }
 
 const k3sKubeconfig = "/etc/rancher/k3s/k3s.yaml"
@@ -61,6 +61,7 @@ run ` + "`can up`" + ` afterwards. docs/backup-restore.md lists what has not bee
 	fl.BoolVar(&f.withoutSecrets, "without-secrets", false, "restore a snapshot without a Secrets export: modules get new keys and sealed data is unreadable")
 	fl.StringArrayVar(&f.acceptUnrestored, "accept-unrestored", nil, "module id or namespace/claim volume that may stay unrestored (repeatable)")
 	fl.StringArrayVar(&f.acceptUnerased, "accept-unerased", nil, "module:class whose tombstones cannot be replayed and that you will erase by hand (repeatable)")
+	fl.StringArrayVar(&f.missingBlobs, "allow-missing-blobs", nil, "module (files, jobs) to restore although files its database names are missing; only right for files destroyed after the backup's dump (repeatable)")
 	fl.StringVar(&f.repo, "repo", "", "restore from this repository instead of the kit's bucket: a local directory holding a copy of it (the ledger is read from ../ledger)")
 	fl.StringVar(&f.imagesFrom, "images-from", "", "directory written by make images (verified and imported into k3s)")
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release image manifest (digest-pinned)")
@@ -94,7 +95,7 @@ func runRestore(cmd *cobra.Command, g *globalOpts, f *restoreFlags) error {
 		CompanyDir: f.dir, ConfigDir: backup.DefaultSettings().ConfigDir, LedgerPath: backup.DefaultSettings().LedgerSource,
 		StatePath: f.state, Snapshot: f.snapshot, ConfirmOverwrite: f.confirm, AllowNoLedger: f.allowNoLedger,
 		AcceptLedgerBehind: f.acceptBehind, ForceOlder: f.forceOlder, WithoutSecrets: f.withoutSecrets,
-		AcceptUnrestored: f.acceptUnrestored, AcceptUnerased: f.acceptUnerased, Out: cmd.ErrOrStderr(),
+		AcceptUnrestored: f.acceptUnrestored, AcceptUnerased: f.acceptUnerased, AllowMissingBlobs: f.missingBlobs, Out: cmd.ErrOrStderr(),
 	}
 	if f.plan {
 		steps := o.Plan()

@@ -45,9 +45,9 @@ Before this feature `can restore` stopped at its first step: neither the cluster
   in a Job from their own Deployment; `files` and `jobs` are started without routes and called on `/v1/purge`.
   can-core removes its queued events, notifications and mail that name an erased subject, and the dumps of purged
   modules.
-- **FR-006a** In-house modules with subcommand hooks (specs/043-module-backup-hooks, in progress in parallel) are
-  restored by `<command> restore -replace` in the module's own image, in the Job shape of that spec's contract. Unit
-  tests only until both changes are on `main`.
+- **FR-006a** In-house modules with subcommand hooks (specs/043-module-backup-hooks) are restored by
+  `<command> restore -replace` in the module's own image, in the Job shape of that spec's backup Job, with the module
+  at 0 replicas and its volume files already copied. `--allow-missing-blobs <module>` passes `-allow-missing-blobs`.
 - **FR-007** No incomplete restore without a named override: `--without-secrets`, `--accept-unrestored`,
   `--accept-unerased`, `--allow-no-ledger`, `--accept-ledger-behind`, `--force-older`.
 - **FR-008** `can backup verify` applies the FR-002 checks of the snapshot.
@@ -61,7 +61,8 @@ Before this feature `can restore` stopped at its first step: neither the cluster
 
 - **SC-001** In CI (`restore-e2e`): seed a company on k3d, back it up with the installed script to a local restic
   repository, erase a person, destroy the cluster, restore inside the node of a new cluster. The admin login,
-  Secrets, a sealed field, a form lead, a raw volume file and a hook-restored dump are back; the erased person is
+  Secrets, a sealed field, a work item, a form lead (all three from the modules' own dumps), a raw volume file and
+  a script-hook-restored dump are back; the erased person is
   absent from the API and from the database files; an unreplayable tombstone stopped the first attempt; re-applying
   the normal manifests did not end restore mode; a second restore over the live server is refused.
 
@@ -91,5 +92,5 @@ database **servers** in `can-data` (the operator's own; databases are loaded int
 certificate store, the raw k3s datastore. Not verified: a real S3 bucket, a real server, systemd, the release image
 paths (`--release-manifest`), `--images-from` import into k3s, `--confirm-overwrite` on a real cluster, restore hooks
 of the shipped wrapped modules and database modules (the `can-hooks` image is not published), `equity`, `board`,
-`files` and `jobs` purge replay against a real cluster (unit tests with fakes only), large data sets and the
+`files` and `jobs` purge replay and their subcommand restore against a real cluster (unit tests only), large data sets and the
 15-minute target.

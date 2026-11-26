@@ -119,7 +119,10 @@ type fakeHooks struct {
 	fail  map[string]error
 }
 
-func (f *fakeHooks) RunRestore(_ context.Context, m string) error {
+func (f *fakeHooks) RunRestore(_ context.Context, m string, missingBlobs bool) error {
+	if missingBlobs {
+		f.calls = append(f.calls, "missing-blobs "+m)
+	}
 	f.calls = append(f.calls, "restore "+m)
 	return f.fail[m]
 }
@@ -188,7 +191,7 @@ func TestOperationsRefuseALiveServer(t *testing.T) {
 	if _, err := o.Apply(ctx, false); err == nil {
 		t.Error("apply ran on a live server")
 	}
-	if _, err := o.RunHooks(ctx, nil); err == nil {
+	if _, err := o.RunHooks(ctx, backup.HookOptions{}); err == nil {
 		t.Error("hooks ran on a live server")
 	}
 	if _, err := o.Erase(ctx, []backup.Entry{entry("s", "c")}, nil); err == nil {
@@ -313,12 +316,12 @@ func TestRunHooks(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(p, "d"), []byte("x"), 0o600)
 	}
 	h.fail["people"] = context.DeadlineExceeded
-	if _, err := o.RunHooks(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "--accept-unrestored people") {
+	if _, err := o.RunHooks(context.Background(), backup.HookOptions{}); err == nil || !strings.Contains(err.Error(), "--accept-unrestored people") {
 		t.Fatal(err)
 	}
 	h.calls = nil
-	rep, err := o.RunHooks(context.Background(), []string{"people"})
-	if err != nil || strings.Join(rep.Restored, ",") != "wiki" || strings.Join(h.calls, ",") != "restore wiki" {
+	rep, err := o.RunHooks(context.Background(), backup.HookOptions{Accept: []string{"people"}, MissingBlobs: []string{"wiki"}})
+	if err != nil || strings.Join(rep.Restored, ",") != "wiki" || strings.Join(h.calls, ",") != "missing-blobs wiki,restore wiki" {
 		t.Fatal(err, rep, h.calls)
 	}
 	all := strings.Join(rep.Warnings, "\n")

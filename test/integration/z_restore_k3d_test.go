@@ -41,6 +41,7 @@ provider:
 modules:
   forms: {}
   people: {}
+  work: {}
   stub:
     settings:
       greeting: hello-before-the-disaster
@@ -101,7 +102,7 @@ func call(t *testing.T, method, u, token string, body any) (int, string) {
 
 func waitModules(t *testing.T) {
 	t.Helper()
-	for _, m := range []string{"forms", "people", "stub"} {
+	for _, m := range []string{"forms", "people", "stub", "work"} {
 		eventually(t, 6*time.Minute, "module "+m+" to run", func() (bool, string) {
 			out, err := kubectl("-n", "mod-"+m, "rollout", "status", "deploy/"+m, "--timeout=5s")
 			if err != nil {
@@ -149,6 +150,7 @@ type seeded struct {
 	keptID, goneID              string
 	peopleToken, formsReadToken string
 	secretKeyring               string
+	workToken                   string
 }
 
 // seed deploys the company on the current cluster and creates the data.
@@ -214,6 +216,16 @@ func seed(t *testing.T) seeded {
 		return p.ID
 	}
 	s.keptID, s.goneID = create(keptName, nationalA), create(goneName, nationalB)
+
+	// --- work: a project with one item ---
+	s.workToken = moduleToken(t, "mod-work", "CAN_WORK_ADMIN_TOKEN")
+	work := portForward(t, "mod-work", "work", 8080)
+	if st, body := rcall(t, "POST", work+"/v1/projects", s.workToken, map[string]string{"key": "DR", "name": "Disaster recovery"}); st != 201 {
+		t.Fatalf("work project: %d %s", st, body)
+	}
+	if st, body := rcall(t, "POST", work+"/v1/projects/DR/issues", s.workToken, map[string]string{"title": "item kept across the restore"}); st != 201 {
+		t.Fatalf("work item: %d %s", st, body)
+	}
 
 	// --- forms: a lead ---
 	forms := portForward(t, "mod-forms", "forms", 8080)
@@ -342,7 +354,20 @@ func TestRestoreOnK3d(t *testing.T) {
 	// (the stub has a backup and a restore hook, so `can backup verify` below accepts the set)
 	requestDump(t)
 	onNode(t, "test -s /var/lib/can/dumps/can-core/secrets.json && test -s /var/lib/can/dumps/modules/stub/probe.tar.gz")
+	// The in-house modules are dumped by their own binaries; their live SQLite files are then not
+	// in the snapshot, so what comes back below came back through their restore subcommands.
+	for _, m := range []string{"forms", "people", "work"} {
+		onNode(t, "test -s /var/lib/can/dumps/modules/"+m+"/database.sqlite3.gz && test -s /var/lib/can/dumps/modules/"+m+"/manifest.json")
+	}
 	password, can := backupHost(t)
+
+	for _, l := range strings.Split(mustSudo(t, "/usr/local/bin/restic", "-r", e2eRepo, "--password-file", backup.DefaultSettings().ConfigDir+"/"+backup.PasswordFileName, "ls", "latest"), "\n") {
+		for _, db := range []string{"_mod-forms_forms-data/forms.db", "_mod-people_people-data/people.db", "_mod-work_work-data/work.db"} {
+			if strings.Contains(l, db) {
+				t.Errorf("a live database file is in the snapshot: %s", l)
+			}
+		}
+	}
 
 	// --- AFTER the backup, one person is erased; the tombstone goes to the bucket ledger -------
 	api := portForward(t, "mod-people", "people-api", 8081)
@@ -443,6 +468,14 @@ func TestRestoreOnK3d(t *testing.T) {
 	}
 	if got := onNode(t, "cat "+dir+"/*.db* | grep -a -c "+keptName+" || true"); got == "0" {
 		t.Error("the grep above proves nothing: the kept name is not found either")
+	}
+
+	if !strings.Contains(out, "restore hooks run for: forms, people, stub, work") {
+		t.Errorf("every dump must be loaded by its hook")
+	}
+	work := portForward(t, "mod-work", "work", 8080)
+	if st, body := rcall(t, "GET", work+"/v1/projects/DR/issues", s.workToken, nil); st != 200 || !strings.Contains(body, "item kept across the restore") {
+		t.Fatalf("the work item: %d %s", st, body)
 	}
 
 	api = portForward(t, "mod-forms", "forms-api", 8081)

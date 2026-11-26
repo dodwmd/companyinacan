@@ -17,8 +17,9 @@ import (
 
 // restoreInput is what `can restore` sends on stdin.
 type restoreInput struct {
-	Accept  []string       `json:"accept,omitempty"`
-	Entries []backup.Entry `json:"entries,omitempty"`
+	Accept       []string       `json:"accept,omitempty"`
+	MissingBlobs []string       `json:"missing_blobs,omitempty"`
+	Entries      []backup.Entry `json:"entries,omitempty"`
 }
 
 // restoreCmd is the in-cluster half of `can restore` (specs/042-restore), run with kubectl exec
@@ -66,7 +67,7 @@ func restoreCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		&cobra.Command{Use: "hooks", Short: "Run the module restore hooks", Args: cobra.NoArgs,
 			RunE: func(c *cobra.Command, _ []string) error {
 				return run(c, func(ctx context.Context, o *restoreops.Ops, in restoreInput) (any, error) {
-					return o.RunHooks(ctx, in.Accept)
+					return o.RunHooks(ctx, backup.HookOptions{Accept: in.Accept, MissingBlobs: in.MissingBlobs})
 				}, true)
 			}},
 		&cobra.Command{Use: "erase", Short: "Replay the erasure tombstones", Args: cobra.NoArgs,
