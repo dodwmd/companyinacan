@@ -7,6 +7,9 @@
 {{range .Data.Summary}}<li><a href="#{{.Field}}">{{.Message}}</a></li>
 {{end}}{{range .Data.Other}}<li>{{if .Field}}<code>{{.Field}}</code>: {{end}}{{.Message}}</li>
 {{end}}</ul></div>{{end}}
+<nav aria-label="{{t "si.sections"}}"><ul class="actions pages">
+{{range .Data.Sections}}<li><a href="#h-{{.ID}}">{{.Title}}</a></li>
+{{end}}</ul></nav>
 <form method="post" action="/site" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <input type="hidden" name="base" value="{{.Data.Base}}">

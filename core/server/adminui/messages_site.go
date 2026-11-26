@@ -9,6 +9,7 @@ func init() {
 		"si.title":         "Website",
 		"si.help":          "Edit the public site. Nothing changes until you preview it and publish.",
 		"si.back":          "Back to the website editor",
+		"si.sections":      "Sections of the form",
 		"si.history":       "History and rollback",
 		"si.preview":       "Preview the changes",
 		"si.live_current":  "The public site matches this content.",

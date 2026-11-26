@@ -138,6 +138,7 @@ FROM ${GO_IMAGE} AS init
 COPY --from=build /out/can-core /usr/local/bin/can-core
 COPY dev/compose/init.sh /init.sh
 COPY dev/compose/config/company.yaml /company.seed.yaml
+COPY --from=build /site /site.seed
 ENTRYPOINT ["/bin/sh", "/init.sh"]
 
 FROM ${EDGE_IMAGE} AS edge

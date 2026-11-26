@@ -41,6 +41,7 @@ services:
     volumes:
       - dev-secrets:/secrets
       - core-data:/var/lib/can
+      - site-content:/site-content
       - token-forms:/tokens/forms
       - token-work:/tokens/work
       - token-people:/tokens/people
@@ -54,6 +55,12 @@ services:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: site, args: *build-args }
     container_name: can-site
     environment: *metrics-env
+    # The website the admin UI's editor publishes to (can-core writes it, this serves it).
+    volumes:
+      - site-content:/srv/site:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/can-static", "-healthcheck"]
       interval: 15s
@@ -96,6 +103,9 @@ services:
       CAN_DEV_MODULE_TOKEN_DIR: /tokens
       CAN_DEV_WEBHOOK_SECRET: *webhook-secret
       CAN_COMPANY_FILE: /var/lib/can/company/company.yaml
+      # No cluster: the website editor publishes into the directory the site container serves.
+      CAN_SITE_DIR: /var/lib/can-site
+      CAN_SITE_BASE_URL: "http://localhost:8080"
       # Where Apps sends the browser. One host name (localhost) on different ports, because the launch
       # cookie of plain http is host-only: open the admin UI at http://localhost:8180 for this.
       CAN_MODULE_UI_URLS: "work=http://localhost:8181/ui,people=http://localhost:8182,jobs=http://localhost:8183,finance=http://localhost:8184,files=http://localhost:8185"
@@ -112,6 +122,7 @@ services:
       CAN_SMTP_ALLOW_PRIVATE: "true"
     volumes:
       - core-data:/var/lib/can
+      - site-content:/var/lib/can-site
       - token-forms:/tokens/forms:ro
       - token-work:/tokens/work:ro
       - token-people:/tokens/people:ro
@@ -353,6 +364,7 @@ volumes:
   token-equity:
   token-files:
   core-data:
+  site-content:
   forms-data:
   work-data:
   people-data:
