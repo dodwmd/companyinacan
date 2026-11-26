@@ -11,11 +11,13 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/verify"
 )
@@ -118,6 +120,8 @@ func runVerify(cmd *cobra.Command, g *globalOpts, f *verifyFlags) error {
 		K3sVersion:      bo.K3sVersion,
 		BackupInstalled: state.Launch != nil && state.Launch.BackupInstalled,
 	}
+	support, issues := config.SupportMailOf(co)
+	opts.SupportMail = support.Address != "" || slices.ContainsFunc(issues, func(is config.SupportIssue) bool { return is.Invalid })
 	relayHost, relayPort, relayImplicit := "", 587, false
 	if co.Email != nil && co.Email.Relay != nil && co.Email.Relay.Host != "" {
 		opts.EmailRelay = true

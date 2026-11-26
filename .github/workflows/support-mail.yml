@@ -1,0 +1,72 @@
+name: support-mail
+
+# The support inbox configured from company.yaml (specs/059-support-mailbox): installs the support
+# module (FreeScout, from the image pinned in its chart) through can-core on a throw-away k3d
+# cluster, with an in-memory IMAP and SMTP server (dev/mailsink) inside it, and checks that a mail
+# becomes a ticket and that the reply is sent. Not a required check. No real mail provider is involved.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "modules/support/**"
+      - "core/config/**"
+      - "core/server/installer/**"
+      - "core/server/runtime/**"
+      - "core/server/reconcile/**"
+      - "core/cli/support.go"
+      - "deploy/**"
+      - "dev/mailsink/**"
+      - "test/integration/support_mail_test.go"
+      - ".github/workflows/support-mail.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mail:
+    name: support mail on k3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Build the can-core and mail server images and import them
+        # Plain base image tags: the release Dockerfile's digests are placeholders until a release.
+        run: |
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:dev .
+          mkdir -p "$RUNNER_TEMP/mailsink"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/mailsink/mailsink" ./dev/mailsink
+          docker build -f dev/mailsink/Dockerfile -t mailsink:test "$RUNNER_TEMP/mailsink"
+          k3d image import can-core:dev mailsink:test -c companyinacan-dev
+      - name: Deploy can-core
+        run: |
+          kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
+          kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
+      - name: A mail becomes a ticket and the reply is sent
+        env:
+          CAN_IT_CANCORE: "1"
+          CAN_IT_SUPPORT_MAIL: "1"
+        run: go test -tags integration -count=1 -v -timeout 50m -run '^TestSupportMailThroughCanCore$' ./test/integration/
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,pvc -A -o wide || true
+          kubectl --context k3d-companyinacan-dev get events -A --sort-by=.lastTimestamp | tail -60 || true
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down
