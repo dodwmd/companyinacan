@@ -294,7 +294,9 @@ the person's tokens are revoked, watcher entries and cached replies are deleted,
 audit log. Each spelling is a separate identifier. No event is published, so copies elsewhere (webhook
 receivers, can-core's queued events and notifications) stay. The erasure is recorded as a hash of the
 identifier (`GET /v1/erasures`) for the erasure ledger, and `can restore` repeats it with `can-work purge` on
-a backup made before it ([specs/056](../specs/056-erasure-finance-work/spec.md)).
+a backup made before it ([specs/056](../specs/056-erasure-finance-work/spec.md)); the tombstone keeps the time
+of the first erasure. If the erasure is committed but scrubbing the database files fails, the answer is still
+`200`, with `scrub_pending: true` and a first note saying so; the scrub is retried.
 
 ## Operating it
 

@@ -490,7 +490,7 @@ paths:
         required: true
         content: { application/json: { schema: { type: object, required: [subject], additionalProperties: false, properties: { subject: { type: string, maxLength: 254 } } } } }
       responses:
-        "200": { description: "Erased (or already): subject (the erasure's ledger name), pseudonym, already_erased, changed counts, notes", content: { application/json: { schema: { type: object } } } }
+        "200": { description: "Erased (or already): subject (the erasure's ledger name), pseudonym, already_erased, changed counts, notes; scrub_pending when the files could not be scrubbed yet", content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }

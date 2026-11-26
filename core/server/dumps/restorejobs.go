@@ -8,6 +8,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/kube"
 )
@@ -100,8 +101,8 @@ func (h *KubeHooks) runJob(ctx context.Context, ns, name string, job kube.Object
 
 // RunPurgeCLI runs an in-house module's own `purge -subject S -class C` command: a Job made from
 // the pod template of the module's Deployment (same image, environment, volumes and security
-// context) with the command replaced.
-func (h *KubeHooks) RunPurgeCLI(ctx context.Context, module, subject, class string) error {
+// context) with the command replaced. at is when the erasure was first made; zero if unknown.
+func (h *KubeHooks) RunPurgeCLI(ctx context.Context, module, subject, class string, at time.Time) error {
 	if !moduleRe.MatchString(module) {
 		return ErrBadName
 	}
@@ -131,6 +132,10 @@ func (h *KubeHooks) RunPurgeCLI(ctx context.Context, module, subject, class stri
 	}
 	c, _ := cs[0].(obj)
 	c["args"] = []any{"purge", "-subject", subject, "-class", class}
+	if !at.IsZero() {
+		env, _ := c["env"].([]any)
+		c["env"] = append(env, obj{"name": backup.PurgeAtEnv, "value": at.UTC().Format(time.RFC3339)})
+	}
 	for _, k := range []string{"readinessProbe", "livenessProbe", "startupProbe", "ports", "lifecycle"} {
 		delete(c, k)
 	}

@@ -117,6 +117,7 @@ func TestBootRejectsADamagedDump(t *testing.T) {
 type fakeHooks struct {
 	calls []string
 	fail  map[string]error
+	at    map[string]string // subject -> the erasure time given to the purge command
 }
 
 func (f *fakeHooks) RunRestore(_ context.Context, m string, missingBlobs bool) error {
@@ -131,7 +132,13 @@ func (f *fakeHooks) RunPurgeScript(_ context.Context, m, s, c string) error {
 	f.calls = append(f.calls, "script "+m+" "+s+" "+c)
 	return f.fail[m]
 }
-func (f *fakeHooks) RunPurgeCLI(_ context.Context, m, s, c string) error {
+func (f *fakeHooks) RunPurgeCLI(_ context.Context, m, s, c string, at time.Time) error {
+	if f.at == nil {
+		f.at = map[string]string{}
+	}
+	if !at.IsZero() {
+		f.at[s] = at.UTC().Format(time.RFC3339)
+	}
 	f.calls = append(f.calls, "cli "+m+" "+s+" "+c)
 	return f.fail[m]
 }

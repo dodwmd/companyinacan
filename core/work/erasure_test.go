@@ -3,6 +3,7 @@ package work
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -217,7 +218,7 @@ func TestReplayPersonErasure(t *testing.T) {
 	for _, who := range []string{leaver, "former.fake@example.test"} { // the second is left only in the history
 		restored := copyStore(t, s)
 		others := len(held(t, restored, stayer))
-		res, err := restored.PurgeSubject(ctx, erasureSubject(who), ClassPerson)
+		res, err := restored.PurgeSubject(ctx, erasureSubject(who), ClassPerson, time.Time{})
 		if err != nil || res == nil {
 			t.Fatalf("%s: %+v %v", who, res, err)
 		}
@@ -227,22 +228,22 @@ func TestReplayPersonErasure(t *testing.T) {
 		if len(held(t, restored, stayer)) == 0 || (who != leaver && len(held(t, restored, leaver)) == 0) || others == 0 {
 			t.Fatalf("%s: somebody else was erased", who)
 		}
-		if again, err := restored.PurgeSubject(ctx, erasureSubject(who), ClassPerson); err != nil || again != nil {
+		if again, err := restored.PurgeSubject(ctx, erasureSubject(who), ClassPerson, time.Time{}); err != nil || again != nil {
 			t.Fatalf("repeat: %+v %v", again, err)
 		}
 	}
 
 	before := fmt.Sprint(held(t, s, leaver), held(t, s, stayer))
-	if res, err := s.PurgeSubject(ctx, erasureSubject("nobody@example.test"), ClassPerson); err != nil || res != nil {
+	if res, err := s.PurgeSubject(ctx, erasureSubject("nobody@example.test"), ClassPerson, time.Time{}); err != nil || res != nil {
 		t.Fatalf("a person not in this database: %+v %v", res, err)
 	}
 	for _, class := range []string{"work-audit", "work-attachment-metadata", "all", ""} {
-		if _, err := s.PurgeSubject(ctx, erasureSubject(leaver), class); err == nil {
+		if _, err := s.PurgeSubject(ctx, erasureSubject(leaver), class, time.Time{}); err == nil {
 			t.Errorf("class %q was accepted", class)
 		}
 	}
 	for _, subject := range []string{"", leaver, "person-abc"} {
-		if _, err := s.PurgeSubject(ctx, subject, ClassPerson); err == nil {
+		if _, err := s.PurgeSubject(ctx, subject, ClassPerson, time.Time{}); err == nil {
 			t.Errorf("subject %q was accepted", subject)
 		}
 	}
@@ -275,7 +276,9 @@ func TestErasePersonAPIAndPurgeCommand(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("db_path: "+path+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := map[string]string{"CAN_WORK_CONFIG": cfg, "CAN_WORK_ADMIN_TOKEN": bootstrap}
+	// Replayed with the time of the erasure, which the tombstone keeps: not the time of the restore.
+	const first = "2026-01-02T03:04:05Z"
+	env := map[string]string{"CAN_WORK_CONFIG": cfg, "CAN_WORK_ADMIN_TOKEN": bootstrap, "CAN_PURGE_AT": first}
 	var stdout, stderr bytes.Buffer
 	// The command can-core runs in a Job (core/server/dumps RunPurgeCLI).
 	if code := Main([]string{"purge", "-subject", subject, "-class", ClassPerson}, func(k string) string { return env[k] }, &stdout, &stderr); code != 0 {
@@ -283,5 +286,39 @@ func TestErasePersonAPIAndPurgeCommand(t *testing.T) {
 	}
 	if left := held(t, restored, leaver); len(left) != 0 {
 		t.Fatalf("still held: %v", left)
+	}
+	if es, err := restored.ListErasures(t.Context(), 0); err != nil || len(es) != 1 || es[0].At != first {
+		t.Fatalf("tombstone of the replay: %+v %v", es, err)
+	}
+}
+
+// A scrub that fails leaves the erasure committed; the answer says that the files are not clean.
+func TestErasePersonSaysTheScrubFailed(t *testing.T) {
+	h := newHarness(t, nil)
+	h.setup()
+	h.mustDo(201, "POST", "/v1/projects/ACME/issues", bootstrap, map[string]any{"type": "task", "title": "t", "assignee": leaver})
+	var path string
+	if err := h.app.store.db.QueryRow(`SELECT file FROM pragma_database_list WHERE name = 'main'`).Scan(&path); err != nil {
+		t.Fatal(err)
+	}
+	// A reader that holds on to an older snapshot blocks the checkpoint.
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM issues`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	out := h.mustDo(200, "POST", "/v1/people/erase", bootstrap, map[string]any{"subject": leaver})
+	notes, _ := out["notes"].([]any)
+	if out["scrub_pending"] != true || len(notes) == 0 || notes[0] != scrubPendingNote {
+		t.Fatalf("%v", out)
 	}
 }
