@@ -424,6 +424,7 @@ func (c *RestoreCluster) Complete(ctx context.Context) error {
 	sort.Strings(rep.Modules)
 	for _, id := range rep.Modules {
 		ns := "mod-" + id
+		later := false
 		err := r.poll(ctx, r.o.Timeouts.Module, func() error {
 			s, err := r.kube(ctx, nil, "-n", ns, "get", "deployments,statefulsets", "-o", `jsonpath={range .items[*]}{.spec.replicas}/{.status.readyReplicas}{"\n"}{end}`)
 			if err != nil {
@@ -432,6 +433,10 @@ func (c *RestoreCluster) Complete(ctx context.Context) error {
 			for _, l := range lines(s) {
 				want, ready, _ := strings.Cut(l, "/")
 				if want == "0" || want != ready {
+					// A module with an exposed UI or API stays stopped until `can up`: waiting is pointless.
+					if later = waitsForRoutes(ctx, c.Kube, id); later {
+						return nil
+					}
 					return fmt.Errorf("workloads of %s are not ready (%s)", id, l)
 				}
 			}
@@ -439,6 +444,10 @@ func (c *RestoreCluster) Complete(ctx context.Context) error {
 		})
 		if err != nil {
 			r.say("WARNING: module %q has not come up yet (%v): check `kubectl -n %s get pods`", id, err, ns)
+			continue
+		}
+		if later {
+			r.say("      module %q is restored and starts when `can up` has written its routes", id)
 			continue
 		}
 		r.say("      module %q is running", id)

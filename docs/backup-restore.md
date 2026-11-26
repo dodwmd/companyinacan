@@ -256,7 +256,9 @@ run the same command again):
    events, notifications and mail that name the subject.
 8. **Go live.** The ledger and the repository credentials are written to the server, queued mail is discarded (it may
    already have been sent), sessions are deleted, can-core restarts normally and puts the modules' workloads and routes
-   back. A module that does not come up is reported; can-core keeps retrying it.
+   back. A module that does not come up is reported; can-core keeps retrying it. A module with an exposed UI or
+   API starts only after `can up` has written the routing facts (step 4 above): the restore says so and does not
+   wait for it.
 
 Overrides, each separate and each printed when used:
 
