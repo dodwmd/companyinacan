@@ -141,5 +141,8 @@ func reconcileStored(ctx context.Context, cfg Config, cs modmgr.CompanyStore, ru
 func newReconciler(db *store.DB, reg *registry.Registry, al *audit.Log, inst reconcile.ModuleInstaller) *reconcile.Reconciler {
 	r := reconcile.New(db, reg, al, inst)
 	r.Actor = "can-core"
+	// Nobody confirms what the loop applies after a can-core upgrade: an upgrade that widens what a
+	// module may do waits for approval, and one that failed is not retried at once.
+	r.RequireApproval, r.Backoff = true, true
 	return r
 }

@@ -18,7 +18,8 @@ import (
 
 func newApplyCmd(g *globalOpts) *cobra.Command {
 	var modulesDir, statePath string
-	var dryRun, recordOnly bool
+	var dryRun, recordOnly, planOnly bool
+	var approve []string
 	var kubeContext string
 	cmd := &cobra.Command{
 		Use:   "apply [dir]",
@@ -46,6 +47,13 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "warning:", p.String())
 			}
 			if !dryRun && !recordOnly {
+				// What can-core would do, before anything changes; approvals are recorded here.
+				if err := clusterPreview(cmd, filepath.Join(dir, "company.yaml"), kubeContext, approve, planOnly); err != nil {
+					return failure("%v", err)
+				}
+				if planOnly {
+					return nil
+				}
 				// The routing facts first: can-core reads them when it sees the new company.yaml.
 				proxied, _ := desired.Company.DNS["proxied"].(bool)
 				state, err := provider.NewStore(dir).Load() // what `can up` remembered here, if it ran here
@@ -84,6 +92,22 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 			}
 			defer func() { _ = db.Close() }()
 			r := reconcile.New(db, registry.New(db, ""), audit.New(db), reconcile.RecordOnly{})
+			r.RequireApproval = true
+			if len(approve) > 0 && !dryRun {
+				planned, err := r.Plan(cmd.Context(), desired)
+				if err != nil {
+					return failure("%v", err)
+				}
+				codes, err := approvalCodes(planned, approve)
+				if err != nil {
+					return failure("%v", err)
+				}
+				for id, code := range codes {
+					if err := db.ApproveUpgrade(cmd.Context(), id, code); err != nil {
+						return failure("%v", err)
+					}
+				}
+			}
 			res, applyErr := r.Apply(cmd.Context(), desired, reconcile.Options{DryRun: dryRun})
 			if applyErr == nil && !dryRun {
 				if err := syncPlatform(cmd.Context(), db, desired.Company); err != nil {
@@ -102,10 +126,9 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				if dryRun {
 					verb = "planned"
 				}
-				for _, a := range res.Actions {
-					fmt.Fprintf(w, "%s %s: %s (%s)\n", verb, a.Kind, a.Module, a.Reason)
-				}
-				if len(res.Actions) == 0 {
+				printActions(w, verb, res.Actions)
+				printActions(w, verb, res.Held)
+				if len(res.Actions)+len(res.Held) == 0 {
 					fmt.Fprintln(w, "nothing to do: recorded state matches company.yaml")
 				}
 			}
@@ -119,6 +142,8 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&statePath, "state", "", "recorded-state database (default <dir>/.can/state.db)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan and change nothing")
 	cmd.Flags().BoolVar(&recordOnly, "record-only", false, "update recorded state without deploying (development)")
+	cmd.Flags().BoolVar(&planOnly, "plan", false, "print what can-core in the cluster would do and change nothing")
+	cmd.Flags().StringSliceVar(&approve, "approve", nil, "approve the shown upgrade of these modules, which widens what they may do")
 	cmd.Flags().StringVar(&kubeContext, "context", os.Getenv("CAN_DEV_CONTEXT"), "kubectl context of the cluster to sync company.yaml to (default $CAN_DEV_CONTEXT, else the current context)")
 	return cmd
 }

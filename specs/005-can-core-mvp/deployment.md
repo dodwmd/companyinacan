@@ -13,7 +13,7 @@ Configuration is environment only. The can-core chart (part 2, T036) must set th
 | `CAN_PLATFORM_URL` | `http://can-core.can-system.svc.cluster.local:8090` | same |
 | `CAN_MEMLIMIT_MB` | 64 | soft Go memory limit; container limit 96 MB |
 | `CAN_COMPANY_NAME`, `CAN_COMPANY_DOMAIN` | empty | company name and domain shown on the admin UI dashboard (E12a); the chart should set them from the applied `company.yaml` |
-| `CAN_LEADS_TOKEN_FILE` | empty | file holding the bearer credential can-core presents to the `leads` provider for the admin UI leads view (E12a); unset = the view says leads are not available |
+| `CAN_LEADS_TOKEN_FILE` | empty | file holding the bearer credential can-core presents to the `leads` provider for the admin UI leads view (E12a); unset with `CAN_INSTALLER=kubernetes` = the forms module's own token is read from its Secret; unset otherwise = the view says leads are not available |
 
 ## Client addresses and login throttling (`CAN_TRUST_PROXY`)
 

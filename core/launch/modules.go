@@ -31,6 +31,10 @@ func ModuleWarnings(ctx context.Context, kube Kube) []string {
 		if m.State == "enabled" {
 			what = "the upgrade failed and the previous release is still running"
 		}
+		if m.State == "pending-approval" {
+			warnings = append(warnings, fmt.Sprintf("module %q: an upgrade waits for your approval (admin UI catalogue, or `can apply --approve %s`); the running release is unchanged. It would add: %q", m.ID, m.ID, m.Error))
+			continue
+		}
 		warnings = append(warnings, fmt.Sprintf("module %q: %s (can-core retries): %q", m.ID, what, m.Error))
 	}
 	return warnings

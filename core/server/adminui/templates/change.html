@@ -32,7 +32,7 @@
 <h2 id="h-apply">{{t "ch.apply"}}</h2>
 {{if .Data.CanApply}}<form method="post" action="/changes/{{.Data.ID}}/apply" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-{{template "backupacks" .Data.BackupStops}}
+{{template "backupacks" .Data.BackupStops}}{{template "upgradeacks" .Data.Held}}
 <p>{{t "ch.apply_help"}}</p>
 <p><button type="submit">{{t "ch.apply"}}</button></p>
 </form>{{else}}<p class="muted">{{t "ch.cannot_apply"}}</p>{{end}}
