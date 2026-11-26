@@ -91,10 +91,10 @@ and iOS apps are out of scope.
 | Item | Claimed | Measured | Source |
 |---|---|---|---|
 | k3s + Traefik + CoreDNS + local-path, idle | at most about 600 MB | 510 to 563 MiB node total, on a 16 GB CI runner (not a 2 GB VPS); the pods are 50 to 55 MiB of it | [phase0-ci.md](docs/measurements/phase0-ci.md) |
-| can-core, idle | 48 MB declared | 41.9 MiB RSS idle, 60 MiB after 4,000 requests; 49 MiB in a cluster | [module-wiring.md](docs/module-wiring.md) |
-| In-house services, idle | 15 to 30 MB declared each | 13.5 to 16 MiB RSS each (forms 3.2 MiB cgroup working set in CI) | module READMEs, phase0-ci.md |
-| Whole compose stack (10 services incl. Caddy and the e2e stub, plus the one-shot init job), after the e2e suite | "under 100 MiB" | **not met since the modules were wired to can-core**: about 150 MB by `docker stats` on rootless podman (94 MB before) | measured after the full suite; [local-compose.md](docs/local-compose.md) |
-| "Starter stack fits a 2 GB server" | aim | **not measured**; the wrapped apps (support, newsletter, analytics) were only started one at a time on k3d | [SPEC.md](SPEC.md) 3.2, 11 |
+| can-core, idle | 48 MB declared, 96 MiB limit | 30 MiB RSS (13 MiB anonymous) idle, 49 MiB peak with an admin login, in Compose; the cluster figure (49 MiB) is older than the 2026-11-25 reductions and was not repeated | [footprint.md](docs/measurements/footprint.md) |
+| In-house services, idle | 15 to 30 MB declared each | 13 to 19 MiB RSS each, of which 4 to 6 MiB anonymous, in Compose (forms 3.2 MiB cgroup working set in CI) | [footprint.md](docs/measurements/footprint.md), phase0-ci.md |
+| Whole compose stack (9 services, Caddy and two development stubs) | "under 100 MiB" | cgroup: 77 MiB idle, 80 to 92 MiB after the end-to-end suite (about 150 MB before). This **leaves out most of the binaries' file pages**, already cached by the image build: resident sets add up to 209 to 221 MiB, nearer what a freshly booted server needs. One machine, rootless Podman | [footprint.md](docs/measurements/footprint.md) |
+| "Starter stack fits a 2 GB server" | aim | **not established**: the full default bundle has never run together or on a 2 GB machine, and `support` is not deployable on `main`. Use 4 GB | [footprint.md](docs/measurements/footprint.md#2-gb-server-are-the-spec-targets-met-by-the-full-default-bundle) |
 
 ## Security posture and limitations
 
