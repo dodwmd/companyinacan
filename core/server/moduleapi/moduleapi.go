@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/events"
@@ -196,6 +197,22 @@ func (s *Server) introspect(w http.ResponseWriter, r *http.Request, caller store
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, introspectResponse{Active: true, Kind: "user", Subject: res.Subject, Permissions: res.Permissions, ExpiresAt: res.ExpiresAt.UTC().Format(time.RFC3339)})
+		return
+	}
+	if modclient.SummaryTokenShaped(req.Token) {
+		// A summary grant of the business overview (specs/053-business-overview): answered once, only
+		// to the module it was minted for, and never as kind "user".
+		if s.Tickets == nil || (req.Audience != "" && req.Audience != caller.ID) {
+			httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
+			return
+		}
+		res, ok := s.Tickets.RedeemSummary(r.Context(), caller.ID, req.Token)
+		if !ok {
+			httpx.WriteJSON(w, http.StatusOK, introspectResponse{})
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		httpx.WriteJSON(w, http.StatusOK, introspectResponse{Active: true, Kind: modclient.SummaryKind, Subject: res.Subject, Permissions: res.Permissions, ExpiresAt: res.ExpiresAt.UTC().Format(time.RFC3339)})
 		return
 	}
 	m, err := s.Auth.Authenticate(r.Context(), req.Token)

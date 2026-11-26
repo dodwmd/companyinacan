@@ -63,12 +63,12 @@ func TestFinanceManifest(t *testing.T) {
 	for _, p := range asList(m["provides"]) {
 		pm := asMap(p)
 		caps = append(caps, asStr(pm["capability"])+"="+asStr(pm["schema"]))
-		if _, ok := financeCaps[asStr(pm["schema"])]; !ok {
+		if _, ok := financeCaps[asStr(pm["schema"])]; !ok && asStr(pm["schema"]) != "summary.v1" { // checked in summary_test.go
 			t.Errorf("provided schema %v is not embedded", pm["schema"])
 		}
 	}
 	sort.Strings(caps)
-	if strings.Join(caps, " ") != "contracts=contracts.v1 invoices=invoices.v1 timesheets=timesheets.v1" {
+	if strings.Join(caps, " ") != "contracts=contracts.v1 invoices=invoices.v1 summary=summary.v1 timesheets=timesheets.v1" {
 		t.Errorf("provides = %v", caps)
 	}
 	perms := map[string]bool{}

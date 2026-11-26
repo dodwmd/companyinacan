@@ -62,6 +62,7 @@ flowchart TB
 | Admin session | human, cookie `can_session` (HttpOnly, SameSite=Strict, `__Host-` over TLS) | server-side | hashed id; CSRF token on every form; `Sec-Fetch-Site` checked; `no-store` on authenticated pages |
 | Personal access token `canpat_...` | human or script, shown once | SHA-256 only | 1 hour up to 90 days (365 max); bound to one module and to permissions the issuer holds; stops working when the issuer loses the right; revocable; only `user:` subjects can issue one (OIDC admins cannot yet) |
 | Module bootstrap token | the module's own service account (`CAN_*_TOKEN`) | environment or Secret | at least 24 to 32 characters; refused as a person for approvals |
+| Summary grant `cansum_...` (business overview) | can-core, in memory, as a hash | SHA-256 | 15 seconds, one use, one module; opens only `GET /v1/summary`; the module learns the person and their permissions there by introspection ([spec](../specs/053-business-overview/spec.md)) |
 | Module service tokens (work, jobs, finance) | scripts and bots | hashed in the module's database | scoped to project, party or job; creators can only hand out what they hold; `bootstrap-admin` subject reserved |
 | ServiceAccount token | a module pod | projected, audience-bound, short-lived | verified by `TokenReview` and cached |
 | Webhook signature | can-core to modules | HMAC secret per module | 5-minute replay window; at-least-once, so receivers de-duplicate |

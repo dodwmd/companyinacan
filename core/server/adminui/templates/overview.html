@@ -1,0 +1,37 @@
+{{define "content"}}
+<h1>{{t "ov.title"}}</h1>
+<p class="hint">{{t "ov.help"}}</p>
+{{if .Data.Failed}}<p class="alert err" role="alert">{{t "ov.failed"}}</p>{{end}}
+
+<section aria-labelledby="h-attention">
+<h2 id="h-attention">{{t "ov.attention"}}</h2>
+{{if .Data.Attention}}<div class="table-wrap" role="region" aria-labelledby="cap-attention" tabindex="0">
+<table class="rows">
+<caption id="cap-attention" class="sr">{{t "ov.attention"}}</caption>
+<thead><tr><th scope="col">{{t "ov.item"}}</th><th scope="col">{{t "ov.area"}}</th><th scope="col">{{t "ov.value"}}</th><th scope="col">{{t "ov.open"}}</th></tr></thead>
+<tbody>
+{{range .Data.Attention}}<tr><th scope="row">{{.Label}}</th><td data-label="{{t "ov.area"}}">{{.Module}}</td><td data-label="{{t "ov.value"}}">{{template "ovvalue" .}}</td><td data-label="{{t "ov.open"}}">{{template "ovlink" .}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "ov.nothing_attention"}}</p>{{end}}
+</section>
+
+{{range .Data.Sections}}<section aria-labelledby="h-ov-{{.ID}}">
+<h2 id="h-ov-{{.ID}}">{{.Name}}</h2>
+{{if .Unavailable}}<p class="alert warn">{{t "ov.unavailable" .Name}}</p>
+{{else}}<div class="table-wrap" role="region" aria-labelledby="cap-ov-{{.ID}}" tabindex="0">
+<table class="rows">
+<caption id="cap-ov-{{.ID}}" class="sr">{{.Name}}</caption>
+<thead><tr><th scope="col">{{t "ov.item"}}</th><th scope="col">{{t "ov.value"}}</th><th scope="col">{{t "ov.open"}}</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr><th scope="row">{{.Label}}</th><td data-label="{{t "ov.value"}}">{{template "ovvalue" .}}{{if .Attention}} <span class="badge warn">{{t "ov.badge"}}</span>{{end}}</td><td data-label="{{t "ov.open"}}">{{template "ovlink" .}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if not .At.IsZero}}<p class="muted">{{t "ov.as_of"}} <time datetime="{{iso .At}}">{{ts .At}}</time> UTC</p>{{end}}{{end}}
+</section>
+{{end}}
+{{end}}
+{{define "ovvalue"}}{{.Value}}{{range .Amounts}}<br>{{.}}{{end}}{{end}}
+{{define "ovlink"}}{{with .Link}}{{if .Href}}<a href="{{.Href}}">{{.Name}}<span class="sr">: {{$.Label}}</span></a>{{else}}<form method="post" action="/apps/{{.App}}/launch"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="return" value="{{.Return}}"><button type="submit">{{t "ov.open_in" .Name}}<span class="sr">: {{$.Label}}</span></button></form>{{end}}{{else}}-{{end}}{{end}}
