@@ -73,9 +73,28 @@ func TestEveryInHouseModuleOnK3d(t *testing.T) {
 		}
 	})
 	prepareDumpsDir(t)
-	company := "schema: 1\nname: Every Module Co\ndomain: modules.example\nprovider:\n  type: local\nmodules:\n"
+	company := "schema: 1\nname: Every Module Co\ndomain: modules.example\nprovider:\n  type: local\n" +
+		"organisation: {legal_name: Every Module Pty Ltd, address: \"1 Anvil Way\\nBrisbane\", tax_id: TAX-1, currency: AUD, timezone: Australia/Brisbane}\nmodules:\n"
+	// Settings that each module's own loader reads at start (specs/064-module-settings): a pod that is
+	// Ready accepted its configuration.
+	settings := map[string]string{
+		"board":        `{retention: {board-packs: 8y}}`,
+		"entity":       `{retention: {entity-person: 8y}}`,
+		"equity":       `{retention: {equity-grants: 8y}}`,
+		"files":        `{max_file_mb: 100, quota_gb_per_owner: 20, inline_images: true, share: {max_ttl_hours: 48}, ui: {idle_minutes: 10}}`,
+		"finance":      `{payment_instructions: "Pay by transfer\nRef $(NOT_EXPANDED)", retention_years: 10, ui: {idle_minutes: 10}}`,
+		"forms":        `{rate_limit_per_minute: 5, cors_allowed_origins: ["https://app.modules.example"]}`,
+		"jobs":         `{collect_eeo: true, max_resume_mb: 10, consent_text: "I agree that my application is kept.", retention: {rejected_days: 400}}`,
+		"people":       `{retention: {people-timeoff: 8y}, reviews: {min_responses: 5}, ui: {absolute_hours: 4}}`,
+		"provisioning": `{privileged_groups: [Admins], leaver_cutoff: end_of_day}`,
+		"work":         `{retention_days: 3650, max_body_bytes: 2097152}`,
+	}
 	for _, id := range ids {
-		company += "  " + id + ": {}\n"
+		entry := "{}"
+		if s := settings[id]; s != "" {
+			entry = "{settings: " + s + "}"
+		}
+		company += "  " + id + ": " + entry + "\n"
 	}
 	canApplyModules(t, company)
 	deadline := time.Now().Add(15 * time.Minute)
@@ -93,6 +112,19 @@ func TestEveryInHouseModuleOnK3d(t *testing.T) {
 	}
 	if got := mustKubectl(t, "-n", "mod-jobs", "get", "configmap", "jobs-config", "-o", "jsonpath={.data}"); !strings.Contains(got, "Every Module Co") || !strings.Contains(got, "careers.modules.example") {
 		t.Errorf("jobs config lacks the company facts: %s", got)
+	}
+
+	for id, want := range map[string][]string{
+		"finance":      {"name: Every Module Pty Ltd", "base_currency: AUD", "Pay by transfer", "$(NOT_EXPANDED)", "retention_years: 10", "tax_id: TAX-1"},
+		"files":        {"max_file_bytes: 104857600", "quota_bytes_per_owner: 21474836480", "inline: true"},
+		"provisioning": {"timezone: Australia/Brisbane", "leaver_cutoff: end_of_day"},
+	} {
+		got := mustKubectl(t, "-n", "mod-"+id, "get", "configmap", id+"-config", "-o", "jsonpath={.data}")
+		for _, w := range want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s config lacks %q: %s", id, w, got)
+			}
+		}
 	}
 
 	// can-core reads every erasure feed with the credential it generated, through the network rules.

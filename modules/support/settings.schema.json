@@ -17,11 +17,11 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "host": {"type": "string", "minLength": 1, "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
-            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+            "host": {"type": "string", "minLength": 1, "description": "IMAP server host name.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "description": "IMAP port (default by encryption: 993 or 143).", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
             "username": {"type": "string", "description": "Mailbox user name; the Secret can-system/can-support-imap may name it instead. The password is only ever in that Secret.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
             "encryption": {"enum": ["ssl", "starttls", "tls", "none"], "default": "ssl", "description": "ssl: implicit TLS (993). starttls: STARTTLS (143). tls and none were accepted before and are not applied.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
-            "folder": {"type": "string", "default": "INBOX", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}}
+            "folder": {"type": "string", "default": "INBOX", "description": "IMAP folder to fetch (default INBOX).", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}}
           }
         },
         "webhook": {

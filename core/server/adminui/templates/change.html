@@ -4,7 +4,7 @@
 <p class="hint">{{t "ch.by" .Data.Actor}} <time datetime="{{iso .Data.Created}}">{{ts .Data.Created}}</time>{{if .Data.Summary}} ({{.Data.Summary}}){{end}}</p>
 {{if .Data.Stale}}<p class="alert warn" role="alert">{{t "ch.stale"}}</p>{{end}}
 {{if .Data.Applied}}<p class="alert ok">{{t "ch.applied"}} <a href="/runs/{{.Data.RunID}}">{{t "ch.see_run"}}</a></p>{{end}}
-{{template "issues" .Data}}
+{{template "issues" .Data}}{{template "setwarn" .Data.Warnings}}
 
 <section aria-labelledby="h-diff">
 <h2 id="h-diff">{{t "ch.diff"}}</h2>

@@ -12,7 +12,8 @@ Helm-compatible templates for the in-house finance module, rendered by can-core'
 - Secrets (`CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET`, `CAN_FINANCE_SEAL_KEY`) come from the `can-module` Secret that
   can-core generates once and injects as environment.
 - `config:` is written to `finance.yaml` (strict loader); no `webhook.url`, events go to can-core's
-  module API. Settings from `company.yaml` are not yet mapped onto `config:`.
+  module API. Settings and company facts from `company.yaml` are laid over
+  `config:` ([docs/module-wiring.md](../../../docs/module-wiring.md#settings)).
 
 ## What is verified
 

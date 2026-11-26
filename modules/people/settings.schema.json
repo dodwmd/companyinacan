@@ -11,13 +11,13 @@
       "additionalProperties": false,
       "description": "Per data class retention, counted from the day a person becomes former (1:1 meetings and closed goals also expire by age). Review against local employment and data-protection law; the defaults are not advice.",
       "properties": {
-        "directory-basic": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.directory-basic", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
-        "people-sensitive": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.people-sensitive", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
-        "people-checklists": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.people-checklists", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
-        "performance-oneonone": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.performance-oneonone", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
-        "performance-goals": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.performance-goals", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
-        "performance-reviews": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.performance-reviews", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
-        "people-timeoff": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.people-timeoff", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
+        "directory-basic": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.directory-basic", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "people-sensitive": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.people-sensitive", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "people-checklists": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.people-checklists", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "performance-oneonone": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.performance-oneonone", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "performance-goals": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.performance-goals", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "performance-reviews": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.performance-reviews", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "people-timeoff": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.people-timeoff", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
       }
     },
     "reviews": {

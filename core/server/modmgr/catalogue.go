@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/modsettings"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/validate"
 )
@@ -33,6 +34,8 @@ type Entry struct {
 	// Schema is the compiled settings schema; nil when the module has none or it is unusable.
 	Schema        *SettingsSchema
 	SchemaProblem string
+	// Mapping says what each setting reaches (specs/064-module-settings); nil without a schema.
+	Mapping *modsettings.Schema
 	// Invalid is why the manifest cannot be enabled (parse or validation errors); the entry is
 	// still listed so the operator sees why.
 	Invalid string
@@ -145,6 +148,13 @@ func loadEntry(dir, name string) *Entry {
 	}
 	if m.SettingsSchema != "" {
 		e.Schema, e.SchemaProblem = loadSchema(dir, m.SettingsSchema)
+		if e.Schema != nil {
+			mapping, err := modsettings.LoadModule(os.DirFS(dir), m.SettingsSchema)
+			if err != nil {
+				e.SchemaProblem = "settings schema is not usable: " + err.Error()
+			}
+			e.Mapping = mapping
+		}
 	}
 	return e
 }

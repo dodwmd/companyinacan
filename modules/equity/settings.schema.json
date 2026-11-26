@@ -15,9 +15,9 @@
       "properties": {
         "equity-ledger": {"const": "legal", "x-can": {"config": "retention.equity-ledger"}},
         "equity-audit": {"const": "legal", "x-can": {"config": "retention.equity-audit"}},
-        "equity-stakeholder": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.equity-stakeholder", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
-        "equity-grants": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.equity-grants", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
-        "equity-valuation": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.equity-valuation", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
+        "equity-stakeholder": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.equity-stakeholder", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "equity-grants": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.equity-grants", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "equity-valuation": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.equity-valuation", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
       }
     }
   }

@@ -175,6 +175,8 @@ type Preview struct {
 	Resources []ResourcePlan
 	Footprint FootprintResult
 	Analysis  Analysis
+	// Warnings are the settings and company facts of the new document that reach no module.
+	Warnings []string
 	// Issues that stop the change from being proposed or applied.
 	Problems      []string
 	Blockers      []string
@@ -352,7 +354,7 @@ func (s *Service) build(ctx context.Context, cur Snapshot, patch Patch, acks []s
 			case e.Schema == nil && len(m) > 0:
 				pv.Problems = append(pv.Problems, "module "+o.Path[1]+" has no settings schema; its settings cannot be changed here")
 			case e.Schema != nil:
-				for f := range e.Validate(m) {
+				for f := range e.NewProblems(oldC.Modules[o.Path[1]].Settings, m) {
 					pv.Problems = append(pv.Problems, "settings of "+o.Path[1]+": invalid "+f)
 				}
 			}
@@ -386,6 +388,11 @@ func (s *Service) build(ctx context.Context, cur Snapshot, patch Patch, acks []s
 		return pv, nil
 	}
 	pv.desired = d
+	for _, p := range dps {
+		if p.Rule == "semantic.organisation" || strings.HasPrefix(p.Rule, "semantic.setting-") {
+			pv.Warnings = append(pv.Warnings, Sanitise(p.Message))
+		}
+	}
 	if s.Runner != nil {
 		planned, err := s.Runner.Plan(ctx, d)
 		if err != nil {

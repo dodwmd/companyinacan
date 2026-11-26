@@ -250,7 +250,7 @@ func checkTarget(t string) error {
 	}
 	key := strings.TrimPrefix(t, "config.")
 	for _, p := range platformKeys {
-		if key == p || strings.HasPrefix(key, p+".") {
+		if key == p || strings.HasPrefix(key, p+".") || strings.HasPrefix(p, key+".") {
 			return fmt.Errorf("%q is set by can-core, not by a setting", t)
 		}
 	}

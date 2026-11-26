@@ -26,7 +26,7 @@ var sampleSettings = map[string]string{
 	"forms": `{trust_proxy: false, max_body_bytes: 1048576, rate_limit_per_minute: 3, retention_days: 90, cors_allowed_origins: ["https://app.acme.example"], notify_email: [sales@acme.example]}`,
 	"jobs": `{approval_required: true, collect_eeo: true, retention: {rejected_days: 30, talent_pool_days: 60, hired_days: 0, eeo_days: 90, closed_job_days: 45}, max_resume_mb: 25, scanner_required: false,
 	  apply_per_hour: 3, default_valid_days: 30, consent_version: v2, consent_text: "I agree that Acme keeps my application.", eeo_min_cell: 10, ui: {idle_minutes: 10, absolute_hours: 4}}`,
-	"people": `{retention: {directory-basic: 8y, people-sensitive: 9y, people-checklists: 1y, performance-oneonone: 6m, performance-goals: 3y, performance-reviews: legal, people-timeoff: "0"}, reviews: {min_responses: 5}, ui: {idle_minutes: 10, absolute_hours: 4}}`,
+	"people":       `{retention: {directory-basic: 8y, people-sensitive: 9y, people-checklists: 1y, performance-oneonone: 6m, performance-goals: 3y, performance-reviews: legal, people-timeoff: "0"}, reviews: {min_responses: 5}, ui: {idle_minutes: 10, absolute_hours: 4}}`,
 	"provisioning": `{dry_run: false, privileged_groups: ["Domain Admins"], delete_after_days: 30, timezone: Australia/Brisbane, leaver_cutoff: end_of_day, compensate_with_delete: true, tasks: {joiner_template: Joiner, leaver_template: "Leaver: IT"}}`,
 	"work":         `{trust_proxy: true, max_body_bytes: 2097152, rate_limit_per_minute: 10, auth_failures_per_minute: 0, retention_days: 0, audit_retention_days: 400}`,
 }
@@ -191,5 +191,21 @@ func TestInvalidAndUnknownSettingsDoNotReachTheModule(t *testing.T) {
 		if strings.Contains(string(raw), s) {
 			t.Errorf("%q reached the configuration:\n%s", s, raw)
 		}
+	}
+}
+
+// Kubernetes expands references in environment values: a setting that reaches one is escaped.
+func TestWrappedSettingsAreNotExpanded(t *testing.T) {
+	in, api, _, spec := fixture(t, nil)
+	in.cfg.ModulesDir, in.cfg.Domain = "../../../modules", "acme.example"
+	spec.ID, spec.Namespace, spec.ServiceAccount, spec.Domain = "analytics", "mod-analytics", "analytics", "acme.example"
+	spec.Manifest = loadManifest(t, "../../../modules/analytics/module.yaml")
+	spec.Settings = map[string]any{"admin_email": "$(CAN_ANALYTICS_ADMIN_PASSWORD)@acme.example"}
+	if err := in.Enable(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	got := js(api.Objects["Deployment/mod-analytics/analytics"])
+	if !strings.Contains(got, `"$$(CAN_ANALYTICS_ADMIN_PASSWORD)@acme.example"`) {
+		t.Fatalf("not escaped: %s", got)
 	}
 }

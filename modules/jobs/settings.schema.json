@@ -13,14 +13,14 @@
       "additionalProperties": false,
       "description": "Retention in days, counted from the last decision on a candidate's applications. Review against local law; the defaults are not advice.",
       "properties": {
-        "rejected_days": {"type": "integer", "minimum": 1, "maximum": 36500, "x-can": {"config": "retention.rejected_days", "widens": "lower", "unset": 365, "risk": "rejected candidates are deleted sooner"}},
-        "talent_pool_days": {"type": "integer", "minimum": 1, "maximum": 36500, "x-can": {"config": "retention.talent_pool_days", "widens": "lower", "unset": 730, "risk": "talent pool candidates are deleted sooner"}},
+        "rejected_days": {"type": "integer", "minimum": 1, "maximum": 36500, "description": "Rejected candidates (default 365).", "x-can": {"config": "retention.rejected_days", "widens": "lower", "unset": 365, "risk": "rejected candidates are deleted sooner"}},
+        "talent_pool_days": {"type": "integer", "minimum": 1, "maximum": 36500, "description": "Candidates who opted into the talent pool (default 730).", "x-can": {"config": "retention.talent_pool_days", "widens": "lower", "unset": 730, "risk": "talent pool candidates are deleted sooner"}},
         "hired_days": {"type": "integer", "minimum": 0, "maximum": 36500, "description": "0 keeps the record until erased.", "x-can": {"config": "retention.hired_days", "widens": "keep_less", "unset": 180, "risk": "hired candidates' records are deleted sooner"}},
-        "eeo_days": {"type": "integer", "minimum": 0, "maximum": 36500, "x-can": {"config": "retention.eeo_days", "widens": "keep_less", "unset": 1095, "risk": "diversity counts are deleted sooner"}},
+        "eeo_days": {"type": "integer", "minimum": 0, "maximum": 36500, "description": "Anonymous diversity counts (default 1095; 0 keeps them).", "x-can": {"config": "retention.eeo_days", "widens": "keep_less", "unset": 1095, "risk": "diversity counts are deleted sooner"}},
         "closed_job_days": {"type": "integer", "minimum": 0, "maximum": 36500, "description": "Closed jobs with no applications left are deleted this many days later (default 1095; 0 keeps them).", "x-can": {"config": "retention.closed_job_days", "widens": "keep_less", "unset": 1095, "risk": "closed jobs are deleted sooner"}}
       }
     },
-    "max_resume_mb": {"type": "integer", "minimum": 1, "maximum": 25, "x-can": {"config": "apply.max_resume_bytes", "scale": 1048576}},
+    "max_resume_mb": {"type": "integer", "minimum": 1, "maximum": 25, "description": "Largest resume accepted, in MiB (default 5).", "x-can": {"config": "apply.max_resume_bytes", "scale": 1048576}},
     "scanner_required": {"type": "boolean", "default": true, "description": "Refuse resume uploads while no virus scanner is wired in. Turn off only for development.", "x-can": {"config": "apply.scanner_required", "widens": "becomes_false", "unset": true, "risk": "resumes are accepted without a virus scan"}},
     "apply_per_hour": {"type": "integer", "minimum": 1, "maximum": 10000, "description": "Public applications per client address per hour (default 10).", "x-can": {"config": "rate_limit.apply_per_hour", "widens": "higher", "unset": 10, "risk": "one address may apply more often"}},
     "default_valid_days": {"type": "integer", "minimum": 1, "maximum": 365, "description": "How long a job is advertised as valid when it does not say (default 60).", "x-can": {"config": "apply.default_valid_days"}},
