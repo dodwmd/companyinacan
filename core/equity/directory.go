@@ -22,6 +22,13 @@ type Directory interface {
 	PersonExists(ctx context.Context, id string) (bool, error)
 }
 
+// directoryNames is a Directory that can also name a person, for whoever is about to confirm a
+// link. Only some credentials are told names: can-core's lookup token is not.
+type directoryNames interface {
+	// PersonName is the person's display name, "" when the directory does not say.
+	PersonName(ctx context.Context, id string) (string, error)
+}
+
 // HTTPDirectory talks to the people module's directory API. The token must be one the API answers
 // with sso_subject: the read-only identity lookup token can-core copies to this module
 // (CAN_PEOPLE_LOOKUP_TOKEN, specs/057-module-capability-wiring), or one with the hr role there.
@@ -111,6 +118,32 @@ func (d *HTTPDirectory) PersonExists(ctx context.Context, id string) (bool, erro
 		return false, errDirectory
 	}
 	return !p.Erased, nil
+}
+
+// PersonName implements directoryNames.
+func (d *HTTPDirectory) PersonName(ctx context.Context, id string) (string, error) {
+	if !personIDRe.MatchString(id) {
+		return "", nil
+	}
+	b, status, err := d.get(ctx, "/v1/people/"+id)
+	if err != nil {
+		return "", err
+	}
+	var p struct {
+		ID            string `json:"id"`
+		GivenName     string `json:"given_name"`
+		FamilyName    string `json:"family_name"`
+		PreferredName string `json:"preferred_name"`
+		Erased        bool   `json:"erased"`
+	}
+	if status != http.StatusOK || json.Unmarshal(b, &p) != nil || p.ID != id || p.Erased {
+		return "", nil
+	}
+	given := p.GivenName
+	if p.PreferredName != "" {
+		given = p.PreferredName
+	}
+	return strings.TrimSpace(given + " " + p.FamilyName), nil
 }
 
 // subjectCache keeps answers about callers briefly: the directory limits requests per token.

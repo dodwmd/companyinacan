@@ -136,8 +136,8 @@ func (u *UI) exportDownload(c *uiCtx) error {
 		return err
 	}
 	file := "equity-" + name
-	if _, err := parseDate(asof); err == nil {
-		file += "-" + asof
+	if _, err := parseDate(asof); err == nil && name != "grants" {
+		file += "-" + asof // the grants export is always the current state: no date to claim
 	}
 	h := c.w.Header()
 	h.Set("Content-Type", "text/csv; charset=utf-8")
@@ -236,6 +236,8 @@ type stakeholderData struct {
 	Pending string
 	Mode    string
 	Grants  []Grant
+	// PersonName is the directory's name for the linked person, when it gives one.
+	PersonName string
 }
 
 func (u *UI) stakeholderRender(c *uiCtx, id, flash string) error {
@@ -257,6 +259,11 @@ func (u *UI) stakeholderRender(c *uiCtx, id, flash string) error {
 	}
 	d := stakeholderData{Entity: *e, Holder: *st, Name: idn.Name, Email: idn.Email, TaxID: idn.TaxID != "",
 		Pending: u.Svc.ConfirmationNeeded(*st), Mode: u.Svc.Mode(), Grants: g.Items}
+	if d.Pending == "verify" && c.caps.StakeholderEdit {
+		if d.PersonName, err = u.Svc.LinkedPersonName(c.ctx(), c.a, id); err != nil {
+			return err
+		}
+	}
 	u.render(c.w, c.r, c, http.StatusOK, "stakeholder.html", "holder.title", d, flash)
 	return nil
 }
@@ -278,7 +285,8 @@ func (u *UI) confirmation(c *uiCtx, flash string, fn func(a Actor, id string) (*
 }
 
 func (u *UI) stakeholderVerify(c *uiCtx) error {
-	return u.confirmation(c, "flash.holder_verified", func(a Actor, id string) (*Stakeholder, error) { return u.Svc.VerifyPerson(c.ctx(), a, id) })
+	shown := c.form("person_id")
+	return u.confirmation(c, "flash.holder_verified", func(a Actor, id string) (*Stakeholder, error) { return u.Svc.VerifyShownPerson(c.ctx(), a, id, shown) })
 }
 
 func (u *UI) stakeholderAttest(c *uiCtx) error {

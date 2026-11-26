@@ -156,6 +156,19 @@ func (s *Service) LinkPerson(ctx context.Context, a Actor, id, personID string) 
 // record only when people (not a service account) created and linked it: two people then
 // still stand behind it, which keeps a company of two from locking itself out.
 func (s *Service) VerifyPerson(ctx context.Context, a Actor, id string) (*Stakeholder, error) {
+	return s.verifyPerson(ctx, a, id, "")
+}
+
+// VerifyShownPerson is VerifyPerson for a confirmer who was shown shown as the linked person: if
+// the record has been relinked since, nothing is confirmed.
+func (s *Service) VerifyShownPerson(ctx context.Context, a Actor, id, shown string) (*Stakeholder, error) {
+	if shown == "" {
+		return nil, invalid("person_id: say which person link you are confirming")
+	}
+	return s.verifyPerson(ctx, a, id, shown)
+}
+
+func (s *Service) verifyPerson(ctx context.Context, a Actor, id, shown string) (*Stakeholder, error) {
 	if err := validID("stk", id); err != nil {
 		return nil, err
 	}
@@ -174,6 +187,9 @@ func (s *Service) VerifyPerson(ctx context.Context, a Actor, id string) (*Stakeh
 	}
 	if st.PersonID == "" {
 		return nil, conflict("the stakeholder has no person link: set one, or attest an external holder")
+	}
+	if shown != "" && st.PersonID != shown {
+		return nil, conflict("the person link changed since it was shown to you: check the record again")
 	}
 	if err := s.verifyPersonID(ctx, st.PersonID); err != nil {
 		return nil, err

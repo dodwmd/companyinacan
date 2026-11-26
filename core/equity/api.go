@@ -557,11 +557,11 @@ func (a *API) Handler() http.Handler {
 		return ok(e)
 	})
 	route("GET /v1/entities/{id}/exercises", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
-		l, err := svc().ListExercises(ctx, ac, r.PathValue("id"), r.URL.Query().Get("status"))
+		p, err := svc().ListExercises(ctx, ac, r.PathValue("id"), ExerciseFilter{Status: r.URL.Query().Get("status"), After: qint(r, "cursor")})
 		if err != nil {
 			return result{}, err
 		}
-		return items(l)
+		return ok(p)
 	})
 	exAction := func(name string, fn func(ctx context.Context, ac Actor, id string, r *http.Request) (*Exercise, error)) {
 		route("POST /v1/exercises/{id}/"+name, func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
@@ -695,11 +695,11 @@ func (a *API) Handler() http.Handler {
 		return ok(p)
 	})
 	route("GET /v1/me/exercises", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
-		l, err := svc().MyExercises(ctx, ac)
+		p, err := svc().MyExercises(ctx, ac, qint(r, "cursor"))
 		if err != nil {
 			return result{}, err
 		}
-		return items(l)
+		return ok(p)
 	})
 
 	// retention

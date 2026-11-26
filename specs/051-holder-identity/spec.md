@@ -51,7 +51,9 @@ tokens did not have. A second record, a made-up id or a token without the claim 
   a record with a `person_id` is established only by `verify-person`, so a record attested while there was no
   directory is not trusted after one is configured. Unestablished records are listed by
   `GET /v1/identity/review` and `can-equity identity-report` and counted in a start-up warning. No record is
-  deleted; reads, grant terms and the ledger are unchanged; already approved grants keep vesting.
+  deleted; staff reads, grant terms and the ledger are unchanged; already approved grants keep vesting. Self
+  service needs a confirmed record ([`specs/068`](../068-equity-board-role/spec.md)), so a holder sees nothing of
+  their own until then.
 - **FR-011** Links, confirmations, attestations, cleared confirmations, refusals and every break-glass use are
   in the audit chain (ids only).
 - **FR-012** Break-glass (below) is set only in the process environment, ends by itself and is at most 7 days

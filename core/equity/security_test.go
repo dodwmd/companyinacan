@@ -339,7 +339,7 @@ func TestEmployeeSelfServiceSeesOnlyOwnApprovedGrants(t *testing.T) {
 	if err := e.s.SetIdentity(e.ctx, e.eve, e.eveStk.ID, Identity{Name: "Eve Renamed"}); !isErr(err, ErrForbidden) {
 		t.Fatalf("self identity write: %v", err)
 	}
-	if _, err := e.s.ListExercises(e.ctx, e.eve, e.ent.ID, ""); !isErr(err, ErrForbidden) {
+	if _, err := e.s.ListExercises(e.ctx, e.eve, e.ent.ID, ExerciseFilter{}); !isErr(err, ErrForbidden) {
 		t.Fatalf("employee listing all exercises: %v", err)
 	}
 	// an erased stakeholder is gone from self-service

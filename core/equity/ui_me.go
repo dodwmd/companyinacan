@@ -42,9 +42,10 @@ func (u *UI) home(c *uiCtx) error {
 }
 
 type myData struct {
-	Page      *MyPositionsPage
-	Exercises []Exercise
-	Notice    string
+	Page          *MyPositionsPage
+	Exercises     []Exercise
+	MoreExercises string
+	Notice        string
 }
 
 func (u *UI) myEquity(c *uiCtx) error {
@@ -52,11 +53,11 @@ func (u *UI) myEquity(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	ex, err := u.Svc.MyConfirmedExercises(c.ctx(), c.a)
+	ex, err := u.Svc.MyConfirmedExercises(c.ctx(), c.a, qint(c.r, "ex_after"))
 	if err != nil {
 		return err
 	}
-	return u.view(c, "me.html", "mine.title", myData{Page: p, Exercises: ex, Notice: Notice})
+	return u.view(c, "me.html", "mine.title", myData{Page: p, Exercises: ex.Items, MoreExercises: ex.Next, Notice: Notice})
 }
 
 func (u *UI) myDocuments(c *uiCtx) error {

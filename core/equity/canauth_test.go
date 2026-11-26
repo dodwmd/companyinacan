@@ -1,6 +1,7 @@
 package equity
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -23,13 +24,19 @@ func TestEquityRolesFromPermissions(t *testing.T) {
 	}
 	for manifestRole, want := range map[string]string{
 		"employee": "employee", "manager": "employee", "hr": "employee,hr",
-		"finance": "finance", "board": "", "admin": "finance,admin",
+		"finance": "finance", "board": "board", "admin": "finance,admin",
 	} {
 		if got := strings.Join(rolesFromPermissions(m.Roles[manifestRole]), ","); got != want {
 			t.Errorf("%s %v -> %q, want %q", manifestRole, m.Roles[manifestRole], got, want)
 		}
 	}
-	// No subset of any role's permissions gains a role, and none is ever the board.
+	// Only the board role holds equity.board, and nothing without it is the board.
+	for name, perms := range m.Roles {
+		if got := slices.Contains(perms, permBoard); got != (name == "board") {
+			t.Errorf("role %s holds %s = %v", name, permBoard, got)
+		}
+	}
+	// No subset of any role's permissions gains a role.
 	all := m.Permissions
 	pick := func(mask int) []string {
 		var out []string
@@ -42,7 +49,7 @@ func TestEquityRolesFromPermissions(t *testing.T) {
 	}
 	for full := range 1 << len(all) {
 		most := rolesFromPermissions(pick(full))
-		if slices.Contains(most, RoleBoard) {
+		if slices.Contains(most, RoleBoard) && !slices.Contains(pick(full), permBoard) {
 			t.Fatalf("%v is the board", pick(full))
 		}
 		for sub := range 1 << len(all) {
@@ -99,6 +106,11 @@ func TestCanCoreTokensWithoutAPersonAreRefusedPersonBoundActions(t *testing.T) {
 	linked := p
 	linked.PersonID = personBob
 	service := Actor{Subject: "svc-can-core", Roles: roles}
+	board, boardLinked := p, linked
+	board.Roles, boardLinked.Roles = []string{RoleBoard}, []string{RoleBoard}
+	if Decide(board, ActGrantApprove, Fact{}) || !Decide(boardLinked, ActGrantApprove, Fact{}) {
+		t.Errorf("grant approval: the board without a person %v, with one %v", Decide(board, ActGrantApprove, Fact{}), Decide(boardLinked, ActGrantApprove, Fact{}))
+	}
 	for _, act := range []Action{ActGrantDraft, ActGrantAdminister, ActExerciseApprove, ActExercisePay, ActExerciseIssue} {
 		if Decide(p, act, Fact{}) {
 			t.Errorf("%s: allowed to a token without a person", act)
@@ -135,5 +147,61 @@ func TestACanCoreTokenCannotDraftAGrantThroughTheAPI(t *testing.T) {
 		if w.Code != http.StatusForbidden {
 			t.Errorf("POST %s = %d %.200s, want 403", path, w.Code, w.Body)
 		}
+	}
+}
+
+// With can-core credentials and the directory, the board approves a grant drafted by HR; the holder,
+// the drafter, the administrator and the service account do not.
+func TestCanCoreBoardApprovesWithSeparationOfDuties(t *testing.T) {
+	e := newIDEnv(t)
+	core := fakecore.New(t, "equity")
+	auth := &CanAuth{In: &modclient.Introspector{API: core.Client(t)}}
+	const personDee = "pers_00000000000000000000c0d1"
+	e.dir.subjects["user:dee"] = personDee
+	boardPerms := []string{permBoard, "equity.read", "equity.approve", "equity.sensitive-read", "equity.admin"}
+	hrPerms := []string{"equity.read", "equity.write", "equity.sensitive-read", "equity.self-read"}
+	adminPerms := []string{"equity.read", "equity.write", "equity.approve", "equity.sensitive-read", "equity.admin"}
+	actor := func(name, user string, perms []string) Actor {
+		t.Helper()
+		tok := "canpat_0123456789abcdefghijklmnopqrstuvwxyz" + name
+		core.AddToken(tok, fakecore.Token{Subject: "user:" + user, Permissions: perms})
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		p, err := auth.Authenticate(r)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return e.actor(*p)
+	}
+	ann := actor("ann", "ann", hrPerms)                                  // drafts
+	benBoard := actor("benboard", "ben", boardPerms)                     // approves
+	catBoard := actor("catboard", "cat", boardPerms)                     // holds the grant
+	annBoard := actor("annboard", "ann", append(hrPerms, boardPerms...)) // the drafter, also a director
+	admin := actor("deeadmin", "dee", adminPerms)
+	nobody := actor("stranger", "stranger", boardPerms) // no directory person
+
+	boss := Actor{Subject: "board-x", Roles: []string{RoleBoard}}
+	e.plan = m(e.s.CreatePlan(e.ctx, boss, e.ent.ID, PlanInput{Name: "2026 Plan", ClassID: e.class.ID, Authorised: q(1_000_000), AdoptedOn: "2026-01-01"}))
+	stk := m(e.s.CreateStakeholder(e.ctx, ann, e.ent.ID, StakeholderInput{Kind: "employee", PersonID: personCat, Identity: Identity{Name: "Cat"}}))
+	m(e.s.VerifyPerson(e.ctx, benBoard, stk.ID))
+	id := e.draft(ann, stk.ID, q(100))
+	m(e.s.SubmitGrant(e.ctx, ann, id))
+
+	for name, c := range map[string]struct {
+		a    Actor
+		want error
+	}{
+		"the holder":                        {catBoard, ErrSeparation},
+		"the drafter":                       {annBoard, ErrSeparation},
+		"an administrator":                  {admin, ErrForbidden},
+		"the service account":               {e.svc, ErrForbidden},
+		"a director with no directory link": {nobody, ErrIdentityRequired},
+	} {
+		if _, err := e.s.ApproveGrant(e.ctx, c.a, id); !errors.Is(err, c.want) {
+			t.Errorf("%s: %v, want %v", name, err, c.want)
+		}
+	}
+	if g := m(e.s.ApproveGrant(e.ctx, benBoard, id)); g.Status != GrantApproved {
+		t.Fatalf("status %s", g.Status)
 	}
 }

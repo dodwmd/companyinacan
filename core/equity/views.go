@@ -90,6 +90,40 @@ func (s *Service) HolderNames(ctx context.Context, a Actor, ids []string) (map[s
 	return out, nil
 }
 
+// GrantExercises is every exercise of one grant, for the administration page of the grant. The
+// caller needs what ListExercises needs.
+func (s *Service) GrantExercises(ctx context.Context, a Actor, grantID string) ([]Exercise, error) {
+	if err := s.authorize(ctx, a, ActExerciseRead, Fact{}, "grant:"+grantID); err != nil {
+		return nil, err
+	}
+	if !a.any() {
+		return nil, ErrForbidden
+	}
+	return s.exercisesOfGrant(ctx, a, grantID)
+}
+
+// LinkedPersonName is the directory's name for the person a holder record is linked to, to be
+// shown to whoever may confirm the link. "" when there is no link or the directory gives no name
+// (it is never a reason to refuse the page).
+func (s *Service) LinkedPersonName(ctx context.Context, a Actor, stakeholderID string) (string, error) {
+	if err := s.authorize(ctx, a, ActStakeholderEdit, Fact{}, "stakeholder:"+stakeholderID); err != nil {
+		return "", err
+	}
+	namer, ok := s.directory.(directoryNames)
+	if !ok {
+		return "", nil
+	}
+	st, err := s.stakeholder(ctx, s.db, stakeholderID)
+	if err != nil || st.PersonID == "" {
+		return "", err
+	}
+	name, err := namer.PersonName(ctx, st.PersonID)
+	if err != nil || name == "" {
+		return "", nil //nolint:nilerr // the name is an aid; confirming checks the directory itself
+	}
+	return name, s.auditRead(ctx, a, "stakeholder:"+stakeholderID, []string{FieldIdentity})
+}
+
 // ---- self service, strictly the caller's own ------------------------------------------------
 
 // selfOnly is the caller as a holder and nothing else: whatever other roles they carry, a self
@@ -123,7 +157,7 @@ func (s *Service) self(ctx context.Context, a Actor) (Actor, error) {
 
 // ownRecords selects the holder records that are the caller's and that a second actor confirmed:
 // a record somebody has linked to the caller but nobody confirmed shows them nothing. It takes one
-// argument, the caller's person id.
+// argument, the caller's person id. Every self-service path goes through it (selfFact included).
 func (s *Service) ownRecords() string {
 	return `(SELECT id FROM stakeholders WHERE person_id = ? AND erased_at IS NULL AND ` + s.establishedSQL() + `)`
 }
@@ -180,7 +214,7 @@ func (s *Service) myGrant(ctx context.Context, a Actor, id string) (Actor, *gran
 	if err := validID("grt", id); err != nil {
 		return me, nil, err
 	}
-	g, err := scanGrant(s.db.QueryRowContext(ctx, `SELECT `+grantCols+` FROM grants g WHERE g.id = ? AND g.status NOT IN ('draft', 'pending_approval') AND g.stakeholder_id IN `+s.ownRecords(), id, me.PersonID))
+	g, err := scanGrant(s.db.QueryRowContext(ctx, `SELECT `+grantCols+` FROM grants g WHERE g.id = ? AND `+offeredSQL+` AND g.stakeholder_id IN `+s.ownRecords(), id, me.PersonID))
 	if errors.Is(err, sql.ErrNoRows) {
 		s.auditDeny(ctx, a, "grant.read", "grant:"+id, []string{FieldGrantTerms})
 		return me, nil, ErrNotFound
@@ -207,7 +241,7 @@ func (s *Service) MyPosition(ctx context.Context, a Actor, id string) (*Position
 	if err != nil {
 		return nil, nil, err
 	}
-	ex, err := s.listExercises(ctx, me, `grant_id = ?`, []any{id}, "")
+	ex, err := s.exercisesOfGrant(ctx, me, id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -215,12 +249,12 @@ func (s *Service) MyPosition(ctx context.Context, a Actor, id string) (*Position
 }
 
 // MyConfirmedExercises lists the caller's own exercise requests, on confirmed records only.
-func (s *Service) MyConfirmedExercises(ctx context.Context, a Actor) ([]Exercise, error) {
+func (s *Service) MyConfirmedExercises(ctx context.Context, a Actor, after int64) (*ExercisePage, error) {
 	me, err := s.self(ctx, a)
 	if err != nil {
 		return nil, err
 	}
-	return s.listExercises(ctx, me, `stakeholder_id IN `+s.ownRecords(), []any{me.PersonID}, "")
+	return s.listExercises(ctx, me, `stakeholder_id IN `+s.ownRecords(), []any{me.PersonID}, ExerciseFilter{After: after})
 }
 
 // ExercisePreview is what an exercise of the caller's own grant would be, before it is requested.

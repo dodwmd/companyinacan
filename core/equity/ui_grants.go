@@ -224,7 +224,7 @@ func (u *UI) grantRender(c *uiCtx, id, flash string) error {
 	if err != nil {
 		return err
 	}
-	ex, err := u.Svc.ListExercises(c.ctx(), c.a, g.EntityID, "")
+	ex, err := u.Svc.GrantExercises(c.ctx(), c.a, id)
 	if err != nil {
 		return err
 	}
@@ -234,11 +234,7 @@ func (u *UI) grantRender(c *uiCtx, id, flash string) error {
 			d.Plan = p.Name
 		}
 	}
-	for _, x := range ex {
-		if x.GrantID == id {
-			d.Exercises = append(d.Exercises, x)
-		}
-	}
+	d.Exercises = ex
 	u.render(c.w, c.r, c, http.StatusOK, "grant.html", "grant.title", d, flash)
 	return nil
 }
@@ -311,15 +307,15 @@ type exerciseLine struct {
 }
 
 type exercisesData struct {
-	Entity   Entity
-	Items    []exerciseLine
-	Status   string
-	Statuses []string
+	Entity       Entity
+	Items        []exerciseLine
+	Status, Next string
+	Statuses     []string
 }
 
 func (u *UI) exercises(c *uiCtx) error {
 	status := c.query("status")
-	list, err := u.Svc.ListExercises(c.ctx(), c.a, c.id(), status)
+	page, err := u.Svc.ListExercises(c.ctx(), c.a, c.id(), ExerciseFilter{Status: status, After: c.after()})
 	if err != nil {
 		return err
 	}
@@ -328,15 +324,15 @@ func (u *UI) exercises(c *uiCtx) error {
 		return err
 	}
 	var ids []string
-	for _, x := range list {
+	for _, x := range page.Items {
 		ids = append(ids, x.StakeholderID)
 	}
 	names, err := u.holderNames(c, ids)
 	if err != nil {
 		return err
 	}
-	d := exercisesData{Entity: *e, Status: status, Statuses: exerciseStatuses}
-	for _, x := range list {
+	d := exercisesData{Entity: *e, Status: status, Next: page.Next, Statuses: exerciseStatuses}
+	for _, x := range page.Items {
 		d.Items = append(d.Items, exerciseLine{x, names[x.StakeholderID]})
 	}
 	return u.view(c, "exercises.html", "ex.list_title", d)

@@ -44,9 +44,14 @@ func adminSession(t *testing.T) *harness.Client {
 // issuePAT issues a personal access token in the admin UI session s (signed in at admin.localhost).
 func issuePAT(t *testing.T, s *harness.Client, module string, perms ...string) string {
 	t.Helper()
-	const host = "admin.localhost"
-	page := s.Do(t, harness.Req{Host: host, Path: "/tokens"}).Expect(t, "tokens page", 200)
-	r := s.Do(t, harness.Req{Method: "POST", Host: host, Path: "/tokens", Headers: adminOrigin(),
+	return issuePATAt(t, s, "admin.localhost", env.Port, module, perms...)
+}
+
+// issuePATAt is issuePAT at one of the admin UI's addresses.
+func issuePATAt(t *testing.T, s *harness.Client, host, port, module string, perms ...string) string {
+	t.Helper()
+	page := s.Do(t, harness.Req{Host: host, Port: port, Path: "/tokens"}).Expect(t, "tokens page", 200)
+	r := s.Do(t, harness.Req{Method: "POST", Host: host, Port: port, Path: "/tokens", Headers: map[string]string{"Origin": "http://" + host + ":" + port},
 		Body: url.Values{"csrf": {harness.CSRF(page.String())}, "name": {"e2e " + module + " " + harness.Unique()}, "module": {module}, "permissions": perms, "ttl_hours": {"24"}}}).
 		Expect(t, "issue a "+module+" token", 200)
 	m := newPAT.FindStringSubmatch(r.String())

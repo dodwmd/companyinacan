@@ -83,6 +83,11 @@ http://equity.localhost:8080 {
 	reverse_proxy equity:8081
 }
 
+# E2E ONLY (dev/compose/e2e.yml): the equity wired to can-core and the directory. Nothing answers otherwise.
+http://equity-core.localhost:8080 {
+	reverse_proxy equity-core:8081
+}
+
 # The files web UI, API (bearer token) and public share-link route /s/{token}. DEV ONLY: in a real install /v1 is not public.
 http://files.localhost:8080 {
 	reverse_proxy files:8095
