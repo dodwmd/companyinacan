@@ -51,6 +51,12 @@ paths:
             items:
               type: "string"
           description: "Repeatable <field>=<column header>"
+        - name: "joiners"
+          in: "query"
+          required: false
+          schema:
+            type: "boolean"
+          description: "Publish person.created.v1 for new active records too (default: existing staff start no joiner run)"
       requestBody:
         required: true
         content:

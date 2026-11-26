@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/csvimport"
 )
@@ -47,8 +48,8 @@ func TestImportPreviewWritesNothingAndApplyIsIdempotent(t *testing.T) {
 	if n := e.count(`SELECT COUNT(*) FROM people`) + e.count(`SELECT COUNT(*) FROM outbox`) + e.count(`SELECT COUNT(*) FROM status_history`); n != 0 {
 		t.Fatalf("a preview wrote %d rows", n)
 	}
-	if len(e.aud.evs) != before {
-		t.Fatalf("a preview recorded audit entries: %+v", e.aud.evs[before:])
+	if got := e.aud.evs[before:]; len(got) != 1 || got[0].Action != "import_preview" {
+		t.Fatalf("a preview is audited once and nothing else: %+v", got)
 	}
 
 	rep, err = e.importCSV(e.hr, true, peopleCSV)
@@ -61,16 +62,10 @@ func TestImportPreviewWritesNothingAndApplyIsIdempotent(t *testing.T) {
 	if ann.ManagerID != rep.Items[2].ID || ann.Status != StActive || ann.Kind != "employee" {
 		t.Fatalf("ann = %+v", ann)
 	}
+	// Existing (active) staff are not joiners: nothing is published unless asked for.
 	events := e.count(`SELECT COUNT(*) FROM outbox`)
-	if events != 3 {
-		t.Fatalf("events = %d", events)
-	}
-	var payloads string
-	e.must(e.s.db.QueryRowContext(e.ctx, `SELECT group_concat(payload) FROM outbox`).Scan(&payloads))
-	for _, pii := range []string{"Ann", "example.com", "E2"} {
-		if strings.Contains(payloads, pii) {
-			t.Errorf("event payload carries %q", pii)
-		}
+	if events != 0 || len(rep.Notices) != 1 {
+		t.Fatalf("events = %d, notices %v", events, rep.Notices)
 	}
 	for _, ev := range e.aud.evs[before:] {
 		if s := fmt.Sprintf("%+v", ev); strings.Contains(s, "Ann") || strings.Contains(s, "example.com") {
@@ -97,6 +92,37 @@ func TestImportPreviewWritesNothingAndApplyIsIdempotent(t *testing.T) {
 	e.must(err)
 	if ann.FamilyName != "Sample" || ann.Location != "Perth" || ann.WorkEmail != "ann@example.com" || ann.StartDate != "2025-01-06" || ann.ManagerID == "" {
 		t.Fatalf("after update = %+v", ann)
+	}
+}
+
+// Only onboarding and candidate rows, and active rows with joiners=true, publish the event
+// that provisioning starts a joiner from.
+func TestImportAnnouncesJoinersOnlyWhenTheyAre(t *testing.T) {
+	file := "external_id,given_name,family_name,work_email,status\nE1,Ann,Example,ann@example.com,active\nE2,Ben,Example,,onboarding\nE3,Cal,Example,,candidate\n"
+	for _, c := range []struct {
+		joiners         bool
+		events, notices int
+	}{{false, 2, 2}, {true, 3, 1}} {
+		e := newEnv(t)
+		o := csvimport.Options{Flags: map[string]bool{importJoiners: c.joiners}}
+		rep, err := e.s.ImportPeople(e.ctx, e.hr, strings.NewReader(file), o)
+		e.must(err)
+		if len(rep.Notices) != c.notices || !strings.Contains(rep.Notices[0], "joiner run") || e.count(`SELECT COUNT(*) FROM outbox`) != 0 {
+			t.Fatalf("preview joiners=%v: %v", c.joiners, rep.Notices)
+		}
+		o.Apply = true
+		_, err = e.s.ImportPeople(e.ctx, e.hr, strings.NewReader(file), o)
+		e.must(err)
+		if n := e.count(`SELECT COUNT(*) FROM outbox WHERE type = 'person.created.v1'`); n != c.events {
+			t.Fatalf("joiners=%v: %d events", c.joiners, n)
+		}
+		var payloads string
+		e.must(e.s.db.QueryRowContext(e.ctx, `SELECT group_concat(payload) FROM outbox`).Scan(&payloads))
+		for _, pii := range []string{"Ann", "example.com", "E1"} {
+			if strings.Contains(payloads, pii) {
+				t.Errorf("event payload carries %q", pii)
+			}
+		}
 	}
 }
 
@@ -233,8 +259,14 @@ func TestImportAuditIsInTheTransaction(t *testing.T) {
 	e := &env{t: t, s: s, ctx: context.Background(), hr: Actor{Subject: "svc-hr", Roles: []string{RoleHR}}}
 	_, err = e.importCSV(e.hr, false, peopleCSV)
 	e.must(err)
-	if n := e.count(`SELECT COUNT(*) FROM audit_log`); n != 0 {
-		t.Fatalf("preview audit entries = %d", n)
+	if all, preview := e.count(`SELECT COUNT(*) FROM audit_log`), e.count(`SELECT COUNT(*) FROM audit_log WHERE action = 'import_preview'`); all != 1 || preview != 1 {
+		t.Fatalf("preview audit entries = %d (%d previews)", all, preview)
+	}
+	// No record of a preview, no report.
+	_, err = s.db.ExecContext(e.ctx, `CREATE TRIGGER no_preview BEFORE INSERT ON audit_log WHEN NEW.action = 'import_preview' BEGIN SELECT RAISE(ABORT, 'no'); END`)
+	e.must(err)
+	if rep, err := e.importCSV(e.hr, false, peopleCSV); err == nil || rep != nil {
+		t.Fatal("answered a preview that was not recorded")
 	}
 	_, err = e.importCSV(e.hr, true, peopleCSV)
 	e.must(err)
@@ -282,6 +314,7 @@ func TestImportRunsOneAtATimeAndTakesAFullFile(t *testing.T) {
 		}
 		fmt.Fprintf(&big, "P%d,Given,Family,p%d@example.com,%s\n", i, i, mgr)
 	}
+	e.s.importTimeout = 5 * time.Minute // a slow runner under -race must not fail the test
 	rep, err := e.importCSV(e.hr, true, big.String())
 	e.must(err)
 	if !rep.Applied || rep.Create != fullFile {

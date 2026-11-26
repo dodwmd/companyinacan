@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -18,6 +19,12 @@ import (
 
 // importManager names a row of this or an earlier file.
 const importManager = "manager_external_id"
+
+// importJoiners is the query flag that announces new active records too.
+const importJoiners = "joiners"
+
+// defaultImportTimeout bounds the write transaction of an import (Service.importTimeout).
+const defaultImportTimeout = 15 * time.Second
 
 var importFields = []csvimport.Field{
 	{Name: csvimport.ExternalID, Required: true}, {Name: "given_name", Required: true}, {Name: "family_name", Required: true},
@@ -33,6 +40,30 @@ type importRecord struct {
 	isNew     bool
 	managerID string // before the import
 	changed   []string
+	// For a new record: it starts a provisioning joiner run, or it is existing staff that does not.
+	joins, existing bool
+}
+
+// joinerNotices says what an apply would set off in provisioning.
+func joinerNotices(records []*importRecord) []string {
+	var joins, existing int
+	for _, rec := range records {
+		switch {
+		case rec.item.Failed():
+		case rec.joins:
+			joins++
+		case rec.existing:
+			existing++
+		}
+	}
+	var out []string
+	if joins > 0 {
+		out = append(out, fmt.Sprintf("%d new rows publish person.created.v1 as onboarding or active: identity provisioning, where enabled, starts a joiner run for each (accounts and checklists)", joins))
+	}
+	if existing > 0 {
+		out = append(out, fmt.Sprintf("%d new active rows are imported as existing staff, without person.created.v1, so no joiner run starts; pass %s=true to start them", existing, importJoiners))
+	}
+	return out
 }
 
 type importAudit struct {
@@ -48,6 +79,8 @@ type peopleImport struct {
 	emails map[string]string            // lower-case work email -> person id, former and erased excluded
 	byExt  map[string]*importRecord
 	audit  []importAudit
+	// joiners also announces new active records (existing staff are otherwise not joiners).
+	joiners bool
 }
 
 // ImportPeople previews or applies a CSV of people. hr or admin only.
@@ -65,8 +98,12 @@ func (s *Service) ImportPeople(ctx context.Context, a Actor, r io.Reader, o csvi
 		return nil, err
 	}
 	rep := csvimport.NewReport(f, o)
-	err = s.wtx(ctx, func(ctx context.Context, tx *sqlTx) error {
-		im := &peopleImport{s: s, a: a, tx: tx, byExt: map[string]*importRecord{}}
+	wctx, cancel := context.WithTimeout(ctx, s.importTimeout)
+	defer cancel()
+	resource := "import:people:" + f.SHA256[:16]
+	err = s.tx(wctx, func(tx *sqlTx) error {
+		ctx := wctx
+		im := &peopleImport{s: s, a: a, tx: tx, byExt: map[string]*importRecord{}, joiners: o.Flags[importJoiners]}
 		if err := im.load(ctx); err != nil {
 			return err
 		}
@@ -100,10 +137,11 @@ func (s *Service) ImportPeople(ctx context.Context, a Actor, r io.Reader, o csvi
 				}
 			}
 		}
+		rep.Notices = joinerNotices(records)
 		if !o.Apply || rep.HasErrors() {
 			return csvimport.ErrRollback
 		}
-		im.audit = append(im.audit, importAudit{"import", "import:people:" + f.SHA256[:16], nil})
+		im.audit = append(im.audit, importAudit{"import", resource, nil})
 		for _, e := range im.audit {
 			if err := s.auditIn(ctx, tx, a, e.action, e.resource, e.fields); err != nil {
 				return err
@@ -111,7 +149,14 @@ func (s *Service) ImportPeople(ctx context.Context, a Actor, r io.Reader, o csvi
 		}
 		return nil
 	})
-	if err != nil && !errors.Is(err, csvimport.ErrRollback) {
+	switch {
+	case errors.Is(err, csvimport.ErrRollback):
+		// The report says which records already exist and which match, so a run that wrote
+		// nothing is still recorded; without the record there is no report.
+		if err := s.auditWrite(ctx, a, "import_preview", resource, nil); err != nil {
+			return nil, err
+		}
+	case err != nil:
 		return nil, err
 	}
 	rep.Finish()
@@ -264,7 +309,11 @@ func (im *peopleImport) apply(ctx context.Context, rec *importRecord) error {
 
 	if rec.isNew {
 		rec.id = newID("pers")
-		if err := im.s.insertPerson(ctx, im.tx, im.a, rec.id, cur, "", row.Get(csvimport.ExternalID)); err != nil {
+		// Existing staff are not joiners: an active record is announced only when asked for.
+		announce := cur.Status != StActive || im.joiners
+		rec.existing = !announce
+		rec.joins = announce && (cur.Status == StActive || cur.Status == StOnboarding)
+		if err := im.s.insertPerson(ctx, im.tx, im.a, rec.id, cur, "", row.Get(csvimport.ExternalID), announce); err != nil {
 			return err
 		}
 	} else if len(sets) > 0 {

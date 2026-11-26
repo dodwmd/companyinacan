@@ -202,8 +202,9 @@ func (s *Service) CreatePerson(ctx context.Context, a Actor, in PersonInput) (*P
 
 // insertPerson writes a validated new record with its history, event and checklists, so every
 // way of creating a person (API, jobs hand-off, CSV import) has the same effects. hireRef and
-// externalID are "" for none. The caller has authorised the actor and audits.
-func (s *Service) insertPerson(ctx context.Context, tx *sqlTx, a Actor, id string, in PersonInput, hireRef, externalID string) error {
+// externalID are "" for none. announce false publishes no person.created.v1 (existing staff of
+// a CSV import: no joiner run). The caller has authorised the actor and audits.
+func (s *Service) insertPerson(ctx context.Context, tx *sqlTx, a Actor, id string, in PersonInput, hireRef, externalID string, announce bool) error {
 	now := s.now().Unix()
 	for table, ref := range map[string]string{"departments": in.DepartmentID, "teams": in.TeamID, "positions": in.PositionID} {
 		if err := s.orgRef(ctx, tx, table, ref); err != nil {
@@ -227,8 +228,10 @@ func (s *Service) insertPerson(ctx context.Context, tx *sqlTx, a Actor, id strin
 		id, "", string(in.Status), eff, now, a.auditID()); err != nil {
 		return err
 	}
-	if err := s.enqueue(ctx, tx, EventPersonCreated, map[string]any{"party_id": id, "kind": in.Kind, "status": string(in.Status)}); err != nil {
-		return err
+	if announce {
+		if err := s.enqueue(ctx, tx, EventPersonCreated, map[string]any{"party_id": id, "kind": in.Kind, "status": string(in.Status)}); err != nil {
+			return err
+		}
 	}
 	return s.autoChecklists(ctx, tx, id, in.Status, a)
 }
@@ -243,7 +246,7 @@ func (s *Service) createPerson(ctx context.Context, a Actor, in PersonInput, hir
 		return nil, err
 	}
 	id := newID("pers")
-	err := s.tx(ctx, func(tx *sqlTx) error { return s.insertPerson(ctx, tx, a, id, in, hireRef, "") })
+	err := s.tx(ctx, func(tx *sqlTx) error { return s.insertPerson(ctx, tx, a, id, in, hireRef, "", true) })
 	if err != nil {
 		return nil, err
 	}
