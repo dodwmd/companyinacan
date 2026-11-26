@@ -149,7 +149,8 @@ backup ran, **not** that it restores. This section **destroys the first server**
 
 ### 4.1 Make a backup that holds something to check
 
-Put a `can` built from the same commit on the server (the erasure ledger import and upload need it). Submit the
+`can up` has installed `can` on the server (the erasure ledger import and upload need it): check that
+`can verify --server` says `PASS server.can-cli`. This is the first time that runs over SSH on a real server. Submit the
 contact form three times, with names and addresses you will recognise: `keep-me`, `erase-me` and `erase-now`. In the
 admin UI, Leads, open `erase-me` and note the id in its address (`/leads/<id>`). Leave `erase-me` in place for now:
 it is erased in 4.2, after the backup, so that only the restore can keep it erased.
@@ -159,8 +160,6 @@ Erase `erase-now` as an operator would for a request
 Expected: it is gone from the admin UI. Nothing needs to be recorded by hand: can-core collects the erasure.
 
 ```sh
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o can-linux ./cmd/can
-scp can-linux $S:/usr/local/bin/can
 ssh $S 'k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m'
 ssh $S 'systemctl start can-backup.service; journalctl -u can-backup --no-pager | tail -20'
 ssh $S 'can backup status && can backup verify'
@@ -211,7 +210,8 @@ Do not go on until every line is true:
   Expected: `exit=0`, the newest snapshot is the one `can backup status` named, `usable by a restore` is at least 1,
   and `erasure ledger:` counts at least 1 entry. Anything else: **stop**. (It reads the repository; it does not prove a restore.)
 - You have copied what the new server needs: `scp $S:/usr/local/bin/restic restic-linux` (Ubuntu's packaged
-  restic is too old), and you still have `can-linux`, `build/images` and your company directory.
+  restic is too old), and you still have `build/images` and your company directory (a checkout of the same commit:
+  `can up --provision-only` builds the new server's `can` from it).
 
 ### 4.3 Destroy the first server and restore onto a new one
 
@@ -225,7 +225,6 @@ bin/can down ../verify-co --plan
 bin/can down ../verify-co --yes                       # DESTROYS the first server
 bin/can up ../verify-co --provision-only
 S=root@NEW_SERVER_IP                                  # `make status ARGS=../verify-co` prints it
-scp can-linux $S:/usr/local/bin/can
 scp restic-linux $S:/usr/local/bin/restic
 scp kit.txt $S:/root/kit.txt
 scp -r build/images $S:/root/images

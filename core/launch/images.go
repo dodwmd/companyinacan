@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dodwmd/companyinacan/core/canbin"
 	"github.com/dodwmd/companyinacan/core/modimages"
 )
 
@@ -60,6 +61,10 @@ type ImageSet struct {
 	Source  string
 	Version string
 	Images  map[string]Image
+	// CLI are the release archives of `can` for the server (a release manifest's "cli" section),
+	// and Dir is that manifest's directory.
+	CLI map[string]canbin.Asset
+	Dir string
 }
 
 // Ref returns the reference to put in manifests for the named image.
@@ -136,6 +141,8 @@ type indexFile struct {
 	Schema  int              `json:"schema"`
 	Version string           `json:"version"`
 	Images  map[string]Image `json:"images"`
+	// CLI is only meaningful in a release manifest.
+	CLI map[string]canbin.Asset `json:"cli,omitempty"`
 }
 
 func readIndex(path string) (*indexFile, error) {
@@ -173,7 +180,10 @@ func LoadRelease(path string) (ImageSet, error) {
 	if err != nil {
 		return ImageSet{}, err
 	}
-	set := ImageSet{Source: SourceRelease, Version: ix.Version, Images: map[string]Image{}}
+	if err := canbin.CheckAssets(ix.Version, ix.CLI); err != nil {
+		return ImageSet{}, fmt.Errorf("%s: %w", path, err)
+	}
+	set := ImageSet{Source: SourceRelease, Version: ix.Version, Images: map[string]Image{}, CLI: ix.CLI, Dir: filepath.Dir(path)}
 	for _, n := range ImageNames {
 		i, ok := ix.Images[n]
 		if !ok {

@@ -82,6 +82,36 @@ including `sqlite3` and restic (the upstream release binary pinned by version an
 dumps directory and initialises the repository if none exists; install restic and `sqlite3` yourself).
 `can backup install --plan` prints the generated script.
 
+### The `can` on the server
+
+The backup script and the erasure sync run `/usr/local/bin/can`. You do not copy it there:
+
+| Command | What it installs |
+|---|---|
+| `can up` (also `--provision-only`) | a `can` for the server's architecture (linux/amd64 or linux/arm64), over SSH; on every run, so a newer `can` upgrades the server |
+| `can backup install` (on the server) | the binary you run it with |
+| `can restore` (on the server) | the binary you run it with, after a successful restore |
+
+`can up` takes the binary from the first of these that applies:
+
+1. `--can-binary FILE`: a linux build you name (static, `CGO_ENABLED=0`).
+2. A release manifest (`--release-manifest`, or `deploy/release-images.json`) with a `cli` section: the release
+   archive `can_<version>_linux_<arch>.tar.gz`, taken from the manifest's directory if you downloaded it there,
+   otherwise from the GitHub release, and refused unless its sha256 is the one in the manifest. Verify the
+   manifest first ([SECURITY.md](../SECURITY.md#verifying-a-release)): its checksums are only as good as it is.
+3. The running binary, when it is a static linux `can` of the server's architecture.
+4. A cross-compile of the source checkout you run it from (needs Go; `make up` takes this path). The checkout
+   must belong to you, and its path is printed before it is built.
+
+The upload goes to a new temporary file beside the target, its sha256 is checked and it is run on the server, and only then is it renamed
+over `/usr/local/bin/can`; any failure leaves the previous binary. The installed build is recorded in
+`.can/state.json` (`cli`). With backups configured a failure **fails the `backup` phase** (and with `--can-binary`
+or no possible source, `can up` stops before touching the server); without backups it is a warning.
+
+`can status` shows the server's `can` and warns when it is missing or a different build from yours;
+`can verify --server` has the check `server.can-cli`, which fails on either when the server has backups. An
+unstamped build (`go run` outside a checkout) cannot be compared. `can down` leaves the binary on the server.
+
 ### Script exit codes
 
 | Code | Meaning |
@@ -185,9 +215,9 @@ or snapshots.
 
 ## Commands
 
-Run these on the server, as root (`sudo`). `can up` does **not** copy the `can` binary to the server: put the
-Linux release binary at `/usr/local/bin/can` there first (the erasure ledger upload needs it too). Without it,
-`sudo systemctl start can-backup.service` runs a backup and `journalctl -u can-backup` shows the result.
+Run these on the server, as root (`sudo`); `can up` has put `can` there
+([the `can` on the server](#the-can-on-the-server)). `sudo systemctl start can-backup.service` runs a backup and
+`journalctl -u can-backup` shows the result.
 `status` and `verify` find the repository in `/etc/can/backup.d/restic.env`.
 
 | Command | Use |
@@ -223,8 +253,9 @@ non-secret options. Nothing else is needed; everything else is in the snapshot.
 1. From your laptop, in your company repository (or a directory holding a `company.yaml` with the same name, domain and
    provider as the kit), make the new server with k3s and nothing else: `can up --provision-only`. Do **not** run a full
    `can up` first: the restore refuses a server that is not blank.
-2. On the server, put the `can` release binary and restic 0.17 or newer in `/usr/local/bin`, and the recovery kit in a
-   root-only file. Use the same `can` release the backup was made with: it carries the module charts.
+2. On the server, put restic 0.17 or newer in `/usr/local/bin` and the recovery kit in a root-only file. Step 1 has
+   installed `can` there. Use the same `can` release the backup was made with (it carries the module charts): run
+   step 1 with that release.
 3. Restore: `sudo can restore --kit /root/kit.enc --release-manifest release-images.json --dir /root/company`
    (from a source checkout use `--images-from <make images output>`). `--plan` shows the steps and what is done.
 4. From the laptop, run `can up` with your usual flags: it publishes the site (from your company repository, which is
@@ -326,11 +357,11 @@ reflect it, which takes data created for the same subject in between; and if a
 restore was told `--accept-unerased`, later backups are taken as reflecting those erasures, so they are not asked
 again: erase that data by hand.
 
-**The import and upload need the `can` binary at `/usr/local/bin/can` on the server, which `can up` does not copy
-there.** Without it can-core still collects, but nothing reaches the bucket; once there is an erasure to record, every
-run fails with exit 22.
+**The import and upload need the `can` binary at `/usr/local/bin/can` on the server**, which `can up` installs and
+upgrades ([the `can` on the server](#the-can-on-the-server)). If it is removed, can-core still collects, but nothing
+reaches the bucket; once there is an erasure to record, every run fails with exit 22.
 
-**Update the `can` binary on the server with each release**: the script names one that has no `ledger-import`
+**Run `can up` after upgrading your `can`**: the script reports a server binary that has no `ledger-import`
 (exit 22). The frequent sync calls the webhook once per fault, again after a day or after a successful run.
 
 **Servers set up by an earlier release** need `can up` (or `can backup install`) once, for the new script and timer.
