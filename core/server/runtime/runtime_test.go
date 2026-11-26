@@ -97,6 +97,21 @@ func TestRunServesTwoSeparateListenersAndShutsDownGracefully(t *testing.T) {
 	}
 }
 
+// With CAN_TRUST_PROXY off there is no lockout by client address: say so at start.
+func TestRunWarnsWhenTheProxyIsNotTrusted(t *testing.T) {
+	for _, trust := range []bool{false, true} {
+		var logs strings.Builder
+		// The database path is unusable, so Run returns right after the settings were looked at.
+		cfg := Config{DBPath: filepath.Join(t.TempDir(), "missing", "dir", "state.db"), TokenReview: "fake", TrustProxy: trust}
+		if err := Run(context.Background(), cfg, slog.New(slog.NewJSONHandler(&logs, nil))); err == nil {
+			t.Fatal("expected the database to fail")
+		}
+		if got := strings.Contains(logs.String(), `"level":"WARN"`) && strings.Contains(logs.String(), "CAN_TRUST_PROXY is off"); got == trust {
+			t.Errorf("trust=%v: log %q", trust, logs.String())
+		}
+	}
+}
+
 func TestRunFailsFastOnBadDatabasePath(t *testing.T) {
 	cfg := Config{AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: "/nonexistent-dir/x/state.db", TokenReview: "fake"}
 	if err := Run(context.Background(), cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))); err == nil {

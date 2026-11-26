@@ -87,5 +87,10 @@ Read these caveats first; they are the honest state of this path:
   cluster) and run `can apply`.
 - NetworkPolicy does not isolate pods from the node on k3s. The server bootstrap adds host rules that do
   ([node-isolation.md](node-isolation.md)), unverified on a real server; `make dev` clusters do not have them.
+- **Treat the admin password as the factor that matters most.** can-core does not limit sign-in attempts per
+  account, so someone who learns the password can keep guessing authentication codes. Keep `CAN_TRUST_PROXY=true`
+  behind Traefik (the shipped setting; without it nothing is locked at all), restrict `admin.<domain>` to your own
+  addresses if you can, and change the password if the audit log shows `admin.login.many_failures`
+  ([security-model.md](security-model.md#known-residual-risks)).
 
 Provider options and what each needs: [providers.md](providers.md). A guide to every document: [index.md](index.md).
