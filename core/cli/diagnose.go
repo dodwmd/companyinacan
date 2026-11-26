@@ -46,7 +46,8 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 			"never a flag). Only an allowlist of file names can be in the bundle, sizes are capped, every text is scrubbed\n" +
 			"for secrets and email addresses (names and phone numbers in free text can survive), and an existing file is\n" +
 			"never overwritten. The company name, domain, server address, SSH user and key paths, identity provider and\n" +
-			"relay named by company.yaml and .can/ are replaced too. Review it, and send it privately.",
+			"relay named by company.yaml and .can/ are replaced too, as are common spellings of the company name and public\n" +
+			"IPv4 and IPv6 addresses (also inside sslip.io names). Review it, and send it privately.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if out == "" {
