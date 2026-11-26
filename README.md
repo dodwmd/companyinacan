@@ -92,7 +92,7 @@ and iOS apps are out of scope.
 | k3s + Traefik + CoreDNS + local-path, idle | at most about 600 MB | 510 to 563 MiB node total, on a 16 GB CI runner (not a 2 GB VPS); the pods are 50 to 55 MiB of it | [phase0-ci.md](docs/measurements/phase0-ci.md) |
 | can-core, idle | 48 MB declared | 41.9 MiB RSS idle, 60 MiB after 4,000 requests; 49 MiB in a cluster | [module-wiring.md](docs/module-wiring.md) |
 | In-house services, idle | 15 to 30 MB declared each | 13.5 to 16 MiB RSS each (forms 3.2 MiB cgroup working set in CI) | module READMEs, phase0-ci.md |
-| Whole compose stack (10 services incl. Caddy and the e2e stub, plus the one-shot init job), after the e2e suite | "under 100 MiB" | about 94 MB by `docker stats` on rootless podman | measured for E23; [local-compose.md](docs/local-compose.md) |
+| Whole compose stack (10 services incl. Caddy and the e2e stub, plus the one-shot init job), after the e2e suite | "under 100 MiB" | **not met since the modules were wired to can-core**: about 150 MB by `docker stats` on rootless podman (94 MB before) | measured after the full suite; [local-compose.md](docs/local-compose.md) |
 | "Starter stack fits a 2 GB server" | aim | **not measured**; the wrapped apps (support, newsletter, analytics) were never started | [SPEC.md](SPEC.md) 3.2, 11 |
 
 ## Security posture and limitations

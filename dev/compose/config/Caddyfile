@@ -39,6 +39,32 @@ http://finance.localhost:8080 {
 	reverse_proxy finance:8080
 }
 
+# Apps (single sign-on into module UIs) in plain http: the launch cookie is host-only, so the admin UI and
+# the module UIs must share one host name and differ by port. The same services as the *.localhost names.
+http://localhost:8180 {
+	reverse_proxy core:8080
+}
+
+http://localhost:8181 {
+	reverse_proxy work:8080
+}
+
+http://localhost:8182 {
+	reverse_proxy people:8081
+}
+
+http://localhost:8183 {
+	reverse_proxy jobs:8080
+}
+
+http://localhost:8184 {
+	reverse_proxy finance:8080
+}
+
+http://:8180, http://:8181, http://:8182, http://:8183, http://:8184 {
+	respond "unknown host" 421
+}
+
 # Any other Host header (DNS rebinding, a typo, a scanner) gets nothing: not the site, not an API.
 # Without this block Caddy answers an unknown host with an empty 200.
 http://:8080 {

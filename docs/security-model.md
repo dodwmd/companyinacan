@@ -128,6 +128,10 @@ HTTP, a fake token reviewer, an introspection stub that accepts five fixed fake 
 unpinned base images and no resource limits. The edge listens on `127.0.0.1` only. Never expose it, never reuse its
 credentials, never put real data in it ([local-compose.md](local-compose.md)).
 
+can-core's development mode (`CAN_DEV_STACK`, used only there) replaces Kubernetes TokenReview with token files
+and records modules without installing them. It is compiled in only with `-tags candevstack`; release builds
+refuse to start when it is requested, as does any build inside Kubernetes ([local-compose.md](local-compose.md)).
+
 ## What the end-to-end suite checks about security
 
 Through the real edge: every module API refuses no token and every other module's token (401); an unknown `Host`

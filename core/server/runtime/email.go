@@ -54,6 +54,11 @@ func (c Config) emailService(db *store.DB, al *audit.Log, log *slog.Logger) (*em
 // devModuleSuffix marks the records devModules creates, so a later start can remove them.
 const devModuleSuffix = " (development identity)"
 
+// isDevModule reports whether m is a record devModules created.
+func isDevModule(m store.Module) bool {
+	return m.Version == "dev" && strings.HasSuffix(m.Manifest.Name, devModuleSuffix)
+}
+
 // devModules registers fixed module identities for a stack without Kubernetes (docker-compose.yml):
 // CAN_DEV_MODULE_TOKENS="forms:<token>". It works only with the fake token review and no installer,
 // so it cannot exist next to real module identities, and the only capability it grants is
@@ -77,7 +82,7 @@ func (c Config) devModules(ctx context.Context, db *store.DB, rev tokenreview.Re
 		return err
 	}
 	for _, m := range mods {
-		if _, ok := want[m.ID]; !ok && m.Version == "dev" && strings.HasSuffix(m.Manifest.Name, devModuleSuffix) {
+		if _, ok := want[m.ID]; !ok && isDevModule(m) {
 			if _, err := db.ExecContext(ctx, `DELETE FROM modules WHERE id=?`, m.ID); err != nil {
 				return fmt.Errorf("removing the development identity %q: %w", m.ID, err)
 			}

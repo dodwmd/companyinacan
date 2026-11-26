@@ -200,8 +200,8 @@ that module's session only.
 **Not routed by default.** The charts shipped today do not expose work, people or finance on a public host
 (jobs exposes only `/careers`). Until you route a module's UI and set its address in `CAN_MODULE_UI_URLS`, it
 does not appear under **Apps**; the paste-a-token page keeps working. The people, jobs and finance web UIs also
-need `ui.enabled: true`. A module installed before this version is offered after its next upgrade or re-enable. The compose stack (`CAN_INSTALLER=none`) installs no
-module, so Apps is empty there and the modules' token login is the way in.
+need `ui.enabled: true`. A module installed before this version is offered after its next upgrade or re-enable. The compose stack offers work, people, jobs and finance in
+Apps when the admin UI is opened at `http://localhost:8180` ([local-compose.md](local-compose.md#modules-access-tokens-and-single-sign-on)).
 
 **Not verified:** no browser or cluster run. See `specs/036-module-ui-sso/tasks.md`.
 

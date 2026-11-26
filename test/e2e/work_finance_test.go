@@ -6,13 +6,14 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/test/e2e/harness"
 )
 
-// (c) Work tracker: an admin mints a work.write token (compose cannot verify can-core personal access
-// tokens, see docs/local-compose.md), the token creates a project and an issue through the API, and the
-// same token signs in to the web UI where the backlog and the board show the issue.
+// (c) Work tracker: an admin mints a work.write service token with the module's own API, the token
+// creates a project and an issue through the API, and the same token signs in to the web UI where the
+// backlog and the board show the issue.
 func TestWorkTrackerAPIAndUI(t *testing.T) {
 	admin := workAPI(t)
 	u := harness.Unique()
@@ -64,8 +65,9 @@ func TestWorkTrackerAPIAndUI(t *testing.T) {
 	s.Do(t, harness.Req{Host: host, Path: "/ui/issues/" + ikey}).Expect(t, "UI issue page", 200)
 }
 
-// (f) Finance: party -> invoice -> separation of duties -> approval by a second subject -> send ->
-// public link (no login) -> payment settles the invoice.
+// (f) Finance: party -> invoice -> separation of duties -> approval through can-core (requested with a
+// personal access token, decided by a second administrator in the admin UI, delivered back as a signed
+// event) -> approval of the invoice -> send -> public link (no login) -> payment settles the invoice.
 func TestFinanceInvoiceFlow(t *testing.T) {
 	admin := financeAPI(t)
 	u := harness.Unique()
@@ -85,7 +87,14 @@ func TestFinanceInvoiceFlow(t *testing.T) {
 	}
 	approver := admin.WithToken(appr)
 	approver.Post(t, "/v1/invoices/"+id+"/send", nil).Expect(t, "approver (no write scope) cannot send", 403)
-	got := approver.Post(t, "/v1/invoices/"+id+"/approve", nil).Expect(t, "approval by a second subject", 200)
+	approver.Post(t, "/v1/invoices/"+id+"/approve", nil).Expect(t, "not before can-core approved it", 403)
+
+	approveInCanCore(t, admin, id, u)
+	var got *harness.Response
+	harness.Wait(t, "the approval decision to reach finance", time.Minute, func() bool {
+		got = approver.Post(t, "/v1/invoices/"+id+"/approve", nil)
+		return got.Status == 200
+	})
 	if got.Str("number") == "" {
 		t.Fatalf("an approved invoice must have a number: %s", got.String())
 	}

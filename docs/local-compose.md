@@ -1,8 +1,8 @@
 # Run the whole stack locally with Docker Compose (no Kubernetes)
 
 > **DEV ONLY. Insecure on purpose.** This stack uses public, fake tokens and passwords committed to the
-> repository (`dev/compose/secrets/`), plain HTTP, a fake token reviewer in can-core and unpinned base-image
-> tags. Never expose it to a network, never reuse its credentials, never put real data in it. The edge port is
+> repository (`dev/compose/secrets/`, `docker-compose.yml`), plain HTTP, a fake token reviewer in can-core that
+> reads module identities from files, and unpinned base-image tags. Never expose it to a network, never reuse its credentials, never put real data in it. The edge port is
 > published on `127.0.0.1` only; keep it that way.
 
 `docker-compose.yml` at the repository root builds and runs every service from source so you can click through
@@ -48,9 +48,15 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) |
 | <http://files.localhost:8080> | files API (`/v1/...`, bearer token) and the public share-link route `/s/{token}`; no virus scanner runs here, so `scanner.required` is off and files are stored labelled `skipped` ([files.md](files.md)) |
 
-The compose can-core runs with `CAN_INSTALLER=none`, so it has no installed module and its **Apps** page
-(single sign-on into module UIs, [`sso.md`](sso.md)) is empty: in this stack the modules' web pages keep the
-paste-a-token sign-in above (`ui.token_login` stays `true`).
+The Apps launcher needs a second set of addresses for the same services, on one host name:
+
+| URL | What |
+|---|---|
+| <http://localhost:8180> | can-core admin UI (open it here to use **Apps**) |
+| <http://localhost:8181/ui/> | work web UI |
+| <http://localhost:8182> | people web UI |
+| <http://localhost:8183> | recruiting web UI |
+| <http://localhost:8184> | finance web UI |
 
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
 resolvers, older macOS tooling), use `curl --resolve admin.localhost:8080:127.0.0.1 ...`, add the names to
@@ -81,6 +87,62 @@ generated on the first `up` into the `dev-secrets` volume and never leave it.
 2. Add it to an authenticator app (or `oathtool --totp -b <secret>`).
 3. Open <http://admin.localhost:8080>, user `admin`, password `dev-only-admin-password`, then the 6-digit code.
 
+### Modules, access tokens and single sign-on
+
+can-core knows `work`, `people`, `jobs`, `finance` and `equity` as installed modules, so the catalogue,
+personal access tokens, approvals, events and the Apps launcher work as they do on a cluster. Sign in to the
+admin UI first (above). The `admin` account is the owner and holds every permission.
+
+**Catalogue.** <http://admin.localhost:8080/catalogue> lists every module. Ticking or unticking one, previewing
+and applying changes **only what can-core records**: Compose starts and stops containers, not can-core. A
+disabled module's tokens and launch links stop working (within about 30 seconds); a module that has no
+container in this stack (wiki, CRM, ...) can be ticked but nothing runs.
+
+**Personal access tokens.** Under **API tokens** (`/tokens`), pick a module, tick permissions, issue, and copy
+the `canpat_...` value (shown once). Use it like any other token:
+
+```sh
+curl -H "Authorization: Bearer canpat_..." http://work.localhost:8080/v1/projects
+curl -H "Authorization: Bearer canpat_..." http://people.localhost:8080/v1/people
+curl -H "Authorization: Bearer canpat_..." http://jobs.localhost:8080/v1/jobs
+curl -H "Authorization: Bearer canpat_..." http://finance.localhost:8080/v1/parties
+curl -H "Authorization: Bearer canpat_..." http://equity.localhost:8080/v1/entities
+```
+
+A token works for its own module only. `work` and `finance` check each permission. `jobs`, `people` and
+`equity` turn permissions into a role, so tick what the role in `modules/<id>/module.yaml` lists:
+
+- `jobs`: a role needs all of its permissions (recruiter: everything except `jobs.admin`).
+- `people`: `people.read` is an employee; add `people.write` for HR, `people.admin` for admin and
+  `people.team.manage` for manager.
+- `equity`: `finance` needs `equity.read`, `write`, `approve` and `sensitive-read`; add `equity.admin` for
+  admin. A personal access token is never the equity **board** ([equity.md](equity.md)).
+
+**Apps (single sign-on into module web UIs).** Open the admin UI at **<http://localhost:8180>** (not
+`admin.localhost`), go to **Apps** and press **Open**. In plain HTTP the launch cookie belongs to one host
+name, so the admin UI and the module UIs have to share it and differ only by port
+([sso.md](sso.md#opening-module-web-pages-from-the-admin-ui-e11c)); from `admin.localhost` the launch is refused.
+`people` additionally admits only people in its directory, so create yourself one first, once, with the dev
+people token:
+
+```sh
+curl -X POST http://people.localhost:8080/v1/people -H "Authorization: Bearer dev-only-people-api-token-0123456789abcdef" \
+  -H 'Content-Type: application/json' \
+  -d '{"kind":"employee","status":"active","given_name":"Ada","family_name":"Admin","work_email":"ada@acme.example","sso_subject":"user:admin"}'
+```
+
+Every `localhost` port shares one cookie jar in the browser. The cookie names differ per service, so signing in
+to one does not sign you out of another.
+
+**How it works, and why it cannot be switched on in production.** `CAN_DEV_STACK=true` makes can-core build
+module management without a cluster: the "installer" only records, `company.yaml` is a file in the
+`core-data` volume (seeded from `dev/compose/config/company.yaml`), and the fake token review accepts the
+random per-module tokens the `init` job writes to the `module-tokens` volume. Events are signed with the public
+`x-webhook-secret` of `docker-compose.yml`. The mode exists only in a binary built with `-tags candevstack`
+(`dev/compose/Dockerfile`); a release build refuses to start when asked for it, as does any build inside
+Kubernetes, with an installer, with real token review or with secure cookies (`core/server/runtime/devstack.go`,
+checked by `test/contract/devstack_test.go`).
+
 ### Smoke test
 
 ```sh
@@ -88,7 +150,7 @@ make compose-test            # or: dev/compose/smoke.sh
 ```
 
 It goes through the edge like a browser: site 200, forms timing token then a form POST that must appear in the
-leads API, admin login page 200, work API creates a project and an issue with the dev token, healthz of
+leads API, admin login page 200 (on both of its addresses), work API creates a project and an issue with the dev token, healthz of
 people/jobs/finance/work, and the careers page. It prints `ok` per check and exits non-zero with a message on
 the first failure. It is safe to re-run (the project key `SMOKE` is reused; issues accumulate).
 
@@ -103,7 +165,7 @@ docker compose -p companyinacan up -d --build site    # rebuild one service (e.g
 ```
 
 SQLite data lives in named volumes (`companyinacan_core-data`, `forms-data`, `work-data`, `people-data`,
-`jobs-data`, `finance-data`, plus `dev-secrets`), so `down` without `-v` keeps it. Config files and
+`jobs-data`, `finance-data`, plus `dev-secrets` and `module-tokens`), so `down` without `-v` keeps it. Config files and
 `secrets/*.env` are baked into / read at container creation: after editing one, recreate the service
 (`docker compose -p companyinacan up -d --build --force-recreate <service>`). podman-compose does not
 always notice an `env_file` change, or a rebuilt image, on its own: `up -d --build edge` left the old edge
@@ -113,24 +175,26 @@ container running until `--force-recreate` was added.
 
 ```sh
 make e2e-up     # docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml up -d --build
-make e2e        # go test -tags e2e ./test/e2e/...   (about 30 s; E2E_RESTART=0 skips the restart test)
+make e2e        # go test -tags e2e ./test/e2e/...   (about 2.5 min; E2E_RESTART=0 skips the restart test)
 make e2e-down   # down -v: removes the can-e2e containers and volumes only
 ```
 
 Go scenarios in `test/e2e` drive the stack through the Caddy edge exactly like a browser or script (`*.localhost`
 host names, resolved to 127.0.0.1 by the test client, so no resolver setup). Each scenario creates uniquely named
 data and can be repeated against the same stack. The suite covers: the site and a contact form that becomes a lead
-(a); admin login with password and TOTP, dashboard, audit, leads and token pages (b); a work token creating a
+(a); admin login with password and TOTP, dashboard, audit, leads, token and catalogue pages (b); a work service token creating a
 project and issue and the web UI board (c); people (1:1, leave request and decision, sensitive-field and leave
 masking) (d); a jobs requisition, careers page with JSON-LD, a public application, the recruiter UI, blind
-feedback (e); finance party, invoice, second-subject approval, public link, payment (f); equity grant from draft to
+feedback (e); finance party, invoice, approval through can-core by a second administrator, public link, payment (f); equity grant from draft to
 board approval and vesting (g); a file uploaded, downloaded as an attachment, versioned, shared once by link, held, erased (j); cross-module token refusal, hostile `Host`, no metrics, anonymous refusal (h);
-`down` without `-v` and `up`, with all data and the admin TOTP secret intact (i).
+`down` without `-v` and `up`, with all data and the admin TOTP secret intact (i); personal access tokens issued
+in the admin UI against all five modules (k); an Apps launch signing in to the four module web UIs, refused in
+another browser and from `admin.localhost` (l); a module disabled and enabled in the catalogue (m).
 
 `make e2e-up` adds `dev/compose/e2e.yml`, which starts **introstub** (`dev/compose/introstub`, a 90-line fake of
-can-core's token introspection with five public fake identities: HR, manager, two employees and a board member) and
-starts `people` and `equity` with `*.e2e.yaml` configs that call it. Without it those two services accept one
-static token, so a second person could not exist. introstub is test infrastructure for compose only; it is not in
+a token introspection endpoint with five public fake identities: HR, manager, two employees and a board member) and
+starts `people` and `equity` with `*.e2e.yaml` configs that call it. It gives the suite identities that personal
+access tokens do not express here (several linked directory people, and a board member). introstub is test infrastructure for compose only; it is not in
 any release.
 
 TOTP: the suite reads the secret from `can-core admin reset-password --rotate-totp` (the same thing
@@ -160,61 +224,56 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
 ## What is NOT covered
 
 - **No Kubernetes.** No k3s/k3d, no NetworkPolicies, no admission policy, no Helm, no `TokenReview`
-  (can-core runs with `CAN_TOKEN_REVIEW=fake`, which accepts module tokens unverified), no Traefik, no TLS,
-  no cert-manager. Resource limits and read-only root filesystems are not applied.
-- **can-core does not install modules.** It runs with `CAN_INSTALLER=none` (records state only). The services
-  are started by Compose as **standalone** processes and are **not registered** with can-core and **not wired
-  to each other**; the only shared piece is the edge proxy. Concretely:
-  - module management is off (no installer): `/catalogue` answers 503, the API tokens page offers no module, so no
-    personal access token can be issued and none is verified by a module (issue
-    [#43](https://github.com/dodwmd/companyinacan/issues/43));
-  - the admin UI shows no installed modules and its leads view says leads are not available (no `leads`
-    provider is registered, no leads token file is configured);
-  - forms sends its lead notification through can-core's `email.send` with a fixed development identity, to an SMTP sink
-    that keeps the mail (http://mail.localhost:8080/messages, [email.md](email.md)); it posts no webhook, and work, people, jobs and finance post no
-    events to can-core (`webhook.url` unset); can-core does not forward module events either;
-  - people does not use can-core token introspection in the base stack (only its static service token works; the
-    e2e overlay points it at a fake, see above); finance, jobs and
-    people do not look each other up (hire hand-off from jobs to people, approvals through can-core, expense
-    and timesheet links to work are stubs here: call the APIs directly);
+  (can-core runs with `CAN_TOKEN_REVIEW=fake`; module identities are files), no Traefik, no TLS,
+  no cert-manager. Resource limits and read-only root filesystems are not applied. Every module container can
+  read the other modules' identity tokens, which a cluster does not allow.
+- **can-core does not install modules.** It records them (`CAN_INSTALLER=none` with `CAN_DEV_STACK`); Compose
+  starts the containers. So:
+  - purge, Secret rotation and the wizard's email relay credentials are not available;
+  - `files`, `board` and `entity` are not wired to can-core; the admin UI's leads view says leads are
+    not available (no `leads` provider is registered, no leads token file is configured);
+  - forms sends its lead notification through can-core's `email.send` with a fixed development identity, to an SMTP
+    sink that keeps the mail (http://mail.localhost:8080/messages, [email.md](email.md)); it is not otherwise wired
+    to can-core and posts no webhook;
+  - `equity` is introspected only: it publishes no events through can-core and takes no board decisions from it;
+  - no reporting-line (`directory`) credential is configured, so approval chains that need a manager use their
+    fallback;
   - finance uses the **fake** payment and e-sign providers; jobs has no virus scanner (`scanner_required:
     false`) and no job-board connectors; no real captcha, email relay, Postgres or backup hooks.
 - No `can up`, DNS, ACME, provider provisioning or backups. `can-hooks` is not built.
 
-### Finance invoice flow needs two subjects
+### Finance invoice approval needs two people
 
-The single dev finance token acts as one subject (`bootstrap-admin`), and finance enforces separation of duties:
-whoever created or edited an invoice cannot approve it. So with that token alone you **cannot** complete
-create, approve, send and the public invoice link (approve returns 403). To test the flow, mint a second token for
-another subject with the approve scope using the tokens API, and approve with it:
+finance enforces separation of duties and, wired to can-core, approves an invoice only after can-core's
+approval engine did:
 
-```sh
-FIN=http://finance.localhost:8080; ADMIN="Authorization: Bearer dev-only-finance-admin-token-0123456789abcdef"
-curl -s -X POST $FIN/v1/tokens -H "$ADMIN" -H 'Content-Type: application/json' \
-  -d '{"kind":"service","subject":"dev-approver","name":"approver","scopes":["finance.approve","finance.read"]}'   # prints "token": "cft_..."
-curl -s -X POST $FIN/v1/invoices/<id>/approve -H "Authorization: Bearer cft_..."   # then send/link with the admin token
-```
+1. create the draft invoice (any token);
+2. ask for approval with a **personal access token** with `finance.read` and `finance.write` (a static or
+   service token is not a person): `POST /v1/invoices/<id>/request-approval`;
+3. a **second administrator** holding the `finance:finance` role approves it under **Approvals** in the admin UI.
+   Create one with `docker compose -p companyinacan exec -e CAN_ADMIN_PASSWORD=<password> core /can-core admin
+   bootstrap --username approver` (prints its TOTP secret), then `... core /can-core admin roles grant approver
+   finance:finance`;
+4. once the signed event reaches finance, a token with `finance.approve` of a subject that neither created nor
+   requested the invoice approves it (`POST /v1/invoices/<id>/approve`).
 
-`FINANCE_FLOW=1 dev/compose/smoke.sh` runs this sequence (create party and invoice, creator approval refused,
-approval by the second subject, send). The approver token is stored in the finance database, not in a file, so
-there is no second static secret in `dev/compose/secrets/`.
+`FINANCE_FLOW=1 dev/compose/smoke.sh` checks the refusals only; the e2e suite runs the whole flow.
 
 The finance web UI (`http://finance.localhost:8080/`, turned on by `dev/compose/config/finance.yaml`) signs in with
-the same tokens: paste the dev admin token to act as `bootstrap-admin`, and sign in with the approver token (above)
-in a second browser profile or private window to see the approve button enabled for one subject and disabled for the
-other. Cookies are not `Secure` in dev (plain HTTP). `dev/compose/smoke.sh` checks the login page, the anonymous
+the same tokens (or through **Apps**): paste the dev admin token to act as `bootstrap-admin`. Cookies are not `Secure` in dev (plain HTTP). `dev/compose/smoke.sh` checks the login page, the anonymous
 redirect, the stylesheet, a refused wrong token and that `/v1` and `/public/invoices/` still reach the API.
 
-So this is good for exercising each service's own UI/API, the admin login flow, the form-to-lead path through a
-same-origin proxy, and the static site; it cannot tell you whether the modules integrate with can-core.
+So this is good for exercising each service's own UI/API, can-core's tokens, approvals, events and single sign-on,
+the form-to-lead path through a same-origin proxy, and the static site; it cannot tell you anything about how a
+cluster installs or isolates the modules.
 
 ## Resources
 
-Measured with `docker stats --no-stream` on rootless podman: right after the smoke test can-core is about 29 MiB,
-the edge about 15 MiB and the other services 2 to 5 MiB each; after some use (logins, clicking through the admin
-UI) can-core reaches about 50 MiB and the whole stack stays **under 100 MiB** (an independent check measured
-about 94 MiB; with equity and the e2e stub, after a full e2e run, `docker stats` summed to about 94 MB again: core 35, edge 13, work 9, people 9, jobs 8, finance 6, equity 4, forms 4, site 3, introstub 2). Building needs more: allow
-2 GB of free RAM and about 5 GB of disk while images build (Go compiles eleven binaries). Idle RAM of the images
+Measured with `docker stats --no-stream` on rootless podman after a full e2e run, with module management and the
+modules wired to can-core: about **150 MB** for the whole stack (core 65, edge 21, work 12, finance 12, people 12,
+jobs 11, files 5, equity 5, forms 5, site 3, introstub 3). The earlier figure of about 94 MB was for the stack
+without that wiring. Building needs more: allow
+2 GB of free RAM and about 5 GB of disk while images build (Go compiles eleven binaries). RAM of the images
 is far below the budgets in the module READMEs because `docker stats` reports cgroup memory, not RSS.
 
 ## Troubleshooting
@@ -222,8 +281,8 @@ is far below the budgets in the module READMEs because `docker stats` reports cg
 - **Only one stack at a time.** Containers have fixed `container_name: can-*` names, so a second compose project
   name (for example `companyinacan` and `can-e2e`) collides with a running one. Tear one down before starting the other.
 
-- **Port 8080 already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
-  in `docker-compose.yml` (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
+- **Port 8080 (or 8180 to 8184) already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
+  in `docker-compose.yml` (for 8180 to 8184 also `CAN_MODULE_UI_URLS`) (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
   test and use that port in the URLs. The jobs and finance URLs configured in `dev/compose/config/*.yaml`
   (`http://jobs.localhost:8080`) assume 8080 and must be edited to match.
 - **Rootless podman and ports below 1024.** The stack deliberately uses 8080. If you move the edge to port 80

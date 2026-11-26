@@ -79,6 +79,10 @@ ok "lead notification email delivered to the SMTP sink"
 
 # 3. admin UI
 expect_status "admin login page" 200 "http://admin.localhost:$port/login"
+# 3b. the one-host-name address the Apps launcher needs (plain http), default stack ports only
+if [ "$port" = 8080 ]; then
+  expect_status "admin login page on localhost:8180" 200 "http://localhost:8180/login"
+fi
 
 # 4. work API: create a project and an issue (project may already exist from an earlier run)
 auth=(-H "Authorization: Bearer $WORK_TOKEN" -H "Content-Type: application/json")
@@ -172,9 +176,9 @@ rm -f "$jar"
 expect_status "finance API still answers behind the UI" 401 "http://finance.localhost:$port/v1/parties"
 expect_status "finance public invoice link path stays with the API" 404 "http://finance.localhost:$port/public/invoices/not-a-link"
 
-# 6. OPTIONAL (FINANCE_FLOW=1): the invoice flow. The dev admin token cannot approve an invoice it
-# created (separation of duties), so a second token for another subject with the approve scope is
-# minted through the tokens API.
+# 6. OPTIONAL (FINANCE_FLOW=1): the refusals of the invoice flow. finance is wired to can-core, so an
+# invoice is approved only after a second person approved it in the admin UI (docs/local-compose.md);
+# the full flow is the e2e suite's.
 if [ "${FINANCE_FLOW:-0}" = 1 ]; then
   FIN_TOKEN="${FIN_TOKEN:-$(secret finance CAN_FINANCE_ADMIN_TOKEN)}"
   fin="http://finance.localhost:$port"
@@ -193,11 +197,8 @@ if [ "${FINANCE_FLOW:-0}" = 1 ]; then
     -d "{\"kind\":\"service\",\"subject\":\"dev-approver\",\"name\":\"smoke approver $(date +%s)\",\"scopes\":[\"finance.approve\",\"finance.read\"]}" | jfield token)"
   [ -n "$appr" ] || die "finance: could not mint an approver token (scope names: see core/finance/auth.go)"
   code="$(curlx -o /dev/null -w '%{http_code}' -X POST "$fin/v1/invoices/$inv/approve" -H "Authorization: Bearer $appr" -H "Content-Type: application/json")"
-  [ "$code" = 200 ] || die "finance: approver token could not approve: HTTP $code"
-  ok "finance approve with a second subject (HTTP 200)"
-  code="$(curlx -o /dev/null -w '%{http_code}' -X POST "$fin/v1/invoices/$inv/send" "${fa[@]}")"
-  [ "$code" = 200 ] || die "finance: send: HTTP $code"
-  ok "finance send (HTTP 200)"
+  [ "$code" = 403 ] || die "finance: an invoice can-core has not approved must be refused (403), got $code"
+  ok "finance refuses to approve before can-core did (HTTP 403)"
 fi
 
 printf '\nSmoke test passed: %d checks.\n' "$pass"

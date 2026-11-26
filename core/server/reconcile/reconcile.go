@@ -103,6 +103,13 @@ type Reconciler struct {
 	audit     Appender
 	Installer ModuleInstaller
 	Actor     string
+	// FixedWebhookSecret, when set, is recorded for every module instead of a generated one. Only
+	// can-core's development stack sets it: there the modules are started by Docker Compose and are
+	// given the secret by their environment, not by an installer.
+	FixedWebhookSecret string
+	// Keep, when set, names recorded modules that are not company.yaml's to disable. Only can-core's
+	// development stack sets it, for the identities CAN_DEV_MODULE_TOKENS registers.
+	Keep func(store.Module) bool
 	// getModule reads the recorded module (db.GetModule; a seam for tests).
 	getModule func(ctx context.Context, id string) (store.Module, error)
 }
@@ -212,7 +219,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 	}
 	var disables, enables []Action
 	for _, m := range recorded { // ordered by id
-		if _, wanted := want[m.ID]; !wanted && (m.State == store.StateEnabled || m.State == store.StateFailed) {
+		if _, wanted := want[m.ID]; !wanted && (m.State == store.StateEnabled || m.State == store.StateFailed) && (r.Keep == nil || !r.Keep(m)) {
 			reason := "no longer enabled in company.yaml"
 			disables = append(disables, Action{Disable, m.ID, reason})
 		}
@@ -349,6 +356,9 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		if k == modsecrets.WebhookKey {
 			secret = newSecret() // takes effect only if the install succeeds (the recorded one is kept otherwise)
 		}
+	}
+	if r.FixedWebhookSecret != "" {
+		secret = r.FixedWebhookSecret
 	}
 	settings := d.Company.Modules[a.Module].Settings
 	rec := store.Module{
