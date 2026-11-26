@@ -13,10 +13,9 @@ description: SCIM 2.0 server over the people directory (users read-mostly, group
 category: people
 version: 0.1.0
 # experimental: unit-, contract- and race-tested offline against fakes (a fake directory, a fake SCIM
-# server, httptest receivers), and the chart installs through can-core's installer in unit tests.
-# No connector has talked to a real service, the image has not been built or run on a cluster, and
-# the default module-namespace NetworkPolicy does not yet allow this module to reach the people
-# module or any downstream system (see docs/provisioning.md, "Known gaps").
+# server, httptest receivers); on k3d it installs and reads the people directory
+# (specs/057-module-capability-wiring). No connector has talked to a real service and connector
+# credentials cannot be supplied (see docs/provisioning.md, "Known gaps").
 status: experimental
 provider:
   type: inhouse

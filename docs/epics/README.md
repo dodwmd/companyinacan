@@ -64,7 +64,7 @@ Backlog (broken down into epics when the previous phase is done):
 
 | Item | Why |
 |---|---|
-| Let `provisioning` reach `people` on a cluster and give connectors their credentials | Installed, it cannot do its job ([status.md](../status.md#modules)) |
+| Give `provisioning`'s connectors their credentials | Installed, it reads `people` but cannot provision anywhere ([status.md](../status.md#modules)) |
 | Erasure feeds for `finance`, `work`, `provisioning` and the wrapped apps | What is erased there comes back with a restore of an older backup |
 | Hold equity's switch to directory mode for approval | Enabling `people` where `equity` runs can freeze its actions (`specs/057-module-capability-wiring/`); today the plan only says so |
 | Per-entry approval of manual `equity` ledger writes | One confirmation of a holder record covers every later entry to it (`specs/051-holder-identity/`) |
