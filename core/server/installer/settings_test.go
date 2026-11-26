@@ -19,7 +19,7 @@ import (
 var sampleSettings = map[string]string{
 	"board":  `{retention: {board-minutes: legal, board-resolutions: legal, board-audit: legal, board-packs: 8y, board-private: 9y}}`,
 	"entity": `{retention: {entity-register: legal, entity-filings: legal, entity-audit: legal, entity-person: 10y}}`,
-	"equity": `{retention: {equity-ledger: legal, equity-audit: legal, equity-stakeholder: 8y, equity-grants: 9y, equity-valuation: legal}}`,
+	"equity": `{retention: {equity-ledger: legal, equity-audit: legal, equity-stakeholder: 8y, equity-grants: 9y, equity-valuation: legal}, ui: {idle_minutes: 10, absolute_hours: 4}}`,
 	"files":  `{max_file_mb: 100, quota_gb_per_owner: 20, trash_days: 90, scanner_required: false, inline_images: true, share: {max_ttl_hours: 48}, ui: {idle_minutes: 10, absolute_hours: 4}}`,
 	"finance": `{base_currency: AUD, payment_instructions: "BSB 000-000\nAccount 1234", seller: {name: Acme Pty Ltd, address: "1 Anvil Way\nBrisbane", tax_id: ABN 12 345}, public_base_url: "https://billing.acme.example",
 	  payment_provider: fake, esign_provider: fake, retention_years: 10, audit_retention_days: 0, trust_proxy: true, max_body_bytes: 2097152, rate_limit_per_minute: 0, auth_failures_per_minute: 5, signing_record_ip: none, ui: {idle_minutes: 10, absolute_hours: 4}}`,

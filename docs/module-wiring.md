@@ -93,6 +93,8 @@ the admin UI preview) lists them as "newly allowed" first.
 | `equity` | `identity` | can-core connects equity to the people directory (specs/057-module-capability-wiring) |  |
 | `equity` | `break_glass_until` | can-core sets the chart value breakGlassUntil (specs/057-module-capability-wiring) |  |
 | `equity` | `retention.equity-ledger` | `config.retention.equity-ledger` |  |
+| `equity` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
+| `equity` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
 | `equity` | `retention.equity-audit` | `config.retention.equity-audit` |  |
 | `equity` | `retention.equity-stakeholder` | `config.retention.equity-stakeholder` | approval: data of this class is deleted sooner |
 | `equity` | `retention.equity-grants` | `config.retention.equity-grants` | approval: data of this class is deleted sooner |
