@@ -181,6 +181,9 @@ func seed(t *testing.T) seeded {
 			t.Fatalf("apply: %v\n%s", err, out)
 		}
 	}
+	// The nightly dump run deletes the completion marker: keep it away from the minutes in which the
+	// directories are copied.
+	mustKubectl(t, "-n", "can-system", "set", "env", "deploy/can-core", "CAN_DUMP_AT="+time.Now().UTC().Add(12*time.Hour).Format("15:04"))
 	mustKubectl(t, "-n", "can-system", "rollout", "status", "deploy/can-core", "--timeout=180s")
 
 	s.admin.password = "correct horse battery staple 42"
