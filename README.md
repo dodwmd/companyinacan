@@ -83,7 +83,7 @@ and iOS apps are out of scope.
 | The whole stack, through its edge, on Docker Compose: site and lead capture, admin login with TOTP, work, people, jobs, finance, equity flows, cross-module negative checks, restart persistence | `make e2e`, advisory [e2e workflow](.github/workflows/e2e.yml) | personal access tokens verified by modules (compose has no Kubernetes TokenReview); TLS; backups |
 | `make dev` creates a k3d cluster; the `work` module installs through can-core and a personal access token works | advisory `dev-cluster` workflow | forms, people, jobs, finance, equity on a cluster; event delivery between modules; approvals |
 | Idle memory of k3s, can-static and forms on a CI runner | [docs/measurements/phase0-ci.md](docs/measurements/phase0-ci.md) | any 2 GB or 4 GB server |
-| `make up` on a real server, DNS, ACME, backups to object storage, restore from the recovery kit (backups are exercised on k3d with a local restic repository only) | built offline against fakes | **everything real**: needs a provider account |
+| `make up` on a real server, DNS, ACME, backups to object storage, restore from the recovery kit (backups and restore are exercised on k3d with a local restic repository only) | built offline against fakes | **everything real**: needs a provider account |
 
 ## Footprint: measured against claimed
 
