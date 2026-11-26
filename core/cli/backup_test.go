@@ -455,3 +455,20 @@ func TestBackupStatusReadsTheRepositoryFromTheEnvFile(t *testing.T) {
 		t.Fatalf("the repository in the env file was not used: %s %s", out, errs)
 	}
 }
+
+// ledger-add records what has already been erased, optionally at an earlier time.
+func TestLedgerAddSaysItRecordsAnErasureAlreadyDone(t *testing.T) {
+	l := filepath.Join(t.TempDir(), "l.jsonl")
+	code, out, errs := runIn(t, "", "backup", "ledger-add", "--ledger", l, "--subject", "s1", "--class", "c", "--erased-at", "2026-03-04T15:00:00Z")
+	if code != 0 || !strings.Contains(out, "ALREADY ERASED at 2026-03-04T15:00:00Z") {
+		t.Fatal(code, out, errs)
+	}
+	for _, bad := range []string{"yesterday", "2999-01-01T00:00:00Z"} {
+		if code, _, _ := runIn(t, "", "backup", "ledger-add", "--ledger", l, "--subject", "s2", "--class", "c", "--erased-at", bad); code == 0 {
+			t.Error(bad, "accepted")
+		}
+	}
+	if _, out, _ := runIn(t, "", "backup", "ledger-add", "--help"); !strings.Contains(out, "ALREADY BEEN erased") || !strings.Contains(out, "erases nothing now") {
+		t.Error(out)
+	}
+}

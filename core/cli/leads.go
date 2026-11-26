@@ -182,14 +182,14 @@ func newLeadsCmd(g *globalOpts) *cobra.Command {
 			done := []cliErasure{}
 			notes := []string{}
 			var failed []string
-			var record []string // erased, or possibly erased: to be put in the erasure ledger
+			var unsure []string // possibly erased although the request failed
 			for _, id := range args {
 				var e cliErasure
 				if err := c.do(cmd.Context(), http.MethodDelete, "/v1/leads/"+id, nil, &e); err != nil {
 					failed = append(failed, id+": "+err.Error())
 					// Only a refusal (4xx) says that nothing was erased.
 					if !strings.HasPrefix(err.Error(), "4") {
-						record = append(record, id)
+						unsure = append(unsure, id)
 					}
 					continue
 				}
@@ -201,7 +201,6 @@ func newLeadsCmd(g *globalOpts) *cobra.Command {
 				}
 				e.Notes = nil
 				done = append(done, e)
-				record = append(record, id)
 			}
 			out := cmd.OutOrStdout()
 			if g.json() {
@@ -225,11 +224,9 @@ func newLeadsCmd(g *globalOpts) *cobra.Command {
 					fmt.Fprintln(out, "note:", n)
 				}
 			}
-			if len(record) > 0 {
-				fmt.Fprintln(cmd.ErrOrStderr(), "A restore brings these back unless they are recorded: nothing does that by itself yet. On the server:")
-				for _, id := range record {
-					fmt.Fprintf(cmd.ErrOrStderr(), "  sudo can backup ledger-add --subject %s --class lead-submission\n", id)
-				}
+			if len(unsure) > 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(), "These may have been erased although the request failed (`can leads find` shows which are left):", strings.Join(unsure, " "))
+				fmt.Fprintln(cmd.ErrOrStderr(), "On a server set up by can up with backups, an erasure that happened is recorded for restores by itself.")
 			}
 			if len(failed) > 0 {
 				return failure("not erased or not finished:\n  %s", strings.Join(failed, "\n  "))

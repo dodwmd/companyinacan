@@ -162,7 +162,11 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err != nil {
 		return err
 	}
-	s.Values = plan.values
+	facts, err := in.companyValues(ctx, s)
+	if err != nil {
+		return err
+	}
+	s.Values = deepMerge(facts, plan.values)
 	objs, err := in.renderBounded(ctx, s)
 	if err != nil {
 		return err
@@ -587,6 +591,9 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 				}
 			}
 		}
+	}
+	if err := in.wireSecrets(ctx, s, mod); err != nil {
+		return "", err
 	}
 	var db map[string]string
 	kind := s.Manifest.Requires.Database

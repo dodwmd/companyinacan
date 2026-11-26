@@ -2853,6 +2853,7 @@
         "class": {
           "type": "string"
         },
+        "at": { "type": "string", "format": "date-time", "description": "When the data was erased." },
         "date": {
           "type": "string",
           "format": "date",

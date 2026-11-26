@@ -67,8 +67,8 @@ func TestLeadsFindAndErase(t *testing.T) {
 		t.Errorf("without --yes: %d %q", code, errs)
 	}
 	code, out, errs = cli("", "erase", id, "--yes")
-	if code != ExitOK || !strings.Contains(out, id+"  erased") || !strings.Contains(errs, "ledger-add --subject "+id+" --class lead-submission") {
-		t.Fatalf("erase: %d %q %q", code, out, errs)
+	if code != ExitOK || !strings.Contains(out, id+"  erased") || !strings.Contains(out, "ledger-add --subject "+id+" --class lead-submission") || strings.Contains(errs, "ledger-add") {
+		t.Fatalf("erase: %d %q %q", code, out, errs) // run on its own, forms says to record it by hand, once
 	}
 	if code, out, _ := cli("", "erase", id, "--yes"); code != ExitOK || !strings.Contains(out, "already erased") {
 		t.Errorf("repeat: %d %q", code, out)
@@ -82,14 +82,14 @@ func TestLeadsFindAndErase(t *testing.T) {
 	if code, out, _ := cli("ann@example.com\n", "find"); code != ExitOK || out != "" {
 		t.Errorf("after: %d %q", code, out)
 	}
-	// No answer, or a failure after the delete: the lead may be gone, so the command is shown.
+	// No answer, or a failure after the delete: the lead may be gone, and that is said.
 	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = io.WriteString(w, `{"code":"scrub_failed","message":"erased, not scrubbed"}`)
 	}))
 	defer broken.Close()
 	t.Setenv("CAN_FORMS_URL", broken.URL)
-	if code, _, errs := cli("", "erase", id, "--yes"); code != ExitFailure || !strings.Contains(errs, "ledger-add --subject "+id) {
+	if code, _, errs := cli("", "erase", id, "--yes"); code != ExitFailure || !strings.Contains(errs, "may have been erased") || !strings.Contains(errs, id) {
 		t.Errorf("scrub failed: %d %q", code, errs)
 	}
 	t.Setenv("CAN_FORMS_TOKEN", "")

@@ -45,7 +45,16 @@ func prepareDumpsDir(t *testing.T) {
 func requestDump(t *testing.T) time.Duration {
 	t.Helper()
 	start := time.Now()
-	out, err := kubectl("-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "dump-request", "--wait", "5m")
+	var out string
+	var err error
+	for {
+		out, err = kubectl("-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "dump-request", "--wait", "5m")
+		// right after the first `can apply` the kubelet may not have mounted company.yaml yet
+		if err == nil || !strings.Contains(out, "company.yaml") || time.Since(start) > 3*time.Minute {
+			break
+		}
+		<-time.After(10 * time.Second)
+	}
 	if err != nil {
 		logs, _ := kubectl("-n", "can-system", "logs", "deploy/can-core", "--tail=60")
 		jobs, _ := kubectl("get", "jobs,pods", "-A", "-l", "can.dev/hook=backup", "-o", "wide")

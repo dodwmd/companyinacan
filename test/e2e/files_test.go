@@ -68,8 +68,9 @@ func TestFilesUploadShareHoldAndErase(t *testing.T) {
 	api.Put(t, "/v1/files/"+fid+"/hold", map[string]any{"legal_hold": false}).Expect(t, "lift the hold", 204)
 	api.Post(t, "/v1/subjects/"+subject+"/erasure", nil).Expect(t, "erase the subject", 200)
 	api.Get(t, "/v1/files/"+fid+"/content").Expect(t, "the content after erasure", 404)
-	if list := api.Get(t, "/v1/erasures").Expect(t, "tombstones", 200); !strings.Contains(list.String(), subject) {
-		t.Fatalf("no tombstone for the subject: %.300s", list.String())
+	// the tombstones name the erased file, never the data subject
+	if list := api.Get(t, "/v1/erasures").Expect(t, "tombstones", 200); !strings.Contains(list.String(), fid) || strings.Contains(list.String(), subject) {
+		t.Fatalf("tombstones: %.300s", list.String())
 	}
 }
 

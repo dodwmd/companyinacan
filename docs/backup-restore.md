@@ -20,7 +20,8 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    - puts the previous set back if an earlier run died while swapping it, deletes `COMPLETE` and removes what an
      earlier run left behind;
    - writes `can-core/state.db` (`VACUUM INTO` over a read-only connection of its own, then `integrity_check`) and
-     a copy of the applied `company.yaml`, and `can-core/secrets.json`: the Secrets of every module namespace plus
+     a copy of the applied `company.yaml` (without it the run fails and writes no marker; right after the
+     first `can apply` the file takes about a minute to be mounted), and `can-core/secrets.json`: the Secrets of every module namespace plus
      `can-smtp-relay`, `sso-client` and `can-postgres-admin` of `can-system` (a restore re-creates them). The first two are replaced in place, so after a **failed** run they are newer
      than the module dumps beside them; without a marker the set is not backed up either way;
    - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
@@ -48,7 +49,8 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      back after enabling a module whose hook cannot run, disable it. Downloads (`GET /v1/dumps/...`) are refused except while the server is being restored.
 2. The host timer `can-backup.timer` (default 03:30 plus up to 15 min) starts `can-backup.service`, which runs
    `/usr/local/sbin/can-backup`. The script, in order:
-   - syncs the erasure ledger (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
+   - imports into the erasure ledger what can-core collected from the modules (`can backup ledger-import`) and
+     syncs it to the bucket (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
      regular file, is reported and exits 22 rather than being skipped; first and independently, so a failing backup never holds back erasures) and copies it
      into the root-owned host-state directory so every snapshot carries a copy;
    - refuses a dumps directory that is world-writable or contains a symlink (can-core can write there, the script is root),
@@ -87,7 +89,7 @@ dumps directory and initialises the repository if none exists; install restic an
 | 13 | unsafe dumps directory (symlink inside, or world-writable), state or host-state directory not a root-owned private directory, or a symlinked ledger |
 | 20 | `restic backup` failed (forget/prune is skipped) |
 | 21 | forget/prune failed |
-| 22 | erasure ledger upload failed, or the ledger vanished or is not a regular file (the backup still ran). If a backup code and 22 both occur, the backup code is returned |
+| 22 | erasures could not all be collected or imported (a module's feed failed, can-core's last collection is more than 2 h old, or a tombstone was refused), the ledger upload failed, or the ledger vanished or is not a regular file (the backup still ran). If a backup code and 22 both occur, the backup code is returned |
 
 Failures go to the journal (`journalctl -t can-backup`) and, through `OnFailure=can-backup-failure.service`, a critical journal line
 when the unit fails. The unit runs with `ProtectSystem=strict` and a short `ReadWritePaths=` list. To also get a webhook, put its URL in
@@ -240,8 +242,9 @@ run the same command again):
    installed with 0 replicas, no seeding Jobs and no public routes.
 5. **Volume files** are copied into the new volumes (matched on `<namespace>_<claim>`, ownership preserved).
 6. **Restore hooks** load the module dumps (replace-all).
-7. **Erasure replay.** The ledger is read again, united with the copy in the snapshot, and each tombstone is applied by
-   the module that declares its data class: its `hooks.purge` script; `people`, `equity` and `board` by their own
+7. **Erasure replay.** The ledger is read again, united with the copy in the snapshot, and each erasure made after the
+   module's dump is applied by the module that reported it (one added by hand: by the modules that declare its data
+   class): its `hooks.purge` script; `people`, `equity`, `board` and `entity` by their own
    `purge` command; `files` and `jobs` over `/v1/purge` while running without a route. can-core drops its queued
    events, notifications and mail that name the subject.
 8. **Go live.** The ledger and the repository credentials are written to the server, queued mail is discarded (it may
@@ -268,8 +271,7 @@ server expires after 72 hours without a run, or as soon as can-core there is no 
 starts over with the blank-server check (so it needs `--confirm-overwrite`).
 
 Afterwards the server is **not** backed up until `can up` has run with the `--backup-*` flags (it checks the server
-itself, not what the laptop remembers). Module erasures made after the snapshot and not added to the ledger by hand are
-back: repeat them.
+itself, not what the laptop remembers). Erasures that are not in the ledger (see below) are back: repeat them.
 
 Snapshot choice: snapshots are walked newest first and every decision is printed. One tagged `inconsistent` is skipped,
 one not tagged `can` is ignored, a newer `can` snapshot that fails its marker check stops the restore, and a transient
@@ -277,19 +279,66 @@ restic error while checking also stops it. The chosen snapshot is pinned for res
 
 Which modules lose what, today: every shipped in-house module is restored from its own consistent dump, by
 `<binary> restore -replace`; `forms` replays lead erasures over `/v1/purge` ([erasure requests](../modules/forms/README.md#erasure-requests));
-`finance`, `work`, `provisioning` and `entity` have no purge by subject and class, so tombstones of their classes need
+`finance`, `work` and `provisioning` have no purge by subject and class, so tombstones of their classes need
 `--accept-unerased`. If `files` or `jobs` refuse to restore because files their
 database names are missing, and those files were destroyed after the backup's dump was taken,
 `--allow-missing-blobs <module>` goes on without them; otherwise it means the volume was not restored.
 
 ## Erasure tombstone ledger
 
-**Nothing writes the ledger by itself.** Neither can-core nor any module records an erasure in it: after every
-erasure, add the entry on the server with `can backup ledger-add --subject <id> --class <data class>`, which appends
-`(subject id, data class, date)` to `/var/lib/can/erasure-ledger.jsonl`. An erasure that was not added is **undone**
-by a restore from a snapshot made before it. Subject ids must be opaque (no email or name; the tool rejects them).
-The file is hash-chained, so editing, reordering or removing early entries is detected. After each backup the script
-runs `can backup ledger-sync`, which merges it into the encrypted object `ledger/erasure-ledger.v1.enc` in the bucket,
+can-core collects the erasures of the modules into the ledger. Once a minute it reads `GET /v1/erasures` of
+`people`, `equity`, `board`, `entity`, `files`, `forms` and `jobs` (from the start each time, so a restored module is read
+correctly), and appends what is new to a ledger in the dumps directory (`.erasure-ledger/`, never part of the dumps
+or a snapshot). On the host, `can backup ledger-import` adds it to `/var/lib/can/erasure-ledger.jsonl`; the backup
+script does this nightly and `can-erasure-sync.timer` every quarter of an hour (`can-backup --ledger-only`). An entry
+is `(subject id, data class, date)`; subject ids must be opaque, and one that is not (an e-mail address, say) is
+refused, counted and reported with exit 22, never written or logged.
+
+**What a module may order.** Its feed is taken only for the data classes its manifest declares (`board` and
+`entity` also for `board-private` and `entity-person`, which one binary writes), each entry names the module that
+reported it, and a restore applies it to that module alone. One module's feed is read for at most a minute, and given up
+after 1,000 refused tombstones. Each module has a bounded share of the ledger (8 MiB,
+about 30,000 erasures, 5,000 new a minute; 56 MiB in all). A full share is reported like an unreadable feed. The
+ledger is never compacted, so a very large company would reach this after years.
+
+**What a restore replays.** Each entry says when the data was erased. A module dump taken after that already
+reflects the erasure and may hold data created since for the same subject, so **nothing is purged from it**; only
+erasures made after the dump (its `manifest.json`, else the start of the dump run), or less than a minute before
+it, are replayed. A dump carried over from an earlier run without a `manifest.json` (a script hook's) is of unknown
+age: the restore stops for it (`--accept-unerased`) rather than guess. can-core's own derived copies (queued events,
+notifications, mail) are removed whenever the subject was erased. `files` records the
+ids of the erased files, never the data subject. **`can backup ledger-add` records data that has already been erased** (it
+erases nothing): dated now, or `--erased-at <RFC 3339 time>`. A snapshot made after that time is left alone, and
+the restore lists each such entry as `NOT replayed`: erase the data by hand if it was not really gone. Entries without a time (added by an earlier release) are always replayed. Two limits:
+an erasure made in the minute before, or while, a module's database was copied is replayed although the copy may
+reflect it, which takes data created for the same subject in between; and if a
+restore was told `--accept-unerased`, later backups are taken as reflecting those erasures, so they are not asked
+again: erase that data by hand.
+
+**The import and upload need the `can` binary at `/usr/local/bin/can` on the server, which `can up` does not copy
+there.** Without it can-core still collects, but nothing reaches the bucket; once there is an erasure to record, every
+run fails with exit 22.
+
+**Update the `can` binary on the server with each release**: the script names one that has no `ledger-import`
+(exit 22). The frequent sync calls the webhook once per fault, again after a day or after a successful run.
+
+**Servers set up by an earlier release** need `can up` (or `can backup install`) once, for the new script and timer.
+
+**What is not covered:**
+
+- **Modules without an erasure feed record nothing**: `finance`, `work`, `provisioning` and the wrapped apps
+  (`crm`, `wiki`, `support`, `newsletter`, `status`, `analytics`). Each run of `ledger-import` names the installed ones
+  that hold data classes. Something erased in them is **back** after a restore of an older backup. If a purge hook can
+  replay it, erase there and record it: `can backup ledger-add --subject <id> --class <data class>`.
+- **The window.** An erasure made less than about a quarter of an hour before the server is lost may not have reached
+  the bucket. A failing collection or upload (exit 22, journal, webhook) makes the window as long as it lasts.
+- A module that is disabled is not asked; what was collected while it ran stays. An erasure made in the last minute
+  before disabling it is collected when it is enabled again.
+- An erasure made after the dump by a module that is not installed in the restored company stops the restore
+  until `--accept-unerased <module>:<class>` (`*:<class>` for one added by hand).
+
+The ledger is hash-chained, so editing, reordering or removing early entries is detected.
+`can backup ledger-sync` merges it into the encrypted object `ledger/erasure-ledger.v1.enc` in the bucket,
 outside the `restic/` prefix. The key is derived from the restic password. Sync never shrinks the remote ledger and
 refuses to overwrite one it cannot read. Requirement: the `can` binary at `/usr/local/bin/can` on the host. The S3 client
 requires https, and treats only an S3 `NoSuchKey` 404 as "no ledger" (a missing bucket is an error). A torn last line left by a
@@ -377,7 +426,7 @@ server, and restores them with can-core's restore operations (not through restic
   publishes the image (docs/releasing.md); until then there is nothing to pull.
 - In-house hooks on a cluster: backup of forms, work and files (`module-backup` in CI), backup and restore through
   `can restore` of forms, work and people (`restore-e2e`). jobs, finance and provisioning are covered by unit tests;
-  equity, board and entity cannot be installed by can-core yet.
+  equity, board and entity are only installed on k3d, not backed up or restored there.
 - `can-hooks` Jobs against a database module. Only `crm`'s chart still names a `can-database` Secret that
   can-core does not write.
 - The wrapped modules' dumps (analytics, support, newsletter) on a real server, with large data, or against an
@@ -385,6 +434,7 @@ server, and restores them with can-core's restore operations (not through restic
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
   directory and a run holds the old and the new set at once. Hooks retry with `--retry` only, which does not cover
   a connection refused while a new pod's network rules are still being programmed.
-- The erasure ledger upload. Nothing writes the ledger automatically; `can backup ledger-add` does by hand.
+- The erasure ledger on a real server and bucket: `can-erasure-sync.timer` under systemd has not run anywhere (CI runs
+  its command), and the collection has run on k3d only.
 - The restore-time target (15 minutes) and the effect of data size on dump and backup time.
 - Whether the 35-day retention fits your legal obligations is for you to decide.

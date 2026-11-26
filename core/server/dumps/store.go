@@ -183,6 +183,9 @@ func (s *Store) clean(keep []string) error {
 		if err != nil || p == s.Dir {
 			return nil
 		}
+		if p == filepath.Join(s.Dir, backup.CollectedDir) { // the erasures can-core collected: durable
+			return filepath.SkipDir
+		}
 		stale := strings.HasPrefix(e.Name(), ".") ||
 			(e.IsDir() && filepath.Dir(p) == filepath.Join(s.Dir, "modules") && !wanted[e.Name()])
 		if !stale {

@@ -8,9 +8,8 @@ What can-core routes through Traefik, and how to switch it on. Specifications an
 > exercises it** (work, forms and finance's link path; Traefik's self-signed certificate, no
 > browser, no ACME, no real DNS).
 >
-> **jobs does not yet start when can-core installs it** (it requires `company.name` and
-> `company.base_url`, which nothing sets), so the careers pages are not live on a cluster; their
-> routing and headers are unit tested only.
+> can-core now sets jobs' `company.name` and `company.base_url`, and CI (`modules-k3d`) waits for it to be
+> Ready; the careers pages' routing and headers are still unit tested only.
 
 ## The setting
 

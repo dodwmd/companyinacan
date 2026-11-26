@@ -10,8 +10,8 @@ the `entity` capability and publishes `entity.filing.due.v1` (ids and dates only
 filed by when are not implemented: obligations and due dates are data the operator enters. Compliance with
 company law and data-protection law is the operator's responsibility.
 
-**Status: experimental.** Tested offline with the `board` module; not yet run on a cluster, no Helm templates, no
-admin UI. One process serves both modules, so enabling both does not double the footprint (measured idle RSS
+**Status: experimental.** Tested offline with the `board` module; can-core installs it (as its own instance) and CI
+waits for Ready on k3d; no admin UI. One process serves both modules, so enabling both does not double the footprint (measured idle RSS
 14.4 MiB for the process).
 
 | | |

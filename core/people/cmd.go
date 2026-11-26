@@ -93,6 +93,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 
 	st := &StaticTokens{}
 	st.Add(sec.APIToken, Principal{Subject: "svc-can-core", Roles: []string{RoleHR, RoleAdmin}})
+	addDirectoryToken(st, sec.DirectoryToken)
 	auth := MultiAuth{st}
 	if cfg.Introspect.URL != "" {
 		auth = append(auth, &IntrospectAuthenticator{URL: cfg.Introspect.URL, Token: sec.IntrospectToken})
@@ -169,6 +170,15 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 1
 	}
 	return 0
+}
+
+// addDirectoryToken admits the provisioning module's credential: restricted to people.read and
+// people.write, so it can neither erase, hold nor read reviews or time off.
+func addDirectoryToken(st *StaticTokens, token string) {
+	if token == "" {
+		return
+	}
+	st.Add(token, *principalFromPermissions("svc-provisioning", []string{"people.read", "people.write"}))
 }
 
 // background applies due status changes and the retention sweep hourly and delivers events.

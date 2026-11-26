@@ -19,7 +19,7 @@ func init() {
 		"le.erase_title":   "Erase lead %s",
 		"le.warning":       "This cannot be undone. The submission, its notification record and any notification still waiting are deleted.",
 		"le.not_recalled":  "Not recalled: e-mail already sent or queued in can-core, what a webhook or CRM copied, exports, and backups until they expire.",
-		"le.record":        "A restore of an older backup brings the lead back unless the erasure is recorded, and nothing records it by itself. Run this on the server:",
+		"le.record":        "can-core records the erasure for restores by itself: it normally reaches the backup bucket within about 15 minutes, on a server with backups and the can binary installed. Until then, and while backups report a problem with the erasure ledger, a restore of an older backup brings the lead back.",
 		"le.done_title":    "Lead %s is erased",
 		"le.done":          "The lead is deleted. E-mail already sent for it, and copies kept outside the forms module, are not recalled.",
 		"le.type":          "Type %s to confirm",

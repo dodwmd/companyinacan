@@ -460,6 +460,15 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			dumper.Loop(workCtx, cfg.DumpHour, cfg.DumpMinute, cfg.DumpStartDelay, cfg.DumpRequestFile)
 		}()
 	}
+	col, err := cfg.erasureCollector(db, log)
+	if err != nil {
+		stopWork()
+		return fmt.Errorf("erasure collection: %w", err)
+	}
+	if col != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); col.Loop(workCtx, erasureInterval(cfg)) }()
+	}
 	wg.Add(1)
 	go func() { defer wg.Done(); platformTimers(workCtx, eng, ntf, log) }()
 

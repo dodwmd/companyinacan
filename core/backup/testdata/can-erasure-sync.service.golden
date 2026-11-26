@@ -1,0 +1,16 @@
+[Unit]
+Description=Company in a Can erasure ledger sync
+Documentation=https://github.com/dodwmd/companyinacan/blob/main/docs/backup-restore.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/can-backup --ledger-only
+TimeoutStartSec=15min
+Nice=10
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/can /var/lib/can/dumps
+NoNewPrivileges=true
