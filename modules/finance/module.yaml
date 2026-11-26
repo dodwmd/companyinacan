@@ -82,6 +82,7 @@ provides:
   - { capability: invoices, schema: invoices.v1, service: finance, port: 8080 }
   - { capability: contracts, schema: contracts.v1, service: finance, port: 8080 }
   - { capability: timesheets, schema: timesheets.v1, service: finance, port: 8080 }
+  - { capability: summary, schema: summary.v1, service: finance, port: 8080 }   # aggregates for the business overview
 publishes:
   - { event: invoice.sent.v1, schema: ./events/invoice.sent.v1.json }
   - { event: invoice.paid.v1, schema: ./events/invoice.paid.v1.json }

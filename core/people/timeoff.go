@@ -1515,19 +1515,32 @@ type CalendarEntry struct {
 // "out" like any other, whatever the type, so a long leave looks like a holiday: this matches the
 // directory, which presents the leave status as active to colleagues.
 func (s *Service) LeaveCalendar(ctx context.Context, a Actor, from, to, teamID string) ([]CalendarEntry, error) {
+	out, audited, err := s.leaveCalendar(ctx, a, from, to, teamID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.auditReadMany(ctx, a, audited, []string{"type"}); err != nil {
+		return nil, errors.New("audit unavailable, read refused")
+	}
+	return out, nil
+}
+
+// leaveCalendar is LeaveCalendar's rules without the audit of the entries whose type it fills in:
+// the second result names them. A caller that passes the type on must write that audit first.
+func (s *Service) leaveCalendar(ctx context.Context, a Actor, from, to, teamID string) ([]CalendarEntry, []string, error) {
 	if !Decide(a, ActLeaveCalendar, Fact{}) {
-		return nil, ErrForbidden
+		return nil, nil, ErrForbidden
 	}
 	d1, err := dayNum(from)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	d2, err := dayNum(to)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if d2 < d1 || d2-d1 > 92 {
-		return nil, invalid("the range must be at most 92 days")
+		return nil, nil, invalid("the range must be at most 92 days")
 	}
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
@@ -1539,12 +1552,12 @@ func (s *Service) LeaveCalendar(ctx context.Context, a Actor, from, to, teamID s
 	case teamID == "all" && a.hrAdmin():
 	case teamID == "" || teamID == "all":
 		if !a.HasPerson {
-			return []CalendarEntry{}, nil
+			return []CalendarEntry{}, nil, nil
 		}
 		var mine sql.NullString
 		_ = s.db.QueryRowContext(ctx, `SELECT team_id FROM people WHERE id = ?`, a.PersonID).Scan(&mine)
 		if !mine.Valid {
-			return []CalendarEntry{}, nil
+			return []CalendarEntry{}, nil, nil
 		}
 		teamID = mine.String
 		fallthrough
@@ -1554,7 +1567,7 @@ func (s *Service) LeaveCalendar(ctx context.Context, a Actor, from, to, teamID s
 	}
 	rows, err := s.db.QueryContext(ctx, q+` ORDER BY r.start_slot, r.id LIMIT 500`, args...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	type cand struct {
 		e    CalendarEntry
@@ -1565,7 +1578,7 @@ func (s *Service) LeaveCalendar(ctx context.Context, a Actor, from, to, teamID s
 		var c cand
 		if err := rows.Scan(&c.e.RequestID, &c.e.PersonID, &c.e.Type, &c.e.Status, &c.e.StartDate, &c.e.EndDate, &c.e.StartPart, &c.e.EndPart, &c.team); err != nil {
 			_ = rows.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		cs = append(cs, c)
 	}
@@ -1604,10 +1617,7 @@ func (s *Service) LeaveCalendar(ctx context.Context, a Actor, from, to, teamID s
 		}
 		out = append(out, e)
 	}
-	if err := s.auditReadMany(ctx, a, audited, []string{"type"}); err != nil {
-		return nil, errors.New("audit unavailable, read refused")
-	}
-	return out, nil
+	return out, audited, nil
 }
 
 // ---- leave status ------------------------------------------------------------------------------------

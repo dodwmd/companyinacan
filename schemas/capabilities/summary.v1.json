@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/capabilities/summary.v1.json",
+  "title": "summary.v1",
+  "description": "Capability `summary` (specs/053-business-overview): a few aggregate figures a module computes for one person, shown on the admin UI's business overview. The caller presents a summary grant, a single-use token bound to this module and one person, which the module has introspected by can-core (kind `summary`); the module applies its own policy to the permissions it is told and leaves out every figure the person may not see. There is no free text anywhere in the answer: only keys of this list, counts and amounts by currency.",
+  "x-capability": "summary",
+  "x-verbs": [
+    {
+      "verb": "get",
+      "method": "GET",
+      "path": "/v1/summary",
+      "response": "Summary",
+      "description": "Bearer: a summary grant. 401 for every other credential (personal access and module tokens included), 503 when can-core cannot be asked. A person with no figure to see gets an empty list."
+    }
+  ],
+  "$defs": {
+    "Summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "figures"],
+      "properties": {
+        "version": { "const": 1 },
+        "figures": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/Figure" }
+        }
+      }
+    },
+    "Figure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "count"],
+      "properties": {
+        "key": {
+          "enum": [
+            "leads.new",
+            "invoices.overdue",
+            "invoices.outstanding",
+            "contracts.awaiting_signature",
+            "contracts.expiring",
+            "work.urgent_overdue",
+            "work.urgent_open",
+            "people.headcount",
+            "people.off_today",
+            "filings.overdue",
+            "filings.upcoming"
+          ]
+        },
+        "count": { "type": "integer", "minimum": 0, "maximum": 1000000000000 },
+        "amounts": {
+          "type": "array",
+          "maxItems": 40,
+          "items": { "$ref": "#/$defs/Amount" }
+        }
+      }
+    },
+    "Amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "minor"],
+      "properties": {
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "minor": { "type": "integer", "minimum": -9007199254740992, "maximum": 9007199254740992 }
+      }
+    }
+  }
+}

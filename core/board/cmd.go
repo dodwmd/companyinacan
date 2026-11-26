@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"github.com/dodwmd/companyinacan/core/obs"
 	obslog "github.com/dodwmd/companyinacan/core/obs/log"
 )
@@ -113,7 +114,17 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	api := &API{Svc: svc, Auth: auth, Log: log}
-	srv := &http.Server{Handler: obs.Instrument(api.Handler()), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
+	handler := api.Handler()
+	// Installed under can-core, the business overview asks for the filing counts (specs/053-business-overview).
+	can, err := modclient.FromEnv(getenv)
+	if err != nil {
+		fmt.Fprintf(stderr, "can-core: %v\n", err)
+		return 2
+	}
+	if can != nil {
+		handler = withSummary(handler, can, svc, log)
+	}
+	srv := &http.Server{Handler: obs.Instrument(handler), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { defer wg.Done(); background(ctx, svc, disp, log) }()

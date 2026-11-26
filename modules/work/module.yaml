@@ -44,6 +44,7 @@ resources:
 provides:
   - { capability: work, schema: work.v1, service: work, port: 8080 }
   - { capability: projects, schema: projects.v1, service: work, port: 8080 }
+  - { capability: summary, schema: summary.v1, service: work, port: 8080 }   # aggregates for the business overview
 publishes:
   - { event: work.issue.created.v1, schema: ./events/work.issue.created.v1.json }
   - { event: work.issue.updated.v1, schema: ./events/work.issue.updated.v1.json }
