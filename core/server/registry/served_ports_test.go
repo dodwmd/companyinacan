@@ -16,6 +16,7 @@ func TestFromManifestDefaultPortSkipsPlannedProvision(t *testing.T) {
 			Port    int    `yaml:"port"`
 			Webhook string `yaml:"webhook"`
 			Status  string `yaml:"status"`
+			Via     string `yaml:"via" json:",omitempty"`
 		}{Event: "lead.created.v1", Webhook: "/hooks/lead"})
 	}
 	m := manifest("m", "a", "b") // ports 8080 (a), 8081 (b)

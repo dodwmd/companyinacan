@@ -28,15 +28,17 @@ var (
 
 // Lead is one captured submission (capability leads.v1). Its content is untrusted.
 type Lead struct {
-	ID        string         `json:"id"`
-	FormID    string         `json:"form_id"`
-	Status    string         `json:"status"`
-	Email     string         `json:"email"`
-	Name      string         `json:"name"`
-	Fields    map[string]any `json:"fields"`
-	Note      string         `json:"note"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	ID     string         `json:"id"`
+	FormID string         `json:"form_id"`
+	Status string         `json:"status"`
+	Email  string         `json:"email"`
+	Name   string         `json:"name"`
+	Fields map[string]any `json:"fields"`
+	Note   string         `json:"note"`
+	// Consents are the consent checkboxes that were ticked, by field name.
+	Consents  []string  `json:"consents"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	// Notification is "retrying" or "failed" when the lead's notification email has not got through.
 	Notification string `json:"notification_status"`
 }

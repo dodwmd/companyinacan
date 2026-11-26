@@ -97,6 +97,9 @@ func grants(m *config.Module) map[string]bool {
 	for _, s := range m.Subscribes {
 		if config.ProvidesServed(s.Status) {
 			add("receives event", s.Event)
+			if s.Via == config.ViaCanCore && s.Event == "lead.created.v1" {
+				add("is sent the names, addresses and messages of website leads by can-core")
+			}
 		}
 	}
 	for _, p := range m.Provides {
