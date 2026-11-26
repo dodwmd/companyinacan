@@ -1,0 +1,81 @@
+name: modules-k3d
+
+# Every in-house module installs through can-core on a throw-away k3d cluster and becomes Ready,
+# and can-core reads their erasure feeds (specs/048-erasure-collection). Not a required check.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "modules/**"
+      - "core/**"
+      - "cmd/**"
+      - "deploy/**"
+      - "test/integration/modules_k3d_test.go"
+      - ".github/workflows/modules-k3d.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: every in-house module on k3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Build the images and import them into the cluster
+        # Base images are plain tags here: the release Dockerfiles pin digests (placeholders until a
+        # release). The image names and tags are the ones the module charts name.
+        run: |
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:dev .
+          docker pull -q golang:1.27 >/dev/null
+          docker pull -q gcr.io/distroless/static-debian12:nonroot >/dev/null
+          GO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' golang:1.27 | cut -d@ -f2)
+          DL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot | cut -d@ -f2)
+          images=can-core:dev
+          for m in board equity files finance forms jobs people provisioning work; do
+            name=can-$m
+            if [ "$m" = provisioning ]; then name=can-provision; fi
+            docker build -f "deploy/$m/Dockerfile" \
+              --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
+              --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
+              --build-arg VERSION=ci \
+              -t "ghcr.io/dodwmd/$name:0.1.0" .
+            images="$images ghcr.io/dodwmd/$name:0.1.0"
+          done
+          # shellcheck disable=SC2086
+          k3d image import $images -c companyinacan-dev
+      - name: Deploy can-core
+        run: |
+          kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
+          kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
+      - name: Install every in-house module through can-core
+        env:
+          CAN_IT_CANCORE: "1"
+          CAN_IT_MODULES: "1"
+        run: go test -tags integration -count=1 -v -timeout 25m -run '^TestEveryInHouseModuleOnK3d$' ./test/integration/
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,pvc -A -o wide || true
+          kubectl --context k3d-companyinacan-dev -n can-system logs deploy/can-core --tail=200 || true
+          kubectl --context k3d-companyinacan-dev get events -A --sort-by=.lastTimestamp | tail -60 || true
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down

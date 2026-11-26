@@ -148,9 +148,16 @@ flock -w 600 8 || fail 12 "another run holds the erasure ledger lock"
 # making a new one would hide that.
 COLLECTED="$DUMPS/{{.CollectedDir}}"
 if [ -e "$COLLECTED" ] && [ ! -L "$LEDGER" ] && { [ -e "$LEDGER" ] || [ ! -s "$HOSTSTATE/{{.LedgerCopy}}" ]; }; then
-  if ! {{q .CanBin}} backup ledger-import --from "$COLLECTED" --ledger "$LEDGER"; then
+  if [ -x {{q .CanBin}} ]; then
+    if ! {{q .CanBin}} backup ledger-import --from "$COLLECTED" --ledger "$LEDGER"; then
+      ledger_rc=22
+      report 22 "erasures collected by can-core are missing from the ledger (journalctl -t can-backup and the unit's journal say why)"
+    fi
+  elif [ -s "$COLLECTED/{{.CollectedLedger}}" ]; then
     ledger_rc=22
-    report 22 "erasures collected by can-core are missing from the ledger (journalctl -t can-backup and the unit's journal say why)"
+    report 22 "there are erasures to record but {{.CanBin}} is not installed: they do NOT reach the bucket, and a restore would bring the erased data back"
+  else
+    log "{{.CanBin}} is not installed: erasures will not reach the bucket"
   fi
 fi
 
@@ -267,7 +274,8 @@ type scriptData struct {
 	MaxAge                                 int
 	Webhook, EnvPath, PasswordPath, Marker string
 	Manifest, LedgerCopy, MarkerCopy       string
-	CollectedDir, LedgerOnlyArg            string
+	CollectedDir, CollectedLedger          string
+	LedgerOnlyArg                          string
 	Excludes, Sources, SQLite              []string
 	DumpedList, AlertsName                 string
 }
@@ -277,7 +285,7 @@ func GenerateScript(p *Plan, s Settings) string {
 	d := scriptData{
 		Settings: s, MaxAge: int(s.MaxMarkerAge.Seconds()),
 		Webhook: s.ConfigDir + "/" + WebhookFileName, EnvPath: s.ConfigDir + "/" + EnvFileName, PasswordPath: s.ConfigDir + "/" + PasswordFileName,
-		Marker: MarkerName, Manifest: ManifestName, LedgerCopy: LedgerCopy, MarkerCopy: MarkerCopy, CollectedDir: CollectedDir, LedgerOnlyArg: LedgerOnlyArg,
+		Marker: MarkerName, Manifest: ManifestName, LedgerCopy: LedgerCopy, MarkerCopy: MarkerCopy, CollectedDir: CollectedDir, CollectedLedger: CollectedLedger, LedgerOnlyArg: LedgerOnlyArg,
 		Excludes: p.Excludes, Sources: p.Sources, SQLite: sqliteExcludes, DumpedList: DumpedList, AlertsName: AlertsName,
 	}
 	var b bytes.Buffer

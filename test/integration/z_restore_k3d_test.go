@@ -372,14 +372,28 @@ func TestRestoreOnK3d(t *testing.T) {
 		}
 	}
 
-	// --- AFTER the backup, one person is erased; the tombstone goes to the bucket ledger -------
+	// --- AFTER the backup, one person is erased. Nobody records it: can-core collects the
+	// tombstones from the module, and the installed script's ledger run takes them to the bucket ---
 	api := portForward(t, "mod-people", "people-api", 8081)
 	if st, body := rcall(t, "POST", api+"/v1/people/"+s.goneID+"/erasure", s.peopleToken, nil); st != 200 {
 		t.Fatalf("erasure: %d %s", st, body)
 	}
 	ledger := backup.DefaultSettings().LedgerSource
-	for _, class := range people.Classes {
-		mustSudo(t, can, "backup", "ledger-add", "--ledger", ledger, "--subject", s.goneID, "--class", class)
+	collected := backup.DefaultSettings().DumpsDir + "/" + backup.CollectedDir
+	eventually(t, 4*time.Minute, "can-core to collect the erasure", func() (bool, string) {
+		out := onNode(t, "cat "+collected+"/"+backup.CollectedLedger+" 2>/dev/null || true")
+		for _, class := range people.Classes {
+			if !strings.Contains(out, `"subject":"`+s.goneID+`","class":"`+class+`"`) {
+				return false, out
+			}
+		}
+		return true, out
+	})
+	// the runner stands in for the host: take over what can-core wrote and run what the timer runs
+	mustSudo(t, "bash", "-o", "pipefail", "-c", fmt.Sprintf("docker exec %s tar -C / -cf - %s | tar -C / -xpf -", nodeName(), strings.TrimPrefix(collected, "/")))
+	t.Log(mustSudo(t, backup.DefaultSettings().ScriptPath, backup.LedgerOnlyArg))
+	if got := mustSudo(t, "cat", ledger); !strings.Contains(got, s.goneID) {
+		t.Fatalf("the erasure is not in the host ledger: %q", got)
 	}
 	// A class nothing can replay: the restore must refuse to go live until it is acknowledged.
 	mustSudo(t, can, "backup", "ledger-add", "--ledger", ledger, "--subject", "lead_000", "--class", "lead-submission")

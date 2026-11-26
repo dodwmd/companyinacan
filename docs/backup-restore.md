@@ -281,6 +281,10 @@ script does this nightly and `can-erasure-sync.timer` every quarter of an hour (
 is `(subject id, data class, date)`; subject ids must be opaque, and one that is not (an e-mail address, say) is
 refused, counted and reported with exit 22, never written or logged.
 
+**The import and upload need the `can` binary at `/usr/local/bin/can` on the server, which `can up` does not copy
+there.** Without it can-core still collects, but nothing reaches the bucket; once there is an erasure to record, every
+run fails with exit 22.
+
 **Servers set up by an earlier release** need `can up` (or `can backup install`) once, for the new script and timer.
 
 **What is not covered:**
