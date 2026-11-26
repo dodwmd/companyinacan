@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Saved filters - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/">Projects</a></li>
+<li><a href="/ui/team/workload">Team</a></li>
+<li><a href="/ui/filters" aria-current="page">Saved filters</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (boss@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<h1>Saved filters</h1>
+<p>A saved filter is a search with a name. Running it shows what you are allowed to see; in a shared filter, &#34;me&#34; means whoever runs it.</p>
+<p class="empty">No saved filters yet. Save one here, or from a project&#39;s filter.</p>
+<section aria-labelledby="new-filter">
+<h2 id="new-filter">New saved filter</h2>
+<form method="post" action="/ui/filters" class="create">
+<input type="hidden" name="csrf" value="CSRF">
+<div><label for="sf-name">Name</label>
+<input id="sf-name" name="name" type="text" required maxlength="80"></div>
+<div><label for="sf-project">Project</label>
+<select id="sf-project" name="project"><option value="">Every project</option><option value="WEB">WEB Website</option></select></div>
+<div><label for="sf-sort">Sort by</label>
+<select id="sf-sort" name="sort"><option value="rank">Backlog order</option><option value="-priority">Priority, lowest first</option><option value="priority" selected>Priority, highest first</option><option value="due">Due date</option><option value="-created">Newest first</option><option value="created">Oldest first</option><option value="-updated">Recently updated</option><option value="updated">Least recently updated</option></select></div>
+<div class="wide"><label for="sf-query">Search</label>
+<input id="sf-query" name="query" type="text" maxlength="500" aria-describedby="sf-query-hint">
+<p id="sf-query-hint" class="hint">For example: assignee:me priority:P0,P1 is:open. Empty matches every issue.</p></div>
+<div class="wide"><label for="sf-shared" class="check"><input id="sf-shared" name="shared" type="checkbox" value="1"> Share with everyone who can see these issues</label></div>
+<div class="actions"><button type="submit">Save filter</button></div>
+</form>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

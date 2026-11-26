@@ -55,9 +55,10 @@ Fixed with the change that added it:
 
 Not fixed, each needs more than a local change:
 
-- The `work` web UI cannot create a project. A new company needs an API call with a token, and the API is only
-  reachable with `expose.api` or a port-forward.
 - There is no k3d (or `local`) provider for `can up`, so only a server over ssh can walk the whole journey.
+
+Since then: the `work` web UI creates projects (`specs/065-work-manager`), and the journey makes its first
+project there instead of with an API call. The figures above are from before that change.
 
 ## Running it
 

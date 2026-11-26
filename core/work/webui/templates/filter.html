@@ -1,0 +1,15 @@
+{{define "content"}}<h1>{{.D.Filter.Name}}</h1>
+<p>{{if .D.Filter.Project}}{{.D.Filter.Project}}{{else}}{{t "filters.every_project"}}{{end}}: {{if .D.Filter.Query}}<code>{{.D.Filter.Query}}</code>{{else}}{{t "filters.everything"}}{{end}}</p>
+<div class="sprint-actions">
+<a href="/ui/filters">{{t "filters.all"}}</a>
+{{if .D.OpenIn}}<a href="{{.D.OpenIn}}">{{t "filters.open_in" .D.Filter.Project}}</a>
+{{end}}{{if .D.CanDelete}}<form method="post" action="/ui/filters/{{.D.Filter.ID}}/delete"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="quiet">{{t "filters.delete"}}</button></form>
+{{end}}</div>
+{{if .D.Issues}}{{template "issuetable" (dict "Caption" (t "backlog.caption") "Issues" .D.Issues "Sprints" .D.Sprints)}}
+<nav class="pager" aria-label="{{t "nav.pages"}}">
+{{if .D.Prev}}<a rel="prev" href="{{.D.Prev}}">{{t "pager.prev"}}</a>{{end}}
+<span>{{t "pager.page" .D.Page}}</span>
+{{if .D.Next}}<a rel="next" href="{{.D.Next}}">{{t "pager.next"}}</a>{{end}}
+</nav>
+{{else}}<p class="empty">{{t "filters.no_match"}}</p>
+{{end}}{{end}}

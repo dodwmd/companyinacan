@@ -175,6 +175,12 @@ form.inline input, form.inline select { width: auto; min-width: 8rem; }
 form.filters, form.create { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.25rem 1rem; align-items: end; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem 1rem 1rem; }
 form.create .wide, form.filters .wide { grid-column: 1 / -1; }
 form.filters input, form.filters select, form.create input, form.create select { max-width: none; }
+label.check { display: flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; font-weight: 400; margin: 0; }
+label.check input[type="checkbox"] { width: 1.5rem; height: 1.5rem; margin: 0; flex: none; }
+section.empty h2 { margin-top: 0.25rem; }
+a.button { text-decoration: none; }
+tbody th { font-weight: 600; overflow-wrap: anywhere; }
+td ul.plain { margin: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
 
 button, .button {
@@ -214,7 +220,8 @@ td button { min-height: 2.25rem; padding: 0.25rem 0.75rem; }
   h1 { font-size: 1.4rem; }
   dl { grid-template-columns: 1fr; }
   table.issues thead, table.epics thead, table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  table, tbody, tr, td { display: block; width: 100%; }
+  table, caption, tbody, tr, td, tbody th { display: block; width: 100%; }
+  tbody th { border: 0; padding: 0.25rem 0.75rem; }
   tr { border-bottom: 2px solid var(--border); padding: 0.25rem 0; }
   td { border: 0; padding: 0.25rem 0.75rem; }
   td::before { content: attr(data-label) ": "; color: var(--muted); font-size: 0.8125rem; }

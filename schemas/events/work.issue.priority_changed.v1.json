@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/work.issue.priority_changed.v1.json",
+  "title": "work.issue.priority_changed.v1",
+  "description": "Published when the priority of an existing issue changes (SPEC.md section 5, issue.priority_changed), in addition to work.issue.updated.v1. Creating an issue does not raise it. Carries identifiers and priorities only, no title or text. Delivered at least once; consumers de-duplicate on `id` and order on `data.version`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "work.issue.priority_changed.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "work"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_key",
+        "project",
+        "from",
+        "to",
+        "version",
+        "actor",
+        "assignee",
+        "changed_at"
+      ],
+      "properties": {
+        "issue_key": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$"
+        },
+        "project": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$"
+        },
+        "from": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2",
+            "P3"
+          ]
+        },
+        "to": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2",
+            "P3"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "The issue version after this change (the ETag)."
+        },
+        "actor": {
+          "type": "string",
+          "maxLength": 254
+        },
+        "assignee": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 254
+        },
+        "changed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

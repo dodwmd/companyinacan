@@ -33,6 +33,11 @@ var WorkIssueUpdatedV1 []byte
 //go:embed work.issue.transitioned.v1.json
 var WorkIssueTransitionedV1 []byte
 
+// WorkIssuePriorityChangedV1 is the JSON Schema of the work.issue.priority_changed.v1 event.
+//
+//go:embed work.issue.priority_changed.v1.json
+var WorkIssuePriorityChangedV1 []byte
+
 // WorkCommentCreatedV1 is the JSON Schema of the work.comment.created.v1 event.
 //
 //go:embed work.comment.created.v1.json

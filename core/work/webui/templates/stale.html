@@ -1,0 +1,27 @@
+{{define "content"}}<h1>{{t "stale.title"}}</h1>
+<p>{{t "stale.intro" .D.S.Days}}</p>
+<form method="get" action="/ui/team/stale" class="inline">
+{{template "projectselect" .D}}
+<label for="st-days">{{t "stale.days"}}</label>
+<input id="st-days" name="days" type="number" min="1" max="365" value="{{.D.S.Days}}" inputmode="numeric">
+<button type="submit">{{t "filter.apply"}}</button>
+</form>
+{{if .D.S.Items}}<div class="scroll">
+<table class="issues">
+<caption>{{t "stale.caption"}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.priority"}}</th><th scope="col">{{t "col.title"}}</th><th scope="col">{{t "col.status"}}</th><th scope="col">{{t "col.assignee"}}</th><th scope="col">{{t "stale.quiet_for"}}</th></tr></thead>
+<tbody>
+{{range .D.S.Items}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/issues/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.priority"}}">{{template "prio" .Priority}}</td>
+<td data-label="{{t "col.title"}}" class="title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></td>
+<td data-label="{{t "col.status"}}">{{template "reportstatus" .}}</td>
+<td data-label="{{t "col.assignee"}}">{{if .Assignee}}{{.Assignee}}{{else}}<span class="muted">{{t "issue.unassigned"}}</span>{{end}}</td>
+<td data-label="{{t "stale.quiet_for"}}">{{t "age.days" .QuietDays}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .D.S.Truncated}}<p class="hint">{{t "report.truncated"}}</p>
+{{end}}{{else}}<p class="empty">{{t "stale.empty"}}</p>
+{{end}}{{end}}

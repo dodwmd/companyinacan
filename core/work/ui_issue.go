@@ -48,6 +48,7 @@ type uiIssueView struct {
 	LinkTypes    []string
 	ClosedEdit   bool
 	Attachments  []uiAttachment
+	Members      []Member // assignee suggestions
 }
 
 type uiAttachment struct {
@@ -119,6 +120,10 @@ func (u *webUI) issuePage(c *uiCtx) {
 		if d.SprintID != nil && *d.SprintID == sp.ID {
 			v.SprintName = sp.Name
 		}
+	}
+	if v.Members, err = s.ListMembers(ctx, c.p, d.Project); err != nil {
+		c.fail(err, "/ui/")
+		return
 	}
 	if d.Parent != nil {
 		if pd, err := s.GetIssue(ctx, c.p, *d.Parent); err == nil {

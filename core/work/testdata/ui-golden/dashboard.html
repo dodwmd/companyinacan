@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b5cad">
-<title>Team dashboard - Work tracker</title>
+<title>Urgent work by person - Work tracker</title>
 <link rel="manifest" href="/ui/manifest.webmanifest">
 <link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/ui/static/work.css">
@@ -17,7 +17,8 @@
 <nav aria-label="Main">
 <ul>
 <li><a href="/ui/">Projects</a></li>
-<li><a href="/ui/dashboard" aria-current="page">Team dashboard</a></li>
+<li><a href="/ui/team/workload" aria-current="page">Team</a></li>
+<li><a href="/ui/filters">Saved filters</a></li>
 </ul>
 </nav>
 <form class="logout" method="post" action="/ui/logout">
@@ -26,7 +27,15 @@
 </form>
 </header>
 <main id="main" tabindex="-1">
-<h1>Team dashboard</h1>
+<nav class="subnav" aria-label="Team">
+<ul>
+<li><a href="/ui/team/workload">Workload</a></li>
+<li><a href="/ui/team/ageing">P0 and P1 ageing</a></li>
+<li><a href="/ui/team/stale">Stale work</a></li>
+<li><a href="/ui/dashboard" aria-current="page">Urgent by person</a></li>
+</ul>
+</nav>
+<h1>Urgent work by person</h1>
 <p>Open P0 and P1 issues across your team, in every project you can see.</p>
 <form method="get" action="/ui/dashboard" class="stack narrow">
 <label for="d-people">People</label>

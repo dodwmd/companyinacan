@@ -1,0 +1,29 @@
+{{define "content"}}<h1>{{t "workload.title"}}</h1>
+<p>{{t "workload.intro"}}</p>
+<form method="get" action="/ui/team/workload" class="inline">
+{{template "projectselect" .D}}
+<button type="submit">{{t "filter.apply"}}</button>
+</form>
+{{if .D.W.Rows}}<div class="scroll">
+<table class="workload">
+<caption>{{t "workload.caption"}}</caption>
+<thead><tr><th scope="col">{{t "workload.person"}}</th><th scope="col">{{t "workload.open"}}</th><th scope="col">P0</th><th scope="col">P1</th><th scope="col">P2</th><th scope="col">P3</th><th scope="col">{{t "workload.wip"}}</th><th scope="col">{{t "workload.blocked"}}</th><th scope="col">{{t "workload.overdue"}}</th><th scope="col">{{t "workload.current"}}</th></tr></thead>
+<tbody>
+{{range .D.W.Rows}}<tr>
+<th scope="row" data-label="{{t "workload.person"}}">{{if .Person}}{{.Person}}{{else}}<span class="muted">{{t "issue.unassigned"}}</span>{{end}}</th>
+<td data-label="{{t "workload.open"}}">{{.Open}}</td>
+<td data-label="P0">{{if .P0}}<span class="prio prio-P0">{{.P0}}</span>{{else}}0{{end}}</td>
+<td data-label="P1">{{if .P1}}<span class="prio prio-P1">{{.P1}}</span>{{else}}0{{end}}</td>
+<td data-label="P2">{{.P2}}</td>
+<td data-label="P3">{{.P3}}</td>
+<td data-label="{{t "workload.wip"}}">{{.InProgress}}</td>
+<td data-label="{{t "workload.blocked"}}">{{if .Blocked}}<span class="overdue">{{.Blocked}}</span>{{else}}0{{end}}</td>
+<td data-label="{{t "workload.overdue"}}">{{if .Overdue}}<span class="overdue">{{.Overdue}}</span>{{else}}0{{end}}</td>
+<td data-label="{{t "workload.current"}}" class="title">{{if .Current}}<ul class="plain">{{range .Current}}<li><a href="/ui/issues/{{.Key}}">{{.Key}}</a> {{template "prio" .Priority}} {{.Title}}</li>{{end}}</ul>{{if gt .InProgress (len .Current)}}<p class="hint">{{t "workload.more"}}</p>{{end}}{{else}}<span class="muted">{{t "workload.nothing"}}</span>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .D.W.Truncated}}<p class="hint">{{t "workload.truncated"}}</p>
+{{end}}{{else}}<p class="empty">{{t "workload.empty"}}</p>
+{{end}}{{end}}

@@ -32,11 +32,12 @@ import (
 )
 
 var workEvents = map[string][]byte{
-	"work.issue.created.v1":      events.WorkIssueCreatedV1,
-	"work.issue.updated.v1":      events.WorkIssueUpdatedV1,
-	"work.issue.transitioned.v1": events.WorkIssueTransitionedV1,
-	"work.comment.created.v1":    events.WorkCommentCreatedV1,
-	"work.issue.p0.v1":           events.WorkIssueP0V1,
+	"work.issue.created.v1":          events.WorkIssueCreatedV1,
+	"work.issue.updated.v1":          events.WorkIssueUpdatedV1,
+	"work.issue.transitioned.v1":     events.WorkIssueTransitionedV1,
+	"work.comment.created.v1":        events.WorkCommentCreatedV1,
+	"work.issue.p0.v1":               events.WorkIssueP0V1,
+	"work.issue.priority_changed.v1": events.WorkIssuePriorityChangedV1,
 }
 
 func TestWorkManifest(t *testing.T) {
