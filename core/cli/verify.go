@@ -71,7 +71,7 @@ func newVerifyCmd(g *globalOpts) *cobra.Command {
 	fl.BoolVar(&f.smtp, "probe-smtp", false, "also open a TLS session from the server to email.relay (no sign-in, no mail)")
 	fl.BoolVar(&f.sso, "probe-sso", false, "also fetch sso.issuer's discovery document from the server (no sign-in)")
 	fl.StringVar(&f.companyDir, "company-dir", ".", "directory holding company.yaml and .can/")
-	fl.StringVar(&f.modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
+	fl.StringVar(&f.modulesDir, "modules-dir", "", "modules directory (default: ./modules, else the manifests built into can)")
 	fl.StringVar(&f.out, "out", "", "also write the JSON report here (an existing file is never overwritten)")
 	return cmd
 }

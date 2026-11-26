@@ -128,6 +128,7 @@ make docs-check                # offline check of every relative Markdown link
 make build                     # builds bin/can, bin/can-static, bin/can-core
 bin/can init my-company --name "My Co" --domain myco.example --non-interactive
 bin/can validate my-company --modules-dir modules
+make up ARGS="./my-company --plan"   # a real server: see docs/getting-started.md; images: docs/make-up.md
 ```
 
 The project is developed spec-first with [GitHub Spec Kit](https://github.com/github/spec-kit).

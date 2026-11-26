@@ -2,8 +2,6 @@ package validate
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -13,17 +11,6 @@ import (
 	"github.com/dodwmd/companyinacan/core/routing"
 	"github.com/dodwmd/companyinacan/core/schema"
 )
-
-// ManifestPath resolves a module id to its manifest in modulesDir (id or _id directory).
-func ManifestPath(modulesDir, id string) (string, bool) {
-	for _, d := range []string{id, "_" + id} {
-		p := filepath.Join(modulesDir, d, "module.yaml")
-		if _, err := os.Stat(p); err == nil {
-			return p, true
-		}
-	}
-	return "", false
-}
 
 // CompanyFile validates company.yaml and the manifests of its enabled modules,
 // including cross-module rules. All problems are returned together.
@@ -97,11 +84,15 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		}
 		mp, ok := ManifestPath(modulesDir, id)
 		if !ok {
-			add("semantic.module-manifest-missing", "/modules/"+id, fmt.Sprintf("no manifest for module %q under %s", id, modulesDir))
+			msg := fmt.Sprintf("no manifest for module %q under %s", id, modulesDir)
+			if modulesDir == BuiltinModules {
+				msg = fmt.Sprintf("no manifest for module %q: this can ships no module of that name, and no modules directory was found (--modules-dir)", id)
+			}
+			add("semantic.module-manifest-missing", "/modules/"+id, msg)
 			continue
 		}
 		ps = append(ps, ModuleFile(mp)...)
-		if md, ps2 := config.Load(mp); md != nil && len(ps2) == 0 {
+		if md, ps2 := LoadManifest(mp); md != nil && len(ps2) == 0 {
 			if m, err := config.DecodeModule(md); err == nil {
 				manifests[id] = m
 				if m.Status == "not-deployable" {

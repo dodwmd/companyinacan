@@ -178,13 +178,31 @@ func (t *target) stackPreflight(f *stackFlags) (*stackPrep, error) {
 	return p, nil
 }
 
+// warnContact prints what the site phase would say about site.contact.
+func (t *target) warnContact(w io.Writer, f *stackFlags) {
+	forms, err := config.FormsOfModules(resolveModulesDir(f.modulesDir, t.dir))
+	if err != nil {
+		fmt.Fprintln(w, "warning:", err)
+		return
+	}
+	absent := config.AbsentAdded
+	if f.noDefaultBundle {
+		absent = config.AbsentOff
+	}
+	for _, is := range config.CheckContact(t.company, forms, absent).Issues {
+		if is.Warning {
+			fmt.Fprintln(w, "warning:", is.Message)
+		}
+	}
+}
+
 // loadModule reads the manifest of module id from the modules directory md.
 func loadModule(md, id string) (*config.Module, error) {
 	mp, ok := validate.ManifestPath(md, id)
 	if !ok {
 		return nil, fmt.Errorf("module %q has no manifest in %s", id, md)
 	}
-	doc, ps := config.Load(mp)
+	doc, ps := validate.LoadManifest(mp)
 	if problem.HasErrors(ps) {
 		return nil, errors.New(ps[0].String())
 	}

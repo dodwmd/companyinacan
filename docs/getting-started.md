@@ -69,8 +69,8 @@ exit codes and what has been verified (and not: ACME, `externalTrafficPolicy: Lo
 ```sh
 bin/can init my-company --name "My Co" --domain myco.example --non-interactive   # writes company.yaml
 # edit company.yaml: provider (ssh, hetzner or digitalocean), dns, modules
-make up ARGS=--plan     # show what would happen, change nothing
-make up                 # provision, bootstrap k3s, print the address and DNS records
+make up ARGS="./my-company --plan"   # show what would happen, change nothing
+make up ARGS=./my-company            # provision, bootstrap k3s, print the address and DNS records
 ```
 
 Read these caveats first; they are the honest state of this path:

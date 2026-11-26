@@ -186,7 +186,7 @@ func LoadDesiredBytes(name string, data []byte, modulesDir string) (Desired, []p
 		if !ok {
 			continue // reported by validate; unreachable after the error check
 		}
-		md, mps := config.Load(path)
+		md, mps := validate.LoadManifest(path)
 		if md == nil {
 			return Desired{}, mps
 		}

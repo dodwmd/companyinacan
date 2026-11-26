@@ -23,6 +23,8 @@ const DefaultContactForm = "contact"
 type HostedForm struct {
 	ID      string `yaml:"id"`
 	Captcha bool   `yaml:"captcha"` // a CAPTCHA form has no hosted page
+	// NotifyEmail is the form's notify_email in the chart, or the chart's default for all forms.
+	NotifyEmail []string `yaml:"notify_email"`
 }
 
 // ShippedForms are the forms of the forms module as shipped (a contract test keeps the two in step).
@@ -41,13 +43,20 @@ func FormsOfModules(modulesDir string) ([]HostedForm, error) {
 	}
 	var v struct {
 		Config struct {
-			Forms []HostedForm `yaml:"forms"`
+			NotifyEmail []string     `yaml:"notify_email"`
+			Forms       []HostedForm `yaml:"forms"`
 		} `yaml:"config"`
 	}
 	if err := yaml.Unmarshal(b, &v); err != nil {
 		return nil, fmt.Errorf("%s: %w", p, err)
 	}
-	return append([]HostedForm{}, v.Config.Forms...), nil
+	forms := append([]HostedForm{}, v.Config.Forms...)
+	for i := range forms {
+		if len(forms[i].NotifyEmail) == 0 {
+			forms[i].NotifyEmail = v.Config.NotifyEmail
+		}
+	}
+	return forms, nil
 }
 
 // AbsentForms says what it means that company.yaml does not mention the forms module.
@@ -82,9 +91,10 @@ func CheckContact(c *Company, forms []HostedForm, absent AbsentForms) ContactChe
 		return ContactCheck{}
 	}
 	res := ContactCheck{Show: true}
-	warn := func(msg string) {
-		res.Issues = append(res.Issues, ContactIssue{Path: "/site/contact", Rule: "semantic.contact-forms-off", Warning: true, Message: msg})
+	add := func(rule, msg string) {
+		res.Issues = append(res.Issues, ContactIssue{Path: "/site/contact", Rule: rule, Warning: true, Message: msg})
 	}
+	warn := func(msg string) { add("semantic.contact-forms-off", msg) }
 	leaveOut := func(why string) {
 		res.Show = false
 		warn("site.contact is left out of the site: " + why)
@@ -117,6 +127,16 @@ func CheckContact(c *Company, forms []HostedForm, absent AbsentForms) ContactChe
 		bad(fmt.Sprintf("site.contact.form: the forms module has no form %q (it has: %s)", id, strings.Join(ids, ", ")))
 	case forms[i].Captcha:
 		bad(fmt.Sprintf("site.contact.form: form %q has a CAPTCHA, so the forms module serves no page for it", id))
+	case len(forms[i].NotifyEmail) == 0 && !hasNotifySetting(entry):
+		add("semantic.contact-no-notify", fmt.Sprintf("site.contact: nobody is emailed about new messages (form %q has no notify_email). "+
+			"The forms module keeps them: read them with its leads API, GET /v1/leads (docs/site-contact.md, Reading the messages). "+
+			"To be emailed, set modules.forms.settings.notify_email and email.relay", id))
 	}
 	return res
+}
+
+// hasNotifySetting reports whether modules.forms.settings.notify_email names anyone.
+func hasNotifySetting(forms ModuleEntry) bool {
+	list, _ := forms.Settings["notify_email"].([]any)
+	return len(list) > 0
 }

@@ -260,7 +260,7 @@ func TestBuildSiteArchiveContactSection(t *testing.T) {
 		t.Fatal(err)
 	}
 	added, err := BuildSiteArchive(dir, site.Options{AbsentForms: config.AbsentAdded}, MaxSiteArchive)
-	if err != nil || len(added.Warnings) != 0 {
+	if err != nil || len(added.Warnings) != 1 { // nobody to email
 		t.Fatalf("with the default bundle: %v %v", err, added.Warnings)
 	}
 	off, err := BuildSiteArchive(dir, site.Options{AbsentForms: config.AbsentOff}, MaxSiteArchive)

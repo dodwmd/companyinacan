@@ -19,6 +19,10 @@ link to one unless the operator wrote a call to action pointing at the hosted pa
 5. The hosted page redirects a trailing slash, leads back to the site, and a CR LF counts as one
    character against `max_length`. Forms module 0.3.0.
 
+6. A company made by `can init` works where there is no modules directory (a release archive,
+   `go install`): `can` carries the module manifests and uses them when it finds none.
+7. `validate` and `up` warn when the section is shown and nobody is emailed about messages.
+
 ## Decision: a link to the hosted page
 
 | Option | Why not |

@@ -30,17 +30,21 @@ func TestValidateChecksTheContactForm(t *testing.T) {
 	check := func(body string) []problem.Problem {
 		return validate.CompanyBytes("company.yaml", []byte(head+body), filepath.Join("..", "..", "modules"))
 	}
-	if ps := check("modules: {forms: {}}\nsite: {contact: {}}\n"); len(ps) != 0 {
-		t.Fatalf("a stock contact section: %v", ps)
+	const emailed = "modules: {forms: {settings: {notify_email: [hello@a.example]}}}\n"
+	if ps := check(emailed + "site: {contact: {}}\n"); len(ps) != 0 {
+		t.Fatalf("a contact section with a recipient: %v", ps)
+	}
+	if ps := check("modules: {forms: {}}\nsite: {contact: {}}\n"); problem.HasErrors(ps) || len(ps) != 1 || ps[0].Rule != "semantic.contact-no-notify" {
+		t.Fatalf("without a recipient: %v", ps)
 	}
 	ps := check("modules: {forms: {}}\nsite: {contact: {form: nope}}\n")
 	if !problem.HasErrors(ps) || ps[0].Path != "/site/contact/form" || !strings.Contains(ps[0].Message, `no form "nope"`) {
 		t.Fatalf("unknown form: %v", ps)
 	}
-	for _, body := range []string{"site: {contact: {}}\n", "modules: {forms: {enabled: false}}\nsite: {contact: {}}\n"} {
+	for body, n := range map[string]int{"site: {contact: {}}\n": 2, "modules: {forms: {enabled: false}}\nsite: {contact: {}}\n": 1} {
 		ps = check(body)
-		if problem.HasErrors(ps) || len(ps) != 1 || ps[0].Severity != problem.Warning || !strings.Contains(ps[0].Message, "forms") {
-			t.Errorf("%q: want one warning, got %v", body, ps)
+		if problem.HasErrors(ps) || len(ps) != n || ps[0].Severity != problem.Warning || !strings.Contains(ps[0].Message, "forms") {
+			t.Errorf("%q: want %d warnings, got %v", body, n, ps)
 		}
 	}
 	if ps := check("modules: {forms: {}}\nsite: {contact: {href: /x}}\n"); !problem.HasErrors(ps) {

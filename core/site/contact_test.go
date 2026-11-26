@@ -16,8 +16,12 @@ func contactCompany(forms *config.ModuleEntry) *config.Company {
 	return c
 }
 
+func notified() *config.ModuleEntry {
+	return &config.ModuleEntry{Settings: map[string]any{"notify_email": []any{"hello@acme.example"}}}
+}
+
 func TestContactSectionLinksToTheHostedForm(t *testing.T) {
-	c := contactCompany(&config.ModuleEntry{})
+	c := contactCompany(notified())
 	out, err := Render(c, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -74,10 +78,11 @@ func TestContactSectionWithoutForms(t *testing.T) {
 		shown  bool
 		warns  bool
 	}{
-		"disabled":          {forms: &config.ModuleEntry{Enabled: &off}, warns: true},
-		"not public":        {forms: &config.ModuleEntry{Expose: &config.Expose{Public: &no}}, warns: true},
-		"not listed":        {shown: true, warns: true},
-		"added by can up":   {absent: config.AbsentAdded, shown: true},
+		"disabled":   {forms: &config.ModuleEntry{Enabled: &off}, warns: true},
+		"not public": {forms: &config.ModuleEntry{Expose: &config.Expose{Public: &no}}, warns: true},
+		"not listed": {shown: true, warns: true}, // two: see below
+		// Added by `can up`, so without settings: only the missing recipient is said.
+		"added by can up":   {absent: config.AbsentAdded, shown: true, warns: true},
 		"no default bundle": {absent: config.AbsentOff, warns: true},
 	} {
 		out, err := Render(contactCompany(tc.forms), Options{AbsentForms: tc.absent})
@@ -91,7 +96,14 @@ func TestContactSectionWithoutForms(t *testing.T) {
 		if !tc.shown && strings.Contains(page, `href="#contact"`) {
 			t.Errorf("%s: the navigation still points at the missing section", name)
 		}
-		if got := len(out.Warnings) == 1; got != tc.warns {
+		want := 0
+		if tc.warns {
+			want = 1
+		}
+		if name == "not listed" {
+			want = 2 // the module, and nobody to email
+		}
+		if len(out.Warnings) != want {
 			t.Errorf("%s: warnings %v", name, out.Warnings)
 		}
 	}
@@ -112,5 +124,17 @@ func TestContactFormMustExist(t *testing.T) {
 	// An empty list is not "unknown": the module serves nothing.
 	if _, err = Render(c, Options{Forms: []config.HostedForm{}}); err == nil {
 		t.Fatal("a module without forms was accepted")
+	}
+}
+
+func TestContactSectionSaysWhenNobodyIsEmailed(t *testing.T) {
+	out, err := Render(contactCompany(&config.ModuleEntry{}), Options{})
+	if err != nil || len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "nobody is emailed") || !strings.Contains(out.Warnings[0], "/v1/leads") {
+		t.Fatalf("%v %v", err, out.Warnings)
+	}
+	// A recipient in the forms chart counts too.
+	out, err = Render(contactCompany(&config.ModuleEntry{}), Options{Forms: []config.HostedForm{{ID: "contact", NotifyEmail: []string{"a@acme.example"}}}})
+	if err != nil || len(out.Warnings) != 0 {
+		t.Fatalf("%v %v", err, out.Warnings)
 	}
 }
