@@ -109,3 +109,21 @@ func TestParseFirewallCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestFirewallWarning(t *testing.T) {
+	for out, want := range map[string]string{
+		"status=not-installed\n":          "has no node firewall",
+		"rules=missing\nstatus=fail\n":    "not enforcing",
+		"rules=changed\nstatus=fail\n":    "not enforcing",
+		"rules=dormant\nstatus=fail\n":    "not enforcing",
+		"rules=ok\nstatus=ok\n":           "",
+		"rules=ok\nstatus=fail\n":         "",
+		"bash: nft: command not found\n":  "",
+		"problem=rules=missing, honest\n": "",
+	} {
+		got := FirewallWarning(out)
+		if (want == "") != (got == "") || !strings.Contains(got, want) {
+			t.Errorf("%q: %q", out, got)
+		}
+	}
+}

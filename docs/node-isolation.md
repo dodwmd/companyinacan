@@ -17,9 +17,23 @@ k3d). It has never run on a real server; see [what is unverified](#what-is-unver
 | Cloud metadata (`169.254.169.254` and link-local) | blocked | blocked |
 | Cluster DNS, other pods, Services, the internet | unchanged (NetworkPolicy still applies) | unchanged |
 
-Traffic from outside the server is never touched: every rule first accepts whatever did not arrive on a
-pod interface (`cni0`, `flannel.1`), so these rules cannot lock you out of SSH. (`ufw` with
-`operator_ip` still can: [providers.md](providers.md).)
+Traffic from outside the server is never touched: each chain first accepts whatever did not arrive on a
+pod interface (`cni0`, `flannel.1`), so these rules cannot lock you out of SSH made **directly** to the
+server. (`ufw` with `operator_ip` still can: [providers.md](providers.md).)
+
+## What gets cut off
+
+Anything that reaches the server **through a pod** arrives on a pod interface and is treated as pod
+traffic:
+
+- **SSH tunnelled through a pod in the cluster** (a `cloudflared`, Tailscale, WireGuard, bastion or
+  similar pod that forwards to the server's port 22). It stops working when the rules load. Make sure you
+  can reach SSH directly, or through the provider's console, before you install.
+- **A `LoadBalancer` Service served by k3s ServiceLB whose backends use `hostNetwork`**. The `svclb`
+  pod forwards to a port on the node, which is dropped, so the published port stops answering. Run the
+  backend as an ordinary pod. (Traefik as shipped by k3s is an ordinary pod and is not affected.)
+
+Neither has a setting to allow it: trusted namespaces get the API server and host DNS only.
 
 ## Checking
 
@@ -30,11 +44,24 @@ ssh root@SERVER can-firewall check       # on the server, with counts
 ssh root@SERVER nft list table inet can_isolation   # rules and drop counters
 ```
 
+**Detection is on demand only.** Nothing runs the check on a schedule, and nothing alerts you when the
+rules or services stop. Run `can doctor --server` after changes to the server, or schedule it yourself.
+(The sync service does reload missing, changed or dormant rules within seconds, but says so only in its
+journal.) `can up` and `can status` print a warning, without failing, when the server has no rules or
+they are not as expected.
+
+The check fails unless: both chains list exactly the lines the installed script loads (compared with the
+same rules loaded into a throw-away network namespace by the same `nft`; counters ignored), the table is
+not dormant, `cni0` exists, both units are enabled, the sync service is running,
+`can-firewall.service` has not failed, and the trusted set matches the running system pods.
+
 ## When something is blocked that should not be
 
 - **Your own workload needs the Kubernetes API** (an operator-installed controller): add its namespace,
   one per line, to `/etc/can/firewall/trusted-namespaces`. Namespaces starting `mod-` are ignored.
-  Trust grants the API server and host DNS only.
+  Trust grants the API server and host DNS only. An address that a pod outside these namespaces also
+  reports (not counting `hostNetwork` pods) is not trusted until the records agree again; a terminating
+  trusted pod stays trusted only until its grace period ends.
 - **A pod needs another host service** (a Prometheus pod scraping `node_exporter` on the node, a mail
   relay on the server, the kubelet): not supported. Run it as a pod, or elsewhere.
 - **Turn it off**: `can-firewall disable` on the server (stays off across reboots).
@@ -42,15 +69,17 @@ ssh root@SERVER nft list table inet can_isolation   # rules and drop counters
 
 ## Servers bootstrapped before this existed
 
-`can up` does not re-run the bootstrap on a server that already has the pinned k3s. `can doctor
---server` says `not installed`. Install it from a checkout of this repository:
+`can up` does not re-run the bootstrap on a server that already has the pinned k3s. `can up` and `can
+status` warn that the server has no node firewall and `can doctor --server` says `not installed`. Read
+[what gets cut off](#what-gets-cut-off), then install it from a checkout of this repository:
 
 ```sh
 scp core/provider/hostfw/can-firewall.sh root@SERVER:/usr/local/sbin/can-firewall
 ssh root@SERVER 'apt-get install -y nftables && chmod 0755 /usr/local/sbin/can-firewall && can-firewall install'
 ```
 
-The same command pair upgrades the script. If the bootstrap itself stopped at the `node-firewall` step,
+The same command pair upgrades the script. If a re-install fails, the previous rules, unit files and the
+units' enabled and running state are put back (the newly copied script stays). If the bootstrap itself stopped at the `node-firewall` step,
 fix the cause and run `bash /usr/local/sbin/can-bootstrap.sh` on the server (running `can up` again would
 fail its preflight, because k3s already holds the ports).
 
@@ -58,11 +87,11 @@ fail its preflight, because k3s already holds the ports).
 
 | Event | Effect |
 |---|---|
-| The rules do not load, or verification fails during install | previous state restored, bootstrap fails |
+| The rules do not load, verification fails, or systemd refuses the units during install | previous rules, units and their enabled/running state restored, bootstrap fails |
 | Reboot | rules loaded before k3s with an empty trusted set; system pods wait a few seconds for the API |
 | `can-firewall.service` fails at boot | k3s still starts, **without isolation** until the sync service loads the rules; `doctor --server` reports it |
 | Sync service stopped | restarted system pods lose the API; `doctor --server` reports it |
-| Another tool flushes the nftables ruleset | reloaded within seconds by the sync service |
+| Another tool flushes the nftables ruleset, edits these chains or makes the table dormant | reloaded within seconds by the sync service |
 | `ufw reload`, kube-proxy, flannel restarts | no effect: they do not own this table |
 
 ## What is unverified

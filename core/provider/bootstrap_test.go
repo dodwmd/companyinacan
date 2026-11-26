@@ -1,8 +1,13 @@
 package provider
 
 import (
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
 	"encoding/base64"
 	"flag"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -213,9 +218,20 @@ func TestCloudInit(t *testing.T) {
 	if m == nil {
 		t.Fatal("no content line")
 	}
-	raw, err := base64.StdEncoding.DecodeString(m[1])
+	packed, err := base64.StdEncoding.DecodeString(m[1])
 	if err != nil {
 		t.Fatal(err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(packed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ci, "encoding: gz+b64\n") {
+		t.Fatal("cloud-init is not told the payload is gzipped")
 	}
 	want, _ := Bootstrap(fullOpts())
 	if string(raw) != want {
@@ -227,7 +243,9 @@ func TestCloudInit(t *testing.T) {
 	if len(ci) > MaxCloudInitBytes {
 		t.Fatalf("user data too large: %d", len(ci))
 	}
-	golden(t, "cloudinit_default.golden.yaml", mustCloudInit(t))
+	// The compressed bytes may differ between Go releases; the golden file covers the wrapper, the
+	// bootstrap golden files cover the script.
+	golden(t, "cloudinit_default.golden.yaml", regexp.MustCompile(`content: \S+`).ReplaceAllString(mustCloudInit(t), "content: <gzipped bootstrap script>"))
 }
 
 func mustCloudInit(t *testing.T) string {
@@ -240,14 +258,15 @@ func mustCloudInit(t *testing.T) string {
 }
 
 func TestCloudInitSizeLimit(t *testing.T) {
+	// Distinct digests do not compress away.
 	o := BootstrapOptions{}
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 600; i++ {
+		sum := fmt.Sprintf("%x", sha256.Sum256([]byte{byte(i), byte(i >> 8)}))
 		o.ImageTarballs = append(o.ImageTarballs, ImageTarball{
-			Name: "image-" + strings.Repeat("x", 30) + string(rune('a'+i%26)) + string(rune('a'+i/26%26)) + ".tar",
-			URL:  "https://example.invalid/" + strings.Repeat("p", 40), SHA256: strings.Repeat("0", 64),
+			Name: "image-" + sum[:30] + ".tar", URL: "https://example.invalid/" + sum, SHA256: sum,
 		})
 	}
-	if _, err := CloudInit(o); err == nil {
-		t.Fatal("want size error")
+	if _, err := CloudInit(o); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("want size error, got %v", err)
 	}
 }

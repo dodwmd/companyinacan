@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "core/cli/**"
       - "core/provider/**"
       - "deploy/**"
       - "test/hostfw/**"
@@ -42,7 +43,7 @@ jobs:
           sudo ip link set cni0 up
           cat >/tmp/stub-kubectl <<'STUB'
           #!/usr/bin/env bash
-          case "$*" in *"-n kube-system"*) echo 'false|10.42.0.10' ;; esac
+          case "$*" in *"get pods --all-namespaces"*) echo 'kube-system||false|10.42.0.10|' ;; esac
           STUB
           sudo install -m 0755 /tmp/stub-kubectl /usr/local/bin/stub-kubectl
           sudo install -m 0755 core/provider/hostfw/can-firewall.sh /usr/local/sbin/can-firewall
@@ -54,6 +55,29 @@ jobs:
           sudo nft delete table inet can_isolation
           sudo systemctl restart can-firewall.service
           sudo nft list chain inet can_isolation input | grep -q drop
+          check() { sudo CAN_FW_KUBECTL=stub-kubectl /usr/local/sbin/can-firewall check; }
+          sudo CAN_FW_KUBECTL=stub-kubectl /usr/local/sbin/can-firewall sync
+          check
+          # Detection against the real systemctl: a stopped sync service, then a failed unit.
+          sudo systemctl stop can-firewall-sync.service
+          if check >/tmp/check.out; then echo "check passed with the sync service stopped"; exit 1; fi
+          grep -qx service=inactive /tmp/check.out
+          sudo systemctl start can-firewall-sync.service
+          sudo mkdir -p /run/systemd/system/can-firewall.service.d
+          printf '[Service]\nExecStart=\nExecStart=/bin/false\n' | sudo tee /run/systemd/system/can-firewall.service.d/fail.conf
+          sudo systemctl daemon-reload
+          if sudo systemctl restart can-firewall.service; then echo "the broken unit started"; exit 1; fi
+          if check >/tmp/check.out; then echo "check passed with a failed unit"; exit 1; fi
+          grep -qx service=failed /tmp/check.out
+          # A failed re-install must leave the units enabled.
+          if sudo CAN_FW_KUBECTL=stub-kubectl /usr/local/sbin/can-firewall install; then echo "install passed"; exit 1; fi
+          systemctl is-enabled can-firewall.service can-firewall-sync.service
+          sudo rm /run/systemd/system/can-firewall.service.d/fail.conf
+          sudo systemctl daemon-reload
+          sudo systemctl reset-failed can-firewall.service
+          sudo systemctl restart can-firewall.service can-firewall-sync.service
+          sudo CAN_FW_KUBECTL=stub-kubectl /usr/local/sbin/can-firewall sync
+          check
           sudo /usr/local/sbin/can-firewall disable
           if sudo nft list table inet can_isolation; then echo "table still loaded"; exit 1; fi
           if systemctl is-enabled can-firewall.service; then echo "unit still enabled"; exit 1; fi

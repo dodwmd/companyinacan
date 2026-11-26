@@ -46,3 +46,15 @@ func serverCheck(ctx context.Context, cmd *cobra.Command, g *globalOpts, dir, mo
 	r.Status, r.Remedy = doctor.StatusFailed, t.redact.Redact(c.Detail)
 	return r
 }
+
+// firewallWarning asks a running server whether it has pod-to-node isolation. It never fails the
+// command: a server that cannot be asked is reported by the checks that need it.
+func firewallWarning(ctx context.Context, r provider.Runner) string {
+	ctx, cancel := context.WithTimeout(ctx, serverCheckTimeout)
+	defer cancel()
+	out, err := r.Run(ctx, provider.FirewallCheckScript())
+	if err != nil {
+		return ""
+	}
+	return provider.FirewallWarning(out)
+}

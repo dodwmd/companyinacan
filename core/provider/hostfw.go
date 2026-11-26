@@ -58,3 +58,18 @@ func ParseFirewallCheck(out string) Check {
 	}
 	return c
 }
+
+// FirewallWarning turns FirewallCheckScript output into the warning `can up` and `can status`
+// print when the server definitely has no isolation in force, or "". Everything else (a stopped
+// service, a stale address) is left to `can doctor --server`. Only fixed text is returned.
+func FirewallWarning(out string) string {
+	for _, l := range strings.Split(out, "\n") {
+		switch strings.TrimSpace(l) {
+		case "status=not-installed":
+			return "this server has no node firewall: pods can reach the node's services; install it as described in docs/node-isolation.md"
+		case "rules=missing", "rules=changed", "rules=dormant":
+			return "this server's node firewall is not enforcing: pods can reach the node's services; run `can doctor --server` and see docs/node-isolation.md"
+		}
+	}
+	return ""
+}

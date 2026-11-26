@@ -128,6 +128,8 @@ func TestNodeIsolationOnK3d(t *testing.T) {
 		t.Fatal(err)
 	}
 	docker(t, "run", "-d", "--name", fwSidecar, "--network", "container:"+node, "--cap-add", "NET_ADMIN",
+		// `check` and the sync loop build their reference rules in a new network namespace.
+		"--cap-add", "SYS_ADMIN",
 		"-v", kubectlPath+":/usr/local/bin/kubectl:ro", "-v", kubeconfig+":/kubeconfig:ro",
 		"-v", script+":/usr/local/sbin/can-firewall:ro",
 		"-e", "CAN_FW_KUBECTL=kubectl --kubeconfig /kubeconfig", "-e", "CAN_FW_INTERVAL=2",
