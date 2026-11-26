@@ -1,0 +1,15 @@
+{{- /*
+The module's YAML config, built only from .Values.config (keys the binary accepts: it loads the file
+strictly and refuses unknown ones). No secret ever goes here: tokens and keys come from the
+can-module Secret, which can-core injects as environment.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+data:
+  {{ .Chart.Name }}.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}

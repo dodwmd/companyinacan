@@ -10,8 +10,8 @@ binary `cmd/can-equity`, image `deploy/equity`. A module like any other (`module
 not implemented; they are data fields and documented limits. Compliance with securities, tax and
 data-protection law is the operator's responsibility.
 
-**Status: experimental.** Tested offline (unit, race, fuzz, contract); not yet run on a cluster, no Helm
-templates, no admin UI or portal. It runs in the Docker Compose stack and its end-to-end suite (grant approval by a
+**Status: experimental.** Tested offline (unit, race, fuzz, contract); can-core installs the chart and CI waits
+for Ready on k3d; no admin UI or portal. It runs in the Docker Compose stack and its end-to-end suite (grant approval by a
 board identity from a fake introspection service, [`docs/local-compose.md`](../../docs/local-compose.md)). `can validate` warns accordingly.
 
 Why in-house: equity is a sensitive data class (shareholder identities, holdings, valuations, strike

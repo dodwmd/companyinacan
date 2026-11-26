@@ -113,15 +113,19 @@ func TestRunIncludesTheAppliedCompanyFile(t *testing.T) {
 	if err != nil || string(b) != "name: Acme\n" {
 		t.Fatalf("%q %v", b, err)
 	}
-	// a company that was never applied is not an error, and a stale copy does not survive
-	if err := os.Remove(d.CompanyFile); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := d.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(d.Store.Dir, "company.yaml")); err == nil {
-		t.Fatal("stale company.yaml kept")
+}
+
+// A run made before company.yaml is mounted would be a set `can restore` cannot use.
+func TestRunWithoutCompanyYAMLFailsAndWritesNoMarker(t *testing.T) {
+	d, _ := newDumper(t, nil, &fakeHooks{})
+	for name, path := range map[string]string{"missing": filepath.Join(t.TempDir(), "company.yaml"), "unreadable": t.TempDir()} {
+		d.CompanyFile = path
+		if _, err := d.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "company.yaml") {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(d.Store.Dir, COMPLETE)); err == nil {
+			t.Fatalf("%s: the completion marker was written", name)
+		}
 	}
 }
 

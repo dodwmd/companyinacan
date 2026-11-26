@@ -102,9 +102,9 @@ Measured by that job (run 45758426280, GitHub runner, data of a few hundred KB):
 
 ## Known limit found here
 
-A dump run made before the kubelet has mounted a newly created `company` ConfigMap leaves `company.yaml` out and still
-completes; `can restore` then cannot use the set. This is the dump run's behaviour, not changed here. The k3d test
-restarts can-core after creating the ConfigMap.
+A dump run made before the kubelet has mounted a newly created `company` ConfigMap left `company.yaml` out and still
+completed; `can restore` could not use the set. Since specs/048-erasure-collection such a run fails and writes no
+completion marker. The k3d test restarts can-core after creating the ConfigMap.
 
 ## Not verified / out of scope
 

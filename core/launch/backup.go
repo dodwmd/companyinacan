@@ -17,7 +17,7 @@ import (
 
 // BackupInstallVersion is the generation of what the backup step installs on the host (script,
 // units, tools). Raise it whenever an existing install must be redone by the next `can up`.
-const BackupInstallVersion = 4
+const BackupInstallVersion = 5
 
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
@@ -161,6 +161,8 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		{"/etc/systemd/system/can-backup.service", backup.GenerateService(s), "0644"},
 		{"/etc/systemd/system/can-backup.timer", backup.GenerateTimer(s), "0644"},
 		{"/etc/systemd/system/can-backup-failure.service", backup.GenerateFailureService(), "0644"},
+		{"/etc/systemd/system/" + backup.ErasureServiceName, backup.GenerateErasureService(s), "0644"},
+		{"/etc/systemd/system/" + backup.ErasureTimerName, backup.GenerateErasureTimer(), "0644"},
 		{pwPath, kit.Restic.Password, "0600"},
 		{envPath, backup.HostEnvFile(kit), "0600"},
 	}
@@ -179,11 +181,16 @@ export RESTIC_REPOSITORY=%[2]s RESTIC_PASSWORD_FILE=%[3]s
 restic cat config >/dev/null 2>&1 || restic init
 systemctl daemon-reload
 systemctl enable --now can-backup.timer
+systemctl enable --now can-erasure-sync.timer
+[ -x %[4]s ] || echo CAN_NO_CAN_BINARY
 echo CAN_BACKUP_OK
-`, shq(envPath), shq(kit.Restic.Repository), shq(pwPath))
+`, shq(envPath), shq(kit.Restic.Repository), shq(pwPath), shq(s.CanBin))
 	out, err = r.d.Host.Run(ctx, script)
 	if err != nil || !strings.Contains(out, "CAN_BACKUP_OK") {
 		return false, "", fmt.Errorf("enable the backup timer: %v: %s", err, strings.TrimSpace(out))
+	}
+	if strings.Contains(out, "CAN_NO_CAN_BINARY") {
+		r.res.Warnings = append(r.res.Warnings, fmt.Sprintf("%s is not on the server: erasures are NOT copied to the bucket until you put the Linux release binary there, and a restore would bring erased data back", s.CanBin))
 	}
 	if err := r.d.Store.Mutate(func(s *provider.State) error {
 		launchOf(s).BackupInstalled, launchOf(s).BackupVersion = true, BackupInstallVersion

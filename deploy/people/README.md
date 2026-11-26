@@ -18,7 +18,7 @@ Both base images must be pinned by digest before a release build; the Dockerfile
 | API listener | `:8081` (`directory` and `performance`, ClusterIP only, bearer token) |
 | Data | `/data/people.db` (SQLite, WAL, `secure_delete`), one persistent volume |
 | Config | `/etc/can-people/people.yaml` (see `docs/people.md`) |
-| Keyring | `/etc/can-people/keys/keyring`, a mounted Secret, mode 0400 (the service refuses group/world-readable key files) |
+| Keyring | `/etc/can-people/keys/keyring`, a mounted Secret, mode 0400, or 0440 with `fsGroup` as the chart mounts it (never world-readable) |
 | Secrets (env) | `CAN_PEOPLE_API_TOKEN`; `CAN_PEOPLE_WEBHOOK_SECRET` when a webhook is set; `CAN_PEOPLE_INTROSPECT_TOKEN` |
 | Root filesystem | read-only works: only `/data` is written |
 

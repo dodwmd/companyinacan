@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Data classes held by this module (modules/board/module.yaml and modules/entity/module.yaml). Class
@@ -200,7 +201,7 @@ func (s *Service) RequestErasure(ctx context.Context, a Actor, person string) (*
 			if err := s.purgeClass(ctx, tx, person, c); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?)`, person, c, date, s.now().Unix()); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?) ON CONFLICT (subject, class) DO UPDATE SET date = excluded.date, created_at = excluded.created_at`, person, c, date, s.now().Unix()); err != nil {
 				return err
 			}
 		}
@@ -249,6 +250,8 @@ type ErasureEntry struct {
 	Subject string `json:"subject"`
 	Class   string `json:"class"`
 	Date    string `json:"date"`
+	// At is when the data was erased: a restore leaves alone a backup made after it.
+	At string `json:"at,omitempty"`
 }
 
 // ListErasures returns tombstones after a cursor. admin (the can-core service account holds it).
@@ -256,7 +259,7 @@ func (s *Service) ListErasures(ctx context.Context, a Actor, after int64) ([]Era
 	if err := s.authorize(ctx, a, ActRetention, Fact{}, "erasures"); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT seq, subject, class, date FROM erasures WHERE seq > ? ORDER BY seq LIMIT 1000`, after)
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, subject, class, date, created_at FROM erasures WHERE seq > ? ORDER BY seq LIMIT 1000`, after)
 	if err != nil {
 		return nil, err
 	}
@@ -264,9 +267,11 @@ func (s *Service) ListErasures(ctx context.Context, a Actor, after int64) ([]Era
 	out := []ErasureEntry{}
 	for rows.Next() {
 		var e ErasureEntry
-		if err := rows.Scan(&e.Seq, &e.Subject, &e.Class, &e.Date); err != nil {
+		var created int64
+		if err := rows.Scan(&e.Seq, &e.Subject, &e.Class, &e.Date, &created); err != nil {
 			return nil, err
 		}
+		e.At = time.Unix(created, 0).UTC().Format(time.RFC3339)
 		out = append(out, e)
 	}
 	return out, rows.Err()

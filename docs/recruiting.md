@@ -6,7 +6,7 @@ applicant tracking pipeline, a talent pool, consent, retention and erasure. Libr
 binary `cmd/can-jobs`, module `modules/jobs`, contract `specs/013-jobs-recruiting/`.
 
 **Status: experimental.** Built and tested offline and measured locally. The image has not been
-built or run on a cluster, there are no Helm templates yet (values only), there is a recruiter web
+run in production (can-core installs the chart; CI only waits for the pod to be Ready on k3d), there is a recruiter web
 UI ([`recruiting-ui.md`](recruiting-ui.md), experimental, not browser-verified; the API and the careers pages also exist), and no real virus scanner or job-board connector ships.
 
 > **This is a tool, not legal advice.** Recruiting data is personal data and is regulated
@@ -118,13 +118,14 @@ until they expire.
   `rejected_days` (default 365), `talent_pool_days` (730, with consent) or `hired_days` (180; 0
   keeps the record until erased). A sweep every `sweep_interval_hours` scrubs due candidates and
   expires jobs past `validThrough`. Legal hold blocks retention and erasure. A retention purge
-  writes the same erasure tombstones as a request, so restoring an older backup cannot bring back
-  candidates whose retention period had ended.
+  writes the same erasure tombstones as a request, which can-core collects into the backup erasure
+  ledger, so a restore of an older backup removes those candidates again (limits:
+  [backup-restore.md](backup-restore.md#erasure-tombstone-ledger)).
 * **Erasure.** `POST /v1/candidates/{id}/erasure` (unscoped admin) removes resume files, scorecards
   and notes, scrubs name and contact data, leaves an id-only shell so reports stay consistent, then
   vacuums the database and truncates the WAL. It writes three tombstones (`candidate-pii`,
-  `candidate-resumes`, `candidate-evaluations`) in the shape `core/backup/ledger.go` takes; the
-  `POST /v1/purge` hook replays them after a restore. Backups taken earlier still hold the data
+  `candidate-resumes`, `candidate-evaluations`) which can-core collects into the backup erasure
+  ledger; a restore replays them through `POST /v1/purge`. Backups taken earlier still hold the data
   until they expire.
 * **Audit.** Every read that returns candidate data, and every write, is recorded in an
   append-only, hash-chained table (ids and field names only). If the audit write fails the read
@@ -155,7 +156,9 @@ host, list `/careers/sitemap.xml` in the site's own robots.txt.
 can-jobs serve --config /etc/can-jobs/jobs.yaml      # also: check-config, healthcheck, verify-audit, rotate-keys, version
 ```
 
-Required: `company.name`, `company.base_url`, `CAN_JOBS_ADMIN_TOKEN` and `CAN_JOBS_HASH_KEY` (32+
+Under can-core nothing here is set by hand: the installer takes `company.name` from `company.yaml` and
+sets `company.base_url` to `https://careers.<domain>` (`http` when the cluster serves no TLS), and
+changing either upgrades the module. Run by hand, it needs `company.name`, `company.base_url`, `CAN_JOBS_ADMIN_TOKEN` and `CAN_JOBS_HASH_KEY` (32+
 characters), and a keyring file. Optional: `CAN_JOBS_WEBHOOK_SECRET` with `webhook.url`,
 `CAN_JOBS_FORM_SECRET` for stable form tokens across restarts and replicas. Settings and defaults
 are in `core/jobs/config.go`; the HTTP contract is

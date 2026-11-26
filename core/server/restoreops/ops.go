@@ -207,7 +207,7 @@ func (o *Ops) Apply(ctx context.Context, overwrite bool) (backup.ApplyReport, er
 				settings = ce.Settings
 			}
 			err = inst.Enable(ctx, reconcile.Spec{ID: m.ID, Version: man.Version, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount,
-				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain})
+				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain, CompanyName: co.Name})
 		}
 		switch {
 		case err == nil:
@@ -349,9 +349,19 @@ var inHouse = map[string]purgeMethod{
 	"people": {cli: true},
 	"equity": {cli: true},
 	"board":  {cli: true},
+	"entity": {cli: true},
 	"files":  {tokenKey: "CAN_FILES_RESTORE_TOKEN"},
 	"forms":  {tokenKey: "CAN_FORMS_API_TOKEN"},
 	"jobs":   {tokenKey: "CAN_JOBS_ADMIN_TOKEN"},
+}
+
+// skipped notes an erasure that is not replayed because the backup already reflects it. Entries
+// made by hand are listed: the operator vouched that the data was erased by then.
+func skipped(rep *backup.EraseReport, module string, e backup.Entry) {
+	rep.Reflected++
+	if e.Module == "" {
+		rep.SkippedByHand = append(rep.SkippedByHand, fmt.Sprintf("%s: %s %s (recorded as erased %s)", module, e.Class, e.Subject, e.At))
+	}
 }
 
 type purge struct {
@@ -360,12 +370,82 @@ type purge struct {
 }
 
 func holds(m *config.Module, class string) bool {
+	if backup.SharedClass(m.ID, class) {
+		return true
+	}
 	for _, c := range m.DataClasses {
 		if c.Class == class {
 			return true
 		}
 	}
 	return false
+}
+
+// declares is holds without the shared classes: where an entry recorded by hand, which names no
+// module, is applied.
+func declares(m *config.Module, class string) bool {
+	for _, c := range m.DataClasses {
+		if c.Class == class {
+			return true
+		}
+	}
+	return false
+}
+
+// stampMargin covers an erasure's time being taken before its transaction committed: one stamped
+// less than this before a copy may be missing from it, so it is replayed.
+const stampMargin = time.Minute
+
+// dumpTimes says when the data being restored was copied, so that an erasure is never replayed into
+// a copy made after it: such a copy already reflects it and may hold data created since.
+type dumpTimes struct {
+	dir  string
+	run  time.Time       // when the dump run began; zero if the set does not say
+	kept map[string]bool // modules whose dump the run carried over from an earlier one
+}
+
+func (o *Ops) dumpTimes() dumpTimes {
+	d := dumpTimes{dir: o.DumpsDir, kept: map[string]bool{}}
+	if r, err := backup.ReadDumpRun(o.DumpsDir); err == nil {
+		stamp, _, _ := strings.Cut(r.RunID, "-")
+		if t, err := time.Parse("20060102T150405Z", stamp); err == nil {
+			d.run = t
+		}
+		for _, s := range r.Skipped {
+			d.kept[s.ID] = s.Kept
+		}
+	}
+	return d
+}
+
+// of is the earliest moment the module's data can have been copied: its dump's own time, else the
+// start of the dump run. A dump carried over from an earlier run that does not say its own time (a
+// script hook's) is of unknown age: zero.
+func (d dumpTimes) of(module string) time.Time {
+	var m struct {
+		TakenAt time.Time `json:"taken_at"`
+	}
+	b, err := os.ReadFile(filepath.Join(d.dir, "modules", module, "manifest.json")) //nolint:gosec // our dumps directory
+	if err == nil && json.Unmarshal(b, &m) == nil && !m.TakenAt.IsZero() {
+		return m.TakenAt
+	}
+	if d.kept[module] {
+		return time.Time{}
+	}
+	return d.run
+}
+
+// reflected reports whether data copied at since already reflects e. known is false when that
+// cannot be told.
+func reflected(e backup.Entry, since time.Time) (is, known bool) {
+	at, ok := e.Erased()
+	if !ok {
+		return false, true // no time: the entry is always replayed
+	}
+	if since.IsZero() {
+		return false, false
+	}
+	return at.Before(since.Add(-stampMargin)), true
 }
 
 // Erase replays the tombstones. First every tombstone is matched to the modules that declare its
@@ -381,21 +461,44 @@ func (o *Ops) Erase(ctx context.Context, es []backup.Entry, accept []string) (ba
 	}
 	var todo []purge
 	unapplied := map[string]bool{}
+	times := o.dumpTimes()
+	planned := map[string]bool{}
 	for _, e := range es {
 		held := false
 		for _, m := range mods {
-			if !holds(&m.Manifest, e.Class) {
+			// An erasure a module reported is applied to that module and no other.
+			if e.Module != "" {
+				if m.ID != e.Module || !holds(&m.Manifest, e.Class) {
+					continue
+				}
+			} else if !declares(&m.Manifest, e.Class) {
 				continue
 			}
 			held = true
-			if _, ok := inHouse[m.ID]; !ok && m.Manifest.Hooks.Purge == "" {
+			is, known := reflected(e, times.of(m.ID))
+			switch _, ok := inHouse[m.ID]; {
+			case is:
+				skipped(&rep, m.ID, e)
+			case !known || (!ok && m.Manifest.Hooks.Purge == ""):
+				// Replaying blind could destroy data that was never erased.
 				unapplied[m.ID+":"+e.Class] = true
-				continue
+			default:
+				if k := m.ID + "\x00" + e.Subject + "\x00" + e.Class; !planned[k] {
+					planned[k] = true
+					todo = append(todo, purge{m, e})
+				}
 			}
-			todo = append(todo, purge{m, e})
 		}
 		if !held {
-			unapplied["*:"+e.Class] = true
+			if is, _ := reflected(e, times.run); is {
+				skipped(&rep, "*", e)
+				continue
+			}
+			who := e.Module
+			if who == "" {
+				who = "*"
+			}
+			unapplied[who+":"+e.Class] = true
 		}
 	}
 	var blocked []string
@@ -443,15 +546,16 @@ func (o *Ops) Erase(ctx context.Context, es []backup.Entry, accept []string) (ba
 		purged[id] = true
 		rep.Purged = append(rep.Purged, fmt.Sprintf("%s: %s %s", id, c, s))
 	}
+	rep.CoreRows, err = o.purgeCore(ctx, es)
+	if err != nil {
+		return rep, fmt.Errorf("can-core's own state: %w", err)
+	}
 	// A dump of a purged module still holds what was just erased; the next dump run replaces it.
+	// Last, so that a resumed step still reads the dump's time.
 	for id := range purged {
 		if err := os.RemoveAll(filepath.Join(o.DumpsDir, "modules", id)); err != nil {
 			return rep, err
 		}
-	}
-	rep.CoreRows, err = o.purgeCore(ctx, es)
-	if err != nil {
-		return rep, fmt.Errorf("can-core's own state: %w", err)
 	}
 	return rep, nil
 }
@@ -574,17 +678,25 @@ func (o *Ops) httpPurge(ctx context.Context, m store.Module, tokenKey, subject, 
 
 // purgeCore removes can-core's derived copies that name an erased subject: queued events and
 // their deliveries, notifications and queued mail. The audit log is kept (it holds ids only).
+// purgeCore drops can-core's derived copies that name an erased subject, whenever it was erased:
+// nothing in a running can-core removes them, so no dump of its state reflects an erasure. One that
+// a module reported reaches only what that module sent, except the directory's (a person is named
+// by every module); entries by hand reach all.
 func (o *Ops) purgeCore(ctx context.Context, es []backup.Entry) (int, error) {
 	total := 0
 	for _, e := range es {
 		quoted := `"` + e.Subject + `"`
+		source := e.Module
+		if source == "people" {
+			source = ""
+		}
 		for _, q := range []struct {
 			sql  string
 			args []any
 		}{
-			{`DELETE FROM events WHERE instr(data_json, ?) > 0`, []any{quoted}},
-			{`DELETE FROM notifications WHERE instr(data_json, ?) > 0`, []any{quoted}},
-			{`DELETE FROM email_outbox WHERE instr(body, ?) > 0 OR instr(subject, ?) > 0`, []any{e.Subject, e.Subject}},
+			{`DELETE FROM events WHERE instr(data_json, ?) > 0 AND (? = '' OR source = ?)`, []any{quoted, source, source}},
+			{`DELETE FROM notifications WHERE instr(data_json, ?) > 0 AND ? = ''`, []any{quoted, source}},
+			{`DELETE FROM email_outbox WHERE (instr(body, ?) > 0 OR instr(subject, ?) > 0) AND (? = '' OR source = ?)`, []any{e.Subject, e.Subject, source, source}},
 		} {
 			res, err := o.DB.ExecContext(ctx, q.sql, q.args...)
 			if err != nil {

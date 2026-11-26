@@ -4999,6 +4999,10 @@
      "class": {
       "type": "string"
      },
+     "at": {
+      "type": "string",
+      "format": "date-time"
+     },
      "date": {
       "type": "string",
       "format": "date",

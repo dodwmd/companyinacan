@@ -91,6 +91,7 @@ func TestChartsOnlyReferenceSecretKeysTheInstallerWrites(t *testing.T) {
 				t.Fatal(err)
 			}
 			in, api, _, spec := fixture(t, nil)
+			seedPeople(t, api)
 			in.cfg.ModulesDir, in.cfg.Domain, in.cfg.DB = dir, "acme.example", dbprov.NewFake()
 			in.cfg.Relay = func(reconcile.Spec) (*SMTPRelay, error) {
 				return &SMTPRelay{Host: "smtp.example.net", Port: 587, Username: "u", Password: "p", From: "a@acme.example", Encryption: "tls"}, nil

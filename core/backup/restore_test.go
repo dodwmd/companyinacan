@@ -705,10 +705,8 @@ func TestRestoreLedgerRollbackDetected(t *testing.T) {
 	e := newRestoreEnv(t)
 	full := MergeLedgers(e.r.ledger, []Entry{{Subject: "s9", Class: "lead-submission", Date: "2026-11-05"}})
 	l := &Ledger{Path: filepath.Join(t.TempDir(), "l")}
-	for _, en := range full {
-		if _, _, err := l.Append(en.Subject, en.Class); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := l.AppendMany(full); err != nil {
+		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(l.Path)
 	e.rs.Files[tHS+"/"+LedgerCopy] = b
@@ -865,7 +863,7 @@ func TestRestoreWarnsWhatWillBeLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := e.out.String()
-	for _, want := range []string{"35 days", "snapshot snapA", "lost for good", "ledger-add", "is BACK now"} {
+	for _, want := range []string{"35 days", "snapshot snapA", "lost for good", "ledger-add", "nothing erased in any other module is recorded"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}

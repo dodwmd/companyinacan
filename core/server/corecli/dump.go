@@ -29,6 +29,7 @@ func dumpRequestCmd(getenv func(string) string) *cobra.Command {
 			}
 			marker := filepath.Join(cfg.DumpsDir, backup.MarkerName)
 			before, _ := backup.ReadMarker(marker)
+			lastRun, _ := backup.ReadDumpRun(cfg.DumpsDir)
 			if err := dumps.Request(cfg.DumpRequestFile); err != nil {
 				return fail("%v", err)
 			}
@@ -49,6 +50,9 @@ func dumpRequestCmd(getenv func(string) string) *cobra.Command {
 						}
 					}
 					return nil
+				}
+				if run, err := backup.ReadDumpRun(cfg.DumpsDir); err == nil && run.RunID != lastRun.RunID && run.Error != "" {
+					return fail("the dump run failed: %s", run.Error)
 				}
 				if time.Now().After(deadline) {
 					return fail("no new completion marker after %s; see the can-core log", wait)
