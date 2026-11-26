@@ -304,6 +304,16 @@ func companyRevision(c *config.Company, id string) string {
 	return ""
 }
 
+// fetchesMail reports whether company.yaml asks the module to fetch a mailbox, whose credentials
+// are then part of what is written into it (specs/059-support-mailbox).
+func fetchesMail(c *config.Company, id string) bool {
+	if id != "support" {
+		return false
+	}
+	m, _ := config.SupportMailOf(c)
+	return m.IMAP != nil
+}
+
 // RelayOptIn reports whether the company lets this module have the SMTP relay's credentials:
 // email.modules.<id>.enabled must be written as true. Absent means no, unlike for email.send,
 // because the credentials leave can-core for a third-party application.
@@ -356,10 +366,10 @@ func (r *Reconciler) relay(ctx context.Context, d Desired, id, hmacSecret string
 		return wa.WiringFingerprint(ctx, Spec{ID: id, Manifest: d.Manifests[id], HMACSecret: hmacSecret, Links: ls})
 	}
 	ra, ok := r.Installer.(RelayAware)
-	if !ok || !modsecrets.WantsRelay(id) || !RelayOptIn(d.Company.Email, id) {
+	if !ok || !modsecrets.WantsRelay(id) || (!RelayOptIn(d.Company.Email, id) && !fetchesMail(d.Company, id)) {
 		return "", nil
 	}
-	return ra.RelayFingerprint(ctx, Spec{ID: id, Manifest: d.Manifests[id], Domain: d.Company.Domain, Email: d.Company.Email, HMACSecret: hmacSecret})
+	return ra.RelayFingerprint(ctx, Spec{ID: id, Manifest: d.Manifests[id], Domain: d.Company.Domain, Email: d.Company.Email, Settings: d.Company.Modules[id].Settings, HMACSecret: hmacSecret})
 }
 
 func (r *Reconciler) routing(ctx context.Context, d Desired, id string) (Routing, error) {

@@ -47,7 +47,7 @@ func (c Config) newInstaller(log *slog.Logger) (reconcile.ModuleInstaller, error
 			log.Warn("postgres: could not record the external server; it is recorded at the next module apply", "error", err)
 		}
 	}
-	return installer.New(installer.Config{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL, NodeIP: c.NodeIP, Domain: c.CompanyDomain, RequireAdmission: true, DB: prov, Relay: c.appRelay, Log: log}), nil
+	return installer.New(installer.Config{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL, NodeIP: c.NodeIP, Domain: c.CompanyDomain, RequireAdmission: true, DB: prov, Relay: c.appRelay, IMAP: c.appIMAP, Log: log}), nil
 }
 
 // reconcileOnce applies the company.yaml at cfg.CompanyFile (in a cluster: the mounted ConfigMap

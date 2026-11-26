@@ -108,7 +108,7 @@ func TestUpPlanJSON(t *testing.T) {
 	useLifecycle(t, func() provider.Deps { return provider.Deps{} }, goodResolver())
 	code, out, errs := run(t, "up", dir, "--plan", "--output", "json", "--provision-only", "--modules-dir", "../../modules")
 	var res upResult
-	if code != ExitOK || json.Unmarshal([]byte(out), &res) != nil || !res.Planned || len(res.Actions) != 5 {
+	if code != ExitOK || json.Unmarshal([]byte(out), &res) != nil || !res.Planned || len(res.Actions) != 6 {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
 	}
 }

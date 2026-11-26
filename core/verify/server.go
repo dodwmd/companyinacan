@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/backup"
+	"github.com/dodwmd/companyinacan/core/canbin"
 	"github.com/dodwmd/companyinacan/core/provider"
 )
 
@@ -75,6 +76,16 @@ k get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}
 k get ingressroutes.traefik.io -A -o jsonpath='{range .items[*]}{"route="}{.metadata.namespace}{"/"}{.metadata.name}{"|"}{.spec.entryPoints}{"|"}{range .spec.routes[*]}{.match}{" "}{end}{"\n"}{end}'
 kv login_limit "$(k -n can-system get middlewares.traefik.io can-login-rate -o name)"
 k -n can-system get secrets -o name | sed 's|^secret/|system_secret=|'
+# The support module's own check of its mail; it signs in to the servers and sends nothing.
+if [ -n "$(k -n mod-support get deploy support -o name)" ]; then
+  kv support_mail "$(k -n mod-support exec deploy/support -c app --request-timeout=60s -- php /tmp/can-support.php status | grep '^{"config"' | tail -n 1)"
+fi
+
+if [ -x "$R/usr/local/bin/can" ]; then
+  kv can_cli "$("$R/usr/local/bin/can" version --output json 2>/dev/null | tr -d '\n')"
+else
+  kv can_cli absent
+fi
 
 if have systemctl; then
   kv timer_enabled "$(systemctl is-enabled can-backup.timer 2>/dev/null || true)"
@@ -163,9 +174,13 @@ type ServerOptions struct {
 	K3sVersion string // expected; "" = provider.DefaultK3sVersion
 	// BackupInstalled is what `can up` recorded.
 	BackupInstalled bool
+	// CLI is the build of the `can` asking, which the server's /usr/local/bin/can should match.
+	CLI canbin.Build
 	// RelaySecret is true when company.yaml has email.relay, SSOSecret names the SSO client secret.
 	EmailRelay bool
 	SSOSecret  string
+	// SupportMail is true when company.yaml gives the support module a mailbox address.
+	SupportMail bool
 }
 
 const (
@@ -296,6 +311,7 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 
 	add(evalACME(f)...)
 	add(evalBackup(f, o)...)
+	add(evalCLI(f, o))
 
 	if o.EmailRelay {
 		add(verdict("email.relay-secret", slices.Contains(f["system_secret"], "can-smtp-relay"),
@@ -303,6 +319,7 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 	} else {
 		add(skip("email.relay-secret", "no email.relay in company.yaml"))
 	}
+	add(evalSupportMail(f, o)...)
 	if o.SSOSecret != "" {
 		add(verdict("sso.client-secret", slices.Contains(f["system_secret"], o.SSOSecret),
 			"the SSO client Secret exists", "sso is enabled but its client Secret is missing from can-system (docs/sso.md)"))
@@ -310,6 +327,35 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 		add(skip("sso.client-secret", "sso is not enabled"))
 	}
 	return cs
+}
+
+// evalCLI judges the `can` on the server, which the backup script and the erasure sync run.
+// Missing, broken or a different build fails when there are backups, and is only noted otherwise.
+func evalCLI(f Facts, o ServerOptions) Check {
+	const id = "server.can-cli"
+	backups := o.BackupInstalled || f.str("timer_enabled") == "enabled"
+	bad := func(d string) Check {
+		if backups {
+			return fail(id, d+"; the backup needs it: run `can up`")
+		}
+		return skip(id, d+" (no backups are set up); `can up` installs it")
+	}
+	// The value is JSON, so it may hold "=": everything after the first one is kept by ParseFacts.
+	v := f.str("can_cli")
+	if v == "absent" {
+		return bad("/usr/local/bin/can is not on the server, so erasures do not reach a backup bucket")
+	}
+	b, err := canbin.ParseVersion(v)
+	if err != nil {
+		return bad("/usr/local/bin/can does not answer `can version`")
+	}
+	switch canbin.Compare(b, o.CLI) {
+	case canbin.Differs:
+		return bad(fmt.Sprintf("version skew: the server has can %s, this one is %s", b, o.CLI))
+	case canbin.Unknown:
+		return pass(id, fmt.Sprintf("can %s is installed; this can is an unstamped build, so they are not compared", b))
+	}
+	return pass(id, fmt.Sprintf("can %s is installed and matches this one", b))
 }
 
 // ufwRule is what the "To" column of a rule that allows traffic from anywhere opens.

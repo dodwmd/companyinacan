@@ -321,6 +321,11 @@ jobs:
             ref=$(cat "digests/digest-$n.txt")
             args="$args $n=${ref#*@}"
           done
+          # The `can` archives `can up` installs on the server, by the checksums of this release.
+          for arch in amd64 arm64; do
+            sum=$(awk -v f="can_${VERSION}_linux_$arch.tar.gz" '$2 == f {print $1}' out/dist/SHA256SUMS)
+            args="$args linux/$arch=sha256:$sum"
+          done
           # shellcheck disable=SC2086
           sh scripts/gen-release-images.sh "$VERSION" "ghcr.io/$owner" $args >out/dist/release-images.json
           (cd out/dist && sha256sum -- release-images.json >>SHA256SUMS)

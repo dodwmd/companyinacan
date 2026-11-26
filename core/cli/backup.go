@@ -413,6 +413,12 @@ func newBackupInstallCmd(g *globalOpts) *cobra.Command {
 			if kit == nil {
 				return failure("--kit is required: the repository and credentials come from the recovery kit")
 			}
+			// The script and the erasure sync run this binary: without it nothing is installed.
+			line, err := installSelf(root)
+			if err != nil {
+				return failure("%v (the backup needs it: nothing was installed)", err)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), line)
 			at := func(p string) string { return filepath.Join(root, p) }
 			files := []struct {
 				path string

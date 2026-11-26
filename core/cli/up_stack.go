@@ -46,13 +46,16 @@ type stackFlags struct {
 	kitPassFile       string
 	modulesDir        string
 	smtpCreds         string
+	imapCreds         string
 	noEdgeLimits      bool
 	skipImageCheck    bool
+	canBinary         string
 }
 
 func (f *stackFlags) register(cmd *cobra.Command) {
 	fl := cmd.Flags()
 	fl.BoolVar(&f.skipImageCheck, "skip-image-check", false, skipImageCheckHelp)
+	fl.StringVar(&f.canBinary, "can-binary", "", "static linux can to install on the server as /usr/local/bin/can (default: the release manifest's, this binary if it fits, or a build of the source checkout)")
 	fl.BoolVar(&f.provisionOnly, "provision-only", false, "stop after the server, k3s, kubeconfig and DNS (the pre-E24 behaviour); deploy nothing")
 	fl.StringVar(&f.imagesFrom, "images-from", "", "directory written by `make images`: tarballs are verified, those company.yaml needs are shipped over ssh and imported (no registry needed)")
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release manifest pinning every image by digest (default deploy/release-images.json when present)")
@@ -71,6 +74,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.kitOut, "kit-out", "", "write the recovery kit encrypted to this new file (outside any git tree) instead of showing it")
 	fl.StringVar(&f.kitPassFile, "kit-passphrase-file", "", "passphrase file for --kit-out (default: prompt)")
 	fl.StringVar(&f.smtpCreds, "smtp-credentials-file", "", "KEY=VALUE file with SMTP_USERNAME and SMTP_PASSWORD for company.yaml's email.relay (stored in a Kubernetes Secret)")
+	fl.StringVar(&f.imapCreds, "support-imap-credentials-file", "", "KEY=VALUE file with IMAP_PASSWORD (and IMAP_USERNAME) of the mailbox in modules.support.settings.inbound.imap (stored in a Kubernetes Secret)")
 }
 
 func (f *stackFlags) backupWanted() bool {
@@ -84,7 +88,9 @@ type stackPrep struct {
 	companyYAML []byte
 	mods        map[string]*config.Module
 	smtp        *launch.SMTPRelay
+	imap        *launch.SupportIMAP
 	siteForms   []config.HostedForm
+	cli         canSource
 }
 
 // stackPlanActions lists the phases after the server exists, for --plan.
@@ -100,6 +106,9 @@ func stackPlanActions(f *stackFlags) []provider.Action {
 	}
 	if f.smtpCreds != "" {
 		a = append(a, provider.Action{ID: "stack.email", Description: "store the SMTP relay credentials in Secret can-system/can-smtp-relay"})
+	}
+	if f.imapCreds != "" {
+		a = append(a, provider.Action{ID: "stack.support-mail", Description: "store the support mailbox credentials in Secret can-system/can-support-imap"})
 	}
 	if f.backupWanted() {
 		a = append(a, provider.Action{ID: "stack.backup", Description: "install the restic backup timer on the host and prepare the recovery kit"})
@@ -122,8 +131,19 @@ func (t *target) stackPreflight(ctx context.Context, warn io.Writer, f *stackFla
 	if err != nil {
 		return nil, err
 	}
-	p := &stackPrep{images: set, companyYAML: raw, mods: map[string]*config.Module{}}
+	p := &stackPrep{images: set, companyYAML: raw, mods: map[string]*config.Module{}, cli: newCanSource(f.canBinary, set)}
+	// A server with backups must get a can: find out before paying for one that none can be had.
+	if err := p.cli.Available(); err != nil {
+		st, lerr := t.store.Load()
+		if f.canBinary != "" || f.backupWanted() || lerr != nil || (st.Launch != nil && st.Launch.BackupInstalled) {
+			return nil, fmt.Errorf("%w (nothing has been provisioned yet)", err)
+		}
+		fmt.Fprintln(warn, "warning:", err)
+	}
 	if p.smtp, err = t.smtpRelay(f.smtpCreds); err != nil {
+		return nil, err
+	}
+	if p.imap, err = t.imapAccount(f.imapCreds); err != nil {
 		return nil, err
 	}
 	md := resolveModulesDir(f.modulesDir, t.dir)
@@ -330,7 +350,8 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	o := launch.Options{
 		Dir: t.dir, Company: t.company, CompanyYAML: prep.companyYAML, Images: prep.images, Routes: routes,
-		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, SiteForms: prep.siteForms, Backup: prep.backup, Mods: prep.mods, SMTP: prep.smtp,
+		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, SiteForms: prep.siteForms, Backup: prep.backup, Mods: prep.mods, SMTP: prep.smtp, IMAP: prep.imap,
+		CLI: prep.cli,
 	}
 	d := launch.Deps{
 		Kube: lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)), Loader: launch.SSHImageLoader{Host: host}, Host: host,
@@ -346,6 +367,9 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 		return t.fail(runErr)
 	}
 	res.Warnings = append(res.Warnings, lr.Warnings...)
+	if m, _ := config.SupportMailOf(t.company); m.Enabled {
+		res.Warnings = append(res.Warnings, "support is installed by can-core after this command: `can support credentials` shows its sign-in, `can support status` the state of its mail (modules/support/README.md)")
+	}
 	if lr.BundleAdded {
 		if f.writeBundle {
 			if err := writeFileAtomic(filepath.Join(t.dir, "company.yaml"), lr.CompanyYAML); err != nil {

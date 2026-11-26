@@ -16,7 +16,7 @@ import (
 
 // SystemSecrets are the operator-provided Secrets of can-system that a restore brings back.
 // They are optional.
-var SystemSecrets = []string{"can-smtp-relay", "sso-client", "can-postgres-admin"}
+var SystemSecrets = []string{"can-smtp-relay", "can-support-imap", "sso-client", "can-postgres-admin"}
 
 // Not exported: the installer's own record of a release (rewritten by the restore install) and
 // tokens Kubernetes issues itself.
@@ -24,6 +24,7 @@ const (
 	// ReleaseSecret is also how a module that was never installed is told apart.
 	ReleaseSecret      = "can-release"
 	relaySecret        = "can-smtp" // written from company.yaml and the relay Secret at every apply
+	imapSecret         = "can-imap" // likewise, from can-system/can-support-imap
 	serviceAccountType = "kubernetes.io/service-account-token"
 )
 
@@ -43,7 +44,7 @@ func ExportSecrets(ctx context.Context, api kube.API, mods []ModuleRef) (*backup
 	var warnings []string
 	add := func(ns, name string, o kube.Object) {
 		typ, _ := o["type"].(string)
-		if typ == serviceAccountType || name == ReleaseSecret || name == relaySecret {
+		if typ == serviceAccountType || name == ReleaseSecret || name == relaySecret || name == imapSecret {
 			return
 		}
 		data := map[string]string{}

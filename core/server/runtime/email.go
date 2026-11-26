@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -85,7 +86,19 @@ func (c Config) appRelay(spec reconcile.Spec) (*installer.SMTPRelay, error) {
 	default:
 		return nil, nil
 	}
-	return &installer.SMTPRelay{Host: r.Host, Port: r.Port, Username: r.Username, Password: r.Password, From: r.From, Encryption: enc}, nil
+	// The certificate check is turned off only by the Secret, and only for the host stored in it, so
+	// that company.yaml cannot point an unchecked connection somewhere else. email.send itself
+	// always checks.
+	skip := false
+	if dir := c.emailSource().SecretDir; dir != "" {
+		host, herr := readSecretKey(filepath.Join(dir, "host"))
+		verify, verr := readSecretKey(filepath.Join(dir, "tls_verify"))
+		if herr != nil || verr != nil {
+			return nil, email.ErrSecretUnreadable
+		}
+		skip = host != "" && verify == "false"
+	}
+	return &installer.SMTPRelay{Host: r.Host, Port: r.Port, Username: r.Username, Password: r.Password, From: r.From, Encryption: enc, SkipVerify: skip}, nil
 }
 
 // devModuleSuffix marks the records devModules creates, so a later start can remove them.
