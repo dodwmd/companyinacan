@@ -105,6 +105,16 @@ func TestUITicketSignIn(t *testing.T) {
 	}
 }
 
+// QA: a session that can write is re-checked every minute, a reader every five.
+func TestUIWriterUsesTheShortRecheck(t *testing.T) {
+	u := &UI{RecheckEvery: uiRecheckDefault}
+	for perm, every := range map[string]time.Duration{PermRead: uiRecheckDefault, PermWrite: uiRecheckPrivil, PermAdmin: uiRecheckPrivil} {
+		if got := u.recheckFor(&Principal{Perms: []string{perm}}); got != every {
+			t.Errorf("%s: recheck every %s, want %s", perm, got, every)
+		}
+	}
+}
+
 // Permissions are those can-core returns, followed at each recheck; a disabled account loses the
 // session.
 func TestUITicketSessionFollowsCanCore(t *testing.T) {

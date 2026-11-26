@@ -49,6 +49,7 @@ not the careers one.
    that time, and a token that cannot be verified ends the session. A restart signs everyone out.
 4. A wrong, unknown or revoked token all get the same refusal. Only failed attempts count against the
    per-address limit; a valid token is never throttled.
+5. A browser that does not send `Sec-Fetch-Site` (for example Safari before 16.4) cannot sign in or submit forms.
 
 ### Single sign-on from the admin UI
 

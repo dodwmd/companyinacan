@@ -12,7 +12,7 @@ finding the copies drifting apart.
 2. One conformance suite (`core/uikit/session/conformance`) runs against every module UI through its
    HTTP handler: CSRF, session fixation, cross-site posts, cookie flags, headers, idle and absolute
    expiry, the can-core deadline, re-check on revocation, step-up with a revoked credential, body
-   limits, and a login throttle that never blocks a valid credential. A module states its values
+   limits, a demotion that takes effect and stays, and a login throttle that never blocks a valid credential. A module states its values
    there, so changing one fails a test.
 3. Routes, templates and configuration do not change. Behaviour is preserved except where one module
    was weaker (below).
@@ -37,13 +37,17 @@ One consequence of row 1: a browser sends `Sec-Fetch-Site` only to `https` and l
 any other name now refuses its own form posts (`Origin: null` with nothing to vouch for it), as
 work already did. Cookies without `Secure` are for local development only.
 
+Another consequence: a browser that does not send `Sec-Fetch-Site` at all (Safari before 16.4, for
+one) posts `Origin: null` from these pages, with nothing to vouch for it, so it cannot sign in or
+submit any form in a module UI.
+
 ## Behaviour matrix (after)
 
 | | work | people | jobs | finance | files |
 |---|---|---|---|---|---|
 | Idle / absolute | 8 h / 24 h, fixed | 30 min / 8 h, configurable | same | same | same |
 | Sessions: total / per person | 5000 / 20 | 5000 / 5 | 5000 / 5 | 5000 / 5 | 2000 / 5 |
-| Token re-check | every request | 5 min; 1 min manager, hr, admin | 5 min; 1 min if it can write, read candidates or reports | 5 min; 1 min approve, admin, ledger approve or admin | 5 min; 1 min admin |
+| Token re-check | every request | 5 min; 1 min manager, hr, admin | 5 min; 1 min if it can write, read candidates or reports | 5 min; 1 min write, approve, admin, ledger write, approve or admin | 5 min; 1 min write or admin |
 | Ticket re-check | 30 s | as token | as token | as token | as token |
 | Introspection cache (token) | 30 s | 30 s | 30 s | 30 s | 30 s |
 | Session cookie | browser session | browser session | browser session | browser session | browser session |
@@ -67,8 +71,7 @@ These differ between modules but none is clearly a defect; each is a product dec
 
 - **work's timeouts** (8 h idle, 24 h absolute, against 30 min and 8 h elsewhere) are specified in
   [023](../023-work-ui/spec.md). work re-authenticates every request, but an unattended browser
-  stays signed in much longer.
-- **Writers in finance and files** re-check every 5 minutes; writers in jobs every minute.
+  stays signed in much longer. Changing them means changing that specification.
 - **Throttles** keep their own limiters and thresholds; only work delays a limited failure. Tokens
   carry 256 bits, so no limit here is what stops guessing.
 - **The admin UI** (can-core) has sessions in its database, shared with the admin API, with

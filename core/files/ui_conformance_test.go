@@ -14,7 +14,7 @@ import (
 func TestUISecurityConformance(t *testing.T) {
 	conformance.Run(t, conformance.Module{
 		Name: "files", SessionCookie: "can_files_session", CSRFCookie: "can_files_login_csrf",
-		User: []string{PermWrite}, Privileged: []string{PermAdmin},
+		User: []string{PermRead}, Privileged: []string{PermAdmin},
 		Idle: 30 * time.Minute, Absolute: 8 * time.Hour,
 		Recheck: 5 * time.Minute, PrivilegedRecheck: time.Minute,
 		SSORecheck: 5 * time.Minute, SSOPrivilegedRecheck: time.Minute,
@@ -26,6 +26,9 @@ func TestUISecurityConformance(t *testing.T) {
 			can := core.Client(t)
 			api := &API{Store: e.s, Auth: &CanAuth{In: &modclient.Introspector{API: can, Now: e.now}}, Log: slog.New(slog.DiscardHandler)}
 			return &conformance.Env{H: newHandler(api, can), Core: core, Advance: e.advance}
+		},
+		Gated: func(*testing.T, *conformance.Env, *conformance.Browser) (string, string, url.Values) {
+			return "GET", "/admin/files", nil
 		},
 		StepUp: func(*testing.T, *conformance.Env, *conformance.Browser) (string, url.Values) {
 			return "/admin/erasure", url.Values{"subject": {"user:ghost"}, "confirm": {"ERASE"}}

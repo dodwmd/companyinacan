@@ -52,8 +52,8 @@ authorisation layer or a second invoice renderer.
 As in `specs/026-people-ui`: a token is presented once at `/login`, authenticated by the API's chain, and a
 server-side session is kept (hashed id, `HttpOnly`, `SameSite=Strict`, `__Host-`/`Secure` unless
 `insecure_cookies`; `force_secure` refuses the insecure option; at most 5 sessions per subject; idle 30 min,
-absolute 8 h). The token is kept in memory to re-check it: every 60 s for sessions that hold `finance.approve`
-or `finance.admin`, every 5 min otherwise. Any authenticated principal may sign in (the module has no person
+absolute 8 h). The token is kept in memory to re-check it: every 60 s for sessions that can write, approve or
+administer (including the ledger's write, approve and admin), every 5 min otherwise. Any authenticated principal may sign in (the module has no person
 directory); what it can do is its scopes.
 
 ## User stories and acceptance

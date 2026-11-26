@@ -54,6 +54,11 @@ type Module struct {
 	FormLimit int
 	// FirstLimited is which consecutive failed sign-in from one address is the first answered 429.
 	FirstLimited int
+	// Gated is a request a Privileged person may make and a demoted one (holding Demoted, or User
+	// when that is nil) may not. It prepares whatever the request needs; the suite adds the token.
+	// Every module declares one.
+	Gated   func(t *testing.T, e *Env, b *Browser) (method, path string, form url.Values)
+	Demoted []string
 	// StepUp is set for a module with irreversible actions: it prepares one as the signed-in
 	// administrator and returns where to post it and with what (without the token).
 	StepUp func(t *testing.T, e *Env, b *Browser) (path string, form url.Values)
@@ -561,6 +566,61 @@ func Run(t *testing.T, m Module) {
 				t.Error("survived without an answer from can-core")
 			}
 		})
+	})
+
+	// The session survives a demotion but the permissions it held before must not: the request that
+	// makes the check is refused, and so is the next one, which is served from what the session kept.
+	t.Run("a demotion takes effect and stays", func(t *testing.T) {
+		if m.Gated == nil {
+			t.Fatal("the module declares no Gated request")
+		}
+		demoted := m.Demoted
+		if demoted == nil {
+			demoted = m.User
+		}
+		for _, kind := range []string{"token", "ticket"} {
+			t.Run(kind, func(t *testing.T) {
+				s := start(t, &m, false)
+				var b *Browser
+				var demote func()
+				var wait time.Duration
+				if kind == "token" {
+					var tok string
+					b, tok = s.signedIn(m.Privileged)
+					demote = func() { s.e.Core.SetTokenPermissions(tok, demoted) }
+					wait = max(m.PrivilegedRecheck, introspectTTL)
+				} else {
+					b = s.mustLand(m.Privileged)
+					demote = func() { s.e.Core.SetSessionPermissions("user:alice", demoted) }
+					wait = m.SSOPrivilegedRecheck
+				}
+				method, path, form := m.Gated(t, s.e, b)
+				csrf := b.CSRF("/")
+				send := func() *httptest.ResponseRecorder {
+					if method != http.MethodPost {
+						return b.Do(method, path, nil)
+					}
+					f := url.Values{"csrf": {csrf}}
+					for k, v := range form {
+						f[k] = v
+					}
+					return b.Do(method, path, f)
+				}
+				if w := send(); w.Code >= 400 {
+					t.Fatalf("before the demotion: %d %.300s", w.Code, w.Body)
+				}
+				demote()
+				s.e.Advance(wait + second)
+				for i := 1; i <= 2; i++ {
+					if w := send(); w.Code != http.StatusForbidden && w.Code != http.StatusNotFound {
+						t.Errorf("request %d after the demotion: %d %.300s", i, w.Code, w.Body)
+					}
+				}
+				if !b.Alive() {
+					t.Error("the demoted person was signed out, so the refusals prove nothing")
+				}
+			})
+		}
 	})
 
 	t.Run("body limits", func(t *testing.T) {
