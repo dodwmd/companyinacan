@@ -18,6 +18,8 @@ on:
   pull_request:
     paths:
       - "core/launch/**"
+      - "core/verify/**"
+      - "test/integration/verify_k3d_test.go"
       - "core/cli/up*.go"
       - "core/provider/**"
       - "core/staticsrv/**"
