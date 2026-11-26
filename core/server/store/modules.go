@@ -58,6 +58,8 @@ type Subscription struct {
 	Service  string
 	Port     int
 	Webhook  string
+	// Via is config.ViaCanCore for a delivery an adapter in can-core takes.
+	Via string
 }
 
 // Subscriber is a Subscription of an enabled module with its signing secret.
@@ -96,8 +98,8 @@ func (db *DB) UpsertModule(ctx context.Context, m Module, providers []Provider, 
 			}
 		}
 		for _, s := range subs {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO subscriptions(module_id,event,service,port,webhook) VALUES (?,?,?,?,?)`,
-				m.ID, s.Event, s.Service, s.Port, s.Webhook); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO subscriptions(module_id,event,service,port,webhook,via) VALUES (?,?,?,?,?,?)`,
+				m.ID, s.Event, s.Service, s.Port, s.Webhook, s.Via); err != nil {
 				return err
 			}
 		}
@@ -305,7 +307,7 @@ func (db *DB) Primary(ctx context.Context, capability string) (string, error) {
 
 // Subscribers returns enabled modules subscribed to an event type.
 func (db *DB) Subscribers(ctx context.Context, event string) ([]Subscriber, error) {
-	rows, err := db.QueryContext(ctx, `SELECT s.module_id,s.event,s.service,s.port,s.webhook,m.namespace,m.hmac_secret FROM subscriptions s
+	rows, err := db.QueryContext(ctx, `SELECT s.module_id,s.event,s.service,s.port,s.webhook,s.via,m.namespace,m.hmac_secret FROM subscriptions s
 		JOIN modules m ON m.id=s.module_id WHERE s.event=? AND m.state='enabled' ORDER BY s.module_id`, event)
 	if err != nil {
 		return nil, err
@@ -314,7 +316,7 @@ func (db *DB) Subscribers(ctx context.Context, event string) ([]Subscriber, erro
 	var out []Subscriber
 	for rows.Next() {
 		var s Subscriber
-		if err := rows.Scan(&s.ModuleID, &s.Event, &s.Service, &s.Port, &s.Webhook, &s.Namespace, &s.HMACSecret); err != nil {
+		if err := rows.Scan(&s.ModuleID, &s.Event, &s.Service, &s.Port, &s.Webhook, &s.Via, &s.Namespace, &s.HMACSecret); err != nil {
 			return nil, err
 		}
 		out = append(out, s)

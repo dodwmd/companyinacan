@@ -165,7 +165,8 @@
           "port": { "$ref": "#/$defs/port" },
           "webhook": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]*$" },
           "optional": { "type": "boolean" },
-          "status": { "$ref": "#/$defs/serveStatus" }
+          "status": { "$ref": "#/$defs/serveStatus" },
+          "via": { "enum": ["can-core"], "description": "An adapter inside can-core takes the delivery and calls the module, instead of the event being posted to the module's webhook." }
         }
       }
     },

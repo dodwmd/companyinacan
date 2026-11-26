@@ -15,7 +15,7 @@
   "idle_total_anon_mib": 62,
   "loaded_total_anon_mib": 90,
   "binary_mib": {
-    "can-core": 21,
+    "can-core": 22,
     "can-static": 7.5,
     "can-forms": 13,
     "can-work": 16,

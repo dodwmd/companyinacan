@@ -120,6 +120,10 @@ type Dispatcher struct {
 	MaxAttempts int
 	BatchSize   int
 	Log         *slog.Logger
+	// Adapter takes the deliveries whose URL starts with events.AdapterURL, with that prefix
+	// removed. It returns an HTTP-like status and an error description ("" for success) that is
+	// recorded and shown to operators, so it must hold nothing personal.
+	Adapter func(ctx context.Context, del store.Delivery, url string) (int, string)
 }
 
 // NewDispatcher returns a dispatcher with default policy: 8 attempts over roughly 10 minutes of
@@ -145,6 +149,12 @@ func (d *Dispatcher) RunOnce(ctx context.Context) (int, error) {
 // send performs one signed POST and returns the HTTP status (0 if none) and an error description
 // ("" on a 2xx).
 func (d *Dispatcher) send(ctx context.Context, del store.Delivery, n int, start time.Time) (int, string) {
+	if url, ok := strings.CutPrefix(del.URL, events.AdapterURL); ok {
+		if d.Adapter == nil {
+			return 0, "this can-core has no adapter for the delivery"
+		}
+		return d.Adapter(ctx, del, url)
+	}
 	if del.HMACSecret == "" {
 		return 0, "module has no signing secret; refusing to send an unsigned webhook"
 	}

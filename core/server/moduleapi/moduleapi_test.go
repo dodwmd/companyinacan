@@ -63,6 +63,7 @@ func newHarness(t *testing.T) *harness {
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
 		Status  string `yaml:"status"`
+		Via     string `yaml:"via" json:",omitempty"`
 	}{Event: "lead.created.v1", Service: "crm", Port: 8000, Webhook: "/hooks/lead"})
 	support := manifest("support")
 	support.Provides = append(support.Provides, struct {

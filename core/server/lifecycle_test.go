@@ -61,6 +61,7 @@ func TestStubModuleLifecycle(t *testing.T) {
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
 		Status  string `yaml:"status"`
+		Via     string `yaml:"via" json:",omitempty"`
 	}{Event: "lead.created.v1", Service: "stub", Port: 8000, Webhook: "/hooks/lead"})
 	stub.Provides = append(stub.Provides, struct {
 		Capability string `yaml:"capability"`

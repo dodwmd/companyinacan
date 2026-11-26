@@ -178,7 +178,9 @@ func RequeueDeliveryTx(ctx context.Context, tx *sql.Tx, id int64, now time.Time)
 func (db *DB) PruneEvents(ctx context.Context, before time.Time) (int64, error) {
 	res, err := db.ExecContext(ctx, `DELETE FROM events WHERE time < ? AND NOT EXISTS
 		(SELECT 1 FROM deliveries d JOIN modules m ON m.id=d.module_id
-		 WHERE d.event_id=events.id AND d.status='pending' AND m.state='enabled')`, before.Unix())
+		 WHERE d.event_id=events.id AND d.status='pending' AND m.state='enabled')
+		AND NOT (type='lead.erased.v1' AND EXISTS
+		(SELECT 1 FROM deliveries d WHERE d.event_id=events.id AND d.status<>'delivered' AND d.url LIKE 'can-adapter+%'))`, before.Unix())
 	if err != nil {
 		return 0, err
 	}

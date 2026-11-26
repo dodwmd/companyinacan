@@ -115,6 +115,11 @@ pages); its binary budget went from 14 to 17. Its memory budgets are unchanged: 
 with an empty database, idle `RssAnon` was 5.2 MiB before and 5.2 with the UI on, 7.6 after serving the sign-in
 page twenty times, and peak RSS rose from 16.0 to 17.8 MiB idle.
 
+**Later: the website editor and the lead adapters** ([specs/067](../../specs/067-site-editor/spec.md),
+[specs/069](../../specs/069-lead-adapters/spec.md)). `can-core` was 20.9 MiB with the editor, 20.6 MiB in CI with the
+adapters alone, and 21.02 MiB with both (locally, same flags: the adapters add 72 KB to 20.95), over the budget of
+21. Its binary budget went from 21 to 22. Memory budgets are unchanged.
+
 ## Tried and not adopted
 
 | Idea | Result |

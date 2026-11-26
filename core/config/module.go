@@ -77,6 +77,9 @@ type Module struct {
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
 		Status  string `yaml:"status"` // available (default) or planned
+		// Via says who takes the delivery: "" the module's own webhook, "can-core" an adapter
+		// inside can-core that calls the module (specs/069-lead-adapters).
+		Via string `yaml:"via" json:",omitempty"`
 	} `yaml:"subscribes"`
 	// Hooks are the lifecycle scripts the module ships (schema module.v1 hooks).
 	Hooks struct {
@@ -176,6 +179,9 @@ func DecodeModule(d *Doc) (*Module, error) {
 	}
 	return &m, nil
 }
+
+// ViaCanCore marks a subscription served by an adapter in can-core.
+const ViaCanCore = "can-core"
 
 // ProvidesServed reports whether a provision is actually served (status is not "planned").
 func ProvidesServed(status string) bool { return status != "planned" }

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
@@ -105,7 +106,13 @@ type Bus struct {
 	mu       sync.RWMutex
 	handlers map[string][]Handler
 	wake     chan struct{}
+	// Extra adds delivery targets the subscriptions do not list (an adapter that holds a copy of
+	// what an erasure is about); optional. A module already subscribed is not added twice.
+	Extra func(ctx context.Context, eventType string, data json.RawMessage) []store.DeliveryTarget
 }
+
+// AdapterURL prefixes the URL of a delivery an adapter inside can-core takes (webhook.Dispatcher).
+const AdapterURL = "can-adapter+"
 
 // NewBus returns a bus over db.
 func NewBus(db *store.DB) *Bus {
@@ -201,7 +208,18 @@ func (b *Bus) publish(ctx context.Context, source, eventType string, data json.R
 			b.log.Error("skipping subscriber with invalid address", "module", s.ModuleID, "error", err)
 			continue
 		}
-		targets = append(targets, store.DeliveryTarget{ModuleID: s.ModuleID, URL: u + s.Webhook})
+		url := u + s.Webhook
+		if s.Via != "" {
+			url = AdapterURL + url
+		}
+		targets = append(targets, store.DeliveryTarget{ModuleID: s.ModuleID, URL: url})
+	}
+	if b.Extra != nil && onlyModule == "" {
+		for _, t := range b.Extra(ctx, eventType, data) {
+			if !slices.ContainsFunc(targets, func(have store.DeliveryTarget) bool { return have.ModuleID == t.ModuleID }) {
+				targets = append(targets, t)
+			}
+		}
 	}
 	id, dup, err := b.db.InsertEventOnce(ctx, store.Event{ID: env.ID, Type: env.Type, Time: env.Time, Source: source, DataJSON: string(env.Data)}, sourceID, targets)
 	if err != nil {

@@ -234,6 +234,7 @@ func (g *publicHandler) submit(w http.ResponseWriter, r *http.Request, form *For
 		CreatedAt:      now,
 		RetentionUntil: now.AddDate(0, 0, form.RetentionDays),
 		Name:           clean["name"],
+		Consents:       form.Consents(clean),
 	}
 	for _, fl := range form.Fields {
 		if fl.Type == TypeEmail && clean[fl.Name] != "" {

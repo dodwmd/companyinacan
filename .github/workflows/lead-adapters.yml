@@ -1,0 +1,83 @@
+name: lead-adapters
+
+# Website leads to the support inbox and the newsletter (specs/069-lead-adapters): forms, support
+# (FreeScout) and newsletter (Listmonk), from the images pinned in their charts, installed through
+# can-core on a throw-away k3d cluster with an in-memory mail server (dev/mailsink). Not a required
+# check, and a failure fails the job. No real mail provider is involved.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "modules/forms/**"
+      - "modules/support/**"
+      - "modules/newsletter/**"
+      - "core/forms/**"
+      - "core/config/**"
+      - "core/server/leadadapter/**"
+      - "core/server/events/**"
+      - "core/server/webhook/**"
+      - "core/server/store/**"
+      - "core/server/installer/**"
+      - "core/server/runtime/**"
+      - "deploy/**"
+      - "dev/mailsink/**"
+      - "test/integration/lead_adapters_test.go"
+      - ".github/workflows/lead-adapters.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  leads:
+    name: website leads on k3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Build can-core, forms and the mail server images and import them
+        # Plain tags for this throw-away cluster (release builds pin by digest).
+        run: |
+          set -euo pipefail
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:dev .
+          args=""
+          for kv in $(sh scripts/resolve-base-digests.sh deploy/forms/Dockerfile); do args="$args --build-arg $kv"; done
+          forms="ghcr.io/dodwmd/can-forms:$(awk '/^  tag:/ {print $2; exit}' modules/forms/chart/values.yaml)"
+          # shellcheck disable=SC2086
+          docker build -f deploy/forms/Dockerfile $args --build-arg VERSION=ci -t "$forms" .
+          mkdir -p "$RUNNER_TEMP/mailsink"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/mailsink/mailsink" ./dev/mailsink
+          docker build -f dev/mailsink/Dockerfile -t mailsink:test "$RUNNER_TEMP/mailsink"
+          k3d image import can-core:dev "$forms" mailsink:test -c companyinacan-dev
+      - name: Deploy can-core
+        run: |
+          kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
+          kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
+      - name: Leads become conversations and consented subscriptions, and are erased
+        env:
+          CAN_IT_CANCORE: "1"
+          CAN_IT_LEADS: "1"
+        run: go test -tags integration -count=1 -v -timeout 50m -run '^TestLeadAdaptersThroughCanCore$' ./test/integration/
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,pvc -A -o wide || true
+          kubectl --context k3d-companyinacan-dev get events -A --sort-by=.lastTimestamp | tail -60 || true
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down
