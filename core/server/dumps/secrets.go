@@ -22,6 +22,7 @@ var SystemSecrets = []string{"can-smtp-relay", "sso-client", "can-postgres-admin
 // tokens Kubernetes issues itself.
 const (
 	releaseSecret      = "can-release"
+	relaySecret        = "can-smtp" // written from company.yaml and the relay Secret at every apply
 	serviceAccountType = "kubernetes.io/service-account-token"
 )
 
@@ -41,7 +42,7 @@ func ExportSecrets(ctx context.Context, api kube.API, mods []ModuleRef) (*backup
 	var warnings []string
 	add := func(ns, name string, o kube.Object) {
 		typ, _ := o["type"].(string)
-		if typ == serviceAccountType || name == releaseSecret {
+		if typ == serviceAccountType || name == releaseSecret || name == relaySecret {
 			return
 		}
 		data := map[string]string{}

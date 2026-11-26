@@ -148,6 +148,7 @@ func newRestoreEnv(t *testing.T) *restoreEnv {
 		"pvc-OLD1_mod-forms_data/uploads/f.txt":          []byte("file"),
 		"pvc-OLD2_can-system_can-core-data/dump.request": []byte("x"),
 		"pvc-OLD3_kube-system_traefik/acme.json":         []byte("x"),
+		"pvc-OLD5_can-data_postgres-data/pgdata/x":       []byte("x"),
 	})
 	rs := &FakeRestic{Snaps: []Snapshot{{ID: "snapA", Time: time.Unix(100, 0), Tags: []string{"can"}}}, Files: files}
 	r := &rec{

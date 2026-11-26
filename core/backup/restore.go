@@ -921,6 +921,10 @@ func (o *Restore) stepVolumes(ctx context.Context, st *restoreState) error {
 			want = append(want, ref)
 		case ref.Namespace == "can-system" && ref.Claim == "can-core-data":
 			// can-core's state comes from its consistent dump, not from these files.
+		case ref.Namespace == "can-data" && ref.Claim == "postgres-data":
+			// A file copy of a running database server (only in snapshots made before it was
+			// excluded) is not a backup: the databases come from the modules' dumps.
+			o.say("not restored: volume %s (the shared Postgres starts empty; each module's dump is loaded by its hook)", ref)
 		case ref.Namespace == "kube-system":
 			o.say("not restored: volume %s (certificates and ingress state are re-created by the new cluster)", ref)
 		case o.accepted(ref.String()):

@@ -49,6 +49,9 @@ Before this feature `can restore` stopped at its first step: neither the cluster
 - **FR-006a** In-house modules with subcommand hooks (specs/043-module-backup-hooks) are restored by
   `<command> restore -replace` in the module's own image, in the Job shape of that spec's backup Job, with the module
   at 0 replicas and its volume files already copied. `--allow-missing-blobs <module>` passes `-allow-missing-blobs`.
+- **FR-006b** Database modules are provisioned as a normal apply would (the shared Postgres of specs/041, or the
+  exported external server). No SMTP relay is handed to a wrapped app before go-live (`can-smtp` is neither exported
+  nor filled by the restore install).
 - **FR-007** No incomplete restore without a named override: `--without-secrets`, `--accept-unrestored`,
   `--accept-unerased`, `--allow-no-ledger`, `--accept-ledger-behind`, `--force-older`.
 - **FR-008** `can backup verify` applies the FR-002 checks of the snapshot.
@@ -92,7 +95,8 @@ erasure promise.
 
 Creating the server and installing k3s (`can up --provision-only`), installing restic, publishing the site (it comes
 from the company repository, not the backup), routes, DNS and the backup timer (`can up` afterwards). Not restored:
-database **servers** in `can-data` (the operator's own; databases are loaded into them from dumps), Traefik's
+the data directory of a database server (the shared Postgres of specs/041 starts empty on the new server and the
+modules' restore hooks load it; an external server is the operator's), Traefik's
 certificate store, the raw k3s datastore. Not verified: a real S3 bucket, a real server, systemd, the release image
 paths (`--release-manifest`), `--images-from` import into k3s, `--confirm-overwrite` on a real cluster, restore hooks
 of the shipped wrapped modules and database modules (the `can-hooks` image is not published), `equity`, `board`,

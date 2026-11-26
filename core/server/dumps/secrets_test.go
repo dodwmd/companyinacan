@@ -42,6 +42,7 @@ func TestExportSecrets(t *testing.T) {
 		put("Secret", ns, "can-module", "Opaque")
 	}
 	put("Secret", "mod-people", "can-release", "Opaque")
+	put("Secret", "mod-people", "can-smtp", "Opaque")
 	put("Secret", "mod-people", "tok", serviceAccountType)
 	put("Secret", "can-system", "can-smtp-relay", "Opaque")
 	put("Secret", "can-system", "something-else", "Opaque")

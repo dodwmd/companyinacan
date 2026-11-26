@@ -116,9 +116,11 @@ func (c Config) RestoreOps(ctx context.Context, log *slog.Logger) (*restoreops.O
 		DB: db, Audit: audit.New(db), DBPath: c.DBPath, DumpsDir: c.DumpsDir, ModulesDir: c.ModulesDir,
 		API: api, Hooks: c.kubeHooks(api, db), PostgresURL: c.PostgresAdminURL,
 		Installer: func(seed func(context.Context, reconcile.Spec) error, pg string) reconcile.ModuleInstaller {
-			var prov dbprov.Provisioner = dbprov.Unconfigured{}
+			// As newInstaller: the operator's server when configured (or exported), otherwise the
+			// shared Postgres can-core runs, which starts empty and is filled by the restore hooks.
+			var prov dbprov.Provisioner = &dbprov.Managed{API: api}
 			if pg != "" {
-				prov = &dbprov.Postgres{AdminURL: pg, Host: c.PostgresHost, Port: 5432}
+				prov = &dbprov.External{API: api, Inner: &dbprov.Postgres{AdminURL: pg, Host: c.PostgresHost, Port: 5432}}
 			}
 			return installer.New(installer.Config{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL, NodeIP: c.NodeIP,
 				Domain: c.CompanyDomain, RequireAdmission: true, DB: prov, Log: log, Quiesce: true, Seed: seed})

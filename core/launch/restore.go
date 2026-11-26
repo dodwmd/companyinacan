@@ -89,6 +89,7 @@ func (c *RestoreCluster) Inspect(ctx context.Context) ([]string, error) {
 	}{
 		{"can-core is deployed", []string{"-n", SystemNS, "get", "deployment", "can-core", "--ignore-not-found", "-o", "name"}},
 		{"can-core has data", []string{"-n", SystemNS, "get", "persistentvolumeclaim", "can-core-data", "--ignore-not-found", "-o", "name"}},
+		{"the shared Postgres has data", []string{"-n", "can-data", "get", "persistentvolumeclaim", "postgres-data", "--ignore-not-found", "-o", "name"}},
 	} {
 		out, err := r.kube(ctx, nil, q.args...)
 		if err != nil {
