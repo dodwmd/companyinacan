@@ -503,7 +503,6 @@ func TestDownRemovesTheBackupTimerOnTheSSHServer(t *testing.T) {
 
 // planKube answers the plan can-core is asked for after the stack is up.
 type planKube struct {
-	nopKube
 	plan  string
 	asked *[]string
 }
