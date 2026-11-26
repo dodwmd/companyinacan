@@ -213,6 +213,36 @@ They are queued in a transactional outbox in the same transaction as the change 
 can-core at least once (backoff, a seven-day window, then dead-lettered rather than dropped). With no
 can-core (standalone) nothing is queued. Schemas: `schemas/events/file.*.v1.json`.
 
+## Web UI
+
+`can-files` serves a server-rendered web UI on the same listener when `ui.enabled: true` (off by default):
+html/template, one stylesheet, no JavaScript, a strict CSP. It is another client of the same service as the
+API, with the same checks, audit entries and answers ([`specs/049-files-ui`](../specs/049-files-ui/spec.md)).
+
+| What you can do | Who |
+|---|---|
+| See your spaces and folders, download files | anyone with a role in the space |
+| Make a space | anyone with `files.write` |
+| Upload (the scan verdict is shown), add versions, rename, move, delete, restore, share | editors and managers |
+| Give or take away access | managers |
+| Set a legal hold or retention date, erase a data subject (by id, never by name) | `files.admin` |
+
+- **Turning it on.** `modules.files.expose.ui: true` in `company.yaml` puts it on `https://files.<domain>`
+  ([module-routing.md](module-routing.md)) next to the share-link route; `/v1` is not routed by that. It then
+  appears under **Apps** in the admin UI. In the compose stack it is already on: `http://localhost:8185`
+  (from Apps) or `http://files.localhost:8080` (token sign-in).
+- **Signing in.** From **Apps** (a one-time launch ticket, [sso.md](sso.md)), or with a pasted personal access
+  token where `ui.token_login` allows it (routing the UI turns it off unless `expose.token_login` is set). The
+  token form accepts what the API accepts, the service token included, except the restore-only credential.
+- **Uploads** are one file at a time with no progress bar, and follow every rule under [Uploads](#uploads).
+  Without a virus scanner they are refused, as on the API.
+- **Share links** are shown once. When `share.base_url` is empty the link is built from the address you used
+  to reach the page; it works from outside only if `/s/` is published.
+- **Erasure** asks you to type `ERASE` and to confirm who you are: the token again, or, from Apps, an admin
+  sign-in at most 5 minutes old.
+- **Memory.** With the UI on the service sets a soft Go memory limit of 10 MiB (`GOMEMLIMIT` overrides it).
+- **Not in the UI:** search, folder rename or move, the audit log, tombstones, running the retention sweep.
+
 ## Storage backends
 
 | Backend | Details |
@@ -280,7 +310,10 @@ the chart through the installer.
   ([backup-restore.md](backup-restore.md#in-house-modules)).
 - No e-sign path: signed PDFs can be stored, but nothing here sends a document for signature or
   purges it from an e-sign app.
-- No resumable or chunked upload, no folder moves, no per-folder access lists, no web UI, no search, no
+- The web UI is tested in Go (flows, golden pages, a static accessibility checklist) and was tried through
+  the compose stack with HTTP requests; no real browser or screen reader was used, and it has not run on a
+  cluster.
+- No resumable or chunked upload, no folder moves, no per-folder access lists, no search, no
   previews or thumbnails (by design), no antivirus rescan of stored files, no content deduplication.
 - The existing modules do not call this one (see Integration).
 - Constant-time and timing behaviour of the share-link mac was reviewed, not measured.

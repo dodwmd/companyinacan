@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -25,6 +26,9 @@ import (
 var Version = "dev"
 
 const defaultConfigPath = "/etc/can-files/files.yaml"
+
+// uiMemLimit is the soft Go memory limit while the web UI is on (GOMEMLIMIT overrides it).
+const uiMemLimit = 10 << 20
 
 // Secrets come from the environment, never from the config file.
 type Secrets struct {
@@ -226,6 +230,11 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	obs.DefaultHealth.Add("blobstore", true, be.Ping) // /readyz: the backend must answer too
+	if cfg.UI.Enabled && getenv("GOMEMLIMIT") == "" {
+		// Rendering pages allocates; collecting a little earlier keeps the module within its declared
+		// RAM (specs/049-files-ui/research.md). A soft limit: nothing fails above it.
+		debug.SetMemoryLimit(uiMemLimit)
+	}
 	var sessions modclient.SessionAPI
 	if can != nil {
 		sessions = can

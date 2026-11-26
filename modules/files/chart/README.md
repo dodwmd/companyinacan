@@ -9,7 +9,9 @@ Helm-compatible templates for the in-house files module, rendered by can-core's 
 - The IngressRoute is rendered only when the manifest declares `runtime.subdomain` (`files`, host
   `files.<domain>`, supplied by can-core). It routes only the prefix `/s/` (share-link downloads); the
   `/v1` API and `/healthz` stay cluster-internal. Set `config.share.base_url` to the public origin so
-  created links are absolute.
+  links created through the API are absolute.
+- The web UI (`config.ui.enabled`, off by default) is routed by can-core, not by this chart, with
+  `modules.files.expose.ui` (`module.yaml` `runtime.public_ui`).
 - `config.scanner.required` is **true** in the shipped values: no upload is accepted until a real
   scanner exists (`scanner.type: clamd` with `scanner.address`). There is no ClamAV chart yet.
 - `config.backend.type: local` keeps bytes on the PVC (`/data/blobs`, 0700). `s3` needs

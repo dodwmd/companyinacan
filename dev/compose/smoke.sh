@@ -128,6 +128,7 @@ expect_status "equity API refuses a request without a token" 401 "http://equity.
 expect_status "files healthz" 200 "http://files.localhost:$port/healthz"
 expect_status "files API refuses a request without a token" 401 "http://files.localhost:$port/v1/spaces"
 expect_status "files share route answers 404 for a made-up link" 404 "http://files.localhost:$port/s/shr_000000000000000000000000.1.AAAA"
+expect_status "files web UI sign-in page" 200 "http://files.localhost:$port/login"
 expect_status "unknown Host header gets nothing (421)" 421 -H "Host: evil.example" "http://localhost:$port/"
 
 # 5b. people web UI (E13c): login page, anonymous redirect, a wrong token is refused, API unchanged

@@ -6,12 +6,14 @@
 # ledger. File bytes live on a local volume or in an S3 bucket; the database holds only sealed
 # metadata. Other modules (jobs resumes, board packs, finance receipts and contract PDFs, people
 # documents) reference a file by its opaque id and never hold its bytes.
+# A server-rendered web UI (E13f, specs/049-files-ui) ships in the same binary, off by default
+# (ui.enabled) and routed only with expose.ui.
 # This is a tool, not legal advice: what must be kept, for how long and when it must be erased is
 # the operator's responsibility (docs/files.md lists what is and is not verified).
 schema: 1
 id: files
 name: Files and documents
-description: Document and file storage with spaces and access lists, immutable versions, signed expiring share links, a fail-closed virus-scan hook, verified checksums, quotas, retention with a trash period, legal hold and erasure with tombstones. Local volume or S3 backend. Downloads are always attachments. An e-signature path is not built.
+description: Document and file storage with spaces and access lists, immutable versions, signed expiring share links, a fail-closed virus-scan hook, verified checksums, quotas, retention with a trash period, legal hold and erasure with tombstones. Local volume or S3 backend. Downloads are always attachments. A web page for people (spaces, folders, upload, versions, share links, holds and erasure) is included. An e-signature path is not built.
 category: operations
 version: 0.1.0
 # experimental: unit-, contract- and race-tested offline (a fake S3 that verifies SigV4, a fake
@@ -26,8 +28,20 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
-  # Only the share-link download route (/s/) is public (see chart/templates/ingressroute.yaml).
+  # The chart routes only the share-link download route (/s/) (see chart/templates/ingressroute.yaml).
   subdomain: files
+  # The web UI accepts can-core launch tickets (specs/036-module-ui-sso).
+  web_login: {}
+  # Routed on files.<domain> only when company.yaml sets modules.files.expose.ui (specs/040-module-routing).
+  # An allowlist of the web UI's own paths (/v1 is not one); test/contract checks it covers every UI route.
+  public_ui:
+    service: files
+    port: 8095
+    exact: [/, /manifest.webmanifest]
+    prefixes: [/admin, /files, /folders, /login, /logout, /shares, /spaces, /static]
+    config:
+      trust_proxy: true
+      ui: { enabled: true, force_secure: true }
 requires:
   database: sqlite
   sso: none

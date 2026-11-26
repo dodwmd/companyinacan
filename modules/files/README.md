@@ -16,8 +16,9 @@ see [`docs/files.md`](../../docs/files.md), "Integration".
 verifies the AWS Signature V4 independently, a fake clamd) and measured locally (see
 `specs/034-files/research.md` R9). The chart installs through can-core's installer in unit tests; the
 image has not been built or run on a cluster; no real S3 service and no real ClamAV was used; the
-blobs are not encrypted at rest by the module; directory groups are not resolved yet. A limited
-sharing UI does not exist: the API is the interface.
+blobs are not encrypted at rest by the module; directory groups are not resolved yet. There is a
+server-rendered web UI for people (off by default; no real browser has been used on it): see
+[`docs/files.md`](../../docs/files.md), "Web UI".
 
 **Safety defaults.** Uploads are refused until a real scanner is configured (`scanner.required`).
 Downloads are always attachments of `application/octet-stream` with `nosniff` and a sandboxing CSP;

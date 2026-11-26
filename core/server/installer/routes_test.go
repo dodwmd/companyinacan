@@ -91,6 +91,7 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 		{"people", "8081", "PathPrefix(`/people/`)"},
 		{"jobs", "8080", "PathPrefix(`/applications/`)"},
 		{"finance", "8080", "PathPrefix(`/invoices/`)"},
+		{"files", "8095", "PathPrefix(`/spaces/`)"},
 	} {
 		t.Run(c.id, func(t *testing.T) {
 			in, api, spec := routed(t, c.id, config.Expose{UI: true})
@@ -140,8 +141,8 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 			if exists(api, "IngressRoute", spec.Namespace, routeWeb) || exists(api, "Middleware", spec.Namespace, middlewareWeb) {
 				t.Error("route left behind")
 			}
-			// jobs keeps its careers route, so its port stays open
-			if got := traefikPorts(t, api, spec.Namespace); (got != "[]") != (c.id == "jobs") {
+			// jobs keeps its careers route and files its share links, so their ports stay open
+			if got := traefikPorts(t, api, spec.Namespace); (got != "[]") != (c.id == "jobs" || c.id == "files") {
 				t.Errorf("NetworkPolicy: %s", got)
 			}
 			d = get(t, api, "Deployment", spec.Namespace, c.id)
@@ -150,6 +151,20 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 				t.Error("exposure annotation left behind")
 			}
 		})
+	}
+}
+
+// files already routes its share links from its chart (/s/, specs/034-files). Exposing the web UI
+// (specs/049-files-ui) adds the UI's paths on the same host, and neither takes the other's.
+func TestExposedFilesUIKeepsTheShareLinkRoute(t *testing.T) {
+	in, api, spec := routed(t, "files", config.Expose{UI: true})
+	enable(t, in, spec)
+	chart := toJSON(get(t, api, "IngressRoute", spec.Namespace, "files")["spec"])
+	if !strings.Contains(chart, "PathPrefix(`/s/`)") || strings.Contains(chart, "/v1") || strings.Contains(chart, "/spaces") {
+		t.Errorf("share link route: %s", chart)
+	}
+	if web := toJSON(get(t, api, "IngressRoute", spec.Namespace, routeWeb)["spec"]); strings.Contains(web, "PathPrefix(`/s/`)") || strings.Contains(web, "Path(`/s`)") {
+		t.Errorf("the UI route takes the share links: %s", web)
 	}
 }
 

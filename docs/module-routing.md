@@ -41,6 +41,7 @@ to the file.
 | people | `people.<domain>` | - |
 | jobs | `jobs.<domain>` | careers pages and feeds on `careers.<domain>` |
 | finance | `finance.<domain>` | signed invoice links on `finance.<domain>/public/invoices/`, only with `public: true` |
+| files | `files.<domain>` | share-link downloads on `files.<domain>/s/` |
 | forms | none | `/_forms` on the site hosts |
 
 ## What you also need

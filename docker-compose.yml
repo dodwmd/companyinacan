@@ -29,7 +29,7 @@ x-metrics-env: &metrics-env
 # also carry the in-cluster names can-core delivers to as network aliases.
 x-webhook-secret: &webhook-secret dev-only-webhook-secret-0123456789abcdef
 
-# work, people, jobs, finance and equity ask can-core (CAN_API_URL) who a personal access token or a launch
+# work, people, jobs, finance, equity and files ask can-core (CAN_API_URL) who a personal access token or a launch
 # ticket belongs to, presenting the random token the `init` job wrote for each (CAN_TOKEN_FILE). Each module
 # mounts only its own token volume.
 services:
@@ -46,6 +46,7 @@ services:
       - token-jobs:/tokens/jobs
       - token-finance:/tokens/finance
       - token-equity:/tokens/equity
+      - token-files:/tokens/files
     restart: "no"
 
   site:
@@ -88,7 +89,7 @@ services:
       CAN_COMPANY_FILE: /var/lib/can/company/company.yaml
       # Where Apps sends the browser. One host name (localhost) on different ports, because the launch
       # cookie of plain http is host-only: open the admin UI at http://localhost:8180 for this.
-      CAN_MODULE_UI_URLS: "work=http://localhost:8181/ui,people=http://localhost:8182,jobs=http://localhost:8183,finance=http://localhost:8184"
+      CAN_MODULE_UI_URLS: "work=http://localhost:8181/ui,people=http://localhost:8182,jobs=http://localhost:8183,finance=http://localhost:8184,files=http://localhost:8185"
       CAN_TOKEN_REVIEW: fake       # DEV ONLY: module tokens are not verified against Kubernetes
       CAN_COOKIE_SECURE: "false"   # plain HTTP on localhost
       CAN_TRUST_PROXY: "true"      # behind the Caddy edge
@@ -108,6 +109,7 @@ services:
       - token-jobs:/tokens/jobs:ro
       - token-finance:/tokens/finance:ro
       - token-equity:/tokens/equity:ro
+      - token-files:/tokens/files:ro
     depends_on:
       init:
         condition: service_completed_successfully
@@ -255,9 +257,13 @@ services:
     env_file: [dev/compose/secrets/files.env]
     environment:
       <<: *metrics-env
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: files
+      CAN_TOKEN_FILE: /tokens/token
       CAN_RAM_DECLARED_MB: "20"
     volumes:
       - files-data:/data
+      - token-files:/tokens:ro
       - dev-secrets:/secrets:ro
     depends_on:
       init:
@@ -280,6 +286,7 @@ services:
       - "127.0.0.1:8182:8182"  # people
       - "127.0.0.1:8183:8183"  # jobs
       - "127.0.0.1:8184:8184"  # finance
+      - "127.0.0.1:8185:8185"  # files
     depends_on: [site, forms, core, work, people, jobs, finance, equity, files, smtpsink]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/_edge/healthz"]
@@ -331,6 +338,7 @@ volumes:
   token-jobs:
   token-finance:
   token-equity:
+  token-files:
   core-data:
   forms-data:
   work-data:
