@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -24,14 +25,46 @@ import (
 
 const peopleHealth = "http://people-api.mod-people.svc.cluster.local:8081/healthz"
 
-func wiringCompany(without ...string) func(t *testing.T) string {
-	return func(t *testing.T) string {
-		company := "schema: 1\nname: Every Module Co\ndomain: modules.example\nprovider:\n  type: local\nmodules:\n"
-		for _, id := range inHouseModules(t) {
-			company += fmt.Sprintf("  %s: {enabled: %v}\n", id, !slices.Contains(without, id))
+// wiringCompany is every in-house module, with equity's settings, without the named ones.
+func wiringCompany(t *testing.T, equitySettings string, without ...string) string {
+	t.Helper()
+	company := "schema: 1\nname: Every Module Co\ndomain: modules.example\nprovider:\n  type: local\nmodules:\n"
+	for _, id := range inHouseModules(t) {
+		settings := ""
+		if id == "equity" && equitySettings != "" {
+			settings = ", settings: {" + equitySettings + "}"
 		}
-		return company
+		company += fmt.Sprintf("  %s: {enabled: %v%s}\n", id, !slices.Contains(without, id), settings)
 	}
+	return company
+}
+
+const asksDirectory = "identity: directory"
+
+// applyOutput runs `can apply` and returns what it said, whether or not it succeeded.
+func applyOutput(t *testing.T, companyYAML string) (string, error) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/company.yaml", []byte(companyYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "run", "./cmd/can", "apply", dir, "--modules-dir", "modules", "--context", kubeContext(), "--skip-image-check") //nolint:gosec // test helper
+	cmd.Dir = repoRoot(t)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func mustApply(t *testing.T, companyYAML, says string) {
+	t.Helper()
+	out, err := applyOutput(t, companyYAML)
+	if err != nil || !strings.Contains(out, says) {
+		t.Fatalf("can apply: %v, want %q in:\n%s", err, says, out)
+	}
+}
+
+func equityObject(kind, name, path string) string {
+	out, _ := kubectl("-n", "mod-equity", "get", kind, name, "-o", "jsonpath={"+path+"}")
+	return out
 }
 
 // moduleProbe asks peopleHealth from a short-lived pod in mod-<module> that is labelled as the app
@@ -157,11 +190,24 @@ func TestModuleWiringOnK3d(t *testing.T) {
 		}
 	})
 	prepareDumpsDir(t)
-	canApplyModules(t, wiringCompany()(t))
+	// Without the opt-in equity is not connected, although people is enabled.
+	mustApply(t, wiringCompany(t, ""), "synced company.yaml")
 	rolledOut(t, "people", "equity", "provisioning", "work")
+	eventually(t, 3*time.Minute, "provisioning to be connected", func() (bool, string) {
+		return hasPolicy("mod-people", "can-wire-from-provisioning"), "missing"
+	})
+	if hasPolicy("mod-equity", "can-wire-to-people") || strings.Contains(equityObject("configmap", "equity-config", ".data"), "directory:") {
+		t.Fatal("equity was connected without identity: directory")
+	}
+	mustApply(t, wiringCompany(t, asksDirectory), "note: equity verifies holders (directory mode)")
 	for _, p := range [][2]string{{"mod-equity", "can-wire-to-people"}, {"mod-people", "can-wire-from-equity"}, {"mod-provisioning", "can-wire-to-people"}, {"mod-people", "can-wire-from-provisioning"}} {
 		eventually(t, 3*time.Minute, p[0]+"/"+p[1], func() (bool, string) { return hasPolicy(p[0], p[1]), "missing" })
 	}
+	eventually(t, 3*time.Minute, "equity to be configured with the directory", func() (bool, string) {
+		conf := equityObject("configmap", "equity-config", ".data")
+		return strings.Contains(conf, "directory:"), conf
+	})
+	rolledOut(t, "equity")
 
 	t.Run("network", func(t *testing.T) {
 		// Positive controls first (kube-router programs policies asynchronously), so that
@@ -305,7 +351,11 @@ spec:
 	})
 
 	t.Run("disabling a side removes the connection", func(t *testing.T) {
-		canApplyModules(t, wiringCompany("people", "provisioning")(t))
+		// equity never falls back by itself: people cannot go while it asks for the directory.
+		if out, err := applyOutput(t, wiringCompany(t, asksDirectory, "people", "provisioning")); err == nil || !strings.Contains(out, "semantic.equity-directory") {
+			t.Fatalf("people was disabled under equity's directory mode: %v\n%s", err, out)
+		}
+		mustApply(t, wiringCompany(t, "identity: attestation", "people", "provisioning"), "note: equity returns to attestation mode")
 		eventually(t, 4*time.Minute, "every connection to be removed", func() (bool, string) {
 			left, err := kubectl("get", "networkpolicy", "-A", "-l", "can.dev/wire", "-o", "name")
 			return err == nil && left == "", left
@@ -316,11 +366,15 @@ spec:
 			return err == nil && terr == nil && !strings.Contains(conf, "directory:") && tok == "", conf
 		})
 		rolledOut(t, "equity")
-		// And back: enabling people again reconnects it.
-		canApplyModules(t, wiringCompany("provisioning")(t))
-		eventually(t, 5*time.Minute, "equity to be connected again", func() (bool, string) {
-			conf, _ := kubectl("-n", "mod-equity", "get", "configmap", "equity-config", "-o", "jsonpath={.data}")
-			return hasPolicy("mod-equity", "can-wire-to-people") && hasPolicy("mod-people", "can-wire-from-equity") && strings.Contains(conf, "directory:"), conf
+
+		// Opting in again reconnects it, with a break-glass window from company.yaml.
+		tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+		mustApply(t, wiringCompany(t, asksDirectory+`, break_glass_until: "`+tomorrow+`"`, "provisioning"), "note: equity break-glass until "+tomorrow)
+		eventually(t, 5*time.Minute, "equity to be connected again, with break-glass", func() (bool, string) {
+			conf := equityObject("configmap", "equity-config", ".data")
+			env := equityObject("deploy", "equity", ".spec.template.spec.containers[0].env")
+			return hasPolicy("mod-equity", "can-wire-to-people") && hasPolicy("mod-people", "can-wire-from-equity") &&
+				strings.Contains(conf, "directory:") && strings.Contains(env, tomorrow), conf + env
 		})
 		rolledOut(t, "people", "equity")
 		if hasPolicy("mod-people", "can-wire-from-provisioning") {

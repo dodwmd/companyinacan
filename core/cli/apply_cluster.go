@@ -11,6 +11,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/dodwmd/companyinacan/core/cluster"
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/routing"
 )
 
@@ -113,6 +114,28 @@ func syncRouting(cmd *cobra.Command, domain, kubeContext string, proxied, rememb
 		return "", fmt.Errorf("%w; run `can up` to write ConfigMap %s/%s", err, routing.Namespace, routing.ConfigMapName)
 	}
 	return write(facts, "wrote ConfigMap can-system/can-routing from the site route")
+}
+
+// companyInForce is the company.yaml the cluster has now, nil when there is none or it cannot be
+// read (the notes then compare against a company without modules).
+func companyInForce(cmd *cobra.Command, kubeContext string) *config.Company {
+	args := []string{"-n", "can-system", "get", "configmap", "company", "--ignore-not-found", "-o", `jsonpath={.data.company\.yaml}`}
+	if kubeContext != "" {
+		args = append([]string{"--context", kubeContext}, args...)
+	}
+	out, err := newExecutor(cmd).Run(context.Background(), cluster.Cmd{Name: "kubectl", Args: args})
+	if err != nil || strings.TrimSpace(out) == "" {
+		return nil
+	}
+	doc, _ := config.LoadBytes("company.yaml", []byte(out))
+	if doc == nil {
+		return nil
+	}
+	c, err := config.DecodeCompany(doc)
+	if err != nil {
+		return nil
+	}
+	return c
 }
 
 // syncCompany writes the (already validated) company.yaml into the cluster as a ConfigMap with

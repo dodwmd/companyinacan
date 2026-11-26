@@ -235,8 +235,10 @@ spec:
 ---
 # The NetworkPolicies can-core may write in a module namespace (specs/057-module-capability-wiring).
 # The ones every module gets admit the platform only (DNS and Traefik, can-core, the databases, the
-# internet without the cluster's own ranges) or pods of the same namespace. One module reaches another
-# only through a policy named can-wire-*, for a pair and port listed here: the consumer's pods to the
+# internet without the cluster's own ranges) or pods of the same namespace. A policy can-core creates
+# or changes may open one module to another only if it is named can-wire-*, for a pair and port listed
+# here. It bounds CREATE and UPDATE only: can-core can still delete policies, default-deny included.
+# What it allows: the consumer's pods to the
 # provider's pods, and nothing else. The pairs mirror core/server/modsecrets.Grants and the
 # providers' manifests; test/contract keeps them in step.
 apiVersion: admissionregistration.k8s.io/v1

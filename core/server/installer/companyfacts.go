@@ -3,6 +3,7 @@ package installer
 import (
 	"context"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
 
@@ -14,6 +15,13 @@ import (
 // returns. The origin is the module's own host (runtime.subdomain), http only when the cluster's
 // routing facts say there is no TLS.
 func (in *Installer) companyValues(ctx context.Context, s reconcile.Spec) (map[string]any, error) {
+	if s.ID == "equity" { // the break-glass window; the identity mode is a connection (links.go)
+		st, err := config.ReadEquitySettings(s.Settings)
+		if err != nil || st.BreakGlassUntil == "" {
+			return nil, err
+		}
+		return map[string]any{"breakGlassUntil": st.BreakGlassUntil}, nil
+	}
 	domain, sub := in.domain(s), s.Manifest.Runtime.Subdomain
 	if domain == "" || sub == "" || (s.ID != "jobs" && s.ID != "files") {
 		return nil, nil

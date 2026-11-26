@@ -24,9 +24,11 @@ func linksTo(ls []config.Link, provider string) bool {
 }
 
 // links are the connections module id is to have: one per grant whose capability the module asks
-// for and whose provider is enabled and serves it (and is the designated primary, if one is).
+// for and whose provider is enabled and serves it (and is the designated primary, if one is). A
+// grant with an opt-in also needs the company to have set it.
 //
-// A provider that has failed does not take away a connection the module already has (the consumer
+// A connection the company opted into is wanted whatever the provider's state: the module is not
+// installed without it (it would run in the mode the company turned away from). Otherwise a provider that has failed does not take away a connection the module already has (the consumer
 // fails closed instead of silently changing how it behaves), and gives none to a module that has
 // none. planning also counts a provider this apply is still to install, which it does first.
 func links(d Desired, recorded map[string]store.Module, id string, planning bool) []config.Link {
@@ -38,7 +40,7 @@ func links(d Desired, recorded map[string]store.Module, id string, planning bool
 	var out []config.Link
 	for _, g := range modsecrets.Grants() {
 		prov, ok := enabled[g.Provider]
-		if g.Consumer != id || !ok || !uses(man, g.Capability) {
+		if g.Consumer != id || !ok || !uses(man, g.Capability) || !g.Asked(d.Company.Modules[id].Settings) {
 			continue
 		}
 		if p := d.Company.Primary[g.Capability]; p != "" && p != g.Provider {
@@ -49,7 +51,7 @@ func links(d Desired, recorded map[string]store.Module, id string, planning bool
 		if planning {
 			running = !have || rec.State != store.StateFailed
 		}
-		if !running && !linksTo(recorded[id].Manifest.Runtime.Wired, g.Provider) {
+		if g.OptInKey == "" && !running && !linksTo(recorded[id].Manifest.Runtime.Wired, g.Provider) {
 			continue
 		}
 		for _, p := range prov.Provides {
@@ -94,4 +96,38 @@ func linkNote(consumer string, had, want []config.Link) string {
 		}
 	}
 	return strings.Join(out, "; ")
+}
+
+// ModeNotes says what a change of company.yaml does to how a module behaves, for an operator who
+// applies it: was is the company.yaml in force (nil when there is none), next the new one.
+func ModeNotes(was, next *config.Company) []string {
+	read := func(c *config.Company) (config.EquitySettings, bool) {
+		if c == nil {
+			return config.EquitySettings{Identity: config.IdentityAttestation}, false
+		}
+		e, ok := c.Modules["equity"]
+		st, _ := config.ReadEquitySettings(e.Settings)
+		return st, ok && e.IsEnabled()
+	}
+	before, had := read(was)
+	after, on := read(next)
+	if !on {
+		return nil
+	}
+	if !had {
+		before = config.EquitySettings{Identity: config.IdentityAttestation}
+	}
+	var out []string
+	g, _ := modsecrets.GrantFor("equity", "people")
+	switch {
+	case before.Identity == after.Identity:
+	case after.Identity == config.IdentityDirectory:
+		out = append(out, g.Gains+"; until both are done those actions are refused (docs/equity.md)")
+	default:
+		out = append(out, g.Loses)
+	}
+	if after.BreakGlassUntil != "" && after.BreakGlassUntil != before.BreakGlassUntil {
+		out = append(out, "equity break-glass until "+after.BreakGlassUntil+": its service account may act without a person")
+	}
+	return out
 }

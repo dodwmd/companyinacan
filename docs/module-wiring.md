@@ -165,13 +165,14 @@ with those permissions), and redirects to a clean URL. `ui.token_login: false` r
 
 A module that asks for a capability can-core grants gets network access to the providing module only, its
 URL and a scoped token ([specs/057](../specs/057-module-capability-wiring/spec.md)). Today: `provisioning`
-and `equity` to `people` (`directory`). Everything else between module namespaces stays closed, and the
+and, when asked for, `equity` to `people` (`directory`). Everything else between module namespaces stays closed, and the
 connection is removed when either side is disabled. If the directory cannot be reached, equity refuses
 what needs a person (503) and provisioning does not act.
 
-**Enabling `people` where `equity` already runs switches equity to verified holder identity.** Until the
-people who act in equity have linked directory records, and holders are verified, those actions are
-refused. The plan says so; it is not held for approval.
+**equity connects only when `company.yaml` says `modules.equity.settings.identity: directory`**; until
+then it stays in attestation mode, and after that disabling `people` is refused until the setting is
+changed back. Read [`equity.md`](equity.md#holder-identity) before opting in: actions can freeze until
+records are linked. `break_glass_until` in the same settings opens a break-glass window.
 
 ## Events
 

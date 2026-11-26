@@ -24,6 +24,17 @@ const (
 	labelPeer  = "can.dev/wire-peer" // the module on the other side
 )
 
+// checkOptIns refuses to install a module without a connection its company opted into: it would
+// run in the mode the company turned away from.
+func checkOptIns(s reconcile.Spec) error {
+	for _, g := range modsecrets.Grants() {
+		if g.Consumer == s.ID && g.OptInKey != "" && g.Asked(s.Settings) && !linked(s, g.Provider) {
+			return fmt.Errorf("module %s has %s: %s but is not connected to %s: enable that module, or change the setting back", s.ID, g.OptInKey, g.OptInValue, g.Provider)
+		}
+	}
+	return nil
+}
+
 // linkValues are the chart value overrides of the connections: where each provider is.
 func linkValues(s reconcile.Spec) (map[string]any, error) {
 	if len(s.Links) == 0 {

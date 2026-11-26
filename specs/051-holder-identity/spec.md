@@ -99,7 +99,7 @@ it. Activating and cancelling have no such rule.
 **themself** cannot be approved by them in any way: it takes another board member, as before this feature.
 Their founder shares are recorded with break-glass.
 
-**A single administrator, attestation mode** (what `can` installs without the `people` module): none of that
+**A single administrator, attestation mode** (the default of a `can` installation): none of that
 holds. An administrator who also holds the board role and has the service account token **can give themself a
 grant, without break-glass**:
 
@@ -166,7 +166,7 @@ links one account per person); linking or unlinking one's own account; acting wh
 
 ## Not built (follow-ups)
 
-can-core's wiring of directory mode and a read-only lookup credential are built by
+can-core's wiring of directory mode (opt-in) and a read-only lookup credential are built by
 [specs/057](../057-module-capability-wiring/spec.md).
 
 - Per-entry second-actor approval of manual ledger writes.

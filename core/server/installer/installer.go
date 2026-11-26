@@ -166,6 +166,11 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err != nil {
 		return err
 	}
+	if !in.cfg.Quiesce { // a restore connects as recorded and runs nothing
+		if err := checkOptIns(s); err != nil {
+			return err
+		}
+	}
 	wiring, err := linkValues(s)
 	if err != nil {
 		return err

@@ -167,6 +167,51 @@ func TestRestoreKeepsTheSeededCredential(t *testing.T) {
 	}
 }
 
+// identity: directory without the connection is refused: equity must not fall back to attestation.
+func TestDirectoryModeNeedsTheConnection(t *testing.T) {
+	in, api, _ := linkFixture(t)
+	_, _, _, spec := fixture(t, nil)
+	spec.ID, spec.Namespace, spec.ServiceAccount = "equity", "mod-equity", "equity"
+	spec.Manifest = loadManifest(t, "../../../modules/equity/module.yaml")
+	spec.Manifest.Requires.Database, spec.Settings = "none", map[string]any{"identity": "directory"}
+	if err := in.Enable(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "change the setting back") {
+		t.Fatalf("installed without the connection: %v", err)
+	}
+	spec.Links = testLinks("equity") // connected, but people has made no credential
+	if err := in.Enable(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "enable the people module") {
+		t.Fatalf("installed without the credential: %v", err)
+	}
+	if exists(api, "Deployment", "mod-equity", "equity") {
+		t.Error("equity was started in the other mode")
+	}
+}
+
+func TestBreakGlassComesFromCompanySettings(t *testing.T) {
+	in, api, _ := linkFixture(t)
+	_, _, _, spec := fixture(t, nil)
+	spec.ID, spec.Namespace, spec.ServiceAccount = "equity", "mod-equity", "equity"
+	spec.Manifest = loadManifest(t, "../../../modules/equity/module.yaml")
+	spec.Manifest.Requires.Database = "none"
+	env := func() string {
+		t.Helper()
+		return toJSON(dig(get(t, api, "Deployment", "mod-equity", "equity"), "spec", "template", "spec", "containers"))
+	}
+	spec.Settings = map[string]any{"break_glass_until": "2026-12-01"}
+	if err := in.Enable(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(env(), `{"name":"CAN_EQUITY_BREAK_GLASS_UNTIL","value":"2026-12-01"}`) {
+		t.Errorf("env: %s", env())
+	}
+	spec.Settings = nil
+	if err := in.Enable(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(env(), "BREAK_GLASS") {
+		t.Error("the window stays after the setting is removed")
+	}
+}
+
 func TestAChartCannotNameAConnectionPolicy(t *testing.T) {
 	in, _, _, spec := fixture(t, map[string]string{"stub/chart/templates/np.yaml": "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: can-wire-to-people\nspec:\n  podSelector: {matchLabels: {app: stub}}\n  policyTypes: [Egress]\n  egress: [{to: [{podSelector: {matchLabels: {app: stub}}}]}]\n"})
 	if err := in.Enable(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "can-core owns it") {

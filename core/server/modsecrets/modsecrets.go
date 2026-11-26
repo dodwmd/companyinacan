@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/dodwmd/companyinacan/core/config"
 )
 
 // Kind is how a value is generated.
@@ -53,17 +55,28 @@ type Grant struct {
 	// ConfigKey is the block of the consumer's chart `config:` that takes `url` and
 	// `allow_insecure_http`.
 	ConfigKey string
+	// OptInKey, when set, makes the connection one the company asks for: it is made only when
+	// company.yaml has modules.<consumer>.settings.<OptInKey> = OptInValue, and then it is never
+	// left out without an error.
+	OptInKey, OptInValue string
 	// Gains and Loses say what the connection and its removal change, for the plan an operator reads.
 	Gains, Loses string
 }
 
 var grants = []Grant{
 	{Capability: "directory", Consumer: "equity", Provider: "people", ProviderKey: PeopleLookupKey, ConsumerKey: EquityDirectoryKey, ConfigKey: "directory",
+		OptInKey: config.SettingIdentity, OptInValue: config.IdentityDirectory,
 		Gains: "equity verifies holders (directory mode): acting needs a linked directory record, holders need verify-person",
 		Loses: "equity returns to attestation mode, which checks less"},
 	{Capability: "directory", Consumer: "provisioning", Provider: "people", ProviderKey: PeopleDirectoryKey, ConsumerKey: ProvisioningDirectoryKey, ConfigKey: "directory",
 		Gains: "reads and updates the directory",
 		Loses: "it cannot work without it"},
+}
+
+// Asked reports whether a company with these settings for the consumer asks for the connection: for
+// a grant without an opt-in, the manifest's capability is enough.
+func (g Grant) Asked(settings map[string]any) bool {
+	return g.OptInKey == "" || settings[g.OptInKey] == g.OptInValue
 }
 
 // Grants returns the connections can-core makes.
