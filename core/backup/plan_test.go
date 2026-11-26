@@ -47,6 +47,10 @@ func TestBuildPlanDumpsAndScope(t *testing.T) {
 	if !strings.Contains(strings.Join(p.Excludes, "\n"), "/var/lib/rancher/k3s/storage/pvc-*_can-system_can-core-data/state.db-wal") {
 		t.Errorf("can-core state excludes missing: %v", p.Excludes)
 	}
+	// The live data directory of the managed Postgres is never part of the file backup.
+	if !strings.Contains(strings.Join(p.Excludes, "\n")+"\n", "/var/lib/rancher/k3s/storage/pvc-*_can-data_postgres-data\n") {
+		t.Errorf("the postgres data directory is not excluded: %v", p.Excludes)
+	}
 	// Sources: dumps dir first (restored first), then PVC root.
 	if p.Sources[0] != "/var/lib/can/dumps" || p.Sources[1] != "/var/lib/rancher/k3s/storage" {
 		t.Errorf("sources = %v", p.Sources)

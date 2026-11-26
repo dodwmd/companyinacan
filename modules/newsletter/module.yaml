@@ -4,10 +4,10 @@ id: newsletter
 name: Newsletter
 description: Mailing lists, double opt-in, campaigns and subscriber management. Wraps Listmonk; an adapter exposes the newsletter capability, publishes subscriber.added.v1 and subscribes people who opt in on a form (lead.created.v1). Sends through a bulk relay (docs/email-policy.md).
 category: marketing
-# Experimental: nothing here has run on a cluster (images, flags and paths unverified, README "Open
-# items"), the capability adapter is not built, and the bulk-relay SMTP settings are MANUAL until the
-# adapter (T031) can write them through the Listmonk API: the operator pastes the credentials into
-# Listmonk Settings, SMTP. The can-smtp Secret is created but Listmonk does not read it from the environment.
+# Experimental: installed through can-core on k3d by the advisory CI job (specs/041-wrapped-modules-live);
+# never on a real server or relay, backups not run (the hooks image is not published), the capability
+# adapter is not built (T031), and the SMTP settings are MANUAL: paste the relay credentials into
+# Listmonk Settings, SMTP (Listmonk keeps them in its database; can-core does not give it any).
 status: experimental
 version: 0.1.0
 provider:
@@ -17,7 +17,7 @@ provider:
   licence: AGPL-3.0-only
   licence_class: osi
   upstream: https://github.com/knadh/listmonk
-  upstream_version: "5.x"
+  upstream_version: "6.2.0"
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
@@ -28,8 +28,8 @@ requires:
   capabilities: [email.send]
   sso: none
 resources:
-  # Estimate from SPEC.md section 6.1 (~50 MB) and upstream's description as a single Go
-  # binary; not yet measured (research.md R5). The adapter (10 MB request) is inside this figure.
+  # Measured 35 MB idle locally (specs/041-wrapped-modules-live/research.md), not counting the shared
+  # Postgres. The unbuilt adapter (10 MB request) is inside this figure.
   ram_mb: 50
   ram_limit_mb: 128
   disk_mb: 1024

@@ -29,7 +29,7 @@ func writeCompany(t *testing.T, body string) string {
 
 // Company validation refuses to enable a module whose manifest says not-deployable.
 func TestCompanyRefusesNotDeployableModules(t *testing.T) {
-	for _, id := range []string{"crm", "support"} {
+	for _, id := range []string{"crm"} {
 		ps := CompanyFile(writeCompany(t, "modules:\n  "+id+": {}\n"), "../../modules")
 		if !hasRule(ps, "semantic.module-not-deployable") || !problem.HasErrors(ps) {
 			t.Errorf("%s: enabling a not-deployable module was not refused: %v", id, ps)

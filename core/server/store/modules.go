@@ -153,6 +153,19 @@ func (db *DB) SetModuleState(ctx context.Context, id, state, lastErr string) err
 	return nil
 }
 
+// ForgetSettingsHash empties a module's recorded settings hash, which no desired state matches, so
+// the next plan upgrades the module again (used after a failed upgrade).
+func (db *DB) ForgetSettingsHash(ctx context.Context, id string) error {
+	res, err := db.ExecContext(ctx, `UPDATE modules SET settings_hash='', updated_at=? WHERE id=?`, db.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // DeleteDisabledModule removes the record of a module that is disabled (its providers and
 // subscriptions are removed with it). Any other state is refused, so a running module's identity is
 // never dropped; used by the explicit purge flow.

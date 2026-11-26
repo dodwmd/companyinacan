@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/server/dbprov"
 	"github.com/dodwmd/companyinacan/core/server/kube"
 )
 
@@ -291,7 +292,7 @@ func TestStarterModuleChartsStillInstall(t *testing.T) {
 			in.cfg.Domain = "acme.example"
 			spec.ID, spec.Namespace, spec.ServiceAccount = id, "mod-"+id, id
 			spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
-			spec.Manifest.Requires.Database = "none"
+			in.cfg.DB = dbprov.NewFake()
 			if err := in.Enable(context.Background(), spec); err != nil {
 				t.Fatalf("%s chart no longer installs: %v", id, err)
 			}

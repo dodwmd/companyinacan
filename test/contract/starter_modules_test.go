@@ -41,14 +41,17 @@ type starter struct {
 }
 
 var starters = []starter{
-	{"support", "AGPL-3.0-only", "mariadb", "support", "tickets", "tickets.v1", 8080, "ticket.created.v1", 250, 512, "not-deployable"},
+	{"support", "AGPL-3.0-only", "postgres", "support", "tickets", "tickets.v1", 8080, "ticket.created.v1", 192, 672, "experimental"},
 	{"newsletter", "AGPL-3.0-only", "postgres", "newsletter", "newsletter", "newsletter.v1", 9000, "subscriber.added.v1", 50, 128, "experimental"},
-	{"analytics", "EUPL-1.2", "sqlite", "stats", "analytics", "analytics.v1", 8080, "", 20, 96, "experimental"},
+	{"analytics", "EUPL-1.2", "sqlite", "stats", "analytics", "analytics.v1", 8080, "", 64, 160, "experimental"},
 	// Epic E10a: wrapped wiki, CRM and status page (specs/019-wiki-crm-status).
 	{"wiki", "GPL-2.0-only", "none", "wiki", "wiki", "wiki.v1", 8080, "", 64, 160, "experimental"},
 	{"crm", "AGPL-3.0-only", "mariadb", "crm", "crm", "crm.v1", 80, "", 350, 640, "not-deployable"},
 	{"status", "MIT", "sqlite", "status", "status", "status.v1", 3001, "", 128, 320, "experimental"},
 }
+
+// wrappedLive lists the wrapped modules that are installed through can-core in CI (specs/041).
+var wrappedLive = map[string]bool{"analytics": true, "support": true, "newsletter": true}
 
 // noEmail lists starters that do not consume email.send.
 var noEmail = map[string]bool{"analytics": true, "wiki": true, "status": true}
@@ -365,7 +368,16 @@ func TestChartValues(t *testing.T) {
 				t.Error("adapter image digest must be the documented placeholder until the adapter is built")
 			}
 			secrets := asMap(v["secrets"])
-			for k, want := range map[string]string{"database": "can-database", "smtp": "can-smtp", "module": "can-module"} {
+			// The modules verified on a cluster (specs/041) read the Secret can-core really writes, can-db;
+			// the others still carry the provisional name of specs/007 and have no database Secret there.
+			database := "can-database"
+			if wrappedLive[s.id] {
+				database = "can-db"
+				if asStr(img["digest"]) == "sha256:REPLACE_WITH_DIGEST" {
+					t.Error("a module verified on a cluster pins its image by digest")
+				}
+			}
+			for k, want := range map[string]string{"database": database, "smtp": "can-smtp", "module": "can-module"} {
 				if secrets[k] != want {
 					t.Errorf("secrets.%s = %v, want %s", k, secrets[k], want)
 				}

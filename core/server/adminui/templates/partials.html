@@ -45,5 +45,9 @@
 {{end}}</code></pre>
 {{else}}<p class="muted">{{t "ch.no_diff"}}</p>{{end}}{{end}}
 
+{{define "backupacks"}}{{range .}}<div class="alert warn" role="alert"><p>{{t "ch.backup_stops" .Module .Why}}{{if .Postgres}} {{t "ch.backup_postgres"}}{{end}}</p>
+<p><input type="checkbox" id="ab-{{.Module}}" name="ack" value="backup:{{.Module}}" required> <label class="check" for="ab-{{.Module}}">{{t "ch.backup_ack" .Module}}</label></p></div>
+{{end}}{{end}}
+
 {{define "issues"}}{{if .Issues}}<div class="alert err" role="alert"><p><strong>{{t "ch.issues"}}</strong></p><ul>{{range .Issues}}<li>{{.}}</li>
 {{end}}</ul></div>{{end}}{{end}}

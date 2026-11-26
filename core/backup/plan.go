@@ -102,6 +102,9 @@ type Plan struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
+// postgresVolume is the local-path directory of the managed Postgres (deploy/templates/postgres.yaml).
+const postgresVolume = "pvc-*_can-data_postgres-data"
+
 // DumpedList is the file can-core writes into the dumps directory naming the modules dumped in
 // the run, one "<id> <database>" line each.
 const DumpedList = "DUMPED"
@@ -123,6 +126,9 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 	for _, f := range []string{"state.db", "state.db-wal", "state.db-shm"} {
 		p.Excludes = append(p.Excludes, fmt.Sprintf("%s/pvc-*_can-system_can-core-data/%s", strings.TrimRight(s.PVCRoot, "/"), f))
 	}
+	// The data directory of the Postgres can-core runs (can-data/postgres-data) is never copied: a file
+	// copy of a running server is not a backup. Its databases are held only by the modules' dump hooks.
+	p.Excludes = append(p.Excludes, fmt.Sprintf("%s/%s", strings.TrimRight(s.PVCRoot, "/"), postgresVolume))
 	ids := make([]string, 0, len(co.Modules))
 	for id, e := range co.Modules {
 		if e.IsEnabled() {

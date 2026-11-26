@@ -51,7 +51,7 @@ securityContext:
 secrets:
   database: can-database   # unused (SQLite); kept so every wrapped chart has the same contract
   smtp: can-smtp           # unused: alert mail is configured in the Kuma UI (README)
-  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+  module: can-module       # keys: CAN_API_URL CAN_WEBHOOK_SECRET
 probes:
   readiness: { path: /, port: http }
   liveness: { path: /, port: http }

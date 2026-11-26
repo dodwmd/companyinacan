@@ -93,10 +93,9 @@ spec:
       ports:
         - {protocol: TCP, port: 8000}
         - {protocol: TCP, port: 8443}
-    # Database ports in can-data. NOTE: this selects the namespace, not the module's own
-    # database: every module namespace can reach every database in can-data, and only DB
-    # authentication (one user per module) separates them. Residual risk; per-module isolation
-    # needs per-database pod labels, added with the databases in E03.
+    # Database ports in can-data. This side admits every module; the ingress side there does not: only a
+    # module that requires a database gets a policy in can-data admitting it (allow-db-from-mod-<id>,
+    # written by can-core). Between database modules, DB authentication (one role per module) separates.
     - to:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: can-data}

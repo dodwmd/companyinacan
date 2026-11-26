@@ -143,8 +143,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  # Selects whole namespaces, not individual modules: any module namespace can open a connection to
-  # any database pod here; DB credentials (one user per module) are the per-module barrier.
+  # can-core only. A module whose manifest requires a database gets its own ingress policy here
+  # (allow-db-from-mod-<id>, written by can-core), so other modules cannot connect at all; between
+  # database modules, DB credentials (one role per module) are the barrier. The name is kept from the
+  # time it admitted every module, so that applying this file again replaces that rule.
   name: allow-db-from-modules-and-core
   namespace: can-data
 spec:
@@ -156,8 +158,6 @@ spec:
             matchLabels: {kubernetes.io/metadata.name: can-system}
           podSelector:
             matchLabels: {app.kubernetes.io/name: can-core}
-        - namespaceSelector:
-            matchLabels: {can.dev/namespace-kind: module}
       ports:
         - {protocol: TCP, port: 5432}
         - {protocol: TCP, port: 3306}

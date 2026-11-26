@@ -23,6 +23,43 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- $host := required "ingress.host is supplied by can-core" .Values.ingress.host }}
+      {{- $email := default (printf "admin@%s" (trimPrefix "stats." $host)) .Values.settings.admin_email }}
+      initContainers:
+        # Creates the first site and its user once, with the password can-core generated, so the server
+        # never runs without an account. GoatCounter takes a password on its command line only (or from
+        # a terminal): it is visible in the process list of this short-lived container.
+        - name: site
+          image: {{ include "mod.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              db="sqlite+{{ .Values.persistence.mountPath }}/goatcounter.sqlite3"
+              if [ -f "{{ .Values.persistence.mountPath }}/goatcounter.sqlite3" ]; then
+                goatcounter db migrate all -db "$db"
+                if goatcounter db show site -find "$SITE_HOST" -db "$db" >/dev/null 2>&1; then
+                  echo "site $SITE_HOST exists"
+                  exit 0
+                fi
+              fi
+              goatcounter db create site -createdb -vhost "$SITE_HOST" \
+                -user.email "$ADMIN_EMAIL" -user.password "$CAN_ANALYTICS_ADMIN_PASSWORD" -db "$db"
+              echo "site $SITE_HOST created"
+          env:
+            - {name: SITE_HOST, value: {{ $host | quote }}}
+            - {name: ADMIN_EMAIL, value: {{ $email | quote }}}
+            - name: CAN_ANALYTICS_ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: CAN_ANALYTICS_ADMIN_PASSWORD}}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: data, mountPath: {{ .Values.persistence.mountPath }}}
+            - {name: tmp, mountPath: /tmp}
       containers:
         - name: app
           image: {{ include "mod.image" .Values.image | quote }}
@@ -31,14 +68,16 @@ spec:
             - serve
             - -listen
             - ":{{ .Values.service.port }}"
-            # `proxy`: plain HTTP behind Traefik, which terminates TLS; `http` on local dev.
+            # Plain HTTP: Traefik terminates TLS and sets X-Forwarded-Proto.
             - -tls
-            - {{ ternary .Values.goatcounter.tlsMode "http" .Values.ingress.tls }}
+            - http
             - -db
             - sqlite+{{ .Values.persistence.mountPath }}/goatcounter.sqlite3
             - -automigrate
           ports:
             - {name: http, containerPort: {{ .Values.service.port }}}
+          env:
+            - {name: GOMEMLIMIT, value: {{ .Values.goMemLimit | quote }}}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:

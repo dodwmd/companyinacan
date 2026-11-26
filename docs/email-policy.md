@@ -4,7 +4,9 @@ Implements the email policy of SPEC.md section 5 for the starter modules (`suppo
 We do not self-host a mail server: deliverability is a trap that costs more than it saves.
 Everything below is design; the pieces that need can-core (E03) and the adapters are marked. **Built (E03d):**
 the REST path, `email.send`, with its relay settings, allow-lists and delivery status ([email.md](email.md)).
-**Not built:** the `can-smtp` Secret for SMTP-speaking apps, `make email`, DNS records and inbound mail.
+**Built (specs/041):** the
+`can-smtp` Secret for `support`, applied to FreeScout's system mail settings.
+**Not built:** per-mailbox settings, Listmonk's SMTP settings, `make email`, DNS records and inbound mail.
 
 ## Outbound: relay credentials injection
 
@@ -17,29 +19,42 @@ gets the relay credentials injected; the mechanism depends on who sends:
 | In-house Go modules (forms) | REST call to can-core's `email.send` | none; the projected audience-`can` token |
 | SMTP-speaking OSS apps (FreeScout, Listmonk) | SMTP straight to the relay | injected from a Secret |
 
-For the second kind can-core creates a Secret named **`can-smtp`** in the module namespace when
-the module is enabled, from the relay settings of `company.yaml` or `.can/` (never from the
-repository). Keys: `host`, `port`, `user`, `password`, `from`, `encryption` (`tls` or `starttls`).
+For the second kind, can-core hands over the relay **only when the company opts the module in**. It is
+off by default, because the password leaves can-core for a third-party application (for `support`, a
+third party's build of it):
 
-- The chart reads the keys as environment variables with `secretKeyRef ... optional: true`, so a
-  module starts without a relay (no credentials yet) and mail simply stays unsent. Connecting the
-  relay later (`make email`) creates the Secret and restarts the pod.
-- Passwords never enter `module.yaml`, values files, ConfigMaps, logs or settings schemas. The
-  settings schema of each module holds only non-secret choices (addresses, modes, hosts).
+```yaml
+email:
+  modules:
+    support: { enabled: true }   # required; absent or false: no credentials
+```
+
+can-core then fills a Secret named **`can-smtp`** in the module namespace of the apps it lists as SMTP
+senders (today `support` only), from the same relay settings as `email.send` (`company.yaml`
+`email.relay` and the Secret `can-system/can-smtp-relay`). Keys: `host`, `port`, `user`, `password`,
+`from`, `encryption` (`tls` for STARTTLS, `ssl` for implicit TLS).
+
+- Such mail does **not** pass `email.send`: no recipient allow-list, quota or delivery log. A relay with
+  `tls: none` is never handed out.
+- The Secret is empty without the opt-in or a usable relay, and the module starts without one. Opting in
+  or out, and a change of `email.relay` while opted in, upgrade the module. A change of only the relay
+  Secret (a new password) arrives at the module's next install or upgrade. can-core reads that Secret from
+  a mounted volume, which shows a new or changed Secret only after a minute or two: wait that long between
+  writing it and opting in, or the module is given nothing until its next upgrade.
+- **Turning it off** (`enabled: false`, or removing the line) is applied like any change: can-core empties
+  `can-smtp` and restarts the pod. It does **not** remove what FreeScout already stored in its database.
+  Clear Manage, Settings, Mail Settings and every mailbox's connection settings by hand, and **rotate the
+  relay password** at the provider: assume the application and its image have seen it.
+- Passwords never enter `module.yaml`, values files, ConfigMaps, logs or settings schemas.
 - The base namespace policy lets module pods reach the internet but not the node or cluster
   ranges (`deploy/templates/module-namespace.yaml`), which is enough for SMTP on 587 to a hosted
   relay and for IMAP on 993 to a hosted mailbox. No extra NetworkPolicy is needed.
-- **Support** sends replies through the transactional relay with `From: support@<domain>`. FreeScout
-  keeps its outgoing server in the mailbox settings, so the adapter/`configure` step (deferred)
-  must set the mailbox to the injected relay; until then the operator selects it in the UI.
-  The `MAIL_*` variable names in the chart are the Laravel convention and are unverified against the
-  community image (research R3).
-- **Newsletter** keeps its SMTP servers in its database, not in the environment. A
-  **separate bulk relay** (setting `relay: bulk`) is recommended once lists grow: marketing
-  complaints then cannot damage the reputation of support and invoice mail. The `can-smtp` Secret
-  of the newsletter module holds the bulk relay when `relay: bulk`, the shared relay otherwise.
-  Writing it into Listmonk's settings needs a Listmonk API user, which the adapter will create
-  (deferred; today the operator pastes it into Settings, SMTP).
+- **Support** keeps mail settings in its database. At start, the relay is written into its system
+  settings (invitations, password resets, notifications). Replies to customers use each mailbox's own
+  connection settings, which the operator enters.
+- **Newsletter** keeps its SMTP servers in its database too and is given nothing: the operator enters
+  them in Settings, SMTP. A **separate bulk relay** is recommended once lists grow: marketing
+  complaints then cannot damage the reputation of support and invoice mail.
 - Authentication DNS: SPF, DKIM and DMARC aligned to the company domain are mandatory before real
   sending; `can email` prints (or, with a DNS plugin, sets) the records. Marketing mail is sent
   from the same domain or a subdomain (`news.<domain>`) with its own DKIM selector.

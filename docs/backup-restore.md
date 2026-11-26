@@ -57,7 +57,8 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    - copies the marker it is about to back up, the k3s SQLite datastore (`sqlite3 .backup`), the node token and the
      secrets-encryption key, and writes `MANIFEST.sha256`, all into `/var/lib/can/host-state` (root-owned, outside the dumps dir);
    - runs `restic backup` over the dumps (staging and temporary dot files left out), the PVC root (raw SQLite files
-     are excluded only for the SQLite modules that `DUMPED` says were dumped in this run) and the host-state
+     are excluded only for the SQLite modules that `DUMPED` says were dumped in this run; the data directory of the
+     [shared Postgres](#the-shared-postgres-is-not-backed-up) is always excluded) and the host-state
      directory, tagged `can`, `run-<id>`, `attempt-<id>`;
    - re-reads the marker: if can-core started a new dump run meanwhile, the snapshot is tagged `inconsistent` (restore never
      picks it), forget is skipped and the run exits 11;
@@ -288,10 +289,28 @@ measured by a person:
 6. Record the results in `specs/042-restore/measurements.md` and update SPEC.md sections 6.5 and 10. Until then the
    claim stays unproven.
 
+## The shared Postgres is not backed up
+
+can-core runs a Postgres in `can-data` for modules that need one (today `support` and `newsletter`,
+[specs/041](../specs/041-wrapped-modules-live/spec.md)). **Nothing backs it up today:**
+
+- Its data directory (`pvc-*_can-data_postgres-data`) is excluded from the file backup, because a copy of a
+  running server's files is not a backup.
+- Its databases would be held by the modules' dump hooks (`pg_dump`), which cannot run until the `can-hooks`
+  image is published; and while such a module is enabled no backup completes at all.
+- So losing the server, or its volume, loses every database in it. The admin UI says so when such a module is
+  enabled, and `can validate` warns.
+- The backup script of an existing server excludes the directory only after it is generated again
+  (`can backup install` or `can up`).
+- An operator's own server (`CAN_POSTGRES_ADMIN_URL`) is theirs to back up. If it runs in `can-data` with a
+  claim named `postgres-data`, that volume is excluded too.
+- After a restore onto a blank host the server starts empty: the module databases exist again only after the
+  modules are applied again, and hold only what a dump restores.
+
 ## What is and is not in a snapshot
 
 - In: `can-core/state.db`, `can-core/secrets.json`, `company.yaml`, each module hook's dump, the local-path volumes (except can-core's
-  live database and the SQLite files of the modules dumped in that run), a copy of the k3s datastore, node
+  live database, the SQLite files of the modules dumped in that run and the shared Postgres's data directory), a copy of the k3s datastore, node
   token and encryption key, the erasure ledger copy.
 - A module without a backup hook that keeps SQLite on a volume is covered only by the raw copy of live files, which
   may be inconsistent. `can backup install` warns. Every shipped module has a hook.
@@ -327,8 +346,8 @@ a module backup hook Job. `restore-e2e` backs up a company, destroys the cluster
 - In-house hooks on a cluster: backup of forms, work and files (`module-backup` in CI), backup and restore through
   `can restore` of forms, work and people (`restore-e2e`). jobs, finance and provisioning are covered by unit tests;
   equity, board and entity cannot be installed by can-core yet.
-- `can-hooks` Jobs against a database module (DB credentials come from the `can-db` Secret). The wrapped
-  database charts themselves still name a `can-database` Secret that can-core does not write.
+- `can-hooks` Jobs against a database module (DB credentials come from the `can-db` Secret). Only `crm`'s chart
+  still names a `can-database` Secret that can-core does not write.
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
   directory and a run holds the old and the new set at once. Hooks retry with `--retry` only, which does not cover
   a connection refused while a new pod's network rules are still being programmed.
