@@ -14,7 +14,6 @@ import (
 	"errors"
 	"html/template"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -368,17 +367,7 @@ func (u *UI) renderMsg(w http.ResponseWriter, r *http.Request, ss *uiSession, a 
 // ---- login and logout ----------------------------------------------------------------------
 
 func (u *UI) clientHost(r *http.Request) string {
-	if u.TrustProxy {
-		if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
-			parts := strings.Split(xf, ",")
-			return strings.TrimSpace(parts[len(parts)-1])
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return clientIP(r, u.TrustProxy)
 }
 
 type loginData struct {

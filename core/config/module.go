@@ -31,6 +31,11 @@ type Module struct {
 		PublicUI *PublicUI `yaml:"public_ui"`
 		// SiteRoute is a path on the public site's hosts (forms: /_forms).
 		SiteRoute *SiteRoute `yaml:"site_route"`
+		// PublicLink publishes one path of signed links (specs/045-public-access).
+		PublicLink *PublicLink `yaml:"public_link"`
+		// PublicConfig is merged into the chart's `config:` block while the chart's public pages
+		// are routed.
+		PublicConfig map[string]any `yaml:"public_config"`
 		// RoutedUIHost is set by can-core in its recorded copy of the manifest when it routes the
 		// web UI; never read from module.yaml. The Apps launcher derives the address from it.
 		RoutedUIHost string `yaml:"-"`
@@ -131,6 +136,18 @@ type SiteRoute struct {
 	Path    string `yaml:"path"`
 	Service string `yaml:"service"`
 	Port    int    `yaml:"port"`
+}
+
+// PublicLink is module.yaml `runtime.public_link`: signed links anyone holding one may open. Only
+// Prefix is routed, on https://<id>.<domain>, and only with `expose.public: true`.
+type PublicLink struct {
+	Service string `yaml:"service"`
+	Port    int    `yaml:"port"`
+	Prefix  string `yaml:"prefix"`
+	// Config is merged into the chart's `config:` block while the link is routed; BaseURLKey is
+	// the key of that block that takes the public address.
+	Config     map[string]any `yaml:"config"`
+	BaseURLKey string         `yaml:"base_url_key"`
 }
 
 // DecodeModule decodes a loaded document into the typed struct.

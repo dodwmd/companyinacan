@@ -33,6 +33,7 @@ runtime:
     exact: [/, /manifest.webmanifest]
     prefixes: [/actions, /feedback, /goals, /key-results, /login, /logout, /me, /meetings, /nominations, /oneonones, /org, /people, /reviews, /static, /tasks, /team, /timeoff]
     config:
+      trust_proxy: true # the API: failed tokens count per client, not per ingress pod
       ui: { enabled: true, trust_proxy: true }
 requires:
   database: sqlite

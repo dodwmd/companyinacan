@@ -88,7 +88,9 @@ func RequestID(ctx context.Context) string { return obslog.RequestID(ctx) }
 // which is the one appended by the trusted ingress (Traefik); never the first, which the client controls.
 func ClientIP(r *http.Request, trustProxy bool) string {
 	if trustProxy {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Header lines, not Get: Get returns the first line, which the client may have sent.
+		if vs := r.Header.Values("X-Forwarded-For"); len(vs) > 0 {
+			xff := vs[len(vs)-1]
 			parts := strings.Split(xff, ",")
 			if ip := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(ip) != nil {
 				return ip

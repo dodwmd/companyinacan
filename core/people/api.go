@@ -26,6 +26,9 @@ type API struct {
 	// Can, when set, serves can-core's signed event deliveries at POST /v1/can/events (it
 	// authenticates by the HMAC signature, not by a token, and is not part of the API contract).
 	Can http.Handler
+	// TrustProxy counts failed authentications against the client address the ingress appends
+	// to X-Forwarded-For. Without it, behind a proxy, all callers share one allowance.
+	TrustProxy bool
 
 	routes []string
 
@@ -41,7 +44,18 @@ func (a *API) limiters() {
 	})
 }
 
-func clientHost(r *http.Request) string {
+// clientIP is the address failed authentications are counted against. Behind a trusted proxy it is
+// the last X-Forwarded-For entry, the one the proxy wrote; anything earlier is the client's claim.
+func clientIP(r *http.Request, trustProxy bool) string {
+	if trustProxy {
+		// Header lines, not Get: Get returns the first line, which the client may have sent.
+		if vs := r.Header.Values("X-Forwarded-For"); len(vs) > 0 {
+			parts := strings.Split(vs[len(vs)-1], ",")
+			if ip := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -109,7 +123,7 @@ func (a *API) wrap(fn handlerFn) http.HandlerFunc {
 		// valid users out. Only requests whose credentials FAIL are limited.
 		p, err := a.Auth.Authenticate(r)
 		if err != nil || p == nil {
-			if !a.failIP.allow(clientHost(r)) {
+			if !a.failIP.allow(clientIP(r, a.TrustProxy)) {
 				tooMany(w)
 				return
 			}
