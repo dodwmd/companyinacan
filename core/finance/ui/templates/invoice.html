@@ -35,7 +35,7 @@
 </div>
 <p class="actions">
 <a href="/invoices/{{.Data.V.ID}}/html">{{t "invoice.print"}}</a>
-<a href="/invoices/{{.Data.V.ID}}/pdf">{{t "mail.pdf"}}</a>
+<a href="/invoices/{{.Data.V.ID}}/pdf" download>{{t "mail.pdf"}}</a>
 {{if .Data.CanEdit}}<a href="/invoices/{{.Data.V.ID}}/edit">{{t "common.edit"}}</a>{{end}}
 {{if .Data.CanCredit}}<a href="/invoices/{{.Data.V.ID}}/credit-note">{{t "credit.title"}}</a>{{end}}
 </p>
