@@ -24,46 +24,57 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- $host := required "ingress.host is supplied by can-core" .Values.ingress.host }}
-      {{- $email := default (printf "admin@%s" (trimPrefix "support." $host)) .Values.settings.admin_email }}
+      {{- /* "$$" is a literal "$": without it a setting such as "$(DB_PASS)" would be expanded. */}}
+      {{- $email := default (printf "admin@%s" (trimPrefix "support." $host)) .Values.settings.admin_email | toString | replace "$" "$$" }}
       containers:
         - name: app
           image: {{ include "mod.image" .Values.image | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          # Starts the image's own entrypoint (s6 as PID 1) and, beside it, a one-shot that writes the
-          # company's SMTP relay into FreeScout's settings once the first boot is over. FreeScout keeps
+          # Starts the image's own entrypoint (s6 as PID 1) and, beside it, a loop that writes what
+          # company.yaml says about mail into FreeScout once the first boot is over, and then logs the
+          # state of mail fetch and send when it changes (templates/_provision.tpl). FreeScout keeps
           # its mail settings in the database, not in the environment.
           command: ["/bin/sh", "-c"]
           args:
             - |
-              cat >/tmp/can-mail.php <<'CANPHP'
-              <?php
-              require '/var/www/html/vendor/autoload.php';
-              $app = require '/var/www/html/bootstrap/app.php';
-              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-              $set = [
-                  'mail_driver' => 'smtp',
-                  'mail_host' => getenv('CAN_MAIL_HOST'),
-                  'mail_port' => getenv('CAN_MAIL_PORT'),
-                  'mail_username' => (string) getenv('CAN_MAIL_USERNAME'),
-                  'mail_password' => app('encrypter')->encrypt((string) getenv('CAN_MAIL_PASSWORD'), false),
-                  'mail_encryption' => (string) getenv('CAN_MAIL_ENCRYPTION'),
-                  'mail_from' => getenv('CAN_MAIL_FROM'),
-              ];
-              foreach ($set as $name => $value) {
-                  \App\Option::set($name, $value);
-              }
-              echo "can: system mail set to the company relay\n";
+              cat >/tmp/can-support.php <<'CANPHP'
+              {{- include "support.provision" . | nindent 14 }}
               CANPHP
-              if [ -n "${CAN_MAIL_HOST:-}" ]; then
-                (
-                  n=0
-                  until wget -q -O /dev/null --header "Host: $CAN_HOST" --header "X-Forwarded-Proto: https" http://127.0.0.1:{{ .Values.service.port }}/login; do
-                    n=$((n+1)); [ "$n" -lt 180 ] || { echo "can: the app did not start; SMTP relay not applied" >&2; exit 1; }
-                    sleep 5
-                  done
-                  php /tmp/can-mail.php || echo "can: applying the SMTP relay failed" >&2
-                ) &
-              fi
+              # FreeScout's mail library does not check the relay's certificate unless its mail
+              # config says so. Upstream's config/mail.php is kept as it is and wrapped, before the
+              # first boot step caches the configuration. Failing here stops the pod: it must not
+              # run without the check.
+              mail=/var/www/html/config/mail.php
+              upstream=/var/www/html/bootstrap/can-mail-upstream.php
+              grep -q can-mail-upstream "$mail" || cp "$mail" "$upstream" || exit 1
+              cat >"$mail" <<'CANCONF' || exit 1
+              <?php
+              $mail = require dirname(__DIR__).'/bootstrap/can-mail-upstream.php';
+              // Off only when the operator's relay Secret says tls_verify: "false".
+              $verify = getenv('CAN_MAIL_VERIFY') !== 'false';
+              $mail['stream'] = ['ssl' => ['verify_peer' => $verify, 'verify_peer_name' => $verify, 'allow_self_signed' => !$verify]];
+              return $mail;
+              CANCONF
+              (
+                n=0
+                until wget -q -O /dev/null --header "Host: $CAN_HOST" --header "X-Forwarded-Proto: https" http://127.0.0.1:{{ .Values.service.port }}/login; do
+                  n=$((n+1)); [ "$n" -lt 180 ] || { echo "can: the app did not start; mail settings not applied" >&2; exit 1; }
+                  sleep 5
+                done
+                n=0
+                until php /tmp/can-support.php apply; do
+                  n=$((n+1)); sleep $(( n < 10 ? n * 15 : 300 ))
+                done
+                [ -n "${CAN_SUPPORT_ADDRESS:-}" ] || exit 0
+                last=''
+                sleep 90
+                while :; do
+                  now=$(php /tmp/can-support.php status 2>/dev/null | tail -n 1)
+                  [ "$now" = "$last" ] || echo "can: mail status $now"
+                  last=$now
+                  sleep 300
+                done
+              ) &
               exec docker-php-serversideup-entrypoint /init
           ports:
             - {name: http, containerPort: {{ .Values.service.port }}}
@@ -87,6 +98,23 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: CAN_SUPPORT_ADMIN_PASSWORD}}
             - {name: FREESCOUT_APP_NAME, value: {{ .Values.app.applicationName | quote }}}
             - {name: PHP_FPM_PM_MAX_CHILDREN, value: {{ .Values.app.phpMaxChildren | quote }}}
+            # The support inbox (modules/support/README.md): what can-core read of company.yaml
+            # modules.support.settings, never the settings as written.
+            - {name: CAN_SUPPORT_ADDRESS, value: {{ .Values.mail.address | toString | replace "$" "$$" | quote }}}
+            - {name: CAN_SUPPORT_NAME, value: {{ .Values.mail.name | toString | replace "$" "$$" | quote }}}
+            - {name: CAN_SUPPORT_INVALID, value: {{ .Values.mail.invalid | toString | replace "$" "$$" | quote }}}
+            {{- if .Values.mail.imapWanted }}
+            - {name: CAN_IMAP_WANTED, value: "1"}
+            {{- end }}
+            # Optional: empty until company.yaml asks for inbound mail and the credentials are there.
+            {{- range list "HOST" "PORT" "ENCRYPTION" "FOLDER" "VERIFY" }}
+            - name: CAN_IMAP_{{ . }}
+              valueFrom: {secretKeyRef: {name: {{ $.Values.secrets.imap }}, key: {{ lower . }}, optional: true}}
+            {{- end }}
+            - name: CAN_IMAP_USERNAME
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.imap }}, key: user, optional: true}}
+            - name: CAN_IMAP_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.imap }}, key: password, optional: true}}
             {{- if .Values.email.injectRelay }}
             # The relay (docs/email-policy.md). Optional: the module starts without one.
             - name: CAN_MAIL_HOST
@@ -101,6 +129,8 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: encryption, optional: true}}
             - name: CAN_MAIL_FROM
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: from, optional: true}}
+            - name: CAN_MAIL_VERIFY
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: verify, optional: true}}
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

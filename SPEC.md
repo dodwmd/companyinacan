@@ -645,7 +645,7 @@ companyinacan/
 - Swapping a module's provider (e.g. FreeScout → in-house) preserves data via export/import and keeps integrations working.
 - A new provider plugin can be written against the `Provider` interface in under a day.
 
-**Where the support inbox stands.** The two criteria above that name it are targets, not met: `make up` deploys the site and forms, and the starter template selects forms. `support` can be enabled (and can-core backs it up), but it is experimental, runs a third party's amd64 image of FreeScout, has been installed only on k3d, and with an external Postgres needs major 17 or it has no backup. It joins the default when it has been verified on a real server.
+**Where the support inbox stands.** The two criteria above that name it are targets, not met: `make up` deploys the site and forms, and the starter template selects forms. `support` can be enabled (and can-core backs it up), and its mailbox, replies and IMAP fetch are configured from `company.yaml` ([specs/059](specs/059-support-mailbox/spec.md), tested against an in-memory mail server), but it is experimental, runs a third party's amd64 image of FreeScout, has been installed only on k3d, has met no real mail provider, and with an external Postgres needs major 17 or it has no backup. It joins the default when it has been verified on a real server.
 
 ## 11. Risks & open questions
 

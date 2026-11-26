@@ -59,6 +59,21 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		add(is.Rule, is.Path, is.Message)
 	}
 
+	_, support := config.SupportMailOf(c)
+	for _, is := range support {
+		msg := is.Message
+		if is.Invalid {
+			msg += " (no mailbox setting is applied until this is fixed)"
+		}
+		add(is.Rule, is.Path, msg)
+		ps[len(ps)-1].Severity = problem.Warning
+	}
+
+	if _, warning := config.SiteSupportAddress(c); warning != "" {
+		add("semantic.support-section-off", "/site/support", warning)
+		ps[len(ps)-1].Severity = problem.Warning
+	}
+
 	if c.Site.Contact != nil {
 		if forms, err := config.FormsOfModules(modulesDir); err != nil {
 			add("semantic.contact-form", "/site/contact", err.Error())

@@ -156,6 +156,10 @@ spec:
             # the setup wizard or by hand: keys host, username, password and optionally port, tls, from.
             # Optional; re-read on every send, so no restart is needed.
             - {name: smtp-relay, mountPath: /etc/can/smtp, readOnly: true}
+            # The mailbox the support module fetches (modules/support/README.md), written by
+            # `can up --support-imap-credentials-file` or by hand: keys host, username, password and
+            # optionally port, encryption, tls_verify. Optional.
+            - {name: support-imap, mountPath: /etc/can/support-imap, readOnly: true}
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: can-core-data}
@@ -169,3 +173,5 @@ spec:
           secret: {secretName: sso-client, optional: true}
         - name: smtp-relay
           secret: {secretName: can-smtp-relay, optional: true}
+        - name: support-imap
+          secret: {secretName: can-support-imap, optional: true}

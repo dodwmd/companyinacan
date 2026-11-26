@@ -35,7 +35,7 @@ func newRefs(objs []kube.Object, s reconcile.Spec) refs {
 	// Names can-core itself provides (the starter charts' Secret contract,
 	// specs/007-starter-modules/contracts/module-charts.md). Never taken from chart values: a chart
 	// must not be able to name an arbitrary Secret by setting a value.
-	for _, n := range []string{"can-database", "can-smtp"} {
+	for _, n := range []string{"can-database", "can-smtp", "can-imap"} {
 		r.secrets[n] = true
 	}
 	delete(r.secrets, secretRelease)
