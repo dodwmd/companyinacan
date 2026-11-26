@@ -47,7 +47,10 @@ local profiles ran one binary at a time with the compose dev config.
 | sum of `VmRSS`, idle | 246 to 247 | **207 to 209** |
 | sum of `VmRSS`, loaded | 288 to 289 | **240 to 244** |
 
-**The "under 100 MiB" figure is met idle and not met under load.**
+**On this machine the "under 100 MiB" figure is met idle and not met under load.** The check's CI run (GitHub
+`ubuntu-latest`, 4 vCPU, Docker Engine, after only, one run, restart test skipped) is lower, probably in part
+because of the smaller thread count: cgroup 68 idle and 92 loaded, can-core `RssAnon` 11.7 and 13.2, peak 52.5,
+budgeted `RssAnon` total 43 and 60.
 
 ## Per service (`RssAnon` idle / loaded; `VmHWM` is the peak of the same process)
 
