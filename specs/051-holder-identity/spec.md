@@ -62,8 +62,9 @@ staff) a directory record whose `sso_subject` is their account, set by someone e
 `directory.url` and `CAN_EQUITY_DIRECTORY_TOKEN` (a people token with `people.read` and `people.write`, the
 least that sees `sso_subject`).
 
-Two founders who are both administrators: each creates the other's record; each then confirms either their own
-record or the one the other must not; each issues the other's shares.
+Two founders who are both administrators (directory mode): each creates the other's record, each then confirms
+their own record (the other person created and linked it), and each issues the other's shares. In attestation
+mode one creates both records and the other attests them (or each creates one and the other attests it).
 
 ## Break-glass (single-administrator companies, and recovery)
 
