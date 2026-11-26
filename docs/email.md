@@ -16,8 +16,10 @@ Spec: [specs/039-email-send](../specs/039-email-send/spec.md).
 
 SMTP-speaking third-party apps (FreeScout, Listmonk) cannot call this API and are **not** served by
 it. `support` can be handed the relay itself, only with `email.modules.support.enabled: true` (off by
-default); the rules below then do not apply to its mail, and turning it off does not clear what the
-application stored; see [email-policy.md](email-policy.md).
+default); the rules below then do not apply to its mail, and **FreeScout does not verify the relay's TLS
+certificate**. It uses the relay for its system mail and, with a `support_address`, for replies
+([modules/support/README.md](../modules/support/README.md#set-up-mail)); turning it off removes what was written
+into FreeScout, which has had the password all the same. See [email-policy.md](email-policy.md).
 
 ## Set up the relay
 

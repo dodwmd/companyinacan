@@ -95,7 +95,7 @@ func (c *SiteContact) FormID() string {
 }
 
 // SiteSupport is the support section: a link to write to the support module's support_address
-// (docs/support.md). Every field is optional. It never links to the helpdesk itself, whose sign-in is
+// (modules/support/README.md). Every field is optional. It never links to the helpdesk itself, whose sign-in is
 // for the company's own people.
 type SiteSupport struct {
 	Title  string `yaml:"title"`

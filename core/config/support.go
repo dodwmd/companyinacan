@@ -158,7 +158,7 @@ func SupportMailOf(c *Company) (SupportMail, []SupportIssue) {
 		relay := c.Email != nil && c.Email.Relay != nil
 		on := c.Email != nil && c.Email.Modules["support"].Enabled != nil && *c.Email.Modules["support"].Enabled
 		if !on || !relay {
-			warn("/support_address", "replies cannot be sent until email.relay is set and email.modules.support.enabled is true (docs/support.md)")
+			warn("/support_address", "replies cannot be sent until email.relay is set and email.modules.support.enabled is true (modules/support/README.md)")
 		}
 	}
 	return m, issues

@@ -10,7 +10,7 @@ import (
 )
 
 // SupportIMAP is the Secret can-system/can-support-imap: the mailbox the support module fetches
-// (docs/support.md). As for the relay, the password is stored with the host it belongs to.
+// (modules/support/README.md). As for the relay, the password is stored with the host it belongs to.
 type SupportIMAP struct {
 	Host, Username, Password string
 }

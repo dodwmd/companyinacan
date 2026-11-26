@@ -86,7 +86,7 @@ func newSupportCmd(g *globalOpts) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "support",
 		Short: "The support inbox: its administrator sign-in and the state of its mail",
-		Long: "Reads from the running support module (docs/support.md). Without --context the server\n" +
+		Long: "Reads from the running support module (modules/support/README.md). Without --context the server\n" +
 			"recorded for the company directory is asked over ssh.",
 		Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error { return usage("support needs a subcommand: credentials, status") },

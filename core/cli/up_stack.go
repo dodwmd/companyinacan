@@ -356,7 +356,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	res.Warnings = append(res.Warnings, lr.Warnings...)
 	if m, _ := config.SupportMailOf(t.company); m.Enabled {
-		res.Warnings = append(res.Warnings, "support is installed by can-core after this command: `can support credentials` shows its sign-in, `can support status` the state of its mail (docs/support.md)")
+		res.Warnings = append(res.Warnings, "support is installed by can-core after this command: `can support credentials` shows its sign-in, `can support status` the state of its mail (modules/support/README.md)")
 	}
 	if lr.BundleAdded {
 		if f.writeBundle {

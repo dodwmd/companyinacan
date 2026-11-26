@@ -177,6 +177,7 @@ function apply() {
         exit(1);
     }
     Option::remove('can_support_error');
+    Option::set('can_applied_at', time());
     // The queue worker caches settings; FreeScout restarts it the same way after a change.
     Illuminate\Support\Facades\Artisan::call('queue:restart');
 }
@@ -199,12 +200,14 @@ function fetch_state($mailbox) {
     if ($test['result'] !== 'success') {
         return state('failing', 'IMAP: ' . reason($test['msg']));
     }
+    // Counted from the last apply when that is later: after a restart the scheduler gets its time.
     $last = (int) opt('fetch_emails_last_successful_run');
+    $since = max($last, (int) opt('can_applied_at'));
+    if (time() - $since > 600) {
+        return state('failing', 'no scheduled fetch has succeeded for ' . (int) ((time() - $since) / 60) . ' minutes');
+    }
     if (!$last) {
         return state('pending', 'the first scheduled fetch has not finished');
-    }
-    if (time() - $last > 600) {
-        return state('failing', 'no scheduled fetch has succeeded for ' . (int) ((time() - $last) / 60) . ' minutes');
     }
     return state('ok');
 }

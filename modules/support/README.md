@@ -1,7 +1,8 @@
 # support
 
-> **Status: experimental.** Installed through can-core on k3d in the advisory `wrapped-modules` CI job
-> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server, domain or mail relay. The
+> **Status: experimental.** Installed through can-core on k3d in CI ([specs/041](../../specs/041-wrapped-modules-live/spec.md));
+> mail configured from `company.yaml` and tested there against an in-memory mail server
+> ([specs/059](../../specs/059-support-mailbox/spec.md)). Never on a real server, domain, mail relay or mail provider. The
 > `tickets` capability is marked `planned` (no adapter yet).
 
 > **Backups:** can-core takes a `pg_dump` of the database and an archive of the volume (attachments) in every dump run, and no unpublished image is needed
@@ -17,19 +18,96 @@ provides the `tickets` capability and publishes `ticket.created.v1`.
 | Footprint | 192 MB request, 672 MB limit, 2 GiB disk. Measured 63 to 86 MiB idle on k3d over two runs, 90 to 115 MB locally and 140 MB while migrating, plus the shared Postgres (35 to 50 MB) |
 | Database | Postgres (can-core's shared server in `can-data`, own database and role) |
 | Public host | `support.<domain>` (the whole app, including its sign-in page) |
-| Sign in | `admin@<domain>` (setting `admin_email`, used on the first start only); password below |
-| Email | opt-in: the company relay is written into FreeScout's **system** mail settings; mailboxes are configured by hand: [docs/email-policy.md](../../docs/email-policy.md) |
+| Sign in | `admin@<domain>` (setting `admin_email`, used on the first start only); `can support credentials` |
+| Email | the mailbox, outgoing (opt-in relay) and incoming (IMAP) from `company.yaml`: [Set up mail](#set-up-mail) |
 | Capability | `tickets` (`schemas/capabilities/tickets.v1.json`), served by `support-adapter` (:8081, off until the adapter image exists) |
 | Backup | can-core: a `pg_dump` of the database and an archive of the volume (attachments) ([specs/046](../../specs/046-wrapped-backups/spec.md)) |
 | Data classes | `support-conversation`, `support-attachment`: 3 years, standard sensitivity |
 
-The password is generated for each installation:
+## Set up mail
 
-```sh
-kubectl -n mod-support get secret can-module -o jsonpath='{.data.CAN_SUPPORT_ADMIN_PASSWORD}' | base64 -d
-```
+You need a mailbox you can fetch over IMAP with TLS (the support address itself, or one it forwards to) and an SMTP
+relay that lets you send **as the support address**, with SPF, DKIM and DMARC set up for your domain
+([docs/email.md](../../docs/email.md)). `can` creates none of these.
 
-Change it in FreeScout after the first sign-in; the Secret is not updated and not used again.
+1. `company.yaml` (no passwords here, and none in git):
+
+   ```yaml
+   email:
+     relay: { host: smtp.example.com }          # replies leave through it
+     modules:
+       support: { enabled: true }               # hands the relay password to FreeScout
+   modules:
+     support:
+       settings:
+         support_address: support@acme.example  # not the administrator's sign-in address
+         mailbox_name: Acme Support             # optional
+         inbound:
+           imap:
+             host: imap.example.com
+             username: support@acme.example     # or IMAP_USERNAME in the file below
+             # encryption: ssl (port 993, default) or starttls (143); folder: INBOX
+   site:
+     support: {}                                # optional: a "Support" section with a mailto link
+   ```
+
+2. The passwords, in files outside the repository (mode 0600):
+
+   ```sh
+   printf 'SMTP_USERNAME=...\nSMTP_PASSWORD=...\n' > ~/smtp.env
+   printf 'IMAP_PASSWORD=...\n' > ~/imap.env
+   make up SMTP_CREDENTIALS=~/smtp.env SUPPORT_IMAP_CREDENTIALS=~/imap.env
+   ```
+
+   Without `make up`, create the Secrets by hand: `can-system/can-smtp-relay` ([docs/email.md](../../docs/email.md))
+   and `can-system/can-support-imap` with keys `host`, `username`, `password` and optionally `port`, `encryption`,
+   `tls_verify`. The password is used only when the Secret's `host` is the one in `company.yaml`, so that editing
+   `company.yaml` cannot send it elsewhere.
+
+3. can-core installs (or upgrades) the module and applies the settings at every start of its pod. Check:
+
+   ```sh
+   can support status        # config, fetch, send; exit 1 when something fails
+   can support credentials   # URL, user and generated password of the first administrator
+   ```
+
+Both commands ask the server over ssh; `--context NAME` uses your own `kubectl` instead. Change the administrator's
+password after the first sign-in: the generated one stays in the cluster and is not updated.
+
+What is applied:
+
+- A mailbox for `support_address` (an existing one with that address is taken over; changing the address renames the
+  mailbox, keeping its conversations). Settings written this way are **overwritten at every pod start**; change them
+  in `company.yaml`. Other mailboxes, users, signatures and auto replies are yours.
+- Outgoing: the relay, with `From: support_address`. System mail (invitations, password resets) uses the relay's `from`.
+- Incoming: IMAP, fetched by FreeScout every minute. Fetched mail is marked as read and left on the server.
+- FreeScout's own alert when fetching stops is switched on once; you may turn it off.
+- Removing `support_address`, `inbound` or the relay opt-in removes the connection settings that were written. The
+  mailbox and its conversations stay. FreeScout and its image have had the passwords: rotate them.
+
+New passwords: update the Secret (or run `make up` again with the file); can-core sees it in a minute or two and
+restarts the module.
+
+### Health
+
+| Where | What |
+|---|---|
+| `can support status` | Signs in to the IMAP server and the relay now (nothing is read or sent), looks at the last scheduled fetch and at replies that failed or wait |
+| `can verify --server` | The same as `support.mail-config`, `support.mail-fetch`, `support.mail-send` |
+| Pod log | `can: mail status {...}` when the state changes (checked every 5 minutes) |
+| FreeScout | Manage, Logs and System; its fetch alert by email |
+
+The admin UI's status page does not show mail health.
+
+### Not covered
+
+- **The relay's certificate is not checked.** FreeScout turns SMTP certificate verification off (its own override
+  of its mail library), for STARTTLS and implicit TLS alike. Someone between your server and the relay could read
+  the mail and the relay password. can-core's own `email.send` does verify. IMAP certificates are verified (unless
+  the Secret says `tls_verify: "false"`). Use a relay credential that can only send, and only as your domain.
+- OAuth sign-in (Google Workspace and Microsoft 365 mailboxes that refuse passwords) cannot be set from
+  `company.yaml`; POP3 and the inbound-parse webhook (`inbound.mode: webhook`) neither.
+- No real mail provider has been tried.
 
 FreeScout's knowledge base is a paid add-on; the public help centre comes from the wiki module.
 SSO is `none`: FreeScout has no OIDC in its free core.
@@ -42,23 +120,14 @@ module's `version`** (can-core upgrades a module only when its version or settin
 can-core (the charts are baked into its image) and the operator upgrades. A third party builds this
 image, which adds its own delay. Watch FreeScout's security releases yourself if this matters.
 
-## Email
+## Without a support address
 
-- **Off by default.** Only with `email.modules.support.enabled: true` in `company.yaml` is the company
-  relay ([docs/email.md](../../docs/email.md)) given to FreeScout, for invitations, password resets and
-  agent notifications. This hands the relay password to a third party's image. The settings are written
-  again at every pod start. This mail does not pass `email.send`: no allow-list, quota or delivery log.
-- **Turning it off** (`enabled: false`, or removing the line) is applied like any change: can-core empties
-  `can-smtp` and restarts the pod. It does **not** remove what FreeScout already stored in its database.
-  Clear Manage, Settings, Mail Settings and every mailbox's connection settings by hand, and **rotate the
-  relay password** at the provider: assume the application and its image have seen it.
-- Replies to customers and fetching mail are per mailbox: open the mailbox's connection settings and
-  enter the SMTP and IMAP details. The relay is not copied there.
-- A new or changed relay Secret upgrades (and restarts) the module once can-core sees it, a minute or two later.
-- Delivery through a real relay has not been tried.
+With the relay opted in and no `support_address`, only FreeScout's system mail is configured, as before; mailboxes
+are then yours to set up in FreeScout. The relay mail does not pass `email.send`: no allow-list, quota or delivery log
+([docs/email-policy.md](../../docs/email-policy.md)).
 
 ## Open items
 
 - Inbound-parse webhook (`inbound.mode: webhook`) needs the adapter, which does not exist.
 - Upgrades to a newer FreeScout are untested; the image is not updated automatically.
-- `settings.schema.json` accepts `support_address`, `inbound` and `retention_days`; they are not applied.
+- `retention_days` is accepted and not applied.

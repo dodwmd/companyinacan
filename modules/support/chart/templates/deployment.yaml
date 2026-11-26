@@ -82,7 +82,7 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: CAN_SUPPORT_ADMIN_PASSWORD}}
             - {name: FREESCOUT_APP_NAME, value: {{ .Values.app.applicationName | quote }}}
             - {name: PHP_FPM_PM_MAX_CHILDREN, value: {{ .Values.app.phpMaxChildren | quote }}}
-            # The support inbox (docs/support.md): company.yaml modules.support.settings.
+            # The support inbox (modules/support/README.md): company.yaml modules.support.settings.
             - {name: CAN_SUPPORT_ADDRESS, value: {{ .Values.settings.support_address | default "" | quote }}}
             - {name: CAN_SUPPORT_NAME, value: {{ .Values.settings.mailbox_name | default "" | quote }}}
             {{- with .Values.settings.inbound }}

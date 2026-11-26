@@ -38,7 +38,7 @@ func (t *target) smtpRelay(path string) (*launch.SMTPRelay, error) {
 	return r, nil
 }
 
-// imapAccount reads --support-imap-credentials-file (docs/support.md).
+// imapAccount reads --support-imap-credentials-file (modules/support/README.md).
 func (t *target) imapAccount(path string) (*launch.SupportIMAP, error) {
 	if path == "" {
 		return nil, nil

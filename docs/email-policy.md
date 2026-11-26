@@ -5,8 +5,9 @@ We do not self-host a mail server: deliverability is a trap that costs more than
 Everything below is design; the pieces that need can-core (E03) and the adapters are marked. **Built (E03d):**
 the REST path, `email.send`, with its relay settings, allow-lists and delivery status ([email.md](email.md)).
 **Built (specs/041):** the
-`can-smtp` Secret for `support`, applied to FreeScout's system mail settings.
-**Not built:** per-mailbox settings, Listmonk's SMTP settings, `make email`, DNS records and inbound mail.
+`can-smtp` Secret for `support`, applied to FreeScout's system mail settings. **Built (specs/059):** FreeScout's
+support mailbox, with the relay for replies and IMAP fetch ([modules/support/README.md](../modules/support/README.md#set-up-mail)).
+**Not built:** Listmonk's SMTP settings, `make email`, DNS records and the inbound-parse webhook.
 
 ## Outbound: relay credentials injection
 
@@ -43,16 +44,16 @@ senders (today `support` only), from the same relay settings as `email.send` (`c
   restarted, once the Secret shows up. A Secret that is there but cannot be read changes nothing: the
   module keeps what it has, and an install or upgrade of it fails until it can be read.
 - **Turning it off** (`enabled: false`, or removing the line) is applied like any change: can-core empties
-  `can-smtp` and restarts the pod. It does **not** remove what FreeScout already stored in its database.
-  Clear Manage, Settings, Mail Settings and every mailbox's connection settings by hand, and **rotate the
-  relay password** at the provider: assume the application and its image have seen it.
+  `can-smtp` and restarts the pod, which removes the system mail and mailbox settings that were written
+  (specs/059; not those written by an earlier release or by hand). **Rotate the relay password** all the same:
+  assume the application and its image have seen it.
 - Passwords never enter `module.yaml`, values files, ConfigMaps, logs or settings schemas.
 - The base namespace policy lets module pods reach the internet but not the node or cluster
   ranges (`deploy/templates/module-namespace.yaml`), which is enough for SMTP on 587 to a hosted
   relay and for IMAP on 993 to a hosted mailbox. No extra NetworkPolicy is needed.
-- **Support** keeps mail settings in its database. At start, the relay is written into its system
-  settings (invitations, password resets, notifications). Replies to customers use each mailbox's own
-  connection settings, which the operator enters.
+- **Support** keeps mail settings in its database. At every start the relay is written into its system settings
+  (invitations, password resets, notifications) and, with a `support_address`, into that mailbox for replies.
+  FreeScout does not verify the relay's certificate.
 - **Newsletter** keeps its SMTP servers in its database too and is given nothing: the operator enters
   them in Settings, SMTP. A **separate bulk relay** is recommended once lists grow: marketing
   complaints then cannot damage the reputation of support and invoice mail.
@@ -68,11 +69,10 @@ they are not enough alone. The support module supports two mechanisms, chosen by
 
 ### `imap`: a hosted mailbox the support address forwards to
 
-`support@<domain>` forwards to a small hosted mailbox; FreeScout fetches it over IMAP (993) on its
-own one-minute fetch cycle and creates conversations. Settings: host, port, username, encryption,
-folder (`modules/support/settings.schema.json`). The password lives in the module Secret, not in
-the settings. Nothing is exposed publicly. Simple and robust, at the price of one mailbox
-subscription and up to a minute of latency.
+`support@<domain>` is, or forwards to, a hosted mailbox; FreeScout fetches it over IMAP with TLS every minute and
+creates conversations. Settings: `modules.support.settings.inbound.imap` (host, port, username, encryption, folder).
+The password lives in the Secret `can-system/can-support-imap`, bound to the host stored with it, and reaches the
+module as `can-imap`. Nothing is exposed publicly. Simple, at the price of one mailbox and up to a minute of latency.
 
 ### `webhook`: an inbound-parse service (the adapter's parse path)
 
