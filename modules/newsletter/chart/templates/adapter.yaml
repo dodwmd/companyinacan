@@ -38,9 +38,9 @@ spec:
             - {name: UPSTREAM_URL, value: "http://{{ .Chart.Name }}:{{ .Values.service.port }}"}
             - {name: CAN_TOKEN_FILE, value: /var/run/secrets/can/token}
             - name: CAN_API_URL
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: api-url}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: CAN_API_URL}}
             - name: CAN_WEBHOOK_SECRET
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: webhook-secret}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: CAN_WEBHOOK_SECRET}}
             {{- if eq .Chart.Name "support" }}
             - {name: INBOUND_MODE, value: {{ .Values.inbound.mode | quote }}}
             {{- end }}

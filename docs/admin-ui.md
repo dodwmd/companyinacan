@@ -105,12 +105,18 @@ password and a fresh authentication code; it is audited before and after, and a 
 available.
 
 **Wizard.** At first login the owner (`platform.setup`) is sent to `/setup`: company, template (starter or
-blank; the starter bundle's not-yet-deployable modules are listed as left out), modules with the meter, email
+blank; the starter bundle is the landing site and forms, and a bundle's not-yet-deployable modules are listed
+as left out), modules with the meter, email
 relay (host, port, user, password, from; the password goes into the Secret `can-system/can-smtp-relay` and
 is never shown again), the DNS records to create plus the sslip.io instant URL, account hardening (the page
 reads the audit log to see whether you rotated the password and authentication secret; the recovery kit is
 made with `can backup kit`) and review. Answers are saved per step, so you can leave and return; **Apply**
 is idempotent. **Close setup** dismisses it.
+
+**Modules that stop backups.** Enabling a module whose backup hook cannot run (the wrapped apps, until the
+`can-hooks` image is published) stops every backup. The change page and the wizard's review say so, name the
+module, add that a database in the shared Postgres is not backed up, and refuse to apply until a box is
+ticked for each such module.
 
 **Permissions.** `platform.view` (catalogue, status, progress), `platform.operate` (preview, apply,
 settings), `platform.setup` and `platform.purge` (new; owner only unless you grant them).

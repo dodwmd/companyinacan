@@ -18,7 +18,15 @@ type Postgres struct {
 	// which usually differs from how can-core reaches it.
 	Host string
 	Port int
+	// LockDown also takes CONNECT on the maintenance databases (postgres, template1) away from PUBLIC,
+	// so a module's role can open its own database only. Set for the server can-core runs itself: it
+	// is not applied to an operator's server, where others may rely on those grants.
+	LockDown bool
 }
+
+// ConnectionLimit is how many connections one module's role may hold, so that one module cannot use
+// up the server's connections (max_connections 60 on the managed server) and starve the others.
+const ConnectionLimit = 20
 
 var passwordRE = regexp.MustCompile(`^[A-Za-z0-9]{16,128}$`)
 
@@ -49,14 +57,14 @@ func (p *Postgres) Ensure(ctx context.Context, kind, moduleID, password string) 
 	var one int
 	switch err := db.QueryRowContext(ctx, `SELECT 1 FROM pg_roles WHERE rolname = $1`, name).Scan(&one); {
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE ROLE %s LOGIN PASSWORD '%s'`, name, password)) //nolint:gosec // validated identifier and password
+		_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE ROLE %s LOGIN CONNECTION LIMIT %d PASSWORD '%s'`, name, ConnectionLimit, password)) //nolint:gosec // validated identifier and password
 		if err != nil {
 			return Credentials{}, fmt.Errorf("creating role: %w", err)
 		}
 	case err != nil:
 		return Credentials{}, err
 	default:
-		if _, err := db.ExecContext(ctx, fmt.Sprintf(`ALTER ROLE %s WITH LOGIN PASSWORD '%s'`, name, password)); err != nil { //nolint:gosec // as above
+		if _, err := db.ExecContext(ctx, fmt.Sprintf(`ALTER ROLE %s WITH LOGIN CONNECTION LIMIT %d PASSWORD '%s'`, name, ConnectionLimit, password)); err != nil { //nolint:gosec // as above
 			return Credentials{}, fmt.Errorf("setting password: %w", err)
 		}
 	}
@@ -75,6 +83,13 @@ func (p *Postgres) Ensure(ctx context.Context, kind, moduleID, password string) 
 	}
 	if _, err := db.ExecContext(ctx, fmt.Sprintf(`GRANT ALL ON DATABASE %s TO %s`, name, name)); err != nil { //nolint:gosec // validated identifier
 		return Credentials{}, fmt.Errorf("granting access: %w", err)
+	}
+	if p.LockDown {
+		for _, stmt := range []string{`REVOKE CONNECT ON DATABASE postgres FROM PUBLIC`, `REVOKE CONNECT ON DATABASE template1 FROM PUBLIC`} {
+			if _, err := db.ExecContext(ctx, stmt); err != nil {
+				return Credentials{}, fmt.Errorf("closing the maintenance databases: %w", err)
+			}
+		}
 	}
 	port := p.Port
 	if port == 0 {

@@ -5,12 +5,12 @@ A status-by-status overview of every module is in [docs/modules-catalogue.md](..
 One directory per module: `module.yaml`, a Helm chart, hooks, and settings schema (see SPEC.md §4).
 Directories starting with `_` are examples and are not enabled or listed in THIRD_PARTY_LICENSES.
 
-| Module | Wraps | Licence | Idle RAM (estimate) | Database | Capability |
+| Module | Wraps | Licence | Idle RAM (manifest) | Database | Capability |
 |---|---|---|---|---|---|
 | `forms` | in-house | Apache-2.0 | 15 MB | SQLite | `leads` |
-| `support` | FreeScout | AGPL-3.0 | 250 MB | MariaDB | `tickets` |
+| `support` | FreeScout | AGPL-3.0 | 192 MB | Postgres | `tickets` |
 | `newsletter` | Listmonk | AGPL-3.0 | 50 MB | Postgres | `newsletter` |
-| `analytics` | GoatCounter | EUPL-1.2 | 20 MB | SQLite | `analytics` |
+| `analytics` | GoatCounter | EUPL-1.2 | 64 MB | SQLite | `analytics` |
 | `wiki` | DokuWiki | GPL-2.0 | 64 MB | none (flat files) | `wiki` |
 | `crm` | EspoCRM | AGPL-3.0 | 350 MB | MariaDB | `crm` |
 | `status` | Uptime Kuma | MIT | 128 MB | SQLite | `status` |

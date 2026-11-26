@@ -44,6 +44,7 @@ const (
 	secretModule  = "can-module"
 	secretDB      = reconcile.DatabaseSecret
 	secretRelease = "can-release"
+	secretSMTP    = "can-smtp"
 
 	labelModule  = "can.dev/module"
 	labelManaged = "app.kubernetes.io/managed-by"
@@ -72,10 +73,23 @@ type Config struct {
 	// SecretsFor lists the secrets can-core generates into a module's `can-module` Secret
 	// (default modsecrets.For). Values are generated once and kept; see ensureSecrets.
 	SecretsFor func(module string) []modsecrets.Spec
+	// Relay returns the SMTP relay of the company being applied, or nil when none is usable. It is
+	// asked only for a wrapped app that takes it (modsecrets.WantsRelay) and that the company has
+	// opted in (reconcile.RelayOptIn).
+	Relay func(s reconcile.Spec) (*SMTPRelay, error)
 
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
 	RBACWait       time.Duration // how long to wait for a fresh RoleBinding to take effect, default 30s
+}
+
+// SMTPRelay is what a wrapped app needs to speak SMTP itself.
+type SMTPRelay struct {
+	Host                     string
+	Port                     int
+	Username, Password, From string
+	// Encryption is `tls` (STARTTLS) or `ssl` (implicit TLS), the names PHP mailers use.
+	Encryption string
 }
 
 // Installer implements reconcile.ModuleInstaller.
@@ -417,9 +431,11 @@ func (in *Installer) secretKey(ctx context.Context, ns, name, key string) (strin
 // would sit unused in the Secret until the pod happened to restart.
 const secretVersionAnnotation = "can.dev/secret-version"
 
-// secretVersion is a short digest of the Secret data (never the data itself).
-func secretVersion(maps ...map[string]string) string {
-	h := sha256.New()
+// secretVersion is a short digest of the Secret data (never the data itself). It is keyed with the
+// module's webhook secret: the data includes passwords, some chosen by a person (the SMTP relay's),
+// and the digest is readable by anyone who can read pods.
+func secretVersion(key string, maps ...map[string]string) string {
+	h := hmac.New(sha256.New, []byte(key))
 	for _, m := range maps {
 		keys := make([]string, 0, len(m))
 		for k := range m {
@@ -492,6 +508,9 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 	var db map[string]string
 	kind := s.Manifest.Requires.Database
 	if kind == "postgres" || kind == "mariadb" {
+		if err := in.allowDatabaseAccess(ctx, s); err != nil {
+			return "", err
+		}
 		prov := in.cfg.DB
 		if prov == nil {
 			prov = dbprov.Unconfigured{}
@@ -533,7 +552,67 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 	if err := in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod)); err != nil {
 		return "", err
 	}
-	return secretVersion(mod, db), nil
+	smtp, err := in.ensureRelaySecret(ctx, s)
+	if err != nil {
+		return "", err
+	}
+	if smtp != nil {
+		return secretVersion(s.HMACSecret, mod, db, smtp), nil
+	}
+	return secretVersion(s.HMACSecret, mod, db), nil
+}
+
+// dataNamespace holds the database servers.
+const dataNamespace = "can-data"
+
+// allowDatabaseAccess admits this module's namespace to the database ports in can-data. The base
+// policy there admits can-core only, so a module that declares no database cannot reach a server.
+func (in *Installer) allowDatabaseAccess(ctx context.Context, s reconcile.Spec) error {
+	o := kube.Object{"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+		"metadata": map[string]any{"name": "allow-db-from-" + s.Namespace, "namespace": dataNamespace},
+		"spec": map[string]any{
+			"podSelector": map[string]any{},
+			"policyTypes": []any{"Ingress"},
+			"ingress": []any{map[string]any{
+				"from":  []any{map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]any{"kubernetes.io/metadata.name": s.Namespace}}}},
+				"ports": []any{map[string]any{"protocol": "TCP", "port": 5432}, map[string]any{"protocol": "TCP", "port": 3306}},
+			}},
+		}}
+	setLabels(o, map[string]string{labelManaged: "can-core", labelModule: s.ID})
+	if err := in.cfg.API.Apply(ctx, o); err != nil {
+		return fmt.Errorf("admitting %s to the database in %s: %w", s.Namespace, dataNamespace, err)
+	}
+	return nil
+}
+
+// ensureRelaySecret writes `can-smtp` for a module that speaks SMTP itself and declares email.send.
+// The company must opt the module in (reconcile.RelayOptIn). Otherwise, and without a usable relay, the
+// Secret is written empty, so credentials that were withdrawn do not stay behind. It is written as `data` (not stringData) so that server-side apply removes dropped keys.
+func (in *Installer) ensureRelaySecret(ctx context.Context, s reconcile.Spec) (map[string]string, error) {
+	if !modsecrets.WantsRelay(s.ID) || !slices.Contains(s.Manifest.Requires.Capabilities, "email.send") {
+		return nil, nil
+	}
+	vals := map[string]string{}
+	if in.cfg.Relay != nil && reconcile.RelayOptIn(s.Email, s.ID) {
+		r, err := in.cfg.Relay(s)
+		if err != nil {
+			return nil, fmt.Errorf("reading the email relay settings: %w", err)
+		}
+		if r != nil {
+			vals = map[string]string{"host": r.Host, "port": fmt.Sprint(r.Port), "user": r.Username, "password": r.Password, "from": r.From, "encryption": r.Encryption}
+		}
+	}
+	o := secret(s.Namespace, secretSMTP, s.ID, nil)
+	delete(o, "stringData")
+	data := map[string]any{}
+	for k, v := range vals {
+		data[k] = base64.StdEncoding.EncodeToString([]byte(v))
+	}
+	o["data"] = data
+	if err := in.cfg.API.Apply(ctx, o); err != nil {
+		return nil, fmt.Errorf("writing the email Secret: %w", err)
+	}
+	return vals, nil
 }
 
 // checkRotations refuses a rotation request that names a key the module has no rotatable secret
@@ -604,7 +683,7 @@ func (in *Installer) moduleDir(id string) (string, error) {
 // protected object names that only can-core may write in a module namespace.
 func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 	r := map[string]bool{
-		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true,
+		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true,
 		"ServiceAccount/" + s.ServiceAccount: true,
 		"ResourceQuota/ceiling":              true, "LimitRange/defaults": true,
 		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true,

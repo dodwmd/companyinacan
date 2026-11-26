@@ -4,10 +4,9 @@ id: analytics
 name: Analytics
 description: Cookie-free, privacy-friendly web analytics for the company site. Wraps GoatCounter on SQLite (chosen over Umami for footprint, see specs/007-starter-modules/research.md); an adapter exposes the analytics capability.
 category: marketing
-# Experimental: not run on a cluster, and NOT self-starting: GoatCounter needs its first site and
-# user created once by hand (`goatcounter db create site`, README "First site") until the adapter's
-# register_site verb (T032) exists. The create command and its idempotence are unverified, so no
-# init container is shipped that could crash-loop on restart.
+# Experimental: installed through can-core on k3d by the advisory CI job (specs/041-wrapped-modules-live);
+# never on a real server or domain, backups not run (the hooks image is not published), and the
+# `analytics` capability adapter is not built (T032).
 status: experimental
 version: 0.1.0
 provider:
@@ -17,7 +16,7 @@ provider:
   licence: EUPL-1.2
   licence_class: osi
   upstream: https://github.com/arp242/goatcounter
-  upstream_version: "2.x"
+  upstream_version: "2.7.0"
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
@@ -27,10 +26,10 @@ requires:
   database: sqlite
   sso: none
 resources:
-  # Estimate from SPEC.md section 6.1 (~20 MB) for a single Go binary on SQLite; not yet
-  # measured (research.md R5). The adapter (6 MB request) is inside this figure.
-  ram_mb: 20
-  ram_limit_mb: 96
+  # Measured 41 to 65 MB idle with the embedded GeoIP database (specs/041-wrapped-modules-live/research.md),
+  # far above the 20 MB estimate of SPEC.md section 6.1. The unbuilt adapter (6 MB) is inside this figure.
+  ram_mb: 64
+  ram_limit_mb: 160
   disk_mb: 1024
 # status: planned = the adapter is not built yet (T032); ignored by the registry. Keep in step with chart adapter.enabled.
 provides:

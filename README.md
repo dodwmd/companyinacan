@@ -42,8 +42,9 @@ server) are in [docs/getting-started.md](docs/getting-started.md).
 | `equity` | Cap table, option grants with vesting, exercises, ledger | experimental | 16 MB | A tool, not legal or tax advice; quantities stored in plaintext |
 | `board` | Boards and committees, meetings, quorum, resolutions (roll call, written consent, secret ballot), minutes | experimental | 20 MB | A tool, not legal advice; not in the compose stack; secret ballots are unlinkable only after the vote closes |
 | `entity` | Legal entities, officers and directors, statutory registers with as-of views, filings calendar | experimental | 20 MB | A tool, not legal advice; same binary as `board`; register share counts stored in plaintext |
-| `support`, `crm` | Wrapped FreeScout, EspoCRM | **not-deployable** | 250, 350 MB | Image needs root, tags unresolved |
-| `newsletter`, `analytics`, `wiki`, `status` | Wrapped Listmonk, GoatCounter, DokuWiki, Uptime Kuma | experimental | 20 to 128 MB | Charts checked offline only, never started |
+| `support`, `newsletter`, `analytics` | Wrapped FreeScout, Listmonk, GoatCounter | experimental | 192, 50, 64 MB | Installed on k3d in an advisory CI job; no real server, domain or mail relay |
+| `crm` | Wrapped EspoCRM | **not-deployable** | 350 MB | Image needs root, tags unresolved |
+| `wiki`, `status` | Wrapped DokuWiki, Uptime Kuma | experimental | 64, 128 MB | Charts checked offline only, never started |
 
 Status values are the ones in each `modules/<id>/module.yaml`; the full table with what was verified is
 [docs/modules-catalogue.md](docs/modules-catalogue.md). `can validate` refuses a `not-deployable` module and
@@ -93,7 +94,7 @@ and iOS apps are out of scope.
 | can-core, idle | 48 MB declared | 41.9 MiB RSS idle, 60 MiB after 4,000 requests; 49 MiB in a cluster | [module-wiring.md](docs/module-wiring.md) |
 | In-house services, idle | 15 to 30 MB declared each | 13.5 to 16 MiB RSS each (forms 3.2 MiB cgroup working set in CI) | module READMEs, phase0-ci.md |
 | Whole compose stack (10 services incl. Caddy and the e2e stub, plus the one-shot init job), after the e2e suite | "under 100 MiB" | **not met since the modules were wired to can-core**: about 150 MB by `docker stats` on rootless podman (94 MB before) | measured after the full suite; [local-compose.md](docs/local-compose.md) |
-| "Starter stack fits a 2 GB server" | aim | **not measured**; the wrapped apps (support, newsletter, analytics) were never started | [SPEC.md](SPEC.md) 3.2, 11 |
+| "Starter stack fits a 2 GB server" | aim | **not measured**; the wrapped apps (support, newsletter, analytics) were only started one at a time on k3d | [SPEC.md](SPEC.md) 3.2, 11 |
 
 ## Security posture and limitations
 

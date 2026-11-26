@@ -1,8 +1,12 @@
 # analytics
 
-> **Status: experimental.** Never run on a cluster; the `analytics` capability is marked `planned`
-> (adapter not built, T032). The module is **not self-starting**: the first GoatCounter site and
-> user are created by hand, see "First site" below.
+> **Status: experimental.** Installed through can-core on k3d in the advisory `wrapped-modules` CI job
+> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or domain. Backups are not run, and the `analytics`
+> capability is marked `planned` (adapter not built, T032).
+
+> **Backups: enabling this module stops them for the whole company.** Its hook needs the `can-hooks`
+> image, which is not published, and while such a module is enabled every dump run fails and nothing is
+> backed up (`can validate` warns; [docs/backup-restore.md](../../docs/backup-restore.md)).
 
 Cookie-free web analytics for the company site. Wraps [GoatCounter](https://github.com/arp242/goatcounter)
 (Go, SQLite) and provides the `analytics` capability.
@@ -10,7 +14,8 @@ Cookie-free web analytics for the company site. Wraps [GoatCounter](https://gith
 | | |
 |---|---|
 | Licence | EUPL-1.2. Network copyleft: see [modules/README.md](../README.md#licences-and-network-copyleft). We run it unmodified. |
-| Footprint (estimate) | 20 MB idle request, 96 MB limit (app 64 MB, adapter 32 MB), 1 GiB disk. SPEC.md section 6.1 puts GoatCounter at ~20 MB against Umami's ~100 MB; upstream describes it as a lightweight single binary that scales on SQLite. **Not measured**; see research.md R2 for the comparison. |
+| Image | `arp242/goatcounter:2.7.0` (upstream), pinned by digest |
+| Footprint | 64 MB request, 160 MB limit, 1 GiB disk. Measured 25 to 35 MiB idle on k3d, about 41 MB locally (SPEC.md estimated 20 MB) |
 | Database | SQLite file on the module's PVC (`/data/goatcounter.sqlite3`), so no shared database is needed |
 | Public host | `stats.<domain>` (dashboard, and `/count` for the tracker) |
 | Capability | `analytics` (`schemas/capabilities/analytics.v1.json`), served by `analytics-adapter` (:8081, off until the adapter image exists) |
@@ -20,13 +25,28 @@ Cookie-free web analytics for the company site. Wraps [GoatCounter](https://gith
 Single replica with `strategy: Recreate`: SQLite allows one writer, so a rolling update must never
 run two pods on the volume.
 
-## Open items (not verifiable offline)
+## First sign-in
 
-- **First site (manual).** GoatCounter needs a site and an admin user created once (`goatcounter db create
-  site ...`). The command line and its idempotence were not verified; until the adapter's
-  `register_site` verb exists the operator does this once with `kubectl exec`.
-- **Image, flags and probe.** Image `arp242/goatcounter`, the `serve -listen -tls proxy -db
-  sqlite+... -automigrate` flags, the `/status` probe and non-root operation come from upstream
-  documentation as remembered. `image.digest` is a `REPLACE_WITH_DIGEST` placeholder.
-- **Snippet.** The site renderer does not yet inject the tracking snippet; that is a site/analytics
-  integration for the E04 renderer once `analytics` is enabled.
+An init container creates the site `stats.<domain>` and the user `admin@<domain>` (setting
+`admin_email`) before the server starts:
+
+```sh
+kubectl -n mod-analytics get secret can-module -o jsonpath='{.data.CAN_ANALYTICS_ADMIN_PASSWORD}' | base64 -d
+```
+
+Change it in GoatCounter afterwards; the Secret is not used again. GoatCounter takes the password only
+on its command line, so it is visible in the init container's process list while the site is created.
+It sends no mail (password reset by email is not configured).
+
+## Updates and security patches
+
+The image is pinned by digest and nothing updates it automatically: a patch arrives only with a can-core
+release that bumps the digest and the module's `version`.
+
+## Open items
+
+- **Snippet.** The site renderer does not inject the tracking snippet; add
+  `<script data-goatcounter="https://stats.<domain>/count" async src="//stats.<domain>/count.js"></script>` by hand.
+- `site_domain` and `retention_days` in the settings are accepted but not applied.
+- A changed company domain creates a second site at the new host; the old one keeps the history.
+- Upgrades to a newer GoatCounter are untested.

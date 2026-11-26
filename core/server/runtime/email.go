@@ -11,6 +11,8 @@ import (
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/email"
+	"github.com/dodwmd/companyinacan/core/server/installer"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
 )
@@ -40,15 +42,46 @@ func (c Config) emailService(db *store.DB, al *audit.Log, log *slog.Logger) (*em
 	if err != nil {
 		return nil, err
 	}
+	if insecure {
+		log.Warn("CAN_SMTP_ALLOW_INSECURE=true: mail may leave without TLS; development only")
+	}
+	src := c.emailSource()
+	src.AllowInsecure = insecure
+	return email.New(db, al, src, email.SMTP{AllowPrivate: private}, log), nil
+}
+
+// emailSource is where the relay settings and sending rules are read from.
+func (c Config) emailSource() email.Source {
 	dir := c.env("CAN_SMTP_SECRET_DIR")
 	if dir == "" {
 		dir = defaultSMTPSecretDir
 	}
-	if insecure {
-		log.Warn("CAN_SMTP_ALLOW_INSECURE=true: mail may leave without TLS; development only")
+	return email.Source{CompanyFile: c.CompanyFile, SecretDir: dir, Domain: c.CompanyDomain}
+}
+
+// appRelay is the relay handed to a wrapped app that speaks SMTP itself and that the company opted
+// in (docs/email-policy.md). Such mail does not pass email.send, so the recipient allow-list and
+// quotas do not apply to it. The settings come from the company.yaml being applied, the credentials
+// from the relay Secret. A relay without TLS is never handed out.
+func (c Config) appRelay(spec reconcile.Spec) (*installer.SMTPRelay, error) {
+	p, err := c.emailSource().For(&config.Company{Domain: spec.Domain, Email: spec.Email})
+	if err != nil {
+		return nil, err
 	}
-	src := email.Source{CompanyFile: c.CompanyFile, SecretDir: dir, Domain: c.CompanyDomain, AllowInsecure: insecure}
-	return email.New(db, al, src, email.SMTP{AllowPrivate: private}, log), nil
+	if p.RelayErr != nil {
+		return nil, nil
+	}
+	r := p.Relay
+	var enc string
+	switch r.TLS {
+	case email.TLSStartTLS:
+		enc = "tls"
+	case email.TLSImplicit:
+		enc = "ssl"
+	default:
+		return nil, nil
+	}
+	return &installer.SMTPRelay{Host: r.Host, Port: r.Port, Username: r.Username, Password: r.Password, From: r.From, Encryption: enc}, nil
 }
 
 // devModuleSuffix marks the records devModules creates, so a later start can remove them.

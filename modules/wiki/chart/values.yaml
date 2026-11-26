@@ -42,7 +42,7 @@ securityContext:
 secrets:
   database: can-database   # unused (flat files); kept so every wrapped chart has the same contract
   smtp: can-smtp           # unused: DokuWiki mail settings are manual (README)
-  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+  module: can-module       # keys: CAN_API_URL CAN_WEBHOOK_SECRET
 probes:
   readiness: { path: /doku.php, port: http }
   liveness: { path: /doku.php, port: http }

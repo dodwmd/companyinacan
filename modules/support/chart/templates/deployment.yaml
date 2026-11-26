@@ -23,60 +23,110 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- $host := required "ingress.host is supplied by can-core" .Values.ingress.host }}
+      {{- $email := default (printf "admin@%s" (trimPrefix "support." $host)) .Values.settings.admin_email }}
       containers:
         - name: app
           image: {{ include "mod.image" .Values.image | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Starts the image's own entrypoint (s6 as PID 1) and, beside it, a one-shot that writes the
+          # company's SMTP relay into FreeScout's settings once the first boot is over. FreeScout keeps
+          # its mail settings in the database, not in the environment.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cat >/tmp/can-mail.php <<'CANPHP'
+              <?php
+              require '/var/www/html/vendor/autoload.php';
+              $app = require '/var/www/html/bootstrap/app.php';
+              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              $set = [
+                  'mail_driver' => 'smtp',
+                  'mail_host' => getenv('CAN_MAIL_HOST'),
+                  'mail_port' => getenv('CAN_MAIL_PORT'),
+                  'mail_username' => (string) getenv('CAN_MAIL_USERNAME'),
+                  'mail_password' => app('encrypter')->encrypt((string) getenv('CAN_MAIL_PASSWORD'), false),
+                  'mail_encryption' => (string) getenv('CAN_MAIL_ENCRYPTION'),
+                  'mail_from' => getenv('CAN_MAIL_FROM'),
+              ];
+              foreach ($set as $name => $value) {
+                  \App\Option::set($name, $value);
+              }
+              echo "can: system mail set to the company relay\n";
+              CANPHP
+              if [ -n "${CAN_MAIL_HOST:-}" ]; then
+                (
+                  n=0
+                  until wget -q -O /dev/null --header "Host: $CAN_HOST" --header "X-Forwarded-Proto: https" http://127.0.0.1:{{ .Values.service.port }}/login; do
+                    n=$((n+1)); [ "$n" -lt 180 ] || { echo "can: the app did not start; SMTP relay not applied" >&2; exit 1; }
+                    sleep 5
+                  done
+                  php /tmp/can-mail.php || echo "can: applying the SMTP relay failed" >&2
+                ) &
+              fi
+              exec docker-php-serversideup-entrypoint /init
           ports:
-            - {name: http, containerPort: {{ .Values.app.nginxListenPort }}}
+            - {name: http, containerPort: {{ .Values.service.port }}}
           env:
-            - {name: DB_TYPE, value: mysql}
+            - {name: APP_URL, value: "{{ include "mod.scheme" . }}://{{ $host }}"}
+            - {name: CAN_HOST, value: {{ $host | quote }}}
+            - {name: DB_TYPE, value: pgsql}
             - name: DB_HOST
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: host}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: DB_HOST}}
             - name: DB_PORT
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: port}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: DB_PORT}}
             - name: DB_NAME
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: name}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: DB_NAME}}
             - name: DB_USER
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: user}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: DB_USER}}
             - name: DB_PASS
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: password}}
-            - name: ADMIN_EMAIL
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: admin-email}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.database }}, key: DB_PASSWORD}}
+            # Seeds the first administrator, and only while the users table is empty.
+            - {name: ADMIN_EMAIL, value: {{ $email | quote }}}
             - name: ADMIN_PASS
-              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: admin-password}}
-            - {name: SITE_URL, value: "{{ include "mod.scheme" . }}://{{ .Values.ingress.host }}"}
-            - {name: APPLICATION_NAME, value: {{ .Values.app.applicationName | quote }}}
-            - {name: NGINX_LISTEN_PORT, value: {{ .Values.app.nginxListenPort | quote }}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: CAN_SUPPORT_ADMIN_PASSWORD}}
+            - {name: FREESCOUT_APP_NAME, value: {{ .Values.app.applicationName | quote }}}
+            - {name: PHP_FPM_PM_MAX_CHILDREN, value: {{ .Values.app.phpMaxChildren | quote }}}
             {{- if .Values.email.injectRelay }}
-            # SMTP relay credentials (SPEC 4.3 email.send): optional so the pod starts without a relay.
-            - {name: MAIL_DRIVER, value: smtp}
-            - name: MAIL_HOST
+            # The relay (docs/email-policy.md). Optional: the module starts without one.
+            - name: CAN_MAIL_HOST
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: host, optional: true}}
-            - name: MAIL_PORT
+            - name: CAN_MAIL_PORT
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: port, optional: true}}
-            - name: MAIL_USERNAME
+            - name: CAN_MAIL_USERNAME
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: user, optional: true}}
-            - name: MAIL_PASSWORD
+            - name: CAN_MAIL_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: password, optional: true}}
-            - name: MAIL_ENCRYPTION
+            - name: CAN_MAIL_ENCRYPTION
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: encryption, optional: true}}
+            - name: CAN_MAIL_FROM
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: from, optional: true}}
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-            readOnlyRootFilesystem: false   # PHP writes its cache and compiled views
+            readOnlyRootFilesystem: false   # the image templates nginx config and PHP writes caches
           startupProbe:
-            httpGet: {path: {{ .Values.probes.startup.path }}, port: {{ .Values.probes.startup.port }}}
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: {{ .Values.probes.startup.port }}
+              # FreeScout answers 403 to another Host, and redirects plain HTTP when APP_URL is https.
+              httpHeaders: [{name: Host, value: {{ $host | quote }}}, {name: X-Forwarded-Proto, value: {{ include "mod.scheme" . }}}]
             failureThreshold: {{ .Values.probes.startup.failureThreshold }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: 5
           readinessProbe:
-            httpGet: {path: {{ .Values.probes.readiness.path }}, port: {{ .Values.probes.readiness.port }}}
-            periodSeconds: 10
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ .Values.probes.readiness.port }}
+              httpHeaders: [{name: Host, value: {{ $host | quote }}}, {name: X-Forwarded-Proto, value: {{ include "mod.scheme" . }}}]
+            periodSeconds: 15
+            timeoutSeconds: 5
           livenessProbe:
             httpGet: {path: {{ .Values.probes.liveness.path }}, port: {{ .Values.probes.liveness.port }}}
             periodSeconds: 30
+            timeoutSeconds: 5
             failureThreshold: 4
           volumeMounts:
             - {name: data, mountPath: {{ .Values.persistence.mountPath }}}

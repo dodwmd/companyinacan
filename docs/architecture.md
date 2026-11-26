@@ -32,7 +32,9 @@ NetworkPolicy, each with its own SQLite file, bearer-token store and manifest (`
 permissions, approval types, published and subscribed events, provided capabilities, resource budget).
 The in-house modules are Go services in `core/<module>` with a `cmd/can-<module>` binary: `forms`, `work`,
 `people`, `jobs`, `finance`, `equity`. Wrapped open-source modules (support, newsletter, analytics, wiki, CRM,
-status) are charts around upstream images and have never been started. Modules never call each other; they
+status) are charts around upstream images. Analytics, support and newsletter are installed on k3d by an
+advisory CI job, with a Postgres can-core runs in `can-data` for the last two (`specs/041-wrapped-modules-live`);
+the others have never been started. Modules never call each other; they
 publish events and call can-core, which delivers to subscribers.
 
 **Events** are small JSON envelopes with ids only (no names or email addresses), published by a module to
