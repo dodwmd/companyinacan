@@ -79,6 +79,7 @@ const (
 	maxReason       = 500
 	mailBudget      = 20 * time.Second
 	signTokenBytes  = 32
+	resendCooldown  = 30 * time.Second // between two resends to one signer, unless the last one failed
 	signPathPrefix  = "/public/sign/"
 )
 
@@ -93,6 +94,34 @@ type signing struct {
 	ipMode  string
 	log     *slog.Logger
 	wg      sync.WaitGroup // mails sent after a public request has been answered
+	mu      sync.Mutex
+	resent  map[resendKey]time.Time // the last resends; in memory: maxSends is the hard bound
+}
+
+// resendKey is what was resent to whom: a link, or the certificate.
+type resendKey struct {
+	signer      int64
+	certificate bool
+}
+
+// coolDown refuses a second resend to a signer right after one that is on its way, and otherwise
+// notes this one.
+func (g *signing) coolDown(k resendKey, lastOutcome string, now time.Time) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if t, ok := g.resent[k]; ok && now.Sub(t) < resendCooldown && (lastOutcome == MailQueued || lastOutcome == MailPending) {
+		return fmt.Errorf("%w: this signer was sent to again moments ago; wait %d seconds before another", ErrConflict, int(resendCooldown.Seconds()))
+	}
+	if g.resent == nil {
+		g.resent = map[resendKey]time.Time{}
+	}
+	for old, t := range g.resent {
+		if now.Sub(t) >= resendCooldown {
+			delete(g.resent, old)
+		}
+	}
+	g.resent[k] = now
+	return nil
 }
 
 // SigningAvailable reports whether contracts can be sent for signature by link.
@@ -204,7 +233,7 @@ func linkHash(e *Envelope, ev evidence) string {
 }
 
 // appendEvidence adds an event to the envelope's chain, in the caller's transaction.
-func (s *Store) appendEvidence(ctx context.Context, tx dbq, e *Envelope, kind string, signerID int64, data any) error {
+func (s *Store) appendEvidence(ctx context.Context, tx dbq, e *Envelope, at time.Time, kind string, signerID int64, data any) error {
 	b, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -213,7 +242,7 @@ func (s *Store) appendEvidence(ctx context.Context, tx dbq, e *Envelope, kind st
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM signing_events WHERE envelope_id = ?`, e.ID).Scan(&seq); err != nil {
 		return err
 	}
-	ev := evidence{Seq: seq + 1, Kind: kind, SignerID: signerID, At: fromUnix(ts(s.now())), data: string(b), prev: e.ChainHead}
+	ev := evidence{Seq: seq + 1, Kind: kind, SignerID: signerID, At: fromUnix(ts(at)), data: string(b), prev: e.ChainHead}
 	ev.Hash = linkHash(e, ev)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO signing_events (envelope_id, seq, kind, signer_id, data, at, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ID, ev.Seq, ev.Kind, ev.SignerID, ev.data, ev.At.Unix(), ev.prev, ev.Hash); err != nil {
@@ -331,6 +360,19 @@ func deceptive(s string) bool {
 	})
 }
 
+// hasVisibleText reports a letter or digit that draws something: a name made only of blank
+// characters (U+3164 HANGUL FILLER and its kin are letters to Unicode, U+2800 BRAILLE PATTERN
+// BLANK a symbol) names nobody.
+func hasVisibleText(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool {
+		switch r {
+		case 0x115F, 0x1160, 0x3164, 0xFFA0:
+			return false
+		}
+		return unicode.IsLetter(r) || unicode.IsNumber(r)
+	})
+}
+
 // plainLine is a value shown on one line: nothing deceptive and no line or paragraph separator.
 func plainLine(s string) bool {
 	return oneLineText(s, maxName) && !deceptive(s) && !strings.ContainsAny(s, "\u2028\u2029")
@@ -348,7 +390,7 @@ func checkSigners(in *SigningRequest) error {
 		g := &in.Signers[i]
 		f := "signers." + strconv.Itoa(i) + "."
 		g.Name, g.Email = strings.TrimSpace(g.Name), strings.TrimSpace(g.Email)
-		if g.Name == "" || !plainLine(g.Name) {
+		if !hasVisibleText(g.Name) || !plainLine(g.Name) {
 			p.add(f+"name", "required, one line, at most %d characters", maxName)
 		}
 		if g.Email == "" || !validEmail(g.Email) {
@@ -382,7 +424,7 @@ func (s *Store) invite(ctx context.Context, tx dbq, actor string, e *Envelope, s
 		tokenHash(token), ts(exp), MailPending, signerID); err != nil {
 		return invitation{}, err
 	}
-	if err := s.appendEvidence(ctx, tx, e, "invited", signerID, map[string]any{"expires_at": ts(exp)}); err != nil {
+	if err := s.appendEvidence(ctx, tx, e, s.now(), "invited", signerID, map[string]any{"expires_at": ts(exp)}); err != nil {
 		return invitation{}, err
 	}
 	if err := s.audit(ctx, tx, actor, "contract.signing.invite", fmt.Sprint(e.ContractID), map[string]any{"envelope": e.ID, "signer": signerID}); err != nil {
@@ -453,7 +495,7 @@ func (s *Store) SendForSigning(ctx context.Context, a *Principal, id int64, ifMa
 			ids[i], _ = r.LastInsertId()
 			digests[i] = signerDigest(ids[i], g.Role, g.Name, g.Email)
 		}
-		if err := s.appendEvidence(ctx, tx, e, "sent", 0, map[string]any{"signers": digests, "ordered": in.Ordered, "title_sha256": hashBody(c.Title), "sender_sha256": digest(a.Subject)}); err != nil {
+		if err := s.appendEvidence(ctx, tx, e, now, "sent", 0, map[string]any{"signers": digests, "ordered": in.Ordered, "title_sha256": hashBody(c.Title), "sender_sha256": digest(a.Subject)}); err != nil {
 			return err
 		}
 		for i, g := range in.Signers {
@@ -496,6 +538,7 @@ func (s *Store) Resend(ctx context.Context, a *Principal, contractID, signerID i
 	var mails []invitation
 	var envID int64
 	var certificate *Envelope
+	var generation int
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		mails, certificate = nil, nil
 		c, err := s.loadContract(ctx, tx, a, contractID)
@@ -526,7 +569,11 @@ func (s *Store) Resend(ctx context.Context, a *Principal, contractID, signerID i
 			if sends >= maxSends {
 				return fmt.Errorf("%w: this signer has been sent the certificate %d times; download it and send it yourself", ErrConflict, sends)
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE signing_signers SET cert_status = ?, cert_sends = cert_sends + 1 WHERE id = ?`, MailPending, signerID); err != nil {
+			if err := s.sign.coolDown(resendKey{signerID, true}, e.Signers[i].CertificateStatus, s.now()); err != nil {
+				return err
+			}
+			generation = sends + 1
+			if _, err := tx.ExecContext(ctx, `UPDATE signing_signers SET cert_status = ?, cert_sends = ? WHERE id = ?`, MailPending, generation, signerID); err != nil {
 				return err
 			}
 			certificate = e
@@ -546,6 +593,9 @@ func (s *Store) Resend(ctx context.Context, a *Principal, contractID, signerID i
 		if sends >= maxSends {
 			return fmt.Errorf("%w: this signer has been sent %d links; revoke the request and send the contract again", ErrConflict, sends)
 		}
+		if err := s.sign.coolDown(resendKey{signer: signerID}, e.Signers[i].MailStatus, s.now()); err != nil {
+			return err
+		}
 		m, err := s.invite(ctx, tx, a.Subject, e, signerID, e.Signers[i].Email)
 		if err != nil {
 			return err
@@ -558,7 +608,7 @@ func (s *Store) Resend(ctx context.Context, a *Principal, contractID, signerID i
 	}
 	if certificate != nil {
 		i := slices.IndexFunc(certificate.Signers, func(g Signer) bool { return g.ID == signerID })
-		s.sendCertificate(context.WithoutCancel(ctx), certificate, certificate.Signers[i])
+		s.sendCertificate(context.WithoutCancel(ctx), certificate, certificate.Signers[i], generation)
 	}
 	return s.mailAndReload(ctx, envID, mails)
 }
@@ -566,11 +616,12 @@ func (s *Store) Resend(ctx context.Context, a *Principal, contractID, signerID i
 // closeEnvelope ends an open request without a signature: every link dies and the contract is a
 // draft again.
 func (s *Store) closeEnvelope(ctx context.Context, tx dbq, actor string, e *Envelope, status, kind string, signerID int64, data any) error {
-	now := ts(s.now())
+	at := s.now()
+	now := ts(at)
 	if _, err := tx.ExecContext(ctx, `UPDATE signing_signers SET token_hash = NULL WHERE envelope_id = ? AND token_hash IS NOT NULL`, e.ID); err != nil {
 		return err
 	}
-	if err := s.appendEvidence(ctx, tx, e, kind, signerID, data); err != nil {
+	if err := s.appendEvidence(ctx, tx, e, at, kind, signerID, data); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE signing_envelopes SET status = ?, closed_at = ? WHERE id = ?`, status, now, e.ID); err != nil {
@@ -726,8 +777,13 @@ func (s *Store) Sign(ctx context.Context, token string, in SignInput) (*SignRece
 			return err
 		}
 		var p problems
-		if in.TypedName == "" || !plainLine(in.TypedName) {
+		switch {
+		case deceptive(in.TypedName) || strings.ContainsAny(in.TypedName, "\u2028\u2029"):
+			p.add("typed_name", "your name holds invisible or text-direction characters (a zero-width joiner or byte-order mark, for instance), which could show something other than what you typed; type it by hand instead of pasting it")
+		case !hasVisibleText(in.TypedName):
 			p.add("typed_name", "type your full name")
+		case !plainLine(in.TypedName):
+			p.add("typed_name", "one line, at most %d characters", maxName)
 		}
 		if !in.Consent {
 			p.add("consent", "tick the box to agree")
@@ -746,7 +802,7 @@ func (s *Store) Sign(ctx context.Context, token string, in SignInput) (*SignRece
 			in.TypedName, ConsentText, ip, now, g.ID); err != nil {
 			return err
 		}
-		if err := s.appendEvidence(ctx, tx, e, "signed", g.ID, map[string]any{"digest": signatureDigest(g.ID, in.TypedName, ConsentText, ip, now)}); err != nil {
+		if err := s.appendEvidence(ctx, tx, e, fromUnix(now), "signed", g.ID, map[string]any{"digest": signatureDigest(g.ID, in.TypedName, ConsentText, ip, now)}); err != nil {
 			return err
 		}
 		if err := s.audit(ctx, tx, actor, "contract.signing.signed", fmt.Sprint(e.ContractID), map[string]any{"envelope": e.ID, "sha256": e.SHA256}); err != nil {
@@ -782,7 +838,7 @@ func (s *Store) Sign(ctx context.Context, token string, in SignInput) (*SignRece
 		// say truthfully whether one is coming.
 		for _, g := range done.Signers {
 			if g.ID == signer {
-				out.Certificate = s.sendCertificate(bg, done, g) == MailQueued
+				out.Certificate = s.sendCertificate(bg, done, g, 1) == MailQueued
 			} else {
 				others = append(others, g)
 			}
@@ -794,7 +850,7 @@ func (s *Store) Sign(ctx context.Context, token string, in SignInput) (*SignRece
 		defer s.sign.wg.Done()
 		s.sendInvitations(bg, mails)
 		for _, g := range others {
-			s.sendCertificate(bg, done, g)
+			s.sendCertificate(bg, done, g, 1)
 		}
 	}()
 	return out, nil
@@ -803,7 +859,7 @@ func (s *Store) Sign(ctx context.Context, token string, in SignInput) (*SignRece
 // complete marks the request and the contract signed, in the caller's transaction.
 func (s *Store) complete(ctx context.Context, tx dbq, actor string, e *Envelope) error {
 	now := s.now()
-	if err := s.appendEvidence(ctx, tx, e, "completed", 0, map[string]any{}); err != nil {
+	if err := s.appendEvidence(ctx, tx, e, now, "completed", 0, map[string]any{}); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE signing_envelopes SET status = 'completed', closed_at = ? WHERE id = ?`, ts(now), e.ID); err != nil {
@@ -926,8 +982,9 @@ func (s *Store) sendInvitations(ctx context.Context, mails []invitation) {
 }
 
 // sendCertificate mails one signer the signers' copy of the certificate and records the outcome,
-// which it returns. Staff see it and can send it again (Resend).
-func (s *Store) sendCertificate(ctx context.Context, e *Envelope, g Signer) string {
+// which it returns. Staff see it and can send it again (Resend). generation is the signer's
+// cert_sends for this send: a slower earlier send does not overwrite a later one's outcome.
+func (s *Store) sendCertificate(ctx context.Context, e *Envelope, g Signer, generation int) string {
 	text := "Everyone has signed. Keep this message: it is your record of what was signed.\n\n" + s.certificate(e, nil, false)
 	sendCtx, cancel := context.WithTimeout(ctx, mailBudget)
 	defer cancel()
@@ -938,7 +995,7 @@ func (s *Store) sendCertificate(ctx context.Context, e *Envelope, g Signer) stri
 	rctx, done := context.WithTimeout(ctx, 5*time.Second)
 	defer done()
 	if err := s.inTx(rctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(rctx, `UPDATE signing_signers SET cert_status = ? WHERE id = ?`, status, g.ID); err != nil {
+		if _, err := tx.ExecContext(rctx, `UPDATE signing_signers SET cert_status = ? WHERE id = ? AND cert_sends = ?`, status, g.ID, generation); err != nil {
 			return err
 		}
 		return s.audit(rctx, tx, "can-finance", "contract.signing.certificate_mail", strconv.FormatInt(e.ID, 10), map[string]any{"signer": g.ID, "outcome": status})
@@ -1090,12 +1147,34 @@ func (s *Store) verifySigning(ctx context.Context, q dbq, c *Contract) ([]string
 			if c.SignedAt == nil || c.SignedSHA256 != e.SHA256 || c.CurrentVersion != e.Version {
 				out = append(out, "the contract's signed record does not match the completed signing request")
 			}
+			if at, ok := eventTime(chain, "completed"); c.SignedAt != nil && (!ok || at.Unix() != c.SignedAt.Unix()) {
+				out = append(out, "the contract's signing time does not match the evidence")
+			}
+			if !slices.Contains([]string{CtSigned, CtActive, CtExpired, CtTerminated}, c.Status) {
+				out = append(out, "the contract's status does not match the completed signing request")
+			}
+			if c.Title != e.Title {
+				out = append(out, "the contract's title is not the one that was signed")
+			}
+			if c.ESignProvider != SignProvider {
+				out = append(out, "the contract no longer says it was signed by link")
+			}
 		}
 	}
 	if c.ESignProvider == SignProvider && c.SignedAt != nil && !completed {
 		out = append(out, "the contract is marked signed by link but there is no completed signing request")
 	}
 	return out, nil
+}
+
+// eventTime is when the last event of a kind happened.
+func eventTime(chain []evidence, kind string) (time.Time, bool) {
+	for i := len(chain) - 1; i >= 0; i-- {
+		if chain[i].Kind == kind {
+			return chain[i].At, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // checkEnvelope compares one request with its evidence chain.
@@ -1143,6 +1222,12 @@ func checkEnvelope(e *Envelope, chain []evidence, textOK bool) []string {
 	if (closing != "" && last != closing) || (closing == "" && (last == "completed" || last == "declined" || last == "revoked")) {
 		bad("the status does not match the evidence")
 	}
+	if at, ok := eventTime(chain, "sent"); !ok || at.Unix() != e.CreatedAt.Unix() {
+		bad("the creation time was changed")
+	}
+	if at, ok := eventTime(chain, closing); (closing == "" && e.ClosedAt != nil) || (closing != "" && (!ok || e.ClosedAt == nil || at.Unix() != e.ClosedAt.Unix())) {
+		bad("the closing time was changed")
+	}
 	if len(sent.Signers) != len(e.Signers) {
 		bad("the list of signers was changed")
 	}
@@ -1167,6 +1252,12 @@ func checkEnvelope(e *Envelope, chain []evidence, textOK bool) []string {
 		}
 		if e.Status == EnvCompleted && g.Status != SignerSigned {
 			bad("completed without signer %d", g.Position)
+		}
+		// A record holds only what its own decision writes: the digest below covers no other field.
+		signedFields := g.SignedAt != nil || g.TypedName != "" || g.consent != ""
+		declinedFields := g.DeclinedAt != nil || g.DeclineReason != ""
+		if (g.Status != SignerSigned && signedFields) || (g.Status != SignerDeclined && declinedFields) {
+			bad("signer %d holds fields their status does not allow", g.Position)
 		}
 		if !decided || scrubbed {
 			continue
