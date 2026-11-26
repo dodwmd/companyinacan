@@ -19,10 +19,20 @@ const (
 	KindPages = "pages"        // the chart's anonymous pages on <subdomain>.<domain>
 	KindLink  = "invoice-link" // signed links on <id>.<domain>, one path
 	KindForms = "forms"        // a path on the site's own hosts
+	KindSign  = "signing"      // single-use signing pages on <id>.<domain>, one path
 )
 
 // LinkPrefixes are the only signed-link paths a module may route (runtime.public_link).
 var LinkPrefixes = map[string]string{"finance": "/public/invoices/"}
+
+// SignPrefixes are the only signing paths a module may route (runtime.public_sign).
+var SignPrefixes = map[string]string{"finance": "/public/sign/"}
+
+// SignWanted reports whether company.yaml publishes the module's signing pages. Like signed links
+// they are off unless `expose.signing: true` is written.
+func SignWanted(m *config.Module, x config.Expose) bool {
+	return m != nil && m.Runtime.PublicSign != nil && x.Signing
+}
 
 // pagePaths is where a module's anonymous pages start, for addresses people are shown.
 var pagePaths = map[string]string{"jobs": "/careers"}
@@ -77,6 +87,9 @@ func Surfaces(domain, id string, m *config.Module, x config.Expose) []Surface {
 	}
 	if LinkWanted(m, x) && LinkPrefixes[id] == m.Runtime.PublicLink.Prefix && MayClaim(id, id) {
 		add(KindLink, id+"."+domain, m.Runtime.PublicLink.Prefix)
+	}
+	if SignWanted(m, x) && SignPrefixes[id] == m.Runtime.PublicSign.Prefix && MayClaim(id, id) {
+		add(KindSign, id+"."+domain, m.Runtime.PublicSign.Prefix)
 	}
 	if r := m.Runtime.SiteRoute; r != nil && x.PublicOn() && SitePrefixes[id] == r.Path {
 		add(KindForms, domain, r.Path)

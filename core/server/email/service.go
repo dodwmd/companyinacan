@@ -204,7 +204,7 @@ func (s *Service) Send(ctx context.Context, r Request) (ids []string, duplicate 
 			return nil, false, fmt.Errorf("%w: can-core's own mail is notification mail", ErrNotAllowed)
 		}
 		for _, a := range r.To {
-			if !config.RecipientAllowed(a, rules.Recipients) {
+			if !rules.AnyRecipient && !config.RecipientAllowed(a, rules.Recipients) {
 				messages.With("refused").Inc()
 				s.log.Warn("email refused: recipient not on the module's allow-list", "module", r.Source)
 				return nil, false, fmt.Errorf("%w: a recipient is not on the allow-list of this module (company.yaml email.modules)", ErrNotAllowed)

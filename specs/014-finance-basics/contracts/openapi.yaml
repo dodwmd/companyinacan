@@ -1226,6 +1226,134 @@ paths:
         "412": { description: "If-Match version is stale" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
+  /v1/contracts/{id}/signing:
+    get:
+      summary: "Latest signing request with its signers (no link is ever returned; audited)"
+      operationId: GET_v1_contracts_id_signing
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    post:
+      summary: "Send a draft for signature by emailed single-use link (If-Match optional)"
+      operationId: POST_v1_contracts_id_signing
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [signers]
+              properties:
+                signers:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [name, email]
+                    properties:
+                      name: { type: string, maxLength: 200 }
+                      email: { type: string, maxLength: 254 }
+                      role: { type: string, enum: [counterparty, company] }
+                ordered: { type: boolean, description: "Invite one after another in the order given" }
+                expires_in_days: { type: integer, minimum: 1, maximum: 30, default: 7 }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/signing/revoke:
+    post:
+      summary: "Withdraw the open signing request"
+      operationId: POST_v1_contracts_id_signing_revoke
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/signing/signers/{signer}/resend:
+    post:
+      summary: "Mail a signer whose turn it is a new link"
+      operationId: POST_v1_contracts_id_signing_signers_signer_resend
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: signer, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/contracts/{id}/signing/certificate:
+    get:
+      summary: "Completion certificate of a signed contract (audited)"
+      operationId: GET_v1_contracts_id_signing_certificate
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema: { type: string }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
   /v1/timesheets:
     get:
       summary: "List timesheets in scope"

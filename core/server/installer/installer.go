@@ -720,7 +720,7 @@ func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true,
 		"ServiceAccount/" + s.ServiceAccount: true,
 		"ResourceQuota/ceiling":              true, "LimitRange/defaults": true,
-		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true, "IngressRoute/" + routeLink: true,
+		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true, "IngressRoute/" + routeLink: true, "IngressRoute/" + routeSign: true,
 	}
 	for _, n := range []string{"default-deny", "allow-ingress-from-traefik", "allow-ingress-from-can-core", "module-egress"} {
 		r["NetworkPolicy/"+n] = true

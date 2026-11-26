@@ -30,6 +30,9 @@ const (
 // possible module id.
 const SystemSource = "@core"
 
+// externalRecipientsModule is the only module external_recipients applies to.
+const externalRecipientsModule = "finance"
+
 // Default quotas, in messages (one per recipient).
 const (
 	DefaultModulePerHour = 60
@@ -97,6 +100,8 @@ type Rules struct {
 	Recipients []string
 	PerHour    int
 	PerDay     int
+	// AnyRecipient: the operator opted this module out of the allow-list (external_recipients).
+	AnyRecipient bool
 }
 
 // Rules returns the sending rules of a source.
@@ -105,7 +110,8 @@ func (p Policy) Rules(source string) Rules {
 		return Rules{Enabled: true, PerHour: systemPerHour, PerDay: systemPerDay}
 	}
 	m := p.modules[source]
-	r := Rules{Enabled: m.Enabled == nil || *m.Enabled, PerHour: m.PerHour, PerDay: m.PerDay, Recipients: m.Recipients}
+	r := Rules{Enabled: m.Enabled == nil || *m.Enabled, PerHour: m.PerHour, PerDay: m.PerDay, Recipients: m.Recipients,
+		AnyRecipient: m.ExternalRecipients && source == externalRecipientsModule}
 	if r.PerHour <= 0 {
 		r.PerHour = DefaultModulePerHour
 	}

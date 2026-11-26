@@ -43,6 +43,7 @@ func (s *Server) exposure(ctx context.Context, id string, m *config.Module) *exp
 		labels := map[string]string{
 			routing.KindUI: "exp.ui", routing.KindAPI: "exp.api", routing.KindPages: "exp.pages",
 			routing.KindLink: "exp.invoice_link", routing.KindForms: "exp.forms",
+			routing.KindSign: "exp.signing",
 		}
 		row := exposureRow{Key: kind, Label: s.msg(labels[kind]), State: s.msg("exp.off"), StateClass: "neutral"}
 		if on && e.Enabled {
@@ -64,6 +65,9 @@ func (s *Server) exposure(ctx context.Context, id string, m *config.Module) *exp
 	}
 	if rt.PublicLink != nil {
 		add(routing.KindLink, routing.LinkWanted(m, e.Expose))
+	}
+	if rt.PublicSign != nil {
+		add(routing.KindSign, routing.SignWanted(m, e.Expose))
 	}
 	if rt.SiteRoute != nil {
 		add(routing.KindForms, e.Expose.PublicOn())
