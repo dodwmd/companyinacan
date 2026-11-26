@@ -39,6 +39,9 @@ local profiles ran one binary at a time with the compose dev config.
 | `docker stats` sum after the suite, in its decimal MB | 149.5 | 95.9 |
 | sum of `VmRSS`, idle / after the suite | 244.8 / 267.5 | **209.0 / 216.0** |
 
+The first CI run of the check (GitHub `ubuntu-latest`, Docker Engine, after only) agrees or is lower: cgroup 70.0
+idle and 70.5 after the suite, can-core `RssAnon` 11.9 and 11.8, peak 49.3.
+
 ## Per service (`RssAnon` idle / after the suite; `VmHWM` is the peak)
 
 | Service | before | after | peak before | peak after |
