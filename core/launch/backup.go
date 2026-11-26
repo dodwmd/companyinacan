@@ -17,7 +17,7 @@ import (
 
 // BackupInstallVersion is the generation of what the backup step installs on the host (script,
 // units, tools). Raise it whenever an existing install must be redone by the next `can up`.
-const BackupInstallVersion = 5
+const BackupInstallVersion = 6
 
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 

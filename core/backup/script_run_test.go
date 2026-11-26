@@ -83,7 +83,7 @@ func TestScriptRunMarkerMissing(t *testing.T) {
 	if code != ExitMarkerMissing {
 		t.Fatalf("code %d, want %d\n%s", code, ExitMarkerMissing, out)
 	}
-	if strings.Contains(e.calledRestic(), "backup") {
+	if strings.Contains(e.calledRestic(), "restic backup") {
 		t.Error("restic backup ran without a completion marker")
 	}
 }
@@ -95,7 +95,7 @@ func TestScriptRunMarkerStale(t *testing.T) {
 	if code != ExitMarkerStale {
 		t.Fatalf("code %d, want %d\n%s", code, ExitMarkerStale, out)
 	}
-	if strings.Contains(e.calledRestic(), "backup") {
+	if strings.Contains(e.calledRestic(), "restic backup") {
 		t.Error("restic backup ran with a stale marker")
 	}
 }
@@ -240,6 +240,49 @@ func TestScriptRunLedgerFailureCode(t *testing.T) {
 	}
 }
 
+// A company that never erased anything must still be restorable: the bucket gets an empty ledger.
+// Without `can` on the host nothing changes, and a ledger that vanished is not replaced.
+func TestScriptRunUploadsAnEmptyLedger(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if b, _ := os.ReadFile(e.calls); !strings.Contains(string(b), "can backup ledger-sync") {
+		t.Errorf("the empty ledger was not synced:\n%s", b)
+	}
+	if st, err := os.Stat(e.s.LedgerSource); err != nil || st.Size() != 0 {
+		t.Errorf("no empty ledger: %v", err)
+	}
+
+	without := newScriptEnv(t, "0")
+	without.fresh(t)
+	if err := os.Remove(without.s.CanBin); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := without.run(t); code != 0 {
+		t.Fatalf("without can: code %d\n%s", code, out)
+	}
+	if _, err := os.Stat(without.s.LedgerSource); !os.IsNotExist(err) {
+		t.Error("a ledger was made that nothing can upload")
+	}
+
+	vanished := newScriptEnv(t, "0")
+	vanished.fresh(t)
+	if err := os.MkdirAll(vanished.s.HostStateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(vanished.s.HostStateDir+"/"+LedgerCopy, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := vanished.run(t); code != ExitLedgerFailed || !strings.Contains(out, "vanished") {
+		t.Fatalf("vanished ledger: code %d\n%s", code, out)
+	}
+	if _, err := os.Stat(vanished.s.LedgerSource); !os.IsNotExist(err) {
+		t.Error("a vanished ledger was replaced by an empty one")
+	}
+}
+
 func TestScriptRunResticExit3IsASnapshot(t *testing.T) {
 	e := newScriptEnv(t, "3")
 	e.fresh(t)
@@ -263,7 +306,7 @@ func TestScriptRunRefusesSymlinkInDumps(t *testing.T) {
 	if code != ExitUnsafeDumps {
 		t.Fatalf("code %d, want %d", code, ExitUnsafeDumps)
 	}
-	if strings.Contains(e.calledRestic(), "backup") {
+	if strings.Contains(e.calledRestic(), "restic backup") {
 		t.Error("backup ran with a symlink in the dumps dir")
 	}
 }

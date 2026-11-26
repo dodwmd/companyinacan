@@ -173,11 +173,18 @@ if [ -e "$COLLECTED" ] && [ ! -L "$LEDGER" ] && { [ -e "$LEDGER" ] || [ ! -s "$H
   fi
 fi
 
+# A company that never erased anything still gets a ledger in the bucket, an empty one: a restore
+# refuses a bucket without a ledger, so that a deleted one is noticed. Never when erasures were
+# seen before (the copy): a vanished ledger is reported below.
+if [ ! -e "$LEDGER" ] && [ ! -L "$LEDGER" ] && [ ! -s "$HOSTSTATE/{{.LedgerCopy}}" ] && [ -x {{q .CanBin}} ]; then
+  : >"$LEDGER"
+fi
+
 if [ -L "$LEDGER" ]; then
   fail 13 "erasure ledger $LEDGER is a symlink"
 elif [ -f "$LEDGER" ]; then
   cp -f -- "$LEDGER" "$HOSTSTATE/{{.LedgerCopy}}"
-  if [ -s "$LEDGER" ] && ! {{q .CanBin}} backup ledger-sync --ledger "$LEDGER" --repo "$RESTIC_REPOSITORY" --password-file "$RESTIC_PASSWORD_FILE" --env-file "$ENVFILE"; then
+  if { [ -s "$LEDGER" ] || [ -x {{q .CanBin}} ]; } && ! {{q .CanBin}} backup ledger-sync --ledger "$LEDGER" --repo "$RESTIC_REPOSITORY" --password-file "$RESTIC_PASSWORD_FILE" --env-file "$ENVFILE"; then
     ledger_rc=22
     report 22 "erasure ledger upload failed"
   fi
