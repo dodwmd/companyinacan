@@ -20,7 +20,7 @@ func TestUIRoutesMatchContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row := regexp.MustCompile("(?m)^\\| `((?:GET|POST) [^`]+)` \\| (yes|no) \\| (none|work\\.read|work\\.write) \\|")
+	row := regexp.MustCompile("(?m)^\\| `((?:GET|POST) [^`]+)` \\| (yes|no) \\| (none|work\\.read|work\\.write|work\\.admin) \\|")
 	doc := map[string]string{}
 	for _, m := range row.FindAllStringSubmatch(string(raw), -1) {
 		doc[m[1]] = m[2] + "/" + m[3]
@@ -63,7 +63,8 @@ func TestUIRoutePermissionTable(t *testing.T) {
 	f := newUIFixture(t)
 	sp := f.h.mustDo(201, "POST", "/v1/projects/ACME/sprints", bootstrap, map[string]any{"name": "s"})
 	sid := strconv.Itoa(int(sp["id"].(float64)))
-	fill := strings.NewReplacer("{$}", "", "{key}", "ACME", "{issue}", f.acmeKey, "{id}", sid, "{file}", "work.css", "{link}", "1")
+	flt := f.h.mustDo(201, "POST", "/v1/filters", f.rw, map[string]any{"name": "mine", "project": "ACME"})
+	fill := strings.NewReplacer("{filter}", strconv.Itoa(int(flt["id"].(float64))), "{$}", "", "{key}", "ACME", "{issue}", f.acmeKey, "{id}", sid, "{file}", "work.css", "{link}", "1")
 	anon := newUIBrowser(t, f.h)
 	ro := f.browser(t, f.ro)
 	rw := f.browser(t, f.rw)
@@ -84,6 +85,18 @@ func TestUIRoutePermissionTable(t *testing.T) {
 			v := url.Values{"csrf": {ro.csrf("/ui/")}}
 			if resp := ro.do("POST", path, v); resp.Code != 403 {
 				t.Errorf("%s %s with a read-only token = %d, want 403", r.Method, path, resp.Code)
+			}
+		}
+		if r.Perm == PermAdmin {
+			// Neither a reader nor a writer may use the administrators' pages and actions.
+			for _, b := range []*uiBrowser{ro, rw} {
+				var v url.Values
+				if r.Method == "POST" {
+					v = url.Values{"csrf": {b.csrf("/ui/")}}
+				}
+				if resp := b.do(r.Method, path, v); resp.Code != 403 {
+					t.Errorf("%s %s without work.admin = %d, want 403", r.Method, path, resp.Code)
+				}
 			}
 		}
 		if r.Perm == PermRead && r.Method == "GET" {

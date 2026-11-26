@@ -1,0 +1,42 @@
+{{define "content"}}<h1>{{t "ageing.title"}}</h1>
+<p>{{t "ageing.intro"}}</p>
+<form method="get" action="/ui/team/ageing" class="inline">
+{{template "projectselect" .D}}
+<button type="submit">{{t "filter.apply"}}</button>
+</form>
+<div class="scroll">
+<table class="bands">
+<caption>{{t "ageing.bands_caption"}}</caption>
+<thead><tr><th scope="col">{{t "col.priority"}}</th><th scope="col">{{t "ageing.under2"}}</th><th scope="col">{{t "ageing.under7"}}</th><th scope="col">{{t "ageing.under28"}}</th><th scope="col">{{t "ageing.over28"}}</th><th scope="col">{{t "ageing.past"}}</th></tr></thead>
+<tbody>
+{{range .D.A.Bands}}<tr>
+<th scope="row" data-label="{{t "col.priority"}}">{{template "prio" .Priority}}</th>
+<td data-label="{{t "ageing.under2"}}">{{.Under2d}}</td>
+<td data-label="{{t "ageing.under7"}}">{{.Under7d}}</td>
+<td data-label="{{t "ageing.under28"}}">{{.Under28d}}</td>
+<td data-label="{{t "ageing.over28"}}">{{.Over28d}}</td>
+<td data-label="{{t "ageing.past"}}">{{if .PastTarget}}<span class="overdue">{{.PastTarget}}</span>{{else}}0{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .D.A.Items}}<div class="scroll">
+<table class="issues">
+<caption>{{t "ageing.caption"}}</caption>
+<thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.priority"}}</th><th scope="col">{{t "col.title"}}</th><th scope="col">{{t "col.status"}}</th><th scope="col">{{t "col.assignee"}}</th><th scope="col">{{t "ageing.at_priority"}}</th><th scope="col">{{t "ageing.open_for"}}</th></tr></thead>
+<tbody>
+{{range .D.A.Items}}<tr>
+<td data-label="{{t "col.key"}}"><a href="/ui/issues/{{.Key}}">{{.Key}}</a></td>
+<td data-label="{{t "col.priority"}}">{{template "prio" .Priority}}</td>
+<td data-label="{{t "col.title"}}" class="title"><a href="/ui/issues/{{.Key}}">{{.Title}}</a></td>
+<td data-label="{{t "col.status"}}">{{template "reportstatus" .}}</td>
+<td data-label="{{t "col.assignee"}}">{{if .Assignee}}{{.Assignee}}{{else}}<span class="muted">{{t "issue.unassigned"}}</span>{{end}}</td>
+<td data-label="{{t "ageing.at_priority"}}"><span{{if .PastTarget}} class="overdue"{{end}}>{{t "age.days" .PriorityDays}}{{if .PastTarget}} {{t "ageing.past_mark"}}{{end}}</span></td>
+<td data-label="{{t "ageing.open_for"}}">{{t "age.days" .OpenDays}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .D.A.Truncated}}<p class="hint">{{t "report.truncated"}}</p>
+{{end}}{{else}}<p class="empty">{{t "ageing.empty"}}</p>
+{{end}}{{end}}

@@ -1,0 +1,19 @@
+{{define "content"}}<h1>{{t "project.new"}}</h1>
+<p>{{t "project.new_intro"}}</p>
+{{if .D.Error}}<div class="flash err" role="alert"><p>{{.D.Error}}</p>
+{{if .D.Problems}}<ul>
+{{range .D.Problems}}<li><strong>{{.Field}}</strong>: {{.Message}}</li>
+{{end}}</ul>
+{{end}}</div>
+{{end}}<form method="post" action="/ui/projects" class="create">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<div class="wide"><label for="p-name">{{t "col.name"}}</label>
+<input id="p-name" name="name" type="text" required maxlength="100" value="{{.D.In.Name}}"></div>
+<div class="wide"><label for="p-key">{{t "col.key"}}</label>
+<input id="p-key" name="key" type="text" required minlength="2" maxlength="10" pattern="[A-Za-z][A-Za-z0-9]{1,9}" autocapitalize="characters" autocomplete="off" value="{{.D.In.Key}}" aria-describedby="p-key-hint">
+<p id="p-key-hint" class="hint">{{t "project.key_hint"}}</p></div>
+<div class="wide"><label for="p-desc">{{t "issue.description"}}</label>
+<textarea id="p-desc" name="description" rows="4" maxlength="2000">{{.D.In.Description}}</textarea></div>
+<div class="actions"><button type="submit">{{t "project.create"}}</button> <a href="/ui/">{{t "project.cancel"}}</a></div>
+</form>
+{{end}}

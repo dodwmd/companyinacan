@@ -50,6 +50,18 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("GET /v1/projects/{key}/board", a.guard(read, a.board))
 	mux.HandleFunc("GET /v1/projects/{key}/sprints", a.guard(read, a.listSprints))
 	mux.HandleFunc("POST /v1/projects/{key}/sprints", a.guard(write, a.createSprint))
+	mux.HandleFunc("GET /v1/projects/{key}/members", a.guard(read, a.listMembers))
+	mux.HandleFunc("PUT /v1/projects/{key}/members/{subject}", a.guard(admin, a.setMember(true)))
+	mux.HandleFunc("DELETE /v1/projects/{key}/members/{subject}", a.guard(admin, a.setMember(false)))
+
+	mux.HandleFunc("GET /v1/reports/workload", a.guard(read, a.workload))
+	mux.HandleFunc("GET /v1/reports/ageing", a.guard(read, a.ageing))
+	mux.HandleFunc("GET /v1/reports/stale", a.guard(read, a.staleWork))
+
+	mux.HandleFunc("GET /v1/filters", a.guard(read, a.listFilters))
+	mux.HandleFunc("POST /v1/filters", a.guard(write, a.createFilter))
+	mux.HandleFunc("GET /v1/filters/{id}", a.guard(read, a.getFilter))
+	mux.HandleFunc("DELETE /v1/filters/{id}", a.guard(write, a.deleteFilter))
 
 	mux.HandleFunc("GET /v1/sprints/{id}", a.guard(read, a.getSprint))
 	mux.HandleFunc("PATCH /v1/sprints/{id}", a.guard(write, a.patchSprint))

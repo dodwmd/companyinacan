@@ -27,6 +27,7 @@
 <main id="main" tabindex="-1">
 {{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>
 {{end}}{{if .Project}}{{template "projectnav" .}}
+{{end}}{{if .TeamTab}}{{template "teamnav" .}}
 {{end}}{{template "content" .}}
 </main>
 <footer>

@@ -4,7 +4,7 @@ Served by `can-work` itself next to the JSON API (`/v1/*`, `/healthz`), under th
 `GET /` answers `303 /ui/`. A contract test (`TestUIRoutesMatchContract`) compares this table with
 `work.UIRoutes()`, and `TestUIRoutePermissionTable` drives every row: an anonymous request to a
 `Session = yes` route gets `303 /ui/login`, a token without `work.write` gets 403 on every
-`work.write` row, and a project outside the token's scope is 404 (never 403) on every project or
+`work.write` row, a token without `work.admin` on every `work.admin` row, and a project outside the token's scope is 404 (never 403) on every project or
 issue route.
 
 Unsafe requests are `application/x-www-form-urlencoded` posts carrying the hidden field `csrf` (the
@@ -24,6 +24,20 @@ local `/ui/` path, otherwise to the default noted below, with `ok=<name>` for a 
 | `POST /ui/logout` | yes | work.read | Ends the session; 303 `/ui/login` |
 | `GET /ui/{$}` | yes | work.read | Project list (only projects the token can see) |
 | `GET /ui/dashboard` | yes | work.read | Manager dashboard. Query `assignees` (comma separated, at most 20): open P0 and P1 issues per person |
+| `GET /ui/team/workload` | yes | work.read | Who is on what: unresolved work per person. Query `project` (`specs/065-work-manager`) |
+| `GET /ui/team/ageing` | yes | work.read | Unresolved P0 and P1 by time at that priority. Query `project` |
+| `GET /ui/team/stale` | yes | work.read | Issues in progress with no activity. Query `project`, `days` (1 to 365, default 7) |
+| `GET /ui/filters` | yes | work.read | Your saved filters and the shared ones; a form for a new one when you have work.write |
+| `GET /ui/filters/{filter}` | yes | work.read | The issues a saved filter matches now, as you may see them. Query `page` |
+| `POST /ui/filters` | yes | work.write | Fields `name`, `project`, `query`, `sort`, `shared` (`1`); 303 to the filter |
+| `POST /ui/filters/{filter}/delete` | yes | work.write | Your own filter; with work.admin also a shared one |
+| `GET /ui/projects/new` | yes | work.admin | New project form (403 for a token limited to some projects) |
+| `POST /ui/projects` | yes | work.admin | Fields `key`, `name`, `description`; 303 to the project. A rejected form is shown again with what was typed (409, 422) |
+| `GET /ui/projects/{key}/settings` | yes | work.admin | Name and description, members, archive or restore |
+| `POST /ui/projects/{key}/settings` | yes | work.admin | Fields `name`, `description` |
+| `POST /ui/projects/{key}/archive` | yes | work.admin | Field `archived` (`1` archive, `0` restore) |
+| `POST /ui/projects/{key}/members` | yes | work.admin | Field `subject`; adds a member (a roster, not an access list) |
+| `POST /ui/projects/{key}/members/remove` | yes | work.admin | Field `subject` |
 | `GET /ui/projects/{key}` | yes | work.read | Project home: filters, backlog list, inline create form. Query `q`, `status`, `priority`, `type`, `assignee`, `label`, `sort`, `scope` (`open`, `all`), `page` |
 | `POST /ui/projects/{key}/issues` | yes | work.write | Fields `title`, `type`, `priority`, `assignee`, `labels`, `estimate`, `due_date`, `description`, `idem` (idempotency key); 303 to the project |
 | `GET /ui/projects/{key}/board` | yes | work.read | Board by workflow column. Query `sprint` (`active`, `backlog`, `all` or a sprint id) |

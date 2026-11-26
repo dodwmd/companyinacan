@@ -73,6 +73,7 @@ type uiProjectView struct {
 	Sorts      []string
 	Statuses   []Status
 	Query      string
+	Members    []Member
 }
 
 // queryFromFilter composes the search-language query the filter form stands for. Free text goes
@@ -180,6 +181,10 @@ func (u *webUI) projectPage(c *uiCtx) {
 		return "/ui/projects/" + key + "?" + v.Encode()
 	}
 	v := &uiProjectView{Project: proj, Filter: f, Issues: issues, Sprints: names, Page: page, Idem: randToken(16), Types: []string{"epic", "story", "task", "bug"}, Priorities: Priorities, Sorts: uiSorts, Statuses: proj.Workflow.Statuses, Query: query}
+	if v.Members, err = u.a.store.ListMembers(ctx, c.p, key); err != nil {
+		c.fail(err, "/ui/projects/"+key)
+		return
+	}
 	if page > 1 {
 		v.Prev = pageURL(page - 1)
 	}
@@ -259,8 +264,8 @@ type uiDashboardView struct {
 func (u *webUI) dashboard(c *uiCtx) {
 	raw := c.r.URL.Query().Get("assignees")
 	v := &uiDashboardView{Input: raw}
-	b := c.base(msg("dashboard.title"), "dashboard")
-	b.D = v
+	b := c.base(msg("dashboard.title"), "team")
+	b.TeamTab, b.D = "dashboard", v
 	people := []string{}
 	for _, p := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' }) {
 		if !slices.Contains(people, p) {

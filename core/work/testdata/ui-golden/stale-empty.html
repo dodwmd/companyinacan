@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Stale work - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/">Projects</a></li>
+<li><a href="/ui/team/workload" aria-current="page">Team</a></li>
+<li><a href="/ui/filters">Saved filters</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (boss@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Team">
+<ul>
+<li><a href="/ui/team/workload">Workload</a></li>
+<li><a href="/ui/team/ageing">P0 and P1 ageing</a></li>
+<li><a href="/ui/team/stale" aria-current="page">Stale work</a></li>
+<li><a href="/ui/dashboard">Urgent by person</a></li>
+</ul>
+</nav>
+<h1>Stale work</h1>
+<p>Issues in progress with no activity for 7 days or more. Reordering a card is not activity.</p>
+<form method="get" action="/ui/team/stale" class="inline">
+<label for="r-project">Project</label>
+<select id="r-project" name="project"><option value="">Every project</option><option value="WEB">WEB Website</option></select>
+<label for="st-days">Quiet for at least (days)</label>
+<input id="st-days" name="days" type="number" min="1" max="365" value="7" inputmode="numeric">
+<button type="submit">Apply filter</button>
+</form>
+<p class="empty">Nothing in progress has been quiet that long.</p>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

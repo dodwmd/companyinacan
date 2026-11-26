@@ -250,9 +250,9 @@ func (s *Store) createInTx(ctx context.Context, tx dbq, a *Principal, proj *proj
 	if err := tx.QueryRowContext(ctx, `UPDATE projects SET next_number = next_number + 1, updated_at = ? WHERE id = ? RETURNING next_number - 1`, now, proj.id).Scan(&number); err != nil {
 		return nil, err
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO issues (project_id, number, type, title, description, priority, status, reporter, assignee, due_date, estimate, parent_id, sprint_id, rank, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		proj.id, number, in.Type, in.Title, in.Description, in.Priority, proj.wf.Initial, a.Subject, in.Assignee, in.DueDate, in.Estimate, parentID, in.SprintID, rank, now, now)
+	res, err := tx.ExecContext(ctx, `INSERT INTO issues (project_id, number, type, title, description, priority, status, reporter, assignee, due_date, estimate, parent_id, sprint_id, rank, created_at, updated_at, priority_since)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		proj.id, number, in.Type, in.Title, in.Description, in.Priority, proj.wf.Initial, a.Subject, in.Assignee, in.DueDate, in.Estimate, parentID, in.SprintID, rank, now, now, now)
 	if err != nil {
 		return nil, err
 	}
@@ -761,6 +761,11 @@ func (s *Store) updateTx(ctx context.Context, tx dbq, a *Principal, key string, 
 		IssueKey: out.Key, Project: out.Project, Version: out.Version, Actor: a.Subject, Changes: changes, UpdatedAt: out.UpdatedAt,
 	}); err != nil {
 		return nil, err
+	}
+	if _, ok := changes["priority"]; ok {
+		if err := s.priorityChanged(ctx, tx, a, row.id, row.Priority, &out.Issue); err != nil {
+			return nil, err
+		}
 	}
 	_, raised := changes["priority"]
 	_, handed := changes["assignee"]

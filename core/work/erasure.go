@@ -165,12 +165,27 @@ func (s *Store) replacePerson(ctx context.Context, tx *sql.Tx, identity, pseudo 
 		{"links", `UPDATE issue_links SET created_by = ? WHERE created_by = ?`, []any{pseudo, identity}},
 		{"tokens", `UPDATE api_tokens SET subject = ?, name = '', revoked_at = COALESCE(revoked_at, ?) WHERE subject = ?`, []any{pseudo, now, identity}},
 		{"tokens_created", `UPDATE api_tokens SET created_by = ? WHERE created_by = ?`, []any{pseudo, identity}},
+		{"project_members", `DELETE FROM project_members WHERE subject = ?`, []any{identity}},
+		{"project_members_added", `UPDATE project_members SET added_by = ? WHERE added_by = ?`, []any{pseudo, identity}},
+		// A private filter is the person's own; a shared one is the team's and stays.
+		{"saved_filters_dropped", `DELETE FROM saved_filters WHERE owner = ? AND shared = 0`, []any{identity}},
+		{"saved_filters", `UPDATE saved_filters SET owner = ? WHERE owner = ?`, []any{pseudo, identity}},
 		// Cached replies are only there for retries: the ones that are, or name, the person go.
 		{"cached_replies", `DELETE FROM idempotency WHERE subject = ? OR instr(response, ?) > 0`, []any{identity, string(quoted)}},
 		// Delivered events are history nobody reads again; those still to be sent are rewritten below.
 		{"events_dropped", `DELETE FROM outbox WHERE delivered_at IS NOT NULL AND instr(payload, ?) > 0`, []any{string(quoted)}},
 	} {
 		if err := exec(q.what, q.sql, q.args...); err != nil {
+			return err
+		}
+	}
+	// A filter that searches for the person by name goes with them.
+	filters, err := filtersNaming(ctx, tx, func(v string) bool { return v == identity })
+	if err != nil {
+		return err
+	}
+	for _, id := range filters {
+		if err := exec("saved_filters_dropped", `DELETE FROM saved_filters WHERE id = ?`, id); err != nil {
 			return err
 		}
 	}
@@ -196,6 +211,25 @@ func (s *Store) replacePerson(ctx context.Context, tx *sql.Tx, identity, pseudo 
 		}
 	}
 	return nil
+}
+
+// filtersNaming returns the saved filters whose query names a person match accepts.
+func filtersNaming(ctx context.Context, q dbq, match func(string) bool) ([]int64, error) {
+	rows, err := jsonRows(ctx, q, `SELECT id, query FROM saved_filters`)
+	if err != nil {
+		return nil, err
+	}
+	var out []int64
+	for _, r := range rows {
+		hit := false
+		for _, v := range filterPeople(r.doc) {
+			hit = match(v) || hit
+		}
+		if hit {
+			out = append(out, r.id)
+		}
+	}
+	return out, nil
 }
 
 type jsonRow struct {
@@ -288,7 +322,8 @@ func (s *Store) identityOf(ctx context.Context, subject string) (string, error) 
 	rs, err := s.db.QueryContext(ctx, `SELECT reporter FROM issues UNION SELECT assignee FROM issues WHERE assignee IS NOT NULL
 		UNION SELECT author FROM comments UNION SELECT actor FROM activity UNION SELECT subject FROM watchers
 		UNION SELECT added_by FROM attachments UNION SELECT created_by FROM issue_links
-		UNION SELECT subject FROM api_tokens UNION SELECT created_by FROM api_tokens UNION SELECT subject FROM idempotency`)
+		UNION SELECT subject FROM api_tokens UNION SELECT created_by FROM api_tokens UNION SELECT subject FROM idempotency
+		UNION SELECT subject FROM project_members UNION SELECT added_by FROM project_members UNION SELECT owner FROM saved_filters`)
 	if err != nil {
 		return "", err
 	}
@@ -301,6 +336,10 @@ func (s *Store) identityOf(ctx context.Context, subject string) (string, error) 
 		match(v)
 	}
 	if err := errors.Join(rs.Err(), rs.Close()); err != nil || found != "" {
+		return found, err
+	}
+	// An identifier may be left only in a saved filter that searches for it.
+	if _, err := filtersNaming(ctx, s.db, func(v string) bool { match(v); return false }); err != nil || found != "" {
 		return found, err
 	}
 	// An identifier may be left only in the history: a former assignee.

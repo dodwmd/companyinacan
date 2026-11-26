@@ -111,7 +111,7 @@ func TestJourney(t *testing.T) {
 	step("admin signs in with TOTP", budgetSignIn, func(t *testing.T) string { j.signIn(t, adminURL); return "" })
 	step("enable work and support (make up again)", budgetModules, j.enableModules)
 	e.memory(t, "with work and support, idle", 90*time.Second, budgetModulesMiB)
-	step("first project: token in the admin UI, API call", budgetUse, j.firstProject)
+	step("first project in the work web UI", budgetUse, j.firstProject)
 	step("SSO launch of work and create an issue", budgetUse, j.createIssue)
 	step("support: sign in and create a mailbox", budgetUse, j.supportMailbox)
 	step("backup to the bucket and verify it", budgetBackup, j.backup)
@@ -419,6 +419,8 @@ func (j *journey) enableModules(t *testing.T) string {
 	return fmt.Sprintf("`can up` returned after %.0f s; both modules ready %.0f s later", took.Seconds(), time.Since(returned).Seconds())
 }
 
+// firstProject creates the company's first project in the work web UI, as a new owner does: no
+// token and no API call (specs/065-work-manager). The token issued here is for the CLI checks later.
 func (j *journey) firstProject(t *testing.T) string {
 	b := j.signIn(t, adminURL)
 	var tokens page
@@ -430,17 +432,15 @@ func (j *journey) firstProject(t *testing.T) string {
 		"permissions": {"work.read", "work.write", "work.admin"}, "ttl_hours": {"24"}}, 200)
 	j.workToken = match(t, "new token", reCanPAT, r.body)
 	j.secret(j.workToken)
-	api := j.browser()
-	body := `{"key":"ACC","name":"Acceptance"}`
-	eventually(t, 2*time.Minute, "the work API to create a project", func() (bool, string) {
-		p, err := api.do("POST", workURL+"/v1/projects", body, map[string]string{"Authorization": "Bearer " + j.workToken, "Content-Type": "application/json"})
-		if err != nil {
-			return false, err.Error()
-		}
-		return p.status == 201, fmt.Sprintf("%d %.300s", p.status, p.body)
-	})
-	j.rep.Note("the work web UI has no way to create a project: a new company needs an API call with a token, and the API is only reachable with expose.api (or a port-forward)")
-	return "the work UI cannot create a project"
+
+	home := j.openWork(t, b)
+	if !strings.Contains(home.body, `href="/ui/projects/new"`) {
+		t.Fatal("the empty project list does not lead to creating a project")
+	}
+	form := b.get(t, workURL+"/ui/projects/new", 200)
+	b.post(t, workURL+"/ui/projects", url.Values{"csrf": {harness.CSRF(form.body)}, "key": {"ACC"}, "name": {"Acceptance"}}, 303)
+	b.get(t, workURL+"/ui/projects/ACC", 200)
+	return "created in the web UI after the launch"
 }
 
 var (
@@ -448,8 +448,8 @@ var (
 	reIdem   = regexp.MustCompile(`name="idem" value="([^"]*)"`)
 )
 
-func (j *journey) createIssue(t *testing.T) string {
-	b := j.signIn(t, adminURL)
+// openWork launches the work UI from the admin UI's Apps page and returns the page it lands on.
+func (j *journey) openWork(t *testing.T, b *browser) page {
 	var apps page
 	eventually(t, 2*time.Minute, "work to be offered on the Apps page", func() (bool, string) {
 		apps = b.get(t, adminURL+"/apps", 200)
@@ -469,7 +469,12 @@ func (j *journey) createIssue(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.get(t, next.String(), 200)
+	return b.get(t, next.String(), 200)
+}
+
+func (j *journey) createIssue(t *testing.T) string {
+	b := j.signIn(t, adminURL)
+	j.openWork(t, b)
 	project := b.get(t, workURL+"/ui/projects/ACC", 200)
 	j.issue = "Order more anvils " + randomHex(t, 4)
 	b.post(t, workURL+"/ui/projects/ACC/issues", url.Values{"csrf": {harness.CSRF(project.body)}, "idem": {match(t, "idempotency key", reIdem, project.body)},

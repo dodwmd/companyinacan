@@ -14,10 +14,11 @@ Headers: `X-Can-Event-Id`, `X-Can-Event-Type`, `X-Can-Timestamp` (unix seconds),
 | `work.issue.updated.v1` | `issue_key`, `project`, `version` (after), `actor`, `changes` (field to `{from,to}`; fields: title, description, priority, assignee, due_date, estimate, parent, sprint_id, labels), `updated_at` |
 | `work.issue.transitioned.v1` | `issue_key`, `project`, `from`, `to`, `to_category`, `actor`, `transitioned_at` |
 | `work.comment.created.v1` | `issue_key`, `project`, `comment_id`, `author`, `created_at` |
+| `work.issue.priority_changed.v1` | `issue_key`, `project`, `from`, `to`, `version` (after), `actor`, `assignee` (or null), `changed_at` |
 
-No description or comment text is ever included. A priority change shows as `changes.priority`
-(there is no separate `issue.priority_changed` event in this slice; SPEC.md lists it for later, with
-manager notifications). A no-op update emits nothing.
+No description or comment text is ever included. A priority change shows as `changes.priority` and
+also raises `work.issue.priority_changed.v1` (`specs/065-work-manager`), including each issue of a bulk
+update or a CSV import that changes it; creating an issue does not. A no-op update emits nothing.
 
 ## Delivery
 

@@ -1,7 +1,8 @@
 # Work tracker web UI
 
-The work tracker (`can-work`) serves a small web UI next to its API: projects, a filterable
-backlog, an issue page, a board, sprint planning, epic progress and a manager dashboard. It is
+The work tracker (`can-work`) serves a small web UI next to its API: projects (create, edit,
+archive, members), a filterable backlog, an issue page, a board, sprint planning, epic progress,
+saved filters and the manager views. It is
 server-rendered HTML with one stylesheet. There is no JavaScript, no framework and nothing to
 build. Everything is a link or a form, so it works with a keyboard, with a screen reader, on a
 phone, and in a browser with scripts blocked.
@@ -104,9 +105,33 @@ an "Add to sprint" choice on each, and the closed sprints.
 
 **Epics** lists epics with a progress bar and "N of M done" over their child issues.
 
-**Team dashboard** takes a list of people (email addresses or user names, separated by commas) and
-shows each person's open **P0 and P1** issues in every project you can see. The list is in the page
-address; the page does not call the people service.
+**Team** holds the manager views (`specs/065-work-manager`), each over every project you can see or
+one of them, archived projects left out:
+
+* **Workload**: unresolved issues per person by priority, with how many are in progress, blocked and
+  overdue, and what they have in progress. Project members with nothing to do are listed too.
+* **P0 and P1 ageing**: how long each unresolved P0 and P1 has had that priority (not just how old it
+  is), with counts by age and a mark when it is past the project's resolution hint.
+* **Stale work**: issues in progress with no comment, edit or move for N days (default 7).
+* **Urgent by person**: give a list of people (email addresses or user names, separated by commas)
+  and see each one's open P0 and P1 issues. The list is in the page address.
+
+None of them calls the people service: a person is the identifier they are assigned under.
+
+**Saved filters** names a search, in one project or in all, private or shared. Save one with "Save
+this filter" under a project's filter, or write the search on the Saved filters page. Running it shows
+what *you* may see; `assignee:me` in a shared filter means whoever runs it.
+
+### Projects
+
+With `work.admin` (and a token that is not limited to projects) the project list has **New project**;
+when there is none yet, it says so and leads there. A project's **Settings** tab changes its name and
+description, adds and removes members, and archives or restores it. An archived project can be read
+but not changed. The key cannot be changed.
+
+Members are a roster, not an access list: they are suggested as assignees and appear in the workload,
+and they do not change who may see or edit the project. People who sign in from the admin UI appear
+as `user:name`.
 
 ### Conflicts
 
@@ -194,13 +219,13 @@ needs a decision about exposing a login form on the public internet.
   to it.
 * A restart signs everybody out. If can-core cannot be reached to check a can-core token, requests fail closed: the session ends and the next click goes to the sign-in page.
 * Footprint (static build, development machine): idle RSS 13.4 MiB without the UI and 16.6 MiB with it, 27.7 MiB after 400 list and board renders, 31.0 MiB with large fixtures; binary 12.4 MB to 15.1 MB, mostly `html/template`. The module now declares 28 MB with a 64 MB limit. Not measured on a cluster.
-* Roll back: the UI adds no table or migration; an older binary simply has no `/ui/`.
+* Roll back: migration 005 adds two tables and a column; an older binary ignores them.
 * Local compose: `dev/compose/smoke.sh` signs in with the dev admin token and opens the SMOKE
   project through the edge.
 
 ## Known gaps
 
-Direct OpenID Connect sign-in at the module (sign-on is by launch ticket); a public route; creating projects, editing workflows and managing tokens from the UI
-(use the admin UI or the API); uploading attachments; bulk edit; keyboard shortcuts; saved named
-filters; a people picker; burn-down charts; other languages (the catalogue is ready: one map per
+Direct OpenID Connect sign-in at the module (sign-on is by launch ticket); editing workflows and SLA
+hints and managing tokens from the UI (use the admin UI or the API); components; team views from
+reporting lines; uploading attachments; bulk edit; keyboard shortcuts; a people picker; burn-down charts; other languages (the catalogue is ready: one map per
 language). See `specs/023-work-ui/tasks.md`.
