@@ -74,3 +74,29 @@ func TestE2EScenarioFilesAreBuildTagged(t *testing.T) {
 		}
 	}
 }
+
+// specs/054-browser-e2e: the browser job is advisory as well, and its files only build with the
+// browser tag, so no other build or test needs chromedp or a browser.
+func TestBrowserJobIsAdvisoryAndSuiteIsBuildTagged(t *testing.T) {
+	w := workflowByFile(t, "e2e.yml")
+	j, ok := w.Jobs["browser"]
+	if !ok {
+		t.Fatal("e2e.yml has no browser job")
+	}
+	if j.ContinueOnError != true {
+		t.Errorf("the browser job must be continue-on-error: true while it is advisory")
+	}
+	files, err := filepath.Glob(filepath.Join(root, "test", "browser", "*_test.go"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no browser scenario files: %v", err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(string(b), "//go:build browser") {
+			t.Errorf("%s lacks the //go:build browser constraint on its first line", filepath.Base(f))
+		}
+	}
+}
