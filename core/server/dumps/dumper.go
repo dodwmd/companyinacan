@@ -41,7 +41,7 @@ type Dumper struct {
 	// ("" if it can). A disabled module never stops backups: it is skipped and reported.
 	Disabled   func(ctx context.Context, module string) bool
 	Unrunnable func(ctx context.Context, module string) string
-	// CompanyFile is the applied company.yaml, copied into every run ("" skips).
+	// CompanyFile is the applied company.yaml, copied into every run, which fails without it ("" skips).
 	CompanyFile string
 	Now         func() time.Time // default time.Now
 	Log         *slog.Logger
@@ -285,19 +285,14 @@ func (d *Dumper) hookTimeout() time.Duration {
 
 // dumpCompany copies the applied company.yaml into the dumps, where `can restore` expects it.
 func (d *Dumper) dumpCompany() error {
-	dst := filepath.Join(d.Store.Dir, "company.yaml")
 	if d.CompanyFile == "" {
 		return nil
 	}
+	// A set without company.yaml cannot be restored, so it must never get the completion marker. The
+	// file is missing until the kubelet has mounted a new `company` ConfigMap, or if none was applied.
 	f, err := os.Open(d.CompanyFile)
-	if errors.Is(err, os.ErrNotExist) {
-		if rerr := os.Remove(dst); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
-			return rerr
-		}
-		return nil
-	}
 	if err != nil {
-		return err
+		return fmt.Errorf("the applied company.yaml is not there yet or cannot be read (is it applied? a new ConfigMap takes about a minute to be mounted): %w", err)
 	}
 	defer func() { _ = f.Close() }()
 	return d.Store.writeAtomic(d.Store.Dir, "company.yaml", f)

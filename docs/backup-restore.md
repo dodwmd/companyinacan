@@ -20,7 +20,8 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    - puts the previous set back if an earlier run died while swapping it, deletes `COMPLETE` and removes what an
      earlier run left behind;
    - writes `can-core/state.db` (`VACUUM INTO` over a read-only connection of its own, then `integrity_check`) and
-     a copy of the applied `company.yaml`, and `can-core/secrets.json`: the Secrets of every module namespace plus
+     a copy of the applied `company.yaml` (without it the run fails and writes no marker; right after the
+     first `can apply` the file takes about a minute to be mounted), and `can-core/secrets.json`: the Secrets of every module namespace plus
      `can-smtp-relay`, `sso-client` and `can-postgres-admin` of `can-system` (a restore re-creates them). The first two are replaced in place, so after a **failed** run they are newer
      than the module dumps beside them; without a marker the set is not backed up either way;
    - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
