@@ -65,9 +65,11 @@ action gets 403.
 **Personal access tokens.** Installed under can-core (`CAN_API_URL`, `CAN_TOKEN_FILE`, `CAN_MODULE_ID`) the
 service also accepts can-core's personal access tokens. A token gets a role only when it carries **every**
 permission that role needs (`core/equity/canauth.go`): `hr`, `finance`, `admin`, or `employee`. It is **never**
-`board`, because the board's permissions are a subset of the admin's, and it carries no `person_id`, so it has
-no self-service and the grantee separation-of-duties checks fall back to the subject (see below). Board
-decisions need an introspection endpoint that says who is on the board.
+`board`, because the board's permissions are a subset of the admin's. It carries no `person_id`, so it has no
+self-service, and because the grantee separation-of-duties checks need one it is **refused** grant drafting and
+administration (create, edit, submit, amend, activate, cancel, terminate, milestones, acceleration) and
+exercise approval or rejection, payment and share issue. Those need the service account or an introspection
+endpoint that supplies `person_id`. Ledger entries and exercise requests are not covered by this refusal.
 
 The can-core service-account token carries `hr`, `finance` and `admin`; never `board`. So the service
 account cannot approve a grant.
@@ -333,8 +335,9 @@ The table stores resource ids only, so a replay re-reads the record under the ca
   provider (the introspection answer). The service does not require it, because the can-core service
   account legitimately has none and fails closed would break it; a human token without `person_id` is
   checked by subject only. This is an explicit IdP contract: issue `person_id` to every human who also
-  holds equity. **can-core personal access tokens carry no `person_id`**: do not give equity permissions
-  through can-core to someone who also holds equity.
+  holds equity. can-core personal access tokens carry no `person_id`, so they are refused the grant and
+  exercise actions above; they are **not** refused ledger entries, so do not give those permissions through
+  can-core to someone who also holds equity.
 - **One human, two subjects.** Subjects are compared after folding, but two different subjects for the
   same human (a personal and an admin account) are two people to the service unless both carry the same
   `person_id`.

@@ -85,3 +85,55 @@ func TestPersonalAccessTokensThroughCanCore(t *testing.T) {
 		t.Fatal("accepted while can-core is down")
 	}
 }
+
+// A can-core token says nothing about which person it is, so the actions whose separation of duties
+// needs that are refused, whatever its roles; the same roles with a person, or the service account
+// (not a can-core token), are not affected.
+func TestCanCoreTokensWithoutAPersonAreRefusedPersonBoundActions(t *testing.T) {
+	e := newEnv(t)
+	roles := []string{RoleHR, RoleFinance, RoleAdmin}
+	p, err := e.s.ResolveActor(e.ctx, &Principal{Subject: "user:alice", Roles: roles, CanCore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked := p
+	linked.PersonID = personBob
+	service := Actor{Subject: "svc-can-core", Roles: roles}
+	for _, act := range []Action{ActGrantDraft, ActGrantAdminister, ActExerciseApprove, ActExercisePay, ActExerciseIssue} {
+		if Decide(p, act, Fact{}) {
+			t.Errorf("%s: allowed to a token without a person", act)
+		}
+		if !Decide(linked, act, Fact{}) || !Decide(service, act, Fact{}) {
+			t.Errorf("%s: refused to a linked person or the service account", act)
+		}
+	}
+	for _, act := range []Action{ActStructureManage, ActGrantList, ActCapTable} {
+		if !Decide(p, act, Fact{}) {
+			t.Errorf("%s: should stay allowed", act)
+		}
+	}
+}
+
+func TestACanCoreTokenCannotDraftAGrantThroughTheAPI(t *testing.T) {
+	core := fakecore.New(t, "equity")
+	const tok = "canpat_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"
+	core.AddToken(tok, fakecore.Token{Subject: "user:alice", Permissions: []string{"equity.read", "equity.write", "equity.approve", "equity.sensitive-read", "equity.admin", "equity.self-read"}})
+	e := newEnv(t)
+	api := &API{Svc: e.s, Auth: &CanAuth{In: &modclient.Introspector{API: core.Client(t)}}}
+	h := api.Handler()
+	for _, path := range []string{"/v1/plans/plan_000000000000000000000000/grants", "/v1/grants/grant_000000000000000000000000/activate",
+		"/v1/exercises/ex_000000000000000000000000/approve", "/v1/exercises/ex_000000000000000000000000/payment", "/v1/exercises/ex_000000000000000000000000/issue"} {
+		body := `{}`
+		if strings.HasSuffix(path, "/payment") {
+			body = `{"paid_on":"2026-03-01","reference":"x"}`
+		}
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+tok)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("POST %s = %d %.200s, want 403", path, w.Code, w.Body)
+		}
+	}
+}

@@ -40,7 +40,8 @@ func rolesFromPermissions(perms []string) []string {
 
 // CanAuth authenticates the personal access tokens can-core issues by asking can-core's token
 // introspection who they belong to (specs/016-module-wiring). Any doubt is "unauthenticated". The
-// token carries no directory person id, so it never reaches the self-service paths.
+// token carries no directory person id, so it never reaches the self-service paths and may not perform
+// the actions of needsPerson (policy.go).
 type CanAuth struct{ In *modclient.Introspector }
 
 // Authenticate implements Authenticator.
@@ -57,5 +58,5 @@ func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
 	if len(roles) == 0 {
 		return nil, ErrUnauthenticated
 	}
-	return &Principal{Subject: id.Subject, Roles: roles}, nil
+	return &Principal{Subject: id.Subject, Roles: roles, CanCore: true}, nil
 }
