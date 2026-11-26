@@ -385,6 +385,9 @@ func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) (kub
 			}
 			continue
 		}
+		if o["kind"] == "NetworkPolicy" && nameOf(o) == "module-egress" && !s.Manifest.Runtime.InternetEgress {
+			withoutInternet(o)
+		}
 		if i == 0 {
 			if err := in.retryForbidden(ctx, func() error { return in.cfg.API.Apply(ctx, o) }); err != nil {
 				return nil, fmt.Errorf("applying %v %s: %w", o["kind"], nameOf(o), err)
@@ -402,6 +405,15 @@ func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) (kub
 		return nil, fmt.Errorf("template module-namespace.yaml has no NetworkPolicy %s", policyTraefik)
 	}
 	return traefik, in.cfg.API.Apply(ctx, sa)
+}
+
+// withoutInternet drops the module-egress rule that reaches addresses by range (the internet),
+// leaving the rules that name pods: least privilege for a module that declares no internet_egress.
+func withoutInternet(policy kube.Object) {
+	spec := asMap(policy["spec"])
+	spec["egress"] = slices.DeleteFunc(asList(spec["egress"]), func(rule any) bool {
+		return slices.ContainsFunc(asList(asMap(rule)["to"]), func(peer any) bool { return asMap(peer)["ipBlock"] != nil })
+	})
 }
 
 func (in *Installer) retryForbidden(ctx context.Context, f func() error) error {

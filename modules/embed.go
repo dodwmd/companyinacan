@@ -1,11 +1,12 @@
-// Package modules holds the manifests of the shipped modules, so that the `can` CLI works where
+// Package modules holds what the `can` CLI reads of the shipped modules, so that it works where
 // there is no modules directory (a release archive, `go install`). Only core/cli imports it;
 // can-core reads the module directories baked into its image.
 package modules
 
 import "embed"
 
-// Manifests is <id>/module.yaml for every shipped module. Charts are not part of it.
+// Shipped is, for every module, <id>/module.yaml and what the image check of `can up` and
+// `can apply` reads of its chart: values.yaml and whether there are templates. Not enough to install.
 //
-//go:embed */module.yaml
-var Manifests embed.FS
+//go:embed */module.yaml */chart/values.yaml */chart/templates
+var Shipped embed.FS

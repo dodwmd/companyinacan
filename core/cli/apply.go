@@ -18,7 +18,7 @@ import (
 
 func newApplyCmd(g *globalOpts) *cobra.Command {
 	var modulesDir, statePath string
-	var dryRun, recordOnly bool
+	var dryRun, recordOnly, skipImageCheck bool
 	var kubeContext string
 	cmd := &cobra.Command{
 		Use:   "apply [dir]",
@@ -46,6 +46,12 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "warning:", p.String())
 			}
 			if !dryRun && !recordOnly {
+				// Before anything changes: can the cluster get every enabled module's images?
+				if !skipImageCheck {
+					if err := applyImageCheck(cmd, resolveModulesDir(modulesDir, dir), kubeContext, desired.Company); err != nil {
+						return failure("%v", err)
+					}
+				}
 				// The routing facts first: can-core reads them when it sees the new company.yaml.
 				proxied, _ := desired.Company.DNS["proxied"].(bool)
 				state, err := provider.NewStore(dir).Load() // what `can up` remembered here, if it ran here
@@ -117,6 +123,7 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "directory containing module manifests (default $CAN_MODULES_DIR, ./modules, else the ones built into can)")
 	cmd.Flags().StringVar(&statePath, "state", "", "recorded-state database (default <dir>/.can/state.db)")
+	cmd.Flags().BoolVar(&skipImageCheck, "skip-image-check", false, skipImageCheckHelp)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan and change nothing")
 	cmd.Flags().BoolVar(&recordOnly, "record-only", false, "update recorded state without deploying (development)")
 	cmd.Flags().StringVar(&kubeContext, "context", os.Getenv("CAN_DEV_CONTEXT"), "kubectl context of the cluster to sync company.yaml to (default $CAN_DEV_CONTEXT, else the current context)")

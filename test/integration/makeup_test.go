@@ -36,6 +36,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/launch"
+	"github.com/dodwmd/companyinacan/core/modimages"
 	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/server/auth"
 )
@@ -138,14 +139,14 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	}
 
 	// The company: the shipped example, on an ssh provider (never contacted here), with the forms
-	// module, its contact section and a mail relay that does not exist.
+	// module, its contact section, a mail relay that does not exist, and the work module.
 	dir := t.TempDir()
 	src, err := os.ReadFile(filepath.Join(root, "examples", "acme-co", "company.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := strings.Replace(string(src), "type: local", "type: ssh\n  options: {host: 203.0.113.7}", 1)
-	s = strings.Replace(s, "  example: {}\n", "", 1) // no image for it on the cluster
+	s = strings.Replace(s, "modules:\n  example: {}\n", "modules:\n  work: {}\n", 1)
 	if err := os.WriteFile(filepath.Join(dir, "company.yaml"), []byte(s), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +159,30 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatal(err)
 	}
 	images, err := launch.LoadDir(imagesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// `make images` built every image; as `can up` does, ship only what the company enables.
+	if len(images.Images) != len(launch.ImageNames) {
+		t.Fatalf("make images wrote %d of %d images", len(images.Images), len(launch.ImageNames))
+	}
+	refs, unknown := modimages.Required(filepath.Join(root, "modules"), []string{"forms", "work"})
+	var wanted []string
+	for ref := range refs {
+		if !images.Holds(ref) {
+			t.Fatalf("make images did not build %s, which a chart pulls", ref)
+		}
+		wanted = append(wanted, ref)
+	}
+	if len(unknown) != 0 || len(wanted) != 2 {
+		t.Fatalf("%v %v", wanted, unknown)
+	}
+	images = images.Select(wanted)
+	workDoc, ps := config.Load(filepath.Join(root, "modules", "work", "module.yaml"))
+	if workDoc == nil {
+		t.Fatal(ps)
+	}
+	workMod, err := config.DecodeModule(workDoc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +209,7 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		Backup: &launch.BackupInstall{
 			Input: backup.KitInput{CompanyName: co.Name, Domain: co.Domain, Endpoint: "https://s3.example.invalid", Bucket: "e2e", Region: "auto",
 				AccessKeyID: "AKIAE2EEXAMPLE", SecretAccessKey: "e2e-secret-0123456789abcdef", ProviderType: "ssh"},
-			Mods:     map[string]*config.Module{"forms": formsMod},
+			Mods:     map[string]*config.Module{"forms": formsMod, "work": workMod},
 			Settings: backup.DefaultSettings(),
 		},
 	}
@@ -265,6 +290,12 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatalf("the lead is not in the forms store: %d %s", st2, leads)
 	}
 
+	// --- the work module runs on the image `make images` built ---------------------------------
+	eventually(t, 4*time.Minute, "work to be rolled out", func() (bool, string) {
+		out, err := kubectl("-n", "mod-work", "rollout", "status", "deploy/work", "--timeout=5s")
+		return err == nil, out
+	})
+
 	// --- the recovery kit parses, and matches what the host was given -------------------------
 	if res.Kit == nil {
 		t.Fatal("no recovery kit")
@@ -341,6 +372,7 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 
 	// --- backups work: dump, marker, restic snapshot, status, verify, restore of the dumps -------
 	if withBackup {
+		failedInstallOnK3d(t, res2.CompanyYAML)
 		hostBackup(t, host.copied)
 	}
 }

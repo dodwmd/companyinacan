@@ -40,7 +40,7 @@ the installer's allowlist through its fakes, hook scripts parsed with `sh -n`, c
 `REPLACE_WITH_DIGEST` placeholders. Every adapter is `planned`, and `make release-check` fails while
 any placeholder remains. `analytics`, `support` and `newsletter` are backed up by can-core
 ([backup-restore.md](backup-restore.md#wrapped-modules)). **Enabling `wiki`, `crm` or `status` stops the
-company's backups** until the `can-hooks` image is published.
+company's backups** unless the `can-hooks` image is on the server (not published; `make images` builds it).
 
 | Module | Wraps | Status | RAM (MB) | Licence | Capability | Notes |
 |---|---|---|---|---|---|---|

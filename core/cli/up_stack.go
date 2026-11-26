@@ -47,12 +47,14 @@ type stackFlags struct {
 	modulesDir        string
 	smtpCreds         string
 	noEdgeLimits      bool
+	skipImageCheck    bool
 }
 
 func (f *stackFlags) register(cmd *cobra.Command) {
 	fl := cmd.Flags()
+	fl.BoolVar(&f.skipImageCheck, "skip-image-check", false, skipImageCheckHelp)
 	fl.BoolVar(&f.provisionOnly, "provision-only", false, "stop after the server, k3s, kubeconfig and DNS (the pre-E24 behaviour); deploy nothing")
-	fl.StringVar(&f.imagesFrom, "images-from", "", "directory written by `make images`: tarballs are verified, shipped over ssh and imported (no registry needed)")
+	fl.StringVar(&f.imagesFrom, "images-from", "", "directory written by `make images`: tarballs are verified, those company.yaml needs are shipped over ssh and imported (no registry needed)")
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release manifest pinning every image by digest (default deploy/release-images.json when present)")
 	fl.BoolVar(&f.printSecrets, "print-secrets", false, "print the admin password, TOTP secret and recovery kit without a terminal (CI); never the default")
 	fl.BoolVar(&f.noDefaultBundle, "no-default-bundle", false, "do not add the forms module to the company pushed to the cluster")
@@ -108,7 +110,7 @@ func stackPlanActions(f *stackFlags) []provider.Action {
 	)
 }
 
-func (t *target) stackPreflight(f *stackFlags) (*stackPrep, error) {
+func (t *target) stackPreflight(ctx context.Context, warn io.Writer, f *stackFlags) (*stackPrep, error) {
 	if _, err := lifecycle.lookPath("kubectl"); err != nil {
 		return nil, fmt.Errorf("kubectl was not found in PATH: `can up` applies the company to the cluster with it; install kubectl (https://kubernetes.io/docs/tasks/tools/) and run `can up` again; nothing has been provisioned yet")
 	}
@@ -124,11 +126,14 @@ func (t *target) stackPreflight(f *stackFlags) (*stackPrep, error) {
 	if p.smtp, err = t.smtpRelay(f.smtpCreds); err != nil {
 		return nil, err
 	}
-	// Best effort, for warnings: what cannot be read is judged by the install below, if any.
 	md := resolveModulesDir(f.modulesDir, t.dir)
 	if p.siteForms, err = config.FormsOfModules(md); err != nil {
 		return nil, fmt.Errorf("%w (nothing has been provisioned yet)", err)
 	}
+	if p.images, err = t.preflightImages(ctx, warn, md, set, raw, f); err != nil {
+		return nil, fmt.Errorf("%w (nothing has been provisioned yet)", err)
+	}
+	// Best effort, for warnings: what cannot be read is judged by the install below, if any.
 	for id := range t.company.Modules {
 		if m, err := loadModule(md, id); err == nil {
 			p.mods[id] = m
@@ -194,6 +199,35 @@ func (t *target) warnContact(w io.Writer, f *stackFlags) {
 			fmt.Fprintln(w, "warning:", is.Message)
 		}
 	}
+}
+
+// preflightImages refuses a company whose module images the server cannot get, and narrows a local
+// images directory to what the company needs: that is what is shipped.
+func (t *target) preflightImages(ctx context.Context, warn io.Writer, modulesDir string, set launch.ImageSet, company []byte, f *stackFlags) (launch.ImageSet, error) {
+	ids := enabledModules(t.company)
+	if !f.noDefaultBundle {
+		_, added, err := launch.WithDefaultBundle(company)
+		if err != nil {
+			return set, err
+		}
+		if added {
+			ids = append(ids, "forms")
+		}
+	}
+	refs := requiredImages(warn, modulesDir, ids)
+	if !f.skipImageCheck {
+		notHeld := "" // a release manifest carries no module images: the server pulls them
+		if set.Source == launch.SourceDir {
+			notHeld = "not in " + f.imagesFrom
+		}
+		if err := checkImages(ctx, refs, set.Holds, notHeld); err != nil {
+			return set, err
+		}
+	}
+	if set.Source == launch.SourceDir {
+		set = set.Select(sortedRefs(refs))
+	}
+	return set, nil
 }
 
 // loadModule reads the manifest of module id from the modules directory md.

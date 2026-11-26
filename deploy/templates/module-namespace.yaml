@@ -102,7 +102,8 @@ spec:
       ports:
         - {protocol: TCP, port: 5432}
         - {protocol: TCP, port: 3306}
-    # The internet (SMTP, API calls), but not the node, the cluster CIDRs or link-local
+    # The internet (SMTP, API calls), ONLY for a module whose manifest sets runtime.internet_egress
+    # (can-core drops this rule otherwise), and never the node, the cluster CIDRs or link-local
     # (cloud metadata). NOTE (Phase 0, issue #13): on k3s this does NOT stop a pod reaching the node
     # address or the API server; the host nftables rules of specs/038-node-isolation
     # (core/provider/hostfw), installed by the server bootstrap, do.

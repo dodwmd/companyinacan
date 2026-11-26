@@ -1,6 +1,6 @@
 {{- /*
-The module namespace already carries default-deny plus the allows for Traefik, can-core, DNS and
-the internet (deploy/templates/module-namespace.yaml). With a single pod nothing more is needed, so
+The module namespace already carries default-deny plus the allows for Traefik, can-core, DNS and,
+only with runtime.internet_egress, the internet (deploy/templates/module-namespace.yaml). With a single pod nothing more is needed, so
 this is off by default. When a second pod of the release has to talk to this one, switch it on: it
 allows exactly this release's pods to reach each other and nothing else (the installer refuses any
 other peer, any port-less allow-all and any other namespace).

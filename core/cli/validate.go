@@ -14,7 +14,7 @@ import (
 )
 
 // A release archive and `go install` have no modules directory.
-func init() { validate.UseShipped(modules.Manifests) }
+func init() { validate.UseShipped(modules.Shipped) }
 
 // resolveModulesDir picks the modules directory: flag, $CAN_MODULES_DIR, <dir>/modules, ./modules,
 // else the manifests built into can. A flag or the variable is taken as given; a directory found by

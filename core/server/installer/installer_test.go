@@ -73,8 +73,30 @@ func dig(o map[string]any, path ...string) any {
 	return cur
 }
 
+// Only a module that declares internet_egress may connect to addresses outside the cluster.
+func TestModuleEgressReachesTheInternetOnlyWhenDeclared(t *testing.T) {
+	in, api, _, spec := fixture(t, nil)
+	for _, internet := range []bool{true, false} {
+		spec.Manifest.Runtime.InternetEgress = internet
+		if err := in.Enable(context.Background(), spec); err != nil {
+			t.Fatal(err)
+		}
+		eg := toJSON(get(t, api, "NetworkPolicy", "mod-stub", "module-egress"))
+		if strings.Contains(eg, "ipBlock") != internet {
+			t.Fatalf("internet_egress %v: %s", internet, eg)
+		}
+		// DNS, can-core, Traefik and the database ports stay either way
+		for _, want := range []string{"kube-dns", "8090", "traefik", "5432"} {
+			if !strings.Contains(eg, want) {
+				t.Fatalf("internet_egress %v lost %s: %s", internet, want, eg)
+			}
+		}
+	}
+}
+
 func TestEnableCreatesNamespaceRBACPoliciesAndWorkload(t *testing.T) {
 	in, api, _, spec := fixture(t, nil)
+	spec.Manifest.Runtime.InternetEgress = true
 	if err := in.Enable(context.Background(), spec); err != nil {
 		t.Fatal(err)
 	}
