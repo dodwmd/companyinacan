@@ -65,7 +65,7 @@ func (u *UI) liveSession(r *http.Request) (subject, shown string) {
 	u.sessions.mu.Lock()
 	last, created, name := ss.last, ss.created, ss.name
 	u.sessions.mu.Unlock()
-	if now := u.Now(); now.Sub(last) > u.IdleTimeout || now.Sub(created) > u.AbsoluteTimeout {
+	if now := u.Now(); now.Sub(last) > u.IdleTimeout || now.Sub(created) > u.AbsoluteTimeout || ss.pastDeadline(now) {
 		return "", ""
 	}
 	if name == "" {
@@ -164,7 +164,7 @@ func (u *UI) ticketPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p *Principal
-	if ls.Active && ls.Session != "" {
+	if ls.Active && ls.Session != "" && ls.ExpiresAt.After(u.Now()) {
 		p = personalPrincipal(ls.Subject, ls.Permissions)
 	}
 	if p == nil {
@@ -175,7 +175,7 @@ func (u *UI) ticketPost(w http.ResponseWriter, r *http.Request) {
 	if old, err := r.Cookie(u.sessionCookieName()); err == nil {
 		u.sessions.drop(old.Value)
 	}
-	id, _ := u.sessions.createSSO(*p, ls.Session, ls.Name, u.Now())
+	id, _ := u.sessions.createSSO(*p, ls.Session, ls.Name, ls.ExpiresAt, u.Now())
 	u.setCookie(w, u.sessionCookieName(), id, 0)
 	u.setCookie(w, u.loginCSRFName(), "", -1)
 	// Land on a clean URL: the ticket is not in it, and the place to land is checked again here.

@@ -288,6 +288,39 @@ func (s *Store) OpenShare(ctx context.Context, token, client string) (*Content, 
 	return c, nil
 }
 
+// revokeFileLinks ends every live link of a file inside tx, auditing each one.
+func (s *Store) revokeFileLinks(ctx context.Context, tx dbq, actor, fileID, reason string) error {
+	now := ts(s.now())
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM shares WHERE (file_id = ?) AND (revoked_at IS NULL) AND (expires_at > ?) ORDER BY id`, fileID, now)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, `UPDATE shares SET revoked_at = ? WHERE (id = ?)`, now, id); err != nil {
+			return err
+		}
+		if err := s.audit(ctx, tx, actor, "share.revoke", "file:"+fileID, []string{"share:" + id, "reason:" + reason}, "ok"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // revokeLinksOf ends, inside the transaction that withdrew or lowered a grant, every live link in
 // the space that rested on it: the links whose creator had no other grant that still lets them
 // share. A group grant works the same way. (A person leaving a directory group is not seen here:

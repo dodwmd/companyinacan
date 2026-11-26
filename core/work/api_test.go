@@ -860,6 +860,14 @@ func TestDeadEventsArePaginated(t *testing.T) {
 	h.mustDo(400, "GET", "/v1/events/dead?cursor=!!", bootstrap, nil)
 }
 
+// The test below shortens or stretches the penalty; this pins what production gets.
+func TestTheProductionAuthPenaltyIs300ms(t *testing.T) {
+	h := newHarness(t, nil)
+	if got := h.app.srv.penalty; got != 300*time.Millisecond {
+		t.Fatalf("penalty %v, want 300ms", got)
+	}
+}
+
 func TestFailuresFromAnAddressOverTheLimitAreSlowedNotValidTokens(t *testing.T) {
 	// A 2 s penalty (production: 300 ms) puts a wide margin on both sides: a valid request takes
 	// milliseconds even on a loaded machine, a delayed one at least 2 s.

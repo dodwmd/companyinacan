@@ -438,11 +438,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (store.Session
 // CreateSSOSession starts a session for a user who signed in through the identity provider. The
 // token is fresh (never one the browser presented before: no session fixation) and the session must
 // be re-established at the provider after revalidate. The caller audits and, if that fails, deletes
-// the session with Logout.
-func (s *Service) CreateSSOSession(ctx context.Context, userID int64, ip string, revalidate time.Duration) (LoginResult, error) {
+// the session with Logout. authTime is the provider's auth_time (zero = it did not say).
+func (s *Service) CreateSSOSession(ctx context.Context, userID int64, ip string, revalidate time.Duration, authTime time.Time) (LoginResult, error) {
 	now := s.opt.Now()
 	tok := randToken()
-	sess := store.Session{IDHash: hashToken(tok), UserID: userID, CSRF: randToken(), IP: ip, CreatedAt: now, ExpiresAt: now.Add(s.opt.SessionTTL), Source: store.SourceSSO}
+	sess := store.Session{IDHash: hashToken(tok), UserID: userID, CSRF: randToken(), IP: ip, CreatedAt: now, ExpiresAt: now.Add(s.opt.SessionTTL), Source: store.SourceSSO, AuthAt: authTime}
 	if revalidate > 0 {
 		sess.RevalidateAt = now.Add(revalidate)
 		if sess.RevalidateAt.After(sess.ExpiresAt) {

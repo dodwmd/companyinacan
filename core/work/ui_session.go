@@ -23,6 +23,9 @@ type uiSession struct {
 	// no token, only the opaque handle can-core answers revalidation for. Its content is guarded by
 	// the table's mutex; the pointer never changes after creation.
 	sso *ssoState
+	// deadline is can-core's session_expires_at of a launch-ticket session (zero for a token
+	// session). The session ends then. Set at creation, never changed.
+	deadline time.Time
 }
 
 // ssoState is what a launch-ticket session knows about its person.
@@ -57,7 +60,7 @@ func randToken(n int) string {
 }
 
 func (s *uiSessions) expired(v *uiSession, now time.Time) bool {
-	return now.Sub(v.last) > s.idle || now.Sub(v.created) > s.abs
+	return now.Sub(v.last) > s.idle || now.Sub(v.created) > s.abs || (v.sso != nil && !now.Before(v.deadline))
 }
 
 // create always issues a fresh id (session fixation: a cookie sent with the login request is never
@@ -67,8 +70,9 @@ func (s *uiSessions) create(token, subject string) (id string, sess *uiSession) 
 }
 
 // createSSO is create for a launch-ticket session: no token, the can-core session handle instead.
-func (s *uiSessions) createSSO(subject, name, handle string, perms []string) (id string, sess *uiSession) {
+func (s *uiSessions) createSSO(subject, name, handle string, perms []string, deadline time.Time) (id string, sess *uiSession) {
 	return s.createWith(subject, func(v *uiSession) {
+		v.deadline = deadline
 		v.sso = &ssoState{handle: handle, name: name, perms: perms, checked: s.now()}
 	})
 }

@@ -368,7 +368,7 @@ func (s *Service) Complete(ctx context.Context, req CompleteRequest) (Result, er
 		roles = res.After
 	}
 	// 6. The session: fresh token, revalidated at the provider after the configured interval.
-	lr, err := s.Auth.CreateSSOSession(ctx, ident.UserID, req.IP, c.cfg.RevalidateEvery())
+	lr, err := s.Auth.CreateSSOSession(ctx, ident.UserID, req.IP, c.cfg.RevalidateEvery(), id.AuthTime)
 	if err != nil {
 		return Result{}, err
 	}

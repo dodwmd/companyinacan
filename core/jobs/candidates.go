@@ -487,7 +487,7 @@ func (s *Store) PatchCandidate(ctx context.Context, p *Principal, id string, in 
 	pred, args := p.candidatePred("c")
 	var one int
 	if err := s.rdb.QueryRowContext(ctx, `SELECT 1 FROM candidates c WHERE (c.id = ? AND c.erased_at IS NULL) AND `+pred, append([]any{id}, args...)...).Scan(&one); err != nil {
-		return nil, ErrNotFound
+		return nil, notFoundOr(err)
 	}
 	var pr problems
 	if in.Tags != nil {

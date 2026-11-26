@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
@@ -30,7 +31,7 @@ func TestLiveSessionCookieValueIsInactiveAtModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lr, err := au.CreateSSOSession(ctx, u.ID, "203.0.113.1", 0)
+	lr, err := au.CreateSSOSession(ctx, u.ID, "203.0.113.1", 0, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

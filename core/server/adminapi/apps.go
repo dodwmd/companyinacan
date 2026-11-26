@@ -57,7 +57,7 @@ func (s *Server) launchApp(w http.ResponseWriter, r *http.Request, p principal) 
 	if r.ContentLength != 0 && !httpx.DecodeJSONMax(w, r, &b, 2<<10) {
 		return
 	}
-	res, err := s.Tickets.Launch(r.Context(), p.Subject(), r.PathValue("id"), b.ReturnPath, p.Session.RevalidateAt)
+	res, err := s.Tickets.Launch(r.Context(), p.Subject(), r.PathValue("id"), b.ReturnPath, p.Session)
 	switch {
 	case errors.Is(err, ticket.ErrNotAllowed):
 		// No permission, an unknown module, one without a UI: the same answer.

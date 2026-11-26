@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -47,24 +49,34 @@ func LaunchCookieName(module string, secure bool) string {
 	return "can_launch_" + module
 }
 
+// maxBindings bounds how many candidate nonces of one request are tried.
+const maxBindings = 4
+
 // LaunchBinding reads the browser nonce of a launch from a request to this module's UI, "" when
-// there is none. secure says whether the UI itself is served over https; only then is the
-// unprefixed name (plain-http development) ignored, so it cannot be planted over http.
+// there is none. The result is opaque: pass it to PeekTicket or RedeemTicket as it is.
+//
+// secure says whether this UI is served over https. If it is, only the __Secure- cookie is read: the
+// unprefixed name (plain-http development) is ignored, because anything on http could plant it. If
+// it is not, both names are read.
+//
+// Several cookies of one name can arrive (set for different scopes, possibly planted by another host
+// of the company domain), and a module cannot tell which is genuine. So all of them that are shaped
+// like a nonce (up to maxBindings, separated by spaces) are returned, and PeekTicket and
+// RedeemTicket try each until can-core accepts one; a wrong one does not spend the ticket.
 func LaunchBinding(r *http.Request, module string, secure bool) string {
 	names := []string{LaunchCookieName(module, true)}
 	if !secure {
 		names = append(names, LaunchCookieName(module, false))
 	}
+	var out []string
 	for _, n := range names {
-		// Several cookies of one name can arrive (set for different scopes): take the first that is
-		// shaped like a nonce. can-core checks which is genuine.
 		for _, c := range r.CookiesNamed(n) {
-			if BindingShaped(c.Value) {
-				return c.Value
+			if len(out) < maxBindings && BindingShaped(c.Value) && !slices.Contains(out, c.Value) {
+				out = append(out, c.Value)
 			}
 		}
 	}
-	return ""
+	return strings.Join(out, " ")
 }
 
 // LaunchSession is can-core's answer when a module peeks at or redeems a launch ticket or
@@ -78,8 +90,13 @@ type LaunchSession struct {
 	// ReturnPath is the landing path chosen at launch, relative to the module's UI (redeem only).
 	ReturnPath string `json:"return_path"`
 	// Session is the opaque handle to revalidate with; keep it in memory only (redeem only).
-	Session   string    `json:"session"`
+	Session string `json:"session"`
+	// ExpiresAt is the latest the module session may live (redeem only): end it then, whatever the
+	// module's own timeouts say.
 	ExpiresAt time.Time `json:"session_expires_at"`
+	// AuthenticatedAt is when the person last authenticated to the admin UI (redeem and
+	// revalidate); zero when can-core does not know.
+	AuthenticatedAt time.Time `json:"authenticated_at"`
 }
 
 // SessionAPI is what a module's UI needs for single sign-on; tests substitute a fake.
@@ -111,10 +128,24 @@ func (c *Client) launch(ctx context.Context, path string, body map[string]string
 // /v1/tickets/peek). binding is the browser's nonce (LaunchBinding). The answer carries only
 // Active, Subject and Name.
 func (c *Client) PeekTicket(ctx context.Context, ticket, binding string) (LaunchSession, error) {
-	if !TicketShaped(ticket) || !BindingShaped(binding) {
+	return c.launchBound(ctx, "/v1/tickets/peek", ticket, binding)
+}
+
+// launchBound tries the candidate nonces of LaunchBinding in turn until can-core accepts one.
+func (c *Client) launchBound(ctx context.Context, path, ticket, binding string) (LaunchSession, error) {
+	if !TicketShaped(ticket) {
 		return LaunchSession{}, nil
 	}
-	return c.launch(ctx, "/v1/tickets/peek", map[string]string{"ticket": ticket, "binding": binding})
+	for i, b := range strings.Fields(binding) {
+		if i >= maxBindings || !BindingShaped(b) {
+			break
+		}
+		s, err := c.launch(ctx, path, map[string]string{"ticket": ticket, "binding": b})
+		if err != nil || s.Active {
+			return s, err
+		}
+	}
+	return LaunchSession{}, nil
 }
 
 // RedeemTicket exchanges a launch ticket for the person (POST /v1/tickets/redeem). The audience is
@@ -123,10 +154,7 @@ func (c *Client) PeekTicket(ctx context.Context, ticket, binding string) (Launch
 // used, expired or foreign ticket is the zero LaunchSession, not an error; an error means can-core
 // could not answer.
 func (c *Client) RedeemTicket(ctx context.Context, ticket, binding string) (LaunchSession, error) {
-	if !TicketShaped(ticket) || !BindingShaped(binding) {
-		return LaunchSession{}, nil
-	}
-	s, err := c.launch(ctx, "/v1/tickets/redeem", map[string]string{"ticket": ticket, "binding": binding})
+	s, err := c.launchBound(ctx, "/v1/tickets/redeem", ticket, binding)
 	if len(s.Permissions) == 0 {
 		return LaunchSession{}, err
 	}

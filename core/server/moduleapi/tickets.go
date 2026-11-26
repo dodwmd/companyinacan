@@ -46,6 +46,15 @@ type redeemResponse struct {
 	// Session is the opaque handle the module keeps in memory to revalidate the person.
 	Session   string `json:"session,omitempty"`
 	ExpiresAt string `json:"session_expires_at,omitempty"`
+	// AuthenticatedAt is when the person last authenticated to the admin UI; absent when not known.
+	AuthenticatedAt string `json:"authenticated_at,omitempty"`
+}
+
+func rfc3339OrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 // redeemTicket exchanges a ticket for the person. Every failure is {"active": false}.
@@ -65,7 +74,7 @@ func (s *Server) redeemTicket(w http.ResponseWriter, r *http.Request, m store.Mo
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, redeemResponse{Active: true, Subject: res.Subject, Name: res.Name, Permissions: res.Permissions,
-		ReturnPath: res.ReturnPath, Session: res.Handle, ExpiresAt: res.SessionExpires.UTC().Format(time.RFC3339)})
+		ReturnPath: res.ReturnPath, Session: res.Handle, ExpiresAt: res.SessionExpires.UTC().Format(time.RFC3339), AuthenticatedAt: rfc3339OrEmpty(res.AuthenticatedAt)})
 }
 
 type revalidateRequest struct {
@@ -88,5 +97,5 @@ func (s *Server) revalidateSession(w http.ResponseWriter, r *http.Request, m sto
 		httpx.WriteJSON(w, http.StatusOK, redeemResponse{})
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, redeemResponse{Active: true, Subject: v.Subject, Name: v.Name, Permissions: v.Permissions})
+	httpx.WriteJSON(w, http.StatusOK, redeemResponse{Active: true, Subject: v.Subject, Name: v.Name, Permissions: v.Permissions, AuthenticatedAt: rfc3339OrEmpty(v.AuthenticatedAt)})
 }

@@ -1146,3 +1146,49 @@ func TestLocalAccountsCannotTakeTheSSOPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A session from the identity provider authenticated when the provider says (auth_time), not when
+// can-core made the session; without the claim the time is unknown.
+func TestSSOSessionCarriesTheProvidersAuthTime(t *testing.T) {
+	for name, c := range map[string]struct {
+		claim any
+		want  time.Duration // before now; -1 = unknown
+	}{
+		"an old provider session": {claim: -3 * time.Hour, want: 3 * time.Hour},
+		"slightly ahead":          {claim: 10 * time.Second, want: 0},
+		"far in the future":       {claim: time.Hour, want: -1},
+		"absent":                  {want: -1},
+		"not a number":            {claim: "yesterday", want: -1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, nil)
+			e.idp.Mutate = func(m map[string]any) {
+				switch v := c.claim.(type) {
+				case time.Duration:
+					m["auth_time"] = e.now.Add(v).Unix()
+				case string:
+					m["auth_time"] = v
+				}
+			}
+			loc, ck := e.start("/")
+			if u, err := url.Parse(loc); err != nil || u.Query().Get("max_age") == "" {
+				t.Fatalf("max_age is what obliges a provider to send auth_time: %s", loc)
+			}
+			r, err := e.callback(e.idp.Approve(loc, alice()), ck, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sess, _, err := e.au.Authenticate(context.Background(), r.Login.Token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := time.Time{}
+			if c.want >= 0 {
+				want = e.now.Add(-c.want)
+			}
+			if got := sess.AuthenticatedAt(); !got.Equal(want) {
+				t.Fatalf("authenticated at %v, want %v", got, want)
+			}
+		})
+	}
+}

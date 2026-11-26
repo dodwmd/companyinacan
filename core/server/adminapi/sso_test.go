@@ -152,7 +152,7 @@ func TestSSOEndpointsNeedRBACManage(t *testing.T) {
 	}
 	// An SSO-provisioned operator has no rbac.manage; use a session of that user.
 	ids, _ := e.db.ListSSOIdentities(ctx, 10)
-	login, err := e.svc.Auth.CreateSSOSession(ctx, ids[0].UserID, "203.0.113.1", time.Hour)
+	login, err := e.svc.Auth.CreateSSOSession(ctx, ids[0].UserID, "203.0.113.1", time.Hour, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

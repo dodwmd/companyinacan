@@ -45,23 +45,29 @@ mkdir -p "$out"
 ctx="k3d-$name"
 read -r -a can <<<"${CAN:-go run ./cmd/can}"
 
+# Never delete a cluster that was there before this run. owned is set only once k3d has said that no
+# cluster of this name exists, and only an owned cluster is ever deleted. If k3d cannot say, stop.
+owned=0
 cleanup() {
-  if [ "$keep" = 0 ]; then k3d cluster delete "$name" >/dev/null 2>&1 || true; fi
+  if [ "$owned" = 1 ] && [ "$keep" = 0 ]; then k3d cluster delete "$name" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
+
+if ! clusters=$(k3d cluster list --no-headers); then
+  echo "cannot list k3d clusters, so cannot tell whether $name already exists; nothing was done" >&2
+  exit 1
+fi
+if awk -v n="$name" '$1 == n { found = 1 } END { exit !found }' <<<"$clusters"; then
+  echo "k3d cluster $name already exists; delete it or choose another --name" >&2
+  exit 1
+fi
+owned=1
 
 if [ "$use_can_dev" = 1 ]; then
   "${can[@]}" dev up --name "$name"
 else
   # k3d occasionally fails with "could not start a docker container" (runner/docker hiccup): clean up
   # the half-created cluster and retry a bounded number of times instead of failing the whole job.
-  # Never delete a cluster that was there before this run: refuse up front, and do not let the
-  # EXIT trap remove it either.
-  if k3d cluster list "$name" >/dev/null 2>&1; then
-    keep=1
-    echo "k3d cluster $name already exists; delete it or choose another --name" >&2
-    exit 1
-  fi
   attempt=1
   until k3d cluster create "$name" --config "$cfg" --wait --timeout 180s; do
     [ "$attempt" -lt 3 ] || { echo "k3d cluster create failed $attempt times" >&2; exit 1; }

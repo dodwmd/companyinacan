@@ -160,15 +160,28 @@ func (s *Store) stage(ctx context.Context, body io.Reader, name string) (*staged
 	return st, nil
 }
 
-// uploadSlot reserves one of the bounded upload slots without waiting; call the returned function
-// to give it back.
-func (s *Store) uploadSlot() (func(), error) {
+// uploadSlot reserves one of the bounded upload slots for subject without waiting; call the
+// returned function to give it back. One subject can hold only its share of them.
+func (s *Store) uploadSlot(subject string) (func(), error) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+	if s.uploadsBy[subject] >= s.cfg.Limits.MaxConcurrentUploadsPerSubject {
+		return nil, fmt.Errorf("%w: you have too many uploads in progress, retry shortly", ErrUnavailable)
+	}
 	select {
 	case s.uploads <- struct{}{}:
-		return func() { <-s.uploads }, nil
 	default:
 		return nil, fmt.Errorf("%w: too many uploads in progress, retry shortly", ErrUnavailable)
 	}
+	s.uploadsBy[subject]++
+	return func() {
+		s.uploadMu.Lock()
+		defer s.uploadMu.Unlock()
+		if s.uploadsBy[subject]--; s.uploadsBy[subject] <= 0 {
+			delete(s.uploadsBy, subject)
+		}
+		<-s.uploads
+	}, nil
 }
 
 // checkRoom refuses, before a byte is read or staged, an upload the space owner's quota cannot
@@ -303,7 +316,7 @@ func (s *Store) Upload(ctx context.Context, p *Principal, req UploadRequest) (*F
 	if err := s.checkRoom(ctx, req.SpaceID, req.Size); err != nil {
 		return nil, err
 	}
-	release, err := s.uploadSlot()
+	release, err := s.uploadSlot(p.Subject)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +462,7 @@ func (s *Store) UploadVersion(ctx context.Context, p *Principal, fileID string, 
 	if err := s.checkRoom(ctx, f.spaceID, size); err != nil {
 		return nil, err
 	}
-	release, err := s.uploadSlot()
+	release, err := s.uploadSlot(p.Subject)
 	if err != nil {
 		return nil, err
 	}
@@ -891,7 +904,7 @@ func (s *Store) UpdateFile(ctx context.Context, p *Principal, id string, patch F
 }
 
 // DeleteFile moves a file to the trash. Editors and managers. A legal hold or a retention date
-// that has not passed blocks it. Nothing is destroyed here: the retention sweep purges after
+// that has not passed blocks it. Its live share links are revoked. Nothing is destroyed here: the retention sweep purges after
 // trash_days.
 func (s *Store) DeleteFile(ctx context.Context, p *Principal, id string) error {
 	if !p.Has(PermWrite) {
@@ -913,6 +926,10 @@ func (s *Store) DeleteFile(ctx context.Context, p *Principal, id string) error {
 			return err
 		}
 		if err := s.audit(ctx, tx, p.Subject, "file.delete", "file:"+id, nil, "ok"); err != nil {
+			return err
+		}
+		// Links end with the file, for good: restoring it does not bring them back.
+		if err := s.revokeFileLinks(ctx, tx, p.Subject, id, "file_deleted"); err != nil {
 			return err
 		}
 		return s.emit(ctx, tx, EventDeleted, deletedEvent(id, f.spaceID, "user", p.Subject, s.now()))
@@ -946,6 +963,10 @@ func (s *Store) RestoreFile(ctx context.Context, p *Principal, id string) error 
 		}
 		if f.status != "deleted" {
 			return conflict("the file is not in the trash")
+		}
+		// A file trashed before deletion revoked links may still have live ones.
+		if err := s.revokeFileLinks(ctx, tx, p.Subject, id, "file_deleted"); err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE files SET status = 'active', deleted_at = NULL, rev = rev + 1, updated_at = ? WHERE (id = ?)`, ts(s.now()), id); err != nil {
 			return err

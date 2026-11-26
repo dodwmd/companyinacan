@@ -30,6 +30,7 @@ func newSSOEnv(t *testing.T, mutate func(*Config)) *ssoEnv {
 		mutate(cfg)
 	}
 	clk := &clock{t: time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)}
+	core.Now = clk.Now
 	app, err := NewApp(cfg, Secrets{AdminToken: bootstrap}, Options{Now: clk.Now, Logger: slog.New(slog.DiscardHandler), Can: core.Client(t)})
 	if err != nil {
 		t.Fatal(err)
@@ -437,5 +438,26 @@ func TestTicketNeverReachesLogsOrErrors(t *testing.T) {
 	b.do("GET", "/ui/login/ticket?t=cant_"+strings.Repeat("Z", 43), nil)
 	if strings.Contains(logs.String(), tk) || strings.Contains(logs.String(), "cant_") {
 		t.Fatalf("a ticket reached the log:\n%s", logs.String())
+	}
+}
+
+// can-core's session_expires_at (the identity provider's deadline) ends the module session.
+func TestTicketSessionNeverOutlivesCanCoresDeadline(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	g := fakecore.Grant{Subject: "user:alice", Permissions: []string{PermWrite}, SessionExpires: e.clk.Now().Add(20 * time.Second)}
+	b := newUIBrowser(t, e.harness)
+	e.land(b, e.core.NewTicket(g))
+	if p := b.do("GET", "/ui/", nil); p.Code != 200 {
+		t.Fatalf("before the deadline: %d %.300s", p.Code, p.Body)
+	}
+	e.clk.Advance(20 * time.Second) // inside the 30 s revalidation interval
+	if p := b.do("GET", "/ui/", nil); p.Code == 200 {
+		t.Fatalf("the session outlived the deadline: %d", p.Code)
+	}
+	g.SessionExpires = e.clk.Now().Add(-time.Second)
+	b = newUIBrowser(t, e.harness)
+	e.land(b, e.core.NewTicket(g))
+	if p := b.do("GET", "/ui/", nil); p.Code == 200 {
+		t.Fatalf("a session past its deadline was started: %d", p.Code)
 	}
 }

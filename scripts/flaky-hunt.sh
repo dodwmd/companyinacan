@@ -29,6 +29,8 @@ LOAD=${LOAD:-$((cpus / 2 > 0 ? cpus / 2 : 1))}
 
 case $ITER in '' | *[!0-9]*) echo "flaky-hunt: ITER must be a number" >&2; exit 2 ;; esac
 case $LOAD in '' | *[!0-9]*) echo "flaky-hunt: LOAD must be a number" >&2; exit 2 ;; esac
+# Zero iterations would run no test and report "no failures".
+[ "$ITER" -ge 1 ] || { echo "flaky-hunt: ITER must be at least 1" >&2; exit 2; }
 
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here/.."

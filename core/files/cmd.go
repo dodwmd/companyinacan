@@ -192,11 +192,12 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 0
 	case "sweep":
 		rep, err := st.RunRetention(context.Background())
+		// The report says what was done even when something else failed.
+		fmt.Fprintf(stdout, "purged %d, skipped (hold) %d, skipped (retention lock) %d, orphan blobs removed %d\n", rep.Purged, rep.SkippedHold, rep.SkippedLocked, rep.Orphans)
 		if err != nil {
 			fmt.Fprintf(stderr, "sweep: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "purged %d, skipped (hold) %d, skipped (retention lock) %d, orphan blobs removed %d\n", rep.Purged, rep.SkippedHold, rep.SkippedLocked, rep.Orphans)
 		return 0
 	}
 
@@ -225,9 +226,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	obs.DefaultHealth.Add("blobstore", true, be.Ping) // /readyz: the backend must answer too
-	srv := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second,
-		// Bodies have their own deadlines (uploads, downloads): see API.body and API.serve.
-		ReadTimeout: 0, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
+	srv := newServer(api.Handler())
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -288,6 +287,12 @@ func (s *Store) sweepLoop(ctx context.Context, log logger) {
 		}
 		t.Reset(time.Duration(s.cfg.Retention.SweepIntervalHours) * time.Hour)
 	}
+}
+
+// newServer sets the time limits every request gets. Uploads and downloads extend theirs per
+// request: see API.body and API.serve.
+func newServer(h http.Handler) *http.Server {
+	return &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 }
 
 // healthcheck exists because the distroless image has no curl or shell.

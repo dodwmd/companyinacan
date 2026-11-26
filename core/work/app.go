@@ -55,11 +55,15 @@ type App struct {
 	store      *Store
 	dispatcher *Dispatcher
 	handler    http.Handler
+	srv        *api // the handler's state
 	log        *slog.Logger
 	now        func() time.Time
 	closeOnce  sync.Once
 	closeErr   error
 }
+
+// authPenalty is the production delay on a failed authentication from an address over the limit.
+const authPenalty = 300 * time.Millisecond
 
 // NewApp builds the application. It opens (and migrates) the database.
 func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
@@ -97,7 +101,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	a := &api{
 		store: store, auth: auth, log: log, maxBody: cfg.MaxBodyBytes, trustProxy: cfg.TrustProxy,
 		limiter:  newRateLimiter(cfg.RateLimit.PerMinute, time.Minute, cfg.RateLimit.MaxTracked, now),
-		penalty:  300 * time.Millisecond,
+		penalty:  authPenalty,
 		failures: newRateLimiter(cfg.RateLimit.AuthFailuresPerMin, time.Minute, cfg.RateLimit.MaxTracked, now),
 	}
 	if cfg.authPenalty > 0 {
@@ -112,6 +116,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		_ = store.Close()
 		return nil, err
 	}
+	app.srv = a
 	app.handler = withMiddleware(log, a.handler())
 	return app, nil
 }

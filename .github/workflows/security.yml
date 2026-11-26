@@ -119,6 +119,8 @@ jobs:
           sh scripts/gh-protect-main_test.sh
           sh scripts/check-release-env_test.sh
           sh scripts/gen-sbom_test.sh
+          sh scripts/flaky-hunt_test.sh
+          sh dev/footprint/measure_test.sh
 
   release-readiness:
     name: release-check (informational)

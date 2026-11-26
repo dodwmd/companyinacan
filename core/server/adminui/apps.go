@@ -47,9 +47,7 @@ func (s *Server) appLaunch(w http.ResponseWriter, r *http.Request, sc *sessionCt
 		s.fail(w, r, sc, http.StatusServiceUnavailable, "err.unavailable", "err.unavailable_msg")
 		return
 	}
-	// A session from the identity provider has a revalidation deadline; the module session may not
-	// outlive it.
-	res, err := s.Tickets.Launch(r.Context(), subjectOf(sc), r.PathValue("id"), r.PostFormValue("return"), sc.Session.RevalidateAt)
+	res, err := s.Tickets.Launch(r.Context(), subjectOf(sc), r.PathValue("id"), r.PostFormValue("return"), sc.Session)
 	switch {
 	case errors.Is(err, ticket.ErrNotAllowed):
 		s.fail(w, r, sc, http.StatusNotFound, "apps.refused", "apps.refused_msg")
