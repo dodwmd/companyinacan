@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"time"
@@ -45,9 +47,33 @@ func (c *Config) dumpEnv(getenv func(string) string) error {
 // DefaultDumpRequestFile is the file `can-core dump-request` creates, next to the state database.
 func DefaultDumpRequestFile(dbPath string) string { return dirOf(dbPath) + "/dump.request" }
 
-// backupModules lists every recorded module whose manifest ships a backup hook, whatever its
-// state: a disabled or failed module keeps its data. Only a purge removes the record.
-func backupModules(db *store.DB) func(context.Context) ([]string, error) {
+var moduleDirRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// recordedManifest is the module's recorded manifest, completed with the subcommand hooks of the
+// manifest shipped in this can-core image when the recorded one has no hook. The record is only
+// rewritten when a module's version or settings change (and never while it is disabled), so a
+// module installed before its in-house hook existed would otherwise never be dumped
+// (specs/043-module-backup-hooks).
+func recordedManifest(modulesDir string, m store.Module) config.Module {
+	man := m.Manifest
+	if man.Hooks.Backup != "" || modulesDir == "" || !moduleDirRe.MatchString(m.ID) {
+		return man
+	}
+	doc, _ := config.Load(filepath.Join(modulesDir, m.ID, "module.yaml"))
+	if doc == nil {
+		return man
+	}
+	// Subcommands only, and only for the same provider: a script hook needs its files and image
+	// to match what was installed.
+	if shipped, err := config.DecodeModule(doc); err == nil && shipped.Hooks.Command != "" && shipped.Provider.Name == man.Provider.Name {
+		man.Hooks = shipped.Hooks
+	}
+	return man
+}
+
+// backupModules lists every recorded module that has a backup hook, whatever its state: a
+// disabled or failed module keeps its data. Only a purge removes the record.
+func backupModules(db *store.DB, modulesDir string) func(context.Context) ([]string, error) {
 	return func(ctx context.Context) ([]string, error) {
 		mods, err := db.ListModules(ctx)
 		if err != nil {
@@ -55,7 +81,7 @@ func backupModules(db *store.DB) func(context.Context) ([]string, error) {
 		}
 		var ids []string
 		for _, m := range mods {
-			if m.Manifest.Hooks.Backup != "" {
+			if recordedManifest(modulesDir, m).Hooks.Backup != "" {
 				ids = append(ids, m.ID)
 			}
 		}
@@ -70,7 +96,7 @@ func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error)
 		m, err := db.GetModule(ctx, id)
 		return m, err == nil
 	}
-	d := &dumps.Dumper{Store: &dumps.Store{Dir: c.DumpsDir}, DBPath: c.DBPath, Modules: backupModules(db),
+	d := &dumps.Dumper{Store: &dumps.Store{Dir: c.DumpsDir}, DBPath: c.DBPath, Modules: backupModules(db, c.ModulesDir),
 		Database: func(ctx context.Context, id string) string {
 			m, ok := record(ctx, id)
 			if !ok || m.Manifest.Requires.Database == "" {
@@ -87,7 +113,8 @@ func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error)
 			if !ok {
 				return ""
 			}
-			return m.Manifest.BackupHookUnrunnable()
+			man := recordedManifest(c.ModulesDir, m)
+			return man.BackupHookUnrunnable()
 		},
 		CompanyFile: c.CompanyFile, Log: log}
 	if c.Installer == "kubernetes" && c.ModuleInstaller == nil {
@@ -101,7 +128,8 @@ func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error)
 				if err != nil {
 					return nil, err
 				}
-				return &m.Manifest, nil
+				man := recordedManifest(c.ModulesDir, m)
+				return &man, nil
 			}}
 	}
 	return d, nil

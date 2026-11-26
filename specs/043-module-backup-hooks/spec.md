@@ -28,6 +28,11 @@ copied raw while being written, and the `can-hooks` image the wrapped modules ne
   the earlier dump kept if it had one.
 - **FR-006** `deploy/hooks` builds in CI (nothing pushed), and a release pushes the tag the manifests name.
 
+- **FR-007** A module recorded before this change (can-core rewrites a record only when its version or settings
+  change, and never while it is disabled) is dumped using the hooks of the manifest shipped in the can-core image.
+  The module image must have the subcommand: deploy module images of the same release as can-core, or an enabled
+  module's older binary rejects `backup` and fails the run.
+
 ## Success criteria
 
 - **SC-001** Unit: every in-house service's own database survives backup and restore; a dump taken while forms is
