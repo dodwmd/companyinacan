@@ -247,6 +247,35 @@ func TestModuleBackupHooksOnK3d(t *testing.T) {
 		checkDump(t, filepath.Join(work, "dumps", m.id), "can-"+m.id)
 	}
 
+	// --- `can export`: every module's export Job, in its own image within its own limit --------
+	exported := companyExport(t)
+	holds(t, exported, "company/company.yaml", "Backup Co")
+	holds(t, exported, "company/records/audit_log.jsonl", `"action":"company.export"`)
+	holds(t, exported, "modules/forms/records/leads.jsonl", "backup@acme.example")
+	holds(t, exported, "modules/work/records/projects.csv", "Kept project")
+	holds(t, exported, "modules/files/records/spaces.jsonl", "Kept space") // sealed, decrypted on request
+	holds(t, exported, "modules/files/files/"+fileID+"/v1.txt", string(content))
+	holds(t, exported, "manifest.json", `"complete": true`)
+	for name, body := range exported {
+		for _, m := range backupModules {
+			for key, v := range secrets[m.id] {
+				if key != "keyring" && !strings.Contains(key, "TOKEN") && !strings.Contains(key, "SECRET") && !strings.Contains(key, "KEY") {
+					continue
+				}
+				for _, line := range strings.Fields(v) {
+					if len(line) >= 24 && strings.Contains(body, line) {
+						t.Errorf("%s holds the secret %s of %s", name, key, m.id)
+					}
+				}
+			}
+		}
+	}
+	for _, m := range backupModules {
+		if out := mustKubectl(t, "-n", "mod-"+m.id, "get", "jobs", "-o", "name"); out != "" {
+			t.Errorf("export Jobs left behind: %s", out)
+		}
+	}
+
 	// --- restore into fresh instances of the same images ---------------------------------------
 	user := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
 	for _, m := range backupModules {

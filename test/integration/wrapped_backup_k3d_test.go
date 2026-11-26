@@ -190,6 +190,18 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 			"mkdir -p "+dir+"/can-it && printf %s "+fileMarker+" > "+dir+"/"+markerPath)
 	}
 
+	// --- `can export`: the wrapped applications' own dumps, without their accounts -------------
+	exported := companyExport(t)
+	holds(t, exported, "modules/analytics/schema.json", `"tables"`)
+	for id := range wrappedVolumes {
+		holds(t, exported, "modules/"+id+"/native/database.sql", "PostgreSQL database dump")
+		holds(t, exported, "modules/"+id+"/files/"+markerPath, fileMarker)
+		if sql := exported["modules/"+id+"/native/database.sql"]; strings.Contains(sql, "COPY public.users ") {
+			t.Errorf("%s: the accounts are in the export", id)
+		}
+	}
+	holds(t, exported, "manifest.json", `"complete": true`)
+
 	// --- one dump run: every module's Job, within its namespace's quota and policies -----------
 	t.Logf("MEASURE dump run with analytics, support and newsletter: %s", requestDump(t).Round(100*time.Millisecond))
 	dumped := onNode(t, "cat "+dumpsOnNode+"/DUMPED")
