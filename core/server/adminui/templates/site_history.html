@@ -1,0 +1,18 @@
+{{define "content"}}
+<p><a href="/site">{{t "si.back"}}</a></p>
+<h1>{{t "si.history_title"}}</h1>
+<p>{{t "si.history_help"}}</p>
+{{if .Data}}<div class="table-wrap" role="region" aria-labelledby="cap-hist" tabindex="0">
+<table class="rows">
+<caption id="cap-hist" class="sr">{{t "si.history_title"}}</caption>
+<thead><tr><th scope="col">{{t "si.when"}}</th><th scope="col">{{t "si.who"}}</th><th scope="col">{{t "si.what"}}</th><th scope="col">{{t "si.restore"}}</th></tr></thead>
+<tbody>
+{{$csrf := .CSRF}}{{range .Data}}<tr><th scope="row"><time datetime="{{iso .CreatedAt}}">{{ts .CreatedAt}}</time></th><td data-label="{{t "si.who"}}">{{.Actor}}</td><td data-label="{{t "si.what"}}">{{.Kind}}</td>
+<td>{{if .Current}}<span class="badge ok">{{t "si.current"}}</span>{{else}}<form method="post" action="/site/history/{{.ID}}/restore">
+<input type="hidden" name="csrf" value="{{$csrf}}">
+<button type="submit">{{t "si.restore"}}</button>
+</form>{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>{{else}}<p class="empty">{{t "si.history_empty"}}</p>{{end}}
+{{end}}

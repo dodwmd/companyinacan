@@ -11,7 +11,7 @@ can-work deploy/work/Dockerfile . 0.3.0
 can-people deploy/people/Dockerfile . 0.2.0
 can-jobs deploy/jobs/Dockerfile . 0.2.0
 can-finance deploy/finance/Dockerfile . 0.3.0
-can-equity deploy/equity/Dockerfile . 0.2.0
+can-equity deploy/equity/Dockerfile . 0.3.0
 can-board deploy/board/Dockerfile . 0.2.0
 can-provision deploy/provisioning/Dockerfile . 0.1.0
 can-files deploy/files/Dockerfile . 0.1.0

@@ -45,6 +45,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
 	"github.com/dodwmd/companyinacan/core/server/restoreops"
+	"github.com/dodwmd/companyinacan/core/server/siteedit"
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
@@ -110,6 +111,11 @@ type Config struct {
 	Reviewer tokenreview.Reviewer
 	// ModuleInstaller overrides the installer (tests).
 	ModuleInstaller reconcile.ModuleInstaller
+	// SiteDir (CAN_SITE_DIR) is a built site a can-static serves, which the website editor replaces
+	// where there is no cluster (Docker Compose). SiteBaseURL (CAN_SITE_BASE_URL) is its public origin.
+	SiteDir, SiteBaseURL string
+	// SitePublisher overrides how the website is published (tests).
+	SitePublisher siteedit.Publisher
 	// CompanyStore overrides where the admin UI stores company.yaml (tests); by default the ConfigMap
 	// can-system/company with CAN_INSTALLER=kubernetes, otherwise the file CAN_COMPANY_FILE.
 	CompanyStore modmgr.CompanyStore
@@ -205,6 +211,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		return c, err
 	}
 	c.RestoreID, c.RestoreOverwrite = getenv("CAN_RESTORE"), getenv("CAN_RESTORE_OVERWRITE")
+	c.SiteDir, c.SiteBaseURL = getenv("CAN_SITE_DIR"), getenv("CAN_SITE_BASE_URL")
 	return c, nil
 }
 
@@ -440,6 +447,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			return fmt.Errorf("module management: %w", merr)
 		}
 		uiSrv.Mod, adminSrv.Mod = svc, svc
+		if uiSrv.Site, merr = cfg.siteEditor(db, al, cs); merr != nil {
+			stopWork()
+			return fmt.Errorf("website editor: %w", merr)
+		}
 		companyStore.Store(&cs)
 		svc.OnPurged = func(id string) error { return db.DeleteLeadLinks(workCtx, id) }
 		if dumper != nil {
@@ -539,6 +550,30 @@ func (c Config) moduleManagement(db *store.DB, al *audit.Log, rec *reconcile.Rec
 		log.Warn("module management: no Secret writer in this mode; the setup wizard cannot store email relay credentials")
 	}
 	return svc, cs, run, nil
+}
+
+// siteEditor builds the website editor of the admin UI over the company store, nil when this
+// installation has no website it could publish to.
+func (c Config) siteEditor(db *store.DB, al *audit.Log, cs modmgr.CompanyStore) (*siteedit.Service, error) {
+	p := c.SitePublisher
+	switch {
+	case p != nil:
+	case c.Installer == "kubernetes" && c.ModuleInstaller == nil:
+		api, err := kube.NewInCluster(c.KubeAPI, c.SAToken, c.SACA)
+		if err != nil {
+			return nil, err
+		}
+		p = siteedit.KubePublisher{API: api}
+	case c.SiteDir != "":
+		p = siteedit.DirPublisher{Dir: c.SiteDir}
+	default:
+		return nil, nil
+	}
+	base := c.SiteBaseURL
+	if base == "" && c.CompanyDomain != "" {
+		base = "https://" + c.CompanyDomain
+	}
+	return &siteedit.Service{DB: db, Audit: al, Company: cs, Publisher: p, ModulesDir: c.ModulesDir, BaseURL: base}, nil
 }
 
 // ssoSecrets reads the SSO client secret from a Secret mounted into the pod at CAN_SSO_SECRET_DIR

@@ -21,3 +21,43 @@ email:
   # Contract signers are outside the company (docs/email.md, "Contract signers"); the relay here is the sink.
   modules:
     finance: { external_recipients: true }
+# The same website examples/acme-co is built from, which the stack starts with. The admin UI edits it.
+site:
+  tagline: Anvils, delivered.
+  description: Acme Co ships industrial-grade anvils to your door, fast.
+  brand:
+    colours: ["#b4440e", "#1f2937"]
+  hero:
+    headline: Heavy things, handled.
+    subheadline: Next-day anvil delivery for roadrunners and serious blacksmiths.
+    cta: { label: See pricing, href: "#pricing" }
+  features:
+    - title: Next-day delivery
+      description: Order by noon and we drop it at your door tomorrow.
+    - title: Forged in-house
+      description: Every anvil is cast and tested on our own floor.
+    - title: Fair returns
+      description: Send it back within 30 days if it is not right.
+  pricing:
+    plans:
+      - name: Light
+        price: $49
+        period: per anvil
+        features: ["25 kg", "Standard delivery"]
+        cta: { label: Order Light, href: "mailto:sales@acme.example" }
+      - name: Heavy
+        price: $149
+        period: per anvil
+        features: ["100 kg", "Next-day delivery", "Lifetime warranty"]
+        cta: { label: Order Heavy, href: "mailto:sales@acme.example" }
+        highlighted: true
+  faq:
+    - question: Do you ship internationally?
+      answer: Yes, to most countries. Customs fees may apply.
+  contact:
+    title: Ready to drop one?
+    text: Tell us what you need and our sales team will get back to you.
+    form: contact
+    button: Contact sales
+  footer:
+    text: Fake company, fake anvils.

@@ -80,6 +80,14 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		ps[len(ps)-1].Severity = problem.Warning
 	}
 
+	for _, is := range config.CheckPages(c.Site.Pages) {
+		add("semantic.site-page-slug", fmt.Sprintf("/site/pages/%d/slug", is.Index), "site.pages: "+is.Message)
+	}
+	if _, warning := config.CheckCareers(c); warning != "" {
+		add("semantic.careers-off", "/site/careers", warning)
+		ps[len(ps)-1].Severity = problem.Warning
+	}
+
 	if c.Site.Contact != nil {
 		if forms, err := config.FormsOfModules(modulesDir); err != nil {
 			add("semantic.contact-form", "/site/contact", err.Error())

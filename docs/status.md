@@ -36,7 +36,7 @@ Columns:
 | `finance` | experimental | CI | yes; browser, with contract signing | CI (restore test) | CI | CI (a customer or vendor; what legal retention keeps stays) |
 | `jobs` | experimental | CI; resume uploads are refused (same scanner requirement) | yes; browser, with a careers application | unit | unit | unit |
 | `provisioning` | experimental | CI; reads `people` on k3d. **Cannot yet do its job**: connector credentials cannot be supplied | none | unit | unit | **no** |
-| `equity` | experimental | CI | yes; browser (off by default; grant approval needs a role no `can` sign-in carries) | unit | unit | unit |
+| `equity` | experimental | CI | yes; browser (off by default; grant approval needs `equity:board` and directory mode) | unit | unit | unit |
 | `board` | experimental | CI | none | unit | unit | unit |
 | `entity` | experimental | CI (its own instance and database) | none | unit | unit | unit |
 | `analytics` (GoatCounter) | experimental | CI | upstream | CI | CI (can-core's restore operations, not through restic) | **no** |
@@ -71,6 +71,7 @@ applications are not in it.
 |---|---|---|
 | Admin login (password and TOTP), audit log, approvals, personal access tokens, Apps sign-in, business overview, forms notification email | compose end-to-end suite (`test/e2e`) and, for most, the browser suite; unit tests | real TokenReview in those suites (k3d tests use real tokens) |
 | Web pages in a browser | `test/browser`: headless Chrome, desktop and 360 px phone size, with basic accessibility checks | https cookies, separate host names, Firefox, WebKit, screen readers, keyboard-only use, a real phone ([spec](../specs/054-browser-e2e/spec.md)) |
+| Website editor (preview, publish, rollback, `can pull`) | unit tests against a fake Kubernetes API; admission policies by dry run on k3d; compose end-to-end and browser suites | publishing from can-core to a site pod on a cluster ([site-editor.md](site-editor.md)) |
 | Users and roles, onboarding wizard, module catalogue | unit tests; the catalogue in compose records state only | enabling a module from the admin UI on a cluster |
 | OIDC single sign-on, Web Push, SCIM, CSV import, accounting | unit tests against fakes | any real identity provider, push service, SCIM client or accounting system |
 | Contracts signed by emailed link | unit tests; signed in a browser through the compose SMTP sink | a real relay, legal review |

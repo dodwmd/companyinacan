@@ -13,8 +13,12 @@ data-protection law is the operator's responsibility.
 **Status: experimental.** Tested offline (unit, race, fuzz, contract); can-core installs the chart and CI waits
 for Ready on k3d. A web UI for holders and for administration and finance
 ([`specs/066-equity-ui`](../../specs/066-equity-ui/spec.md), [`docs/equity.md`](../../docs/equity.md#web-ui)) is off unless
-`ui.enabled` is set or `modules.equity.expose.ui` routes it. It runs in the Docker Compose stack and its end-to-end suite (grant approval by a
-board identity from a fake introspection service, [`docs/local-compose.md`](../../docs/local-compose.md)). `can validate` warns accordingly.
+`ui.enabled` is set or `modules.equity.expose.ui` routes it. It runs in the Docker Compose stack and its end-to-end suite (grant
+approval with can-core's own roles and, separately, with a fake introspection service,
+[`docs/local-compose.md`](../../docs/local-compose.md)). `can validate` warns accordingly.
+
+**Grant approval** needs the `equity:board` role, assigned by an owner, and directory identity mode; one person
+alone cannot approve a grant ([who is the board](../../docs/equity.md#who-is-the-board)).
 
 Why in-house: equity is a sensitive data class (shareholder identities, holdings, valuations, strike
 prices). Wrapped third-party apps cannot enforce per-field access or audit reads, so `can validate`

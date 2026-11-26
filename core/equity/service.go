@@ -331,20 +331,21 @@ func (s *Service) authorize(ctx context.Context, a Actor, act Action, f Fact, re
 	return nil
 }
 
-// selfFact reports whether the stakeholder is the actor's own record.
+// selfFact reports whether the stakeholder is the actor's own record: linked to their person AND
+// confirmed by a second actor (ownRecords). A link nobody has confirmed, for instance straight after
+// a relink, gives the person named in it nothing: the record still carries what was entered for
+// whoever it was before. Self service reads and verbs come through here or through ownRecords;
+// the separation-of-duties checks (guardGrantee, sodOK) compare the raw person_id instead, so an
+// unconfirmed link still bars that person from acting on the record.
 func (s *Service) selfFact(ctx context.Context, q querier, a Actor, stakeholderID string) (Fact, error) {
 	if a.PersonID == "" {
 		return Fact{}, nil
 	}
-	var pid sql.NullString
-	err := q.QueryRowContext(ctx, `SELECT person_id FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&pid)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Fact{}, nil
-	}
-	if err != nil {
+	var n int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM stakeholders WHERE id = ? AND id IN `+s.ownRecords(), stakeholderID, a.PersonID).Scan(&n); err != nil {
 		return Fact{}, err
 	}
-	return Fact{Self: pid.Valid && pid.String == a.PersonID}, nil
+	return Fact{Self: n == 1}, nil
 }
 
 // ---- idempotency --------------------------------------------------------------------------

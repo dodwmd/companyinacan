@@ -1,0 +1,33 @@
+{{define "content"}}
+<p><a href="/site">{{t "si.back"}}</a></p>
+<h1>{{t "si.preview_title"}}</h1>
+<p class="hint">{{t "si.by" .Data.Actor}} <time datetime="{{iso .Data.Created}}">{{ts .Data.Created}}</time>{{if .Data.Restore}}. {{t "si.is_restore"}}{{end}}</p>
+{{if .Data.Published}}<p class="alert ok">{{t "si.published"}}</p>{{end}}
+{{if .Data.Stale}}<p class="alert warn" role="alert">{{t "si.draft_stale"}}</p>{{end}}
+{{if .Data.Expired}}<p class="alert warn" role="alert">{{t "si.draft_expired"}}</p>{{end}}
+{{if .Data.Invalid}}<div class="alert err" role="alert"><p>{{t "si.draft_invalid"}}</p><ul>{{range .Data.Invalid}}<li>{{if .Field}}<code>{{.Field}}</code>: {{end}}{{.Message}}</li>
+{{end}}</ul></div>{{else}}{{if .Data.Warnings}}<div class="alert warn"><p>{{t "si.warnings"}}</p><ul>{{range .Data.Warnings}}<li>{{.}}</li>
+{{end}}</ul></div>{{end}}
+<section aria-labelledby="h-look">
+<h2 id="h-look">{{t "si.preview_frame"}}</h2>
+<p class="hint">{{t "si.preview_help"}}</p>
+<nav aria-label="{{t "si.pages_nav"}}"><ul class="actions pages">
+<li><a href="/site/drafts/{{.Data.ID}}/frame" target="preview">{{t "si.page_home"}}</a></li>
+{{$id := .Data.ID}}{{range .Data.Pages}}<li><a href="/site/drafts/{{$id}}/frame?page={{.}}" target="preview">/{{.}}</a></li>
+{{end}}</ul></nav>
+<iframe class="preview" name="preview" sandbox="" title="{{t "si.preview_frame"}}" src="/site/drafts/{{.Data.ID}}/frame"></iframe>
+</section>{{end}}
+<section aria-labelledby="h-diff">
+<h2 id="h-diff">{{t "si.changes"}}</h2>
+{{template "diff" .Data}}
+</section>
+<section aria-labelledby="h-pub">
+<h2 id="h-pub">{{t "si.publish"}}</h2>
+{{if .Data.CanPublish}}<p>{{t "si.publish_help"}}</p>
+{{if .Data.Recent}}<form method="post" action="{{.Data.PublishTo}}">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><button type="submit">{{t "si.publish"}}</button></p>
+</form>{{else}}<p><a class="button" href="{{.Data.StepUpURL}}">{{t "si.publish_confirm"}}</a></p>{{end}}{{end}}
+<p><a href="/site/drafts/{{.Data.ID}}/edit">{{t "si.edit_again"}}</a></p>
+</section>
+{{end}}

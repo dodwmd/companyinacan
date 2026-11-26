@@ -2,6 +2,8 @@
 # (make e2e-up does this). Adds the introstub service (fake token introspection) and points people
 # and equity at it, because can-core cannot verify module tokens in compose (no Kubernetes
 # TokenReview), so without it those two services only accept their single static token.
+# It also adds equity-core, a second equity with NO fake identities: only can-core tokens and Apps sign-ins and
+# the people directory (http://equity-core.localhost:8080/), for grant approval against real roles.
 services:
   introstub:
     build:
@@ -22,6 +24,9 @@ services:
 
   people:
     command: ["serve", "-config", "/etc/can-people/people.e2e.yaml"]
+    environment:
+      # PUBLIC E2E token of the identity lookup (what `can` gives equity in directory mode).
+      CAN_PEOPLE_LOOKUP_TOKEN: dev-only-people-lookup-token-0123456789abcdef
     depends_on:
       init:
         condition: service_completed_successfully
@@ -35,3 +40,37 @@ services:
         condition: service_completed_successfully
       introstub:
         condition: service_healthy
+
+  equity-core:
+    build:
+      context: .
+      dockerfile: dev/compose/Dockerfile
+      target: equity
+      args:
+        GO_IMAGE: ${GO_IMAGE:-docker.io/library/golang:1.27}
+        RUNTIME_IMAGE: ${RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+        EDGE_IMAGE: ${EDGE_IMAGE:-docker.io/library/caddy:2.8-alpine}
+    container_name: can-equity-core
+    command: ["serve", "-config", "/etc/can-equity/equity.core.yaml"]
+    env_file: [dev/compose/secrets/equity.env]
+    environment:
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: equity # the same module identity as `equity`, so can-core answers it alike
+      CAN_TOKEN_FILE: /tokens/token
+      CAN_EQUITY_DIRECTORY_TOKEN: dev-only-people-lookup-token-0123456789abcdef
+    volumes:
+      - equity-core-data:/data
+      - token-equity:/tokens:ro
+      - dev-secrets:/secrets:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/can-equity", "healthcheck", "-addr", "127.0.0.1:8081"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  equity-core-data:

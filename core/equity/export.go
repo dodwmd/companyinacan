@@ -66,6 +66,9 @@ func (s *Service) ExportCSV(ctx context.Context, a Actor, entityID, name, asof s
 	if _, err := parseDate(asof); err != nil {
 		return err
 	}
+	if name == "grants" {
+		asof = s.today() // grants are exported as they are now; the audit entry must not say otherwise
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	names := map[string]string{}

@@ -21,7 +21,7 @@ func TestAdmissionPoliciesAreBoundAndDeny(t *testing.T) {
 	for _, d := range ofKind(docs, "ValidatingAdmissionPolicyBinding") {
 		bound[d.str("spec", "policyName")] = d
 	}
-	for _, name := range []string{"can-core-rolebindings", "can-core-namespaces"} {
+	for _, name := range []string{"can-core-rolebindings", "can-core-namespaces", "can-core-site", "can-core-site-content"} {
 		p, ok := pol[name]
 		if !ok {
 			t.Errorf("policy %s missing", name)
@@ -161,4 +161,16 @@ func readFile(t *testing.T, rel string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// The site Service selects a label beyond the name, which only the site Deployment's pods carry: a
+// Job pod with the name label alone gets no visitors.
+func TestSiteServiceSelectsOnlyTheDeploymentsPods(t *testing.T) {
+	docs := loadDocs(t, "deploy/site/site.yaml")
+	sel := toJSON(ofKind(docs, "Service")[0].get("spec", "selector"))
+	labels := toJSON(ofKind(docs, "Deployment")[0].get("spec", "template", "metadata", "labels"))
+	const own = `"can.dev/site-server":"true"`
+	if !strings.Contains(sel, own) || !strings.Contains(labels, own) {
+		t.Fatalf("selector %s, pod labels %s", sel, labels)
+	}
 }

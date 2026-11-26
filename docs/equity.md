@@ -38,14 +38,16 @@ currency. No floats anywhere.
 Roles come from the caller's token: `employee`, `manager`, `hr`, `finance`, `board`, `admin`. A caller
 with no known role is blocked. Deny by default: the single policy layer (`core/equity/policy.go`,
 `Decide` and `FieldAccess`) is the only place that looks at roles. An employee is linked to their own
-stakeholder record by their directory person id ([Holder identity](#holder-identity)); "own" means that link.
+stakeholder record by their directory person id ([Holder identity](#holder-identity)); "own" means that link,
+**confirmed by a second actor**. An unconfirmed link, for instance just after a relink or a changed identity,
+shows its person nothing: not the grant, not the identity on the record, no exercises.
 
 A caller who may not see a record gets 404 (no existence oracle); a caller who may see it but not do the
 action gets 403.
 
 | Action | employee | manager | hr | finance | board | admin |
 |---|---|---|---|---|---|---|
-| Own grants, vesting, identity, exercises (self-service) | yes | yes (own only) | | | | |
+| Own grants, vesting, identity, exercises (self-service, confirmed records) | yes | yes (own only) | | | | |
 | Someone else's grant, vesting, stakeholder | no | **never** (not even reports) | yes | yes | yes | yes |
 | List grants of an entity | no | no | yes | yes | yes | yes |
 | Create, edit, submit, amend, cancel, terminate, activate grants | no | no | yes | no | no | yes |
@@ -63,14 +65,29 @@ action gets 403.
 
 **Personal access tokens.** Installed under can-core (`CAN_API_URL`, `CAN_TOKEN_FILE`, `CAN_MODULE_ID`) the
 service also accepts can-core's personal access tokens. A token gets a role only when it carries **every**
-permission that role needs (`core/equity/canauth.go`): `hr`, `finance`, `admin`, or `employee`. It is **never**
-`board`, because the board's permissions are a subset of the admin's. In directory mode a token whose account
+permission that role needs (`core/equity/canauth.go`): `hr`, `finance`, `board`, `admin`, or `employee`.
+`board` needs `equity.board`, which only the `board` role declares ([Who is the board](#who-is-the-board)). In
+directory mode a token whose account
 the directory links to a person acts as that person, self-service and grant administration included. Without
-that link (always so in attestation mode) it has no self-service and is **refused** grant drafting and
-administration and exercise approval, rejection, payment and share issue.
+that link (always so in attestation mode) it has no self-service and is **refused** grant drafting, approval,
+rejection and administration and exercise approval, rejection, payment and share issue.
 
 The can-core service-account token carries `hr`, `finance` and `admin`; never `board`. So the service
 account cannot approve a grant.
+
+### Who is the board
+
+[`specs/068-equity-board-role`](../specs/068-equity-board-role/spec.md). Under can-core, assign the role
+`equity:board` on the users pages. It needs a recent sign-in, and only an owner (or somebody who already holds
+it) can do it. That account's tokens and Apps sign-ins then carry the board role. Owners hold every
+permission, so an owner is a board member too. It works in **directory mode only**: set
+`modules.equity.settings.identity: directory`, give each acting person a directory record with their
+`sso_subject`, and let one person draft and another approve.
+
+**A single founder cannot approve a grant.** Two people can grant to a third; a grant to one of only two
+founders needs break-glass; three people need none. See the
+[table](../specs/068-equity-board-role/spec.md#single-founder-and-small-companies). Upgrading to 0.3.0 is held
+for your approval; whoever already has `equity:board` becomes a board member when you apply it.
 
 Per-field access (sensitive fields are read and written per field, and reads are audited per field):
 
@@ -83,7 +100,8 @@ Per-field access (sensitive fields are read and written per field, and reads are
 | `valuation`, `convertible_terms` | finance, board, admin | finance, board, admin |
 | `payment_reference` | finance, admin | finance, admin |
 
-A grant that is still a draft or pending approval is not yet an offer: the holder gets 404 for it.
+A grant that is still a draft or pending approval is not yet an offer: the holder gets 404 for it, also when it
+was cancelled before anybody approved it.
 
 ### Separation of duties
 
@@ -141,8 +159,8 @@ Specification and threat model: [`specs/051-holder-identity`](../specs/051-holde
 - `GET /v1/identity/review` (and `can-equity identity-report`) lists unestablished records;
   `GET /v1/me/identity` shows what the service concluded about the caller.
 - **After upgrading, every existing record is unestablished**, earlier attestations included (the audit log
-  keeps them). No record is lost and reads are unchanged, but
-  grants leaving draft, exercises and ledger entries wait until each holder is confirmed or attested.
+  keeps them). No record is lost and staff reads are unchanged, but holders see nothing of their own, and
+  grants leaving draft, exercises and ledger entries wait, until each holder is confirmed or attested.
 - **Break-glass** for a single-administrator company in directory mode, or recovery:
   `CAN_EQUITY_BREAK_GLASS_UNTIL` (a date or time ending within 7 days from now) on the process, restart, use
   the service account token, remove it. Each use is audited as `break_glass:<action>`.
@@ -386,14 +404,19 @@ the UI is held for the operator's approval, because it adds web paths to the mod
 - **Holders** see **My equity** and **Documents**: only records linked to their person and confirmed by a
   second person.
 - **HR, finance, board and admin** see **Company** and **Holder checks**, with what their roles allow.
+  Confirming a person link sends the person id the page showed and is refused if the record was relinked since.
+  The directory's name is shown only to a directory credential that gets names (can-core's lookup token does
+  not): otherwise look the id up in People first.
+- The grants export is the current state, whatever "as of" date is entered; the date applies to the cap table
+  and the ledger.
 - Grant approval, activation, draft deletion, payment, share issue and holder confirmation ask you to confirm
   who you are again (your token, or an admin sign-in at most 5 minutes old).
 - The service account token cannot sign in.
 
-**Read before relying on it.** For self-service and grant administration the account must be a person: set
-`modules.equity.settings.identity: directory` with the `people` module. And on a stock `can` install **no sign-in
-carries the `board` role**, which grant approval needs (see
-[what the UI cannot do](../specs/066-equity-ui/spec.md#what-the-ui-cannot-do-on-a-stock-can-install)).
+**Read before relying on it.** For self-service, grant administration and approval the account must be a person:
+set `modules.equity.settings.identity: directory` with the `people` module, and assign `equity:board` to the
+directors ([Who is the board](#who-is-the-board)). In the default attestation mode no can-core sign-in can
+draft or approve a grant.
 
 In the Compose stack the UI is on at `http://equity.localhost:8080/` and, for Apps, `http://localhost:8186`.
 
@@ -412,8 +435,9 @@ In the Compose stack the UI is on at `http://equity.localhost:8080/` and, for Ap
 - The coarse role permissions in `module.yaml` (`equity.read`, `equity.write`, `equity.approve`, ...) only
   gate the capability verbs. They are broader than the service policy: for example `admin` and `finance`
   hold `equity.approve` because they approve exercises, yet the service refuses both on grant approval,
-  which needs the `board` role. The service policy (`core/equity/policy.go`) is the authority.
+  which needs the `board` role (`equity.board`). The service policy (`core/equity/policy.go`) is the authority.
 - Exports fail with 409 beyond 50,000 rows instead of truncating; narrow them with `as_of` or page the ledger.
+- Exercise lists return 500 per page with a `next_cursor` (query `cursor`).
 
 ## Residual separation-of-duties limits
 

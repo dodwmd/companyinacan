@@ -150,3 +150,8 @@ func financeAPI(t *testing.T) harness.API {
 func equityAPI(token string) harness.API {
 	return harness.API{C: web, Host: "equity.localhost", Token: token}
 }
+
+// equityCoreAPI is the e2e overlay's second equity, wired to can-core and the directory only.
+func equityCoreAPI(token string) harness.API {
+	return harness.API{C: web, Host: equityCore, Token: token}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 )
 
 // Exercise statuses: requested -> approved -> payment_recorded -> issued, or rejected / cancelled.
@@ -107,7 +108,7 @@ func (s *Service) RequestExercise(ctx context.Context, a Actor, grantID string, 
 	if err != nil {
 		return "", false, err
 	}
-	if !a.any() && (g.Status == GrantDraft || g.Status == GrantPending) {
+	if !a.any() && !offered(g) {
 		s.auditDeny(ctx, a, string(ActExerciseRequest), "grant:"+grantID, nil)
 		return "", false, ErrNotFound
 	}
@@ -201,47 +202,93 @@ func (s *Service) GetExercise(ctx context.Context, a Actor, id string) (*Exercis
 	return &e.Exercise, nil
 }
 
-// ListExercises lists an entity's exercises (hr, finance, board, admin), optionally by status.
-func (s *Service) ListExercises(ctx context.Context, a Actor, entityID, status string) ([]Exercise, error) {
+// ExerciseFilter narrows a list of exercises. After is the cursor of the previous page.
+type ExerciseFilter struct {
+	Status string
+	After  int64
+}
+
+// ExercisePage is a page of exercises, oldest first, with the cursor of the next one when there is
+// more: a list is never cut short silently.
+type ExercisePage struct {
+	Items []Exercise `json:"items"`
+	Next  string     `json:"next_cursor,omitempty"`
+}
+
+// exercisePageSize is the most exercises one page holds.
+var exercisePageSize = 500
+
+// ListExercises lists an entity's exercises (hr, finance, board, admin), a page at a time.
+func (s *Service) ListExercises(ctx context.Context, a Actor, entityID string, f ExerciseFilter) (*ExercisePage, error) {
 	if err := s.authorize(ctx, a, ActExerciseRead, Fact{}, "entity:"+entityID); err != nil {
 		return nil, err
 	}
 	if !a.any() {
 		return nil, ErrForbidden
 	}
-	return s.listExercises(ctx, a, `entity_id = ?`, []any{entityID}, status)
+	return s.listExercises(ctx, a, `entity_id = ?`, []any{entityID}, f)
 }
 
-// MyExercises lists the caller's own exercise requests.
-func (s *Service) MyExercises(ctx context.Context, a Actor) ([]Exercise, error) {
+// MyExercises lists the caller's own exercise requests, on confirmed records only.
+func (s *Service) MyExercises(ctx context.Context, a Actor, after int64) (*ExercisePage, error) {
 	if err := s.authorize(ctx, a, ActSelfList, Fact{}, "self"); err != nil {
 		return nil, err
 	}
-	return s.listExercises(ctx, a, `stakeholder_id IN (SELECT id FROM stakeholders WHERE person_id = ?)`, []any{a.PersonID}, "")
+	return s.listExercises(ctx, a, `stakeholder_id IN `+s.ownRecords(), []any{a.PersonID}, ExerciseFilter{After: after})
 }
 
-func (s *Service) listExercises(ctx context.Context, a Actor, where string, args []any, status string) ([]Exercise, error) {
+// exercisesOfGrant is every exercise of one grant the caller has already been shown to see.
+func (s *Service) exercisesOfGrant(ctx context.Context, a Actor, grantID string) ([]Exercise, error) {
+	var out []Exercise
+	f := ExerciseFilter{}
+	for {
+		p, err := s.listExercises(ctx, a, `grant_id = ?`, []any{grantID}, f)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p.Items...)
+		if p.Next == "" {
+			return out, nil
+		}
+		if f.After, err = strconv.ParseInt(p.Next, 10, 64); err != nil {
+			return nil, err
+		}
+	}
+}
+
+func (s *Service) listExercises(ctx context.Context, a Actor, where string, args []any, f ExerciseFilter) (*ExercisePage, error) {
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
-	q := `SELECT ` + exCols + ` FROM exercises WHERE ` + where
-	if status != "" {
+	q := `SELECT ` + exCols + `, rowid FROM exercises WHERE ` + where + ` AND rowid > ?`
+	args = append(args, f.After)
+	if f.Status != "" {
 		q += ` AND status = ?`
-		args = append(args, status)
+		args = append(args, f.Status)
 	}
-	rows, err := s.db.QueryContext(ctx, q+` ORDER BY created_at, id LIMIT 500`, args...)
+	rows, err := s.db.QueryContext(ctx, q+` ORDER BY rowid LIMIT ?`, append(args, exercisePageSize+1)...)
 	if err != nil {
 		return nil, err
 	}
 	var es []*exerciseRow
+	var seqs []int64
 	for rows.Next() {
-		e, err := scanExercise(rows)
+		var seq int64
+		e, err := scanExercise(withExtra{rows, &seq})
 		if err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		es = append(es, e)
+		es, seqs = append(es, e), append(seqs, seq)
 	}
 	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	page := &ExercisePage{}
+	if len(es) > exercisePageSize {
+		es = es[:exercisePageSize]
+		page.Next = itoa(seqs[exercisePageSize-1])
+	}
 	res := make([]string, len(es))
 	for i, e := range es {
 		res[i] = "exercise:" + e.ID
@@ -249,12 +296,20 @@ func (s *Service) listExercises(ctx context.Context, a Actor, where string, args
 	if err := s.auditReadMany(ctx, a, "read", res, []string{FieldGrantTerms}); err != nil {
 		return nil, err
 	}
-	out := make([]Exercise, len(es))
+	page.Items = make([]Exercise, len(es))
 	for i, e := range es {
-		out[i] = e.Exercise
+		page.Items[i] = e.Exercise
 	}
-	return out, nil
+	return page, nil
 }
+
+// withExtra scans a row that carries one more column after the ones its scanner knows.
+type withExtra struct {
+	sc    interface{ Scan(...any) error }
+	extra any
+}
+
+func (w withExtra) Scan(dest ...any) error { return w.sc.Scan(append(dest, w.extra)...) }
 
 // step runs one transition of the exercise chain in a transaction.
 func (s *Service) exerciseStep(ctx context.Context, a Actor, id string, act Action, audit string, fields []string, fn func(ctx context.Context, tx *sqlTx, e *exerciseRow, g *grantRow) error) (*Exercise, error) {

@@ -121,8 +121,9 @@ A token works for its own module only. `work` and `finance` check each permissio
 - `people`: `people.read` is an employee; add `people.write` for HR, `people.admin` for admin and
   `people.team.manage` for manager.
 - `equity`: `finance` needs `equity.read`, `write`, `approve` and `sensitive-read`; add `equity.admin` for
-  admin. A personal access token is never the equity **board**, and because it carries no `person_id` an equity
-  token **cannot** draft or administer grants, nor approve, pay or issue exercises, whatever permissions it has.
+  admin; the **board** needs `equity.board` too. The stack's `equity` runs in attestation mode, where a token
+  carries no `person_id` and **cannot** draft, approve or administer grants, nor approve, pay or issue exercises,
+  whatever permissions it has.
   It **can** write share ledger entries, with no holder separation-of-duties check ([equity.md](equity.md)).
 
 **Apps (single sign-on into module web UIs).** Open the admin UI at **<http://localhost:8180>** (not
@@ -200,7 +201,8 @@ data and can be repeated against the same stack. The suite covers: the site and 
 project and issue and the web UI board (c); people (1:1, leave request and decision, sensitive-field and leave
 masking) (d); a jobs requisition, careers page with JSON-LD, a public application, the recruiter UI, blind
 feedback (e); finance party, invoice, approval through can-core by a second administrator, public link, payment (f); equity grant from draft to
-board approval and vesting (g); a file uploaded, downloaded as an attachment, versioned, shared once by link, held, erased (j); cross-module token refusal, hostile `Host`, no metrics, anonymous refusal (h);
+board approval and vesting (g), and again with can-core's own roles,
+tokens and Apps sign-in against `equity-core` (n); a file uploaded, downloaded as an attachment, versioned, shared once by link, held, erased (j); cross-module token refusal, hostile `Host`, no metrics, anonymous refusal (h);
 `down` without `-v` and `up`, with all data and the admin TOTP secret intact (i); personal access tokens issued
 in the admin UI against all five modules (k); an Apps launch signing in to the four module web UIs, refused in
 another browser and from `admin.localhost` (l); a module disabled and enabled in the catalogue (m); the files web UI, the notification email of a contact form
@@ -211,6 +213,9 @@ a token introspection endpoint with five public fake identities: HR, manager, tw
 starts `people` and `equity` with `*.e2e.yaml` configs that call it. It gives the suite identities that personal
 access tokens do not express here (several linked directory people, and a board member). introstub is test infrastructure for compose only; it is not in
 any release.
+
+It also starts **equity-core** (<http://equity-core.localhost:8080>), a second equity in directory identity mode
+with no fake identities: only can-core tokens and Apps sign-ins, and the people directory.
 
 TOTP: the suite reads the secret from `can-core admin reset-password --rotate-totp` (the same thing
 `dev/compose/bootstrap-admin.sh` does), once per run, so **a run rotates the admin's TOTP secret**; sign in again
