@@ -42,6 +42,8 @@ description: "Task list for Epic E15c: accounting interfaces"
 
 - [x] T018 QA round 2: force on an imported file and forced keys that cumulative files recognise; export batches bounded by bytes (worst case measured, research R12); memo cut by characters; camt.053 only; CAMT keys from reference plus content; empty statements kept for their retention period
 
+- [x] T019 QA round 3: forcing is linear (one indexed query); forced re-import needs the same mapping; CAMT servicer rows are forceable; bounded download wait; ledger privilege uses the short session recheck; can-core implies `finance.ledger.*` like the module
+
 ## Gaps (not done)
 
 - [ ] G01 `[V]` Real Xero, QuickBooks and Wave adapters (documented stubs only); they belong in their own module with their own credentials
