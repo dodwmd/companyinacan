@@ -5,8 +5,12 @@ What can-core routes through Traefik, and how to switch it on. Specifications an
 [`specs/045-public-access/`](../specs/045-public-access/spec.md).
 
 > **Status: unit and contract tested; on a cluster only the advisory `module-routing` CI job
-> exercises it** (work, forms, finance's link path and the careers pages; Traefik's self-signed
-> certificate, no browser, no ACME, no real DNS).
+> exercises it** (work, forms and finance's link path; Traefik's self-signed certificate, no
+> browser, no ACME, no real DNS).
+>
+> **jobs does not yet start when can-core installs it** (it requires `company.name` and
+> `company.base_url`, which nothing sets), so the careers pages are not live on a cluster; their
+> routing and headers are unit tested only.
 
 ## The setting
 

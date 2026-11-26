@@ -435,5 +435,5 @@ func TestModuleRoutingThroughTheIngress(t *testing.T) {
 	if got := mustKubectl(t, "-n", "mod-work", "get", "networkpolicy", "allow-ingress-from-traefik", "-o", "jsonpath={.spec.ingress}"); got != "" && got != "[]" {
 		t.Errorf("an unrouted module still admits the ingress controller: %s", got)
 	}
-	canApplyModules(t, fmt.Sprintf("schema: 1\nname: Route Co\ndomain: %s\nprovider:\n  type: local\nmodules:\n  work: {enabled: false}\n  forms: {enabled: false}\n  finance: {enabled: false}\n  jobs: {enabled: false}\n", routeDomain))
+	canApplyModules(t, fmt.Sprintf("schema: 1\nname: Route Co\ndomain: %s\nprovider:\n  type: local\nmodules:\n  work: {enabled: false}\n  forms: {enabled: false}\n  finance: {enabled: false}\n", routeDomain))
 }

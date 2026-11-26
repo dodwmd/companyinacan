@@ -1,7 +1,8 @@
 # Feature Specification: Public access (Epic E03f)
 
 **Branch**: `epic/E03f-public-access` | **Date**: 2026-11-26 | **Status**: built; unit tested with
-fakes; cluster behaviour checked only by the advisory `module-routing` CI job
+fakes; cluster behaviour checked only by the advisory `module-routing` CI job. FR-008 and the
+careers half of FR-006 are unit tested only: jobs does not yet start in a cluster (tasks T012)
 
 Closes the gaps listed by [`040-module-routing`](../040-module-routing/spec.md). Operator guide:
 `docs/module-routing.md`. SPEC.md references: 3.1 (Traefik, platform base), 3.4 (instant URL, DNS).

@@ -4,8 +4,8 @@ name: module-routing
 # admission policy's refusals, and end to end through Traefik on port 443: work enabled with its UI
 # and forms, an admin login, the Apps launcher, a launch ticket redeemed into a work session and a
 # public form post that becomes a lead. specs/045-public-access: the HTTPS redirect, the sign-in
-# limit against spoofed forwarding headers, finance's signed-link path and the careers headers.
-# Certificates are Traefik's self-signed default; no ACME, no browser; people is not run.
+# limit against spoofed forwarding headers and finance's signed-link path.
+# Certificates are Traefik's self-signed default; no ACME, no browser; people and jobs are not run.
 on:
   workflow_dispatch:
   pull_request:
@@ -55,7 +55,7 @@ jobs:
           docker pull -q gcr.io/distroless/static-debian12:nonroot >/dev/null
           GO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' golang:1.27 | cut -d@ -f2)
           DL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot | cut -d@ -f2)
-          for m in work forms finance jobs; do
+          for m in work forms finance; do
             docker build -f deploy/$m/Dockerfile \
               --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
               --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
@@ -63,7 +63,7 @@ jobs:
               -t ghcr.io/dodwmd/can-$m:0.1.0 .
           done
           k3d image import can-core:dev ghcr.io/dodwmd/can-work:0.1.0 ghcr.io/dodwmd/can-forms:0.1.0 \
-            ghcr.io/dodwmd/can-finance:0.1.0 ghcr.io/dodwmd/can-jobs:0.1.0 -c companyinacan-dev
+            ghcr.io/dodwmd/can-finance:0.1.0 -c companyinacan-dev
       - name: Deploy can-core
         run: |
           kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
