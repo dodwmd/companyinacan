@@ -85,7 +85,7 @@ Unauthenticated requests to a session route get `303 /login`. Routes marked step
 | `GET /runs/{id}` | yes (`platform.view`) | Apply progress and result. `<meta http-equiv="refresh" content="3">` while running; query `refresh=0` turns the reload off. Errors shown are sanitised |
 | `GET /status` | yes (`platform.view`) | Module readiness, last reconcile result, certificate/ingress status and disk usage (each marked unavailable when its source is not configured) |
 | `GET /company` | yes (`platform.operate`) | The stored company.yaml and its version |
-| `GET /site` | yes (`platform.operate`) | Website editor (`specs/064-site-editor/`): a form over company.yaml's `site:` section (sections, theme, extra pages) and whether the public site matches it. 503 without a site to publish to |
+| `GET /site` | yes (`platform.operate`) | Website editor (`specs/067-site-editor/`): a form over company.yaml's `site:` section (sections, theme, extra pages) and whether the public site matches it. 503 without a site to publish to |
 | `POST /site` | yes (`platform.operate`) | Fields named by their path in `site:` (`hero.headline`, `features.0.title`, ...), `base` (hash of the section the form showed). 400 re-renders the form with per-field errors; 409, keeping what was typed, when the section changed since. 303 to `/site/drafts/{id}` (a preview, nothing published) |
 | `GET /site/drafts/{id}` | yes (`platform.operate`) | Preview page: the site in a sandboxed frame, the page list, warnings, the company.yaml diff and the publish button. This page alone has `frame-src 'self'` |
 | `GET /site/drafts/{id}/edit` | yes (`platform.operate`) | The editor filled from the draft |

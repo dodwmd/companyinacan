@@ -1,6 +1,6 @@
 package adminui
 
-// Messages of the website editor (specs/064-site-editor). Merged into the catalogue at start-up.
+// Messages of the website editor (specs/067-site-editor). Merged into the catalogue at start-up.
 func init() {
 	for k, v := range map[string]string{
 		"nav.site":             "Website",

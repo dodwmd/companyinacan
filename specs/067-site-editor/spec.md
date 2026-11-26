@@ -1,4 +1,4 @@
-# Feature 064: website editor in the admin UI (E04c)
+# Feature 067: website editor in the admin UI (E04c)
 
 Status: built. Unit tested (fake Kubernetes API), compose end-to-end and headless Chrome; the admission
 policies are proven by server-side dry runs on k3d (`dev-cluster` workflow). Not run: publishing from a

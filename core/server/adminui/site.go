@@ -1,6 +1,6 @@
 package adminui
 
-// The website editor (specs/064-site-editor, docs/site-editor.md): edit, preview, publish, history.
+// The website editor (specs/067-site-editor, docs/site-editor.md): edit, preview, publish, history.
 // The logic is core/server/siteedit. Every route needs platform.operate; publishing needs a recent
 // proof of identity.
 

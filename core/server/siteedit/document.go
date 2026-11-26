@@ -1,6 +1,6 @@
 // Package siteedit is the website editor of the admin UI: it edits the `site:` section of the
 // applied company.yaml, previews it, publishes it to the site pod and keeps a history
-// (specs/064-site-editor, docs/site-editor.md).
+// (specs/067-site-editor, docs/site-editor.md).
 package siteedit
 
 import (

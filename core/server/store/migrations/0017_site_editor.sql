@@ -1,4 +1,4 @@
--- The website editor of the admin UI (specs/064-site-editor, core/server/siteedit).
+-- The website editor of the admin UI (specs/067-site-editor, core/server/siteedit).
 
 -- A change that has been previewed and not yet published. base_hash identifies the `site:` section it
 -- was prepared from: publishing over a section that changed since is refused.

@@ -268,7 +268,7 @@ fieldset { min-width: 0; }
 /* A new token is one long word. */
 p > code { overflow-wrap: anywhere; }
 
-/* The website editor (specs/064-site-editor). */
+/* The website editor (specs/067-site-editor). */
 fieldset.entry { border: 1px solid var(--border); border-radius: var(--radius); margin: 0 0 1rem; padding: 0.5rem 0.75rem; }
 fieldset.entry legend { font-weight: 600; padding: 0 0.25rem; }
 form.stack textarea { max-width: 42rem; }

@@ -1,7 +1,7 @@
 package cli
 
 // The applied company.yaml has two writers: this CLI and the admin UI. Neither silently overwrites
-// the other (specs/064-site-editor): the UI refuses a change prepared from content that moved, and
+// the other (specs/067-site-editor): the UI refuses a change prepared from content that moved, and
 // here `can apply` refuses to replace a document it has not seen. `can pull` brings it back.
 
 import (

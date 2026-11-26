@@ -337,7 +337,7 @@ spec:
   policyName: can-core-networkpolicies
   validationActions: [Deny]
 ---
-# The website editor of the admin UI (specs/064-site-editor). can-core's RoleBinding in can-system
+# The website editor of the admin UI (specs/067-site-editor). can-core's RoleBinding in can-system
 # lets it manage workloads and ConfigMaps there; publishing needs far less, and these two policies
 # hold it to that: it may roll the site (the digest annotation of the pod template, nothing else)
 # and rewrite the one key of ConfigMap site-content. It creates and deletes no workload here.

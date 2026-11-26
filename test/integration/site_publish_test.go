@@ -2,7 +2,7 @@
 
 package integration
 
-// The website editor's admission policies (specs/064-site-editor, deploy/base/admission-policy.yaml):
+// The website editor's admission policies (specs/067-site-editor, deploy/base/admission-policy.yaml):
 // what can-core needs to publish is allowed, everything else its RoleBinding in can-system would let
 // it do to the site is refused. Every request is a server-side dry run: admission runs, nothing is
 // stored. Needs only `make dev`.
