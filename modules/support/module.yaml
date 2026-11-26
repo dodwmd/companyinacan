@@ -5,10 +5,10 @@ name: Support inbox
 description: Shared support inbox with email in and out, assignment and canned replies. Wraps FreeScout; an adapter exposes the tickets capability and the ticket.created.v1 event. Inbound mail arrives over IMAP or an inbound-parse webhook (docs/email-policy.md).
 category: support
 # Experimental: installed through can-core on k3d by the advisory CI job (specs/041-wrapped-modules-live);
-# never on a real server, domain or SMTP relay; inbound mail is configured by hand; the `tickets` adapter is not built (T030). The image is a third
-# party build of FreeScout (PikaPods).
+# never on a real server, domain, mail relay or mail provider (mail is tested against an in-cluster fake, specs/059);
+# the `tickets` adapter is not built (T030). The image is a third party build of FreeScout (PikaPods).
 status: experimental
-version: 0.1.0
+version: 0.2.0
 provider:
   type: oss-wrapper
   name: FreeScout

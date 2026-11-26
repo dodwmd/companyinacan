@@ -58,6 +58,14 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		add(is.Rule, is.Path, is.Message)
 	}
 
+	_, support := config.SupportMailOf(c)
+	for _, is := range support {
+		add(is.Rule, is.Path, is.Message)
+		if is.Warning {
+			ps[len(ps)-1].Severity = problem.Warning
+		}
+	}
+
 	if c.Site.Contact != nil {
 		if forms, err := config.FormsOfModules(modulesDir); err != nil {
 			add("semantic.contact-form", "/site/contact", err.Error())

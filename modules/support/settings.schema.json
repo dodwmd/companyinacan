@@ -6,7 +6,8 @@
   "additionalProperties": false,
   "properties": {
     "admin_email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Login of the first FreeScout administrator; defaults to admin@<company domain>. Used once, on the first start." },
-    "support_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Address customers write to, e.g. support@example.com. Replies leave with this From address." },
+    "support_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Address customers write to, e.g. support@example.com. The mailbox is created for it and replies leave with this From address. Must differ from admin_email." },
+    "mailbox_name": { "type": "string", "maxLength": 40, "description": "Name of the mailbox, shown to customers as the sender. Default: Support." },
     "inbound": {
       "type": "object",
       "additionalProperties": false,
@@ -17,9 +18,9 @@
           "additionalProperties": false,
           "properties": {
             "host": { "type": "string", "minLength": 1 },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 993 },
-            "username": { "type": "string" },
-            "encryption": { "enum": ["ssl", "tls", "none"], "default": "ssl" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "username": { "type": "string", "description": "Mailbox user name; the Secret can-system/can-support-imap may name it instead. The password is only ever in that Secret." },
+            "encryption": { "enum": ["ssl", "starttls"], "default": "ssl", "description": "ssl: implicit TLS (993). starttls: STARTTLS (143)." },
             "folder": { "type": "string", "default": "INBOX" }
           }
         },
@@ -30,6 +31,6 @@
         }
       }
     },
-    "retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Matches the support-conversation data class (3y)." }
+    "retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Not applied yet. Matches the support-conversation data class (3y)." }
   }
 }

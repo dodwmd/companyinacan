@@ -78,6 +78,9 @@ type Config struct {
 	// asked only for a wrapped app that takes it (modsecrets.WantsRelay) and that the company has
 	// opted in (reconcile.RelayOptIn).
 	Relay func(s reconcile.Spec) (*SMTPRelay, error)
+	// IMAP returns the mailbox the support module fetches, or nil when company.yaml asks for none or
+	// the operator's Secret cannot serve it (specs/059-support-mailbox).
+	IMAP func(s reconcile.Spec) (*IMAPAccount, error)
 
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
@@ -609,10 +612,18 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 	if err != nil {
 		return "", err
 	}
+	versioned := []map[string]string{mod, db}
 	if smtp != nil {
-		return secretVersion(s.HMACSecret, mod, db, smtp), nil
+		versioned = append(versioned, smtp)
 	}
-	return secretVersion(s.HMACSecret, mod, db), nil
+	imap, err := in.ensureIMAPSecret(ctx, s)
+	if err != nil {
+		return "", err
+	}
+	if len(imap) > 0 {
+		versioned = append(versioned, imap)
+	}
+	return secretVersion(s.HMACSecret, versioned...), nil
 }
 
 // dataNamespace holds the database servers.
@@ -678,15 +689,26 @@ func (in *Installer) relayValues(s reconcile.Spec) (map[string]string, error) {
 	return vals, nil
 }
 
-// RelayFingerprint implements reconcile.RelayAware. It is keyed with the module's own secret, like
-// the pod's secret version, so the password cannot be compared across installations.
+// RelayFingerprint implements reconcile.RelayAware: the relay and the fetched mailbox as the module
+// would be handed them. It is keyed with the module's own secret, like the pod's secret version, so
+// the password cannot be compared across installations.
 func (in *Installer) RelayFingerprint(_ context.Context, s reconcile.Spec) (string, error) {
-	if !modsecrets.WantsRelay(s.ID) || s.Manifest == nil || !slices.Contains(s.Manifest.Requires.Capabilities, "email.send") {
-		return "", nil
+	vals := map[string]string{}
+	if modsecrets.WantsRelay(s.ID) && s.Manifest != nil && slices.Contains(s.Manifest.Requires.Capabilities, "email.send") {
+		v, err := in.relayValues(s)
+		if err != nil {
+			return "", err
+		}
+		vals = v
 	}
-	vals, err := in.relayValues(s)
-	if err != nil || len(vals) == 0 {
+	imap, err := in.imapValues(s)
+	switch {
+	case err != nil:
 		return "", err
+	case len(imap) > 0:
+		return secretVersion(s.HMACSecret, vals, imap), nil
+	case len(vals) == 0:
+		return "", nil
 	}
 	return secretVersion(s.HMACSecret, vals), nil
 }
@@ -759,7 +781,7 @@ func (in *Installer) moduleDir(id string) (string, error) {
 // protected object names that only can-core may write in a module namespace.
 func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 	r := map[string]bool{
-		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true,
+		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true, "Secret/" + secretIMAP: true,
 		"ServiceAccount/" + s.ServiceAccount: true,
 		"ResourceQuota/ceiling":              true, "LimitRange/defaults": true,
 		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true, "IngressRoute/" + routeLink: true, "IngressRoute/" + routeSign: true,

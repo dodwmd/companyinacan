@@ -96,6 +96,9 @@ func TestChartsOnlyReferenceSecretKeysTheInstallerWrites(t *testing.T) {
 			in.cfg.Relay = func(reconcile.Spec) (*SMTPRelay, error) {
 				return &SMTPRelay{Host: "smtp.example.net", Port: 587, Username: "u", Password: "p", From: "a@acme.example", Encryption: "tls"}, nil
 			}
+			in.cfg.IMAP = func(reconcile.Spec) (*IMAPAccount, error) {
+				return &IMAPAccount{Host: "imap.example.net", Port: 993, Username: "u", Password: "p", Encryption: "ssl", Folder: "INBOX", VerifyTLS: true}, nil
+			}
 			spec.ID, spec.Namespace, spec.ServiceAccount, spec.Domain = id, "mod-"+id, id, "acme.example"
 			spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
 			spec.Email = optIn(id)
