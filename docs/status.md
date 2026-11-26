@@ -36,7 +36,7 @@ Columns:
 | `finance` | experimental | CI | yes; browser, with contract signing | CI (restore test) | CI | CI (a customer or vendor; what legal retention keeps stays) |
 | `jobs` | experimental | CI; resume uploads are refused (same scanner requirement) | yes; browser, with a careers application | unit | unit | unit |
 | `provisioning` | experimental | CI; reads `people` on k3d. **Cannot yet do its job**: connector credentials cannot be supplied | none | unit | unit | **no** |
-| `equity` | experimental | CI | none | unit | unit | unit |
+| `equity` | experimental | CI | yes; browser (off by default; grant approval needs a role no `can` sign-in carries) | unit | unit | unit |
 | `board` | experimental | CI | none | unit | unit | unit |
 | `entity` | experimental | CI (its own instance and database) | none | unit | unit | unit |
 | `analytics` (GoatCounter) | experimental | CI | upstream | CI | CI (can-core's restore operations, not through restic) | **no** |

@@ -159,7 +159,7 @@ func newGrantForm(plan, holder string) []string {
 func TestUIGrantAndExerciseChain(t *testing.T) {
 	u := newUIEnv(t)
 	u.base()
-	hr, board, fin, fin2, eve := u.login(t, u.hr), u.login(t, u.board2), u.login(t, u.fin), u.login(t, u.fin2), u.login(t, u.eve)
+	hr, board, eve := u.login(t, u.hr), u.login(t, u.board2), u.login(t, u.eve)
 
 	has(t, hr.get("/company/entities/"+u.ent.ID+"/grants/new", 200), "Eve Example", "2026 Plan")
 	w := hr.post("/company/entities/"+u.ent.ID+"/grants", 303, newGrantForm(u.plan.ID, u.eveStk.ID)...)
@@ -187,7 +187,8 @@ func TestUIGrantAndExerciseChain(t *testing.T) {
 	has(t, hr.confirm(grant+"/activate", 200).Body.String(), "Grant activated.")
 
 	u.advance("2027-07-15")
-	hr, fin, fin2, eve = u.login(t, u.hr), u.login(t, u.fin), u.login(t, u.fin2), u.login(t, u.eve)
+	hr, eve = u.login(t, u.hr), u.login(t, u.eve) // the old sessions are past their lifetime
+	fin, fin2 := u.login(t, u.fin), u.login(t, u.fin2)
 	page := eve.get("/me/grants/"+id, 200)
 	has(t, page, "1,800", "3,000", "1.25 USD", "Cliff", "not legal, tax or securities advice")
 	lacks(t, page, "board minute 14")
