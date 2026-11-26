@@ -329,15 +329,20 @@ func TestFormsRoutedAfterModuleAppears(t *testing.T) {
 	if len(k.called("get svc forms")) != 3 {
 		t.Fatalf("must poll until the service exists: %d", len(k.called("get svc forms")))
 	}
-	var forms *kubeCall
-	for _, c := range k.calls {
-		if strings.Contains(c.Stdin, "forms-strip") {
-			c := c
-			forms = &c
+	if len(k.called("get ingressroute forms-public")) == 0 {
+		t.Fatal("did not wait for can-core to route /_forms")
+	}
+	facts, company := -1, -1
+	for i, c := range k.calls {
+		if strings.Contains(c.Stdin, "name: can-routing") {
+			facts = i
+		}
+		if strings.Contains(c.Stdin, "company.yaml:") {
+			company = i
 		}
 	}
-	if forms == nil || !strings.Contains(forms.Stdin, "mod-forms") {
-		t.Fatal("the /_forms route was not applied")
+	if facts < 0 || company < facts {
+		t.Fatalf("the routing facts must be applied before company.yaml (%d, %d)", facts, company)
 	}
 }
 

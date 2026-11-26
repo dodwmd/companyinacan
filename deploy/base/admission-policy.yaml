@@ -75,3 +75,114 @@ metadata:
 spec:
   policyName: can-core-namespaces
   validationActions: [Deny]
+---
+# What a module may route (specs/040-module-routing). can-core is the only writer of routes in module
+# namespaces, so these bound it: even a compromised can-core cannot give a module another module's
+# host, the admin host, the apex or a path of the public site that is not the module's. The company
+# domain and site hosts come from ConfigMap can-system/can-routing, which the `can` CLI writes and
+# can-core may not (can-core-routing-config below). No ConfigMap, no routes.
+#
+# The tables (which extra label a module may claim, which path on the site is whose) mirror
+# core/routing; test/contract/routing_test.go keeps them in step. Proven on a cluster by
+# test/integration/routing_k3d_test.go.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: can-core-routes
+spec:
+  failurePolicy: Fail
+  paramKind: {apiVersion: v1, kind: ConfigMap}
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [traefik.io, traefik.containo.us]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [ingressroutes]
+  matchConditions:
+    - name: requester-is-can-core
+      expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
+  variables:
+    - name: id
+      expression: "request.namespace.startsWith('mod-') ? request.namespace.substring(4) : ''"
+    # core/routing.Aliases: the only labels besides its id a module may claim.
+    - name: aliases
+      expression: "{'jobs': 'careers', 'provisioning': 'scim', 'analytics': 'stats'}"
+    # core/routing.MayClaim: no module claims admin, www or another module's alias as its own id.
+    - name: ownHost
+      expression: "variables.id in ['', 'admin', 'www', 'careers', 'scim', 'stats'] ? '' : variables.id + '.' + params.data.domain"
+    - name: aliasHost
+      expression: "variables.id in variables.aliases ? variables.aliases[variables.id] + '.' + params.data.domain : ''"
+    # core/routing.SitePrefixes: only forms, only /_forms, only on the site's hosts.
+    - name: siteMatches
+      expression: "variables.id == 'forms' ? params.data.siteHosts.split(',').filter(h, h != '').map(h, 'Host(`' + h + '`) && PathPrefix(`/_forms`)') : []"
+  validations:
+    - expression: "request.namespace.startsWith('mod-')"
+      message: "can-core may only create routes in module namespaces (mod-*)"
+    - expression: "has(object.spec.entryPoints) && object.spec.entryPoints.size() > 0 && object.spec.entryPoints.all(e, e == 'web' || e == 'websecure')"
+      message: "a route must name its entry points: web or websecure"
+    - expression: |-
+        has(object.spec.routes) && object.spec.routes.all(r,
+          r.match in variables.siteMatches
+          || (variables.id == 'forms' && params.data.catchAll == 'true' && r.match == 'PathPrefix(`/_forms`)')
+          || (r.match.matches(r'^Host\(`[a-z0-9.-]+`\)( && (Path|PathPrefix|Method|Headers)\(`[^`]*`(, ?`[^`]*`)?\))*$')
+              && r.match.split('`')[1] != 'admin.' + params.data.domain
+              && (r.match.split('`')[1] == variables.ownHost || r.match.split('`')[1] == variables.aliasHost)))
+      message: "a module may route only its own host (<id>.<domain> or its declared alias); only forms may route /_forms on the site hosts"
+    - expression: |-
+        has(object.spec.routes) && object.spec.routes.all(r,
+          has(r.services) && r.services.all(s,
+            !s.name.contains('@') && (!has(s.namespace) || s.namespace == request.namespace) && (!has(s.kind) || s.kind == 'Service'))
+          && (!has(r.middlewares) || r.middlewares.all(m, !m.name.contains('@') && (!has(m.namespace) || m.namespace == request.namespace))))
+      message: "a route may only use Services and Middlewares of its own namespace"
+    - expression: |-
+        !has(object.spec.tls) || (!has(object.spec.tls.secretName) && !has(object.spec.tls.domains)
+          && !has(object.spec.tls.options) && !has(object.spec.tls.store)
+          && (!has(object.spec.tls.certResolver) || object.spec.tls.certResolver == 'letsencrypt'))
+      message: "a route may only use the letsencrypt certificate resolver, for its own host"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: can-core-routes
+spec:
+  policyName: can-core-routes
+  validationActions: [Deny]
+  paramRef:
+    name: can-routing
+    namespace: can-system
+    parameterNotFoundAction: Deny
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: can-core-routing-config
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [configmaps]
+      - apiGroups: [networking.k8s.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [ingresses]
+  matchConditions:
+    - name: requester-is-can-core
+      expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
+  validations:
+    - expression: "request.resource.resource != 'ingresses'"
+      message: "can-core routes with Traefik IngressRoutes only; plain Ingress objects are refused"
+    - expression: |-
+        !(request.resource.resource == 'configmaps' && request.namespace == 'can-system'
+          && (request.operation == 'DELETE' ? oldObject.metadata.name : object.metadata.name) == 'can-routing')
+      message: "can-core may not write ConfigMap can-system/can-routing: it bounds what can-core may route"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: can-core-routing-config
+spec:
+  policyName: can-core-routing-config
+  validationActions: [Deny]

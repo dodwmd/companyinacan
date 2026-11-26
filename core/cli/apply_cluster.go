@@ -10,6 +10,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/dodwmd/companyinacan/core/cluster"
+	"github.com/dodwmd/companyinacan/core/routing"
 )
 
 // companyConfigMap renders the applied company.yaml as the ConfigMap can-core mounts and
@@ -21,6 +22,44 @@ func companyConfigMap(content string) (string, error) {
 		"data":     map[string]any{"company.yaml": content},
 	})
 	return string(b), err
+}
+
+// syncRouting writes ConfigMap can-system/can-routing (core/routing) for the company domain, unless
+// it already is for that domain: `can up` knows more about the site's hosts than this does.
+func syncRouting(cmd *cobra.Command, domain, kubeContext string) error {
+	kubectl := func(args ...string) (string, error) {
+		if kubeContext != "" {
+			args = append([]string{"--context", kubeContext}, args...)
+		}
+		return newExecutor(cmd).Run(context.Background(), cluster.Cmd{Name: "kubectl", Args: args})
+	}
+	have, err := kubectl("-n", routing.Namespace, "get", "configmap", routing.ConfigMapName, "--ignore-not-found", "-o", "jsonpath={.data.domain}")
+	if err != nil {
+		return fmt.Errorf("kubectl get configmap %s: %w", routing.ConfigMapName, err)
+	}
+	if strings.TrimSpace(have) == domain {
+		return nil
+	}
+	manifest, err := routing.Default(domain).Manifest()
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp("", "can-routing-*.yaml")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if _, err := tmp.Write(manifest); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if _, err := kubectl("apply", "-f", tmp.Name(), "--server-side", "--field-manager=can-cli", "--force-conflicts"); err != nil {
+		return fmt.Errorf("kubectl apply: %w", err)
+	}
+	return nil
 }
 
 // syncCompany writes the (already validated) company.yaml into the cluster as a ConfigMap with

@@ -15,6 +15,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/provider"
+	"github.com/dodwmd/companyinacan/core/routing"
 )
 
 // Phase ids, in the order Run executes them. The ids are the keys of .can/state.json
@@ -426,6 +427,15 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 	}
 	// Before can-core starts: a ConfigMap volume is mounted with its content at pod start, whereas
 	// an update reaches a running pod only after the kubelet's next sync (a minute or more).
+	// The routing facts (which hosts serve the site, TLS or not) before company.yaml, for the same
+	// reason: can-core routes modules from them and may not write them itself.
+	facts, err := routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll}.Manifest()
+	if err != nil {
+		return err
+	}
+	if _, err = r.apply(ctx, facts, true); err != nil {
+		return err
+	}
 	if _, err = r.apply(ctx, []byte(cm), true); err != nil {
 		return err
 	}
@@ -599,11 +609,11 @@ func (r *runner) routes(ctx context.Context) error {
 	if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).Mode = mode; return nil }); err != nil {
 		return err
 	}
-	if !r.formsWanted() {
+	if !r.formsWanted() || !r.o.Company.Modules["forms"].Exposure().PublicOn() {
 		return nil
 	}
-	// can-core installs the forms module on its next reconcile; its namespace and Service do not
-	// exist before that, and Traefik only routes within a namespace.
+	// can-core installs the forms module on its next reconcile and then routes /_forms on the site
+	// hosts (specs/040-module-routing); wait for both.
 	if err := r.poll(ctx, r.o.Timeouts.Module, func() error {
 		_, err := r.kube(ctx, nil, "-n", FormsNS, "get", "svc", "forms", "-o", "name")
 		return err
@@ -613,12 +623,11 @@ func (r *runner) routes(ctx context.Context) error {
 	if _, err := r.kube(ctx, nil, "-n", FormsNS, "rollout", "status", "deploy/forms", secs(r.o.Timeouts.Rollout)); err != nil {
 		return err
 	}
-	fr, err := FormsRoute(r.o.Routes)
-	if err != nil {
+	if err := r.poll(ctx, r.o.Timeouts.Module, func() error {
+		_, err := r.kube(ctx, nil, "-n", FormsNS, "get", "ingressroute", "forms-public", "-o", "name")
 		return err
-	}
-	if _, err := r.apply(ctx, fr, false); err != nil {
-		return err
+	}); err != nil {
+		return fmt.Errorf("can-core did not route /_forms in time: %w", err)
 	}
 	r.res.FormsRouted = true
 	return nil

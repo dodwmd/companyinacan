@@ -45,6 +45,10 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "warning:", p.String())
 			}
 			if !dryRun && !recordOnly {
+				// The routing facts first: can-core reads them when it sees the new company.yaml.
+				if err := syncRouting(cmd, desired.Company.Domain, kubeContext); err != nil {
+					return failure("%v", err)
+				}
 				out, err := syncCompany(cmd, filepath.Join(dir, "company.yaml"), kubeContext)
 				if err != nil {
 					return failure("%v", err)

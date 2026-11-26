@@ -149,7 +149,7 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		for _, h := range cfg.SiteHosts {
 			routes = append(routes, routeRule("Host(`"+h+"`) && PathPrefix(`"+r.Path+"`)", routing.SitePriority, r.Service, r.Port, mws...))
 		}
-		if cfg.CatchAll && !cfg.TLS {
+		if cfg.CatchAll {
 			routes = append(routes, routeRule("PathPrefix(`"+r.Path+"`)", routing.SitePriority, r.Service, r.Port, mws...))
 		}
 		if len(routes) > 0 {

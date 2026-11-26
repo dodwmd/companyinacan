@@ -89,7 +89,7 @@ type Config struct {
 	Domain string
 	// TLS is false only for the plain-HTTP-on-the-IP fallback of `can up`: no UI or API is routed then.
 	TLS bool
-	// SiteHosts serve the public site; CatchAll serves it for any host (plain HTTP only).
+	// SiteHosts serve the public site; CatchAll serves it for any host.
 	SiteHosts []string
 	CatchAll  bool
 }
