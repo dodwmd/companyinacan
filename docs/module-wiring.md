@@ -224,7 +224,7 @@ module (`core/server/modsecrets`). Personal access tokens are introspected like 
 become the coarse gate; the role in the space decides the rest. The module publishes `file.uploaded.v1`,
 `file.shared.v1`, `file.deleted.v1` and `file.infected.v1` through can-core and subscribes to nothing.
 Its tombstones (`GET /v1/erasures`) and purge hook (`POST /v1/purge`) follow the erasure-ledger contract of
-the other in-house modules. The S3 credentials are not generated: see [`files.md`](files.md).
+the other in-house modules: can-core collects the tombstones (`core/server/erasure`). The S3 credentials are not generated: see [`files.md`](files.md).
 
 ## What ran where
 

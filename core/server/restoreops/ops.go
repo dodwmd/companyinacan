@@ -349,9 +349,14 @@ var inHouse = map[string]purgeMethod{
 	"people": {cli: true},
 	"equity": {cli: true},
 	"board":  {cli: true},
+	"entity": {cli: true},
 	"files":  {tokenKey: "CAN_FILES_RESTORE_TOKEN"},
 	"jobs":   {tokenKey: "CAN_JOBS_ADMIN_TOKEN"},
 }
+
+// sharedClasses are written into the erasure feed of either instance of the can-board binary
+// (board and entity), so their tombstones are replayed into every instance that is installed.
+var sharedClasses = []string{"board-private", "entity-person"}
 
 type purge struct {
 	module store.Module
@@ -359,6 +364,9 @@ type purge struct {
 }
 
 func holds(m *config.Module, class string) bool {
+	if (m.ID == "board" || m.ID == "entity") && slices.Contains(sharedClasses, class) {
+		return true
+	}
 	for _, c := range m.DataClasses {
 		if c.Class == class {
 			return true

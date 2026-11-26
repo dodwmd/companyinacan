@@ -170,16 +170,16 @@ restoring the file does not bring them back: make new ones.
   are not left in free pages or the write-ahead log. A held or retention-dated file blocks the whole request
   (409). It is idempotent and a repeat finishes an interrupted erasure and retries the scrub.
 - **Tombstones** (`GET /v1/erasures`, `files.admin`) are `(subject, class, date)` rows in the format of the
-  backup erasure ledger, for the classes `file-content` and `file-metadata`. An erasure request writes them
+  backup erasure ledger (can-core collects them into it), for the classes `file-content` and `file-metadata`. An erasure request writes them
   for the subject. A retention purge writes them for the **file id** only, so a restore never removes the
   subject's other files.
 - **`POST /v1/purge`** is the `purge(subject, class)` hook the restore replays: idempotent, it matches a
   subject or a file id, and an unknown subject is a no-op. An administrator gets 409 for a held or
   retention-dated file. Only the restore-only credential `CAN_FILES_RESTORE_TOKEN` (optional; it opens
-  this route and nothing else) ignores them, audited as `file.restore_purge`. can-core generates it, but
-  nothing in can-core calls this route yet. Neither class is reachable on its own: both purge the whole
+  this route and nothing else) ignores them, audited as `file.restore_purge`. can-core generates it and
+  uses it when `can restore` replays the ledger. Neither class is reachable on its own: both purge the whole
   file.
-- Backups and snapshots taken earlier still hold the data until they expire; the ledger re-applies the
+- Backups and snapshots taken earlier still hold the data until they expire; the erasure ledger, collected by can-core, re-applies the
   erasure after a restore. The zeroing of a deleted blob is not a guarantee on copy-on-write or SSD
   storage.
 - **S3 versioned buckets.** If the bucket has object versioning (or object lock, replication or its own

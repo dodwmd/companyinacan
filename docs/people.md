@@ -293,8 +293,8 @@ automatically). The sweep runs hourly and on demand (`POST /v1/retention/run`, `
   tombstone (the row stays, status `former`, names replaced, SSO link removed), and records
   `(subject, class, date)` for each class. The **subject is the person's own random id**
   (`pers_<24 hex>`): opaque, and it satisfies the E08 ledger's subject and class patterns
-  (`core/backup/ledger.go`). `GET /v1/erasures?after=<seq>` returns the tombstones for can-core to append
-  to the erasure ledger.
+  (`core/backup/ledger.go`). `GET /v1/erasures?after=<seq>` returns the tombstones; can-core collects
+  them into the erasure ledger.
 - **After a restore**, replay the ledger with `can-people purge -subject <id> -class <class>` (or
   `-class all`). It is idempotent, ignores legal holds (the erasure was authorised when it was
   recorded) and is a no-op for an unknown subject.
@@ -305,8 +305,10 @@ automatically). The sweep runs hourly and on demand (`POST /v1/retention/run`, `
   reader blocks the checkpoint) the request returns an error saying the person is erased and audited, and
   repeating it is idempotent and retries the scrub.
   **Backups and snapshots taken earlier still contain the data** until they expire (default horizon 35
-  days, SPEC.md section 3.7). The erasure ledger (E08, `core/backup/ledger.go`) is how a restore re-applies
-  the erasure: `purge` is replayed before workloads start.
+  days, SPEC.md section 3.7). The erasure ledger is how a restore re-applies
+  the erasure: `purge` is replayed before the module is reachable again. An erasure that had not reached the
+  bucket when a server was lost (about a quarter of an hour) is not in it
+  ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger)).
 - **Erasing a manager deletes their 1:1 series**, including the report's side of those meetings (shared
   notes, agenda, actions): a series is personal data of both participants and cannot be kept without the
   erased party. Erasing a *report* likewise deletes the series from the manager's view.
@@ -406,8 +408,7 @@ one-directional. Everything below is read from the code, not run on a cluster.
 
 - No published image or digest pin; on a cluster it has only been shown to install and become Ready (k3d, CI):
   the module is marked `experimental`.
-- can-core does not yet create the keyring Secret, route `introspect`, accept the webhook, or append the
-  tombstones to the E08 ledger (this module exposes the feed and the purge hook).
+- can-core creates the keyring Secret and collects the erasure feed; `introspect` and the webhook are not wired.
 - Reporting-line approval chains (SPEC.md section 3.7) are only half wired, see "Reporting-line approvals
   seam" below: the directory side exists, the identity mapping and multi-level chains do not.
 - No UI, no portal, no `identity.provision` consumer, no `work` issue creation from action items (the link

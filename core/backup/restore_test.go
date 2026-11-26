@@ -865,7 +865,7 @@ func TestRestoreWarnsWhatWillBeLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := e.out.String()
-	for _, want := range []string{"35 days", "snapshot snapA", "lost for good", "ledger-add", "is BACK now"} {
+	for _, want := range []string{"35 days", "snapshot snapA", "lost for good", "ledger-add", "nothing erased in any other module is recorded"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}

@@ -30,6 +30,9 @@ const (
 	ExitLedgerFailed  = 22
 )
 
+// LedgerOnlyArg makes the script sync the erasure ledger and nothing else (the frequent timer).
+const LedgerOnlyArg = "--ledger-only"
+
 // shq single-quotes s for POSIX shells.
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
@@ -39,7 +42,8 @@ var scriptTmpl = template.Must(template.New("backup.sh").Funcs(template.FuncMap{
 # Runs restic over the dumps can-core produced. Exit codes:
 #   0 ok  10 marker missing  11 marker stale or changed during the backup  12 lock held
 #   13 unsafe dumps/state directory or ledger (symlink, wrong owner, world-writable)
-#   20 restic backup failed  21 forget/prune failed  22 erasure ledger upload failed
+#   20 restic backup failed  21 forget/prune failed  22 erasure ledger import or upload failed
+# With --ledger-only it stops after the erasure ledger (can-erasure-sync.timer).
 # If both a backup failure and a ledger failure happen, the backup code wins; the ledger is
 # always synced first and independently, so erasures are uploaded even when the backup fails.
 # Failures are written to the journal (tag can-backup) and, if {{.Webhook}} exists, POSTed there.
@@ -55,6 +59,8 @@ MAX_AGE={{.MaxAge}}
 RUN_ID=""
 main_rc=0
 ledger_rc=0
+LEDGER_ONLY=0
+if [ "${1:-}" = {{q .LedgerOnlyArg}} ]; then LEDGER_ONLY=1; fi
 
 log() { logger -t can-backup -p user.info -- "$*" || true; echo "can-backup: $*"; }
 
@@ -113,8 +119,10 @@ safe_dir() {
 
 # State dir and lock: one run at a time.
 safe_dir "$STATE"
-exec 9>"$STATE/backup.lock"
-flock -n 9 || fail 12 "another backup run holds the lock"
+if [ "$LEDGER_ONLY" -eq 0 ]; then
+  exec 9>"$STATE/backup.lock"
+  flock -n 9 || fail 12 "another backup run holds the lock"
+fi
 
 # Credentials come from root-only files, never from the unit or the command line.
 ENVFILE={{q .EnvPath}}
@@ -132,6 +140,20 @@ export RESTIC_CACHE_DIR="${CACHE_DIRECTORY:-$STATE/restic-cache}"
 safe_dir "$HOSTSTATE"
 
 # Erasure ledger first and independently of the backup: a failed backup must not hold back erasures.
+# One ledger run at a time: the nightly backup and the frequent sync both do this part.
+exec 8>"$STATE/ledger.lock"
+flock -w 600 8 || fail 12 "another run holds the erasure ledger lock"
+
+# What can-core collected from the modules goes into the ledger first. Not when the ledger vanished:
+# making a new one would hide that.
+COLLECTED="$DUMPS/{{.CollectedDir}}"
+if [ -e "$COLLECTED" ] && [ ! -L "$LEDGER" ] && { [ -e "$LEDGER" ] || [ ! -s "$HOSTSTATE/{{.LedgerCopy}}" ]; }; then
+  if ! {{q .CanBin}} backup ledger-import --from "$COLLECTED" --ledger "$LEDGER"; then
+    ledger_rc=22
+    report 22 "erasures collected by can-core are missing from the ledger (journalctl -t can-backup and the unit's journal say why)"
+  fi
+fi
+
 if [ -L "$LEDGER" ]; then
   fail 13 "erasure ledger $LEDGER is a symlink"
 elif [ -f "$LEDGER" ]; then
@@ -148,6 +170,8 @@ elif [ -s "$HOSTSTATE/{{.LedgerCopy}}" ]; then
   ledger_rc=22
   report 22 "erasure ledger $LEDGER vanished (a copy from an earlier run is kept in $HOSTSTATE)"
 fi
+exec 8>&-
+if [ "$LEDGER_ONLY" -eq 1 ]; then finish; fi
 
 # The dumps dir is writable by can-core; refuse anything a root script could be tricked by.
 [ -d "$DUMPS" ] && [ ! -L "$DUMPS" ] || fail 10 "dumps directory $DUMPS is missing"
@@ -243,6 +267,7 @@ type scriptData struct {
 	MaxAge                                 int
 	Webhook, EnvPath, PasswordPath, Marker string
 	Manifest, LedgerCopy, MarkerCopy       string
+	CollectedDir, LedgerOnlyArg            string
 	Excludes, Sources, SQLite              []string
 	DumpedList, AlertsName                 string
 }
@@ -252,7 +277,7 @@ func GenerateScript(p *Plan, s Settings) string {
 	d := scriptData{
 		Settings: s, MaxAge: int(s.MaxMarkerAge.Seconds()),
 		Webhook: s.ConfigDir + "/" + WebhookFileName, EnvPath: s.ConfigDir + "/" + EnvFileName, PasswordPath: s.ConfigDir + "/" + PasswordFileName,
-		Marker: MarkerName, Manifest: ManifestName, LedgerCopy: LedgerCopy, MarkerCopy: MarkerCopy,
+		Marker: MarkerName, Manifest: ManifestName, LedgerCopy: LedgerCopy, MarkerCopy: MarkerCopy, CollectedDir: CollectedDir, LedgerOnlyArg: LedgerOnlyArg,
 		Excludes: p.Excludes, Sources: p.Sources, SQLite: sqliteExcludes, DumpedList: DumpedList, AlertsName: AlertsName,
 	}
 	var b bytes.Buffer
@@ -313,4 +338,48 @@ Unit=can-backup.service
 [Install]
 WantedBy=timers.target
 `, s.Schedule, s.RandomDelay)
+}
+
+// The units of the frequent erasure ledger sync. Without it an erasure would reach the bucket only
+// with the next nightly backup, and be lost with a server that dies before.
+const (
+	ErasureServiceName = "can-erasure-sync.service"
+	ErasureTimerName   = "can-erasure-sync.timer"
+)
+
+// GenerateErasureService renders can-erasure-sync.service: the backup script, ledger part only.
+func GenerateErasureService(s Settings) string {
+	return fmt.Sprintf(`[Unit]
+Description=Company in a Can erasure ledger sync
+Documentation=https://github.com/dodwmd/companyinacan/blob/main/docs/backup-restore.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%s %s
+TimeoutStartSec=15min
+Nice=10
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=%s %s
+NoNewPrivileges=true
+`, s.ScriptPath, LedgerOnlyArg, s.StateDir, s.DumpsDir)
+}
+
+// GenerateErasureTimer renders can-erasure-sync.timer: every quarter of an hour.
+func GenerateErasureTimer() string {
+	return `[Unit]
+Description=Copy erasures to the backup bucket
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=1min
+Persistent=true
+Unit=can-erasure-sync.service
+
+[Install]
+WantedBy=timers.target
+`
 }

@@ -779,6 +779,11 @@ func (o *Restore) stepDumps(ctx context.Context, st *restoreState) error {
 	if err := o.checkBlank(ctx, st); err != nil {
 		return err
 	}
+	// Refused before anything is recorded or changed, so that another --dir can still be chosen.
+	company, err := o.companyToWrite(src)
+	if err != nil {
+		return err
+	}
 	st.Claimed, st.CompanyDir = true, o.CompanyDir
 	if err := o.save(st); err != nil {
 		return err
@@ -794,6 +799,9 @@ func (o *Restore) stepDumps(ctx context.Context, st *restoreState) error {
 		}
 	}
 	if err := os.MkdirAll(dst, 0o700); err != nil {
+		return err
+	}
+	if err := o.keepCollected(dst); err != nil {
 		return err
 	}
 	// Replace-all: the claim established the directory is empty, ours, or confirmed.
@@ -815,31 +823,62 @@ func (o *Restore) stepDumps(ctx context.Context, st *restoreState) error {
 			return err
 		}
 	}
-	if o.CompanyDir == "" {
+	if company == nil {
 		return nil
+	}
+	if err := os.MkdirAll(o.CompanyDir, 0o755); err != nil { //nolint:gosec // company repo dir
+		return err
+	}
+	return os.WriteFile(filepath.Join(o.CompanyDir, "company.yaml"), company, 0o644) //nolint:gosec // company.yaml holds no secrets
+}
+
+// companyToWrite is the backed-up company.yaml to put into CompanyDir: nil when there is nothing to
+// write (no directory asked for, or it is already there), an error when another one is there.
+func (o *Restore) companyToWrite(src string) ([]byte, error) {
+	if o.CompanyDir == "" {
+		return nil, nil
 	}
 	data, err := os.ReadFile(filepath.Join(src, CompanyDump)) //nolint:gosec // our staging dir
 	if err != nil {
-		return fmt.Errorf("restored dumps have no company.yaml: %w", err)
+		return nil, fmt.Errorf("restored dumps have no company.yaml: %w", err)
 	}
 	file := filepath.Join(o.CompanyDir, "company.yaml")
 	switch existing, err := os.ReadFile(file); { //nolint:gosec // operator-chosen dir
 	case err == nil && string(existing) != string(data):
-		return fmt.Errorf("%s exists and differs from the backed-up company.yaml; refusing to overwrite (choose another --dir)", file)
+		return nil, fmt.Errorf("%s exists and differs from the backed-up company.yaml; refusing to overwrite (choose another --dir)", file)
 	case err == nil:
-		return nil
+		return nil, nil
 	case errors.Is(err, os.ErrNotExist):
-		if err := os.MkdirAll(o.CompanyDir, 0o755); err != nil { //nolint:gosec // company repo dir
-			return err
-		}
-		return os.WriteFile(file, data, 0o644) //nolint:gosec // company.yaml holds no secrets
+		return data, nil
 	default:
-		return err
+		return nil, err
 	}
 }
 
-// emptyDir removes the content of dir, not dir itself.
-func emptyDir(dir string) error {
+// keepCollected puts into the server's ledger what the can-core being overwritten had collected,
+// before its dumps directory is emptied: no timer may have imported it yet.
+func (o *Restore) keepCollected(dumps string) error {
+	if o.LedgerPath == "" {
+		return nil
+	}
+	dir := filepath.Join(dumps, CollectedDir)
+	es, err := ReadCollected(dir)
+	if err != nil {
+		return fmt.Errorf("the erasures collected on this server cannot be read (repair or move %s aside): %w", dir, err)
+	}
+	if len(es) == 0 {
+		return nil
+	}
+	ledger := o.hostPath(o.LedgerPath)
+	if err := os.MkdirAll(filepath.Dir(ledger), 0o700); err != nil {
+		return err
+	}
+	_, err = (&Ledger{Path: ledger}).AppendMany(es)
+	return err
+}
+
+// emptyDir removes the content of dir, not dir itself, except the entries named in keep.
+func emptyDir(dir string, keep ...string) error {
 	ents, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -848,6 +887,9 @@ func emptyDir(dir string) error {
 		return err
 	}
 	for _, e := range ents {
+		if slices.Contains(keep, e.Name()) {
+			continue
+		}
 		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
 			return err
 		}
@@ -997,10 +1039,12 @@ func (o *Restore) copyVolume(src, dst string, overwrite bool) error {
 	if err := os.MkdirAll(dst, 0o755); err != nil { //nolint:gosec // CopyTree sets modes
 		return err
 	}
-	if err := emptyDir(dst); err != nil {
+	// The guard is on disk before anything is removed and is never removed here: a crash at any
+	// point leaves a directory that a resume knows to be its own half-copied one.
+	if err := writeFileSync(guard, nil, 0o600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(guard, nil, 0o600); err != nil {
+	if err := emptyDir(dst, copyMarker); err != nil {
 		return err
 	}
 	return CopyTree(src, dst)
@@ -1019,10 +1063,9 @@ func (o *Restore) stepHooks(ctx context.Context, st *restoreState) error {
 	return nil
 }
 
-// ErasureWarning is the limit of the replay: only what is in the ledger can be replayed, and
-// nothing writes it by itself.
+// ErasureWarning is the limit of the replay: only what is in the ledger can be replayed.
 func ErasureWarning(snapshot string) string {
-	return fmt.Sprintf("only erasures recorded with `can backup ledger-add` were replayed. Modules do NOT record their erasures in the ledger by themselves: any erasure made in a module after snapshot %s and not added by hand is BACK now. Check your erasure requests and repeat those", snapshot)
+	return fmt.Sprintf("only erasures in the erasure ledger were replayed. can-core records those of people, equity, board, entity, files and jobs (and `can backup ledger-add` adds by hand); nothing erased in any other module is recorded, and an erasure that had not reached the bucket when the old server was lost (up to about a quarter of an hour, longer if `can backup` reported a ledger problem) is missing. Check the erasure requests made since snapshot %s and repeat what is not listed above", snapshot)
 }
 
 // mergedLedger is every tombstone known: the bucket's ledger, the copy inside the snapshot and
@@ -1096,16 +1139,8 @@ func (o *Restore) stepErasure(ctx context.Context, st *restoreState) error {
 func (o *Restore) stepLive(ctx context.Context, st *restoreState) error {
 	// The ledger goes back first: without it the next backup would report it vanished, and a
 	// later restore would not know of these erasures.
-	if o.LedgerPath != "" && len(st.Entries) > 0 {
-		var b []byte
-		for _, e := range st.Entries {
-			line, err := json.Marshal(e)
-			if err != nil {
-				return err
-			}
-			b = append(append(b, line...), '\n')
-		}
-		if err := writeFileSync(o.hostPath(o.LedgerPath), b, 0o600); err != nil {
+	if o.LedgerPath != "" {
+		if err := o.writeLedger(st.Entries); err != nil {
 			return err
 		}
 	}
@@ -1130,10 +1165,47 @@ func (o *Restore) stepLive(ctx context.Context, st *restoreState) error {
 	return os.RemoveAll(o.StagingDir)
 }
 
+// writeLedger merges the entries the restore applied with whatever the server's ledger holds now:
+// an erasure recorded there meanwhile must not be overwritten.
+func (o *Restore) writeLedger(applied []Entry) error {
+	path := o.hostPath(o.LedgerPath)
+	local, err := (&Ledger{Path: path}).Read()
+	if err != nil {
+		return fmt.Errorf("the erasure ledger already on this server: %w", err)
+	}
+	have := map[string]bool{}
+	for _, e := range applied {
+		have[e.key()] = true
+	}
+	var late []string
+	for _, e := range local {
+		if !have[e.key()] {
+			late = append(late, e.Subject+"/"+e.Class)
+		}
+	}
+	if len(late) > 0 {
+		o.say("WARNING: these entries of this server's ledger were added after the replay and were NOT applied, erase them by hand: %s", strings.Join(late, ", "))
+	}
+	var b []byte
+	for _, e := range MergeLedgers(applied, local) {
+		line, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		b = append(append(b, line...), '\n')
+	}
+	if len(b) == 0 {
+		return nil
+	}
+	return writeFileSync(path, b, 0o600)
+}
+
 // CopyTree copies src into dst (created if needed), preserving permissions and
-// symlinks (links are recreated, never followed, also not ones already in dst).
+// symlinks (links are recreated, never followed, also not ones already in dst). Files and
+// directories are flushed to disk before it returns: a restore records the copy as done.
 func CopyTree(src, dst string) error {
-	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+	var dirs []string
+	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -1153,6 +1225,7 @@ func CopyTree(src, dst string) error {
 		}
 		switch {
 		case d.IsDir():
+			dirs = append(dirs, target)
 			if err := os.MkdirAll(target, info.Mode().Perm()|0o700); err != nil {
 				return err
 			}
@@ -1183,6 +1256,10 @@ func CopyTree(src, dst string) error {
 				_ = out.Close()
 				return err
 			}
+			if err := syncFile(out); err != nil {
+				_ = out.Close()
+				return err
+			}
 			if err := out.Close(); err != nil {
 				return err
 			}
@@ -1191,4 +1268,14 @@ func CopyTree(src, dst string) error {
 		}
 		return nil // devices, sockets: not restored
 	})
+	if err != nil {
+		return err
+	}
+	for _, dir := range append(dirs, filepath.Dir(dst)) {
+		syncDir(dir)
+	}
+	return nil
 }
+
+// syncFile flushes a copied file; a variable so that tests can see it happen.
+var syncFile = (*os.File).Sync

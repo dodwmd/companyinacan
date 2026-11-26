@@ -588,7 +588,8 @@ func (t *target) removeBackupTimer(ctx context.Context, out io.Writer) error {
 	s := backup.DefaultSettings()
 	script := fmt.Sprintf(`set -u
 systemctl disable --now can-backup.timer >/dev/null 2>&1 || true
-rm -f /etc/systemd/system/can-backup.service /etc/systemd/system/can-backup.timer /etc/systemd/system/can-backup-failure.service '%s'
+systemctl disable --now can-erasure-sync.timer >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/can-erasure-sync.service /etc/systemd/system/can-erasure-sync.timer /etc/systemd/system/can-backup.service /etc/systemd/system/can-backup.timer /etc/systemd/system/can-backup-failure.service '%s'
 rm -rf '%s'
 systemctl daemon-reload >/dev/null 2>&1 || true
 echo CAN_BACKUP_REMOVED

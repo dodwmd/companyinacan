@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -96,11 +97,11 @@ func newBackupCmd(g *globalOpts) *cobra.Command {
 		Short: "Back up, verify and manage the recovery kit (run on the host)",
 		Args:  cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return usage("backup needs a subcommand: run, status, verify, kit, install, ledger-add, ledger-sync")
+			return usage("backup needs a subcommand: run, status, verify, kit, install, ledger-add, ledger-import, ledger-sync")
 		},
 	}
 	cmd.AddCommand(newBackupRunCmd(), newBackupStatusCmd(g), newBackupVerifyCmd(g), newBackupKitCmd(),
-		newBackupInstallCmd(g), newLedgerAddCmd(), newLedgerSyncCmd())
+		newBackupInstallCmd(g), newLedgerAddCmd(), newLedgerImportCmd(), newLedgerSyncCmd())
 	return cmd
 }
 
@@ -424,6 +425,8 @@ func newBackupInstallCmd(g *globalOpts) *cobra.Command {
 				{at(s.ConfigDir + "/" + backup.PasswordFileName), kit.Restic.Password, 0o600},
 				{at(s.ConfigDir + "/" + backup.EnvFileName), backup.HostEnvFile(kit), 0o600},
 				{at("/etc/systemd/system/can-backup-failure.service"), backup.GenerateFailureService(), 0o644},
+				{at("/etc/systemd/system/" + backup.ErasureServiceName), backup.GenerateErasureService(s), 0o644},
+				{at("/etc/systemd/system/" + backup.ErasureTimerName), backup.GenerateErasureTimer(), 0o644},
 			}
 			for _, f := range files {
 				if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil { //nolint:gosec // system directories
@@ -454,7 +457,7 @@ func newBackupInstallCmd(g *globalOpts) *cobra.Command {
 				}
 			}
 			if enable {
-				for _, a := range [][]string{{"daemon-reload"}, {"enable", "--now", "can-backup.timer"}} {
+				for _, a := range [][]string{{"daemon-reload"}, {"enable", "--now", "can-backup.timer"}, {"enable", "--now", backup.ErasureTimerName}} {
 					if _, err := backupSeams.runner.Run(cmd.Context(), backup.Cmd{Name: "systemctl", Args: a}); err != nil {
 						return failure("systemctl %s: %v", strings.Join(a, " "), err)
 					}
@@ -514,6 +517,33 @@ func newLedgerAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&class, "class", "", "data class")
 	_ = cmd.MarkFlagRequired("subject")
 	_ = cmd.MarkFlagRequired("class")
+	return cmd
+}
+
+func newLedgerImportCmd() *cobra.Command {
+	var ledger, from string
+	s := backup.DefaultSettings()
+	cmd := &cobra.Command{
+		Use:   "ledger-import",
+		Short: "Add the erasures can-core collected from the modules to the local ledger (called by the backup script)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			rep, err := backup.ImportCollected(from, &backup.Ledger{Path: ledger}, time.Now())
+			if err != nil {
+				return failure("%v", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "erasure ledger: %d collected by can-core, %d new\n", rep.Found, rep.Added)
+			for _, n := range rep.Notes {
+				fmt.Fprintln(cmd.OutOrStdout(), "erasure ledger: "+n)
+			}
+			if len(rep.Problems) > 0 {
+				return failure("%s", strings.Join(rep.Problems, "; "))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&from, "from", s.DumpsDir+"/"+backup.CollectedDir, "directory can-core writes the collected erasures to")
+	cmd.Flags().StringVar(&ledger, "ledger", s.LedgerSource, "local ledger file")
 	return cmd
 }
 

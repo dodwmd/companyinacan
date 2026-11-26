@@ -300,7 +300,7 @@ cancelled. The response lists what was retained and why. Erasure is refused to t
 separation of duties), while a legal hold is set
 (admin sets and lifts holds) and while the stakeholder has pending, approved or active grants (cancel or
 end them first). It writes tombstones (`stk_` subject, classes `equity-stakeholder` and `equity-grants`)
-that can-core pulls into the E08 erasure ledger so a restore re-applies the erasure, then checkpoints and
+that can-core collects into the backup erasure ledger (within minutes; [backup-restore.md](backup-restore.md#erasure-tombstone-ledger)) so a restore re-applies the erasure, then checkpoints and
 truncates the WAL and runs VACUUM (secure delete is on). Earlier backups keep the data until they expire.
 `can-equity purge -subject stk_... -class all` is the replay hook; it is idempotent and refuses the legal
 classes.

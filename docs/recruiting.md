@@ -118,13 +118,14 @@ until they expire.
   `rejected_days` (default 365), `talent_pool_days` (730, with consent) or `hired_days` (180; 0
   keeps the record until erased). A sweep every `sweep_interval_hours` scrubs due candidates and
   expires jobs past `validThrough`. Legal hold blocks retention and erasure. A retention purge
-  writes the same erasure tombstones as a request, so restoring an older backup cannot bring back
-  candidates whose retention period had ended.
+  writes the same erasure tombstones as a request, which can-core collects into the backup erasure
+  ledger, so a restore of an older backup removes those candidates again (limits:
+  [backup-restore.md](backup-restore.md#erasure-tombstone-ledger)).
 * **Erasure.** `POST /v1/candidates/{id}/erasure` (unscoped admin) removes resume files, scorecards
   and notes, scrubs name and contact data, leaves an id-only shell so reports stay consistent, then
   vacuums the database and truncates the WAL. It writes three tombstones (`candidate-pii`,
-  `candidate-resumes`, `candidate-evaluations`) in the shape `core/backup/ledger.go` takes; the
-  `POST /v1/purge` hook replays them after a restore. Backups taken earlier still hold the data
+  `candidate-resumes`, `candidate-evaluations`) which can-core collects into the backup erasure
+  ledger; a restore replays them through `POST /v1/purge`. Backups taken earlier still hold the data
   until they expire.
 * **Audit.** Every read that returns candidate data, and every write, is recorded in an
   append-only, hash-chained table (ids and field names only). If the audit write fails the read

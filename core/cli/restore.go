@@ -161,6 +161,10 @@ func runRestore(cmd *cobra.Command, g *globalOpts, f *restoreFlags) error {
 				return nil
 			}
 			_, err := backupSeams.runner.Run(ctx, backup.Cmd{Name: "systemctl", Args: []string{"disable", "--now", "can-backup.timer"}})
+			if _, serr := os.Stat("/etc/systemd/system/" + backup.ErasureTimerName); serr == nil {
+				_, serr = backupSeams.runner.Run(ctx, backup.Cmd{Name: "systemctl", Args: []string{"disable", "--now", backup.ErasureTimerName}})
+				err = errors.Join(err, serr)
+			}
 			return err
 		}
 	}
@@ -184,8 +188,8 @@ THIS SERVER IS NOT BEING BACKED UP YET.
 Next, from a machine that reaches this server: run `+"`can up`"+` in %s (site, admin and module routes, DNS),
 with the --backup-* flags to install the backup timer again (the password is already on this server).
 Check that the old server is really gone: two servers backing up to one repository, or sending mail, is not supported.
-Erasures: only those recorded with `+"`can backup ledger-add`"+` were replayed; modules do not record them by themselves,
-so repeat any erasure made in a module after the snapshot that was not added by hand.
+Erasures: only those in the erasure ledger were replayed (people, equity, board, entity, files and jobs record theirs;
+other modules do not). See the warning above and repeat any erasure it may have missed.
 `, f.dir)
 	if len(f.acceptUnrestored) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "NOT restored (%s): it is not in later backups, and the snapshots holding it are deleted after %d days.\n",

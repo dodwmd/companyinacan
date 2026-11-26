@@ -200,7 +200,7 @@ under legal hold.
 declared interests, and (entity module) addresses and dates of birth. It keeps what law requires: membership
 terms, votes, attendance, minutes, register entries including the name a register must show. The response lists
 what was retained and why. A legal hold (`PUT /v1/people/{person}/legal-hold`) or a current term blocks it.
-Tombstones are listed at `GET /v1/erasures` for the E08 erasure ledger, and `can-board purge -subject <person>
+Tombstones are listed at `GET /v1/erasures`, which can-core collects into the backup erasure ledger, and `can-board purge -subject <person>
 -class <class|all>` re-applies them (idempotent) after a restore. Backups keep older data until they expire.
 
 ## Events

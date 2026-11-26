@@ -17,7 +17,7 @@ import (
 
 // BackupInstallVersion is the generation of what the backup step installs on the host (script,
 // units, tools). Raise it whenever an existing install must be redone by the next `can up`.
-const BackupInstallVersion = 4
+const BackupInstallVersion = 5
 
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
@@ -161,6 +161,8 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		{"/etc/systemd/system/can-backup.service", backup.GenerateService(s), "0644"},
 		{"/etc/systemd/system/can-backup.timer", backup.GenerateTimer(s), "0644"},
 		{"/etc/systemd/system/can-backup-failure.service", backup.GenerateFailureService(), "0644"},
+		{"/etc/systemd/system/" + backup.ErasureServiceName, backup.GenerateErasureService(s), "0644"},
+		{"/etc/systemd/system/" + backup.ErasureTimerName, backup.GenerateErasureTimer(), "0644"},
 		{pwPath, kit.Restic.Password, "0600"},
 		{envPath, backup.HostEnvFile(kit), "0600"},
 	}
@@ -179,6 +181,7 @@ export RESTIC_REPOSITORY=%[2]s RESTIC_PASSWORD_FILE=%[3]s
 restic cat config >/dev/null 2>&1 || restic init
 systemctl daemon-reload
 systemctl enable --now can-backup.timer
+systemctl enable --now can-erasure-sync.timer
 echo CAN_BACKUP_OK
 `, shq(envPath), shq(kit.Restic.Repository), shq(pwPath))
 	out, err = r.d.Host.Run(ctx, script)

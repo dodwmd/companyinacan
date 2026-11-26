@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -69,8 +70,9 @@ func VerifyChain(es []Entry) error {
 	return nil
 }
 
-// Ledger is the append-only erasure tombstone file, written today only by `can backup
-// ledger-add` and by a restore (no service records erasures by itself) and read by the host timer and by restore.
+// Ledger is the append-only erasure tombstone file. The host's is written by `can backup ledger-import`
+// (what can-core collected from the modules), `ledger-add` (by hand) and a restore, and read by the
+// host timers and by restore.
 type Ledger struct {
 	Path string
 	Now  func() time.Time // default time.Now
@@ -94,6 +96,15 @@ func (l *Ledger) read() ([]Entry, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	es, valid, err := parseLedger(raw)
+	if err != nil {
+		return es, valid, fmt.Errorf("%s: %w", l.Path, err)
+	}
+	return es, valid, nil
+}
+
+// parseLedger decodes and verifies a ledger's bytes.
+func parseLedger(raw []byte) ([]Entry, int, error) {
 	var es []Entry
 	valid := 0
 	rest := string(raw)
@@ -107,7 +118,7 @@ func (l *Ledger) read() ([]Entry, int, error) {
 				if !hasNL { // torn last line
 					break
 				}
-				return nil, 0, fmt.Errorf("erasure ledger %s: %w", l.Path, err)
+				return nil, 0, fmt.Errorf("erasure ledger: %w", err)
 			}
 			es = append(es, e)
 		}
@@ -126,51 +137,103 @@ func (l *Ledger) read() ([]Entry, int, error) {
 // It is idempotent per (subject, class): added is
 // false when the pair is already recorded. The file is only ever appended to.
 func (l *Ledger) Append(subject, class string) (e Entry, added bool, err error) {
-	if !subjectRe.MatchString(subject) {
-		return e, false, fmt.Errorf("erasure ledger: subject %q is not an opaque id (letters, digits, . _ : -; no PII)", subject)
-	}
-	if !classRe.MatchString(class) {
-		return e, false, fmt.Errorf("erasure ledger: bad data class %q", class)
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	es, valid, err := l.read()
-	if err != nil {
-		return e, false, err
-	}
-	if st, serr := os.Stat(l.Path); serr == nil && int(st.Size()) > valid {
-		if err := os.Truncate(l.Path, int64(valid)); err != nil { // drop a torn tail before appending
-			return e, false, err
-		}
-	}
-	for _, x := range es {
-		if x.Subject == subject && x.Class == class {
-			return x, false, nil
-		}
-	}
 	now := time.Now
 	if l.Now != nil {
 		now = l.Now
 	}
-	e = Entry{Seq: len(es) + 1, Subject: subject, Class: class, Date: now().UTC().Format("2006-01-02")}
-	if len(es) > 0 {
-		e.Prev = es[len(es)-1].Hash
-	}
-	e.Hash = e.computeHash()
-	line, _ := json.Marshal(e)
-	f, err := os.OpenFile(l.Path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600) //nolint:gosec // can-core's own path
+	out, n, err := l.append([]Entry{{Subject: subject, Class: class, Date: now().UTC().Format("2006-01-02")}})
 	if err != nil {
 		return e, false, err
 	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		_ = f.Close()
-		return e, false, err
+	return out[0], n == 1, nil
+}
+
+// AppendMany appends the (subject, class) pairs that are not recorded yet, keeping their dates, and
+// returns how many were added. Nothing is written when one of them is not acceptable.
+func (l *Ledger) AppendMany(in []Entry) (int, error) {
+	if len(in) == 0 {
+		return 0, nil
+	}
+	_, n, err := l.append(in)
+	return n, err
+}
+
+// append returns, for each input, the entry that records it, and the number written. The file is
+// locked, so two processes (a timer and an operator) cannot fork the hash chain.
+func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
+	for _, e := range in {
+		if !subjectRe.MatchString(e.Subject) {
+			return nil, 0, fmt.Errorf("erasure ledger: subject %q is not an opaque id (letters, digits, . _ : -; no PII)", e.Subject)
+		}
+		if !classRe.MatchString(e.Class) {
+			return nil, 0, fmt.Errorf("erasure ledger: bad data class %q", e.Class)
+		}
+		if _, err := time.Parse("2006-01-02", e.Date); err != nil {
+			return nil, 0, fmt.Errorf("erasure ledger: bad date %q", e.Date)
+		}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	f, err := os.OpenFile(l.Path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600) //nolint:gosec // can-core's own path
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = f.Close() }()
+	if err := lockFile(f); err != nil {
+		return nil, 0, fmt.Errorf("erasure ledger: lock: %w", err)
+	}
+	es, valid, err := l.read()
+	if err != nil {
+		return nil, 0, err
+	}
+	if st, serr := f.Stat(); serr == nil && int(st.Size()) > valid {
+		if err := f.Truncate(int64(valid)); err != nil { // drop a torn tail before appending
+			return nil, 0, err
+		}
+	}
+	have := map[string]Entry{}
+	prev := ""
+	for _, x := range es {
+		have[x.key()], prev = x, x.Hash
+	}
+	var b []byte
+	out := make([]Entry, 0, len(in))
+	seq, added := len(es), 0
+	for _, e := range in {
+		if x, ok := have[e.key()]; ok {
+			out = append(out, x)
+			continue
+		}
+		seq++
+		added++
+		e.Seq, e.Prev = seq, prev
+		e.Hash = e.computeHash()
+		prev, have[e.key()] = e.Hash, e
+		line, _ := json.Marshal(e)
+		b = append(append(b, line...), '\n')
+		out = append(out, e)
+	}
+	if added == 0 {
+		return out, 0, nil
+	}
+	if _, err := f.Write(b); err != nil {
+		return nil, 0, err
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return e, false, err
+		return nil, 0, err
 	}
-	return e, true, f.Close()
+	if es == nil {
+		syncDir(filepath.Dir(l.Path))
+	}
+	return out, added, f.Close()
+}
+
+// syncDir flushes a directory entry, where the file system allows it.
+func syncDir(dir string) {
+	if d, err := os.Open(dir); err == nil { //nolint:gosec // a directory we write in
+		_ = d.Sync()
+		_ = d.Close()
+	}
 }
 
 // MergeLedgers unions entries by (subject, class), keeps the earliest date,
