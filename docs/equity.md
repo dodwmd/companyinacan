@@ -260,7 +260,7 @@ Sensitive columns are sealed with XChaCha20-Poly1305: stakeholder name, email an
 exercise payment references; convertible terms; valuation price and notes. The additional data binds
 each ciphertext to its row and field (for example `stk_...:name`), so a value copied to another row or
 field fails to open. The keyring is a mounted file of lines `<key-id> <64 hex chars>`, newest first,
-mode 0400 or 0600, a regular file (not a symlink), owned by the service user or root; the service
+mode 0400, 0440 or 0600, a regular file (not a symlink), owned by the service user or root; the service
 refuses to start otherwise and the Secret must be mounted with `subPath`.
 
 Rotation: add a new key at the top of the keyring, restart, run `can-equity rotate-keys`. Every value is
@@ -405,8 +405,8 @@ The table stores resource ids only, so a replay re-reads the record under the ca
 - Strikes are integer minor units: sub-minor-unit strikes (for example USD 0.0001) cannot be represented.
 - No per-subject crypto-shredding: erasure pseudonymises and clears; backups keep older data until they expire.
 - Partial can-core wiring: personal access tokens are introspected when the `CAN_API_URL` variables are set
-  (so far only exercised in the compose development stack); the keyring Secret and the approval engine
-  adapter are not injected or implemented, events do not go through can-core, the Helm templates do not exist yet (values only).
+  (so far only exercised in the compose development stack); can-core generates the keyring and installs the
+  chart, but the approval engine adapter is not implemented and events do not go through can-core.
 - The vesting event only announces increases seen by a sweep and carries no amounts.
 - Fully diluted figures count approved grants from their approval date; convertibles are shown by the
   what-if model only, not in the cap table; the model is illustrative.

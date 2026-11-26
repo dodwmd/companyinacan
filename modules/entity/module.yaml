@@ -10,8 +10,9 @@ name: Entity and legal calendar
 description: Legal entities with sealed registration numbers, the registered agent and addresses with history, officers and directors with effective dates, statutory registers (members, directors, charges) as append-only ledgers viewable as of any date, a filings calendar with reminder events, document references and links to equity share classes. Record-keeping only.
 category: governance
 version: 0.1.0
-# experimental: see the `board` module (same binary and release): offline-tested only, no Helm templates, no admin UI, and
-# can-core does not yet deploy `board` and `entity` as one release. See modules/entity/README.md.
+# experimental: see the `board` module (same binary). can-core installs `entity` as its own instance
+# with its own database, so rules that need board membership find nothing there. No admin UI.
+# See modules/entity/README.md.
 status: experimental
 provider:
   type: inhouse

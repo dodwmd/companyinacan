@@ -8,12 +8,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/board"
+	"github.com/dodwmd/companyinacan/core/equity"
 	"github.com/dodwmd/companyinacan/core/files"
 	"github.com/dodwmd/companyinacan/core/finance"
 	"github.com/dodwmd/companyinacan/core/forms"
 	"github.com/dodwmd/companyinacan/core/jobs"
 	"github.com/dodwmd/companyinacan/core/people"
 	"github.com/dodwmd/companyinacan/core/provision"
+	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/modsecrets"
 	"github.com/dodwmd/companyinacan/core/work"
 )
 
@@ -30,10 +34,29 @@ type inhouse struct {
 
 // binary is the binary and image name: can-<id>, except where the module id differs.
 func (m inhouse) binary() string {
-	if m.id == "provisioning" {
+	switch m.id {
+	case "provisioning":
 		return "can-provision"
+	case "entity": // one binary with board
+		return "can-board"
 	}
 	return "can-" + m.id
+}
+
+// configEnv is the variable that names the config file.
+func (m inhouse) configEnv() string {
+	if m.id == "entity" {
+		return "CAN_BOARD_CONFIG"
+	}
+	return "CAN_" + strings.ToUpper(m.id) + "_CONFIG"
+}
+
+// seedPeople is what installing the people module leaves behind that provisioning needs.
+func seedPeople(t *testing.T, api *kube.Fake) {
+	t.Helper()
+	if _, err := api.Create(context.Background(), secret("mod-people", secretModule, "people", map[string]string{modsecrets.PeopleDirectoryKey: strings.Repeat("0123456789abcdef", 4)})); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // subdomains of the modules that have public routes.
@@ -54,6 +77,9 @@ func inhouseModules() []inhouse {
 		}},
 		{"provisioning", "provisioning", 20, 64, "8090", func(b []byte) error { _, err := provision.ParseConfig(b); return err }},
 		{"files", "files", 20, 64, "8095", func(b []byte) error { _, err := files.ParseConfig(b); return err }},
+		{"board", "board-api", 20, 64, "8082", func(b []byte) error { _, err := board.ParseConfig(b); return err }},
+		{"entity", "board-api", 20, 64, "8082", func(b []byte) error { _, err := board.ParseConfig(b); return err }},
+		{"equity", "equity-api", 16, 64, "8081", func(b []byte) error { _, err := equity.ParseConfig(b); return err }},
 	}
 }
 
@@ -69,6 +95,7 @@ func writeLoad(b []byte, f func(path string) error) error {
 func enableInhouse(t *testing.T, id string, mutate func(*Installer)) (*Installer, map[string]map[string]any, string) {
 	t.Helper()
 	in, api, _, spec := fixture(t, nil)
+	seedPeople(t, api)
 	in.cfg.ModulesDir = "../../../modules"
 	in.cfg.Domain = "acme.example"
 	if mutate != nil {
@@ -121,7 +148,7 @@ func TestInhouseModuleChartsInstall(t *testing.T) {
 			if p := dig(c, "readinessProbe", "httpGet", "path"); p != "/readyz" {
 				t.Errorf("readiness path %v, want /readyz (liveness stays the binary's own /healthz check)", p)
 			}
-			if !strings.Contains(toJSON(c["env"]), fmt.Sprintf(`{"name":"CAN_RAM_DECLARED_MB","value":"%d"}`, m.ramMB)) && m.id != "equity" {
+			if !strings.Contains(toJSON(c["env"]), fmt.Sprintf(`{"name":"CAN_RAM_DECLARED_MB","value":"%d"}`, m.ramMB)) {
 				t.Errorf("declared RAM env missing or not the manifest's ram_mb %d: %s", m.ramMB, toJSON(c["env"]))
 			}
 			res := c["resources"].(map[string]any)
@@ -134,7 +161,7 @@ func TestInhouseModuleChartsInstall(t *testing.T) {
 			if strings.Contains(toJSON(ps["volumes"]), "hostPath") {
 				t.Error("hostPath volume")
 			}
-			if !strings.Contains(toJSON(c["env"]), "CAN_"+strings.ToUpper(m.id)+"_CONFIG") {
+			if !strings.Contains(toJSON(c["env"]), m.configEnv()) {
 				t.Errorf("the config path env is not set: %s", toJSON(c["env"]))
 			}
 			for _, s := range strings.Split(m.svcs, ",") {

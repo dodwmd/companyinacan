@@ -31,6 +31,13 @@ const (
 // KeyringKey is the key name of a sealed-field keyring in the module Secret.
 const KeyringKey = "keyring"
 
+// PeopleDirectoryKey is the key in the people module's Secret of the credential can-core copies into
+// the provisioning module's Secret as ProvisioningDirectoryKey.
+const (
+	PeopleDirectoryKey       = "CAN_PEOPLE_DIRECTORY_TOKEN"
+	ProvisioningDirectoryKey = "CAN_PROVISIONING_DIRECTORY_TOKEN"
+)
+
 // WebhookKey is the module Secret key holding the HMAC secret that signs can-core's webhooks.
 const WebhookKey = "CAN_WEBHOOK_SECRET"
 
@@ -50,8 +57,15 @@ var table = map[string][]Spec{
 	"finance": {{Key: "CAN_FINANCE_ADMIN_TOKEN"}, {Key: "CAN_FINANCE_LINK_SECRET"}, {Key: "CAN_FINANCE_SEAL_KEY", NoRotate: true}},
 	// The hash key makes candidate e-mail dedupe work; a new one would split every existing
 	// candidate from their duplicates without any error, so it is generated once and never rotated.
-	"jobs":   {{Key: "CAN_JOBS_ADMIN_TOKEN"}, {Key: "CAN_JOBS_HASH_KEY", NoRotate: true}, {Key: "CAN_JOBS_FORM_SECRET"}, {Key: KeyringKey, Kind: Keyring}},
-	"people": {{Key: "CAN_PEOPLE_API_TOKEN"}, {Key: KeyringKey, Kind: Keyring}},
+	"jobs": {{Key: "CAN_JOBS_ADMIN_TOKEN"}, {Key: "CAN_JOBS_HASH_KEY", NoRotate: true}, {Key: "CAN_JOBS_FORM_SECRET"}, {Key: KeyringKey, Kind: Keyring}},
+	// The directory token is a second, smaller credential (people.read and people.write) that can-core copies to
+	// the provisioning module; rotating it would leave that copy behind, so it is not rotatable.
+	"people": {{Key: "CAN_PEOPLE_API_TOKEN"}, {Key: PeopleDirectoryKey, NoRotate: true}, {Key: KeyringKey, Kind: Keyring}},
+	// Governance and equity. The board admin token carries erasure, legal hold and the erasure feed. `board` and
+	// `entity` are one binary installed as two instances, each with its own values.
+	"board":  {{Key: "CAN_BOARD_API_TOKEN"}, {Key: "CAN_BOARD_ADMIN_TOKEN"}, {Key: KeyringKey, Kind: Keyring}},
+	"entity": {{Key: "CAN_BOARD_API_TOKEN"}, {Key: "CAN_BOARD_ADMIN_TOKEN"}, {Key: KeyringKey, Kind: Keyring}},
+	"equity": {{Key: "CAN_EQUITY_API_TOKEN"}, {Key: KeyringKey, Kind: Keyring}},
 	// The service token for the provisioning API (can-core and operators); the SCIM tokens are made through that API.
 	"provisioning": {{Key: "CAN_PROVISIONING_API_TOKEN"}},
 	// The service token, the restore-only credential of the purge hook, the HMAC secret that signs share links (rotating it ends every live link, which

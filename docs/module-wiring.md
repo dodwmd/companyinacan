@@ -25,7 +25,7 @@ Per module:
 |---|---|---|---|
 | work | `work` 8080 | none; `work.<domain>` with `expose.ui` | |
 | people | `people-api` 8081 | none; `people.<domain>` with `expose.ui` | keyring |
-| jobs | `jobs` 8080 | `careers.<domain>`: only `/careers`, `/feeds`, `/robots.txt`; `jobs.<domain>` with `expose.ui` | keyring, `company.name`, `company.base_url` in the chart `config:` |
+| jobs | `jobs` 8080 | `careers.<domain>`: only `/careers`, `/feeds`, `/robots.txt`; `jobs.<domain>` with `expose.ui` | keyring; can-core sets `company.name` and `company.base_url` from `company.yaml` |
 | finance | `finance` 8080 | none; `finance.<domain>` with `expose.ui` | |
 | forms | `forms` 8080 public, `forms-api` 8081 | `/_forms` on the site hosts | at least one form in the chart `config:` |
 

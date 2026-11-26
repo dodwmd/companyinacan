@@ -11,8 +11,8 @@ signing and minute-keeping law are not implemented: each body carries its own qu
 pass threshold as data, and the operator is responsible for entering what their constitution and local law
 require. Compliance with company law and data-protection law is the operator's responsibility.
 
-**Status: experimental.** Tested offline (unit, race, fuzz, contract); not yet run on a cluster, no Helm
-templates, no admin UI. `can validate` warns accordingly.
+**Status: experimental.** Tested offline (unit, race, fuzz, contract); can-core installs the chart and CI waits
+for Ready on k3d; no admin UI. `can validate` warns accordingly.
 
 Why in-house: board materials are confidential (Constitution V, SPEC.md section 3.7). Wrapped third-party apps
 cannot enforce per-body visibility, recusal or audited reads, so `can validate` rejects a non-in-house module

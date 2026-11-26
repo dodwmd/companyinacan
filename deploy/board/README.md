@@ -18,7 +18,7 @@ Both base images must be pinned by digest before a release build; the Dockerfile
 | API listener | `:8082` (`board`, `resolutions` and `entity`, ClusterIP only, bearer token) |
 | Data | `/data/board.db` (SQLite, WAL, `secure_delete`), one persistent volume |
 | Config | `/etc/can-board/board.yaml` (see `docs/board.md`) |
-| Keyring | `/etc/can-board/keys/keyring`, a mounted Secret, mode 0400 (the service refuses group/world-readable key files) |
+| Keyring | `/etc/can-board/keys/keyring`, a mounted Secret, mode 0400, or 0440 with `fsGroup` as the chart mounts it (never world-readable) |
 | Secrets (env) | `CAN_BOARD_API_TOKEN`; `CAN_BOARD_WEBHOOK_SECRET` when a webhook is set; `CAN_BOARD_INTROSPECT_TOKEN` |
 | Root filesystem | read-only works: only `/data` is written |
 

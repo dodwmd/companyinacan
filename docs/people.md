@@ -404,8 +404,8 @@ one-directional. Everything below is read from the code, not run on a cluster.
 
 ## Gaps
 
-- No Helm templates yet (values only, as for forms), no image build or digest pin, no k3d or integration
-  tests: the module is marked `experimental`.
+- No published image or digest pin; on a cluster it has only been shown to install and become Ready (k3d, CI):
+  the module is marked `experimental`.
 - can-core does not yet create the keyring Secret, route `introspect`, accept the webhook, or append the
   tombstones to the E08 ledger (this module exposes the feed and the purge hook).
 - Reporting-line approval chains (SPEC.md section 3.7) are only half wired, see "Reporting-line approvals

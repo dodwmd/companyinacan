@@ -9,7 +9,8 @@ Helm-compatible templates for the in-house jobs module, rendered by can-core's s
   `<subdomain>.<domain>`, supplied by can-core). It routes `/careers` and `/feeds` (prefixes) and
   `/robots.txt` (exact), one route per path, each `Host(...) && PathPrefix(...)` or `Path(...)`
   because the installer accepts no `||`. `/v1` is never routed.
-- Set `config.company.name` and `config.company.base_url` (absolute URLs in JSON-LD, feeds, sitemap).
+- can-core fills `config.company.name` (from `company.yaml`) and `config.company.base_url`
+  (`https://careers.<domain>`): absolute URLs in JSON-LD, feeds and the sitemap.
   `scanner_required: true` stays on: no resume uploads until a real scanner exists.
 - The sealed-field keyring is the `keyring` key of the `can-module` Secret, mounted with `subPath` at
   `/etc/can-jobs/keyring`. It has the same known gap as people: the loader wants no group or other

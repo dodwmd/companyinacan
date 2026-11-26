@@ -37,6 +37,8 @@ type Spec struct {
 	HMACSecret string
 	// Domain is the company domain from company.yaml (a module's public host is <subdomain>.<domain>).
 	Domain string
+	// CompanyName is company.yaml's name, for modules that show it (see companyRevision).
+	CompanyName string
 	// Email is the email block of the company.yaml being applied (nil without one). It is the one
 	// being applied, not the mounted copy, which can lag behind.
 	Email *config.Email
@@ -208,6 +210,20 @@ func settingsHash(m *config.Module, settings map[string]any, routes string) stri
 	return hex.EncodeToString(h[:])
 }
 
+// companyRevision is what, beyond its own settings, a module's installation depends on: the facts
+// of company.yaml the installer writes into it (jobs, files), and the revision of the credentials
+// can-core wires between modules (people, provisioning). A change is an upgrade, so that a renamed
+// company reaches the module and an installation made by an older release gets the new values.
+func companyRevision(c *config.Company, id string) string {
+	switch id {
+	case "jobs", "files":
+		return "1\x00" + c.Name + "\x00" + c.Domain
+	case "people", "provisioning":
+		return "1"
+	}
+	return ""
+}
+
 // RelayOptIn reports whether the company lets this module have the SMTP relay's credentials:
 // email.modules.<id>.enabled must be written as true. Absent means no, unlike for email.send,
 // because the credentials leave can-core for a third-party application.
@@ -225,6 +241,10 @@ func RelayOptIn(e *config.Email, module string) bool {
 // the module's Secret) or a change of either is an upgrade.
 func specHash(c *config.Company, id string, man *config.Module, routes, relay string) string {
 	h := settingsHash(man, c.Modules[id].Settings, routes)
+	if rev := companyRevision(c, id); rev != "" {
+		sum := sha256.Sum256([]byte(h + "\x00company\x00" + rev))
+		h = hex.EncodeToString(sum[:])
+	}
 	if !modsecrets.WantsRelay(id) || !RelayOptIn(c.Email, id) {
 		return h
 	}
@@ -457,7 +477,7 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
 		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man, rt.Fingerprint, relay), HMACSecret: secret, Manifest: *man,
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.

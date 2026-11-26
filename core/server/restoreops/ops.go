@@ -207,7 +207,7 @@ func (o *Ops) Apply(ctx context.Context, overwrite bool) (backup.ApplyReport, er
 				settings = ce.Settings
 			}
 			err = inst.Enable(ctx, reconcile.Spec{ID: m.ID, Version: man.Version, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount,
-				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain})
+				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain, CompanyName: co.Name})
 		}
 		switch {
 		case err == nil:
