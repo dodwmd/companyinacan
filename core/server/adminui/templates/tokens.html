@@ -5,7 +5,7 @@
 <section aria-labelledby="h-new">
 <h2 id="h-new">{{t "tk.new_title"}}</h2>
 <p role="status">{{t "tk.new_once"}}</p>
-<p><code class="secret">{{.Data.New.Token}}</code></p>
+<p><code>{{.Data.New.Token}}</code></p>
 <p>{{t "tk.new_for" .Data.New.Module .Data.New.Name}} <time datetime="{{iso .Data.New.Expires}}">{{ts .Data.New.Expires}}</time></p>
 </section>
 {{end}}

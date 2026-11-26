@@ -86,11 +86,17 @@ var totpSecrets = map[string]string{}
 // the code was used already it waits for the next step and tries once more.
 func signIn(s *session, name, secret string) {
 	s.t.Helper()
+	signInAt(s, adminURL(), name, secret)
+}
+
+// signInAt is signIn at one of the admin UI's addresses.
+func signInAt(s *session, base, name, secret string) {
+	s.t.Helper()
 	pw := env.Secret(s.t, "core", "CAN_ADMIN_PASSWORD")
 	s.allow(`HTTP 401|status of 401`)
 	defer func() { s.allowed = s.allowed[:len(s.allowed)-1] }()
 	for attempt := 0; ; attempt++ {
-		s.goTo(adminURL() + "/login")
+		s.goTo(base + "/login")
 		code, err := harness.TOTP(secret, time.Now())
 		if err != nil {
 			s.t.Fatalf("%v", err)
@@ -180,11 +186,13 @@ func journey(t *testing.T, vp viewport) {
 
 	t.Run("lead_form", func(t *testing.T) { leadForm(t, r) })
 	t.Run("overview_and_admin_pages", func(t *testing.T) { adminPages(t, r) })
+	t.Run("launch_ticket_binding", func(t *testing.T) { launchBinding(t, r) })
 	t.Run("work", func(t *testing.T) { workFlow(t, r) })
 	t.Run("people", func(t *testing.T) { peopleFlow(t, r) })
 	t.Run("jobs_and_careers", func(t *testing.T) { jobsFlow(t, r) })
 	t.Run("finance_and_signing", func(t *testing.T) { financeFlow(t, r) })
 	t.Run("files", func(t *testing.T) { filesFlow(t, r) })
+	t.Run("overview_links", func(t *testing.T) { overviewLinks(t, r) })
 	t.Run("token_login_pages", func(t *testing.T) { tokenLogins(t, r) })
 	t.Run("cross_site_posts", func(t *testing.T) { crossSite(t, r) })
 	t.Run("account_switch", func(t *testing.T) { accountSwitch(t, r) })
@@ -238,8 +246,96 @@ func adminPages(t *testing.T, r *run) {
 	s.run(chromedp.Click(`form[action="/tokens"] input[value="work.read"]`, chromedp.ByQuery))
 	s.submit("/tokens")
 	s.has("canpat_")
+	// Revoke it again: the number of live tokens per person is limited and a run can be repeated.
+	var revoke string
+	s.run(chromedp.Evaluate(fmt.Sprintf(`[...document.querySelectorAll('tbody tr')].find(tr => tr.textContent.includes(%q)).querySelector('form').getAttribute('action')`, "browser token "+r.u), &revoke))
+	s.submit(revoke)
+	// A catalogue change up to its preview (the diff is the widest thing the admin UI shows).
+	s.goTo(adminURL() + "/catalogue")
+	s.run(chromedp.Click(`input[name="enable"][value="equity"]`, chromedp.ByQuery))
+	s.submit("/changes")
+	if !strings.HasPrefix(s.path(), "/changes/") {
+		t.Errorf("no change preview: %.300s", s.text())
+	}
 	s.goTo(adminURL() + "/overview")
 	s.crawl(adminURL()+"/overview", 40, skipCrawl)
+}
+
+// overviewLinks presses every "Open <module>" button of the business overview: a launch with a
+// landing place, which must exist in the module.
+func overviewLinks(t *testing.T, r *run) {
+	s := r.admin.in(t)
+	s.goTo(adminURL() + "/overview")
+	type link struct{ App, Return string }
+	var links []link
+	s.run(chromedp.Evaluate(`[...document.querySelectorAll('form[action$="/launch"]')]
+		.map(f => ({App: f.getAttribute('action').split('/')[2], Return: f.elements['return'].value}))`, &links))
+	seen := map[link]bool{}
+	for _, l := range links {
+		if seen[l] {
+			continue
+		}
+		seen[l] = true
+		prefix := ""
+		if l.App == "work" {
+			prefix = "/ui"
+		}
+		s.goTo(adminURL() + "/overview")
+		s.navigate(chromedp.Click(`form[action="/apps/`+l.App+`/launch"]:has(input[name="return"][value="`+l.Return+`"]) button`, chromedp.ByQuery))
+		s.waitPath(prefix + "/login/ticket")
+		s.submit(prefix + "/login/ticket")
+		if want := prefix + l.Return; l.Return != "" && l.Return != "/" && s.path() != want {
+			t.Errorf("%s: the overview button for %s landed on %s", l.App, l.Return, s.path())
+		}
+	}
+	if len(seen) == 0 {
+		t.Error("the overview offers no launch button")
+	}
+	t.Logf("followed %d overview buttons", len(seen))
+}
+
+// launchBinding: the launch cookie binds the ticket to the browser that asked for it. The same
+// address opened in another browser is refused, and a launch from a host name that shares no
+// cookie with the modules is refused by can-core.
+func launchBinding(t *testing.T, r *run) {
+	s := r.admin.in(t)
+	launch(s, "work", appURL(1))
+	link := s.rawURL()
+	var cookies []*network.Cookie
+	s.run(chromedp.ActionFunc(func(ctx context.Context) error {
+		var err error
+		cookies, err = network.GetCookies().WithURLs([]string{workURL() + "/login/ticket"}).Do(ctx)
+		return err
+	}))
+	nonce := 0
+	for _, c := range cookies {
+		if strings.Contains(c.Name, "launch") {
+			nonce++
+			if !c.HTTPOnly || c.SameSite != network.CookieSameSiteStrict {
+				t.Errorf("launch cookie %s: HttpOnly=%v SameSite=%q", c.Name, c.HTTPOnly, c.SameSite)
+			}
+		}
+	}
+	if nonce == 0 {
+		t.Errorf("the browser holds no launch cookie for the work UI")
+	}
+
+	other := newSession(t, r.vp)
+	other.allow(`HTTP 401|status of 401`)
+	other.goTo(link)
+	if other.lastStatus() != http.StatusUnauthorized || other.exists(`form[action="/ui/login/ticket"]`) {
+		t.Errorf("the launch link in another browser answered HTTP %d: %.300s", other.lastStatus(), other.text())
+	}
+
+	// The admin UI by its other name: the sign-in works, a launch cannot.
+	elsewhere := newSession(t, r.vp)
+	elsewhere.allow(`HTTP 409|status of 409`)
+	signInAt(elsewhere, host("admin"), "admin", totpSecrets["admin"])
+	elsewhere.goTo(host("admin") + "/apps")
+	elsewhere.click(`form[action="/apps/work/launch"] button`)
+	if elsewhere.lastStatus() != http.StatusConflict {
+		t.Errorf("a launch from admin.localhost answered HTTP %d: %.300s", elsewhere.lastStatus(), elsewhere.text())
+	}
 }
 
 func workFlow(t *testing.T, r *run) {

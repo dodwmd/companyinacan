@@ -265,3 +265,5 @@ input[type="email"], input[type="time"] {
    against the scroller, not the page, or it widens the page; a fieldset must be allowed to shrink. */
 .table-wrap { position: relative; }
 fieldset { min-width: 0; }
+/* A new token is one long word. */
+p > code { overflow-wrap: anywhere; }
