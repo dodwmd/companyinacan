@@ -462,6 +462,9 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 	var db map[string]string
 	kind := s.Manifest.Requires.Database
 	if kind == "postgres" || kind == "mariadb" {
+		if err := in.allowDatabaseAccess(ctx, s); err != nil {
+			return "", err
+		}
 		prov := in.cfg.DB
 		if prov == nil {
 			prov = dbprov.Unconfigured{}
@@ -511,6 +514,29 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 		return secretVersion(s.HMACSecret, mod, db, smtp), nil
 	}
 	return secretVersion(s.HMACSecret, mod, db), nil
+}
+
+// dataNamespace holds the database servers.
+const dataNamespace = "can-data"
+
+// allowDatabaseAccess admits this module's namespace to the database ports in can-data. The base
+// policy there admits can-core only, so a module that declares no database cannot reach a server.
+func (in *Installer) allowDatabaseAccess(ctx context.Context, s reconcile.Spec) error {
+	o := kube.Object{"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+		"metadata": map[string]any{"name": "allow-db-from-" + s.Namespace, "namespace": dataNamespace},
+		"spec": map[string]any{
+			"podSelector": map[string]any{},
+			"policyTypes": []any{"Ingress"},
+			"ingress": []any{map[string]any{
+				"from":  []any{map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]any{"kubernetes.io/metadata.name": s.Namespace}}}},
+				"ports": []any{map[string]any{"protocol": "TCP", "port": 5432}, map[string]any{"protocol": "TCP", "port": 3306}},
+			}},
+		}}
+	setLabels(o, map[string]string{labelManaged: "can-core", labelModule: s.ID})
+	if err := in.cfg.API.Apply(ctx, o); err != nil {
+		return fmt.Errorf("admitting %s to the database in %s: %w", s.Namespace, dataNamespace, err)
+	}
+	return nil
 }
 
 // ensureRelaySecret writes `can-smtp` for a module that speaks SMTP itself and declares email.send.

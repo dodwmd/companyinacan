@@ -42,7 +42,7 @@ type Managed struct {
 }
 
 func postgresProvision(ctx context.Context, adminURL, moduleID, password string) (Credentials, error) {
-	p := &Postgres{AdminURL: adminURL, Host: managedHost, Port: managedPort}
+	p := &Postgres{AdminURL: adminURL, Host: managedHost, Port: managedPort, LockDown: true}
 	return p.Ensure(ctx, "postgres", moduleID, password)
 }
 
@@ -56,6 +56,9 @@ func (m *Managed) Ensure(ctx context.Context, kind, moduleID, password string) (
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.refuseIfExternal(ctx, moduleID); err != nil {
+		return Credentials{}, err
+	}
 	admin, err := m.adminPassword(ctx)
 	if err != nil {
 		return Credentials{}, err
@@ -162,6 +165,79 @@ func (m *Managed) apply(ctx context.Context) error {
 		if err := m.API.Apply(ctx, o); err != nil {
 			return fmt.Errorf("%v: %w", o["kind"], err)
 		}
+	}
+	return nil
+}
+
+// externalMarker names the Secret in can-data that records that this installation provisions on a
+// Postgres of the operator's own (CAN_POSTGRES_ADMIN_URL).
+const externalMarker = "can-postgres-external"
+
+// ErrWasExternal is returned instead of starting an empty managed server for an installation whose
+// databases are on another one: its modules would come up with no data and look newly installed.
+var ErrWasExternal = errors.New("this installation uses an external Postgres: set CAN_POSTGRES_ADMIN_URL again")
+
+// MarkExternal records that an external server is in use. It is kept in the cluster, not in
+// can-core's own state, so that it survives a redeploy that drops the setting.
+func MarkExternal(ctx context.Context, api kube.API) error {
+	_, err := api.Create(ctx, kube.Object{
+		"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
+		"metadata":   map[string]any{"name": externalMarker, "namespace": managedNamespace, "labels": map[string]any{"app.kubernetes.io/managed-by": "can-core"}},
+		"stringData": map[string]any{"note": "module databases are on the server of CAN_POSTGRES_ADMIN_URL; delete this Secret only to start over on an empty server run by can-core"},
+	})
+	if err != nil {
+		return fmt.Errorf("recording the external postgres in %s: %w", managedNamespace, err)
+	}
+	return nil
+}
+
+// External provisions on the operator's server and records that it does.
+type External struct {
+	API   kube.API
+	Inner Provisioner
+}
+
+// Ensure implements Provisioner.
+func (e *External) Ensure(ctx context.Context, kind, moduleID, password string) (Credentials, error) {
+	if err := MarkExternal(ctx, e.API); err != nil {
+		return Credentials{}, err
+	}
+	return e.Inner.Ensure(ctx, kind, moduleID, password)
+}
+
+// refuseIfExternal fails closed on any sign that the databases are elsewhere: the marker, a
+// `postgres` Service in can-data that can-core did not make (which must not be overwritten either), or
+// a module whose recorded database is on another host. A read that fails is an error too.
+func (m *Managed) refuseIfExternal(ctx context.Context, moduleID string) error {
+	switch _, err := m.API.Get(ctx, "Secret", managedNamespace, externalMarker); {
+	case err == nil:
+		return fmt.Errorf("%w (Secret %s/%s records it; delete that Secret only to start over on an empty server)", ErrWasExternal, managedNamespace, externalMarker)
+	case !kube.IsNotFound(err):
+		return fmt.Errorf("checking for an external postgres: %w", err)
+	}
+	switch svc, err := m.API.Get(ctx, "Service", managedNamespace, "postgres"); {
+	case err == nil:
+		md, _ := svc["metadata"].(map[string]any)
+		labels, _ := md["labels"].(map[string]any)
+		if labels["app.kubernetes.io/managed-by"] != "can-core" {
+			return fmt.Errorf("%w (Service %s/postgres exists and was not made by can-core)", ErrWasExternal, managedNamespace)
+		}
+	case !kube.IsNotFound(err):
+		return fmt.Errorf("checking for an existing postgres: %w", err)
+	}
+	switch o, err := m.API.Get(ctx, "Secret", "mod-"+moduleID, "can-db"); {
+	case err == nil:
+		d, _ := o["data"].(map[string]any)
+		enc, _ := d["DB_HOST"].(string)
+		host, derr := base64.StdEncoding.DecodeString(enc)
+		if derr != nil {
+			return fmt.Errorf("secret mod-%s/can-db has an unreadable DB_HOST", moduleID)
+		}
+		if len(host) > 0 && string(host) != managedHost {
+			return fmt.Errorf("%w (module %s has its database on another host)", ErrWasExternal, moduleID)
+		}
+	case !kube.IsNotFound(err):
+		return fmt.Errorf("checking the module's database Secret: %w", err)
 	}
 	return nil
 }

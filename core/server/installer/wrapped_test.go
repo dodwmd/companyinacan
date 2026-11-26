@@ -135,3 +135,16 @@ func TestRelayNeedsAnExplicitOptIn(t *testing.T) {
 		}
 	}
 }
+
+func TestOnlyDatabaseModulesAreAdmittedToCanData(t *testing.T) {
+	for id, want := range map[string]bool{"support": true, "newsletter": true, "analytics": false} {
+		api, _ := enableWrapped(t, id, nil)
+		p := api.Objects["NetworkPolicy/can-data/allow-db-from-mod-"+id]
+		if (p != nil) != want {
+			t.Errorf("%s: database ingress policy present = %v, want %v", id, p != nil, want)
+		}
+		if p != nil && !strings.Contains(toJSON(p["spec"]), `"kubernetes.io/metadata.name":"mod-`+id+`"`) {
+			t.Errorf("%s: the policy admits more than the module: %s", id, toJSON(p["spec"]))
+		}
+	}
+}

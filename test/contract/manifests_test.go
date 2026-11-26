@@ -210,13 +210,17 @@ func TestExplicitAllows(t *testing.T) {
 	if f := mustJSON(api); !strings.Contains(f, "can.dev/namespace-kind") || !strings.Contains(f, "module") || !strings.Contains(f, "can-core") {
 		t.Errorf("module API allow must select module namespaces and can-core pods: %s", f)
 	}
-	// Databases accept connections from modules and can-core.
+	// Databases accept connections from can-core; each database module is admitted by a policy of its
+	// own that can-core writes (specs/041).
 	db, ok := policiesIn(t, "can-data")["allow-db-from-modules-and-core"]
 	if !ok {
 		t.Fatal("can-data: missing allow-db-from-modules-and-core")
 	}
 	if f := mustJSON(db); !strings.Contains(f, "5432") || !strings.Contains(f, "3306") || !strings.Contains(f, "can-system") {
 		t.Errorf("db allow must cover 5432, 3306 and can-system: %s", f)
+	}
+	if strings.Contains(mustJSON(db), "namespace-kind") {
+		t.Errorf("the base policy must not admit every module namespace to the databases: %s", mustJSON(db))
 	}
 	// can-core egress: modules, databases, Kubernetes API.
 	eg, ok := policiesIn(t, "can-system")["allow-can-core-egress"]

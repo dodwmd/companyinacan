@@ -79,3 +79,34 @@ func TestManagedImageIsPinnedByDigest(t *testing.T) {
 	}
 	t.Fatal("no Deployment in the postgres manifests")
 }
+
+// An installation that used an external server and lost CAN_POSTGRES_ADMIN_URL must not get an empty
+// managed one: every sign of the other server refuses, and nothing is created.
+func TestManagedFailsClosedWhenTheDatabasesAreElsewhere(t *testing.T) {
+	ctx := context.Background()
+	external := &External{API: kube.NewFake(), Inner: NewFake()}
+	if _, err := external.Ensure(ctx, "postgres", "support", strings.Repeat("a", 32)); err != nil {
+		t.Fatal(err)
+	}
+	foreign := kube.NewFake()
+	if err := foreign.Apply(ctx, kube.Object{"apiVersion": "v1", "kind": "Service", "metadata": map[string]any{"name": "postgres", "namespace": "can-data"}}); err != nil {
+		t.Fatal(err)
+	}
+	moved := kube.NewFake()
+	if err := moved.Apply(ctx, kube.Object{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": "can-db", "namespace": "mod-support"},
+		"stringData": map[string]any{"DB_HOST": "db.internal.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	for name, api := range map[string]kube.API{"marker": external.API, "foreign service": foreign, "module database elsewhere": moved} {
+		m := &Managed{API: api, provision: func(context.Context, string, string, string) (Credentials, error) {
+			t.Errorf("%s: provisioned on the managed server", name)
+			return Credentials{}, nil
+		}}
+		if _, err := m.Ensure(ctx, "postgres", "support", strings.Repeat("a", 32)); !errors.Is(err, ErrWasExternal) {
+			t.Errorf("%s: %v", name, err)
+		}
+		if _, err := api.Get(ctx, "Deployment", "can-data", "postgres"); !kube.IsNotFound(err) {
+			t.Errorf("%s: a server was deployed", name)
+		}
+	}
+}

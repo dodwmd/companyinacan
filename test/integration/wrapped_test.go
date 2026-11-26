@@ -351,18 +351,26 @@ func TestWrappedModulesThroughCanCore(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = kubectl("-n", "can-system", "delete", "secret", "can-smtp-relay", "--ignore-not-found") })
 
-	t.Run("analytics", func(t *testing.T) {
-		enableWrapped(t, "analytics")
-		analyticsChecks(t)
-		measureIdle(t, "analytics (GoatCounter)", "mod-analytics", "analytics", "app")
-		removeWrapped(t, "analytics")
-	})
 	t.Run("support", func(t *testing.T) {
 		enableWrapped(t, "support")
 		supportChecks(t)
 		measureIdle(t, "support (FreeScout)", "mod-support", "support", "app")
 		measureIdle(t, "shared Postgres (with the support database)", "can-data", "postgres", "postgres")
 		removeWrapped(t, "support")
+	})
+	// After support, so that the shared Postgres is running while a module without a database is.
+	t.Run("analytics", func(t *testing.T) {
+		enableWrapped(t, "analytics")
+		analyticsChecks(t)
+		// By address, so that a failed name lookup cannot pass for a blocked connection.
+		ip := mustKubectl(t, "-n", "can-data", "get", "svc", "postgres", "-o", "jsonpath={.spec.clusterIP}")
+		eventually(t, time.Minute, "a module without a database to be kept away from the shared Postgres", func() (bool, string) {
+			o, err := kubectl("-n", "mod-analytics", "exec", "deploy/analytics", "-c", "app", "--", "sh", "-c",
+				"if nc -w 3 "+ip+" 5432 </dev/null; then echo reached; else echo blocked; fi")
+			return err == nil && strings.HasSuffix(o, "blocked"), o
+		})
+		measureIdle(t, "analytics (GoatCounter)", "mod-analytics", "analytics", "app")
+		removeWrapped(t, "analytics")
 	})
 	t.Run("newsletter", func(t *testing.T) {
 		enableWrapped(t, "newsletter")
@@ -379,6 +387,14 @@ func TestWrappedModulesThroughCanCore(t *testing.T) {
 		}
 		if out, err := connect("mod_newsletter"); err != nil || out != "1" {
 			t.Fatalf("newsletter cannot open its own database: %v %s", err, out)
+		}
+		for _, db := range []string{"postgres", "template1"} {
+			if out, err := connect(db); err == nil {
+				t.Errorf("a module's role opened the maintenance database %s: %s", db, out)
+			}
+		}
+		if got := moduleSQL(t, "postgres", "select rolconnlimit from pg_roles where rolname = 'mod_newsletter'"); got != "20" {
+			t.Errorf("connection limit of the module role: %q", got)
 		}
 		if t.Failed() {
 			return

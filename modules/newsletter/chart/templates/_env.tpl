@@ -1,5 +1,8 @@
 {{/* Environment shared by the migrate init container and the app (Listmonk reads LISTMONK_<section>__<key>). */}}
 {{- define "newsletter.env" -}}
+# can-core limits each module's database role to 20 connections; Listmonk would open 25.
+- {name: LISTMONK_db__max_open, value: "10"}
+- {name: LISTMONK_db__max_idle, value: "5"}
 - {name: LISTMONK_app__address, value: "0.0.0.0:{{ .Values.service.port }}"}
 - {name: LISTMONK_db__ssl_mode, value: {{ .Values.database.sslMode | quote }}}
 - name: LISTMONK_db__host
