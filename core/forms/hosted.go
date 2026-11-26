@@ -37,6 +37,8 @@ label{display:block;font-weight:600;margin-bottom:.25rem}
 input,select,textarea{box-sizing:border-box;width:100%;min-height:2.75rem;padding:.5rem;font:inherit}
 button{min-height:2.75rem;padding:.5rem 1.5rem;font:inherit}
 .hp{position:absolute;left:-9999px}
+.consent label{display:flex;gap:.5rem;align-items:flex-start;font-weight:400}
+.consent input{width:1.25rem;min-height:1.25rem;flex:none}
 `
 
 func fieldLabel(name string) string {
@@ -62,6 +64,11 @@ func hostedPage(form *Form, token string) string {
 		id, required, optional := e(f.Name), "", " (optional)"
 		if f.Required {
 			required, optional = " required", ""
+		}
+		if f.Type == TypeConsent {
+			// Never pre-ticked.
+			b.WriteString(`<p class="consent"><label for="f-` + id + `"><input id="f-` + id + `" name="` + id + `" type="checkbox" value="yes"> ` + e(f.Label) + `</label></p>` + "\n")
+			continue
 		}
 		b.WriteString(`<p><label for="f-` + id + `">` + e(fieldLabel(f.Name)) + optional + `</label>` + "\n")
 		attrs := ` id="f-` + id + `" name="` + id + `"` + required

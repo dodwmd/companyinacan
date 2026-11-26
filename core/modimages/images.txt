@@ -6,7 +6,7 @@
 # images index (make images) or by digest (a release), not by a chart.
 can-core deploy/can-core/Dockerfile . -
 can-static deploy/can-static/Dockerfile . -
-can-forms deploy/forms/Dockerfile . 0.3.0
+can-forms deploy/forms/Dockerfile . 0.4.0
 can-work deploy/work/Dockerfile . 0.3.0
 can-people deploy/people/Dockerfile . 0.3.0
 can-jobs deploy/jobs/Dockerfile . 0.2.0

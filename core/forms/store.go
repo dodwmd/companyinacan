@@ -50,17 +50,19 @@ func ValidStatus(s string) bool {
 
 // Lead is one stored submission.
 type Lead struct {
-	Seq            int64             `json:"-"`
-	ID             string            `json:"id"`
-	FormID         string            `json:"form_id"`
-	Status         string            `json:"status"`
-	Email          string            `json:"email,omitempty"`
-	Name           string            `json:"name,omitempty"`
-	Fields         map[string]string `json:"fields"`
-	Note           string            `json:"note,omitempty"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	RetentionUntil time.Time         `json:"retention_until"`
+	Seq    int64             `json:"-"`
+	ID     string            `json:"id"`
+	FormID string            `json:"form_id"`
+	Status string            `json:"status"`
+	Email  string            `json:"email,omitempty"`
+	Name   string            `json:"name,omitempty"`
+	Fields map[string]string `json:"fields"`
+	Note   string            `json:"note,omitempty"`
+	// Consents are the consent checkboxes that were ticked, by field name.
+	Consents       []string  `json:"consents,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	RetentionUntil time.Time `json:"retention_until"`
 	// Notification is "retrying" or "failed" while the notification email has not got through.
 	Notification string `json:"notification_status,omitempty"`
 
@@ -209,15 +211,19 @@ func (s *Store) Insert(ctx context.Context, l *Lead) error {
 	if err != nil {
 		return err
 	}
+	consents, err := json.Marshal(append([]string{}, l.Consents...))
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO leads (id, form_id, status, email, name, fields, note, created_at, updated_at, retention_until)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		l.ID, l.FormID, l.Status, l.Email, l.Name, string(fields), l.Note,
+		`INSERT INTO leads (id, form_id, status, email, name, fields, note, consents, created_at, updated_at, retention_until)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		l.ID, l.FormID, l.Status, l.Email, l.Name, string(fields), l.Note, string(consents),
 		l.CreatedAt.Unix(), l.UpdatedAt.Unix(), l.RetentionUntil.Unix())
 	if err != nil {
 		return err
@@ -241,22 +247,28 @@ func (s *Store) Insert(ctx context.Context, l *Lead) error {
 // lead's content is personal data and never reaches a metric.
 var leadsCreated = obs.Default.Counter("can_forms_leads_created_total", "Leads stored.")
 
-const leadCols = `seq, id, form_id, status, email, name, fields, note, created_at, updated_at, retention_until,
+const leadCols = `seq, id, form_id, status, email, name, fields, note, created_at, updated_at, retention_until, consents,
 	(SELECT CASE WHEN e.status = 'failed' THEN 'failed' WHEN e.status = 'pending' AND e.attempts > 0 THEN 'retrying' ELSE '' END FROM lead_email e WHERE e.lead_id = leads.id)`
 
 type scanner interface{ Scan(...any) error }
 
 func scanLead(r scanner) (*Lead, error) {
 	var l Lead
-	var fields string
+	var fields, consents string
 	var c, u, ret int64
 	var notification sql.NullString
-	if err := r.Scan(&l.Seq, &l.ID, &l.FormID, &l.Status, &l.Email, &l.Name, &fields, &l.Note, &c, &u, &ret, &notification); err != nil {
+	if err := r.Scan(&l.Seq, &l.ID, &l.FormID, &l.Status, &l.Email, &l.Name, &fields, &l.Note, &c, &u, &ret, &consents, &notification); err != nil {
 		return nil, err
 	}
 	l.Notification = notification.String
 	if err := json.Unmarshal([]byte(fields), &l.Fields); err != nil {
 		return nil, fmt.Errorf("lead %s: corrupt fields: %w", l.ID, err)
+	}
+	if err := json.Unmarshal([]byte(consents), &l.Consents); err != nil {
+		return nil, fmt.Errorf("lead %s: corrupt consents: %w", l.ID, err)
+	}
+	if len(l.Consents) == 0 {
+		l.Consents = nil
 	}
 	l.CreatedAt, l.UpdatedAt, l.RetentionUntil = time.Unix(c, 0).UTC(), time.Unix(u, 0).UTC(), time.Unix(ret, 0).UTC()
 	return &l, nil

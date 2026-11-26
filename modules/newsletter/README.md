@@ -2,7 +2,8 @@
 
 > **Status: experimental.** Installed through can-core on k3d in the advisory `wrapped-modules` CI job
 > ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or mail relay. The `newsletter`
-> capability and the `lead.created.v1` subscription are marked `planned` (adapter not built, T031). The
+> capability is marked `planned` (adapter not built, T031); website leads are subscribed by can-core
+> ([specs/069](../../specs/069-lead-adapters/spec.md)). The
 > **SMTP/bulk-relay settings are manual**: enter the relay in Listmonk Settings, SMTP. can-core gives
 > this module no mail credentials.
 
@@ -28,10 +29,42 @@ subscribes people who tick a newsletter box on a form (consumes `leads`, subscri
 
 ## Consent
 
-The capability refuses a subscribe request without a recorded consent (`given_at`, `source`).
-Double opt-in is on by default (setting `double_opt_in`); a subscriber stays `unconfirmed`
-and receives no campaign until they confirm. Subscribing from a form (`lead.created.v1`) is
-limited to forms listed in `subscribe_from_forms` and requires the opt-in field.
+Subscribing from a website form happens only for the forms named in `subscribe_from_forms`, only for a sender who
+ticked the consent checkbox, and only on a **double opt-in** list: they stay `unconfirmed` and receive no campaign
+until they follow the link in the confirmation mail. A list that is not public and double opt-in is refused.
+
+## Subscribe website leads
+
+1. In Listmonk: set up SMTP and the root URL (Settings), and make the list: **public**, **double opt-in**.
+2. Users, Roles: a *user role* with only `subscribers:get` and `subscribers:manage`, and a *list role* with
+   `list:get` and `list:manage` on that one list. Users: an **API** user with both. Copy its token (shown once).
+3. Give can-core the token (it is not read from `company.yaml`):
+
+   ```sh
+   kubectl -n can-system create secret generic can-newsletter-api \
+     --from-literal=username=can_leads --from-file=token=./token   # the file holds the token, nothing else
+   ```
+
+4. `company.yaml`:
+
+   ```yaml
+   modules:
+     forms:
+       settings:
+         newsletter_consent: { text: "Send me the newsletter. I can unsubscribe at any time." }   # forms: [contact]
+     newsletter:
+       settings:
+         subscribe_from_forms: [contact]
+         default_list: Newsletter            # the list's name or UUID
+   ```
+
+Deliveries and their errors are in the admin UI under Events; a dead one can be requeued once the cause is fixed.
+Erasing a lead deletes the subscriber that lead created. A subscriber who was there before is **not** deleted
+(audit: `lead.copy_kept`); erase them in Listmonk. All limits: [specs/069](../../specs/069-lead-adapters/spec.md#limits).
+
+Adding a form to `subscribe_from_forms` on an installed module **waits for your approval**, as does an unattended
+upgrade from 0.1.0: can-core may then send the module personal data of leads. Nothing is sent before it is approved;
+taking a form out takes effect at once.
 
 ## First sign-in
 
@@ -52,6 +85,6 @@ release that bumps the digest and the module's `version`.
 
 - A new installation has Listmonk's example SMTP server: set a real one before sending.
 - Set the root URL in Listmonk's settings to `https://newsletter.<domain>`, or links in mail are wrong.
-- The settings of `settings.schema.json` are not applied; `can validate` warns
-  ([docs/module-wiring.md](../../docs/module-wiring.md#settings)).
+- Of the settings of `settings.schema.json`, only `subscribe_from_forms` and `default_list` do anything; `can validate`
+  warns about the others ([docs/module-wiring.md](../../docs/module-wiring.md#settings)).
 - Upgrades to a newer Listmonk are untested.

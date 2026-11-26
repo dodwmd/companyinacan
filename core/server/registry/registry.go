@@ -120,7 +120,7 @@ func FromManifest(m *config.Module) ([]store.Provider, []store.Subscription, err
 		if _, err := ServiceURL("mod-"+m.ID, svc, port); err != nil {
 			return nil, nil, fmt.Errorf("subscribes %s: %w", s.Event, err)
 		}
-		ss = append(ss, store.Subscription{ModuleID: m.ID, Event: s.Event, Service: svc, Port: port, Webhook: s.Webhook})
+		ss = append(ss, store.Subscription{ModuleID: m.ID, Event: s.Event, Service: svc, Port: port, Webhook: s.Webhook, Via: s.Via})
 	}
 	return ps, ss, nil
 }

@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/mail"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,11 +36,14 @@ type Config struct {
 	RetentionDays      int             `yaml:"retention_days"`
 	// NotifyEmail is the notify_email of every form that has none of its own (the chart sets it from
 	// the module setting of the same name).
-	NotifyEmail []string      `yaml:"notify_email"`
-	Email       EmailConfig   `yaml:"email"`
-	Webhook     WebhookConfig `yaml:"webhook"`
-	Captcha     CaptchaConfig `yaml:"captcha"`
-	Forms       []Form        `yaml:"forms"`
+	NotifyEmail []string `yaml:"notify_email"`
+	// NewsletterConsent adds an unticked consent checkbox named "newsletter" to forms (the chart
+	// sets it from the module setting of the same name).
+	NewsletterConsent *NewsletterConsent `yaml:"newsletter_consent"`
+	Email             EmailConfig        `yaml:"email"`
+	Webhook           WebhookConfig      `yaml:"webhook"`
+	Captcha           CaptchaConfig      `yaml:"captcha"`
+	Forms             []Form             `yaml:"forms"`
 }
 
 // RateLimitConfig bounds submissions per client IP.
@@ -82,7 +87,8 @@ type Form struct {
 // Field is one accepted input of a form.
 type Field struct {
 	Name      string   `yaml:"name"`
-	Type      string   `yaml:"type"` // text | email | select
+	Type      string   `yaml:"type"`  // text | email | select | consent
+	Label     string   `yaml:"label"` // the wording a consent checkbox is ticked under
 	Required  bool     `yaml:"required"`
 	Multiline bool     `yaml:"multiline"` // allow line breaks (text fields only)
 	MinLength int      `yaml:"min_length"`
@@ -95,7 +101,51 @@ const (
 	TypeText   = "text"
 	TypeEmail  = "email"
 	TypeSelect = "select"
+	// TypeConsent is an unticked checkbox. It can never be required: consent that a person must
+	// give to be heard is not freely given.
+	TypeConsent = "consent"
 )
+
+// NewsletterField is the name of the checkbox NewsletterConsent adds, and the one can-core's
+// newsletter adapter reads.
+const NewsletterField = "newsletter"
+
+const maxConsentLabel = 500
+
+// NewsletterConsent is the newsletter checkbox: its wording and the forms that carry it.
+type NewsletterConsent struct {
+	Text  string   `yaml:"text"`
+	Forms []string `yaml:"forms"` // default: contact
+}
+
+// addNewsletterConsent appends the checkbox to the named forms. It never fails: a mistake in a
+// setting must not stop the forms from taking messages, so it adds nothing and says why.
+func (c *Config) addNewsletterConsent() {
+	n := c.NewsletterConsent
+	if n == nil {
+		return
+	}
+	text := strings.TrimSpace(n.Text)
+	if text == "" || len(text) > maxConsentLabel || hasControl(text) || strings.ContainsAny(text, "\r\n") {
+		slog.Warn("newsletter_consent is ignored: its text must be one line of at most 500 bytes")
+		return
+	}
+	ids := n.Forms
+	if len(ids) == 0 {
+		ids = []string{"contact"}
+	}
+	for _, id := range ids {
+		f := c.Form(id)
+		switch {
+		case f == nil:
+			slog.Warn("newsletter_consent names a form that does not exist", "form", id)
+		case f.Honeypot == NewsletterField || len(f.Fields) >= maxFields || slices.ContainsFunc(f.Fields, func(x Field) bool { return x.Name == NewsletterField }):
+			slog.Warn("newsletter_consent is not added: the form has a field of that name already, or no room", "form", id)
+		default:
+			f.Fields = append(f.Fields, Field{Name: NewsletterField, Type: TypeConsent, Label: text, MaxLength: 3})
+		}
+	}
+}
 
 const (
 	maxFieldLength = 10000
@@ -148,6 +198,7 @@ func ParseConfig(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	c.applyDefaults()
+	c.addNewsletterConsent()
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
@@ -305,8 +356,15 @@ func (c *Config) validateForm(f *Form, bad func(string, ...any)) {
 			if len(fl.Options) == 0 {
 				bad("form %q: select field %q needs options", f.ID, fl.Name)
 			}
+		case TypeConsent:
+			if fl.Label == "" || len(fl.Label) > maxConsentLabel {
+				bad("form %q: consent field %q needs a label of at most %d bytes: the wording agreed to", f.ID, fl.Name, maxConsentLabel)
+			}
+			if fl.Required {
+				bad("form %q: consent field %q cannot be required: consent must be free", f.ID, fl.Name)
+			}
 		default:
-			bad("form %q: field %q has unknown type %q (text, email, select)", f.ID, fl.Name, fl.Type)
+			bad("form %q: field %q has unknown type %q (text, email, select, consent)", f.ID, fl.Name, fl.Type)
 		}
 		if fl.MaxLength < 1 || fl.MaxLength > maxFieldLength {
 			bad("form %q: field %q max_length must be 1..%d", f.ID, fl.Name, maxFieldLength)

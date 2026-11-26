@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/backup"
@@ -339,10 +340,15 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	for _, w := range uiWarnings {
 		log.Warn("apps: " + w)
 	}
+	leads := &adminui.HTTPLeads{Resolver: reg, Token: cfg.leadsToken(reg, log)}
+	// Website leads to the modules company.yaml names (specs/069-lead-adapters).
+	var companyStore atomic.Pointer[modmgr.CompanyStore]
+	adapters := cfg.newLeadAdapter(db, al, leads, &companyStore, log)
+	disp.Adapter, bus.Extra = adapters.Deliver, adapters.Targets
 	uiSrv := &adminui.Server{
 		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, SSO: ssoSvc, Tickets: tickets,
 		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
-		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: cfg.leadsToken(reg, log)},
+		Leads:   leads,
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
 		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
@@ -415,8 +421,6 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	workCtx, stopWork := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go func() { defer wg.Done(); disp.Run(workCtx, bus.Wake(), 30*time.Second) }()
-	wg.Add(1)
 	go func() { defer wg.Done(); mail.Run(workCtx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); housekeeping(workCtx, db, log) }()
@@ -447,8 +451,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			stopWork()
 			return fmt.Errorf("website editor: %w", merr)
 		}
+		companyStore.Store(&cs)
+		svc.OnPurged = func(id string) error { return db.DeleteLeadLinks(workCtx, id) }
 		if dumper != nil {
-			svc.OnPurged = dumper.Forget
+			svc.OnPurged = func(id string) error { return errors.Join(dumper.Forget(id), db.DeleteLeadLinks(workCtx, id)) }
 			svc.LastDump = func() (backup.DumpRun, error) { return backup.ReadDumpRun(cfg.DumpsDir) }
 		}
 		if rerr := svc.Recover(workCtx); rerr != nil {
@@ -464,6 +470,8 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			})
 		}()
 	}
+	wg.Add(1)
+	go func() { defer wg.Done(); disp.Run(workCtx, bus.Wake(), 30*time.Second) }()
 	if dumper != nil {
 		wg.Add(1)
 		go func() {

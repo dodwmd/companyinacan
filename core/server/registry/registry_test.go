@@ -126,6 +126,7 @@ func TestFromManifestDefaults(t *testing.T) {
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
 		Status  string `yaml:"status"`
+		Via     string `yaml:"via" json:",omitempty"`
 	}{Event: "lead.created.v1", Webhook: "/hooks/lead"})
 	_, subs, err := FromManifest(m)
 	if err != nil {
@@ -190,6 +191,7 @@ func TestFromManifestSkipsPlanned(t *testing.T) {
 		Port    int    `yaml:"port"`
 		Webhook string `yaml:"webhook"`
 		Status  string `yaml:"status"`
+		Via     string `yaml:"via" json:",omitempty"`
 	}{Event: "lead.created.v1", Webhook: "/hooks/lead", Status: "planned"})
 	ps, subs, err := FromManifest(m)
 	if err != nil {
