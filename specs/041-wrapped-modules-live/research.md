@@ -59,4 +59,20 @@ k3d figures from the CI job are in R4.
 
 ## R4 - k3d measurements (CI)
 
-Not recorded yet.
+From the `wrapped-modules` job on PR #56 (GitHub-hosted runner, k3d with k3s v1.31.5, x86_64; run
+45734955724, commit cb92ee9). Working set is the container cgroup's `memory.current` minus
+`inactive_file`, six samples over one minute after three minutes idle, with an almost empty database.
+Not the ten settled minutes the module catalogue asks for before a module may be called ready.
+
+| Component | Idle working set | Rolled out after `can apply` |
+|---|---|---|
+| analytics (GoatCounter) | 26 to 33 MiB | 18 s |
+| support (FreeScout) | 63 to 66 MiB | 29 s |
+| newsletter (Listmonk) | 26 to 27 MiB | 11 s |
+| shared Postgres (support database) | 35 to 36 MiB | included in support's |
+
+Rollout times include the image pull on a fast network; a small server will be slower, and the
+installer removes and retries a rollout that takes more than five minutes.
+
+The manifests keep headroom above these figures (64, 192, 50 MB): the local runs on a larger machine
+read higher (R3), and none of them had real data or traffic.

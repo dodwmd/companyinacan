@@ -19,7 +19,7 @@ subscribes people who tick a newsletter box on a form (consumes `leads`, subscri
 |---|---|
 | Licence | AGPL-3.0 (`AGPL-3.0-only` in SPDX). Network copyleft: see [modules/README.md](../README.md#licences-and-network-copyleft). We run it unmodified. |
 | Image | `listmonk/listmonk:v6.2.0` (upstream), pinned by digest |
-| Footprint | 50 MB request, 128 MB limit, 1 GiB disk (uploads). Measured 31 to 35 MB idle locally, plus the shared Postgres. A one-shot `migrate` init container (up to 96 MB) runs before the app |
+| Footprint | 50 MB request, 128 MB limit, 1 GiB disk (uploads). Measured 26 to 27 MiB idle on k3d, 31 to 35 MB locally, plus the shared Postgres. A one-shot `migrate` init container (up to 96 MB) runs before the app |
 | Database | Postgres (shared instance in `can-data`, own database and user) |
 | Public host | `newsletter.<domain>` (admin UI, subscription and unsubscribe pages) |
 | Email | needs `email.send`. A separate bulk relay is recommended: [docs/email-policy.md](../../docs/email-policy.md) |
