@@ -36,7 +36,9 @@ reminders reached nobody.
 - **Standalone entity.** Migration 005 also runs there: see docs/entity.md.
 - **Manifests.** Module versions and images are bumped (`core/modimages/images.txt`): finance, jobs,
   work 0.2.0; entity and board 0.2.0; people module 0.4.0 (image 0.2.0). New `publishes` entries and
-  rules widen the manifests: where such upgrades are held for approval (PR #77), they need it.
+  rules widen the manifests: can-core holds those
+  upgrades until the operator approves them (docs/releasing.md, "Upgrade note: reminders"); a first
+  install and a restore do not ask (`core/server/reconcile/reminders_upgrade_test.go`).
 
 ## Not in scope
 

@@ -78,10 +78,12 @@ holds for contract renewals too. A person is told about one P0 issue at most onc
 Overdue invoices and filings are checked hourly; the invoice check can be run now with
 `POST /v1/invoices/overdue-sweep` (finance admin; `as_of` not in the future).
 
-**Upgrading.** The new module manifests publish new events and add notification rules. A can-core that
-holds upgrades which widen a module for approval will hold these until you approve them. Until then the
-module keeps running its old version and nothing is announced. Contracts whose renewal reminder was
-raised before the upgrade are not raised again.
+**Upgrading.** The new manifests publish new events and add notification rules, which widens what the
+modules may do: the `finance`, `jobs`, `work`, `people` and `entity` upgrades **wait for your approval**
+(`can apply --plan`, then `can apply --approve <module>=<code>`, or the admin UI catalogue; see
+[admin-ui.md](admin-ui.md)). Until then the running release stays and nothing new is announced. A first
+install and a restore do not ask. Contracts whose renewal reminder was raised before the upgrade are not
+raised again.
 
 Not announced: purchase order drafts, review releases, equity grant approvals, board resolutions and
 minutes, and imported P0 issues.
