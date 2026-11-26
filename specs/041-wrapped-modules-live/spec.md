@@ -108,8 +108,9 @@ charts; upgrades between app versions; the tracking snippet in the site renderer
   and mailbox settings by hand and rotate the relay password.
 - While opted in with a relay, FreeScout's system mail settings are overwritten at every pod start.
 - **Starter template.** SPEC.md section 1 promises a support inbox right after `make up`. The wizard's
-  starter template no longer selects `support`: enabling it would stop every backup, forms' included. It
-  returns when the hooks image is published.
+  starter template no longer selects `support`: enabling it would then have stopped every backup, forms'
+  included. [specs/046](../046-wrapped-backups/spec.md) removed that reason; it still stays out because it is
+  experimental, uses a third party's image and has not run on a real server (SPEC.md section 10).
 - **Image patch lag.** Every image here is pinned by digest and nothing updates them: no bot reads chart
   values or `deploy/templates`. A security fix needs a maintainer to bump tag and digest (and the module's
   `version`, or installed modules are not upgraded), a can-core release and an upgrade by the operator.

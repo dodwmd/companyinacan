@@ -6,6 +6,8 @@
 
 A self-hosted "business control panel" — think Webmin, but for business people instead of sysadmins. Given a company idea, you run **`make up`** and about **five minutes later** have a live HTTPS landing page, working contact forms and a support inbox (UI live; mail flow needs a relay, see §3.4), on a single small server at the hosting provider of your choice. Everything else (CRM, wiki, newsletter, analytics, …) is one `make enable <module>` away.
 
+**Today the support inbox is not part of that:** `make up` and the setup wizard's starter template deploy the site and forms only. `support` is opt-in and stays so while it is experimental (see §10).
+
 Development happens locally on a k3s cluster (`make dev`), using exactly the same manifests that production uses.
 
 **This is an open-source project**, built first for the author's own use. Commercial offerings (hosted/managed tiers, support) may come later *if the project proves useful*; nothing in v1 is designed around monetisation, tiers or pricing.
@@ -14,7 +16,7 @@ Every capability is a **module**. Modules are switched on and off individually. 
 
 ### Goals
 
-1. **Five-minute launch.** `make up` → live site, forms and support inbox UI in ≤ 5 minutes on a fresh server (budget in §3.4). Connecting real email is a separate, documented step.
+1. **Five-minute launch.** `make up` → live site, forms and support inbox UI (the inbox is not met today, §10) in ≤ 5 minutes on a fresh server (budget in §3.4). Connecting real email is a separate, documented step.
 2. **Small footprint.** Footprint is a first-class constraint: the platform has an explicit RAM budget (§3.2), every module declares and is tested against its own, and the starter stack targets a 2 GB server (tight; 4 GB is the recommended default until Phase 0 proves otherwise).
 3. **Provider-portable.** Any provider that can give us a Linux VM with SSH works; a few (Hetzner, DigitalOcean, …) get fully automated provisioning (§3.5).
 4. **Local = production.** `make dev` runs the same charts on a local k3s (k3d) cluster.
@@ -147,7 +149,7 @@ my-company/
 | **Instant URL** | immediate | the site is first served on `<ip-dashed>.sslip.io` (and `admin.<ip-dashed>.sslip.io`, `help.…`, one certificate per host) with real TLS, so it works before DNS exists. sslip.io is a volunteer-run external service and Let's Encrypt rate limits apply to it; if unavailable the fallback serves only the public site over plain HTTP on the IP, and the admin UI is reachable only through an SSH tunnel until DNS/TLS is set (verify in Phase 0) |
 | Custom domain | ~1 min with Cloudflare API; manual otherwise | records created automatically when a DNS provider token is configured; propagation time is excluded from the budget |
 
-**Email is not in the budget.** The support inbox UI and forms are live after `make up`, but real mail needs an outbound relay and an inbound path on the real domain (§5 email policy), which can't work on an sslip.io hostname. `make up` takes optional relay credentials from `company.yaml`/`.can/`; without them forms submissions are stored and shown in the admin UI, and `make email` walks through connecting the relay and inbound mail afterwards (excluded from the budget like DNS propagation). Heavier modules are enabled afterwards (`make enable crm`, ~1–2 min, dominated by image pull). Phase 0 validates this budget end to end and adjusts the table.
+**Email is not in the budget.** The support inbox UI (the target; not deployed by `make up` today, §10) and forms are live after `make up`, but real mail needs an outbound relay and an inbound path on the real domain (§5 email policy), which can't work on an sslip.io hostname. `make up` takes optional relay credentials from `company.yaml`/`.can/`; without them forms submissions are stored and shown in the admin UI, and `make email` walks through connecting the relay and inbound mail afterwards (excluded from the budget like DNS propagation). Heavier modules are enabled afterwards (`make enable crm`, ~1–2 min, dominated by image pull). Phase 0 validates this budget end to end and adjusts the table.
 
 ### 3.5 Providers
 
@@ -641,6 +643,8 @@ companyinacan/
 - Full restore from the recovery kit onto a blank server in ≤ 15 minutes, verified by automated test.
 - Swapping a module's provider (e.g. FreeScout → in-house) preserves data via export/import and keeps integrations working.
 - A new provider plugin can be written against the `Provider` interface in under a day.
+
+**Where the support inbox stands.** The two criteria above that name it are targets, not met: `make up` deploys the site and forms, and the starter template selects forms. `support` can be enabled (and can-core backs it up), but it is experimental, runs a third party's amd64 image of FreeScout, has been installed only on k3d, and with an external Postgres needs major 17 or it has no backup. It joins the default when it has been verified on a real server.
 
 ## 11. Risks & open questions
 
