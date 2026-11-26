@@ -414,6 +414,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	}
 
 	// --- resume ---------------------------------------------------------------------------------
+	firstRun := out // the hooks ran in the run that stopped at the erasure step
 	out, err = canRestore(t, "--accept-unerased", "forms:lead-submission")
 	if err != nil {
 		t.Fatalf("resumed restore: %v", err)
@@ -470,7 +471,7 @@ func TestRestoreOnK3d(t *testing.T) {
 		t.Error("the grep above proves nothing: the kept name is not found either")
 	}
 
-	if !strings.Contains(out, "restore hooks run for: forms, people, stub, work") {
+	if !strings.Contains(firstRun, "restore hooks run for: forms, people, stub, work") {
 		t.Errorf("every dump must be loaded by its hook")
 	}
 	work := portForward(t, "mod-work", "work", 8080)
