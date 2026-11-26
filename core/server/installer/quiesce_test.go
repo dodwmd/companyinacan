@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/server/kube"
@@ -24,5 +25,24 @@ func TestQuiesce(t *testing.T) {
 	}
 	if got["Service"] == nil || got["PersistentVolumeClaim"] == nil {
 		t.Error("volumes and services are kept")
+	}
+}
+
+// Restoring over an existing server takes its public routes down.
+func TestRemoveRoutes(t *testing.T) {
+	ctx := context.Background()
+	api := kube.NewFake()
+	for _, kind := range []string{"IngressRoute", "Ingress", "Service"} {
+		if err := api.Apply(ctx, kube.Object{"apiVersion": "v1", "kind": kind, "metadata": map[string]any{"name": "x", "namespace": "mod-a"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := New(Config{API: api}).removeRoutes(ctx, "mod-a"); err != nil {
+		t.Fatal(err)
+	}
+	for kind, want := range map[string]bool{"IngressRoute": false, "Ingress": false, "Service": true} {
+		if _, err := api.Get(ctx, kind, "mod-a", "x"); (err == nil) != want {
+			t.Error(kind, err)
+		}
 	}
 }

@@ -719,6 +719,14 @@ func key(o kube.Object) string { return fmt.Sprint(o["kind"]) + "/" + nameOf(o) 
 
 func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.Object) error {
 	prev, err := in.loadRelease(ctx, s)
+	if in.cfg.Quiesce {
+		// A restore over an existing server: what ran there is neither rolled back to nor trusted
+		// (its record is signed with that server's secrets), but its public routes must go.
+		prev, err = nil, in.removeRoutes(ctx, s.Namespace)
+		if err != nil {
+			return fmt.Errorf("removing public routes: %w", err)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("the recorded release in Secret %s is unreadable or fails its HMAC check (%w); inspect it or delete it to reinstall", secretRelease, err)
 	}

@@ -1,6 +1,26 @@
 package installer
 
-import "github.com/dodwmd/companyinacan/core/server/kube"
+import (
+	"context"
+
+	"github.com/dodwmd/companyinacan/core/server/kube"
+)
+
+// removeRoutes deletes the Ingress and IngressRoute objects of a namespace.
+func (in *Installer) removeRoutes(ctx context.Context, ns string) error {
+	for _, kind := range []string{"IngressRoute", "Ingress"} {
+		items, err := in.cfg.API.List(ctx, kind, ns, "")
+		if err != nil && !kube.IsNotFound(err) {
+			return err
+		}
+		for _, o := range items {
+			if err := in.cfg.API.Delete(ctx, kind, ns, nameOf(o)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // quiesce turns a rendered release into its restore form: nothing runs and nothing is public.
 // The next normal apply of the module puts the full rendering back (and prunes nothing it needs:
