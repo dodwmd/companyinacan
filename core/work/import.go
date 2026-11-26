@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	importTimeout = 20 * time.Second
-	importParent  = "parent_external_id"
+	// defaultImportTimeout bounds the write transaction of an import (Store.importTimeout).
+	defaultImportTimeout = 20 * time.Second
+	importParent         = "parent_external_id"
 )
 
 var issueImportFields = []csvimport.Field{
@@ -65,8 +66,9 @@ func (s *Store) ImportIssues(ctx context.Context, a *Principal, project string, 
 		return nil, err
 	}
 	rep := csvimport.NewReport(f, o)
-	ctx, cancel := context.WithTimeout(ctx, importTimeout)
+	ctx, cancel := context.WithTimeout(ctx, s.importTimeout)
 	defer cancel()
+	summary := map[string]any{"file_sha256": f.SHA256, "rows": len(f.Rows)}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		proj, err := s.writableProject(ctx, tx, a, project)
 		if err != nil {
@@ -104,9 +106,17 @@ func (s *Store) ImportIssues(ctx context.Context, a *Principal, project string, 
 				updated = append(updated, ir.item.ID)
 			}
 		}
-		return s.audit(ctx, tx, a.Subject, "issue.import", proj.key, map[string]any{"file_sha256": f.SHA256, "rows": len(f.Rows), "created": created, "updated": updated})
+		summary["created"], summary["updated"] = created, updated
+		return s.audit(ctx, tx, a.Subject, "issue.import", proj.key, summary)
 	})
-	if err != nil && !errors.Is(err, csvimport.ErrRollback) {
+	switch {
+	case errors.Is(err, csvimport.ErrRollback):
+		// The report says which issues already exist and which match, so a run that wrote
+		// nothing is still recorded; without the record there is no report.
+		if err := s.inTx(ctx, func(tx *sql.Tx) error { return s.audit(ctx, tx, a.Subject, "issue.import_preview", project, summary) }); err != nil {
+			return nil, err
+		}
+	case err != nil:
 		return nil, err
 	}
 	rep.Finish()

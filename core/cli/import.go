@@ -35,7 +35,7 @@ func newImportCmd(g *globalOpts) *cobra.Command {
 		{"parties", "Customers and suppliers of finance (needs finance.write)", "FINANCE"},
 		{"issues", "Issues of one project (needs work.admin)", "WORK"},
 	} {
-		var apply bool
+		var apply, joiners bool
 		var mapping []string
 		var project string
 		cmd := &cobra.Command{
@@ -48,6 +48,7 @@ func newImportCmd(g *globalOpts) *cobra.Command {
 					return usage("%v", err)
 				}
 				o.Apply = apply
+				o.Flags["joiners"] = joiners
 				path := "/v1/import/" + t.use
 				if t.use == "issues" {
 					if project == "" {
@@ -79,6 +80,9 @@ func newImportCmd(g *globalOpts) *cobra.Command {
 		cmd.Flags().StringArrayVar(&mapping, "map", nil, "read a field from a column: field=Header (repeatable)")
 		if t.use == "issues" {
 			cmd.Flags().StringVar(&project, "project", "", "project key (required)")
+		}
+		if t.use == "people" {
+			cmd.Flags().BoolVar(&joiners, "joiners", false, "also start provisioning joiner runs for new active people (default: existing staff are not joiners)")
 		}
 		root.AddCommand(cmd)
 	}
@@ -171,6 +175,9 @@ func printReport(w io.Writer, g *globalOpts, r *csvimport.Report) error {
 	}
 	if len(r.Ignored) > 0 {
 		fmt.Fprintf(w, "ignored columns: %q\n", r.Ignored)
+	}
+	for _, n := range r.Notices {
+		fmt.Fprintf(w, "note: %s\n", n)
 	}
 	line := func(kind string, m csvimport.Message) {
 		column := ""

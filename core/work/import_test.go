@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/csvimport"
 )
@@ -45,6 +46,9 @@ func TestImportIssuesPreviewApplyAndRerun(t *testing.T) {
 	}
 	if rep.Create != 3 || rep.Applied || rep.Items[0].ID != "" || count(t, s, written) != 0 || count(t, s, `SELECT next_number FROM projects`) != 1 {
 		t.Fatalf("preview = %+v %v", rep, rep.Errors)
+	}
+	if n := count(t, s, `SELECT COUNT(*) FROM audit_log WHERE action = 'issue.import_preview' AND target = 'ACME'`); n != 1 {
+		t.Fatalf("a preview is audited: %d", n)
 	}
 	rep, err = importIssues(s, admin, "ACME", true, issuesCSV)
 	if err != nil {
@@ -169,6 +173,7 @@ func TestImportIssuesAPIAndFullFile(t *testing.T) {
 			fmt.Fprintf(&big, "P%d,Task %d,task,P%d\n", i, i, i-i%10)
 		}
 	}
+	h.app.store.importTimeout = 5 * time.Minute // a slow runner under -race must not fail the test
 	if code, rep := post(bootstrap, "?apply=true", big.String()); code != 200 || rep.Create != fullFile {
 		t.Fatalf("full file: %d %+v", code, rep.Errors)
 	}

@@ -43,8 +43,10 @@ can import people staff.csv --map external_id="Employee No" --apply
 ```
 
 Each row needs `external_id`, `given_name` and `family_name`. Running the same file again changes nothing,
-and empty cells never clear a value. New rows default to active employees, publish `person.created.v1`
-(identity provisioning may act on it) and cannot carry sensitive fields. There is no web page for this yet.
+and empty cells never clear a value. New rows default to active employees and cannot carry sensitive fields.
+Active rows are treated as existing staff: they publish no `person.created.v1`, so identity provisioning
+starts no joiner run for them (`--joiners` changes that; `onboarding` rows always publish it). Read the
+preview's notes before applying. There is no web page for this yet.
 Columns, limits and rules: [specs/047-csv-import](../specs/047-csv-import/spec.md).
 
 ## Roles and who can see what

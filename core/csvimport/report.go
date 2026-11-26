@@ -54,6 +54,8 @@ type Report struct {
 	Columns    map[string]string `json:"columns"`
 	Ignored    []string          `json:"ignored_columns"`
 	Items      []*Item           `json:"items"`
+	// Notices are about the import as a whole.
+	Notices []string `json:"notices,omitempty"`
 }
 
 // NewReport starts a report for a file.

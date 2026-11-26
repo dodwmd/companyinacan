@@ -60,7 +60,7 @@ func TestImportCLIUsageAndTargets(t *testing.T) {
 			http.Redirect(w, r, "/elsewhere", http.StatusTemporaryRedirect)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(csvimport.Report{DryRun: true, Rows: 1})
+		_ = json.NewEncoder(w).Encode(csvimport.Report{DryRun: true, Rows: 1, Notices: []string{"a notice"}})
 	}))
 	defer srv.Close()
 	for _, m := range []string{"PEOPLE", "FINANCE", "WORK"} {
@@ -69,6 +69,9 @@ func TestImportCLIUsageAndTargets(t *testing.T) {
 	}
 	if code, _, errs := runImport(t, "a\n", "people", "-"); code != 0 || path != "/v1/import/people" || query != "" || auth != "Bearer token-of-PEOPLE" {
 		t.Fatalf("people: %d %q %q %q %q", code, errs, path, query, auth)
+	}
+	if code, out, _ := runImport(t, "a\n", "people", "-", "--joiners"); code != 0 || query != "joiners=true" || !strings.Contains(out, "note: a notice") {
+		t.Fatalf("joiners: %d %q %q", code, query, out)
 	}
 	// A redirect would carry the token elsewhere: it is an error, not followed.
 	if code, _, _ := runImport(t, "a\n", "parties", "-", "--apply"); code != ExitFailure || path != "/v1/import/parties" || query != "apply=true" {

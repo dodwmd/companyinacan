@@ -91,6 +91,27 @@ func TestExternalIDsAndCellCounts(t *testing.T) {
 	}
 }
 
+func TestBlankRowsSeparatorHintAndFlags(t *testing.T) {
+	f := read(t, "external_id,name\n,,\nE1,a\n , \n,\n\"\",\"\"\n", nil)
+	if len(f.Rows) != 1 || f.Rows[0].Line != 3 || f.Rows[0].Err != "" {
+		t.Fatalf("rows = %+v", f.Rows)
+	}
+	for _, in := range []string{"external_id;name\nE1;a\n", "external_id\tname\nE1\ta\n"} {
+		if _, err := Read(strings.NewReader(in), fields, nil); err == nil || !strings.Contains(err.Error(), "comma-separated") {
+			t.Errorf("no separator hint: %v", err)
+		}
+	}
+	o, err := ParseQuery(url.Values{"joiners": {"true"}}, "joiners")
+	if err != nil || !o.Flags["joiners"] || o.Query() != "joiners=true" {
+		t.Fatalf("flag: %+v %v", o, err)
+	}
+	for _, v := range []url.Values{{"joiners": {"true"}}, {"other": {"true"}}} {
+		if _, err := ParseQuery(v); err == nil {
+			t.Errorf("%v accepted without being declared", v)
+		}
+	}
+}
+
 func TestParseQuery(t *testing.T) {
 	o, err := ParseQuery(url.Values{})
 	if err != nil || o.Apply || len(o.Mapping) != 0 {

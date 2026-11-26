@@ -140,10 +140,13 @@ func Read(r io.Reader, fields []Field, mapping map[string]string) (*File, error)
 		if err != nil {
 			return nil, parseErr(err)
 		}
+		line, _ := cr.FieldPos(0)
+		if !slices.ContainsFunc(rec, func(c string) bool { return strings.TrimSpace(c) != "" }) {
+			continue // a blank ",,," row, as spreadsheets leave below the data
+		}
 		if len(f.Rows) == MaxRows {
 			return nil, &FileError{Msg: fmt.Sprintf("at most %d rows; split the file", MaxRows), TooLarge: true}
 		}
-		line, _ := cr.FieldPos(0)
 		row := Row{Line: line, cells: rec, index: index}
 		id := row.Get(ExternalID)
 		switch {
@@ -231,6 +234,9 @@ func mapHeader(f *File, header []string, fields []Field, mapping map[string]stri
 	}
 	for _, field := range fields {
 		if _, ok := index[field.Name]; !ok && field.Required {
+			if len(header) == 1 && strings.ContainsAny(header[0], ";\t|") {
+				return nil, fileErr("the file looks semicolon, tab or pipe separated; save it as comma-separated CSV")
+			}
 			return nil, fileErr("no column for %q (name a column %s, or pass map=%s=<header>)", field.Name, field.Name, field.Name)
 		}
 	}
@@ -244,14 +250,15 @@ func mapHeader(f *File, header []string, fields []Field, mapping map[string]stri
 
 // Options is what a caller chooses.
 type Options struct {
-	Apply   bool // false is a preview: nothing is written
+	Apply   bool            // false is a preview: nothing is written
+	Flags   map[string]bool // the switches of one importer (people: joiners)
 	Mapping map[string]string
 }
 
-// ParseQuery reads apply and map. Anything else is refused: a misspelt "apply" must not
+// ParseQuery reads apply, map and the named boolean flags of one importer. Anything else is refused: a misspelt "apply" must not
 // look like a successful import.
-func ParseQuery(q url.Values) (Options, error) {
-	o := Options{Mapping: map[string]string{}}
+func ParseQuery(q url.Values, flags ...string) (Options, error) {
+	o := Options{Mapping: map[string]string{}, Flags: map[string]bool{}}
 	for k, v := range q {
 		switch k {
 		case "apply":
@@ -271,7 +278,10 @@ func ParseQuery(q url.Values) (Options, error) {
 				o.Mapping[field] = header
 			}
 		default:
-			return o, fileErr("unknown query parameter %q (apply, map)", k)
+			if !slices.Contains(flags, k) || len(v) != 1 || (v[0] != "true" && v[0] != "false") {
+				return o, fileErr("unknown or invalid query parameter %q (%s)", k, strings.Join(append([]string{"apply", "map"}, flags...), ", "))
+			}
+			o.Flags[k] = v[0] == "true"
 		}
 	}
 	return o, nil
@@ -282,6 +292,11 @@ func (o Options) Query() string {
 	q := url.Values{}
 	if o.Apply {
 		q.Set("apply", "true")
+	}
+	for k, on := range o.Flags {
+		if on {
+			q.Set(k, "true")
+		}
 	}
 	keys := make([]string, 0, len(o.Mapping))
 	for k := range o.Mapping {
