@@ -28,6 +28,9 @@ const hostedCSP = "default-src 'none'; style-src 'self'; img-src data:; form-act
 // a /favicon.ico (img-src data: allows it).
 const htmlHead = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><link rel="icon" href="data:,">`
 
+// homeLink leads back to the site: the gateway is served on the site's own origin, under /_forms.
+const homeLink = `<p><a href="/">Back to the website</a></p>`
+
 const hostedCSS = `:root{color-scheme:light dark}
 body{font:1rem/1.5 system-ui,sans-serif;max-width:32rem;margin:0 auto;padding:1rem}
 label{display:block;font-weight:600;margin-bottom:.25rem}
@@ -79,7 +82,7 @@ func hostedPage(form *Form, token string) string {
 		}
 		b.WriteString("</p>\n")
 	}
-	b.WriteString("<p><button type=\"submit\">Send</button></p>\n</form></main></body></html>\n")
+	b.WriteString("<p><button type=\"submit\">Send</button></p>\n</form>" + homeLink + "</main></body></html>\n")
 	return b.String()
 }
 

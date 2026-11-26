@@ -13,7 +13,7 @@ func TestUIConcurrentRequestsInOneSession(t *testing.T) {
 	_, hr := u.person("Hana", "", RoleEmployee, RoleHR)
 	u.ui.RecheckEvery = time.Nanosecond // every request re-authenticates and writes the session
 	c := u.login(t, hr)
-	cookie := c.cookies[u.ui.sessionCookieName()]
+	cookie := c.cookies[u.ui.sessions.SessionCookieName(nil)]
 	var wg sync.WaitGroup
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
@@ -21,7 +21,7 @@ func TestUIConcurrentRequestsInOneSession(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
 				r := httptest.NewRequest("GET", "/", nil)
-				r.AddCookie(&http.Cookie{Name: u.ui.sessionCookieName(), Value: cookie})
+				r.AddCookie(&http.Cookie{Name: u.ui.sessions.SessionCookieName(nil), Value: cookie})
 				u.h.ServeHTTP(httptest.NewRecorder(), r)
 			}
 		}()
@@ -53,10 +53,13 @@ func TestUIRevealsOfOthersAreLimited(t *testing.T) {
 	}
 }
 
-func TestUIHRSessionsRecheckFaster(t *testing.T) {
+func TestUIPrivilegedSessionsRecheckFaster(t *testing.T) {
 	u := newUIEnv(t)
 	if d := u.ui.recheckFor(Principal{Roles: []string{RoleHR}}); d != time.Minute {
 		t.Fatalf("hr recheck = %v", d)
+	}
+	if d := u.ui.recheckFor(Principal{Roles: []string{RoleEmployee, RoleManager}}); d != time.Minute {
+		t.Fatalf("manager recheck = %v", d)
 	}
 	if d := u.ui.recheckFor(Principal{Roles: []string{RoleEmployee}}); d != defaultRecheck {
 		t.Fatalf("employee recheck = %v", d)

@@ -25,9 +25,10 @@ import (
 	"github.com/dodwmd/companyinacan/core/staticsrv"
 )
 
-// renderSite validates <dir>/company.yaml against the schema and renders its site.
-// Validation problems are returned as problems; renderer errors as err.
-func renderSite(dir, baseURL string) (*site.Output, []problem.Problem, error) {
+// renderSite validates <dir>/company.yaml against the schema and renders its site. The forms the
+// contact section may link to come from the modules directory. Validation problems are returned as
+// problems; renderer errors as err.
+func renderSite(dir, baseURL, modulesDir string) (*site.Output, []problem.Problem, error) {
 	doc, ps := config.Load(filepath.Join(dir, "company.yaml"))
 	if doc == nil {
 		return nil, ps, nil
@@ -46,8 +47,12 @@ func renderSite(dir, baseURL string) (*site.Output, []problem.Problem, error) {
 		return nil, nil, err
 	}
 	defer func() { _ = root.Close() }()
+	forms, err := config.FormsOfModules(resolveModulesDir(modulesDir, dir))
+	if err != nil {
+		return nil, nil, err
+	}
 	// root.FS() refuses to follow symlinks out of the company directory.
-	out, err := site.Render(c, site.Options{BaseURL: baseURL, Assets: root.FS()})
+	out, err := site.Render(c, site.Options{BaseURL: baseURL, Assets: root.FS(), Forms: forms})
 	return out, ps, err
 }
 
@@ -63,7 +68,7 @@ func newSiteCmd(g *globalOpts) *cobra.Command {
 }
 
 func newSiteBuildCmd(g *globalOpts) *cobra.Command {
-	var out, baseURL string
+	var out, baseURL, modulesDir string
 	var noCompress, force bool
 	cmd := &cobra.Command{
 		Use:   "build [dir]",
@@ -82,7 +87,7 @@ func newSiteBuildCmd(g *globalOpts) *cobra.Command {
 			if overlaps(out, dir) {
 				return failure("--out %s contains the company directory %s; choose a separate output directory", out, dir)
 			}
-			res, ps, err := renderSite(dir, baseURL)
+			res, ps, err := renderSite(dir, baseURL, modulesDir)
 			if err != nil {
 				return failure("%s", err)
 			}
@@ -99,10 +104,12 @@ func newSiteBuildCmd(g *globalOpts) *cobra.Command {
 			w := cmd.OutOrStdout()
 			if g.json() {
 				return json.NewEncoder(w).Encode(struct {
-					Out   string   `json:"out"`
-					Files []string `json:"files"`
-				}{out, files})
+					Out      string   `json:"out"`
+					Files    []string `json:"files"`
+					Warnings []string `json:"warnings,omitempty"`
+				}{out, files, res.Warnings})
 			}
+			printSiteWarnings(cmd.ErrOrStderr(), res)
 			for _, f := range files {
 				fmt.Fprintf(w, "  %s (%d bytes)\n", f, len(res.Files[f]))
 			}
@@ -113,8 +120,15 @@ func newSiteBuildCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&out, "out", "", "output directory (default <dir>/public)")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "public origin for canonical/sitemap URLs (default https://<domain>)")
 	cmd.Flags().BoolVar(&noCompress, "no-compress", false, "do not write precompressed .gz files")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory, for the forms site.contact may link to (default $CAN_MODULES_DIR, ./modules)")
 	cmd.Flags().BoolVar(&force, "force", false, "write into a non-empty directory that is not a previous site output (only generated files are overwritten; files this tool did not generate are never deleted)")
 	return cmd
+}
+
+func printSiteWarnings(w io.Writer, res *site.Output) {
+	for _, m := range res.Warnings {
+		fmt.Fprintln(w, "warning:", m)
+	}
 }
 
 type serveOptions struct {
@@ -185,8 +199,9 @@ func (p *previewHandler) rebuild() {
 		return
 	}
 	p.stamp = s
-	res, ps, err := renderSite(p.dir, p.baseURL)
+	res, ps, err := renderSite(p.dir, p.baseURL, "")
 	if err == nil && res != nil {
+		printSiteWarnings(p.out, res)
 		err = res.Write(p.site, site.WriteOptions{})
 	}
 	switch {
@@ -229,7 +244,10 @@ func serveSite(ctx context.Context, o serveOptions, out io.Writer, ready func(ad
 		}
 		defer func() { _ = os.RemoveAll(tmp) }()
 		base := "http://" + addr
-		res, ps, err := renderSite(o.Dir, base)
+		res, ps, err := renderSite(o.Dir, base, "")
+		if res != nil {
+			printSiteWarnings(out, res)
+		}
 		if err == nil && problem.HasErrors(ps) {
 			for _, pr := range ps {
 				fmt.Fprintln(out, pr.String())

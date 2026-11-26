@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/cluster"
 	"github.com/dodwmd/companyinacan/core/modimages"
+	"github.com/dodwmd/companyinacan/modules"
 )
 
 // No test asks a real registry: unless a test says otherwise nothing is pullable.
@@ -213,5 +215,52 @@ func TestPodImagesQueryIgnoresContainersWithoutTheirImage(t *testing.T) {
 	}
 	if got := strings.Fields(string(out)); !slices.Equal(got, []string{"ghcr.io/o/pulled:1"}) {
 		t.Fatalf("held: %v", got)
+	}
+}
+
+// A release archive or `go install` has no modules directory: the image check and --images-from
+// must see what a checkout sees, or the forms image would not be shipped.
+func TestUpWithoutAModulesDirectoryShipsAndChecksTheModuleImages(t *testing.T) {
+	checkout, err := filepath.Abs(filepath.Join("..", "..", "modules"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every shipped module, built in and from the directory, needs the same images.
+	entries, err := os.ReadDir(checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		id := strings.TrimPrefix(e.Name(), "_")
+		want, wantUnknown := modimages.Required(checkout, []string{id})
+		got, gotUnknown := modimages.RequiredFS(modules.Shipped, []string{id})
+		if !reflect.DeepEqual(got, want) || len(gotUnknown) != len(wantUnknown) {
+			t.Errorf("%s: built in %v %v, from the directory %v %v", id, got, gotUnknown, want, wantUnknown)
+		}
+	}
+
+	dir, _ := setup(t)
+	spy := useStack(t, false, stackResult(), nil)
+	withModules(t, dir, "  forms: {}\n  work: {}\n")
+	held := imagesDirWith(t, "can-core", "can-static", "can-forms", "can-work", "can-people")
+	lacking := imagesDirWith(t, "can-core", "can-static", "can-forms")
+	t.Chdir(t.TempDir())
+	t.Setenv("CAN_MODULES_DIR", "")
+
+	code, out, errs := run(t, "up", dir, "--images-from", held)
+	if code != ExitOK || strings.Contains(out+errs, "images not checked") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
+	}
+	got := shipped(spy)
+	slices.Sort(got)
+	if want := []string{"can-core", "can-forms", "can-static", "can-work"}; !slices.Equal(got, want) {
+		t.Fatalf("shipped %v, want %v", got, want)
+	}
+	code, _, errs = run(t, "up", dir, "--images-from", lacking)
+	if code != ExitFailure || !strings.Contains(errs, modimages.Ref("can-work")) || !strings.Contains(errs, "nothing has been provisioned") {
+		t.Fatalf("code=%d err=%q", code, errs)
 	}
 }

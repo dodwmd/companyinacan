@@ -15,7 +15,7 @@ import (
 // ModuleFile loads and validates one module.yaml: parse, schema, then semantic rules.
 // All problems are returned together.
 func ModuleFile(file string) []problem.Problem {
-	doc, ps := config.Load(file)
+	doc, ps := LoadManifest(file)
 	if doc == nil {
 		return ps
 	}

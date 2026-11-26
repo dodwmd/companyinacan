@@ -2,6 +2,7 @@ package forms
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -96,5 +97,51 @@ func TestHostedFormPageEscapesConfiguration(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("lacks %q:\n%s", want, page)
 		}
+	}
+}
+
+// The page's links are relative: with a trailing slash they would point one level too deep.
+func TestHostedFormPageTrailingSlash(t *testing.T) {
+	h := newHarness(t, harnessCfg)
+	for _, p := range []string{"/contact/form/", "/_forms/contact/form/"} {
+		rec := h.do(h.pub, http.MethodGet, p, nil, nil)
+		if rec.Code != http.StatusPermanentRedirect {
+			t.Fatalf("%s: %d", p, rec.Code)
+		}
+		// Resolved by the browser against its own path, which still has the prefix the edge strips.
+		base, _ := url.Parse("https://acme.example/_forms/contact/form/")
+		ref, err := url.Parse(rec.Header().Get("Location"))
+		if err != nil || base.ResolveReference(ref).Path != "/_forms/contact/form" {
+			t.Fatalf("%s: Location %q", p, rec.Header().Get("Location"))
+		}
+	}
+	for _, p := range []string{"/contact/form//", "/contact/form.css/", "/nope/form/"} {
+		if rec := h.do(h.pub, http.MethodGet, p, nil, nil); rec.Code != http.StatusNotFound {
+			t.Errorf("%s: %d", p, rec.Code)
+		}
+	}
+}
+
+func TestHostedPagesLeadBackToTheSite(t *testing.T) {
+	h := newHarness(t, harnessCfg)
+	for name, body := range map[string]string{
+		"form":  h.do(h.pub, http.MethodGet, "/contact/form", nil, nil).Body.String(),
+		"error": h.postForm("/_forms/contact", goodValues(""), nil).Body.String(),
+	} {
+		if !strings.Contains(body, `<a href="/">Back to the website</a>`) {
+			t.Errorf("%s page has no way back: %s", name, body)
+		}
+	}
+}
+
+// A browser counts a line break as one character against maxlength and posts it as CR LF.
+func TestLineBreakCountsAsOneCharacter(t *testing.T) {
+	f := &Form{ID: "contact", Fields: []Field{{Name: "message", Type: TypeText, Multiline: true, MaxLength: 5}}}
+	clean, errs := f.Validate(map[string]string{"message": "ab\r\ncd"})
+	if len(errs) != 0 || clean["message"] != "ab\ncd" {
+		t.Fatalf("%q %v", clean["message"], errs)
+	}
+	if _, errs = f.Validate(map[string]string{"message": "ab\r\ncde"}); len(errs) != 1 || errs[0].Code != "too_long" {
+		t.Fatalf("over the limit: %v", errs)
 	}
 }

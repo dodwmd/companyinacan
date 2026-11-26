@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 var invoiceStatuses = []string{StDraft, StApproved, StSent, StPartiallyPaid, StPaid, StVoid}
@@ -99,7 +101,7 @@ func (u *UI) invoice(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	d := invoiceData{V: *v, Version: v.Version, PayIdem: newToken()[:32]}
+	d := invoiceData{V: *v, Version: v.Version, PayIdem: session.NewToken()[:32]}
 	if d.Payments, err = u.Store.ListPayments(c.ctx(), c.p, id); err != nil {
 		return err
 	}
@@ -199,7 +201,7 @@ func (u *UI) invoiceNew(c *uiCtx) error {
 			cur = p.Currency
 		}
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "invoice_form.html", "invoice.new", invoiceForm{Idem: newToken()[:32], PartyID: pid, Parties: parties, More: more, PQ: pq, Currency: cur, Series: "INV",
+	u.render(c.w, c.r, c, http.StatusOK, "invoice_form.html", "invoice.new", invoiceForm{Idem: session.NewToken()[:32], PartyID: pid, Parties: parties, More: more, PQ: pq, Currency: cur, Series: "INV",
 		Rows: blankRows(5), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency, Today: c.today()})
 	return nil
 }
@@ -400,7 +402,7 @@ func (u *UI) creditNoteForm(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "credit_note_form.html", "credit.title", creditNoteData{V: *v, Idem: newToken()[:32], Rows: blankRows(3), Tax: activeRates(rates)})
+	u.render(c.w, c.r, c, http.StatusOK, "credit_note_form.html", "credit.title", creditNoteData{V: *v, Idem: session.NewToken()[:32], Rows: blankRows(3), Tax: activeRates(rates)})
 	return nil
 }
 

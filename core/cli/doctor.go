@@ -48,6 +48,6 @@ func newDoctorCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&server, "server", false, "check, over ssh, that pods cannot reach the server's node services (read-only; exit 1 if not)")
 	cmd.Flags().StringVar(&companyDir, "company-dir", ".", "with --server: directory holding company.yaml and .can/")
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "with --server: modules directory (default: ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "with --server: modules directory (default: ./modules, else the manifests built into can)")
 	return cmd
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/lazytmpl"
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 //go:embed ui/templates ui/static
@@ -65,7 +66,7 @@ type UI struct {
 	NotificationsURL string         // empty: no notifications link
 
 	once     sync.Once
-	sessions sessionStore
+	sessions *session.Manager[Principal]
 	tpl      *lazytmpl.Set // pages are parsed on first use
 	failIP   *rateLimiter
 	perUser  *rateLimiter
@@ -163,6 +164,7 @@ func (u *UI) init() {
 	if u.RecheckEvery <= 0 {
 		u.RecheckEvery = defaultRecheck
 	}
+	u.sessions = u.newSessions()
 	u.failIP = newRateLimiter(failedLoginBurst, 0.2, 10000, nil)
 	u.perUser = newRateLimiter(300, 30, 10000, nil)
 	u.reveals = newRateLimiter(10, 10.0/60, 10000, nil)
@@ -190,7 +192,7 @@ func (u *UI) Handler() http.Handler {
 		u.renderError(w, r, nil, Actor{}, http.StatusNotFound, "err.not_found_title", "err.not_found")
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		setUIHeaders(w)
+		session.SetHeaders(w.Header())
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
 		defer func() {
@@ -204,7 +206,7 @@ func (u *UI) Handler() http.Handler {
 			u.Log.Info("ui request", "method", r.Method, "route", r.Pattern, "status", rec.status, "ms", time.Since(start).Milliseconds())
 		}()
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+			if !session.SameOrigin(r) {
 				u.renderError(rec, r, nil, Actor{}, http.StatusForbidden, "err.csrf_title", "err.csrf")
 				return
 			}
@@ -212,19 +214,6 @@ func (u *UI) Handler() http.Handler {
 		}
 		mux.ServeHTTP(rec, r)
 	})
-}
-
-// setUIHeaders are the headers of every response. There is no script of any kind, so scripts are
-// forbidden outright. No ETag or Last-Modified is ever set: authenticated pages are never cached
-// or revalidated (the anonymity-sensitive review pages in particular).
-func setUIHeaders(w http.ResponseWriter) {
-	h := w.Header()
-	h.Set("Content-Security-Policy", "default-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
-	h.Set("Referrer-Policy", "no-referrer")
-	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("X-Frame-Options", "DENY")
-	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-	h.Set("Cache-Control", "no-store")
 }
 
 // uiCtx is what a handler gets: the session, the resolved caller and the request.
@@ -246,13 +235,13 @@ func (u *UI) authed(fn uiHandler) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		if !u.perUser.allow(ss.subject) {
+		if !u.perUser.allow(ss.Subject) {
 			w.Header().Set("Retry-After", "5")
 			u.renderError(w, r, ss, a, http.StatusTooManyRequests, "err.busy_title", "err.busy")
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if err := r.ParseForm(); err != nil || !constEq(r.PostForm.Get("csrf"), ss.csrf) {
+			if err := r.ParseForm(); err != nil || !session.Equal(r.PostForm.Get("csrf"), ss.CSRF) {
 				u.renderError(w, r, ss, a, http.StatusForbidden, "err.csrf_title", "err.csrf")
 				return
 			}
@@ -317,7 +306,7 @@ func (u *UI) nav(path string) []navItem {
 func (u *UI) render(w http.ResponseWriter, r *http.Request, c *uiCtx, status int, name, titleKey string, data any) {
 	pg := page{Lang: "en", Title: u.msg(titleKey), Data: data}
 	if c != nil {
-		pg.Authed, pg.CSRF = true, c.ss.csrf
+		pg.Authed, pg.CSRF = true, c.ss.CSRF
 		if status < 400 {
 			pg.Nav = u.nav(r.URL.Path)
 		} else {
@@ -377,16 +366,7 @@ type loginData struct {
 }
 
 func (u *UI) loginForm(w http.ResponseWriter, r *http.Request, status int, errMsg string) {
-	// The double-submit token is kept while it is valid, so a failed attempt does not invalidate
-	// the form the user is looking at.
-	tok := ""
-	if ck, err := r.Cookie(u.loginCSRFName()); err == nil && len(ck.Value) == 43 {
-		tok = ck.Value
-	}
-	if tok == "" {
-		tok = newToken()
-	}
-	u.setCookie(w, u.loginCSRFName(), tok, loginCSRFMaxAge)
+	tok := u.sessions.LoginCSRF(w, r)
 	u.render(w, r, nil, status, "login.html", "login.title", struct {
 		loginData
 		CSRF string
@@ -411,8 +391,7 @@ func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
 		u.renderError(w, r, nil, Actor{}, http.StatusBadRequest, "err.invalid_title", "err.bad_form")
 		return
 	}
-	ck, err := r.Cookie(u.loginCSRFName())
-	if err != nil || !constEq(ck.Value, r.PostForm.Get("csrf")) {
+	if !u.sessions.CheckLoginCSRF(r) {
 		u.loginForm(w, r, http.StatusForbidden, u.msg("login.csrf"))
 		return
 	}
@@ -435,21 +414,12 @@ func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
 		u.loginForm(w, r, http.StatusUnauthorized, u.msg("login.invalid"))
 		return
 	}
-	// A presented session id is never adopted (session fixation); the old one, if any, is dropped.
-	if old, err := r.Cookie(u.sessionCookieName()); err == nil {
-		u.sessions.drop(old.Value)
-	}
-	id, _ := u.sessions.create(*p, strings.TrimSpace(r.PostForm.Get("token")), u.Now())
-	u.setCookie(w, u.sessionCookieName(), id, 0)
-	u.setCookie(w, u.loginCSRFName(), "", -1)
+	u.sessions.Start(w, r, *p, strings.TrimSpace(r.PostForm.Get("token")))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (u *UI) logout(c *uiCtx) error {
-	if ck, err := c.r.Cookie(u.sessionCookieName()); err == nil {
-		u.sessions.drop(ck.Value)
-	}
-	u.setCookie(c.w, u.sessionCookieName(), "", -1)
+	u.sessions.End(c.w, c.r)
 	http.Redirect(c.w, c.r, "/login", http.StatusSeeOther)
 	return nil
 }

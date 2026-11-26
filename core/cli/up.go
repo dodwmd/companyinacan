@@ -198,7 +198,7 @@ See docs/make-up.md.`,
 	}
 	sf.register(cmd)
 	cmd.Flags().BoolVar(&plan, "plan", false, "print the planned actions and change nothing")
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules, else the manifests built into can)")
 	cmd.Flags().StringVar(&dnsName, "dns", "", "DNS plugin: manual or cloudflare (default: dns.provider in company.yaml, else manual)")
 	return cmd
 }
@@ -244,6 +244,9 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	}
 	res.Actions = acts
 	if planOnly {
+		if !sf.provisionOnly {
+			t.warnContact(cmd.ErrOrStderr(), sf)
+		}
 		if g.json() {
 			return t.emitJSON(cmd, res)
 		}
@@ -471,7 +474,7 @@ Destructive: requires --yes. Use --plan to see what would happen.`,
 	}
 	cmd.Flags().BoolVar(&plan, "plan", false, "print what would be removed and change nothing")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the teardown")
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules, else the manifests built into can)")
 	return cmd
 }
 
@@ -594,7 +597,7 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules, else the manifests built into can)")
 	return cmd
 }
 

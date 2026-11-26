@@ -1,7 +1,7 @@
 # `make up`, `make down`, `make status`
 
 `make up` turns a `company.yaml` and a server (yours over SSH, or a Hetzner or DigitalOcean account) into
-a live company: k3s, the platform, can-core, your site, the contact form, an admin login, optionally the
+a live company: k3s, the platform, can-core, your site, the contact form ([site-contact.md](site-contact.md)), an admin login, optionally the
 backup timer and its recovery kit. It is a thin wrapper over `can up|down|status`; extra flags go in `ARGS`.
 Run it in the directory that holds `company.yaml`, or pass the directory: `make up ARGS=./my-company`.
 

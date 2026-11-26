@@ -149,7 +149,7 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&metricsURL, "metrics-url", "", "scrape this /metrics URL (token from $CAN_METRICS_TOKEN)")
 	cmd.Flags().IntVar(&lines, "lines", 200, "log lines to keep per source")
 	cmd.Flags().BoolVar(&server, "server", false, "also check, over ssh, the server's pod-to-node isolation (into doctor.json)")
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "with --server: modules directory (default: ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "with --server: modules directory (default: ./modules, else the manifests built into can)")
 	return cmd
 }
 

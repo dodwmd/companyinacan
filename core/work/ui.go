@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"embed"
 	"encoding/hex"
 	"errors"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/lazytmpl"
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 // The web UI (specs/023-work-ui) is server-rendered HTML served by can-work itself under /ui/. It
@@ -52,7 +52,7 @@ type uiRoute struct {
 // authenticator with.
 type webUI struct {
 	a        *api
-	sessions *uiSessions
+	sessions *session.Manager[Principal]
 	pages    *lazytmpl.Set // parsed on first use
 	static   map[string]uiAsset
 	now      func() time.Time
@@ -109,7 +109,8 @@ func (u *webUI) routes() []uiRoute {
 }
 
 func newWebUI(a *api, now func() time.Time) (*webUI, error) {
-	u := &webUI{a: a, sessions: newUISessions(now), now: now, static: map[string]uiAsset{}}
+	u := &webUI{a: a, now: now, static: map[string]uiAsset{}}
+	u.sessions = u.newSessions()
 	u.pages = &lazytmpl.Set{FS: uiAssets, Dir: "webui/templates", Funcs: u.funcs()}
 	files, err := fs.ReadDir(uiAssets, "webui/static")
 	if err != nil {
@@ -145,13 +146,10 @@ func (u *webUI) mount(mux *http.ServeMux) {
 	mux.HandleFunc(uiPrefix, u.wrapCatchAll(routes))
 }
 
-// uiHeaders replaces the API's all-denying headers with the UI's: only same-origin styles, images
-// and forms; no scripts at all.
+// uiHeaders replaces the API's all-denying headers with the UI's.
 func uiHeaders(w http.ResponseWriter) {
-	h := w.Header()
-	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
-	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	session.SetHeaders(w.Header())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 }
 
 type uiCtx struct {
@@ -160,81 +158,25 @@ type uiCtx struct {
 	r    *http.Request
 	p    *Principal
 	sess *uiSession
-	id   string // session id (cookie value)
 }
 
 func (u *webUI) secure(r *http.Request) bool {
 	return u.a.forceSecure || r.TLS != nil || (u.a.trustProxy && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
 }
 
-func (u *webUI) sessionCookieName(r *http.Request) string {
-	if u.secure(r) {
-		return "__Host-work_session"
-	}
-	return "work_session"
-}
-
-func (u *webUI) loginCookieName(r *http.Request) string {
-	if u.secure(r) {
-		return "__Host-work_login_csrf"
-	}
-	return "work_login_csrf"
-}
-
-func (u *webUI) setCookie(w http.ResponseWriter, r *http.Request, name, value string, maxAge int) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: maxAge, HttpOnly: true, Secure: u.secure(r), SameSite: http.SameSiteStrictMode})
-}
-
-// authenticate resolves the session and re-checks the token against the authenticators on every
-// request, so revocation, expiry and permission changes apply at once.
-func (u *webUI) authenticate(r *http.Request) (*Principal, *uiSession, string, bool) {
-	c, err := r.Cookie(u.sessionCookieName(r))
-	if err != nil {
-		return nil, nil, "", false
-	}
-	sess, ok := u.sessions.get(c.Value)
+// authenticate resolves the session of the request.
+func (u *webUI) authenticate(w http.ResponseWriter, r *http.Request) (*Principal, *uiSession, bool) {
+	sess, p, ok := u.sessions.Current(w, r)
 	if !ok {
-		return nil, nil, "", false
+		return nil, nil, false
 	}
-	if sess.sso != nil {
-		p, ok := u.ssoPrincipal(r, sess)
-		if !ok || !p.Can(PermRead) {
-			u.sessions.delete(c.Value)
-			return nil, nil, "", false
-		}
-		return p, sess, c.Value, true
-	}
-	p, err := u.principalFor(r, sess.token)
-	if err != nil || !p.Can(PermRead) {
-		u.sessions.delete(c.Value)
-		return nil, nil, "", false
-	}
-	return p, sess, c.Value, true
+	return &p, sess, true
 }
 
 func (u *webUI) principalFor(r *http.Request, token string) (*Principal, error) {
 	req := r.Clone(r.Context())
 	req.Header = http.Header{"Authorization": {"Bearer " + token}}
 	return u.a.auth.Authenticate(req)
-}
-
-// sameSite refuses cross-site posts: Sec-Fetch-Site must be same-origin (or none), and an Origin
-// header, when present, must name this host. "Origin: null" is what a browser sends for a form
-// posted from a page with Referrer-Policy: no-referrer (all of these pages), so it is accepted when,
-// and only when, the browser-controlled Sec-Fetch-Site says the post is same-origin.
-func sameSite(r *http.Request) bool {
-	if s := r.Header.Get("Sec-Fetch-Site"); s != "" && s != "same-origin" && s != "none" {
-		return false
-	}
-	if o := r.Header.Get("Origin"); o != "" && o != "null" {
-		ou, err := url.Parse(o)
-		if err != nil || !strings.EqualFold(ou.Host, r.Host) {
-			return false
-		}
-	} else if o == "null" && r.Header.Get("Sec-Fetch-Site") != "same-origin" {
-		return false
-	}
-	return true
 }
 
 func (u *webUI) wrap(rt uiRoute) http.HandlerFunc {
@@ -245,15 +187,12 @@ func (u *webUI) wrap(rt uiRoute) http.HandlerFunc {
 		r = r.WithContext(ctx)
 		c := &uiCtx{u: u, w: w, r: r}
 		if rt.Session {
-			p, sess, id, ok := u.authenticate(r)
+			p, sess, ok := u.authenticate(w, r)
 			if !ok {
-				if _, err := r.Cookie(u.sessionCookieName(r)); err == nil {
-					u.setCookie(w, r, u.sessionCookieName(r), "", -1)
-				}
 				c.toLogin()
 				return
 			}
-			c.p, c.sess, c.id = p, sess, id
+			c.p, c.sess = p, sess
 			key := "ui:" + p.Subject
 			if ok, wait := u.a.limiter.allow(key); !ok {
 				w.Header().Set("Retry-After", fmt.Sprint(int(wait.Seconds())+1))
@@ -262,7 +201,7 @@ func (u *webUI) wrap(rt uiRoute) http.HandlerFunc {
 			}
 		}
 		if r.Method == http.MethodPost {
-			if !sameSite(r) {
+			if !session.SameOrigin(r) {
 				c.errorPage(http.StatusForbidden, "err.forbidden", "err.forbidden_msg")
 				return
 			}
@@ -284,7 +223,7 @@ func (u *webUI) wrap(rt uiRoute) http.HandlerFunc {
 				}
 				return
 			}
-			if rt.Session && subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(c.sess.csrf)) != 1 {
+			if rt.Session && !session.Equal(r.PostFormValue("csrf"), c.sess.CSRF) {
 				c.errorPage(http.StatusForbidden, "err.forbidden", "err.forbidden_msg")
 				return
 			}
@@ -303,7 +242,7 @@ func (u *webUI) wrapCatchAll(routes []uiRoute) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uiHeaders(w)
 		c := &uiCtx{u: u, w: w, r: r}
-		c.p, c.sess, c.id, _ = u.authenticate(r)
+		c.p, c.sess, _ = u.authenticate(w, r)
 		var allow []string
 		for _, rt := range routes {
 			if rt.Method != r.Method && matchPath(rt.Path, r.URL.Path) {
@@ -419,9 +358,9 @@ type uiBase struct {
 func (c *uiCtx) base(title, current string) *uiBase {
 	b := &uiBase{Lang: "en", Title: title, Current: current}
 	if c.p != nil {
-		b.User, b.CSRF, b.CanWrite = c.p.Subject, c.sess.csrf, c.p.Can(PermWrite)
-		if c.sess.sso != nil { // a launch-ticket session shows the person's name, not their account id
-			if n := c.u.sessions.ssoSnapshot(c.sess).name; n != "" {
+		b.User, b.CSRF, b.CanWrite = c.p.Subject, c.sess.CSRF, c.p.Can(PermWrite)
+		if c.sess.SSO() { // a launch-ticket session shows the person's name, not their account id
+			if n := c.u.sessions.Name(c.sess); n != "" {
 				b.User = n
 			}
 		}

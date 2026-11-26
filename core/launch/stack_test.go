@@ -111,7 +111,13 @@ func testCompany(t *testing.T) (dir string, co *config.Company, yamlSrc []byte) 
 		t.Fatal(err)
 	}
 	src = []byte(strings.Replace(string(src), "type: local", "type: ssh\n  options: {host: 203.0.113.7}", 1))
-	src = []byte(strings.Replace(string(src), "modules:\n  example: {}\n", "", 1))
+	// These tests are about a company that does not list the forms module: cut modules: and email:.
+	before, rest, ok := strings.Cut(string(src), "modules:\n")
+	_, siteSection, ok2 := strings.Cut(rest, "\nsite:\n")
+	if !ok || !ok2 {
+		t.Fatal("the example company has no modules: before site:")
+	}
+	src = []byte(before + "site:\n" + siteSection)
 	if err := os.WriteFile(filepath.Join(dir, "company.yaml"), src, 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -121,7 +121,7 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "directory containing module manifests (default $CAN_MODULES_DIR, ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "directory containing module manifests (default $CAN_MODULES_DIR, ./modules, else the ones built into can)")
 	cmd.Flags().StringVar(&statePath, "state", "", "recorded-state database (default <dir>/.can/state.db)")
 	cmd.Flags().BoolVar(&skipImageCheck, "skip-image-check", false, skipImageCheckHelp)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan and change nothing")

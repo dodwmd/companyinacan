@@ -48,7 +48,7 @@ checks it again on **every request**, so revoking it in the admin UI or expiring
 session at the next click (for can-core tokens within the introspection cache lifetime, 30
 seconds by default). Your browser only holds a random session id (`HttpOnly`, `SameSite=Strict`,
 `Secure` and `__Host-` prefixed over TLS). The token is not written to disk, logged, put in the
-cookie, or shown again. Sessions end after 8 hours idle or 24 hours, on log out, and when the
+cookie, or shown again. The cookie ends with the browser session. Sessions end after 8 hours idle or 24 hours, on log out, and when the
 process restarts.
 
 Wrong tokens are throttled per client address (the same limit as the API's failed

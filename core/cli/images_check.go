@@ -17,6 +17,8 @@ import (
 	"github.com/dodwmd/companyinacan/core/cluster"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/modimages"
+	"github.com/dodwmd/companyinacan/core/validate"
+	"github.com/dodwmd/companyinacan/modules"
 )
 
 // imagePullable asks the registry whether a reference can be pulled (a test seam).
@@ -39,7 +41,13 @@ func enabledModules(c *config.Company) []string {
 
 // requiredImages reads the images of the modules and warns about those it cannot read.
 func requiredImages(warn io.Writer, modulesDir string, ids []string) map[string][]string {
-	refs, unknown := modimages.Required(modulesDir, ids)
+	var refs map[string][]string
+	var unknown []string
+	if modulesDir == validate.BuiltinModules {
+		refs, unknown = modimages.RequiredFS(modules.Shipped, ids)
+	} else {
+		refs, unknown = modimages.Required(modulesDir, ids)
+	}
 	for _, u := range unknown {
 		fmt.Fprintf(warn, "warning: images not checked for %s\n", u)
 	}

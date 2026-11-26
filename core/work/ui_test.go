@@ -769,33 +769,6 @@ func TestUIOversizedFormAndMethods(t *testing.T) {
 	}
 }
 
-func TestUISessionTableIsBounded(t *testing.T) {
-	now := newTestClock()
-	s := newUISessions(now.Now)
-	s.max, s.perSubject = 50, 3
-	var first string
-	for i := 0; i < 10; i++ {
-		id, _ := s.create("tok", "u1")
-		if i == 0 {
-			first = id
-		}
-	}
-	if _, ok := s.get(first); ok {
-		t.Error("the subject's oldest session survived the per-subject cap")
-	}
-	for i := 0; i < 200; i++ {
-		s.create("tok", "user"+strconv.Itoa(i))
-	}
-	if s.len() > 50 {
-		t.Errorf("table grew to %d", s.len())
-	}
-	id, _ := s.create("t", "late")
-	now.Advance(9 * 60 * 60 * 1e9)
-	if _, ok := s.get(id); ok {
-		t.Error("idle session did not expire")
-	}
-}
-
 func manyPeople(n int) string {
 	var b strings.Builder
 	for i := 0; i < n; i++ {
