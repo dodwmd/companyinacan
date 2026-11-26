@@ -36,7 +36,7 @@ ssh root@SERVER nft list table inet can_isolation   # rules and drop counters
   one per line, to `/etc/can/firewall/trusted-namespaces`. Namespaces starting `mod-` are ignored.
   Trust grants the API server and host DNS only.
 - **A pod needs another host service** (a Prometheus pod scraping `node_exporter` on the node, a mail
-  relay on the server, the kubelet): not supported. Run it as a pod, or elsewhere.
+  relay on the server (so [`email.send`](email.md) needs a relay elsewhere), the kubelet): not supported. Run it as a pod, or elsewhere.
 - **Turn it off**: `can-firewall disable` on the server (stays off across reboots).
   Turn it on again with `can-firewall install`.
 

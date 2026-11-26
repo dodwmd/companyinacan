@@ -23,6 +23,15 @@
   `notify_email` on a cluster. The chart now renders that one setting as a top-level default in
   `forms.yaml`. The other forms settings are still ignored by the chart (existing gap).
 
+- **R10. Vouched addresses, not confirmation links.** A confirmation flow needs its own tokens,
+  pages and abuse limits. Restricting to the company domain, an operator list and verified SSO
+  claims closes the same hole with configuration only.
+- **R11. Fixed text.** Module titles, bodies and event ids are free text; sent from the company's
+  address they are a phishing tool. Even the type is spaced out so it cannot be read as a link.
+- **R12. Migration numbers.** `0011`, because another open change takes `0010`. The runner applies
+  numbers above the highest recorded one, so this must merge after it; a contract test now rejects
+  duplicate numbers.
+
 ## Unverified
 
 No real relay (SES, Resend, Brevo or other), no cluster (Secret mount, NetworkPolicy egress, module

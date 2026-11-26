@@ -49,8 +49,9 @@ id, so a redelivered event cannot notify twice.
 ## Channels
 
 - Email: the `Mailer` interface, wired to the platform's `email.send` outbox ([email.md](email.md)): plain text
-  only is sent. A delivery logged as `sent` means "handed to the outbox"; what the relay did is in Admin UI,
-  Email. Templates are project-owned; values are
+  only is sent, to vouched addresses, and module-authored content is replaced by a fixed text
+  ([email.md](email.md#notification-mail)). A delivery logged as `sent` means "handed to the outbox";
+  what the relay did is in Admin UI, Email. Templates are project-owned; values are
   escaped in HTML, stripped of control characters in the subject and text.
 - Webhook (Slack-style `{"text": ...}`): named channels in company.yaml, https only, no redirects,
   errors never contain the URL, and the connection is refused at dial time for private, loopback,

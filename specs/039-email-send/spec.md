@@ -19,8 +19,8 @@ that was left pending (`specs/005-can-core-mvp/tasks.md` T032). Operator guide: 
 
 1. **A lead reaches someone.** A visitor posts the contact form; the address in the form's
    `notify_email` receives a plain-text email with the submission and the visitor as Reply-To.
-2. **An approver is told.** A person who set an email address in their notification settings gets
-   approval and notification mail.
+2. **An approver is told.** A person whose notification address is at the company domain (or is
+   otherwise vouched for) gets approval and notification mail.
 3. **The relay is down.** Mail waits, is retried with growing pauses, and appears as failed after the
    attempts run out; an operator sends it again once the relay is back.
 4. **A module is compromised.** It can mail only its allow-listed recipients, within its quota, and
@@ -43,6 +43,10 @@ that was left pending (`specs/005-can-core-mvp/tasks.md` T032). Operator guide: 
 - **FR-005** Every recipient of module mail MUST match the module's allow-list, checked when queued
   and again when sent. Default: the company domain and the module's `notify_email` setting. A public
   form MUST NOT be able to choose a recipient.
+- **FR-005a** Notification mail caused by a module MUST obey that module's switch and quota, MUST
+  carry a fixed text instead of module-authored content unless the operator opted in, and MUST only
+  go to the company domain, `email.notification_recipients` or the person's verified single sign-on
+  address.
 - **FR-006** Per-module hourly and daily quotas and a waiting-message cap MUST be enforced in the
   transaction that queues.
 - **FR-007** No input may add or end a header: addresses are bare ASCII addr-specs without `%` or
@@ -57,6 +61,10 @@ that was left pending (`specs/005-can-core-mvp/tasks.md` T032). Operator guide: 
 - **FR-012** The admin UI MUST show relay state and per-message delivery status with masked
   recipients.
 - **FR-013** Forms lead notifications and the notification email channel MUST use this path.
+- **FR-015** A lead notification MUST be stored with the lead and retried (honouring `Retry-After`)
+  until accepted or seven days have passed, and a failure MUST be visible to the operator.
+- **FR-016** A relay-level failure MUST pause delivery instead of spending every message's attempts;
+  senders MUST take turns; a shutdown after the relay accepted a message MUST NOT resend it.
 - **FR-014** The compose stack MUST include an in-repository SMTP sink, and an end-to-end test MUST
   show that a form submission produces an email.
 
@@ -67,7 +75,7 @@ credential.
 
 Real-relay verification; the `can-smtp` Secret for SMTP-speaking apps (FreeScout, Listmonk);
 `make email` and DNS records (SPF, DKIM, DMARC); inbound mail; HTML and attachments; `AUTH LOGIN` or
-XOAUTH2; a durable outbox inside forms; an admin JSON API for the delivery list; erasure reaching
+XOAUTH2; confirmation links for outside notification addresses; an admin JSON API for the delivery list; erasure reaching
 mail still queued.
 
 ## Success criteria

@@ -10,7 +10,7 @@ Spec: [specs/039-email-send](../specs/039-email-send/spec.md).
 | Sender | How | Recipients |
 |---|---|---|
 | Forms gateway: new lead | `POST /v1/email` on the module API | the form's `notify_email` only |
-| Notifications and approvals | can-core's own e-mail channel ([notifications.md](notifications.md)) | the address each person set for themselves |
+| Notifications and approvals | can-core's own e-mail channel ([notifications.md](notifications.md)) | the address a person set, if it is vouched for (below) |
 | Other modules | `POST /v1/email`, if they declare `email.send` | their allow-list |
 
 SMTP-speaking third-party apps (FreeScout, Listmonk) cannot call this API and are **not** served by
@@ -70,6 +70,11 @@ or ConfigMap takes up to a minute to refresh).
   a NetworkPolicy: the shipped one allows public addresses on ports 25, 465, 587 and 2525 only.
 - `tls: none` is refused unless `CAN_SMTP_ALLOW_INSECURE=true` (development), and credentials are
   never sent without TLS.
+- **A relay on the server itself does not work.** The host firewall blocks pods from the node's own
+  address ([node-isolation.md](node-isolation.md)), and the NetworkPolicy blocks private addresses.
+  Use a hosted relay.
+- Link-local and cloud metadata addresses (including `fd00:ec2::254`) are refused even with
+  `CAN_SMTP_ALLOW_PRIVATE=true`.
 - Authentication is `AUTH PLAIN`. Relays that only offer `LOGIN` or XOAUTH2 are not supported.
 
 ## Who may be written to, and how much
@@ -92,8 +97,7 @@ email:
 A form added by editing the module's `config` (not its settings) with its own `notify_email` outside
 the company domain also needs that address under `email.modules.forms.recipients`.
 
-can-core's own notification mail is limited to 300 per hour and 2000 per day, on top of the limit per
-person. At most 500 messages per sender may be waiting at once. A refused message is not stored
+At most 500 messages per sender may be waiting at once. A refused message is not stored
 (HTTP 403, 429 or 503) and the caller records the failure.
 
 The sender address, `To`, `Date`, `Message-ID` and every other header are can-core's. A module
@@ -101,18 +105,55 @@ supplies recipients, an optional `Reply-To`, a one-line subject (control charact
 a plain-text body of up to 64 KiB. There is no HTML and there are no attachments. Messages carry
 `Auto-Submitted: auto-generated`.
 
+## Notification mail
+
+A notification caused by a module (its `POST /v1/notifications`, its approval requests, its events)
+**counts against that module**: its `enabled: false` stops it and its quota covers it, together with
+the module's own sends. can-core's own notices are limited to 300 per hour and 2000 per day. There is
+also the limit per person.
+
+When the module wrote any of the content, the email carries a **fixed text**: the module id, the
+notification type and a link to `https://admin.<domain>/notifications`. The module's title and body
+stay in the inbox. To mail the module's wording, opt in per module:
+
+```yaml
+email:
+  modules:
+    crm: { notification_text: true }
+```
+
+Addresses people type in their notification settings are not verified, so notification mail only goes
+to the **company domain** (or to `email.notification_recipients`, which replaces it) and to the
+person's **single sign-on address** when sign-on requires verified email claims
+(`sso.require_email_verified`, the default). Anything else is logged as a failed delivery.
+
+```yaml
+email:
+  notification_recipients: ["@acme.example", "@acme-partners.example"]
+```
+
 ## Delivery, retries, status
 
 Mail is stored in can-core's database before the caller is answered, with an audit entry in the same
 transaction. One worker delivers it. A temporary failure (network, TLS, authentication, SMTP 4xx) is
 retried after 1, 2, 4, 8, 16, 32 and 60 minutes; after 8 attempts, a permanent refusal (SMTP 5xx for
 the sender, recipient or content), or 72 hours of waiting, the message is a **dead letter**.
+When the failure is about the relay itself (connection, TLS, login) can-core stops the pass and
+pauses all delivery for 1 to 15 minutes. Senders take turns, so one sender's backlog does not hold
+up the others.
 Delivery is at least once: a crash at the wrong moment can send a message twice (same `Message-ID`).
 
 **Admin UI → Email** (`/email`, permission `notifications.admin`) shows the relay, and the newest 100
 messages with sender module, masked recipient, status, attempts and the last error (a fixed text
 and the SMTP reply code; never server text). Someone with `platform.operate` can send a dead letter
 again for seven days. Modules read the status of their own messages with `GET /v1/email/{id}`.
+
+**Lead notifications.** The forms gateway records the notification with the lead. While can-core
+does not accept it (down, over quota, no relay, recipient not allowed yet) it is retried after 1, 2,
+4 ... 60 minutes, or later if can-core says so (`Retry-After`), for seven days. The admin UI's leads
+view marks such a lead "Email notification retrying" or "failed", and the leads API returns
+`notification_status`. After a long outage, or when a relay is first connected, up to a week of
+notifications arrive.
 
 Metric: `can_email_messages_total{result="queued|sent|retry|dead|refused"}`.
 

@@ -14,5 +14,7 @@
 - [x] T10 Secret mount, egress policy, `can up --smtp-credentials-file`, `make up SMTP_CREDENTIALS=`
 - [x] T11 Compose SMTP sink, wiring, smoke check, e2e test
 - [x] T12 Docs
+- [x] T12a QA: module-aware notification mail, vouched addresses, forms retry store, relay pause and
+  turns, shutdown safety, input checks, stale development identities
 - [ ] T13 Verify against a real relay and on a real cluster
 - [ ] T14 `can-smtp` Secret for SMTP-speaking apps; `make email`; DNS records
