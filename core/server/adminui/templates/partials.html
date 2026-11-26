@@ -26,12 +26,6 @@
 </table>
 </div>
 {{else}}<p class="muted">{{t "ch.no_actions"}}</p>{{end}}
-{{- if .Held}}
-<h3>{{t "up.held"}}</h3>
-<ul>
-{{range .Held}}<li><code>{{.Module}}</code>: {{.Reason}}{{if .Widens}}<ul>{{range .Widens}}<li>{{.}}</li>{{end}}</ul>{{end}}</li>
-{{end}}</ul>
-{{- end}}
 {{if .Resources}}<h3>{{t "ch.resources"}}</h3>
 <ul>
 {{range .Resources}}<li><strong><code>{{.Module}}</code></strong> ({{.ActionLabel}})
@@ -54,9 +48,6 @@
 {{define "backupacks"}}{{range .}}<div class="alert warn" role="alert"><p>{{t "ch.backup_stops" .Module .Why}}{{if .Postgres}} {{t "ch.backup_postgres"}}{{end}}</p>
 <p><input type="checkbox" id="ab-{{.Module}}" name="ack" value="backup:{{.Module}}" required> <label class="check" for="ab-{{.Module}}">{{t "ch.backup_ack" .Module}}</label></p></div>
 {{end}}{{end}}
-
-{{define "upgradeacks"}}{{range .}}{{if .Ack}}<div class="alert warn"><p><input type="checkbox" id="up-{{.Module}}" name="ack" value="{{.Ack}}"> <label class="check" for="up-{{.Module}}">{{t "up.ack" .Module}}</label></p></div>
-{{end}}{{end}}{{end}}
 
 {{define "issues"}}{{if .Issues}}<div class="alert err" role="alert"><p><strong>{{t "ch.issues"}}</strong></p><ul>{{range .Issues}}<li>{{.}}</li>
 {{end}}</ul></div>{{end}}{{end}}

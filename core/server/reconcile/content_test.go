@@ -110,8 +110,8 @@ func TestContentChangesAreUpgradesWithoutAVersionBump(t *testing.T) {
 	check("the manifest", "manifest changed")
 	replaceIn(t, filepath.Join(dir, "forms", "chart", "templates", "deployment.yaml"), "terminationGracePeriodSeconds: 30", "terminationGracePeriodSeconds: 31")
 	check("a template", "chart changed")
-	replaceIn(t, values, "tag: 0.1.0", "tag: 0.1.1")
-	check("the image", "image ghcr.io/dodwmd/can-forms:0.1.0 -> ghcr.io/dodwmd/can-forms:0.1.1")
+	replaceIn(t, values, "tag: 0.2.0", "tag: 0.2.1")
+	check("the image", "image ghcr.io/dodwmd/can-forms:0.2.0 -> ghcr.io/dodwmd/can-forms:0.2.1")
 	rec, err := g.db.GetModule(context.Background(), "forms")
 	if err != nil || rec.Manifest.Category != "marketing" {
 		t.Fatalf("the manifest was not recorded again: %q %v", rec.Manifest.Category, err)
@@ -153,7 +153,7 @@ func TestAWideningUpgradeWaitsForApproval(t *testing.T) {
 	g.r.RequireApproval = true
 	apply(t, g, loadModules(t, dir, "forms"))
 	manifest := filepath.Join(dir, "forms", "module.yaml")
-	replaceIn(t, manifest, "permissions: [leads.read, leads.write]", "permissions: [leads.read, leads.write, leads.export]")
+	replaceIn(t, manifest, "leads.erase]\n", "leads.erase, leads.export]\n")
 	replaceIn(t, manifest, "  viewer: [leads.read]", "  viewer: [leads.read, leads.export]")
 
 	calls := len(g.fk.CallLog())
