@@ -30,6 +30,8 @@ const (
 	EventReviewReleased       = "review.released.v1"
 	EventTimeOffApproved      = "timeoff.approved.v1"
 	EventTimeOffCancelled     = "timeoff.cancelled.v1"
+	EventTimeOffRequested     = "timeoff.requested.v1"
+	EventTimeOffDecided       = "timeoff.decided.v1"
 	eventSource               = "people"
 	maxDeliveryAttempts       = 8
 	outboxDeliveredRetention  = 7 * 24 * time.Hour

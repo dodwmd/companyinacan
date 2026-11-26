@@ -4,7 +4,7 @@
 # container receives as environment. No public listener and no ingress.
 image:
   repository: ghcr.io/dodwmd/can-people
-  tag: 0.1.0
+  tag: 0.2.0
   # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
   digest: sha256:REPLACE_WITH_DIGEST
   pullPolicy: IfNotPresent

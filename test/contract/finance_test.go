@@ -41,6 +41,13 @@ var financeEvents = map[string][]byte{
 
 	"journal.posted.v1":          events.JournalPostedV1,
 	"bank.statement.imported.v1": events.BankStatementImportedV1,
+
+	"invoice.overdue.v1":     events.InvoiceOverdueV1,
+	"contract.declined.v1":   events.ContractDeclinedV1,
+	"expense.submitted.v1":   events.ExpenseSubmittedV1,
+	"expense.decided.v1":     events.ExpenseDecidedV1,
+	"timesheet.submitted.v1": events.TimesheetSubmittedV1,
+	"timesheet.decided.v1":   events.TimesheetDecidedV1,
 }
 
 var financeCaps = map[string][]byte{"invoices.v1": capabilities.InvoicesV1, "contracts.v1": capabilities.ContractsV1, "timesheets.v1": capabilities.TimesheetsV1}
@@ -338,6 +345,10 @@ func TestFinanceLiveEventsMatchSchemas(t *testing.T) {
 	do(boss, "POST", n+"/approve", nil)
 	do(maker, "POST", n+"/send", nil)
 	do(maker, "POST", n+"/payments", map[string]any{"amount_minor": 5000})
+	// A second invoice stays unpaid and is overdue by the sweep's date.
+	late := int(do(maker, "POST", "/v1/invoices", map[string]any{"party_id": party, "lines": []map[string]any{{"description": "y", "quantity_milli": 1000, "unit_price_minor": 700}}})["id"].(float64))
+	do(boss, "POST", "/v1/invoices/"+strconv.Itoa(late)+"/approve", nil)
+	do(tok, "POST", "/v1/invoices/overdue-sweep", map[string]any{"as_of": "2099-01-01"})
 	// E15c: a bank statement import (counts only in the event; the account number is sealed).
 	ba := int(do(tok, "POST", "/v1/bank/accounts", map[string]any{"name": "Main", "currency": "USD", "number": "DE89370400440532013000", "ledger_account_code": "1000"})["id"].(float64))
 	stmt, _ := http.NewRequest("POST", base+"/v1/bank/accounts/"+strconv.Itoa(ba)+"/statements?format=csv&delimiter=comma&date_col=1&amount_col=2&id_col=3", strings.NewReader("date,amount,id\n2026-01-05,50.00,T1\n"))
@@ -364,7 +375,8 @@ func TestFinanceLiveEventsMatchSchemas(t *testing.T) {
 	do(boss, "POST", "/v1/expenses/"+eid+"/approve", nil)
 
 	seen := map[string]int{}
-	for len(seen) < len(financeEvents) {
+	// contract.declined.v1 needs a signing link: core/finance tests it against its schema fields.
+	for len(seen) < len(financeEvents)-1 {
 		select {
 		case c := <-got:
 			var ev struct {

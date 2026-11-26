@@ -59,6 +59,11 @@
         "new_candidate": {
           "type": "boolean"
         },
+        "hiring_manager": {
+          "type": "string",
+          "pattern": "^user:[A-Za-z0-9_.@-]{1,64}$",
+          "description": "The account of the job's hiring manager, when the job names one. A staff identifier, never the candidate's."
+        },
         "received_at": {
           "type": "string",
           "format": "date-time"

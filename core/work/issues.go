@@ -287,6 +287,11 @@ func (s *Store) createInTx(ctx context.Context, tx dbq, a *Principal, proj *proj
 	}); err != nil {
 		return nil, err
 	}
+	if row.Priority == "P0" && !in.imported && row.StatusCategory != CategoryDone {
+		if err := s.emit(ctx, tx, EventIssueP0, issueP0Data{IssueID: row.Key, Project: row.Project, Assignee: row.Assignee}); err != nil {
+			return nil, err
+		}
+	}
 	return &row.Issue, nil
 }
 
@@ -756,6 +761,13 @@ func (s *Store) updateTx(ctx context.Context, tx dbq, a *Principal, key string, 
 		IssueKey: out.Key, Project: out.Project, Version: out.Version, Actor: a.Subject, Changes: changes, UpdatedAt: out.UpdatedAt,
 	}); err != nil {
 		return nil, err
+	}
+	_, raised := changes["priority"]
+	_, handed := changes["assignee"]
+	if out.Priority == "P0" && (raised || (handed && out.Assignee != nil)) && out.StatusCategory != CategoryDone {
+		if err := s.emit(ctx, tx, EventIssueP0, issueP0Data{IssueID: out.Key, Project: out.Project, Assignee: out.Assignee}); err != nil {
+			return nil, err
+		}
 	}
 	return &out.Issue, nil
 }

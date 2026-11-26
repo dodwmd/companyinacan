@@ -1,0 +1,11 @@
+{
+  "id": "evt_0123456789abcdef01234561",
+  "type": "contract.declined.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "contract_id": 9,
+    "party_id": 2,
+    "version": 3
+  }
+}

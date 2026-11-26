@@ -1024,6 +1024,31 @@ paths:
         "412": { description: "If-Match version is stale" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
+  /v1/invoices/overdue-sweep:
+    post:
+      summary: "Announce overdue invoices, once each (admin; also runs hourly)"
+      operationId: POST_v1_invoices_overdue_sweep
+      x-scope: finance.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
   /v1/contracts/{id}:
     get:
       summary: "Get a contract"

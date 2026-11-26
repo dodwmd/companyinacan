@@ -266,7 +266,8 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	return nil
 }
 
-// purgeLoop runs the housekeeping: retention, due recurring invoices and contract reminders.
+// purgeLoop runs the housekeeping: retention, due recurring invoices, contract and
+// overdue invoice reminders.
 func (a *App) purgeLoop(ctx context.Context) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
@@ -289,6 +290,11 @@ func (a *App) purgeLoop(ctx context.Context) {
 			a.log.Error("contract sweep", "error", err)
 		} else if n > 0 {
 			a.log.Info("contract renewal reminders", "count", n)
+		}
+		if n, err := a.store.SweepOverdue(ctx, today); err != nil && ctx.Err() == nil {
+			a.log.Error("overdue invoice sweep", "error", err)
+		} else if n > 0 {
+			a.log.Info("overdue invoice reminders", "count", n)
 		}
 		select {
 		case <-ctx.Done():

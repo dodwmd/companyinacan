@@ -130,6 +130,7 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 			`UPDATE ledger_guard SET open=1`,
 			`DELETE FROM leave_ledger WHERE person_id=?`,
 			`UPDATE ledger_guard SET open=0`,
+			`DELETE FROM outbox WHERE type IN ('timeoff.requested.v1', 'timeoff.decided.v1') AND EXISTS (SELECT 1 FROM leave_requests r WHERE r.person_id=? AND instr(outbox.payload, r.id) > 0)`,
 			`DELETE FROM leave_requests WHERE person_id=?`,
 			`DELETE FROM outbox WHERE type IN ('timeoff.approved.v1', 'timeoff.cancelled.v1') AND instr(payload, '"person_id":"' || ? || '"') > 0`,
 		}

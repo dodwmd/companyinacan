@@ -213,6 +213,9 @@ type CreateIssue struct {
 	SprintID       *int64   `json:"sprint_id"`
 	Labels         []string `json:"labels"`
 	IdempotencyKey string   `json:"idempotency_key"`
+
+	// imported marks a row of a CSV import: history that asks nobody's attention now.
+	imported bool
 }
 
 // Patch is the body of an issue update (and the `set` of a bulk update). Every field is

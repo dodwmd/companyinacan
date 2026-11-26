@@ -4,7 +4,7 @@
 # receives as environment. No public listener and no ingress.
 image:
   repository: ghcr.io/dodwmd/can-board
-  tag: 0.1.0
+  tag: 0.2.0
   # Set to a sha256 digest at release time; empty = the tag.
   digest: ""
   pullPolicy: IfNotPresent

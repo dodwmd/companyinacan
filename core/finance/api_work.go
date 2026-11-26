@@ -216,6 +216,25 @@ func (a *api) sweepContracts(w http.ResponseWriter, r *http.Request, _ *Principa
 	writeJSON(w, http.StatusOK, map[string]any{"reminders": n})
 }
 
+// sweepOverdue runs the overdue invoice reminders now (the hourly housekeeping does it on its own).
+func (a *api) sweepOverdue(w http.ResponseWriter, r *http.Request, _ *Principal) {
+	var in struct {
+		AsOf string `json:"as_of"`
+	}
+	if r.ContentLength != 0 && !decodeJSON(w, r, &in) {
+		return
+	}
+	if in.AsOf == "" {
+		in.AsOf = dateOf(a.now())
+	}
+	n, err := a.store.SweepOverdue(r.Context(), in.AsOf)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"invoices": n})
+}
+
 // esignWebhook receives the e-signature service's "signed" notification, authenticated by
 // its signature. The document hash it reports must match the contract's current text.
 func (a *api) esignWebhook(w http.ResponseWriter, r *http.Request) {

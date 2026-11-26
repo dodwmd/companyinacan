@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/timeoff.requested.v1.json",
+  "title": "timeoff.requested.v1",
+  "description": "Published when a time off request is submitted. `approver` is the account of the requester's manager when the directory links one. No dates, leave type or person id. Delivered at least once; consumers de-duplicate on `id`. Carries identifiers, dates and counts only: no names, amounts, reasons or other text (fetch the record through the capability if the token allows).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "timeoff.requested.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "people"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "pattern": "^lvr_[0-9a-f]{24}$"
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 254
+        }
+      }
+    }
+  }
+}

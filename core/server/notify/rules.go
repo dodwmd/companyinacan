@@ -1,9 +1,12 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -43,11 +46,14 @@ func (s *Service) loadRules(ctx context.Context) ([]moduleRule, error) {
 	return rules, nil
 }
 
-// idData keeps only identifier members of event data: `id` and `*_id`. Event payloads may carry
-// personal data (names, emails); notifications never copy it.
+// idData keeps only identifier members of event data (`id` and `*_id`, strings or whole numbers) and
+// `count`, the number of things a summary event stands for. Event payloads may carry personal data
+// (names, emails); notifications never copy it.
 func idData(raw json.RawMessage) map[string]string {
 	var m map[string]any
-	if json.Unmarshal(raw, &m) != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if dec.Decode(&m) != nil {
 		return map[string]string{}
 	}
 	out := map[string]string{}
@@ -57,8 +63,23 @@ func idData(raw json.RawMessage) map[string]string {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		v, ok := m[k].(string)
-		if !ok || !dataKeyRe.MatchString(k) || (k != "id" && !strings.HasSuffix(k, "_id")) {
+		isID := k == "id" || strings.HasSuffix(k, "_id")
+		if !dataKeyRe.MatchString(k) || (!isID && k != "count") {
+			continue
+		}
+		var v string
+		switch x := m[k].(type) {
+		case string:
+			if !isID {
+				continue
+			}
+			v = x
+		case json.Number:
+			if !wholeNumberRe.MatchString(x.String()) {
+				continue
+			}
+			v = x.String()
+		default:
 			continue
 		}
 		if len(out) >= maxDataKeys-2 {
@@ -68,6 +89,8 @@ func idData(raw json.RawMessage) map[string]string {
 	}
 	return out
 }
+
+var wholeNumberRe = regexp.MustCompile(`^[0-9]{1,18}$`)
 
 // HandleEvent is the bus handler (events.Bus.SubscribeAll) that turns events into notifications
 // according to the rules in module manifests. Errors are logged: a failing notification must never
@@ -106,10 +129,12 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 
 	seen := map[string]bool{}
 	var subjects, channels []string
+	byRole := false
 	for _, rcp := range mr.rule.Recipients {
 		kind, val, _ := strings.Cut(rcp, ":")
 		switch kind {
 		case "role":
+			byRole = true
 			if s.opt.Roles == nil {
 				continue
 			}
@@ -128,6 +153,15 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 		case "channel":
 			channels = append(channels, val)
 		}
+	}
+	// A rule that names a role must reach somebody: when nobody holds it (a new company has only
+	// its owner) and no other recipient is a person, the owners are told.
+	if byRole && s.opt.Roles != nil && !slices.ContainsFunc(subjects, rbac.ValidSubject) {
+		ss, err := s.opt.Roles.SubjectsWithRole(ctx, rbac.Owner, MaxRecipientsPerRule)
+		if err != nil {
+			s.opt.Log.Error("resolving the owners for a notification failed", "error", err)
+		}
+		subjects = append(subjects, ss...)
 	}
 	n := 0
 	for _, subj := range subjects {

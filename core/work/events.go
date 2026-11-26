@@ -25,12 +25,14 @@ const (
 	EventIssueUpdated    = "work.issue.updated.v1"
 	EventIssueTransition = "work.issue.transitioned.v1"
 	EventCommentCreated  = "work.comment.created.v1"
-	eventSource          = "work"
-	maxBackoff           = 6 * time.Hour
-	deliveryWindow       = 7 * 24 * time.Hour // undelivered after this long: dead-lettered, not dropped
-	deadRetention        = 90 * 24 * time.Hour
-	outboxBatch          = 20
-	deliveredRetention   = 7 * 24 * time.Hour
+	// EventIssueP0 asks for attention: an unresolved issue became P0, or a P0 changed hands.
+	EventIssueP0       = "work.issue.p0.v1"
+	eventSource        = "work"
+	maxBackoff         = 6 * time.Hour
+	deliveryWindow     = 7 * 24 * time.Hour // undelivered after this long: dead-lettered, not dropped
+	deadRetention      = 90 * 24 * time.Hour
+	outboxBatch        = 20
+	deliveredRetention = 7 * 24 * time.Hour
 )
 
 // Event is the platform event envelope (SPEC.md section 4.3).
@@ -59,6 +61,12 @@ type issueCreatedData struct {
 	Assignee  *string   `json:"assignee"`
 	Parent    *string   `json:"parent"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type issueP0Data struct {
+	IssueID  string  `json:"issue_id"`
+	Project  string  `json:"project"`
+	Assignee *string `json:"assignee"`
 }
 
 type issueUpdatedData struct {

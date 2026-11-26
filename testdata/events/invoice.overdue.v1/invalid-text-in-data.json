@@ -1,0 +1,13 @@
+{
+  "id": "evt_0123456789abcdef01234560",
+  "type": "invoice.overdue.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "invoice_id": 12,
+    "party_id": 3,
+    "due_date": "2026-11-01",
+    "days_overdue": 24,
+    "reason": "free text"
+  }
+}
