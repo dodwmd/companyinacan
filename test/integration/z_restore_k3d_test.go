@@ -339,6 +339,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	s := seed(t)
 
 	// --- back up ------------------------------------------------------------------------------
+	// (the stub has a backup and a restore hook, so `can backup verify` below accepts the set)
 	requestDump(t)
 	onNode(t, "test -s /var/lib/can/dumps/can-core/secrets.json && test -s /var/lib/can/dumps/modules/stub/probe.tar.gz")
 	password, can := backupHost(t)
