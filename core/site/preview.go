@@ -14,7 +14,7 @@ import (
 var ErrNoPage = errors.New("site: no such page")
 
 var (
-	jsonLDRe       = regexp.MustCompile(`(?s)\n?<script type="application/ld\+json">.*?</script>`)
+	jsonLDRe   = regexp.MustCompile(`(?s)\n?<script type="application/ld\+json">.*?</script>`)
 	styleRe    = regexp.MustCompile(`<link rel="stylesheet" href="/(assets/site\.[0-9a-f]+\.css)">`)
 	internalRe = regexp.MustCompile(`href="/([^"/][^"]*)?"`)
 )
