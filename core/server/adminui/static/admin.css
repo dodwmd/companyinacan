@@ -260,3 +260,8 @@ input[type="email"], input[type="time"] {
   table.rows td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 600; }
   table.rows td form button { width: 100%; }
 }
+
+/* Phones (specs/054-browser-e2e). A screen-reader-only text inside a scrolling table is positioned
+   against the scroller, not the page, or it widens the page; a fieldset must be allowed to shrink. */
+.table-wrap { position: relative; }
+fieldset { min-width: 0; }

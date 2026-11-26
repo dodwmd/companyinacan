@@ -1,20 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Contact - Acme Co (dev)</title>
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:sans-serif;max-width:32rem;margin:2rem auto">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,"></head>
+<body>
+<main>
 <h1>Contact Acme Co</h1>
 <p><em>DEV ONLY page added by docker-compose.yml: the generated example site has no form of its own.
-It posts to the can-forms gateway through the edge at /_forms/contact.</em></p>
-<form method="post" action="/_forms/contact">
-  <p><label>Name<br><input name="name" required maxlength="100"></label></p>
-  <p><label>Email<br><input name="email" type="email" required></label></p>
-  <p><label>Message<br><textarea name="message" required rows="5"></textarea></label></p>
-  <input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
-  <input type="hidden" name="_t" id="_t">
-  <p><button>Send</button></p>
-</form>
-<script>
-fetch('/_forms/contact/token').then(function (r) { return r.json(); })
-  .then(function (j) { document.getElementById('_t').value = j.token; });
-</script>
+The site runs no script (its Content-Security-Policy allows none), so the form is the one the can-forms
+gateway serves, through the edge at /_forms/contact/form.</em></p>
+<p><a href="/_forms/contact/form">Open the contact form</a></p>
+</main>
 </body></html>

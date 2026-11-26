@@ -18,3 +18,6 @@ modules:
 email:
   # tls: none is accepted only because the compose stack sets CAN_SMTP_ALLOW_INSECURE=true.
   relay: { host: smtpsink, port: 1025, tls: none, from: no-reply@acme.example }
+  # Contract signers are outside the company (docs/email.md, "Contract signers"); the relay here is the sink.
+  modules:
+    finance: { external_recipients: true }

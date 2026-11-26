@@ -52,9 +52,9 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 // writeHTMLPage renders a minimal static page; every dynamic string is escaped.
 func writeHTMLPage(w http.ResponseWriter, status int, title string, lines ...string) {
 	var b strings.Builder
-	b.WriteString("<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>")
+	b.WriteString(htmlHead + "<title>")
 	b.WriteString(html.EscapeString(title))
-	b.WriteString("</title><h1>")
+	b.WriteString("</title></head><body><main><h1>")
 	b.WriteString(html.EscapeString(title))
 	b.WriteString("</h1>")
 	for _, l := range lines {
@@ -62,6 +62,8 @@ func writeHTMLPage(w http.ResponseWriter, status int, title string, lines ...str
 		b.WriteString(html.EscapeString(l))
 		b.WriteString("</p>")
 	}
+	b.WriteString("</main></body></html>")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(b.String()))
