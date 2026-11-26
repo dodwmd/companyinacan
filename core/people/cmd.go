@@ -126,7 +126,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "metrics: %v\n", err)
 		return 2
 	}
-	api := &API{Svc: svc, Auth: auth, Log: log, Can: canEvents}
+	api := &API{Svc: svc, Auth: auth, Log: log, Can: canEvents, TrustProxy: cfg.TrustProxy}
 	handler := api.Handler()
 	if cfg.UI.Enabled {
 		ui := &UI{Svc: svc, Auth: auth, Log: log, Secure: !cfg.UI.InsecureCookies, TrustProxy: cfg.UI.TrustProxy, NotificationsURL: cfg.UI.NotificationsURL,

@@ -43,6 +43,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
+	"github.com/dodwmd/companyinacan/core/server/restoreops"
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
@@ -93,6 +94,10 @@ type Config struct {
 	DumpHour, DumpMinute int
 	DumpStartDelay       time.Duration
 	DumpRequestFile      string
+
+	// Restore mode (specs/042-restore): CAN_RESTORE names a restore to latch, CAN_RESTORE_OVERWRITE
+	// the one that may replace an existing state database.
+	RestoreID, RestoreOverwrite string
 
 	Version, Commit string // build identity for can_build_info
 	// Env reads settings Run needs after FromEnv (CAN_METRICS_*, CAN_RAM_DECLARED_*); nil means os.Getenv.
@@ -198,6 +203,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	if err := c.dumpEnv(getenv); err != nil {
 		return c, err
 	}
+	c.RestoreID, c.RestoreOverwrite = getenv("CAN_RESTORE"), getenv("CAN_RESTORE_OVERWRITE")
 	return c, nil
 }
 
@@ -250,6 +256,11 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	}
 	if !cfg.TrustProxy {
 		log.Warn("CAN_TRUST_PROXY is off: sign-in has no lockout or rate limit by client address, only delays and the per-account limit on codes. Behind Traefik set CAN_TRUST_PROXY=true (specs/005-can-core-mvp/deployment.md)")
+	}
+	// Restore mode imports the state dump before the database is opened.
+	restoring, err := restoreops.Boot(ctx, cfg.DBPath, cfg.DumpsDir, cfg.RestoreID, cfg.RestoreID != "" && cfg.RestoreOverwrite == cfg.RestoreID)
+	if err != nil {
+		return fmt.Errorf("restore mode: %w", err)
 	}
 	db, err := store.Open(ctx, cfg.DBPath)
 	if err != nil {
@@ -340,8 +351,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return ids, nil
 	}}
 	adminSrv.Identity = idSvc
-	if err := idSvc.Reconcile(ctx); err != nil {
-		log.Warn("identity: reconciling offboarding facts failed", "error", err)
+	if !restoring { // it acts on the restored data, which may still hold what is to be erased
+		if err := idSvc.Reconcile(ctx); err != nil {
+			log.Warn("identity: reconciling offboarding facts failed", "error", err)
+		}
 	}
 	bus.Subscribe("person.offboarded.v1", idSvc.HandleOffboarded)
 	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc, Tickets: tickets, Email: mail}
@@ -360,6 +373,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			return fmt.Errorf("backup dumps: %w", err)
 		}
 		moduleSrv.Dumps = dumper
+		dumper.RestoreMode, moduleSrv.Restoring = restoring, restoring
 	}
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
@@ -383,6 +397,13 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		srv *http.Server
 		ln  net.Listener
 	}{{mk(uiSrv.Handler(adminSrv.Handler())), adminLn}, {mk(moduleSrv.Handler()), moduleLn}}
+
+	if restoring {
+		// No background worker is started: nothing is sent, dumped or reconciled.
+		servers[0].srv.Handler = restoringHandler(servers[0].srv.Handler, adminAllowed)
+		servers[1].srv.Handler = restoringHandler(servers[1].srv.Handler, moduleAllowed)
+		return serveRestoring(ctx, cfg.ShutdownTimeout, log, servers[0].srv, servers[0].ln, servers[1].srv, servers[1].ln)
+	}
 
 	workCtx, stopWork := context.WithCancel(ctx)
 	var wg sync.WaitGroup

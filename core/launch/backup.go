@@ -17,7 +17,7 @@ import (
 
 // BackupInstallVersion is the generation of what the backup step installs on the host (script,
 // units, tools). Raise it whenever an existing install must be redone by the next `can up`.
-const BackupInstallVersion = 3
+const BackupInstallVersion = 4
 
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
@@ -57,17 +57,39 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if !validPassword(in.Password) && (installed || in.Password != "") {
 		return false, "", fmt.Errorf("the restic password file %s on the server is missing or not a password: put the one from your recovery kit back; refusing to create a new one, which could not open the repository", pwPath)
 	}
+	envPath := path.Join(s.ConfigDir, backup.EnvFileName)
+	hostEnv := ""
+	if installed || in.Password != "" {
+		if hostEnv, err = r.d.Host.Run(ctx, fmt.Sprintf("if [ -e %[1]s ]; then cat %[1]s; fi\n", envPath)); err != nil {
+			return false, "", fmt.Errorf("read the bucket credentials file from the server: %w", err)
+		}
+	}
+	// No --backup-region: keep what the server already uses instead of rewriting it to the default.
+	if in.Region == "" {
+		in.Region = envValue(hostEnv, "AWS_DEFAULT_REGION")
+	}
+	if in.Region == "" {
+		in.Region = "auto"
+	}
 	kit, err := backup.NewKit(in)
 	if err != nil {
 		return false, "", err
 	}
-	envPath := path.Join(s.ConfigDir, backup.EnvFileName)
-	// Does the operator's kit still match what the server will use?
-	changed, hostEnv := false, ""
+	// .can/state.json is the laptop's memory; the server may be another one (replaced, restored
+	// from a backup, or overwritten by a restore that stopped the timer). Only the server itself
+	// can say whether it is being backed up.
+	onHost := false
 	if installed {
-		if hostEnv, err = r.d.Host.Run(ctx, fmt.Sprintf("if [ -e %[1]s ]; then cat %[1]s; fi\n", envPath)); err != nil {
-			return false, "", fmt.Errorf("read the bucket credentials file from the server: %w", err)
+		if onHost, err = r.timerOnHost(ctx, s); err != nil {
+			return false, "", err
 		}
+		if !onHost {
+			r.res.Warnings = append(r.res.Warnings, "the server had no working backup timer although this directory recorded one (a replaced or restored server): installing it now")
+		}
+	}
+	// Does the operator's kit still match what the server will use?
+	changed := false
+	if installed {
 		old, err := r.d.Host.Run(ctx, fmt.Sprintf("if [ -e %[1]s ]; then grep -m1 '^export RESTIC_REPOSITORY=' %[1]s; fi\n", s.ScriptPath))
 		if err != nil {
 			return false, "", fmt.Errorf("read the installed repository from the server: %w", err)
@@ -92,9 +114,12 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		}
 		r.res.Warnings = append(r.res.Warnings, "the restic password, repository or bucket credentials differ from the recovery kit you hold: store the NEW kit")
 	}
-	if installed && !changed && st.Launch.BackupVersion >= BackupInstallVersion {
+	if installed && onHost && !changed && st.Launch.BackupVersion >= BackupInstallVersion {
 		// The credentials file follows the flags even when nothing else is redone.
 		if want := backup.HostEnvFile(kit); strings.TrimSpace(hostEnv) != strings.TrimSpace(want) {
+			if err := r.verifyCredentials(ctx, s, kit, want); err != nil {
+				return false, "", err
+			}
 			if err := r.d.Host.Copy(ctx, envPath, []byte(want), "0600"); err != nil {
 				return false, "", fmt.Errorf("install %s: %w", envPath, err)
 			}
@@ -107,6 +132,12 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		}
 		r.noteKit(kit)
 		return true, "timer already installed; kit rebuilt from the server's password", nil
+	}
+	// A working restic.env is only replaced by credentials that have been seen to work.
+	if want := backup.HostEnvFile(kit); installed && strings.TrimSpace(hostEnv) != "" && strings.TrimSpace(hostEnv) != strings.TrimSpace(want) {
+		if err := r.verifyCredentials(ctx, s, kit, want); err != nil {
+			return false, "", err
+		}
 	}
 	// Redoing an install must not hand out an unchanged, already shown kit a second time.
 	r.noteKit(kit)
@@ -164,6 +195,52 @@ echo CAN_BACKUP_OK
 	return false, "", nil
 }
 
+// timerOnHost reports whether the server has the backup script and an enabled, running timer.
+// Anything but a clear yes counts as no: installing again is harmless.
+func (r *runner) timerOnHost(ctx context.Context, s backup.Settings) (bool, error) {
+	out, err := r.d.Host.Run(ctx, fmt.Sprintf("if [ -x %s ] && systemctl is-enabled --quiet can-backup.timer && systemctl is-active --quiet can-backup.timer; then echo CAN_TIMER_OK; else echo CAN_TIMER_MISSING; fi\n", shq(s.ScriptPath)))
+	if err != nil {
+		return false, fmt.Errorf("check the backup timer on the server: %w", err)
+	}
+	return strings.Contains(out, "CAN_TIMER_OK"), nil
+}
+
+// envValue reads one value from the content of a restic.env written by backup.HostEnvFile.
+func envValue(content, key string) string {
+	for _, l := range strings.Split(content, "\n") {
+		l = strings.TrimPrefix(strings.TrimSpace(l), "export ")
+		if v, ok := strings.CutPrefix(l, key+"="); ok {
+			return strings.Trim(v, `'"`)
+		}
+	}
+	return ""
+}
+
+// verifyCredentials tries env (the new restic.env) against the repository from a temporary file,
+// so that a mistyped or not yet active key never replaces the one the nightly backup works with.
+// restic's exit code 10 (no repository there yet) means the bucket answered, so it is accepted.
+func (r *runner) verifyCredentials(ctx context.Context, s backup.Settings, kit *backup.Kit, env string) error {
+	if tools, err := r.d.Host.Run(ctx, backup.HostToolsScript("/usr/local/bin/restic")); err != nil || strings.Contains(tools, "CAN_NO_RESTIC") {
+		return fmt.Errorf("restic is needed on the server to check the new bucket credentials and could not be installed: %v %s", err, strings.TrimSpace(tools))
+	}
+	tmp := path.Join(s.ConfigDir, backup.EnvFileName+".new")
+	if err := r.d.Host.Copy(ctx, tmp, []byte(env), "0600"); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	script := fmt.Sprintf(`trap 'rm -f %[1]s' EXIT
+set -a; . %[1]s; set +a
+export RESTIC_REPOSITORY=%[2]s RESTIC_PASSWORD_FILE=%[3]s
+rc=0
+restic cat config >/dev/null 2>&1 || rc=$?
+if [ "$rc" = 0 ] || [ "$rc" = 10 ]; then echo CAN_CREDS_OK; else echo "CAN_CREDS_BAD $rc"; fi
+`, shq(tmp), shq(kit.Restic.Repository), shq(path.Join(s.ConfigDir, backup.PasswordFileName)))
+	out, err := r.d.Host.Run(ctx, script)
+	if err != nil || !strings.Contains(out, "CAN_CREDS_OK") {
+		return fmt.Errorf("the new bucket credentials do not open %s from the server (%v %s); the server's restic.env was NOT changed. Check the key, bucket and region and run `can up` again", kit.Restic.Repository, err, strings.TrimSpace(out))
+	}
+	return nil
+}
+
 // kitFingerprint identifies the repository, password and bucket credentials of a kit without
 // holding the secrets: an argon2id digest of them, salted with the repository.
 func kitFingerprint(k *backup.Kit) string {
@@ -189,7 +266,7 @@ func validPassword(s string) bool {
 }
 
 // RestoreCaveat is shown by every `can up` with backups on.
-const RestoreCaveat = "RESTORE IS NOT FUNCTIONAL YET: `can restore` stops at its first step. Snapshots are taken, but recovering from them is manual work with restic (docs/backup-restore.md)"
+const RestoreCaveat = "RESTORE IS NOT PROVEN ON A REAL SERVER: `can restore` has only been run on throwaway k3d clusters with a local repository; rehearse it on a spare server before you rely on it (docs/backup-restore.md)"
 
 // warnBackupLimits says, on every run of a company with backups, what the backup does not do,
 // and what the server's last dump run reported.

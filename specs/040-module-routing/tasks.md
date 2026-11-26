@@ -10,8 +10,8 @@
   policy tables)
 - [x] T008 Advisory k3d job `module-routing`: policy refusals and work + forms end to end
 - [x] T009 Docs
-- [ ] T010 DNS records for `<module>.<domain>` in `can up` and the setup wizard
+- [x] T010 DNS records for `<module>.<domain>` in `can up` and the setup wizard (E03f, specs/045)
 - [ ] T011 people, jobs and finance UIs on a cluster (their images are not built in CI)
 - [ ] T012 A real certificate and a real browser
-- [ ] T013 finance public invoice link route
-- [ ] T014 Admin UI: show what is exposed
+- [x] T013 finance public invoice link route (E03f)
+- [x] T014 Admin UI: show what is exposed (E03f)

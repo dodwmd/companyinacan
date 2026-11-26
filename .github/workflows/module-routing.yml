@@ -3,8 +3,9 @@ name: module-routing
 # Not a required check (continue-on-error). specs/040-module-routing on a real k3d cluster: the
 # admission policy's refusals, and end to end through Traefik on port 443: work enabled with its UI
 # and forms, an admin login, the Apps launcher, a launch ticket redeemed into a work session and a
-# public form post that becomes a lead. Certificates are Traefik's self-signed default; no ACME, no
-# browser; people, jobs and finance are not run.
+# public form post that becomes a lead. specs/045-public-access: the HTTPS redirect, the sign-in
+# limit against spoofed forwarding headers and finance's signed-link path.
+# Certificates are Traefik's self-signed default; no ACME, no browser; people and jobs are not run.
 on:
   workflow_dispatch:
   pull_request:
@@ -27,7 +28,7 @@ jobs:
     name: routing
     runs-on: ubuntu-latest
     continue-on-error: true
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +44,7 @@ jobs:
           sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
       - name: Create the cluster
         run: make dev
-      - name: Build can-core, can-work and can-forms and import them
+      - name: Build can-core and the module images and import them
         # Base images by tag or by today's digest: the release pins are placeholders.
         run: |
           docker build -f deploy/can-core/Dockerfile \
@@ -54,14 +55,15 @@ jobs:
           docker pull -q gcr.io/distroless/static-debian12:nonroot >/dev/null
           GO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' golang:1.27 | cut -d@ -f2)
           DL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot | cut -d@ -f2)
-          for m in work forms; do
+          for m in work forms finance; do
             docker build -f deploy/$m/Dockerfile \
               --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
               --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
               --build-arg VERSION=ci \
               -t ghcr.io/dodwmd/can-$m:0.1.0 .
           done
-          k3d image import can-core:dev ghcr.io/dodwmd/can-work:0.1.0 ghcr.io/dodwmd/can-forms:0.1.0 -c companyinacan-dev
+          k3d image import can-core:dev ghcr.io/dodwmd/can-work:0.1.0 ghcr.io/dodwmd/can-forms:0.1.0 \
+            ghcr.io/dodwmd/can-finance:0.1.0 -c companyinacan-dev
       - name: Deploy can-core
         run: |
           kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
@@ -70,7 +72,7 @@ jobs:
         env:
           CAN_IT_CANCORE: "1"
           CAN_IT_ROUTING: "1"
-        run: go test -tags integration -count=1 -v -timeout 20m -run 'TestTraefikHasTheACMEResolver|TestAdmissionPolicyRoutes|TestModuleRoutingThroughTheIngress' ./test/integration/
+        run: go test -tags integration -count=1 -v -timeout 28m -run 'TestTraefikHasTheACMEResolver|TestAdmissionPolicyRoutes|TestModuleRoutingThroughTheIngress' ./test/integration/
       - name: Cluster state on failure
         if: failure()
         run: |

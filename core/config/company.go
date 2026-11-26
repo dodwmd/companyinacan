@@ -45,7 +45,12 @@ type Expose struct {
 	Public *bool `yaml:"public" json:"public,omitempty"`
 	// TokenLogin keeps the paste-a-token sign-in on a routed web UI (default off).
 	TokenLogin bool `yaml:"token_login" json:"token_login,omitempty"`
+	// EdgeLimit rate-limits sign-in and anonymous routes at the ingress (default on).
+	EdgeLimit *bool `yaml:"edge_limit" json:"edge_limit,omitempty"`
 }
+
+// EdgeLimitOn reports whether the edge limits apply (default true).
+func (e Expose) EdgeLimitOn() bool { return e.EdgeLimit == nil || *e.EdgeLimit }
 
 // Exposure returns the entry's exposure settings (the zero value when nothing is set).
 func (m ModuleEntry) Exposure() Expose {

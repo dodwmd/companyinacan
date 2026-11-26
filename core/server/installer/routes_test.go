@@ -145,7 +145,8 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 				t.Errorf("NetworkPolicy: %s", got)
 			}
 			d = get(t, api, "Deployment", spec.Namespace, c.id)
-			if dig(d, "spec", "template", "metadata", "annotations", annotationRoute) != nil {
+			// jobs keeps its public_config while the careers pages are routed
+			if c.id != "jobs" && dig(d, "spec", "template", "metadata", "annotations", annotationRoute) != nil {
 				t.Error("exposure annotation left behind")
 			}
 		})

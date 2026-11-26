@@ -343,6 +343,14 @@ func TestTraefikHelmChartConfig(t *testing.T) {
 	if v.str("service", "spec", "externalTrafficPolicy") != "Local" {
 		t.Error("service.spec.externalTrafficPolicy must be Local (SPEC 3.1)")
 	}
+	// Limits and sign-in throttling rely on the client address (specs/045-public-access): Traefik
+	// must replace whatever X-Forwarded-For a client sends, so it trusts none.
+	raw := strings.ToLower(c.str("spec", "valuesContent"))
+	for _, never := range []string{"forwardedheaders", "trustedips", "proxyprotocol"} {
+		if strings.Contains(raw, never) {
+			t.Errorf("traefik values set %s: clients could choose the address they are counted under", never)
+		}
+	}
 }
 
 func TestCoreDNSCustom(t *testing.T) {

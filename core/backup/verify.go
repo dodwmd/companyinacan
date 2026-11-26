@@ -78,11 +78,16 @@ type VerifyReport struct {
 	Sampled    []string `json:"sampled"`
 	Mismatched []string `json:"mismatched,omitempty"`
 	Missing    []string `json:"missing,omitempty"`
+	// Incomplete lists what `can restore` of this snapshot would not bring back.
+	Incomplete []string `json:"incomplete,omitempty"`
 }
 
 // Verify runs restic check, restores a sample of the latest snapshot's dump
 // files into a scratch directory and compares their SHA-256 with the manifest
-// that was itself taken at backup time. The scratch directory is always removed.
+// that was itself taken at backup time. It then applies the checks `can restore`
+// makes before it changes anything (marker, state database, company.yaml,
+// Secrets export, dumps), so a snapshot that verifies is one restore accepts.
+// The scratch directory is always removed.
 func Verify(ctx context.Context, r ResticAPI, o VerifyOptions) (*VerifyReport, error) {
 	rep := &VerifyReport{}
 	if o.Sample < 1 {
@@ -151,7 +156,40 @@ func Verify(ctx context.Context, r ResticAPI, o VerifyOptions) (*VerifyReport, e
 	if len(rep.Missing)+len(rep.Mismatched) > 0 {
 		return rep, fmt.Errorf("verify failed: %d missing, %d mismatched of %d sampled", len(rep.Missing), len(rep.Mismatched), len(rep.Sampled))
 	}
-	return rep, nil
+	return rep, verifyRestorable(ctx, r, o, rep, tmp, man, names)
+}
+
+func verifyRestorable(ctx context.Context, r ResticAPI, o VerifyOptions, rep *VerifyReport, tmp string, man map[string]string, names []string) error {
+	includes := []string{path.Join(o.DumpsDir, MarkerName), path.Join(o.HostStateDir, MarkerCopy)}
+	for _, f := range DumpFiles {
+		if _, ok := man[f]; ok {
+			includes = append(includes, path.Join(o.DumpsDir, f))
+		}
+	}
+	if err := r.Restore(ctx, rep.Snapshot, tmp, includes); err != nil {
+		return fmt.Errorf("restoring the files a restore checks: %w", err)
+	}
+	if _, err := markersAt(tmp, o.DumpsDir, o.HostStateDir); err != nil {
+		return fmt.Errorf("restore would refuse snapshot %s: %w", rep.Snapshot, err)
+	}
+	dir := filepath.Join(tmp, filepath.FromSlash(o.DumpsDir))
+	for _, f := range DumpFiles {
+		want, ok := man[f]
+		if !ok {
+			continue
+		}
+		if sum, err := hashFile(filepath.Join(dir, filepath.FromSlash(f))); err != nil || sum != want {
+			return fmt.Errorf("verify failed: %s is missing or does not match the manifest", f)
+		}
+	}
+	c, err := CheckContents(ctx, dir, names)
+	if err != nil {
+		return fmt.Errorf("restore would refuse snapshot %s: %w", rep.Snapshot, err)
+	}
+	if rep.Incomplete = c.Problems(); len(rep.Incomplete) > 0 {
+		return fmt.Errorf("a restore of snapshot %s would be incomplete: %s", rep.Snapshot, strings.Join(rep.Incomplete, "; "))
+	}
+	return nil
 }
 
 func hashFile(p string) (string, error) {
@@ -200,6 +238,7 @@ func Status(ctx context.Context, r ResticAPI, dumpsDir string, now time.Time, ma
 				rep.Warnings = append(rep.Warnings, s.Message())
 			}
 		}
+		rep.Problems = append(rep.Problems, run.Warnings...)
 	}
 	if m, err := ReadMarker(filepath.Join(dumpsDir, MarkerName)); err != nil {
 		rep.Problems = append(rep.Problems, err.Error())

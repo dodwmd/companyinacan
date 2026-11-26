@@ -67,6 +67,13 @@ records resolve: automatically with `dns.provider: cloudflare`, otherwise add th
 `can up --domain-live` (this avoids requesting certificates for names that do not resolve yet). DNS
 propagation is not part of the five-minute budget.
 
+The records are the domain, `admin`, `help` and one per module host that company.yaml puts on the
+internet (`work.<domain>`, `careers.<domain>`; see [`module-routing.md`](module-routing.md)). `can
+status` lists them with where each points now.
+
+On a TLS install `can up` redirects plain-HTTP page loads to HTTPS and rate-limits the admin
+sign-in and the public site per client address (`--no-edge-limits` behind your own proxy).
+
 ### Secrets
 
 - The admin password is generated on your machine, sent to `can-core admin bootstrap` on stdin, and shown
@@ -236,9 +243,11 @@ Do not run this from CI. With a fresh Hetzner account:
   admin works from fixed addresses. Someone who has the password and guesses codes makes the account take no
   code for 15 minutes (`admin.login.code_locked` in the audit log): change the password, `can-core admin unlock`
   lifts the lock. In the plain-HTTP fallback the admin UI is not routed at all.
-- **No HTTP to HTTPS redirect.** Only the `websecure` entrypoint serves the routes in https mode; plain `http://`
-  gets Traefik's 404. A redirect middleware belongs in the platform base and is not part of E24; type the
-  `https://` URL.
+- **HTTP to HTTPS.** In https mode a route on the `web` entry point (`can-system/https-redirect`)
+  redirects `GET` and `HEAD` with a temporary redirect; other methods get 404, so a client that sends a
+  password or token over plain HTTP fails instead of carrying on. Certificates use TLS-ALPN on 443 and are
+  unaffected. In the plain-HTTP fallback the route is removed. HSTS is sent by module routes, not by the
+  site or admin routes.
 - **Manifests are embedded, not signature-verified at run time.** The platform base, can-core and site manifests
   are compiled into the `can` binary; the binary's integrity is what the release signatures and checksums
   cover. A modified `can` (or a modified `deploy/release-images.json`, whose digests are only as trustworthy
@@ -258,7 +267,7 @@ Do not run this from CI. With a fresh Hetzner account:
 
 - **Backups** work as described in [backup-restore.md](backup-restore.md) and are verified on k3d with a local
   restic repository only. Not verified: a real S3 bucket, a real server (systemd timer, k3s paths) and a restore
-  onto a blank host (`can restore` is not functional yet). Wrapped modules with a backup hook (wiki, support,
+  onto a blank host (`can restore` has only been run on k3d in CI). Wrapped modules with a backup hook (wiki, support,
   newsletter, analytics, crm, status) stop every backup while enabled or recorded as failed, because the
   `can-hooks` image is not published. Disabling the module brings backups back, without a dump of it: wiki,
   analytics and status are then covered by raw volume files only, and the databases of support, newsletter and crm

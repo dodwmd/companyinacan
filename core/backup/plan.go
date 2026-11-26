@@ -31,7 +31,7 @@ type Settings struct {
 	MaxMarkerAge  time.Duration
 	Schedule      string // systemd OnCalendar expression
 	RandomDelay   string // systemd RandomizedDelaySec
-	LedgerSource  string // erasure ledger file written by can-core
+	LedgerSource  string // erasure ledger file (written by `can backup ledger-add` and restore only)
 	CanBin        string // can binary used for ledger upload
 }
 
@@ -177,6 +177,10 @@ func disabledSkips(co *config.Company, mods map[string]*config.Module) []string 
 	var out []string
 	for _, id := range ids {
 		s := SkippedModule{ID: id, Database: mods[id].Requires.Database, Reason: "its backup hook cannot run (" + mods[id].BackupHookUnrunnable() + ")"}
+		if s.DatabaseServer() {
+			out = append(out, fmt.Sprintf("module %q is disabled: DATABASE IS NOT BACKED UP (copies of a running database server's files are not a usable backup). If it holds data it is NOT dumped: %s.", id, s.Reason))
+			continue
+		}
 		out = append(out, strings.Replace(s.Message(), "was NOT dumped", "is disabled and, if it holds data, is NOT dumped", 1))
 	}
 	return out
