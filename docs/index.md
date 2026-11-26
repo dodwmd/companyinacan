@@ -1,6 +1,6 @@
 # Documentation index
 
-Start here. The project is **pre-release: nothing has run on a real server** (see the [README](../README.md#what-is-verified)).
+Start here. The project is **pre-release: nothing has run on a real server** (see [status.md](status.md)).
 Every document says what was verified and what was not; where two documents disagree, [SPEC.md](../SPEC.md) is the design
 and the code is the truth.
 
@@ -9,6 +9,7 @@ and the code is the truth.
 | Read | For |
 |---|---|
 | [README](../README.md) | What it is, status, module table, footprint measured against claimed, limitations |
+| [status.md](status.md) | **What works today, what is experimental, what is unverified**: module by module, CI coverage, known defects, decisions waiting on the maintainer |
 | [getting-started.md](getting-started.md) | Run it: Docker Compose, k3d, a real server (with the caveats) |
 | [architecture.md](architecture.md) | How can-core, modules, events, tokens, approvals and backup fit together; sequence diagrams for lead capture, hire handoff and approvals |
 | [security-model.md](security-model.md) | Trust boundaries, tokens, sealed data, audit, and the known residual risks in one list |
@@ -49,10 +50,11 @@ and the code is the truth.
 | [people.md](people.md), [people-ui.md](people-ui.md) | The `people` directory, 1:1s, goals, reviews, time off; its web UI |
 | [recruiting.md](recruiting.md), [recruiting-ui.md](recruiting-ui.md) | The `jobs` module: requisitions, careers pages, ATS; its web UI |
 | [provisioning.md](provisioning.md) | Account provisioning (SCIM) for joiners, movers and leavers |
-| [finance.md](finance.md), [finance-ui.md](finance-ui.md) | Invoices, payments, contracts, timesheets, expenses; the finance web UI |
+| [finance.md](finance.md), [finance-ui.md](finance-ui.md) | Invoices, payments, contracts and signing, timesheets, expenses; the finance web UI |
+| [accounting.md](accounting.md) | Chart of accounts, journal, bank statement import and matching, accounting and payroll adapters (a tool, not accounting advice) |
 | [files.md](files.md) | Document and file storage: spaces, versions, share links, scan hook, retention, erasure |
 | [equity.md](equity.md) | Cap table and option grants (a tool, not legal or tax advice) |
-| [board.md](board.md) | Board meetings, quorum, resolutions, minutes (a tool, not legal advice; experimental, not in the compose stack) |
+| [board.md](board.md) | Board meetings, quorum, resolutions, minutes (a tool, not legal advice; experimental, not in the compose stack, no Helm templates) |
 | [entity.md](entity.md) | Legal entities, statutory registers, filings calendar (a tool, not legal advice; experimental, not in the compose stack) |
 | [../modules/README.md](../modules/README.md) | One directory per module, licences and network copyleft |
 

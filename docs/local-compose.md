@@ -19,7 +19,8 @@ out, not a supported way to run a company (use `make up` for that).
   `down` / `up` with the volumes kept); it uses only features common to both tools.
 - Network access to pull `golang:1.27`, `gcr.io/distroless/static-debian12:nonroot` and `caddy:2.8-alpine`
   (no digests are pinned for dev), and to download Go modules on the first build.
-- `curl` and `bash` on the host for the smoke test. No Go toolchain is needed.
+- `curl` and `bash` on the host for the smoke test. A Go toolchain (see `go.mod`) is needed only for the
+  end-to-end suite (`make e2e`).
 - About 5 GB of disk for the Go image and build cache; a first build takes a few minutes, later builds reuse the
   cached `go mod download` layer.
 
@@ -84,7 +85,8 @@ generated on the first `up` into the `dev-secrets` volume and never leave it.
 ### Logging in to the admin UI
 
 1. `docker compose -p companyinacan logs init` (or run `dev/compose/bootstrap-admin.sh`) and copy the line
-   `TOTP secret`.
+   `TOTP secret`. The script acts on project `companyinacan`; for the e2e stack run
+   `COMPOSE_PROJECT_NAME=can-e2e dev/compose/bootstrap-admin.sh`.
 2. Add it to an authenticator app (or `oathtool --totp -b <secret>`).
 3. Open <http://admin.localhost:8080>, user `admin`, password `dev-only-admin-password`, then the 6-digit code.
 
@@ -185,7 +187,7 @@ container running until `--force-recreate` was added.
 
 ```sh
 make e2e-up     # docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml up -d --build
-make e2e        # go test -tags e2e ./test/e2e/...   (about 2.5 min; E2E_RESTART=0 skips the restart test)
+make e2e        # go test -tags e2e ./test/e2e/...   (under 2 min; E2E_RESTART=0 skips the restart test)
 make e2e-down   # down -v: removes the can-e2e containers and volumes only
 ```
 
@@ -199,7 +201,8 @@ feedback (e); finance party, invoice, approval through can-core by a second admi
 board approval and vesting (g); a file uploaded, downloaded as an attachment, versioned, shared once by link, held, erased (j); cross-module token refusal, hostile `Host`, no metrics, anonymous refusal (h);
 `down` without `-v` and `up`, with all data and the admin TOTP secret intact (i); personal access tokens issued
 in the admin UI against all five modules (k); an Apps launch signing in to the four module web UIs, refused in
-another browser and from `admin.localhost` (l); a module disabled and enabled in the catalogue (m).
+another browser and from `admin.localhost` (l); a module disabled and enabled in the catalogue (m); the files web UI, the notification email of a contact form
+in the SMTP sink, and the business overview.
 
 `make e2e-up` adds `dev/compose/e2e.yml`, which starts **introstub** (`dev/compose/introstub`, a 90-line fake of
 a token introspection endpoint with five public fake identities: HR, manager, two employees and a board member) and
@@ -251,6 +254,7 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
   - finance uses the **fake** payment and e-sign providers; jobs has no virus scanner (`scanner_required:
     false`) and no job-board connectors; no real captcha, email relay, Postgres or backup hooks.
 - No `can up`, DNS, ACME, provider provisioning or backups. `can-hooks` is not built.
+- `provisioning` and the wrapped applications are not in the stack.
 
 ### Finance invoice approval needs two people
 
@@ -285,7 +289,7 @@ about 120 MiB after an e2e run without its restart test (about 122 MB in `docker
 2026-11 reductions, measured the same way). Those figures leave out most binary file pages, which the image
 build had already cached: the processes' resident sets add up to about 208 MiB idle and 242 MiB loaded. A 4-vCPU
 CI runner measured less (68 MiB idle, 92 loaded). `docker stats` reports cgroup memory, not RSS. Building needs
-more: allow 2 GB of free RAM and about 5 GB of disk while images build (Go compiles eleven binaries).
+more: allow 2 GB of free RAM and about 5 GB of disk while images build (Go compiles every binary).
 
 ## Troubleshooting
 
@@ -326,7 +330,7 @@ more: allow 2 GB of free RAM and about 5 GB of disk while images build (Go compi
   (and 20 the address) for 15 minutes, correct logins included. Clear it with
   `docker compose -p companyinacan exec core /can-core admin unlock`.
 - **`make e2e` says the edge did not answer.** The suite waits 90 s for `/_edge/healthz` and then exits with a pointer
-  to `make e2e-up`. Check `docker compose -p can-e2e ps -a` and the logs of the service that is not healthy.
+  to `make e2e-up`. Check `docker compose -p can-e2e ps` (add `-a` with Docker Compose; podman-compose has no such flag) and the logs of the service that is not healthy.
 - **Admin login fails in the suite with 401 right after a login.** An authentication code can be used once; the
   suite waits for the next 30 s step and retries once, so a slow run is normal.
 - **First build takes a few minutes and needs the network.** It pulls `golang:1.27`, distroless and caddy
