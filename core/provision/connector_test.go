@@ -53,8 +53,9 @@ func (f *fakeSCIMServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && r.URL.Path == "/scim/v2/Users":
 		var res []map[string]any
 		for id, u := range f.users {
-			if strings.Contains(r.URL.Query().Get("filter"), fmt.Sprintf("%q", u["userName"])) || strings.Contains(r.URL.Query().Get("filter"), `"`+fmt.Sprint(u["userName"])+`"`) {
-				res = append(res, map[string]any{"id": id})
+			// userName is not case sensitive in SCIM (RFC 7643).
+			if strings.Contains(strings.ToLower(r.URL.Query().Get("filter")), `"`+strings.ToLower(fmt.Sprint(u["userName"]))+`"`) {
+				res = append(res, map[string]any{"id": id, "userName": u["userName"], "externalId": u["externalId"]})
 			}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"Resources": res})

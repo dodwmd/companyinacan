@@ -96,6 +96,68 @@ func userBody(id Identity) map[string]any {
 	}
 }
 
+// users lists at most two users matching a filter.
+func (c *SCIMClient) users(ctx context.Context, attr, value string) ([]scimUser, error) {
+	st, b, err := c.do(ctx, http.MethodGet, "/Users?count=2&filter="+url.QueryEscape(attr+" eq "+scimQuote(value)), nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := classify(st); err != nil {
+		return nil, err
+	}
+	var l struct {
+		Resources []scimUser `json:"Resources"`
+	}
+	if json.Unmarshal(b, &l) != nil {
+		return nil, permanent("bad_response")
+	}
+	return l.Resources, nil
+}
+
+type scimUser struct {
+	ID         string `json:"id"`
+	UserName   string `json:"userName"`
+	ExternalID string `json:"externalId"`
+}
+
+// FindAccount implements AccountFinder. It names an account only when exactly one user has the
+// login as userName and it is not marked as another person's. An account that has the address
+// only among its emails is reported, not touched.
+func (c *SCIMClient) FindAccount(ctx context.Context, id Identity) (string, error) {
+	if id.UserName == "" {
+		return "", permanent(codeManualCheck)
+	}
+	found, err := c.users(ctx, "userName", id.UserName)
+	if err != nil {
+		return "", err
+	}
+	switch len(found) {
+	case 0:
+		byEmail, err := c.users(ctx, "emails.value", id.UserName)
+		if err != nil {
+			if code, perm := errCode(err); perm && code == "http_400" {
+				return "", nil // the server cannot filter on emails: userName was the lookup
+			}
+			return "", err
+		}
+		if len(byEmail) > 0 {
+			return "", permanent(codeMismatch)
+		}
+		return "", nil
+	case 1:
+		u := found[0]
+		// The answer is checked too: a server that ignores filters must not get a stranger disabled.
+		if !strings.EqualFold(u.UserName, id.UserName) || (partyRe.MatchString(u.ExternalID) && u.ExternalID != id.PartyID) {
+			return "", permanent(codeMismatch)
+		}
+		if !extIDRe.MatchString(u.ID) {
+			return "", permanent("bad_response")
+		}
+		return u.ID, nil
+	}
+	return "", permanent("ambiguous")
+}
+
 // CreateAccount implements Connector.
 func (c *SCIMClient) CreateAccount(ctx context.Context, _ string, id Identity) (string, error) {
 	if id.UserName == "" {

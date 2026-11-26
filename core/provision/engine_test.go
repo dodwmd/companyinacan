@@ -34,6 +34,12 @@ func (h *harness) exec(q string, args ...any) {
 	}
 }
 
+// accountGone records that a connector holds no account any more: there is nothing to look up.
+func (h *harness) accountGone(party, conn string) {
+	h.t.Helper()
+	h.exec(`INSERT INTO accounts(party_id,connector,external_id,state,updated_at) VALUES (?,?,?,'deleted',1)`, party, conn, "gone")
+}
+
 // linkAccounts gives alice active accounts and group memberships, as a finished joiner would.
 func (h *harness) linkAccounts(party string, conns ...string) {
 	h.t.Helper()
@@ -544,13 +550,15 @@ func TestCalledOffOffboardingCancelsAWaitingLeaver(t *testing.T) {
 func TestLeaverRevokesCoreOnlyForCoreSubjects(t *testing.T) {
 	h := newHarness(t, nil)
 	p := person(alice, "former", "alice@example.com")
-	p.SSOSubject = "alice-at-idp" // not a can-core subject: nothing to revoke there
+	p.SSOSubject = "alice-at-idp" // not a can-core subject: nothing can-core can be asked to revoke
 	h.dir.put(p)
-	h.linkAccounts(alice, "app-a")
+	h.linkAccounts(alice, "app-a", "app-b")
 	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
 	h.settle()
-	if len(h.core.calls) != 0 || h.onlyRun().State != RunSucceeded {
-		t.Fatalf("revocations %v state %s", h.core.calls, h.onlyRun().State)
+	r := h.onlyRun()
+	// The run says so instead of reporting success: the person may have an account under another name.
+	if s := step(r, connCore); len(h.core.calls) != 0 || r.State != RunFailed || s.ErrorCode != "no_core_account" || h.a.count("disable_account") != 1 {
+		t.Fatalf("revocations %v state %s step %+v", h.core.calls, r.State, s)
 	}
 }
 

@@ -147,6 +147,10 @@ func (e *Engine) buildPlan(ctx context.Context, req StartRequest) (Person, planI
 	if err != nil {
 		return p, planInput{}, nil, "", err
 	}
+	recorded, err := e.Store.recordedConnectors(ctx, p.ID)
+	if err != nil {
+		return p, planInput{}, nil, "", err
+	}
 	applied, err := e.Store.appliedGroups(ctx, p.ID)
 	if err != nil {
 		return p, planInput{}, nil, "", err
@@ -157,7 +161,7 @@ func (e *Engine) buildPlan(ctx context.Context, req StartRequest) (Person, planI
 			return p, planInput{}, nil, "", err
 		}
 	}
-	in := planInput{Kind: req.Kind, Person: p, Urgent: urgent, Privileged: e.Policy.anyPrivileged(groups), Accounts: accts, Applied: applied, Groups: groups}
+	in := planInput{Kind: req.Kind, Person: p, Urgent: urgent, Privileged: e.Policy.anyPrivileged(groups), Accounts: accts, Recorded: recorded, Applied: applied, Groups: groups}
 	eff := ""
 	if req.Kind == KindLeaver {
 		eff = firstNonEmpty(req.EffectiveDate, p.EndDate)
@@ -617,8 +621,10 @@ func (e *Engine) execute(ctx context.Context, run Run, st *stepRow) (bool, error
 			if err := e.Store.enqueue(ctx, tx, "provision.failed.v1", failedEvent(run, st, reason, now)); err != nil {
 				return err
 			}
-			if run.Kind == KindLeaver {
-				return nil // one dead step must not keep the other accounts enabled; finish marks the run failed
+			if run.Kind == KindLeaver || st.Arg == argUnlinked {
+				// One dead step must not keep the other accounts enabled, and an account nobody has
+				// linked is no reason to undo a mover's other changes; finish marks the run failed.
+				return nil
 			}
 			return e.failRun(ctx, tx, run)
 		})
@@ -661,6 +667,9 @@ func (e *Engine) call(ctx context.Context, run Run, st *stepRow, key string, com
 	acctExt, state, err := e.Store.accountFor(ctx, run.PartyID, st.Connector)
 	if err != nil {
 		return "", "", err
+	}
+	if st.Arg == argUnlinked && !comp && acctExt == "" {
+		return e.unlinked(ctx, run, c, key)
 	}
 	if op != opCreateAccount && (acctExt == "" || state == "deleted") {
 		return "", "no_account", nil // nothing to act on: already gone
@@ -710,7 +719,8 @@ func (e *Engine) revokeCore(ctx context.Context, run Run) (string, string, error
 		return "", "", transient("not_offboarded_yet")
 	}
 	if !strings.HasPrefix(p.SSOSubject, "user:") {
-		return "", "no_core_account", nil // the person has no can-core account to revoke
+		// There may still be one under a name the directory does not know: a person must look.
+		return "", "", permanent(codeNoCore)
 	}
 	if _, err := e.Core.RevokeIdentity(ctx, run.PartyID, p.SSOSubject); err != nil {
 		if errors.Is(err, modclient.ErrUnavailable) {
@@ -750,7 +760,12 @@ func (e *Engine) recordEffect(ctx context.Context, tx *sql.Tx, run Run, st *step
 		_, err = tx.ExecContext(ctx, `INSERT INTO accounts(party_id,connector,external_id,state,updated_at) VALUES (?,?,?,'active',?)
 			ON CONFLICT(party_id,connector) DO UPDATE SET external_id=excluded.external_id, state='active', updated_at=excluded.updated_at`, run.PartyID, st.Connector, ext, now)
 	case opDisableAccount:
-		_, err = tx.ExecContext(ctx, `UPDATE accounts SET state='disabled', updated_at=? WHERE party_id=? AND connector=?`, now, run.PartyID, st.Connector)
+		if ext != "" { // also records an account a leaver found by lookup
+			_, err = tx.ExecContext(ctx, `INSERT INTO accounts(party_id,connector,external_id,state,updated_at) VALUES (?,?,?,'disabled',?)
+				ON CONFLICT(party_id,connector) DO UPDATE SET state='disabled', updated_at=excluded.updated_at`, run.PartyID, st.Connector, ext, now)
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE accounts SET state='disabled', updated_at=? WHERE party_id=? AND connector=?`, now, run.PartyID, st.Connector)
+		}
 	case opDeleteAccount:
 		if _, err = tx.ExecContext(ctx, `UPDATE accounts SET state='deleted', updated_at=? WHERE party_id=? AND connector=?`, now, run.PartyID, st.Connector); err == nil {
 			_, err = tx.ExecContext(ctx, `DELETE FROM applied_groups WHERE party_id=? AND connector=?`, run.PartyID, st.Connector)

@@ -213,7 +213,7 @@ func TestAPIUrgentRetryCancelAndLink(t *testing.T) {
 	p := person(alice, "offboarding", "alice@example.com")
 	p.EndDate = "2026-06-30"
 	e.dir.put(p)
-	e.linkAccounts(alice, "app-a")
+	e.linkAccounts(alice, "app-a", "app-b")
 	// a person cannot flag their own termination through their own token
 	e.intro.ids["canpat_selfselfselfselfselfself"] = modclient.Identity{Active: true, Kind: "user", Subject: "user:sso-aaaa", Permissions: []string{"provision.admin"}}
 	if resp, _, _ := e.do("POST", "/v1/provision/people/"+alice+"/urgent", "canpat_selfselfselfselfselfself", nil); resp.StatusCode != 403 {

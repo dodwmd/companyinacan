@@ -40,6 +40,7 @@ func wantDelays(t *testing.T, got []time.Duration) {
 // exponentially to the cap, on its own counter.
 func TestNotOffboardedYetWaitsExponentiallyWithoutUsingAttempts(t *testing.T) {
 	h := newHarness(t, nil)
+	h.linkAccounts(alice, "app-a", "app-b")
 	h.dir.put(person(alice, "offboarding", "alice@example.com"))
 	h.mustEvent(EventPersonStatusChanged, statusChanged(alice, "active", "offboarding", "2026-06-10"))
 	if err := h.eng.FlagUrgent(context.Background(), "user:hr", alice); err != nil {
@@ -61,6 +62,7 @@ func TestNotOffboardedYetWaitsExponentiallyWithoutUsingAttempts(t *testing.T) {
 
 func TestOutageBackoffIsExponentialAndCapped(t *testing.T) {
 	h := newHarness(t, nil)
+	h.linkAccounts(alice, "app-a", "app-b")
 	h.dir.put(person(alice, "former", "alice@example.com"))
 	h.core.err = modclient.ErrUnavailable
 	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
@@ -76,6 +78,7 @@ func TestRetryRequestsAFreshApproval(t *testing.T) {
 	h := newHarness(t, func(p *Policy) { p.DeleteAfterDays = 1 })
 	h.dir.put(person(alice, "former", "alice@example.com"))
 	h.linkAccounts(alice, "app-a")
+	h.accountGone(alice, "app-b")
 	h.addGroup("admins", alice)
 	h.a.permFail[opDeleteAccount] = "http_400"
 	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
