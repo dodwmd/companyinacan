@@ -15,6 +15,9 @@ type run struct {
 	id   string
 	dir  string // <dumps>/.run-<id>: tmp/ (in-flight uploads) and modules/ (accepted ones)
 	turn *turn  // the module whose hook is running; nil between hooks
+	// keep stops closeRun from removing the staging directory: it holds the only copy of the
+	// previous set (a failed swap that could not be rolled back).
+	keep bool
 }
 
 // turn is one module's hook: the only time that module's uploads are accepted.
@@ -142,7 +145,10 @@ func (d *Dumper) publish() error {
 	}
 	if err := d.move(filepath.Join(cur.dir, "modules"), live); err != nil {
 		if rerr := d.move(old, live); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
-			return errors.Join(err, fmt.Errorf("and the previous set could not be put back: %w", rerr))
+			d.mu.Lock()
+			cur.keep = true
+			d.mu.Unlock()
+			return errors.Join(err, fmt.Errorf("and the previous set could not be put back (kept in %s, restored by the next run): %w", old, rerr))
 		}
 		return err
 	}
@@ -169,7 +175,7 @@ func (d *Dumper) recoverSwap() error {
 	}
 	sort.Strings(olds) // run ids start with the time: the last is the newest
 	d.log().Warn("recovering the previous module dumps from an interrupted run", "from", olds[len(olds)-1])
-	return os.Rename(olds[len(olds)-1], live)
+	return d.move(olds[len(olds)-1], live)
 }
 
 // published reports whether the current set holds a dump of module.
@@ -217,7 +223,7 @@ func (d *Dumper) closeRun() {
 	cur := d.cur
 	d.cur = nil
 	d.mu.Unlock()
-	if cur != nil {
+	if cur != nil && !cur.keep {
 		if err := os.RemoveAll(cur.dir); err != nil {
 			d.log().Warn("could not remove a dump staging directory", "path", cur.dir, "error", err)
 		}
