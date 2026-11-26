@@ -1,6 +1,6 @@
 package installer
 
-// Module-to-module connections (specs/056-module-capability-wiring): two NetworkPolicies, one on
+// Module-to-module connections (specs/057-module-capability-wiring): two NetworkPolicies, one on
 // each side, the provider's address in the consumer's configuration and a scoped credential copied
 // into the consumer's Secret. deploy/base/admission-policy.yaml (can-core-networkpolicies) refuses
 // any other shape.

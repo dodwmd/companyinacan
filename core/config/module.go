@@ -46,7 +46,7 @@ type Module struct {
 		// web UI; never read from module.yaml. The Apps launcher derives the address from it.
 		RoutedUIHost string `yaml:"-"`
 		// Wired is set by can-core in its recorded copy of the manifest: the capabilities it has
-		// connected the module to (specs/056-module-capability-wiring). Never read from module.yaml.
+		// connected the module to (specs/057-module-capability-wiring). Never read from module.yaml.
 		Wired []Link `yaml:"-" json:",omitempty"`
 	} `yaml:"runtime"`
 	Requires struct {

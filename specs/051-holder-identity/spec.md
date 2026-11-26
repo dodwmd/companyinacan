@@ -99,7 +99,7 @@ it. Activating and cancelling have no such rule.
 **themself** cannot be approved by them in any way: it takes another board member, as before this feature.
 Their founder shares are recorded with break-glass.
 
-**A single administrator, attestation mode** (the default, and the only mode `can` installs): none of that
+**A single administrator, attestation mode** (what `can` installs without the `people` module): none of that
 holds. An administrator who also holds the board role and has the service account token **can give themself a
 grant, without break-glass**:
 
@@ -166,9 +166,7 @@ links one account per person); linking or unlinking one's own account; acting wh
 
 ## Not built (follow-ups)
 
-- **can-core does not wire directory mode.** Module namespaces have no NetworkPolicy from equity to people and
-  can-core generates no `CAN_EQUITY_DIRECTORY_TOKEN`, so an installation made by `can apply` runs in
-  attestation mode until that exists. A people token with an expiry makes directory mode fail closed when it
-  expires.
-- A read-only people credential for the lookup, instead of one with `people.write`.
+can-core's wiring of directory mode and a read-only lookup credential are built by
+[specs/057](../057-module-capability-wiring/spec.md).
+
 - Per-entry second-actor approval of manual ledger writes.

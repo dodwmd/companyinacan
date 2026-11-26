@@ -21,12 +21,12 @@ renderer (not Helm) and applied by its installer. Same templates as the other in
   credentials are not generated and the installer refuses a reference to any other Secret, so there is
   no supported way yet to provide them.
 - **Egress.** The module namespace allows egress to DNS, can-core, Traefik, the databases and, because the
-  manifest sets `runtime.internet_egress`, the internet (the connectors' hosts). It does not allow the people
-  module's API, which this module also needs.
+  manifest sets `runtime.internet_egress`, the internet (the connectors' hosts). can-core also opens the
+  people module's API and sets `config.directory.url` (specs/057-module-capability-wiring).
 
 ## What is verified
 
 Unit tests (`core/server/installer/modulecharts_test.go`, part of `make test`) install the chart
 through the installer against the fake Kubernetes API, check the route is scoped to `/scim/v2`, and
 parse the rendered config with the module's own loader. `make release-check` fails while
-`image.digest` is a placeholder. The chart has not been run on a cluster.
+`image.digest` is a placeholder. On k3d (`modules-k3d`) it reads a person from the people module.

@@ -2,7 +2,7 @@ package people
 
 // The identity lookup: the narrowest credential of the directory, for a module that only has to
 // know which person an account is and whether a person exists (equity,
-// specs/056-module-capability-wiring). It answers two questions and nothing else: no names, no
+// specs/057-module-capability-wiring). It answers two questions and nothing else: no names, no
 // list, no write.
 
 import (

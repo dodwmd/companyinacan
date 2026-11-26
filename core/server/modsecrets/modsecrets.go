@@ -43,7 +43,7 @@ const (
 )
 
 // Grant is a module-to-module connection can-core is willing to make
-// (specs/056-module-capability-wiring). The list is here, not in the manifests: handing a module the
+// (specs/057-module-capability-wiring). The list is here, not in the manifests: handing a module the
 // credential of another one is can-core's decision. A manifest only asks, by naming the capability
 // under requires.capabilities or consumes.
 type Grant struct {

@@ -1,6 +1,6 @@
 package reconcile
 
-// Which modules can-core connects to which (specs/056-module-capability-wiring).
+// Which modules can-core connects to which (specs/057-module-capability-wiring).
 
 import (
 	"crypto/sha256"
