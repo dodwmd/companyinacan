@@ -38,7 +38,8 @@ the installer's allowlist through its fakes, hook scripts parsed with `sh -n`, c
 `wrapped-modules` CI job, from upstream images pinned by digest ([specs/041](../specs/041-wrapped-modules-live/spec.md)).
 `wiki`, `crm` and `status` have **never been pulled, started or measured**: their images carry
 `REPLACE_WITH_DIGEST` placeholders. Every adapter is `planned`, and `make release-check` fails while
-any placeholder remains.
+any placeholder remains. **Enabling any of these stops the company's backups** until the `can-hooks`
+image is published ([backup-restore.md](backup-restore.md)).
 
 | Module | Wraps | Status | RAM (MB) | Licence | Capability | Notes |
 |---|---|---|---|---|---|---|

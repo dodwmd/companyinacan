@@ -6,6 +6,10 @@
 > **SMTP/bulk-relay settings are manual**: enter the relay in Listmonk Settings, SMTP. can-core gives
 > this module no mail credentials.
 
+> **Backups: enabling this module stops them for the whole company.** Its hook needs the `can-hooks`
+> image, which is not published, and while such a module is enabled every dump run fails and nothing is
+> backed up (`can validate` warns; [docs/backup-restore.md](../../docs/backup-restore.md)).
+
 Mailing lists, double opt-in and campaigns. Wraps [Listmonk](https://github.com/knadh/listmonk)
 (Go), provides the `newsletter` capability, publishes `subscriber.added.v1`, and optionally
 subscribes people who tick a newsletter box on a form (consumes `leads`, subscribes to

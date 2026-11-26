@@ -73,6 +73,10 @@ charts; upgrades between app versions; the tracking snippet in the site renderer
 
 ## Edge cases and consequences
 
+- **Backups.** With the dump runner of E08b, a module whose backup hook cannot run makes every dump run
+  fail, so that nothing is backed up. All three modules name the unpublished `can-hooks` image: until it
+  is published, enabling any of them stops backups for the whole company. Do not enable them where data
+  matters. The managed Postgres has no backup of its own either.
 - The admin password is read with
   `kubectl -n mod-<id> get secret can-module -o jsonpath='{.data.CAN_<ID>_ADMIN_PASSWORD}' | base64 -d`.
   It is also in the app container's environment. Changing it in the app does not update the Secret.

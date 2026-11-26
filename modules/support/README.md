@@ -4,6 +4,10 @@
 > ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server, domain or mail relay. Backups are not run, and the
 > `tickets` capability is marked `planned` (no adapter yet).
 
+> **Backups: enabling this module stops them for the whole company.** Its hook needs the `can-hooks`
+> image, which is not published, and while such a module is enabled every dump run fails and nothing is
+> backed up (`can validate` warns; [docs/backup-restore.md](../../docs/backup-restore.md)).
+
 Shared support inbox. Wraps [FreeScout](https://github.com/freescout-help-desk/freescout) (PHP),
 provides the `tickets` capability and publishes `ticket.created.v1`.
 

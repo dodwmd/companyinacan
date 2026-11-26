@@ -4,6 +4,10 @@
 > ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or domain. Backups are not run, and the `analytics`
 > capability is marked `planned` (adapter not built, T032).
 
+> **Backups: enabling this module stops them for the whole company.** Its hook needs the `can-hooks`
+> image, which is not published, and while such a module is enabled every dump run fails and nothing is
+> backed up (`can validate` warns; [docs/backup-restore.md](../../docs/backup-restore.md)).
+
 Cookie-free web analytics for the company site. Wraps [GoatCounter](https://github.com/arp242/goatcounter)
 (Go, SQLite) and provides the `analytics` capability.
 
