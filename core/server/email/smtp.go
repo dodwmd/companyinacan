@@ -28,6 +28,9 @@ type SendError struct {
 	Stage     string
 	Code      int
 	Permanent bool
+	// Session: the failure is about reaching or logging in to the relay, so other messages would
+	// fail the same way.
+	Session bool
 }
 
 func (e *SendError) Error() string {
@@ -39,10 +42,14 @@ func (e *SendError) Error() string {
 
 var errBlocked = errors.New("destination address is not allowed")
 
+// metadataV6 is the IPv6 instance metadata service of AWS: a unique-local address, so "private
+// relays allowed" would otherwise reach it.
+var metadataV6 = netip.MustParseAddr("fd00:ec2::254")
+
 // SMTP is the network transport.
 type SMTP struct {
 	// AllowPrivate permits relays on private and loopback addresses (CAN_SMTP_ALLOW_PRIVATE).
-	// Link-local (cloud metadata), multicast and unspecified addresses are refused regardless.
+	// Link-local and cloud metadata addresses, multicast and unspecified ones are refused regardless.
 	AllowPrivate bool
 	// RootCAs overrides the system roots (tests).
 	RootCAs *x509.CertPool
@@ -63,7 +70,7 @@ func (t SMTP) guard(network, address string, c syscall.RawConn) error {
 		return errBlocked
 	}
 	ip := ap.Addr().Unmap()
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() || ip == metadataV6 {
 		return errBlocked
 	}
 	return nil
@@ -77,9 +84,32 @@ func smtpErr(stage string, err error, rejectable bool) error {
 		// 530, 534, 535 and 538 ask for (other) authentication or TLS: the session again, whatever the
 		// command they answer.
 		auth := pe.Code == 530 || pe.Code == 534 || pe.Code == 535 || pe.Code == 538
-		return &SendError{Stage: stage, Code: pe.Code, Permanent: rejectable && !auth && pe.Code >= 500}
+		return &SendError{Stage: stage, Code: pe.Code, Permanent: rejectable && !auth && pe.Code >= 500, Session: !rejectable || auth || pe.Code == 421}
 	}
-	return &SendError{Stage: stage}
+	return &SendError{Stage: stage, Session: true}
+}
+
+// tlsErr says why TLS failed, in fixed words: the usual causes are the operator's to fix and
+// "handshake failed" alone does not tell them apart.
+func tlsErr(stage string, err error) error {
+	var unknown x509.UnknownAuthorityError
+	var host x509.HostnameError
+	var invalid x509.CertificateInvalidError
+	var record tls.RecordHeaderError
+	cause := ""
+	switch {
+	case errors.As(err, &unknown):
+		cause = " (the certificate is not signed by a trusted authority)"
+	case errors.As(err, &host):
+		cause = " (the certificate is for another host name)"
+	case errors.As(err, &invalid) && invalid.Reason == x509.Expired:
+		cause = " (the certificate is expired or not yet valid)"
+	case errors.As(err, &invalid):
+		cause = " (the certificate is not valid)"
+	case errors.As(err, &record):
+		cause = " (the relay did not answer with TLS: check the port and tls mode)"
+	}
+	return &SendError{Stage: stage + cause, Session: true}
 }
 
 // Send implements Transport. TLS is mandatory unless r.TLS is TLSNone (which Source only yields in
@@ -95,9 +125,9 @@ func (t SMTP) Send(ctx context.Context, r Relay, to string, msg []byte) error {
 	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(r.Host, strconv.Itoa(r.Port)))
 	if err != nil {
 		if errors.Is(err, errBlocked) {
-			return &SendError{Stage: "connect (the relay address is not a public address)"}
+			return &SendError{Stage: "connect (the relay address is not a public address)", Session: true}
 		}
-		return &SendError{Stage: "connect"}
+		return &SendError{Stage: "connect", Session: true}
 	}
 	defer func() { _ = conn.Close() }()
 	if dl, ok := ctx.Deadline(); ok {
@@ -110,7 +140,7 @@ func (t SMTP) Send(ctx context.Context, r Relay, to string, msg []byte) error {
 	if r.TLS == TLSImplicit {
 		s := tls.Client(conn, tc)
 		if err := s.HandshakeContext(ctx); err != nil {
-			return &SendError{Stage: "TLS handshake"}
+			return tlsErr("TLS handshake", err)
 		}
 		conn = s
 	}
@@ -126,18 +156,22 @@ func (t SMTP) Send(ctx context.Context, r Relay, to string, msg []byte) error {
 	switch r.TLS {
 	case TLSStartTLS:
 		if ok, _ := c.Extension("STARTTLS"); !ok {
-			return &SendError{Stage: "STARTTLS (the relay does not offer it)"}
+			return &SendError{Stage: "STARTTLS (the relay does not offer it)", Session: true}
 		}
 		if err := c.StartTLS(tc); err != nil {
-			return smtpErr("STARTTLS", err, false)
+			var pe *textproto.Error
+			if errors.As(err, &pe) {
+				return smtpErr("STARTTLS", err, false)
+			}
+			return tlsErr("STARTTLS", err)
 		}
 	case TLSImplicit, TLSNone:
 	default:
-		return &SendError{Stage: "configuration (unknown tls mode)"}
+		return &SendError{Stage: "configuration (unknown tls mode)", Session: true}
 	}
 	if r.Username != "" {
 		if r.TLS == TLSNone {
-			return &SendError{Stage: "authentication (refused without TLS)"}
+			return &SendError{Stage: "authentication (refused without TLS)", Session: true}
 		}
 		// PlainAuth itself also refuses an unencrypted connection or another host name.
 		if err := c.Auth(smtp.PlainAuth("", r.Username, r.Password, r.Host)); err != nil {

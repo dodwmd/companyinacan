@@ -12,6 +12,9 @@ type Email struct {
 	Relay   *EmailRelay            `yaml:"relay"`
 	Modules map[string]EmailModule `yaml:"modules"`
 	Inbound map[string]any         `yaml:"inbound"`
+	// NotificationRecipients limits where notification mail may go (addresses or "@domain"). Unset:
+	// the company domain. A person's verified single sign-on address is always accepted.
+	NotificationRecipients []string `yaml:"notification_recipients"`
 }
 
 // EmailRelay is the outbound SMTP relay.
@@ -29,6 +32,9 @@ type EmailModule struct {
 	Recipients []string `yaml:"recipients"`
 	PerHour    int      `yaml:"per_hour"`
 	PerDay     int      `yaml:"per_day"`
+	// NotificationText lets notification mail caused by this module carry the module's own title and
+	// text. Off: a fixed text with the notification type and a link to the inbox.
+	NotificationText bool `yaml:"notification_text"`
 }
 
 // EmailIssue is one validation finding with the path of the offending field.
@@ -47,6 +53,12 @@ func ValidateEmail(e *Email) []EmailIssue {
 	var out []EmailIssue
 	if r := e.Relay; r != nil && r.From != "" && !ValidAddress(r.From) {
 		out = append(out, EmailIssue{"/email/relay/from", "semantic.email-address", "from must be a plain ASCII email address"})
+	}
+	for i, rule := range e.NotificationRecipients {
+		if !ValidRecipientRule(rule) {
+			out = append(out, EmailIssue{"/email/notification_recipients/" + strconv.Itoa(i), "semantic.email-recipient",
+				"a recipient rule is an address (a@b.example) or a domain (@b.example)"})
+		}
 	}
 	ids := make([]string, 0, len(e.Modules))
 	for id := range e.Modules {

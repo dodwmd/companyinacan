@@ -28,6 +28,8 @@ func Backoff(attempt int) time.Duration {
 
 type due struct {
 	id, source, recipient, replyTo, subject, body string
+	forUser                                       string
+	notice                                        bool
 	attempts                                      int
 }
 
@@ -41,18 +43,21 @@ func (s *Service) RunOnce(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if p.RelayErr != nil {
+	if p.RelayErr != nil || s.Now().Unix() < s.pausedUntil.Load() {
 		return 0, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, source, recipient, reply_to, subject, body, attempts FROM email_outbox
-		WHERE status='pending' AND next_attempt_at<=? ORDER BY next_attempt_at, id LIMIT ?`, s.Now().Unix(), batchSize)
+	// Senders take turns, so one sender's backlog does not hold the others' mail back.
+	rows, err := s.db.QueryContext(ctx, `SELECT id, source, recipient, reply_to, subject, body, notice, for_user, attempts FROM (
+			SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY next_attempt_at, id) AS turn FROM email_outbox
+			WHERE status='pending' AND next_attempt_at<=?)
+		ORDER BY turn, next_attempt_at, source, id LIMIT ?`, s.Now().Unix(), batchSize)
 	if err != nil {
 		return 0, err
 	}
 	var batch []due
 	for rows.Next() {
 		var d due
-		if err := rows.Scan(&d.id, &d.source, &d.recipient, &d.replyTo, &d.subject, &d.body, &d.attempts); err != nil {
+		if err := rows.Scan(&d.id, &d.source, &d.recipient, &d.replyTo, &d.subject, &d.body, &d.notice, &d.forUser, &d.attempts); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
@@ -68,8 +73,11 @@ func (s *Service) RunOnce(ctx context.Context) (int, error) {
 		}
 		// Rules may have been tightened since the message was queued (a module turned off, an address
 		// removed): the current ones decide what leaves.
-		rules := p.Rules(d.source)
-		if !rules.Enabled || (d.source != SystemSource && !config.RecipientAllowed(d.recipient, rules.Recipients)) {
+		allowed, err := s.stillAllowed(ctx, p, d)
+		if err != nil {
+			return i, err
+		}
+		if !allowed {
 			if err := s.record(ctx, d, &SendError{Stage: "policy check (the recipient is no longer allowed)", Permanent: true}); err != nil {
 				return i, err
 			}
@@ -88,13 +96,34 @@ func (s *Service) RunOnce(ctx context.Context) (int, error) {
 		msg := message{ID: d.id, From: p.Relay.From, To: d.recipient, ReplyTo: d.replyTo, Subject: d.subject, Text: d.body, Date: s.Now()}
 		sendErr := s.transport.Send(ctx, p.Relay, d.recipient, msg.build())
 		if sendErr != nil && ctx.Err() != nil {
-			return i, ctx.Err() // shutting down: not an attempt
+			return i, ctx.Err() // shutting down: the claimed attempt is retried later
 		}
 		if err := s.record(ctx, d, sendErr); err != nil {
 			return i, err
 		}
+		var se *SendError
+		if errors.As(sendErr, &se) && se.Session {
+			// The relay, not this message, is the problem: leave the rest alone for a while instead
+			// of spending an attempt (and a timeout) on each.
+			s.pause()
+			return i + 1, nil
+		}
+		s.failures = 0
 	}
 	return len(batch), nil
+}
+
+// stillAllowed applies the current rules to a queued message.
+func (s *Service) stillAllowed(ctx context.Context, p Policy, d due) (bool, error) {
+	rules := p.Rules(d.source)
+	switch {
+	case !rules.Enabled:
+		return false, nil
+	case d.notice:
+		return s.noticeAllowed(ctx, p, d.forUser, d.recipient)
+	default:
+		return config.RecipientAllowed(d.recipient, rules.Recipients), nil
+	}
 }
 
 // claim counts an attempt before it is made.
@@ -109,8 +138,21 @@ func (s *Service) claim(ctx context.Context, d due) error {
 	})
 }
 
+// pause holds all deliveries back: one minute, doubling, at most fifteen.
+func (s *Service) pause() {
+	s.failures++
+	s.pausedUntil.Store(s.Now().Add(min(Backoff(s.failures), 15*time.Minute)).Unix())
+}
+
+// recordTimeout bounds writing an outcome once the relay has answered.
+const recordTimeout = 5 * time.Second
+
 // record stores the outcome of an attempt (d.attempts includes it) together with its audit entry.
+// It finishes even when ctx has just been cancelled: a shutdown must not forget that a message was
+// accepted, which would send it a second time.
 func (s *Service) record(ctx context.Context, d due, sendErr error) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordTimeout)
+	defer cancel()
 	now := s.Now()
 	attempts := d.attempts
 	status, action, result, reason := StatusSent, "email.sent", "sent", ""

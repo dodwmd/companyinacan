@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	coreconfig "github.com/dodwmd/companyinacan/core/config"
 )
 
 // Config is the gateway configuration, loaded from YAML. Secrets are never part of it;
@@ -268,7 +270,8 @@ func (c *Config) validateForm(f *Form, bad func(string, ...any)) {
 		bad("form %q: redirect %q must be a same-origin path", f.ID, f.Redirect)
 	}
 	for _, e := range f.NotifyEmail {
-		if _, ok := cleanEmail(e); !ok {
+		// The rule can-core applies to a recipient: anything else could never be sent.
+		if !coreconfig.ValidAddress(e) {
 			bad("form %q: notify_email %q is not a valid address", f.ID, e)
 		}
 	}

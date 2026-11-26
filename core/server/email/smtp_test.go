@@ -217,8 +217,18 @@ func TestSendNeverFallsBackToPlaintext(t *testing.T) {
 func TestSendVerifiesTheCertificate(t *testing.T) {
 	f := newFakeRelay(t, true, false)
 	err := SMTP{AllowPrivate: true}.Send(context.Background(), f.relay(TLSImplicit), "sales@acme.example", testMessage())
-	if err == nil || !strings.Contains(err.Error(), "TLS handshake") {
-		t.Fatalf("an untrusted certificate must be refused: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "TLS handshake (the certificate is not signed by a trusted authority)") {
+		t.Fatalf("an untrusted certificate must be refused, with the cause: %v", err)
+	}
+	st := newFakeRelay(t, false, true)
+	err = SMTP{AllowPrivate: true}.Send(context.Background(), st.relay(TLSStartTLS), "sales@acme.example", testMessage())
+	if err == nil || !strings.Contains(err.Error(), "STARTTLS (the certificate is not signed by a trusted authority)") {
+		t.Fatalf("starttls: %v", err)
+	}
+	plain := newFakeRelay(t, false, false)
+	err = SMTP{AllowPrivate: true, Timeout: 2 * time.Second}.Send(context.Background(), plain.relay(TLSImplicit), "sales@acme.example", testMessage())
+	if err == nil || !strings.Contains(err.Error(), "check the port and tls mode") {
+		t.Fatalf("implicit TLS to a plain port: %v", err)
 	}
 }
 
@@ -232,7 +242,7 @@ func TestSendRefusesNonPublicRelaysByDefault(t *testing.T) {
 		t.Fatalf("talked to a refused address: %v", cmds)
 	}
 	// Even with private addresses allowed, link-local (cloud metadata) stays refused.
-	for _, host := range []string{"169.254.169.254", "0.0.0.0"} {
+	for _, host := range []string{"169.254.169.254", "0.0.0.0", "fd00:ec2::254"} {
 		err := SMTP{AllowPrivate: true, Timeout: 2 * time.Second}.Send(context.Background(), Relay{Host: host, Port: 25, TLS: TLSStartTLS, From: "a@b.example"}, "c@d.example", testMessage())
 		if err == nil || !strings.Contains(err.Error(), "not a public address") {
 			t.Fatalf("%s: %v", host, err)

@@ -4,6 +4,8 @@
 CREATE TABLE email_outbox (
   id              TEXT PRIMARY KEY,
   source          TEXT NOT NULL,             -- module id, or '@core' for can-core's own mail
+  notice          INTEGER NOT NULL DEFAULT 0, -- 1: a notification to a signed-in person (source = who caused it)
+  for_user        TEXT NOT NULL DEFAULT '',  -- that person ("user:<name>")
   source_id       TEXT NOT NULL DEFAULT '',  -- the sender's idempotency key
   seq             INTEGER NOT NULL DEFAULT 0, -- recipient index within one request
   request_hash    TEXT NOT NULL DEFAULT '',
@@ -24,3 +26,7 @@ CREATE UNIQUE INDEX email_outbox_source_id ON email_outbox(source, source_id, se
 CREATE INDEX email_outbox_due ON email_outbox(status, next_attempt_at);
 CREATE INDEX email_outbox_quota ON email_outbox(source, created_at);
 CREATE INDEX email_outbox_created ON email_outbox(created_at);
+
+-- Which module caused a notification, so its mail (also in digests) obeys that module's rules.
+ALTER TABLE notifications ADD COLUMN origin TEXT NOT NULL DEFAULT '';
+ALTER TABLE notifications ADD COLUMN authored INTEGER NOT NULL DEFAULT 0;

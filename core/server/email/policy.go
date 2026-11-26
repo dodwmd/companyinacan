@@ -72,13 +72,28 @@ type Policy struct {
 	domain   string
 	modules  map[string]config.EmailModule
 	notify   map[string][]string // module id -> its notify_email setting
+	notices  []string            // email.notification_recipients; nil = the company domain
+	// ssoVerified: single sign-on is configured to accept only verified email claims.
+	ssoVerified bool
 }
+
+// NoticeAllowed reports whether the rules (not single sign-on) allow notification mail to addr.
+func (p Policy) NoticeAllowed(addr string) bool {
+	rules := p.notices
+	if rules == nil && p.domain != "" {
+		rules = []string{"@" + p.domain}
+	}
+	return config.RecipientAllowed(addr, rules)
+}
+
+// NotificationText reports whether the module's own wording may be mailed.
+func (p Policy) NotificationText(module string) bool { return p.modules[module].NotificationText }
 
 // Rules are what one source may send.
 type Rules struct {
 	Enabled bool
-	// Recipients is the allow-list; ignored for SystemSource, whose recipients are the addresses
-	// signed-in people set for themselves.
+	// Recipients is the allow-list of the sender's own mail. Notifications have their own rules
+	// (Policy.NoticeAllowed).
 	Recipients []string
 	PerHour    int
 	PerDay     int
@@ -159,8 +174,9 @@ func (s Source) Load() (Policy, error) {
 				}
 			}
 		}
+		p.ssoVerified = co.SSO != nil && co.SSO.EmailVerifiedRequired()
 		if co.Email != nil {
-			p.modules = co.Email.Modules
+			p.modules, p.notices = co.Email.Modules, co.Email.NotificationRecipients
 			if co.Email.Relay != nil {
 				cr = *co.Email.Relay
 			}

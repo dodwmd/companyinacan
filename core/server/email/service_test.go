@@ -353,6 +353,82 @@ func TestUnrecordedOutcomeDoesNotRepeatAtOnce(t *testing.T) {
 	}
 }
 
+// cancellingTransport accepts the message while can-core is being told to shut down.
+type cancellingTransport struct {
+	fakeTransport
+	cancel context.CancelFunc
+}
+
+func (c *cancellingTransport) Send(ctx context.Context, r Relay, to string, msg []byte) error {
+	c.cancel()
+	return c.fakeTransport.Send(ctx, r, to, msg)
+}
+
+func TestShutdownAfterAcceptanceDoesNotSendTwice(t *testing.T) {
+	f := newFixture(t, baseCompany)
+	ids, _, err := f.s.Send(context.Background(), req("sales@acme.example", "owner@personal.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	tr := &cancellingTransport{cancel: cancel}
+	f.s.transport = tr
+	if _, err := f.s.RunOnce(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if m := f.status(ids[0]); m.Status+f.status(ids[1]).Status != "sentpending" && m.Status+f.status(ids[1]).Status != "pendingsent" {
+		t.Fatalf("the accepted message must be recorded as sent: %+v %+v", m, f.status(ids[1]))
+	}
+	f.now = f.now.Add(2 * time.Hour)
+	f.s.transport = &tr.fakeTransport
+	if _, err := f.s.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.sent) != 2 {
+		t.Fatalf("%d sends for 2 messages", len(tr.sent))
+	}
+}
+
+func TestRelayFailurePausesAndSendersTakeTurns(t *testing.T) {
+	f := newFixture(t, baseCompany)
+	ctx := context.Background()
+	for _, to := range []string{"a1@acme.example", "a2@acme.example", "a3@acme.example"} {
+		if _, _, err := f.s.Send(ctx, req(to)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := req("b1@acme.example")
+	other.Source = "crm"
+	f.now = f.now.Add(time.Second) // queued after all of forms' mail
+	if _, _, err := f.s.Send(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	f.tr.err = &SendError{Stage: "connect", Session: true}
+	if n, err := f.s.RunOnce(ctx); n != 1 || err != nil {
+		t.Fatal("the pass must stop at the first session failure:", n, err)
+	}
+	if n, _ := f.s.RunOnce(ctx); n != 0 {
+		t.Fatal("not paused:", n)
+	}
+	var untouched int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM email_outbox WHERE attempts=0`).Scan(&untouched); err != nil || untouched != 3 {
+		t.Fatal(untouched, err)
+	}
+	f.tr.err = nil
+	f.now = f.now.Add(2 * time.Minute)
+	if _, err := f.s.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, s := range f.tr.sent {
+		to, _, _ := strings.Cut(s, "|")
+		order = append(order, to[:1])
+	}
+	if len(order) != 4 || order[0] != "b" && order[1] != "b" {
+		t.Fatalf("the second sender waited behind the first one's backlog: %v", order)
+	}
+}
+
 func TestUnexpectedTransportErrorsAreNotStored(t *testing.T) {
 	f := newFixture(t, baseCompany)
 	f.tr.err = errors.New("something about sales@acme.example")
@@ -469,20 +545,5 @@ func TestRelayResolution(t *testing.T) {
 	}
 	if p := load("email: {relay: {host: sink, tls: none}}\n", nil, true); p.RelayErr != nil {
 		t.Fatal(p.RelayErr)
-	}
-}
-
-func TestNotifyMailerUsesTheOutbox(t *testing.T) {
-	f := newFixture(t, baseCompany)
-	m := NotifyMailer{S: f.s}
-	err := m.Send(context.Background(), notifyMessage("staff@elsewhere.example", "Approval\nneeded "+strings.Repeat("é", 200), "", "<p>ignored</p>"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.s.RunOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.tr.sent) != 1 || strings.Contains(f.tr.sent[0], "ignored") {
-		t.Fatalf("%v", f.tr.sent)
 	}
 }

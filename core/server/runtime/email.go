@@ -51,24 +51,47 @@ func (c Config) emailService(db *store.DB, al *audit.Log, log *slog.Logger) (*em
 	return email.New(db, al, src, email.SMTP{AllowPrivate: private}, log), nil
 }
 
+// devModuleSuffix marks the records devModules creates, so a later start can remove them.
+const devModuleSuffix = " (development identity)"
+
 // devModules registers fixed module identities for a stack without Kubernetes (docker-compose.yml):
 // CAN_DEV_MODULE_TOKENS="forms:<token>". It works only with the fake token review and no installer,
 // so it cannot exist next to real module identities, and the only capability it grants is
-// email.send.
+// email.send. Records of identities no longer asked for are removed at start.
 func (c Config) devModules(ctx context.Context, db *store.DB, rev tokenreview.Reviewer, log *slog.Logger) error {
-	spec := c.env("CAN_DEV_MODULE_TOKENS")
-	if spec == "" {
+	want := map[string]string{} // module id -> token
+	if spec := c.env("CAN_DEV_MODULE_TOKENS"); spec != "" {
+		if c.TokenReview != "fake" || c.Installer != "none" {
+			return errors.New("CAN_DEV_MODULE_TOKENS needs CAN_TOKEN_REVIEW=fake and CAN_INSTALLER=none (development only)")
+		}
+		for _, e := range splitList(spec) {
+			id, token, ok := strings.Cut(e, ":")
+			if !ok || id == "" || len(token) < 24 {
+				return errors.New("CAN_DEV_MODULE_TOKENS: want <module>:<token of at least 24 characters>[,...]")
+			}
+			want[id] = token
+		}
+	}
+	mods, err := db.ListModules(ctx)
+	if err != nil {
+		return err
+	}
+	for _, m := range mods {
+		if _, ok := want[m.ID]; !ok && m.Version == "dev" && strings.HasSuffix(m.Manifest.Name, devModuleSuffix) {
+			if _, err := db.ExecContext(ctx, `DELETE FROM modules WHERE id=?`, m.ID); err != nil {
+				return fmt.Errorf("removing the development identity %q: %w", m.ID, err)
+			}
+			log.Warn("stale development module identity removed", "module", m.ID)
+		}
+	}
+	if len(want) == 0 {
 		return nil
 	}
 	fake, ok := rev.(*tokenreview.Fake)
-	if !ok || c.TokenReview != "fake" || c.Installer != "none" {
-		return errors.New("CAN_DEV_MODULE_TOKENS needs CAN_TOKEN_REVIEW=fake and CAN_INSTALLER=none (development only)")
+	if !ok {
+		return errors.New("CAN_DEV_MODULE_TOKENS needs the fake token review")
 	}
-	for _, e := range splitList(spec) {
-		id, token, ok := strings.Cut(e, ":")
-		if !ok || id == "" || len(token) < 24 {
-			return errors.New("CAN_DEV_MODULE_TOKENS: want <module>:<token of at least 24 characters>[,...]")
-		}
+	for id, token := range want {
 		fake.Add(token, "mod-"+id, id)
 		if _, err := db.ModuleByIdentity(ctx, "mod-"+id, id); err == nil {
 			continue
@@ -76,7 +99,7 @@ func (c Config) devModules(ctx context.Context, db *store.DB, rev tokenreview.Re
 			return err
 		}
 		var m config.Module
-		m.ID, m.Name, m.Version = id, id+" (development identity)", "dev"
+		m.ID, m.Name, m.Version = id, id+devModuleSuffix, "dev"
 		m.Requires.Capabilities = []string{"email.send"}
 		if err := db.UpsertModule(ctx, store.Module{ID: id, Version: "dev", Namespace: "mod-" + id, ServiceAccount: id, State: store.StateEnabled, Manifest: m}, nil, nil); err != nil {
 			return fmt.Errorf("registering development module %q: %w", id, err)

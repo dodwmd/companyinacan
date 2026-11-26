@@ -138,7 +138,13 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 		if n++; n > MaxRecipientsPerRule {
 			break
 		}
-		if _, _, err := s.Notify(ctx, Notice{Subject: subj, Type: typ, DedupeKey: key, Data: data, Urgent: mr.rule.Urgent, RespectMute: true}); err != nil {
+		// The module that published the event is accountable for the mail; an event of can-core's own
+		// is the rule owner's. The data comes from the event either way.
+		origin := env.Source
+		if origin == "" || origin == "can-core" {
+			origin = mr.module
+		}
+		if _, _, err := s.Notify(ctx, Notice{Subject: subj, Type: typ, DedupeKey: key, Data: data, Urgent: mr.rule.Urgent, RespectMute: true, Module: origin, Authored: env.Source != "can-core"}); err != nil {
 			s.opt.Log.Error("notification rule failed", "module", mr.module, "event", env.Type, "error", err)
 		}
 	}

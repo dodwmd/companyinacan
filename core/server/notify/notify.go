@@ -17,14 +17,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/mail"
 	"regexp"
 	"strings"
 	"time"
-	"unicode"
 
 	_ "time/tzdata" // named time zones for quiet hours on images without a zoneinfo database
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -145,6 +144,10 @@ type Notice struct {
 	// RespectMute makes the recipient's in-app mute apply even to an urgent notice. Modules set it:
 	// urgency is the platform's to grant, not a module's to claim against a recipient's choice.
 	RespectMute bool
+	// Module is the module that caused the notice (empty: the platform itself); Authored says that
+	// module supplied part of its content (its own API call, or data of an event).
+	Module   string
+	Authored bool
 }
 
 var errInvalid = errors.New("invalid notification")
@@ -252,8 +255,8 @@ func (s *Service) insert(ctx context.Context, n Notice, data map[string]string) 
 	if n.Urgent {
 		urgent = 1
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO notifications(subject, type, dedupe_key, data_json, link, urgent, created_at) VALUES (?,?,?,?,?,?,?)`,
-		n.Subject, n.Type, n.DedupeKey, string(dj), n.Link, urgent, s.opt.Now().Unix())
+	res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO notifications(subject, type, dedupe_key, data_json, link, urgent, created_at, origin, authored) VALUES (?,?,?,?,?,?,?,?,?)`,
+		n.Subject, n.Type, n.DedupeKey, string(dj), n.Link, urgent, s.opt.Now().Unix(), n.Module, n.Authored)
 	if err != nil {
 		return 0, false, err
 	}
@@ -325,7 +328,7 @@ func (s *Service) deliverEmail(ctx context.Context, id int64, n Notice, data map
 	r := Render(n.Type, data)
 	cctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
-	if err := s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: r.Subject, Text: r.Text, HTML: r.HTML}); err != nil {
+	if err := s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: r.Subject, Text: r.Text, HTML: r.HTML, ForUser: n.Subject, Module: n.Module, Authored: n.Authored, Type: n.Type}); err != nil {
 		s.logDelivery(ctx, id, ChannelEmail, "failed", err.Error())
 		return
 	}
@@ -622,8 +625,7 @@ func (s *Service) SetSettings(ctx context.Context, set Settings) error {
 		return errInvalid
 	}
 	if set.Email != "" {
-		a, err := mail.ParseAddress(set.Email)
-		if err != nil || a.Address != set.Email || len(set.Email) > 254 || strings.IndexFunc(set.Email, unicode.IsControl) >= 0 {
+		if !config.ValidAddress(set.Email) {
 			return fmt.Errorf("%w: email address", errInvalid)
 		}
 	}
@@ -666,6 +668,8 @@ func inQuiet(now time.Time, start, end int, tz string) bool {
 type queued struct {
 	deliveryID, notificationID int64
 	subject, typ, dataJSON     string
+	module                     string
+	authored                   bool
 	at                         time.Time
 }
 
@@ -673,25 +677,32 @@ type queued struct {
 // over, and digest subscribers' batches once an hour or day has passed since the oldest queued
 // item. It returns how many digest emails were sent. Work per call is bounded.
 func (s *Service) FlushDigests(ctx context.Context) (int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.notification_id, n.subject, n.type, n.data_json, d.at FROM notify_deliveries d
+	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.notification_id, n.subject, n.type, n.data_json, n.origin, n.authored, d.at FROM notify_deliveries d
 		JOIN notifications n ON n.id=d.notification_id WHERE d.channel='email' AND d.status='queued' ORDER BY n.subject, d.id LIMIT 500`)
 	if err != nil {
 		return 0, err
 	}
-	bySubject := map[string][]queued{}
-	var order []string
+	// One digest per person and originating module: each module's mail has its own switch, quota and
+	// wording, and the platform's own notices never share a message with a module's.
+	type group struct {
+		subject, module string
+		authored        bool
+	}
+	groups := map[group][]queued{}
+	var order []group
 	for rows.Next() {
 		var q queued
 		var at int64
-		if err := rows.Scan(&q.deliveryID, &q.notificationID, &q.subject, &q.typ, &q.dataJSON, &at); err != nil {
+		if err := rows.Scan(&q.deliveryID, &q.notificationID, &q.subject, &q.typ, &q.dataJSON, &q.module, &q.authored, &at); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
 		q.at = time.Unix(at, 0)
-		if _, ok := bySubject[q.subject]; !ok {
-			order = append(order, q.subject)
+		g := group{q.subject, q.module, q.authored}
+		if _, ok := groups[g]; !ok {
+			order = append(order, g)
 		}
-		bySubject[q.subject] = append(bySubject[q.subject], q)
+		groups[g] = append(groups[g], q)
 	}
 	_ = rows.Close()
 	if err := rows.Err(); err != nil {
@@ -699,8 +710,8 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 	}
 	now := s.opt.Now()
 	sent := 0
-	for _, subj := range order {
-		items := bySubject[subj]
+	for _, g := range order {
+		items, subj := groups[g], g.subject
 		set, err := s.Settings(ctx, subj)
 		if err != nil {
 			return sent, err
@@ -729,7 +740,8 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 			b.WriteString("- " + Render(it.typ, data).Subject + "\n")
 		}
 		cctx, cancel := context.WithTimeout(ctx, sendTimeout)
-		err = s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: fmt.Sprintf("%d notifications", len(items)), Text: b.String(), HTML: "<pre>" + htmlEscape(b.String()) + "</pre>"})
+		err = s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: fmt.Sprintf("%d notifications", len(items)), Text: b.String(), HTML: "<pre>" + htmlEscape(b.String()) + "</pre>",
+			ForUser: subj, Module: g.module, Authored: g.authored, Type: items[0].typ, Count: len(items)})
 		cancel()
 		status, detail := "sent", "digest"
 		if err != nil {

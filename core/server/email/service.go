@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -64,6 +65,31 @@ type Request struct {
 	Subject  string
 	Text     string
 	SourceID string // idempotency key of the sender; empty = none
+
+	// Notice marks the notification channel: Source is the module that caused it (its switch and
+	// quota apply) or SystemSource, and the recipient must be allowed for ForUser. Modules cannot
+	// set it.
+	Notice  bool
+	ForUser string
+}
+
+// errNoticeAddress is what a person is told when their notification address is not accepted.
+var errNoticeAddress = fmt.Errorf("%w: notification mail only goes to the company domain, email.notification_recipients or your verified single sign-on address", ErrNotAllowed)
+
+// noticeAllowed reports whether notification mail for user may go to addr. An address a person
+// typed is not verified, so it has to be one the operator vouches for or the identity provider did.
+// Must not be called inside a transaction (single database connection).
+func (s *Service) noticeAllowed(ctx context.Context, p Policy, user, addr string) (bool, error) {
+	if p.NoticeAllowed(addr) {
+		return true, nil
+	}
+	name, ok := strings.CutPrefix(user, "user:")
+	if !ok || !p.ssoVerified {
+		return false, nil
+	}
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sso_identities i JOIN admin_users u ON u.id=i.user_id WHERE u.username=? AND lower(i.email)=lower(?)`, name, addr).Scan(&n)
+	return n > 0, err
 }
 
 // Service is the outbox.
@@ -75,6 +101,10 @@ type Service struct {
 	log       *slog.Logger
 	wake      chan struct{}
 	Now       func() time.Time
+	// After a session failure no delivery is tried before pausedUntil (unix seconds). failures
+	// belongs to the single worker.
+	pausedUntil atomic.Int64
+	failures    int
 }
 
 // New returns the service. transport nil means SMTP with its safe defaults.
@@ -157,7 +187,21 @@ func (s *Service) Send(ctx context.Context, r Request) (ids []string, duplicate 
 		messages.With("refused").Inc()
 		return nil, false, fmt.Errorf("%w: email is turned off for this module", ErrNotAllowed)
 	}
-	if r.Source != SystemSource {
+	if r.Notice {
+		for _, a := range r.To {
+			ok, err := s.noticeAllowed(ctx, p, r.ForUser, a)
+			if err != nil {
+				return nil, false, err
+			}
+			if !ok {
+				messages.With("refused").Inc()
+				return nil, false, errNoticeAddress
+			}
+		}
+	} else {
+		if r.Source == SystemSource {
+			return nil, false, fmt.Errorf("%w: can-core's own mail is notification mail", ErrNotAllowed)
+		}
 		for _, a := range r.To {
 			if !config.RecipientAllowed(a, rules.Recipients) {
 				messages.With("refused").Inc()
@@ -223,9 +267,9 @@ func (s *Service) Send(ctx context.Context, r Request) (ids []string, duplicate 
 		}
 		for i, a := range r.To {
 			id := newID()
-			if _, err := tx.ExecContext(ctx, `INSERT INTO email_outbox(id, source, source_id, seq, request_hash, recipient, recipient_mask, reply_to, subject, body, status, next_attempt_at, created_at, queued_at)
-				VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)`,
-				id, r.Source, r.SourceID, i, hash, a, mask(a), r.ReplyTo, r.Subject, r.Text, now.Unix(), now.Unix(), now.Unix()); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO email_outbox(id, source, notice, for_user, source_id, seq, request_hash, recipient, recipient_mask, reply_to, subject, body, status, next_attempt_at, created_at, queued_at)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)`,
+				id, r.Source, r.Notice, r.ForUser, r.SourceID, i, hash, a, mask(a), r.ReplyTo, r.Subject, r.Text, now.Unix(), now.Unix(), now.Unix()); err != nil {
 				return err
 			}
 			if _, err := s.audit.AppendTx(ctx, tx, audit.Entry{Actor: actor(r.Source), Action: "email.queue", Target: id, Detail: map[string]any{"source": r.Source, "bytes": len(r.Text)}}); err != nil {
@@ -338,6 +382,7 @@ func (s *Service) Requeue(ctx context.Context, by, id string) error {
 		return err
 	})
 	if err == nil {
+		s.pausedUntil.Store(0) // an operator retrying has usually just fixed the relay
 		select {
 		case s.wake <- struct{}{}:
 		default:

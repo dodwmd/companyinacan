@@ -369,6 +369,7 @@
             "secret_ref": { "$ref": "#/$defs/secretRef", "description": "Reserved. can-core reads the relay credentials only from the Secret can-system/can-smtp-relay (docs/email.md)." }
           }
         },
+        "notification_recipients": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 254 }, "description": "Where notification mail may go: addresses or whole domains (@b.example). Default: the company domain. A person's verified single sign-on address is always accepted." },
         "modules": {
           "type": "object",
           "description": "Per-module sending rules of the email.send capability (docs/email.md).",
@@ -380,7 +381,8 @@
               "enabled": { "type": "boolean", "description": "false refuses all mail from the module." },
               "recipients": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 254 }, "description": "Addresses (a@b.example) or whole domains (@b.example) the module may mail. Replaces the default (the company domain and the module's notify_email setting)." },
               "per_hour": { "type": "integer", "minimum": 1, "maximum": 10000 },
-              "per_day": { "type": "integer", "minimum": 1, "maximum": 100000 }
+              "per_day": { "type": "integer", "minimum": 1, "maximum": 100000 },
+              "notification_text": { "type": "boolean", "description": "Let notification mail caused by this module carry the module's own title and text. Default false: a fixed text with the type and a link to the admin inbox." }
             }
           }
         },

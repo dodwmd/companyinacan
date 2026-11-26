@@ -24,6 +24,18 @@ type Message struct {
 	Subject string
 	Text    string
 	HTML    string
+
+	// ForUser is the subject ("user:<name>") the address belongs to.
+	ForUser string
+	// Module is the module that caused the notification, empty for the platform's own. The mailer
+	// applies that module's email switch and quota.
+	Module string
+	// Authored means the module chose some of what Subject and Text say, so a mailer must not send
+	// them unless the operator allowed that for the module.
+	Authored bool
+	// Type is the notification type; Count the number of notifications in a digest (0 otherwise).
+	Type  string
+	Count int
 }
 
 // Mailer sends email. The platform's `email.send` capability sits behind this interface; the
