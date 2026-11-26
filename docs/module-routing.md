@@ -38,10 +38,10 @@ to the file.
 | Module | `ui` host | Public by default |
 |---|---|---|
 | work | `work.<domain>` (`/ui`) | - |
+| files | `files.<domain>` | share-link downloads on `files.<domain>/s/` |
 | people | `people.<domain>` | - |
 | jobs | `jobs.<domain>` | careers pages and feeds on `careers.<domain>` |
 | finance | `finance.<domain>` | signed invoice links on `finance.<domain>/public/invoices/`, only with `public: true` |
-| files | `files.<domain>` | share-link downloads on `files.<domain>/s/` |
 | forms | none | `/_forms` on the site hosts |
 
 ## What you also need
@@ -52,6 +52,15 @@ to the file.
   use the instant sslip.io addresses, so they work only once your domain points at the server. On
   the plain-HTTP fallback nothing but `/_forms` and public pages is routed.
 * **Company domain on can-core** (`CAN_COMPANY_DOMAIN`, set by `can up`) for the Apps page.
+
+## Warning: `api: true` on files publishes destructive routes
+
+`modules.files.expose.api: true` puts **all of `/v1`** on `files.<domain>`. That includes **`POST /v1/purge`**,
+**erasure** (`POST /v1/subjects/{subject}/erasure`), **legal hold** (`PUT /v1/files/{id}/hold`), the
+**retention run** (`POST /v1/retention/run`) and the audit log. They still need a token with `files.admin`, and
+the service token `CAN_FILES_API_TOKEN` has it: whoever holds one can destroy files from the internet. The
+restore-only credential, which ignores legal holds, is refused through any proxy. The web UI (`ui: true`) does
+not need `api: true`: leave it off unless a program outside the cluster has to call the API.
 
 ## DNS records
 

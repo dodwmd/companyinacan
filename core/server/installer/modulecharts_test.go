@@ -53,7 +53,7 @@ func inhouseModules() []inhouse {
 			return writeLoad(b, func(p string) error { _, err := finance.LoadConfig(p, true); return err })
 		}},
 		{"provisioning", "provisioning", 20, 64, "8090", func(b []byte) error { _, err := provision.ParseConfig(b); return err }},
-		{"files", "files", 20, 64, "8095", func(b []byte) error { _, err := files.ParseConfig(b); return err }},
+		{"files", "files", 28, 64, "8095", func(b []byte) error { _, err := files.ParseConfig(b); return err }},
 	}
 }
 

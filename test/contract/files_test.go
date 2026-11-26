@@ -76,7 +76,7 @@ func TestFilesManifest(t *testing.T) {
 		t.Error("the files module subscribes to no event: nothing here starts a file operation from an event")
 	}
 	res := asMap(m["resources"])
-	if res["ram_mb"] != 20 || res["ram_limit_mb"] != 64 {
+	if res["ram_mb"] != 28 || res["ram_limit_mb"] != 64 {
 		t.Errorf("resources = %v", res)
 	}
 	perms := map[string]bool{}
@@ -460,7 +460,7 @@ func TestFilesChartValues(t *testing.T) {
 		t.Error("seccompProfile RuntimeDefault required")
 	}
 	res := asMap(v["resources"])
-	if mi(t, asStr(asMap(res["requests"])["memory"])) != 20 || mi(t, asStr(asMap(res["limits"])["memory"])) != 64 {
+	if mi(t, asStr(asMap(res["requests"])["memory"])) != 28 || mi(t, asStr(asMap(res["limits"])["memory"])) != 64 {
 		t.Errorf("resources = %v do not match the manifest", res)
 	}
 	cfg := asMap(v["config"])

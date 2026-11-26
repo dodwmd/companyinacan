@@ -7,22 +7,31 @@ every name the caller may see through a new read path with its own role filter a
 
 ## R2. RAM and binary size, measured locally
 
-Static linux/amd64 build (`CGO_ENABLED=0 go build -trimpath -ldflags "-s -w"`), local backend, no scanner,
-on the developer machine; `/proc/<pid>/status`. "Base" is the commit before this feature. API load: one
-24 MiB upload, three downloads, 200 lists. UI load: sign-in, one 24 MiB upload, three downloads, 50 small
-uploads, 525 page renders.
+Static linux/amd64 build (`CGO_ENABLED=0 go build -trimpath -ldflags "-s -w"`), UI on, local backend, no
+scanner, on the developer machine; `/proc/<pid>/status` and `/proc/<pid>/stat`. Sequential load: one 24 MiB
+upload, three downloads, 50 small uploads, 200 page renders. Concurrent load, three rounds: six clients
+browsing while two upload and four download 24 MiB. Two runs each.
 
-| Build and load | RSS idle | RSS loaded | Anonymous loaded |
-|---|---|---|---|
-| base, API load | 12.9 MiB | 19.3 MiB | 8.7 MiB |
-| new, UI off, API load | 14.6 MiB | 21.5 MiB | 8.6 MiB |
-| new, UI on, UI load, default GC | 14.7 MiB | 24.9 MiB | 11.7 MiB |
-| new, UI on, UI load, soft limit 10 MiB | 14.7 MiB | 22.7 MiB | 8.7 MiB |
+| Build | RSS idle | RSS after sequential | RSS peak, concurrent | Anonymous, concurrent | CPU, sequential pages |
+|---|---|---|---|---|---|
+| no memory limit (shipped) | 14.7 MiB | 24.0 to 24.2 MiB | 26.9 to 27.1 MiB | 13.4 to 13.5 MiB | 0.17 to 0.18 s |
+| `GOMEMLIMIT=24MiB` (one run) | 14.7 MiB | 24.0 MiB | 27.5 MiB | 13.8 MiB | 0.17 s |
+| 10 MiB soft limit (rejected) | 14.9 MiB | 22.1 to 22.3 MiB | 23.1 to 23.4 MiB | 9.0 to 9.3 MiB | 2.35 to 2.37 s |
 
-The declared 20 MB is kept (loaded is under 20 x 1.2, the limit stays 64 MiB). To get there the service sets a
-soft Go memory limit of 10 MiB when the UI is on and `GOMEMLIMIT` is unset. These are single runs of the
-binary on one machine, one request at a time, not a container on a cluster.
+A 10 MiB soft limit was tried first to stay within the former 20 MB declaration. It made the collector run
+almost continuously (about 13 times the CPU) to save 2 to 4 MiB, so it was removed. The declared RAM is
+raised from 20 to 28 MB instead (as work and finance, which also have a UI); the limit stays 64 MiB. Without
+the UI the module is as before. These are runs of the binary on one machine, not a container on a cluster.
 
 The binary grew from 12.2 MiB to 14.8 MiB: `html/template` calls methods by name, which stops the linker
 from dropping unused ones (the other UI modules are 16 to 17.5 MiB). The size budget in
 `dev/footprint/budgets.json` is raised from 13.5 to 16 MiB.
+
+## R3. Reading an upload form
+
+`mime/multipart` accepts up to 10 MiB of headers per part and buffers them. Six concurrent requests of that
+kind took the process from 17 to 75 MiB (past the 64 MiB limit), before any role check or upload slot. The UI
+now (1) checks the permission, the scanner and the space role and takes one of the Store's upload slots before
+a byte of the body is read, and (2) reads at most 64 KiB before the file's own bytes: preamble, part headers,
+CSRF token and fields together. The same attack then peaks at 21 MiB. The API's upload takes the file as the
+raw body, with no part headers to buffer, and reads nothing for a caller who may not upload.

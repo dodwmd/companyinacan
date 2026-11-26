@@ -30,8 +30,13 @@ runtime:
   values: ./chart/values.yaml
   # The chart routes only the share-link download route (/s/) (see chart/templates/ingressroute.yaml).
   subdomain: files
+  # While /s/ is routed (expose.public, on by default): the web UI may offer share links.
+  public_config:
+    share: { published: true }
   # The web UI accepts can-core launch tickets (specs/036-module-ui-sso).
   web_login: {}
+  # WARNING: this block also makes `expose.api: true` possible, which publishes ALL of /v1 on
+  # files.<domain>: purge, erasure, legal hold and the retention run included (docs/module-routing.md).
   # Routed on files.<domain> only when company.yaml sets modules.files.expose.ui (specs/040-module-routing).
   # An allowlist of the web UI's own paths (/v1 is not one); test/contract checks it covers every UI route.
   public_ui:
@@ -41,14 +46,17 @@ runtime:
     prefixes: [/admin, /files, /folders, /login, /logout, /shares, /spaces, /static]
     config:
       trust_proxy: true
-      ui: { enabled: true, force_secure: true }
+      # share_links false: with expose.public: false the UI offers no share links (public_config above
+      # says when /s/ is routed).
+      ui: { enabled: true, force_secure: true, share_links: false }
 requires:
   database: sqlite
   sso: none
 resources:
-  # Idle RAM target 20 MB. Measured on the static linux/amd64 build: see
+  # RAM target 28 MB loaded, with the web UI (idle about 15 MiB; 27 MiB peak under concurrent uploads,
+  # downloads and pages: specs/050-files-ui/research.md R2). Was 20 before the UI. Measured on the static linux/amd64 build: see
   # specs/034-files/research.md R9.
-  ram_mb: 20
+  ram_mb: 28
   ram_limit_mb: 64
   disk_mb: 10000
 provides:

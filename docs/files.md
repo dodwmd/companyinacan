@@ -179,6 +179,11 @@ restoring the file does not bring them back: make new ones.
   this route and nothing else) ignores them, audited as `file.restore_purge`. can-core generates it, but
   nothing in can-core calls this route yet. Neither class is reachable on its own: both purge the whole
   file.
+- The restore-only credential is accepted only on a direct request from inside the cluster: with any proxy
+  header (`X-Forwarded-*`, `Forwarded`, `X-Real-Ip`) it is refused (403).
+- **Warning: `expose.api: true` publishes all of `/v1`** on `files.<domain>`, `/v1/purge`, erasure, legal
+  hold, the retention run and the audit log included, to anyone holding a token that allows them
+  ([module-routing.md](module-routing.md)). Leave it off unless you need the API from outside the cluster.
 - Backups and snapshots taken earlier still hold the data until they expire; the ledger re-applies the
   erasure after a restore. The zeroing of a deleted blob is not a guarantee on copy-on-write or SSD
   storage.
@@ -240,7 +245,9 @@ API, with the same checks, audit entries and answers ([`specs/050-files-ui`](../
   to reach the page; it works from outside only if `/s/` is published.
 - **Erasure** asks you to type `ERASE` and to confirm who you are: the token again, or, from Apps, an admin
   sign-in at most 5 minutes old.
-- **Memory.** With the UI on the service sets a soft Go memory limit of 10 MiB (`GOMEMLIMIT` overrides it).
+- **Memory.** The module declares 28 MB (limit 64 MiB). An upload form may send at most 64 KiB before the file
+  itself, and your role is checked before any of it is read.
+- **Share links** are not offered while `/s/` is unpublished (`expose.public: false` with the UI routed).
 - **Not in the UI:** search, folder rename or move, the audit log, tombstones, running the retention sweep.
 
 ## Storage backends

@@ -260,7 +260,7 @@ services:
       CAN_API_URL: "http://core:8090"
       CAN_MODULE_ID: files
       CAN_TOKEN_FILE: /tokens/token
-      CAN_RAM_DECLARED_MB: "20"
+      CAN_RAM_DECLARED_MB: "28"
     volumes:
       - files-data:/data
       - token-files:/tokens:ro

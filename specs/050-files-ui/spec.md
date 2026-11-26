@@ -38,21 +38,26 @@ sweep and the purge hook (API only), several files in one upload.
   byte of the file is read.
 - **FR-004 Uploads.** The body is never parsed whole or held in memory: parts are read in order and the file
   part is handed to `Store.Upload` / `Store.UploadVersion` as a stream, so every limit, type check, scan,
-  quota and concurrency rule is the API's. A declared length over `limits.max_file_bytes` plus 64 KiB of
+  quota and concurrency rule is the API's. The permission, scanner and space role are checked and an upload
+  slot is taken before a byte is read; at most 64 KiB are read before the file's own bytes (`research.md` R3).
+  A declared length over `limits.max_file_bytes` plus 64 KiB of
   form overhead is refused before reading. Transfer encodings of parts are never decoded.
 - **FR-005 Downloads.** The same function as the API writes them: `application/octet-stream` attachment,
   nosniff, sandboxing CSP, no-store, checksum verified while streaming, audited before the first byte. The UI
   never serves inline. `HEAD` is refused.
 - **FR-006 Share links.** The token appears once, in the answer to the POST that made it.
 - **FR-007 Irreversible actions.** Erasure needs `ERASE` typed and a step-up: the pasted token again, which
-  must still authenticate now, or (ticket session) an admin sign-in at most 5 minutes old confirmed by
+  must still authenticate now (introspection is asked, not its 30 second cache), or (ticket session) an admin sign-in at most 5 minutes old confirmed by
   can-core. A legal hold form preselects nothing: a post that does not say on or off is refused.
 - **FR-008 Routing.** `runtime.public_ui` lists only UI paths; `/v1`, `/healthz` and metrics are never
-  routed, and `/s/` stays the chart's own route. The UI is routed only with `modules.files.expose.ui`,
-  which also turns it on and the token form off unless `token_login` is set.
+  routed by it, and `/s/` stays the chart's own route. The UI is routed only with `modules.files.expose.ui`,
+  which also turns it on and the token form off unless `token_login` is set. With `expose.public: false` the
+  UI offers no share links. `public_ui` also permits `expose.api`, which publishes all of `/v1`; the
+  restore-only credential is refused on proxied requests.
 - **FR-009 Accessibility.** Language, one h1, landmarks, skip link, labelled controls, table captions and
   header scopes, visible focus, AA contrast in both colour schemes, usable on a phone.
-- **FR-010 RAM.** Templates parse on first use; the module stays within its declared RAM (`research.md`).
+- **FR-010 RAM.** Templates parse on first use; the module declares 28 MB (was 20) and stays within it and
+  its 64 MiB limit (`research.md` R2).
 
 ## Contracts
 
