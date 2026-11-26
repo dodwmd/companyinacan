@@ -124,19 +124,21 @@ finance 16.0, people 15.5, jobs 14.9, work 14.5, equity 12.6, board 12.6, files 
 **Not established, and not claimed.** The bundle SPEC 3.2 and 10 name for 2 GB is the platform plus site, forms,
 support, newsletter and analytics, idling under 1.5 GB of total used RAM (OS, k3s and databases included).
 
-- On `main`, `support` is marked `not-deployable`, so that bundle cannot even be installed.
+- The three wrapped apps are installable (`experimental`) but have only been started one at a time on k3d, and
+  enabling any of them stops every backup until the `can-hooks` image is published. So the wizard's starter
+  template is the site and forms only, not the bundle SPEC names.
 - The bundle has never run together, and nothing here has run on a 2 GB machine.
 - What exists are separate measurements: k3s with Traefik, CoreDNS and local-path 510 to 563 MiB on a 16 GB
-  CI runner ([phase0-ci.md](phase0-ci.md)); and, from the not yet merged pull request #56 (k3d, empty data),
-  analytics 26 to 33, support 63 to 66, newsletter 26 to 27 and a shared Postgres 35 to 36 MiB.
-- Adding those to can-core, site and forms gives roughly 0.75 GB before the host operating system. That leaves
-  room on paper; it is arithmetic across different machines and not a measurement, and it says nothing about real
-  data, peaks (image pulls, Helm, backups) or page cache.
+  CI runner ([phase0-ci.md](phase0-ci.md)); and, on k3d with empty data (the module READMEs), analytics 25 to 35,
+  support 63 to 86, newsletter 26 to 29 and a shared Postgres 35 to 50 MiB idle. Migrations peak higher.
+- Adding those to can-core, site and forms gives roughly 0.75 to 0.85 GB before the host operating system. That
+  leaves room on paper; it is arithmetic across different machines and not a measurement, and it says nothing
+  about real data, peaks (image pulls, Helm, backups) or page cache.
 - Of the per-layer targets: "can-core + site + forms at most about 100 MB" is met in Compose (sum of `VmRSS`
   about 52 MiB idle, 57 loaded); the k3s layer is inside its 600 target only on the large runner; "each module within 1.2 times
-  `ram_mb`" holds for the in-house services' `RssAnon` and `VmRSS` here, not for any wrapped app.
+  `ram_mb`" holds for the in-house services' `RssAnon` and `VmRSS` here; the wrapped apps were not re-measured.
 
-Use 4 GB. The step that settles it: install the bundle on a real 2 GB server and read `free` after an hour.
+Use 4 GB. The step that settles it, once backups work for these modules: install the bundle on a real 2 GB server and read `free` after an hour.
 
 ## Regression check
 
