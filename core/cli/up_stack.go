@@ -405,11 +405,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	res.Warnings = append(res.Warnings, held...)
 	// Before the summary, so that it can say what is not ready. An interrupt ends the wait only: the
 	// summary, which holds what is shown once, still follows.
-	progress := d.Redactor.Writer(out)
-	notReady, waitWarnings := waitForModules(ctx, d.Kube, lr.CompanyYAML, f.moduleWait, provider.KubeconfigPath(t.dir), progress)
-	if fl, ok := progress.(provider.Flusher); ok {
-		fl.Flush()
-	}
+	notReady, waitWarnings := waitForModules(ctx, d.Kube, lr.CompanyYAML, f.moduleWait, provider.KubeconfigPath(t.dir), out)
 	res.ModulesNotReady = notReady
 	res.Warnings = append(res.Warnings, waitWarnings...)
 	res.TotalSeconds = lifecycle.now().Sub(started).Seconds()
