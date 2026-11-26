@@ -185,7 +185,8 @@ non-secret options. Nothing else is needed; everything else is in the snapshot.
    (from a source checkout use `--images-from <make images output>`). `--plan` shows the steps and what is done.
 4. From the laptop, run `can up` with your usual flags: it publishes the site (from your company repository, which is
    **not** in the backup), applies the routes and DNS and installs the backup timer. It keeps the restored admin
-   account.
+   account. Modules with `expose.ui` or `expose.api` stay stopped until this `can up` has written the routing facts
+   (docs/module-routing.md); can-core then starts them by itself.
 5. Check that the old server is gone, and review users, roles and API tokens: they are those of the backup, so anything
    revoked since then is valid again.
 

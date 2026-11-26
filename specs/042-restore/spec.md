@@ -28,6 +28,7 @@ Before this feature `can restore` stopped at its first step: neither the cluster
 | D6 | Order: volume files first, then restore hooks | SPEC 6.5 had hooks first; a hook is replace-all, so a later raw copy would put older files over it, and the copy refuses a volume with data |
 | D7 | Erasure replay fails **closed** | a tombstone no module can replay, or whose purge fails, stops the restore until `--accept-unerased module:class` names it |
 | D8 | Go-live re-applies modules by clearing their recorded settings hash | the normal reconcile restores replicas and routes; no second copy of the desired state |
+| D9 | The restore install renders as if nothing were exposed (specs/040-module-routing): no routes, the ingress controller shut out | routes appear at go-live; `expose.ui`/`api` also need `can up` on the new server (routing facts are not backed up) |
 
 ## Requirements
 
