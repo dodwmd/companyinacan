@@ -28,7 +28,7 @@ const (
 	maxStepDays        = 365
 	maxOverdueLimit    = 730
 	defaultMaxOverdue  = 90
-	reminderGap        = 3 * 24 * time.Hour // between two reminders for one invoice, whatever the schedule says
+	reminderGap        = 3 * 24 * time.Hour // from handing one reminder over to claiming the next, whatever the schedule says
 	reminderRetryLimit = 72 * time.Hour     // a reminder the mail service never took is given up after this
 	reminderBatch      = 20                 // reminders per sweep: under can-core's default of 60 an hour
 )
@@ -40,6 +40,9 @@ type DunningPolicy struct {
 	Enabled        bool  `json:"enabled"`
 	DaysAfterDue   []int `json:"days_after_due"`
 	MaxOverdueDays int   `json:"max_overdue_days"`
+	// RestoredAt is set when restoring a backup switched reminders off and nobody has saved the
+	// schedule since (specs/062-invoice-email). It is not an input.
+	RestoredAt *time.Time `json:"restored_at,omitempty"`
 }
 
 func defaultDunning() DunningPolicy {
@@ -68,12 +71,17 @@ func (p *DunningPolicy) validate() error {
 func dunningPolicy(ctx context.Context, q dbq) (DunningPolicy, error) {
 	p := defaultDunning()
 	var days string
-	err := q.QueryRowContext(ctx, `SELECT enabled, days_after_due, max_overdue_days FROM dunning_policy WHERE id = 1`).Scan(&p.Enabled, &days, &p.MaxOverdueDays)
+	var restored int64
+	err := q.QueryRowContext(ctx, `SELECT enabled, days_after_due, max_overdue_days, restored_at FROM dunning_policy WHERE id = 1`).Scan(&p.Enabled, &days, &p.MaxOverdueDays, &restored)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, nil
 	}
 	if err != nil {
 		return p, err
+	}
+	if restored > 0 {
+		t := fromUnix(restored)
+		p.RestoredAt = &t
 	}
 	p.DaysAfterDue = nil
 	return p, json.Unmarshal([]byte(days), &p.DaysAfterDue)
@@ -87,6 +95,7 @@ func (s *Store) SetDunning(ctx context.Context, a *Principal, in DunningPolicy) 
 	if !a.Unscoped() {
 		return in, ErrForbidden
 	}
+	in.RestoredAt = nil
 	if in.MaxOverdueDays == 0 {
 		in.MaxOverdueDays = defaultMaxOverdue
 	}
@@ -99,7 +108,7 @@ func (s *Store) SetDunning(ctx context.Context, a *Principal, in DunningPolicy) 
 	}
 	return in, s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO dunning_policy (id, enabled, days_after_due, max_overdue_days, updated_by, updated_at) VALUES (1, ?, ?, ?, ?, ?)
-			ON CONFLICT (id) DO UPDATE SET enabled = excluded.enabled, days_after_due = excluded.days_after_due, max_overdue_days = excluded.max_overdue_days, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+			ON CONFLICT (id) DO UPDATE SET enabled = excluded.enabled, days_after_due = excluded.days_after_due, max_overdue_days = excluded.max_overdue_days, updated_by = excluded.updated_by, updated_at = excluded.updated_at, restored_at = 0`,
 			in.Enabled, string(days), in.MaxOverdueDays, a.Subject, ts(s.now())); err != nil {
 			return err
 		}
@@ -112,6 +121,8 @@ type ReminderState struct {
 	Hold         string `json:"hold"` // on, stopped or disputed; "on" for a party list
 	PartyStopped bool   `json:"party_stopped"`
 	Enabled      bool   `json:"enabled"` // the company's schedule
+	// OffSinceRestore: restoring a backup switched the schedule off.
+	OffSinceRestore bool `json:"off_since_restore"`
 }
 
 func (s *Store) reminderState(ctx context.Context, invoiceID, partyID int64) (*ReminderState, error) {
@@ -123,7 +134,7 @@ func (s *Store) reminderState(ctx context.Context, invoiceID, partyID int64) (*R
 		return nil, err
 	}
 	p, err := s.Dunning(ctx)
-	st.Enabled = p.Enabled
+	st.Enabled, st.OffSinceRestore = p.Enabled, p.RestoredAt != nil
 	return st, err
 }
 
@@ -194,7 +205,7 @@ func (s *Store) SetPartyReminders(ctx context.Context, a *Principal, partyID int
 // remindable selects the invoices a reminder may be about. Arguments: today, and the oldest due
 // date still chased.
 const remindable = `FROM invoices i JOIN parties p ON p.id = i.party_id
-	WHERE i.kind = 'invoice' AND i.status IN ('sent', 'partially_paid') AND i.total_minor - i.paid_minor - i.credited_minor > 0
+	WHERE i.kind = 'invoice' AND i.status IN ('sent', 'partially_paid') AND i.sent_at IS NOT NULL AND i.total_minor - i.paid_minor - i.credited_minor > 0
 	AND i.due_date < ? AND i.due_date >= ? AND p.erased_at IS NULL AND p.email <> ''
 	AND NOT EXISTS (SELECT 1 FROM invoice_reminder_holds h WHERE h.invoice_id = i.id)
 	AND NOT EXISTS (SELECT 1 FROM party_reminder_stops x WHERE x.party_id = i.party_id)`
@@ -228,8 +239,9 @@ func (s *Store) dueReminders(ctx context.Context, p DunningPolicy) ([]dueReminde
 	today, oldest := s.remindableArgs(p)
 	rows, err := s.db.QueryContext(ctx, `SELECT i.id, i.party_id, i.number_text, i.due_date,
 		COALESCE((SELECT MAX(m.step) FROM document_mails m WHERE m.invoice_id = i.id AND m.kind = 'reminder'), 0),
-		COALESCE((SELECT MAX(m.created_at) FROM document_mails m WHERE m.invoice_id = i.id AND m.kind = 'reminder'), 0) `+
-		remindable+` ORDER BY i.due_date, i.id`, today, oldest)
+		COALESCE((SELECT MAX(m.handed_at) FROM document_mails m WHERE m.invoice_id = i.id AND m.kind = 'reminder'), 0) `+
+		remindable+` AND NOT EXISTS (SELECT 1 FROM document_mails w WHERE w.invoice_id = i.id AND w.kind = 'reminder' AND w.status IN ('pending', 'retry'))
+		ORDER BY i.due_date, i.id`, today, oldest)
 	if err != nil {
 		return nil, err
 	}

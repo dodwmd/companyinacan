@@ -86,6 +86,7 @@
 <section aria-labelledby="h-mail">
 <h2 id="h-mail">{{t "mail.title"}}</h2>
 {{if .Data.CanEmail}}
+{{if .Data.PDFIncomplete}}<p class="notice">{{t "mail.pdf_incomplete"}}</p>{{end}}
 {{if .Data.MailReady}}
 <form method="post" action="/invoices/{{.Data.V.ID}}/email" class="inline">
 {{template "csrf" .}}
@@ -102,7 +103,7 @@
 <h2 id="h-remind">{{t "remind.title"}}</h2>
 <p>{{st "hold" .Data.Reminders.Hold}}</p>
 {{if .Data.Reminders.PartyStopped}}<p class="notice">{{t "remind.party_stopped"}}</p>{{end}}
-{{if not .Data.Reminders.Enabled}}<p class="hint">{{t "remind.schedule_off"}}</p>{{end}}
+{{if .Data.Reminders.OffSinceRestore}}<p class="notice">{{t "remind.off_restore"}}</p>{{else if not .Data.Reminders.Enabled}}<p class="hint">{{t "remind.schedule_off"}}</p>{{end}}
 <form method="post" action="/invoices/{{.Data.V.ID}}/reminders" class="inline">
 {{template "csrf" .}}
 <label for="hold-state">{{t "remind.set"}}</label>

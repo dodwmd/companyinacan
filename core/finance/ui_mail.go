@@ -18,7 +18,7 @@ func (u *UI) invoicePDF(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	serveInvoicePDF(c.w, v, u.Seller)
+	serveInvoicePDF(c.w, c.r, v, u.Seller)
 	return nil
 }
 
@@ -29,6 +29,8 @@ func mailFlash(m *DocumentMail) string {
 		return "flash.mail_queued"
 	case DMNotAllowed:
 		return "flash.mail_refused"
+	case DMUnknown:
+		return "flash.mail_unknown"
 	}
 	return "flash.mail_failed"
 }
@@ -79,11 +81,20 @@ func (u *UI) partyRemindersPost(c *uiCtx) error {
 	return c.redirect("/parties/"+itoa(id), "flash.saved")
 }
 
+// restoredOn is the date a restore switched reminders off, "" when there is nothing to say.
+func restoredOn(p DunningPolicy) string {
+	if p.RestoredAt == nil {
+		return ""
+	}
+	return dateOf(*p.RestoredAt)
+}
+
 type dunningData struct {
-	P       DunningPolicy
-	Days    string
-	CanEdit bool
-	Ready   bool
+	Restored string
+	P        DunningPolicy
+	Days     string
+	CanEdit  bool
+	Ready    bool
 }
 
 func (u *UI) dunning(c *uiCtx) error {
@@ -95,7 +106,7 @@ func (u *UI) dunning(c *uiCtx) error {
 	for i, d := range p.DaysAfterDue {
 		days[i] = strconv.Itoa(d)
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "reminders.html", "remind.title", dunningData{P: p, Days: strings.Join(days, ", "),
+	u.render(c.w, c.r, c, http.StatusOK, "reminders.html", "remind.title", dunningData{P: p, Restored: restoredOn(p), Days: strings.Join(days, ", "),
 		CanEdit: capsOf(c.p).Admin && c.p.Unscoped(), Ready: u.Store.MailReady()})
 	return nil
 }

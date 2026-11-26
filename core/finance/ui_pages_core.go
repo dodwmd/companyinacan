@@ -154,16 +154,24 @@ func (u *UI) approvals(c *uiCtx) error {
 // ---- home ------------------------------------------------------------------------------------
 
 type homeData struct {
-	Stats     *DashboardStats
-	Queue     *approvalQueue
-	Business  bool // false for an own-only (employee) token: links to its own sheets and claims only
-	Today     string
-	CanReport bool
+	RemindersRestored string
+	Stats             *DashboardStats
+	Queue             *approvalQueue
+	Business          bool // false for an own-only (employee) token: links to its own sheets and claims only
+	Today             string
+	CanReport         bool
 }
 
 func (u *UI) home(c *uiCtx) error {
 	d := homeData{Today: c.today()}
 	cp := capsOf(c.p)
+	if cp.Admin {
+		p, err := u.Store.Dunning(c.ctx())
+		if err != nil {
+			return err
+		}
+		d.RemindersRestored = restoredOn(p)
+	}
 	d.Business = cp.Read && !cp.OwnOnly
 	if d.Business {
 		var err error

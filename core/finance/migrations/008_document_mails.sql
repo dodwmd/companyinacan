@@ -16,7 +16,8 @@ CREATE TABLE document_mails (
     link_expires INTEGER NOT NULL,
     created_by   TEXT    NOT NULL,
     created_at   INTEGER NOT NULL,
-    updated_at   INTEGER NOT NULL
+    updated_at   INTEGER NOT NULL,
+    handed_at    INTEGER NOT NULL DEFAULT 0                          -- when it left for the mail service
 );
 -- A reminder step is claimed once per invoice, whatever restarts or runs in parallel.
 CREATE UNIQUE INDEX document_mails_step ON document_mails (invoice_id, step) WHERE kind = 'reminder';
@@ -44,5 +45,6 @@ CREATE TABLE dunning_policy (
     days_after_due   TEXT    NOT NULL, -- JSON array of days after the due date
     max_overdue_days INTEGER NOT NULL,
     updated_by       TEXT    NOT NULL,
-    updated_at       INTEGER NOT NULL
+    updated_at       INTEGER NOT NULL,
+    restored_at      INTEGER NOT NULL DEFAULT 0 -- set when a restore switched reminders off
 );

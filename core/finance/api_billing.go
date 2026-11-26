@@ -472,7 +472,7 @@ func (a *api) publicInvoice(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) publicInvoicePDF(w http.ResponseWriter, r *http.Request) {
 	if v, ok := a.linkedInvoice(w, r); ok {
-		serveInvoicePDF(w, v, a.seller)
+		serveInvoicePDF(w, r, v, a.seller)
 	}
 }
 

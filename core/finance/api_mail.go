@@ -2,14 +2,39 @@ package finance
 
 // API of mailed documents and payment reminders (specs/062-invoice-email).
 
-import "net/http"
+import (
+	"net/http"
+	"time"
+)
 
-func serveInvoicePDF(w http.ResponseWriter, v *Invoice, seller Seller) {
+// pdfSlots bounds the PDFs being laid out at once: the public link is not rate limited for valid
+// requests, and the module has little memory.
+var pdfSlots = make(chan struct{}, 2)
+
+const pdfWait = 5 * time.Second
+
+func serveInvoicePDF(w http.ResponseWriter, r *http.Request, v *Invoice, seller Seller) {
+	wait := time.NewTimer(pdfWait)
+	defer wait.Stop()
+	select {
+	case pdfSlots <- struct{}{}:
+	case <-r.Context().Done():
+		return
+	case <-wait.C:
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusServiceUnavailable, "busy", "too many PDFs are being made; try again shortly")
+		return
+	}
+	// Held only while laying out: a slow reader of the answer keeps nobody waiting.
+	b := func() []byte {
+		defer func() { <-pdfSlots }()
+		return RenderInvoicePDF(v, seller)
+	}()
 	h := w.Header()
 	h.Set("Content-Type", "application/pdf")
 	h.Set("Content-Disposition", `attachment; filename="`+pdfFilename(v)+`"`)
 	h.Set("X-Robots-Tag", "noindex, nofollow")
-	_, _ = w.Write(RenderInvoicePDF(v, seller))
+	_, _ = w.Write(b)
 }
 
 func (a *api) invoicePDF(w http.ResponseWriter, r *http.Request, p *Principal) {
@@ -22,7 +47,7 @@ func (a *api) invoicePDF(w http.ResponseWriter, r *http.Request, p *Principal) {
 		a.fail(w, err)
 		return
 	}
-	serveInvoicePDF(w, v, a.seller)
+	serveInvoicePDF(w, r, v, a.seller)
 }
 
 func (a *api) emailInvoice(w http.ResponseWriter, r *http.Request, p *Principal) {
@@ -34,6 +59,9 @@ func (a *api) emailInvoice(w http.ResponseWriter, r *http.Request, p *Principal)
 	if err != nil {
 		a.fail(w, err)
 		return
+	}
+	if v, err := a.store.GetInvoice(r.Context(), p, id); err == nil {
+		m.PDFIncomplete = pdfIncomplete(v, a.seller)
 	}
 	writeJSON(w, http.StatusCreated, m)
 }
@@ -61,7 +89,13 @@ func (a *api) invoiceEmails(w http.ResponseWriter, r *http.Request, p *Principal
 		a.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "reminders": st})
+	v, err := a.store.GetInvoice(r.Context(), p, id)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	// Here so that a client can warn before it emails the document.
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "reminders": st, "pdf_incomplete": pdfIncomplete(v, a.seller)})
 }
 
 func (a *api) partyEmails(w http.ResponseWriter, r *http.Request, p *Principal) {

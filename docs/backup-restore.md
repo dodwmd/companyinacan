@@ -311,6 +311,15 @@ starts over with the blank-server check (so it needs `--confirm-overwrite`).
 Afterwards the server is **not** backed up until `can up` has run with the `--backup-*` flags (it checks the server
 itself, not what the laptop remembers). Erasures that are not in the ledger (see below) are back: repeat them.
 
+**Finance stops mailing customers on its own after a restore.** `can-finance restore` switches
+payment reminders off and cancels messages that were still waiting, so that nobody who paid or
+disputed after the backup is chased. Record those, then turn reminders on again (finance: Settings,
+Payment reminders; the home page says so). This also holds when you restore onto a second server to
+try the restore out, while the real one keeps running. Such a drill server still has your relay
+credentials and your data: leave reminders off there and send nothing by hand
+([finance.md](finance.md#emailing-documents-and-payment-reminders)). A finance database brought back
+without its restore hook is not held.
+
 Snapshot choice: snapshots are walked newest first and every decision is printed. One tagged `inconsistent` is skipped,
 one not tagged `can` is ignored, a newer `can` snapshot that fails its marker check stops the restore, and a transient
 restic error while checking also stops it. The chosen snapshot is pinned for resumes.

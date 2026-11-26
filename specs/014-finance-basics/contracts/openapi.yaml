@@ -2973,7 +2973,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string } } }
+              schema: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } }
         "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
         "401": { description: "No valid credentials" }
         "403": { description: "Missing scope, or separation of duties" }
@@ -2993,7 +2993,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string } } } }, reminders: { type: object, properties: { hold: { enum: ["on", stopped, disputed] }, party_stopped: { type: boolean }, enabled: { type: boolean } } } } }
+              schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } } }, reminders: { type: object, properties: { hold: { enum: ["on", stopped, disputed] }, party_stopped: { type: boolean }, enabled: { type: boolean }, off_since_restore: { type: boolean } } }, pdf_incomplete: { type: boolean } } }
         "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
         "401": { description: "No valid credentials" }
         "403": { description: "Missing scope, or separation of duties" }
@@ -3037,7 +3037,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string } } }
+              schema: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } }
         "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
         "401": { description: "No valid credentials" }
         "403": { description: "Missing scope, or separation of duties" }
@@ -3057,7 +3057,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string } } } }, reminders: { type: object, properties: { hold: { enum: ["on", stopped, disputed] }, party_stopped: { type: boolean }, enabled: { type: boolean } } } } }
+              schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } } }, reminders: { type: object, properties: { hold: { enum: ["on", stopped, disputed] }, party_stopped: { type: boolean }, enabled: { type: boolean }, off_since_restore: { type: boolean } } }, pdf_incomplete: { type: boolean } } }
         "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
         "401": { description: "No valid credentials" }
         "403": { description: "Missing scope, or separation of duties" }
@@ -3099,7 +3099,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 } } }
+              schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 }, restored_at: { type: string, description: "Set when a restore switched reminders off; ignored on input" } } }
         "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
         "401": { description: "No valid credentials" }
         "403": { description: "Missing scope, or separation of duties" }
@@ -3114,13 +3114,13 @@ paths:
       requestBody:
         content:
           application/json:
-            schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 } } }
+            schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 }, restored_at: { type: string, description: "Set when a restore switched reminders off; ignored on input" } } }
       responses:
         "200":
           description: OK
           content:
             application/json:
-              schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 } } }
+              schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 }, restored_at: { type: string, description: "Set when a restore switched reminders off; ignored on input" } } }
         "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
         "401": { description: "No valid credentials" }
         "403": { description: "Missing scope, or separation of duties" }

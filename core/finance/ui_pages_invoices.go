@@ -92,6 +92,7 @@ type invoiceData struct {
 	PayIdem                     string
 
 	CanEmail, CanRemind, MailReady bool
+	PDFIncomplete                  bool
 	Mails                          []DocumentMail
 	Reminders                      *ReminderState
 }
@@ -121,7 +122,7 @@ func (u *UI) invoice(c *uiCtx) error {
 	d.CanRequest = cp.Write && draft && u.Store.core != nil
 	d.CanApprove = cp.Approve && draft
 	d.ApproveDisabled = d.CanApprove && c.selfMade(v.CreatedBy, v.updatedBy)
-	d.CanSend = cp.Write && v.Status == StApproved
+	d.CanSend = cp.Write && (v.Status == StApproved || v.Status == StPartiallyPaid && v.SentAt == nil)
 	d.CanPay = cp.Write && v.Kind == KindInvoice && issued && v.BalanceMinor > 0
 	d.CanCredit = cp.Write && v.Kind == KindInvoice && issued
 	d.CanVoid = cp.Approve && v.Kind == KindInvoice && issued && v.PaidMinor == 0 && v.CreditedMinor == 0
@@ -129,6 +130,7 @@ func (u *UI) invoice(c *uiCtx) error {
 	d.CanEmail = cp.Write && issued
 	d.CanRemind = cp.Write && issued && v.Kind == KindInvoice && v.BalanceMinor > 0
 	d.MailReady = u.Store.MailReady()
+	d.PDFIncomplete = pdfIncomplete(v, u.Seller)
 	if !draft {
 		if d.Mails, d.Reminders, err = u.Store.ListInvoiceMails(c.ctx(), c.p, id); err != nil {
 			return err

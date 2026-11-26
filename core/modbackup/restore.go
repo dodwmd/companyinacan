@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type restoreOptions struct {
@@ -119,6 +120,13 @@ func runRestore(ctx context.Context, s spec, l layout, module string, api *clien
 		}
 	}
 
+	note := ""
+	if s.afterRestore != nil {
+		if note, err = s.afterRestore(ctx, staged, time.Now()); err != nil {
+			return fmt.Errorf("prepare the restored database: %w", err)
+		}
+	}
+
 	// A journal left over from the old database must not be applied to the new one.
 	for _, ext := range []string{"-wal", "-shm", "-journal"} {
 		if err := os.Remove(l.db + ext); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -138,6 +146,9 @@ func runRestore(ctx context.Context, s spec, l layout, module string, api *clien
 		fmt.Fprintf(stdout, ", %d file(s) are in the %s bucket and were NOT checked", m.Blobs.Count, m.Blobs.Backend)
 	}
 	fmt.Fprintln(stdout)
+	if note != "" {
+		fmt.Fprintln(stdout, note)
+	}
 	if guidance != "" {
 		fmt.Fprintf(stdout, "WARNING: the restored database still refers to %d missing file(s), and every backup of this module FAILS until each record is purged or its file is back. First: %s\n", len(missing), guidance)
 	}

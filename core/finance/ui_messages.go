@@ -68,11 +68,12 @@ var uiMessagesEN = map[string]string{
 	"mail.statement_hint": "Sends the customer a list of what is still to be paid, with a link to each invoice.",
 	"mail.off":            "Emailing is off: it needs can-core's email service and a published public invoice link (docs/finance.md).",
 	"mail.caption":        "Messages and their delivery status",
+	"mail.pdf_incomplete": "The PDF of this document cannot show some of its characters: they appear as \"?\". The online view shows all text. Check before you email it.",
 
 	"dmk.document": "Document", "dmk.statement": "Statement", "dmk.reminder": "Reminder",
 	"dm.pending": "Being handed over", "dm.retry": "Waiting to be retried", "dm.queued": "Queued by the mail service",
 	"dm.sent": "Accepted by the mail relay", "dm.failed": "Failed", "dm.not_allowed": "Refused: address not on the allow-list",
-	"dm.cancelled": "Cancelled", "dm.unknown": "Unknown",
+	"dm.cancelled": "Cancelled", "dm.unknown": "Unknown: it may or may not have been sent",
 
 	"remind.title":         "Payment reminders",
 	"remind.intro":         "Reminders are emailed to customers about sent invoices that are overdue and not fully paid. Never about paid, void, disputed or stopped invoices.",
@@ -82,6 +83,8 @@ var uiMessagesEN = map[string]string{
 	"remind.max":           "Stop chasing after (days overdue)",
 	"remind.max_hint":      "Older debts get no automatic reminder.",
 	"remind.set":           "Reminders for this invoice",
+	"remind.restored":      "A backup was restored on %s and payment reminders were switched off. Record the payments and disputes made since the backup, then turn them on again.",
+	"remind.off_restore":   "The reminder schedule was switched off when a backup was restored.",
 	"remind.schedule":      "Reminder schedule",
 	"remind.schedule_off":  "The company's reminder schedule is off.",
 	"remind.party_stopped": "Reminders are stopped for this customer.",
@@ -93,6 +96,7 @@ var uiMessagesEN = map[string]string{
 	"flash.mail_queued":  "Handed to the mail service. The delivery status is below.",
 	"flash.mail_refused": "Not sent: the address is not on finance's allow-list (company.yaml email.modules.finance).",
 	"flash.mail_failed":  "Not sent: the mail service did not accept it. Try again later.",
+	"flash.mail_unknown": "The mail service did not answer: the message may or may not have been sent. Check with the customer before sending it again.",
 
 	"flash.saved":     "Saved.",
 	"flash.deleted":   "The draft was deleted.",
@@ -339,7 +343,7 @@ func (u *UI) msgOr(key, fallback string) string {
 
 // flashKeys are the only flash messages the "ok" query parameter can select, so a crafted link
 // cannot put text of its choosing on the page.
-var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn", "flash.link_resent", "flash.cert_resent", "flash.mail_queued", "flash.mail_refused", "flash.mail_failed"}
+var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn", "flash.link_resent", "flash.cert_resent", "flash.mail_queued", "flash.mail_refused", "flash.mail_failed", "flash.mail_unknown"}
 
 func flashMsg(u *UI, key string) string {
 	for _, k := range flashKeys {

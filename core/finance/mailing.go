@@ -42,7 +42,7 @@ const (
 	DMFailed     = "failed"
 	DMNotAllowed = "not_allowed" // refused: the address is outside finance's allow-list
 	DMCancelled  = "cancelled"   // the document stopped being due before it was handed over
-	DMUnknown    = "unknown"     // the mail service no longer knows
+	DMUnknown    = "unknown"     // it may or may not have been sent
 )
 
 var documentMailStatuses = []string{DMPending, DMRetry, DMQueued, DMSent, DMFailed, DMNotAllowed, DMCancelled, DMUnknown}
@@ -82,6 +82,8 @@ type DocumentMail struct {
 	CreatedBy string    `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// PDFIncomplete is set on the answer to a send when the linked PDF shows "?" for some text.
+	PDFIncomplete bool `json:"pdf_incomplete,omitempty"`
 
 	nonce, coreID string
 	linkExpires   int64
@@ -185,7 +187,7 @@ func (s *Store) claimMail(ctx context.Context, tx dbq, actor, kind, target strin
 func (s *Store) manualLimit(ctx context.Context, tx dbq, where string, arg int64) error {
 	var recent, day int
 	now := s.now()
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FILTER (WHERE created_at > ? AND status IN ('pending', 'queued', 'sent')), COUNT(*) FROM document_mails WHERE `+where+` AND created_at > ?`,
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FILTER (WHERE created_at > ? AND status IN ('pending', 'queued', 'sent', 'unknown')), COUNT(*) FROM document_mails WHERE `+where+` AND created_at > ?`,
 		ts(now.Add(-mailCooldown)), arg, ts(now.Add(-24*time.Hour))).Scan(&recent, &day); err != nil {
 		return err
 	}
@@ -474,34 +476,59 @@ func (s *Store) deliverMail(ctx context.Context, id int64) (*DocumentMail, error
 }
 
 // handOver calls email.send. Error texts are not kept or logged: they may quote addresses.
+//
+// A reply that is lost leaves it open whether the message was accepted. A reminder is tried again
+// later. A manual send is asked once more at once with the same key, which cannot make a second
+// message; with still no answer it is "unknown", never "failed".
 func (s *Store) handOver(ctx context.Context, kind string, msg modclient.Email) (status, coreID string) {
 	sendCtx, cancel := context.WithTimeout(ctx, mailBudget)
 	defer cancel()
+	status, coreID = s.sendOnce(sendCtx, kind, msg)
+	if status == DMUnknown && kind != DocReminder {
+		if again, id := s.sendOnce(sendCtx, kind, msg); again == DMQueued {
+			return again, id
+		}
+	}
+	if status == DMUnknown && kind == DocReminder {
+		return DMRetry, ""
+	}
+	return status, coreID
+}
+
+func (s *Store) sendOnce(ctx context.Context, kind string, msg modclient.Email) (status, coreID string) {
 	var ids []string
 	var err error
 	if q, ok := s.sign.mailer.(queueMailer); ok {
-		ids, err = q.QueueEmail(sendCtx, msg)
+		ids, err = q.QueueEmail(ctx, msg)
 	} else {
-		err = s.sign.mailer.SendEmail(sendCtx, msg)
+		err = s.sign.mailer.SendEmail(ctx, msg)
 	}
 	if len(ids) > 0 {
 		coreID = ids[0]
 	}
-	var se *modclient.StatusError
-	switch {
-	case err == nil:
+	if err == nil {
 		return DMQueued, coreID
-	case errors.As(err, &se) && se.Status == http.StatusConflict:
+	}
+	var se *modclient.StatusError
+	if !errors.As(err, &se) {
+		return DMUnknown, ""
+	}
+	switch se.Status {
+	case http.StatusConflict:
 		// The idempotency key is already known: an earlier attempt was accepted.
 		return DMQueued, ""
-	case errors.As(err, &se) && se.Status == http.StatusForbidden:
+	case http.StatusForbidden:
 		return DMNotAllowed, ""
-	case errors.As(err, &se) && se.Status == http.StatusBadRequest:
+	case http.StatusBadRequest:
 		return DMFailed, ""
-	case kind == DocReminder:
-		return DMRetry, ""
+	case http.StatusUnauthorized, http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		// can-core says it did not take it.
+		if kind == DocReminder {
+			return DMRetry, ""
+		}
+		return DMFailed, ""
 	}
-	return DMFailed, ""
+	return DMUnknown, ""
 }
 
 func (s *Store) setMailStatus(ctx context.Context, tx dbq, actor string, m *DocumentMail, status, coreID string) error {
@@ -511,19 +538,23 @@ func (s *Store) setMailStatus(ctx context.Context, tx dbq, actor string, m *Docu
 	if status == m.Status && coreID == m.coreID {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE document_mails SET status = ?, core_id = ?, updated_at = ? WHERE id = ?`, status, coreID, ts(s.now()), m.ID); err != nil {
+	// handed_at is when it left (or may have left) for the mail service: reminders are spaced from it.
+	now := ts(s.now())
+	if _, err := tx.ExecContext(ctx, `UPDATE document_mails SET status = ?, core_id = ?, updated_at = ?,
+		handed_at = CASE WHEN handed_at = 0 AND ? IN ('queued', 'unknown') THEN ? ELSE handed_at END WHERE id = ?`, status, coreID, now, status, now, m.ID); err != nil {
 		return err
 	}
 	return s.audit(ctx, tx, actor, "document.email.outcome", strconv.FormatInt(m.ID, 10), map[string]any{"status": status})
 }
 
-// markSent records that an approved document has left the building, as "mark as sent" does.
+// markSent records that a document has left the building, as "mark as sent" does. That includes
+// one that was partly paid before anyone sent it: only a sent invoice is ever reminded about.
 func (s *Store) markSent(ctx context.Context, tx dbq, m *DocumentMail) error {
 	v, err := s.loadInvoice(ctx, tx, &Principal{}, *m.InvoiceID)
 	if err != nil {
 		return err
 	}
-	if v.Status != StApproved {
+	if v.SentAt != nil || v.Status == StDraft || v.Status == StVoid {
 		return nil
 	}
 	return s.sendTx(ctx, tx, m.CreatedBy, v)
@@ -632,6 +663,9 @@ func (s *Store) ListPartyMails(ctx context.Context, a *Principal, partyID int64)
 func (a *App) mailLoop(ctx context.Context) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
+	if p, err := a.store.Dunning(ctx); err == nil && p.RestoredAt != nil {
+		a.log.Warn("payment reminders are off since a restore: turn them on again in finance, Settings, Payment reminders")
+	}
 	for {
 		if n, err := a.store.RunDunning(ctx); err != nil && ctx.Err() == nil {
 			a.log.Error("payment reminders", "error", err)

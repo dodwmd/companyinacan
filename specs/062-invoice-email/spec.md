@@ -54,22 +54,34 @@ the aging report; nothing reached the customer.
 - **FR-005** Reminders MUST be off by default. A schedule has 1 to 5 increasing steps (days overdue,
   at most 365) and `max_overdue_days` (default 90, at most 730): older debts are not chased. Only an
   unscoped administrator may change it.
-- **FR-006** A reminder MUST go only for an invoice that is `sent` or `partially_paid`, past due, with
+- **FR-006** A reminder MUST go only for an invoice that was sent (it has a send time; `sent` or
+  `partially_paid`), past due, with
   a balance, not held, its party not stopped, not erased and with an address. It is checked when
   claimed and again immediately before it is handed over.
-- **FR-007** Each step MUST be sent at most once per invoice, across restarts and parallel runs. Only
-  the latest step reached is sent (no backlog), two reminders for one invoice are at least 3 days
-  apart, and a sweep claims at most 20.
+- **FR-007** Each step MUST be claimed at most once per invoice in one database, across restarts and
+  parallel runs (not across a restore: see FR-012). Only the latest step reached is sent (no
+  backlog), no step is claimed while an earlier one is waiting, the next is at least 3 days after the
+  earlier one was handed to the mail service, and a sweep claims at most 20.
 - **FR-008** The sweep runs hourly and on `POST /v1/dunning/run`. When the mail service cannot take a
   message it stops, retries with the same idempotency key, and gives up after 72 hours.
 - **FR-009** Delivery status per message MUST be visible: `pending`, `retry`, `queued`, `sent`
-  (accepted by the relay), `failed`, `not_allowed`, `cancelled`, `unknown`.
+  (accepted by the relay), `failed`, `not_allowed`, `cancelled`, `unknown`. A manual send whose reply
+  is lost MUST be asked once more with the same key and, unanswered, be `unknown` (never `failed`),
+  which counts for the one-minute cooldown.
 - **FR-010** Claiming a message, every status change, holds and schedule changes MUST be audited in
   the same transaction. No address, name, subject, body or link is stored in the delivery records,
   audited, logged or put in an event. No new event type is added.
 - **FR-011** Erasing a party MUST cancel what has not been handed over and stop all further mail.
   Delivery records hold no personal data and go when their invoice is purged (statement records after
   the retention period).
+
+- **FR-012** Restoring finance's dump (`can-finance restore`, which `can restore` runs) MUST switch
+  reminders off and cancel messages that were `pending` or `retry`, before the database is installed.
+  An administrator turns reminders on again; until then the finance home page, the reminder pages,
+  the API (`restored_at`, `off_since_restore`) and the module's log say why.
+- **FR-013** When the PDF would show `?`, the invoice page MUST say so before the send button, and the
+  API (`pdf_incomplete` on the emails list and on the send answer) MUST report it.
+- **FR-014** At most two PDFs are laid out at once; a request waits 5 seconds, then gets 503.
 
 ## Data
 
@@ -106,8 +118,14 @@ No font or font metrics file is shipped, so `THIRD_PARTY_LICENSES` does not chan
 - A reminder refused by the allow-list (or the mail service switched off for finance) still uses up its
   step: after fixing the setting, the next step is the next one sent.
 - Anyone holding a mailed link can read the invoice until it expires or is revoked.
-- Restoring a backup from before a reminder was sent loses its record; if the step is still due it is
-  sent again (can-core's idempotency keys only protect if can-core was not restored with it).
+- **A restore forgets what was sent, paid and disputed after the backup.** The idempotency key is a
+  random value kept only in the lost row, so nothing prevents a repeat: when reminders are turned on
+  again, a step whose record was lost is sent again if still due, and a customer who paid since the
+  backup is reminded unless the payment has been recorded first. FR-012 only makes sure that a person
+  decides when. It covers finance's dump restore, and so a restore tried out on a second server;
+  a database brought back any other way (a copied volume or disk image, `--accept-unrestored`) is
+  not held and sends as soon as it starts.
+- A restored or second server can still send what a person asks it to, through your real relay.
 - Reminders and invoices share finance's mail quota (default 60 an hour, 500 a day) with signing mail.
 - "Sent" means the SMTP relay accepted the message, not that it arrived. Bounces are not read.
 - With `external_recipients`, whoever holds `finance.write` can mail a link to any address by putting

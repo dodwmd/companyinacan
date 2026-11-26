@@ -876,12 +876,17 @@ func (s *Store) applyCredit(ctx context.Context, tx dbq, origID, amount int64) e
 
 // SendInvoice marks an approved invoice as sent and emits invoice.sent.v1. It sends nothing: it
 // records that the invoice left the building by other means (EmailInvoice mails it and does this).
-// Sending a sent invoice again is accepted and changes nothing.
+// Sending a sent invoice again is accepted and changes nothing. An invoice that was partly paid
+// before it was ever sent can still be recorded as sent; its status stays.
 func (s *Store) SendInvoice(ctx context.Context, a *Principal, id int64, ifMatch *int64) (*Invoice, error) {
 	return s.withInvoice(ctx, a, id, ifMatch, func(tx *sql.Tx, v *Invoice) error {
 		switch v.Status {
-		case StSent, StPartiallyPaid, StPaid:
+		case StSent, StPaid:
 			return nil
+		case StPartiallyPaid:
+			if v.SentAt != nil {
+				return nil
+			}
 		case StApproved:
 		default:
 			return fmt.Errorf("%w: only an approved invoice can be sent (it is %s)", ErrConflict, v.Status)
@@ -890,9 +895,9 @@ func (s *Store) SendInvoice(ctx context.Context, a *Principal, id int64, ifMatch
 	})
 }
 
-// sendTx turns an approved invoice into a sent one.
+// sendTx records when a document was sent; an approved one becomes sent.
 func (s *Store) sendTx(ctx context.Context, tx dbq, actor string, v *Invoice) error {
-	if err := s.bump(ctx, tx, v, `status='sent', sent_at=?, updated_by=?`, ts(s.now()), actor); err != nil {
+	if err := s.bump(ctx, tx, v, `status = CASE WHEN status = 'approved' THEN 'sent' ELSE status END, sent_at=?, updated_by=?`, ts(s.now()), actor); err != nil {
 		return err
 	}
 	return s.emit(ctx, tx, EventInvoiceSent, invoiceSentData{

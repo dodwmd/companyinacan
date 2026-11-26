@@ -13,6 +13,7 @@ package finance
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -397,6 +398,25 @@ func RenderInvoicePDF(v *Invoice, seller Seller) []byte {
 		text("How to pay", v.PaymentInstructions)
 	}
 	return d.bytes(title)
+}
+
+// pdfIncomplete reports whether the PDF of a document shows "?" for some of its text, so that the
+// sender can be told before the customer finds out.
+func pdfIncomplete(v *Invoice, seller Seller) bool {
+	texts := []string{seller.Name, seller.Address, seller.TaxID, v.Notes}
+	if s := v.PartySnapshot; s != nil {
+		texts = append(texts, s.Name, s.Address, s.TaxID)
+	}
+	if v.Kind == KindInvoice {
+		texts = append(texts, v.PaymentInstructions)
+	}
+	for _, l := range v.Lines {
+		texts = append(texts, l.Description)
+	}
+	return slices.ContainsFunc(texts, func(s string) bool {
+		_, lossy := winAnsi(s)
+		return lossy
+	})
 }
 
 // pdfFilename is the download name: the document number (a series and digits) or "document".

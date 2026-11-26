@@ -158,6 +158,13 @@ modules:
   customer, on the pages or with `PUT /v1/invoices/{id}/reminders` and
   `PUT /v1/parties/{id}/reminders`. Record payments promptly: finance only knows what it was told,
   and a message already queued cannot be recalled.
+* **After a restore reminders are off.** Restoring a backup switches them off and cancels waiting
+  messages, because the restored books do not know who has paid or disputed since. Record those
+  payments and disputes first, then save the schedule with reminders on. Steps whose records were
+  lost in the restore are sent again if still due. A database brought back by copying a volume or
+  disk is not held: turn reminders off before it can reach the mail service.
+* **A lost answer** from the mail service shows as "Unknown": the message may have left. Ask the
+  customer before sending again, and use "Mark as sent" if they have it.
 
 ## Contracts
 

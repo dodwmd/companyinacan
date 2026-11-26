@@ -260,7 +260,7 @@ func TestEmailInvoiceRefusals(t *testing.T) {
 	if m.Status != DMNotAllowed || inv.Status != StApproved || strings.Contains(e.logs.String(), custEmail) {
 		t.Fatalf("%s %s", m.Status, inv.Status)
 	}
-	e.mail.fail(fmt.Errorf("%w: down", modclient.ErrUnavailable))
+	e.mail.fail(&modclient.StatusError{Status: http.StatusTooManyRequests})
 	e.must(201, e.maker, "POST", "/v1/invoices/"+id(n)+"/email", nil, &m)
 	if m.Status != DMFailed {
 		t.Fatalf("a manual send is not retried behind the sender's back: %s", m.Status)

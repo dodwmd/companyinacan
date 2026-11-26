@@ -1,6 +1,7 @@
 {{define "content"}}
 <h1>{{t "remind.title"}}</h1>
 <p>{{t "remind.intro"}}</p>
+{{with .Data.Restored}}<p class="notice">{{t "remind.restored" .}}</p>{{end}}
 {{if not .Data.Ready}}<p class="notice">{{t "mail.off"}}</p>{{end}}
 {{if .Data.CanEdit}}
 <form method="post" action="/settings/reminders" class="card">
