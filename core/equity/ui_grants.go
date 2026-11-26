@@ -5,6 +5,7 @@ package equity
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -69,10 +70,10 @@ type grantFormData struct {
 }
 
 func (u *UI) grantFormPage(c *uiCtx, form grantForm, status int) error {
-	if !c.caps.GrantDraft {
-		return u.denyDraft(c)
+	e, err := u.Svc.DraftForm(c.ctx(), c.a, c.id())
+	if errors.Is(err, ErrForbidden) && c.caps.NeedsPerson {
+		return ErrIdentityRequired // say why, as the pages that offer no form do
 	}
-	e, err := u.Svc.GetEntity(c.ctx(), c.a, c.id())
 	if err != nil {
 		return err
 	}
@@ -105,14 +106,6 @@ func (u *UI) grantFormPage(c *uiCtx, form grantForm, status int) error {
 	}
 	u.render(c.w, c.r, c, status, "grantnew.html", "grant.new_title", d, "")
 	return nil
-}
-
-// denyDraft says why the draft form is not offered; the Service refuses the verbs themselves.
-func (u *UI) denyDraft(c *uiCtx) error {
-	if c.caps.NeedsPerson {
-		return ErrIdentityRequired
-	}
-	return ErrForbidden
 }
 
 func (u *UI) grantNew(c *uiCtx) error {
@@ -250,12 +243,9 @@ func (u *UI) grantRender(c *uiCtx, id, flash string) error {
 	return nil
 }
 
-func (u *UI) grantPage(c *uiCtx) error {
-	if !c.caps.Grants {
-		return ErrForbidden // a holder's own grant is under /me
-	}
-	return u.grantRender(c, c.id(), "")
-}
+// grantPage is the administration view: a holder reading their own grant gets as far as the
+// entity, which the policy refuses them; their view is under /me.
+func (u *UI) grantPage(c *uiCtx) error { return u.grantRender(c, c.id(), "") }
 
 func (u *UI) grantSubmit(c *uiCtx) error {
 	if _, err := u.Svc.SubmitGrant(c.ctx(), c.a, c.id()); err != nil {
@@ -374,19 +364,12 @@ func (u *UI) exerciseRender(c *uiCtx, x *Exercise, flash string) error {
 	return nil
 }
 
-func (u *UI) exerciseByID(c *uiCtx, flash string) error {
+func (u *UI) exercisePage(c *uiCtx) error {
 	x, err := u.Svc.GetExercise(c.ctx(), c.a, c.id())
 	if err != nil {
 		return err
 	}
-	return u.exerciseRender(c, x, flash)
-}
-
-func (u *UI) exercisePage(c *uiCtx) error {
-	if !c.caps.Grants {
-		return ErrForbidden // a holder's own requests are under /me
-	}
-	return u.exerciseByID(c, "")
+	return u.exerciseRender(c, x, "")
 }
 
 // exerciseDone redirects back to the exercise after a step that can still be withdrawn.

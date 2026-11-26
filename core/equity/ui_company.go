@@ -120,10 +120,7 @@ func (u *UI) capTable(c *uiCtx) error {
 type exportsData struct{ Entity Entity }
 
 func (u *UI) exportsPage(c *uiCtx) error {
-	if !c.caps.Export {
-		return ErrForbidden // the form only; the download asks the policy again
-	}
-	e, err := u.Svc.GetEntity(c.ctx(), c.a, c.id())
+	e, err := u.Svc.ExportForm(c.ctx(), c.a, c.id())
 	if err != nil {
 		return err
 	}

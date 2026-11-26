@@ -293,3 +293,22 @@ func (s *Service) ConfirmationNeeded(st Stakeholder) string {
 	}
 	return "attest"
 }
+
+// DraftForm returns the entity a grant is about to be drafted for, to a caller who may draft.
+// CreateGrant asks again.
+func (s *Service) DraftForm(ctx context.Context, a Actor, entityID string) (*Entity, error) {
+	return s.formEntity(ctx, a, ActGrantDraft, entityID)
+}
+
+// ExportForm returns the entity an export is about to be made of, to a caller who may export.
+// ExportCSV asks again.
+func (s *Service) ExportForm(ctx context.Context, a Actor, entityID string) (*Entity, error) {
+	return s.formEntity(ctx, a, ActExport, entityID)
+}
+
+func (s *Service) formEntity(ctx context.Context, a Actor, act Action, entityID string) (*Entity, error) {
+	if err := s.authorize(ctx, a, act, Fact{}, "entity:"+entityID); err != nil {
+		return nil, err
+	}
+	return s.entity(ctx, s.db, entityID)
+}
