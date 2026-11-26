@@ -4,5 +4,6 @@
 ALTER TABLE parties ADD COLUMN external_id TEXT;
 CREATE UNIQUE INDEX parties_external_id ON parties (external_id) WHERE external_id IS NOT NULL;
 -- The retention purge deletes erased parties that no record refers to any more. Their ids stay
--- here, as SHA-256 only, so that an old file still cannot recreate them.
+-- here as unkeyed SHA-256, so that an old file still cannot recreate them. That is not
+-- anonymisation (a guessable id can be tested against it): treat it as pseudonymous data.
 CREATE TABLE erased_external_ids (hash TEXT PRIMARY KEY, purged_at INTEGER NOT NULL);

@@ -64,7 +64,7 @@ func TestImportPreviewWritesNothingAndApplyIsIdempotent(t *testing.T) {
 	}
 	// Existing (active) staff are not joiners: nothing is published unless asked for.
 	events := e.count(`SELECT COUNT(*) FROM outbox`)
-	if events != 0 || len(rep.Notices) != 1 {
+	if events != 0 || len(rep.Notices) != 2 || !strings.Contains(rep.Notices[1], "run failed") {
 		t.Fatalf("events = %d, notices %v", events, rep.Notices)
 	}
 	for _, ev := range e.aud.evs[before:] {
@@ -102,7 +102,7 @@ func TestImportAnnouncesJoinersOnlyWhenTheyAre(t *testing.T) {
 	for _, c := range []struct {
 		joiners         bool
 		events, notices int
-	}{{false, 2, 2}, {true, 3, 1}} {
+	}{{false, 2, 3}, {true, 3, 1}} {
 		e := newEnv(t)
 		o := csvimport.Options{Flags: map[string]bool{importJoiners: c.joiners}}
 		rep, err := e.s.ImportPeople(e.ctx, e.hr, strings.NewReader(file), o)

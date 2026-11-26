@@ -47,6 +47,12 @@ and empty cells never clear a value. New rows default to active employees and ca
 Active rows are treated as existing staff: they publish no `person.created.v1`, so identity provisioning
 starts no joiner run for them (`--joiners` changes that; `onboarding` rows always publish it). Read the
 preview's notes before applying. There is no web page for this yet.
+
+**When someone imported this way leaves, check the leaver run.** Provisioning has no record of their
+accounts, so it can only look them up (SCIM connectors, by work email) and otherwise ends the run failed
+and lists it in its dead letters, naming each connector, and can-core if no `sso_subject` is linked. Remove
+that access by hand, or link the accounts and retry. See
+[provisioning](provisioning.md#accounts-provisioning-did-not-create).
 Columns, limits and rules: [specs/047-csv-import](../specs/047-csv-import/spec.md).
 
 ## Roles and who can see what

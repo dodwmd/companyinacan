@@ -95,15 +95,28 @@ the SHA-256 of its external id is kept (`erased_external_ids`) and the import st
 records are never deleted. A former employee is not updated. An issue removed by retention is
 gone, and importing its row again creates a new issue.
 
+That hash is **not anonymisation**: it is unkeyed, so someone who can read the database can test guesses
+against it, and short or sequential ids are easy to guess. Treat it as pseudonymous data. (The module has
+no server key that is safe to use here: its signing secrets may be rotated, which would silently lift the
+block.) The block also lives only in the database: **restoring a backup taken before an erasure or purge
+loses it**, together with the erasure itself, until the erasure is applied again.
+
 ## Consequences to know
 
 **People and joiners.** Provisioning starts a joiner run (accounts, checklists) from `person.created.v1`
 with status `onboarding` or `active`. An import is mostly of existing staff, so **by default a new `active`
 record publishes no `person.created.v1`**; `onboarding` and `candidate` records publish it as usual.
 `joiners=true` (`--joiners`) publishes it for `active` records too. The report's `notices` say, in the
-preview, how many rows will start a joiner run and how many are imported as existing staff. Later status
-changes publish their events either way, so leaving still works. Any other consumer of
-`person.created.v1` also does not hear of staff imported without it.
+preview, how many rows will start a joiner run and how many are imported as existing staff. Any other
+consumer of `person.created.v1` also does not hear of staff imported without it.
+
+**Leaving is not automatic for them.** Status changes publish their events either way, so a leaver run
+starts, but provisioning holds no account records for these people and the directory links no sign-in
+identity. For each connector the leaver looks the account up by work email where the connector can
+(`scim-client`) and disables an unambiguous match; where it cannot (`webhook`, the stubs), where the
+match is doubtful, and for can-core access when no `sso_subject` is linked, the run ends **failed** and
+appears in the dead letters for a person to deal with. A mover reports the same connectors and changes
+nothing there. See `docs/provisioning.md` ("Accounts provisioning did not create").
 
 Importing issues publishes `issue.created.v1` (which carries the title) and `issue.updated.v1`, and the importer
 watches the issues. Preview first.

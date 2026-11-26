@@ -61,7 +61,8 @@ func joinerNotices(records []*importRecord) []string {
 		out = append(out, fmt.Sprintf("%d new rows publish person.created.v1 as onboarding or active: identity provisioning, where enabled, starts a joiner run for each (accounts and checklists)", joins))
 	}
 	if existing > 0 {
-		out = append(out, fmt.Sprintf("%d new active rows are imported as existing staff, without person.created.v1, so no joiner run starts; pass %s=true to start them", existing, importJoiners))
+		out = append(out, fmt.Sprintf("%d new active rows are imported as existing staff, without person.created.v1, so no joiner run starts; pass %s=true to start them", existing, importJoiners),
+			"provisioning records no accounts for those rows: when one leaves it looks accounts up by work email where a connector can, and ends the run failed, for a person to check, where it cannot or where the directory links no can-core account; moves are reported the same way")
 	}
 	return out
 }
