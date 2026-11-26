@@ -223,7 +223,7 @@ func seed(t *testing.T) seeded {
 	if st, body := rcall(t, "POST", work+"/v1/projects", s.workToken, map[string]string{"key": "DR", "name": "Disaster recovery"}); st != 201 {
 		t.Fatalf("work project: %d %s", st, body)
 	}
-	if st, body := rcall(t, "POST", work+"/v1/projects/DR/issues", s.workToken, map[string]string{"title": "item kept across the restore"}); st != 201 {
+	if st, body := rcall(t, "POST", work+"/v1/projects/DR/issues", s.workToken, map[string]string{"type": "task", "title": "item kept across the restore"}); st != 201 {
 		t.Fatalf("work item: %d %s", st, body)
 	}
 
@@ -474,7 +474,7 @@ func TestRestoreOnK3d(t *testing.T) {
 		t.Errorf("every dump must be loaded by its hook")
 	}
 	work := portForward(t, "mod-work", "work", 8080)
-	if st, body := rcall(t, "GET", work+"/v1/projects/DR/issues", s.workToken, nil); st != 200 || !strings.Contains(body, "item kept across the restore") {
+	if st, body := rcall(t, "GET", work+"/v1/issues?project=DR", s.workToken, nil); st != 200 || !strings.Contains(body, "item kept across the restore") {
 		t.Fatalf("the work item: %d %s", st, body)
 	}
 
