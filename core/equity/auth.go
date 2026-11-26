@@ -148,8 +148,23 @@ func (c *lru) put(k [sha256.Size]byte, p *Principal, expires time.Time) {
 	}
 }
 
+// freshAuthenticator is an Authenticator whose answers may be cached and that can also ask now,
+// for the step-up before an irreversible action in the web UI.
+type freshAuthenticator interface {
+	AuthenticateFresh(r *http.Request) (*Principal, error)
+}
+
 // Authenticate implements Authenticator.
 func (a *IntrospectAuthenticator) Authenticate(r *http.Request) (*Principal, error) {
+	return a.authenticate(r, true)
+}
+
+// AuthenticateFresh asks the introspection endpoint without any cached answer.
+func (a *IntrospectAuthenticator) AuthenticateFresh(r *http.Request) (*Principal, error) {
+	return a.authenticate(r, false)
+}
+
+func (a *IntrospectAuthenticator) authenticate(r *http.Request, cached bool) (*Principal, error) {
 	tok, ok := bearer(r)
 	if !ok {
 		return nil, ErrUnauthenticated
@@ -163,7 +178,7 @@ func (a *IntrospectAuthenticator) Authenticate(r *http.Request) (*Principal, err
 	if a.cache == nil {
 		a.cache = newLRU(maxIntrospectCache)
 	}
-	if c, ok := a.cache.get(key, now()); ok {
+	if c, ok := a.cache.get(key, now()); ok && cached {
 		a.mu.Unlock()
 		if c.p == nil {
 			return nil, ErrUnauthenticated
@@ -235,6 +250,20 @@ type MultiAuth []Authenticator
 func (m MultiAuth) Authenticate(r *http.Request) (*Principal, error) {
 	for _, a := range m {
 		if p, err := a.Authenticate(r); err == nil {
+			return p, nil
+		}
+	}
+	return nil, ErrUnauthenticated
+}
+
+// AuthenticateFresh implements freshAuthenticator.
+func (m MultiAuth) AuthenticateFresh(r *http.Request) (*Principal, error) {
+	for _, a := range m {
+		check := a.Authenticate
+		if f, ok := a.(freshAuthenticator); ok {
+			check = f.AuthenticateFresh
+		}
+		if p, err := check(r); err == nil {
 			return p, nil
 		}
 	}

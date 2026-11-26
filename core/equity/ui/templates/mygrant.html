@@ -1,0 +1,32 @@
+{{define "content"}}
+{{$p := .Data.Position}}
+<h1>{{t "mine.grant_title"}}</h1>
+{{template "disclaimer" .Data.Notice}}
+<h2>{{t "vest.today"}}</h2>
+{{template "position" $p}}
+<h2>{{t "grant.terms"}}</h2>
+{{template "terms" (dict2 $p.Grant .Data.Schedule)}}
+{{template "timeline" $p}}
+<h2>{{t "ex.request_title"}}</h2>
+{{if $p.Vesting.Exercisable}}
+<form method="post" action="/me/grants/{{$p.Grant.ID}}/exercise/review" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="idem" value="{{.Data.Idem}}">
+<p><label for="quantity">{{t "ex.quantity"}}</label>
+<input id="quantity" name="quantity" inputmode="decimal" required pattern="[0-9]+(\.[0-9]{1,4})?" aria-describedby="quantity-hint" autocomplete="off"></p>
+<p id="quantity-hint" class="hint">{{t "ex.quantity_hint" (qty $p.Vesting.Exercisable)}}</p>
+<p><button type="submit">{{t "ex.review"}}</button></p>
+</form>
+{{else}}<p class="muted">{{t "ex.nothing"}}</p>{{end}}
+{{if .Data.Exercises}}
+<h2>{{t "mine.requests"}}</h2>
+<ul class="list">
+{{range .Data.Exercises}}<li><span>{{t "mine.request" (qty .Quantity) (money .DueMinor .Currency)}}</span> <span class="badge">{{label "xstatus" .Status}}</span>
+{{if or (eq .Status "requested") (eq .Status "approved")}}<form method="post" action="/me/exercises/{{.ID}}/cancel" class="inline">
+{{template "csrf" $}}
+<button type="submit">{{t "ex.withdraw"}}</button>
+</form>{{end}}</li>
+{{end}}</ul>
+{{end}}
+<p class="actions"><a href="/me/grants/{{$p.Grant.ID}}/statement">{{t "docs.statement"}}</a> <a href="/me">{{t "mine.back"}}</a></p>
+{{end}}

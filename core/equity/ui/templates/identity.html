@@ -1,0 +1,10 @@
+{{define "content"}}
+<h1>{{t "identity.title"}}</h1>
+<p>{{if eq .Data.Mode "directory"}}{{t "identity.directory"}}{{else}}{{t "identity.attestation"}}{{end}}</p>
+{{if .Data.Items}}
+<ul class="list">
+{{range .Data.Items}}<li><a href="/company/stakeholders/{{.StakeholderID}}">{{if .Name}}{{.Name}}{{else}}<code>{{.StakeholderID}}</code>{{end}}</a>
+<span class="muted">{{.Entity}}</span> <span class="badge">{{label "review" .Reason}}</span> <span class="muted">{{t "identity.counts" .OpenGrants .LedgerEntries}}</span></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "identity.none"}}</p>{{end}}
+{{end}}

@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>{{t "ticket.title"}}</h1>
+<p>{{t "ticket.intro"}}</p>
+<p>{{t "ticket.account"}} <strong>{{.Data.Name}}</strong> (<code>{{.Data.Account}}</code>)</p>
+<form method="post" action="/login/ticket" class="card">
+<input type="hidden" name="csrf" value="{{.Data.CSRF}}">
+<input type="hidden" name="ticket" value="{{.Data.Ticket}}">
+{{if .Data.Other}}<p class="error" role="alert">{{t "ticket.other"}} <strong>{{.Data.Other}}</strong></p>
+<p><input id="replace" type="checkbox" name="replace" value="{{.Data.Subject}}" required> <label for="replace" class="check">{{t "ticket.replace"}}</label></p>
+{{end}}<p><button type="submit">{{t "ticket.submit"}}</button></p>
+</form>
+{{end}}

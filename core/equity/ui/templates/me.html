@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>{{t "mine.title"}}</h1>
+{{template "disclaimer" .Data.Notice}}
+{{if .Data.Page.Unconfirmed}}<p class="notice">{{t "mine.unconfirmed"}}</p>{{end}}
+{{range .Data.Page.Items}}
+<section class="card">
+<h2><a href="/me/grants/{{.Grant.ID}}">{{t "mine.grant" .Grant.Type (qty .Grant.Quantity) (date .Grant.GrantDate)}}</a></h2>
+<p><span class="badge">{{label "gstatus" .Grant.Status}}</span></p>
+{{template "position" .}}
+</section>
+{{else}}<p class="muted">{{t "mine.none"}}</p>
+{{end}}
+{{with .Data.Page.Next}}<p><a href="/me?after={{.}}">{{t "common.more"}}</a></p>{{end}}
+{{if .Data.Exercises}}
+<h2>{{t "mine.requests"}}</h2>
+<ul class="list">
+{{range .Data.Exercises}}<li><a href="/me/grants/{{.GrantID}}">{{t "mine.request" (qty .Quantity) (money .DueMinor .Currency)}}</a> <span class="badge">{{label "xstatus" .Status}}</span></li>
+{{end}}</ul>
+{{end}}
+{{end}}

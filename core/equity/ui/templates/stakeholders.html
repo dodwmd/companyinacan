@@ -1,0 +1,24 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>{{t "holder.list_title"}}</h1>
+<p><a href="/company/entities/{{$d.Entity.ID}}">{{$d.Entity.Name}}</a></p>
+{{if $d.Items}}
+<ul class="list">
+{{range $d.Items}}<li><a href="/company/stakeholders/{{.ID}}">{{if .Name}}{{.Name}}{{else}}<code>{{.ID}}</code>{{end}}</a> <span class="muted">{{label "kind" .Kind}}</span>
+{{if .Erased}}<span class="badge">{{t "holder.erased"}}</span>{{else if .Pending}}<span class="badge">{{t "holder.unconfirmed"}}</span>{{else}}<span class="badge">{{t "holder.confirmed"}}</span>{{end}}</li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "holder.none"}}</p>{{end}}
+{{if .Caps.StakeholderEdit}}
+<h2>{{t "holder.new"}}</h2>
+{{with $d.Form.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/company/entities/{{$d.Entity.ID}}/stakeholders" class="card">
+{{template "csrf" .}}
+<p><label for="kind">{{t "holder.kind"}}</label><select id="kind" name="kind"><option value="employee"{{if eq $d.Form.Kind "employee"}} selected{{end}}>{{t "kind.employee"}}</option><option value="founder"{{if eq $d.Form.Kind "founder"}} selected{{end}}>{{t "kind.founder"}}</option><option value="investor"{{if eq $d.Form.Kind "investor"}} selected{{end}}>{{t "kind.investor"}}</option><option value="advisor"{{if eq $d.Form.Kind "advisor"}} selected{{end}}>{{t "kind.advisor"}}</option></select></p>
+<p><label for="holder-name">{{t "holder.name"}}</label><input id="holder-name" name="name" required maxlength="200" value="{{$d.Form.Name}}" autocomplete="off"></p>
+<p><label for="email">{{t "holder.email"}}</label><input id="email" name="email" type="email" maxlength="254" value="{{$d.Form.Email}}" autocomplete="off"></p>
+<p><label for="person_id">{{t "holder.person"}}</label><input id="person_id" name="person_id" maxlength="64" value="{{$d.Form.PersonID}}" autocomplete="off" aria-describedby="person-hint"></p>
+<p id="person-hint" class="hint">{{t "holder.person_hint"}}</p>
+<p><button type="submit">{{t "holder.create"}}</button></p>
+</form>
+{{else if .Caps.NeedsPerson}}<p class="notice">{{t "home.needs_person"}}</p>{{end}}
+{{end}}

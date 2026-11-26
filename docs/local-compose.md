@@ -47,7 +47,7 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 | <http://forms.localhost:8080> | leads API of the forms gateway (`/v1/leads`, bearer token) |
 | <http://mail.localhost:8080/messages> | the mail the stack "sent": a development-only SMTP sink that delivers nothing ([email.md](email.md)) |
 | (not in the stack) | the `board` and `entity` modules (`cmd/can-board`) are not part of this compose stack yet; see `docs/board.md` |
-| <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) |
+| <http://equity.localhost:8080> | equity API (`/v1/...`, bearer token; cap table and option grants) and its web UI |
 | <http://files.localhost:8080> | files API (`/v1/...`, bearer token) and the public share-link route `/s/{token}`; no virus scanner runs here, so `scanner.required` is off and files are stored labelled `skipped` ([files.md](files.md)) |
 
 The Apps launcher needs a second set of addresses for the same services, on one host name:
@@ -60,6 +60,7 @@ The Apps launcher needs a second set of addresses for the same services, on one 
 | <http://localhost:8183> | recruiting web UI |
 | <http://localhost:8184> | finance web UI |
 | <http://localhost:8185> | files web UI ([files.md](files.md#web-ui)); also <http://files.localhost:8080> with a token |
+| <http://localhost:8186> | equity web UI ([equity.md](equity.md#web-ui)); also <http://equity.localhost:8080> with a token |
 
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
 resolvers, older macOS tooling), use `curl --resolve admin.localhost:8080:127.0.0.1 ...`, add the names to
@@ -309,8 +310,8 @@ more: allow 2 GB of free RAM and about 5 GB of disk while images build (Go compi
 - **Only one stack at a time.** Containers have fixed `container_name: can-*` names, so a second compose project
   name (for example `companyinacan` and `can-e2e`) collides with a running one. Tear one down before starting the other.
 
-- **Port 8080 (or 8180 to 8185) already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
-  in `docker-compose.yml` (for 8180 to 8185 also `CAN_MODULE_UI_URLS`) (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
+- **Port 8080 (or 8180 to 8186) already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
+  in `docker-compose.yml` (for 8180 to 8186 also `CAN_MODULE_UI_URLS`) (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
   test and use that port in the URLs. The jobs and finance URLs configured in `dev/compose/config/*.yaml`
   (`http://jobs.localhost:8080`) assume 8080 and must be edited to match.
 - **Rootless podman and ports below 1024.** The stack deliberately uses 8080. If you move the edge to port 80

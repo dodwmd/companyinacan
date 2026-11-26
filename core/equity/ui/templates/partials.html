@@ -1,0 +1,50 @@
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.CSRF}}">{{end}}
+{{define "stepup"}}
+<p class="hint">{{t "stepup.intro"}}</p>
+<p><input id="confirm" type="checkbox" name="confirm" value="yes" required> <label for="confirm" class="check">{{t "stepup.confirm"}}</label></p>
+{{if .SSO}}<p class="hint">{{t "stepup.sso"}}</p>
+{{else}}<p><label for="stepup-token">{{t "stepup.token"}}</label>
+<input id="stepup-token" name="token" type="password" autocomplete="off" required maxlength="4096"></p>
+{{end}}{{end}}
+{{define "position"}}
+<dl class="facts">
+<dt>{{t "vest.granted"}}</dt><dd class="num">{{qty .Vesting.Quantity}}</dd>
+<dt>{{t "vest.vested"}}</dt><dd class="num">{{qty .Vesting.Vested}}</dd>
+<dt>{{t "vest.unvested"}}</dt><dd class="num">{{qty .Vesting.Unvested}}</dd>
+<dt>{{t "vest.exercised"}}</dt><dd class="num">{{qty .Vesting.Exercised}}</dd>
+<dt>{{t "vest.exercisable"}}</dt><dd class="num">{{qty .Vesting.Exercisable}}</dd>
+<dt>{{t "vest.asof"}}</dt><dd>{{date .Vesting.AsOf}}</dd>
+<dt>{{t "vest.window"}}</dt><dd>{{date .Vesting.WindowEnd}}</dd>
+</dl>
+{{end}}
+{{define "terms"}}
+<dl class="facts">
+<dt>{{t "grant.type"}}</dt><dd>{{.Grant.Type}}</dd>
+<dt>{{t "grant.status"}}</dt><dd><span class="badge">{{label "gstatus" .Grant.Status}}</span></dd>
+<dt>{{t "grant.quantity"}}</dt><dd class="num">{{qty .Grant.Quantity}}</dd>
+<dt>{{t "grant.strike"}}</dt><dd class="num">{{money .Grant.StrikeMinor .Grant.Currency}}</dd>
+<dt>{{t "grant.date"}}</dt><dd>{{date .Grant.GrantDate}}</dd>
+<dt>{{t "grant.vest_start"}}</dt><dd>{{date .Grant.VestStart}}</dd>
+<dt>{{t "grant.expiry"}}</dt><dd>{{date .Grant.ExpiryDate}}</dd>
+<dt>{{t "grant.ptep"}}</dt><dd>{{t "grant.days" .Grant.PTEPDays}}</dd>
+{{with .Grant.ApprovedOn}}<dt>{{t "grant.approved_on"}}</dt><dd>{{date .}}</dd>{{end}}
+{{with .Grant.ActivatedOn}}<dt>{{t "grant.activated_on"}}</dt><dd>{{date .}}</dd>{{end}}
+{{with .Grant.TerminationDate}}<dt>{{t "grant.termination"}}</dt><dd>{{date .}}</dd>{{end}}
+<dt>{{t "grant.schedule"}}</dt><dd><ul class="plain">{{range .Schedule}}<li>{{.}}</li>{{end}}</ul></dd>
+<dt>{{t "grant.id"}}</dt><dd><code>{{.Grant.ID}}</code></dd>
+</dl>
+{{end}}
+{{define "timeline"}}
+{{if .Vesting.Timeline}}
+<div class="scroll" role="region" aria-label="{{t "vest.timeline"}}" tabindex="0">
+<table>
+<caption>{{t "vest.timeline"}}</caption>
+<thead><tr><th scope="col">{{t "vest.date"}}</th><th scope="col" class="num">{{t "vest.total"}}</th><th scope="col">{{t "vest.reason"}}</th></tr></thead>
+<tbody>
+{{range .Vesting.Timeline}}<tr><th scope="row">{{date .Date}}</th><td class="num">{{qty .Cumulative}}</td><td>{{label "reason" .Reason}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "vest.none"}}</p>{{end}}
+{{end}}
+{{define "disclaimer"}}<p class="notice">{{.}}</p>{{end}}

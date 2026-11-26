@@ -3,5 +3,7 @@
   "e2e-intro-manager-token-0123456789abcdef": {"subject": "user:e2e-manager", "roles": ["employee", "manager"]},
   "e2e-intro-ann-token-0123456789abcdef": {"subject": "user:e2e-ann", "roles": ["employee"]},
   "e2e-intro-ben-token-0123456789abcdef": {"subject": "user:e2e-ben", "roles": ["employee"]},
-  "e2e-intro-board-token-0123456789abcdef": {"subject": "user:e2e-board", "roles": ["board"]}
+  "e2e-intro-board-token-0123456789abcdef": {"subject": "user:e2e-board", "roles": ["board"]},
+  "e2e-intro-finance-token-0123456789abcdef": {"subject": "user:e2e-finance", "roles": ["finance"]},
+  "e2e-intro-holder-token-0123456789abcdef": {"subject": "user:e2e-holder", "roles": ["employee"], "person_id": "pers_0000000000000000000e17a1"}
 }
