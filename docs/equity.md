@@ -146,14 +146,18 @@ Specification and threat model: [`specs/051-holder-identity`](../specs/051-holde
 - **Break-glass** for a single-administrator company in directory mode, or recovery:
   `CAN_EQUITY_BREAK_GLASS_UNTIL` (a date or time ending within 7 days from now) on the process, restart, use
   the service account token, remove it. Each use is audited as `break_glass:<action>`.
-- **can-core does not wire directory mode yet** (no NetworkPolicy from equity to people, no generated
-  directory token): configure it by hand where equity can reach people, or run in attestation mode.
+- **Under can-core, directory mode is opt-in:** `modules.equity.settings.identity: directory` in `company.yaml`,
+  with the `people` module enabled (can-core then makes the network access, `directory.url` and a read-only lookup
+  token; [specs/057](../specs/057-module-capability-wiring/spec.md)). Until then the mode is attestation. Once set,
+  disabling `people` is refused until the setting is changed back. Opting in can freeze actions until acting users
+  have linked records and holders are verified. Break-glass: `modules.equity.settings.break_glass_until` (a date or
+  time at most 7 days ahead).
 
 In directory mode, a grant to a founder in a company of two, ending or changing the vesting of an employee's
 grant there, and single-administrator tasks need break-glass: see the
 [table in the spec](../specs/051-holder-identity/spec.md#who-can-do-what-in-a-company-of-one-or-two).
 
-**In attestation mode (the default, and what `can` installs) one person is enough.** An administrator with the
+**In attestation mode (the default of a `can` installation) one person is enough.** An administrator with the
 board role and the service account token can give themself a grant without break-glass: the service account
 creates the record and drafts the grant, the administrator attests and approves. The audit log shows it;
 nothing refuses it.
@@ -344,7 +348,7 @@ directory: { url: "", allow_insecure_http: false }   # the people module's API; 
 ```
 
 Environment: `CAN_EQUITY_API_TOKEN` (at least 24 characters, the service account), `CAN_EQUITY_WEBHOOK_SECRET`,
-`CAN_EQUITY_INTROSPECT_TOKEN`, `CAN_EQUITY_DIRECTORY_TOKEN` (with `directory.url`: a people token with
+`CAN_EQUITY_INTROSPECT_TOKEN`, `CAN_EQUITY_DIRECTORY_TOKEN` (with `directory.url`; can-core supplies the lookup token of people; by hand, that or a people token with
 `people.read` and `people.write`), optional `CAN_EQUITY_BREAK_GLASS_UNTIL`, `CAN_EQUITY_CONFIG`, `CAN_EQUITY_KEY_FILE`. The introspection
 endpoint answers `{active, subject, roles, person_id}`; unknown roles are dropped and a malformed
 `person_id` fails the request. Failed authentications are rate limited per address; a request with a

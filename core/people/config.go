@@ -79,6 +79,7 @@ type IntrospectConfig struct {
 type Secrets struct {
 	APIToken        string // service-account bearer with hr+admin roles, used by can-core (CAN_PEOPLE_API_TOKEN)
 	DirectoryToken  string // optional bearer limited to people.read and people.write, for the provisioning module (CAN_PEOPLE_DIRECTORY_TOKEN)
+	LookupToken     string // optional bearer limited to the identity lookup, for the equity module (CAN_PEOPLE_LOOKUP_TOKEN)
 	WebhookSecret   string // HMAC secret for outbox deliveries (CAN_PEOPLE_WEBHOOK_SECRET)
 	IntrospectToken string // credential for the introspection endpoint (CAN_PEOPLE_INTROSPECT_TOKEN)
 	CanSecret       string // verifies the webhooks can-core delivers to this module (CAN_WEBHOOK_SECRET)
@@ -87,13 +88,16 @@ type Secrets struct {
 // SecretsFromEnv loads and checks the secrets against cfg.
 func SecretsFromEnv(getenv func(string) string, cfg *Config) (Secrets, error) {
 	s := Secrets{APIToken: getenv("CAN_PEOPLE_API_TOKEN"), WebhookSecret: getenv("CAN_PEOPLE_WEBHOOK_SECRET"), IntrospectToken: getenv("CAN_PEOPLE_INTROSPECT_TOKEN"), CanSecret: getenv("CAN_WEBHOOK_SECRET"),
-		DirectoryToken: getenv("CAN_PEOPLE_DIRECTORY_TOKEN")}
+		DirectoryToken: getenv("CAN_PEOPLE_DIRECTORY_TOKEN"), LookupToken: getenv("CAN_PEOPLE_LOOKUP_TOKEN")}
 	var errs []error
 	if len(s.APIToken) < 24 {
 		errs = append(errs, errors.New("CAN_PEOPLE_API_TOKEN is required and must be at least 24 characters"))
 	}
 	if s.DirectoryToken != "" && (len(s.DirectoryToken) < 24 || s.DirectoryToken == s.APIToken) {
 		errs = append(errs, errors.New("CAN_PEOPLE_DIRECTORY_TOKEN must be at least 24 characters and differ from CAN_PEOPLE_API_TOKEN"))
+	}
+	if s.LookupToken != "" && (len(s.LookupToken) < 24 || s.LookupToken == s.APIToken || s.LookupToken == s.DirectoryToken) {
+		errs = append(errs, errors.New("CAN_PEOPLE_LOOKUP_TOKEN must be at least 24 characters and differ from the other tokens"))
 	}
 	if cfg.Webhook.URL != "" && len(s.WebhookSecret) < 16 {
 		errs = append(errs, errors.New("webhook.url is set but CAN_PEOPLE_WEBHOOK_SECRET is missing or shorter than 16 characters"))

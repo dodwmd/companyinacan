@@ -11,6 +11,7 @@ on:
       - "cmd/**"
       - "deploy/**"
       - "test/integration/modules_k3d_test.go"
+      - "test/integration/modules_wiring_k3d_test.go"
       - ".github/workflows/modules-k3d.yml"
 
 permissions:
@@ -20,7 +21,7 @@ jobs:
   install:
     name: every in-house module on k3d
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,6 +73,13 @@ jobs:
           CAN_IT_CANCORE: "1"
           CAN_IT_MODULES: "1"
         run: go test -tags integration -count=1 -v -timeout 25m -run '^TestEveryInHouseModuleOnK3d$' ./test/integration/
+      - name: Modules reach only the modules they are connected to
+        # provisioning reads people, equity's directory lookup works, an unrelated module cannot reach
+        # people, and disabling a side removes the connection (specs/057-module-capability-wiring).
+        env:
+          CAN_IT_CANCORE: "1"
+          CAN_IT_WIRING: "1"
+        run: go test -tags integration -count=1 -v -timeout 25m -run '^TestModuleWiringOnK3d$' ./test/integration/
       - name: Cluster state on failure
         if: failure()
         run: |

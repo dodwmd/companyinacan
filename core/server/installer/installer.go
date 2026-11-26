@@ -166,7 +166,16 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err != nil {
 		return err
 	}
-	s.Values = deepMerge(facts, plan.values)
+	if !in.cfg.Quiesce { // a restore connects as recorded and runs nothing
+		if err := checkOptIns(s); err != nil {
+			return err
+		}
+	}
+	wiring, err := linkValues(s)
+	if err != nil {
+		return err
+	}
+	s.Values = deepMerge(deepMerge(facts, wiring), plan.values)
 	objs, err := in.renderBounded(ctx, s)
 	if err != nil {
 		return err
@@ -175,7 +184,7 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err != nil {
 		return err
 	}
-	if err := in.checkAdmission(ctx, len(ports) > 0); err != nil {
+	if err := in.checkAdmission(ctx, len(ports) > 0, len(s.Links) > 0); err != nil {
 		return err
 	}
 	if err := in.guardChartRoutes(ctx, s, objs, &plan); err != nil {
@@ -208,6 +217,11 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 		return in.rollout(ctx, s, quiesce(objs))
 	}
 	stampExposure(objs, plan.values)
+	// Before the workloads, so that the module reaches its providers when it starts; connections it
+	// no longer has go here too, whether or not the rollout succeeds.
+	if err := in.connect(ctx, s); err != nil {
+		return err
+	}
 	// 4. Routes that are no longer wanted go first; the Middlewares routes refer to are there
 	// before the routes are (Traefik drops a router whose middleware is missing).
 	if err := in.pruneRoutes(ctx, s.ID, plan.objects, "IngressRoute"); err != nil {
@@ -241,6 +255,9 @@ func (in *Installer) Disable(ctx context.Context, id string) error {
 		return err
 	}
 	if err := in.closeRoutes(ctx, id); err != nil {
+		return err
+	}
+	if err := in.disconnectAll(ctx, id); err != nil {
 		return err
 	}
 	for _, kind := range []string{"Deployment", "StatefulSet"} {
@@ -555,7 +572,8 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 			}
 		}
 	}
-	if err := in.wireSecrets(ctx, s, mod); err != nil {
+	drop, err := in.wireSecrets(ctx, s, mod)
+	if err != nil {
 		return "", err
 	}
 	var db map[string]string
@@ -603,6 +621,9 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 		}
 	}
 	if err := in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod)); err != nil {
+		return "", err
+	}
+	if err := in.dropSecretKeys(ctx, s.ID, drop); err != nil {
 		return "", err
 	}
 	smtp, err := in.ensureRelaySecret(ctx, s)
@@ -794,7 +815,7 @@ func (in *Installer) render(ctx context.Context, s reconcile.Spec) ([]kube.Objec
 		if ns := nsOf(o); ns != "" && ns != s.Namespace {
 			return nil, fmt.Errorf("chart object %s/%s targets namespace %q; only %q is allowed", kind, name, ns, s.Namespace)
 		}
-		if reserved[kind+"/"+name] {
+		if reserved[kind+"/"+name] || (kind == "NetworkPolicy" && strings.HasPrefix(name, wirePrefix)) {
 			return nil, fmt.Errorf("chart may not define %s %s: can-core owns it", kind, name)
 		}
 		if seen[kind+"/"+name] {

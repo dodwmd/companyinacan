@@ -23,7 +23,7 @@ func routed(t *testing.T, id string, x config.Expose) (*Installer, *kube.Fake, r
 	spec.ID, spec.Namespace, spec.ServiceAccount = id, "mod-"+id, id
 	spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
 	spec.Manifest.Requires.Database = "none"
-	spec.Domain, spec.Expose = "acme.example", x
+	spec.Domain, spec.Expose, spec.Links = "acme.example", x, testLinks(id)
 	return in, api, spec
 }
 

@@ -48,7 +48,7 @@ never replaces them afterwards (enabling again, upgrading, disabling and enablin
 | forms | `CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN` (reads, changes and **erases** leads), `CAN_FORMS_API_READ_TOKEN` |
 | finance | `CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET`, `CAN_FINANCE_SEAL_KEY` (E15c: seals bank account numbers; never rotated; an install that predates it needs the key added to its Secret once, otherwise adding a bank account answers 503) |
 | jobs | `CAN_JOBS_ADMIN_TOKEN`, `CAN_JOBS_HASH_KEY`, `CAN_JOBS_FORM_SECRET`, `keyring` |
-| people | `CAN_PEOPLE_API_TOKEN`, `keyring` |
+| people | `CAN_PEOPLE_API_TOKEN`, `CAN_PEOPLE_DIRECTORY_TOKEN`, `CAN_PEOPLE_LOOKUP_TOKEN`, `keyring` |
 
 Generated values are written with create-if-absent (an HTTP create, not a forced apply): if a second
 can-core creates the Secret first, this one adopts its values instead of overwriting them. The
@@ -161,12 +161,25 @@ the same function the module uses for personal access tokens (a restricted actor
 with those permissions), and redirects to a clean URL. `ui.token_login: false` removes the paste-a-token form.
 `modclient.Client.PeekTicket` / `RedeemTicket` / `RevalidateSession` wrap the calls; `fakecore` fakes them.
 
+## Connections between modules
+
+A module that asks for a capability can-core grants gets network access to the providing module only, its
+URL and a scoped token ([specs/057](../specs/057-module-capability-wiring/spec.md)). Today: `provisioning`
+and, when asked for, `equity` to `people` (`directory`). Everything else between module namespaces stays closed, and the
+connection is removed when either side is disabled. If the directory cannot be reached, equity refuses
+what needs a person (503) and provisioning does not act.
+
+**equity connects only when `company.yaml` says `modules.equity.settings.identity: directory`**; until
+then it stays in attestation mode, and after that disabling `people` is refused until the setting is
+changed back. Read [`equity.md`](equity.md#holder-identity) before opting in: actions can freeze until
+records are linked. `break_glass_until` in the same settings opens a break-glass window.
+
 ## Events
 
 Installed modules publish to can-core (`POST /v1/events`, with the outbox envelope id as `source_id`, so
 a retry is not delivered twice) instead of a `webhook.url` (which stays for standalone use). can-core
 delivers to the modules whose manifest `subscribes`, as signed webhooks to `/v1/can/events` on the
-module's own listener. A module receives only what its manifest asks for. Module-to-module traffic goes
+module's own listener. A module receives only what its manifest asks for. Apart from the connections above, module-to-module traffic goes
 through can-core only.
 
 | Event | From | To | What happens |
@@ -253,7 +266,7 @@ whole integration suite including the `work` install): can-core RSS 49.0 MiB, hi
 * **Approvals are partly wired**: jobs requisitions and finance invoices only. Finance timesheets,
   expenses, purchase orders and voiding, and every other module's approvals, still use their own rule.
 * Invalid token lookups from one module beyond 300 a minute are delayed 200 ms each; valid tokens never.
-* equity (merged separately) has its own authenticator and is not wired here.
+* equity has its own authenticator: personal access tokens work, with the roles of [`equity.md`](equity.md).
 
 * **forms** is routed at `/_forms` by can-core ([`module-routing.md`](module-routing.md)) but has no
   durable event outbox: if can-core is down for the four attempts the lead is stored but the

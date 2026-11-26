@@ -277,10 +277,10 @@ that never include a downstream response, a token or personal data.
   filters, `attributes`/`excludedAttributes`, user creation and deletion.
 * **Cluster networking.** The default module-namespace `NetworkPolicy` (`deploy/templates/module-namespace.yaml`)
   allows a module DNS, can-core, Traefik and the databases; this module's manifest sets
-  `runtime.internet_egress`, so it may also reach internet addresses (its connectors' hosts), never the node or
-  other namespaces. It also needs the people module's API (`mod-people`), which neither side's policy allows;
-  until the platform grows a supported way to allow that, the module **cannot do its job on a cluster**. It has
-  never run against the people module on one.
+  `runtime.internet_egress`, so it may also reach internet addresses (its connectors' hosts), never the node.
+  can-core adds a policy pair to the `people` module's API
+  ([specs/057](../specs/057-module-capability-wiring/spec.md)); `modules-k3d` reads a person through it. A
+  connector inside another module namespace is still not reachable.
 * **Secrets for the connectors.** The directory token is wired by can-core (above; the `people` module must be
   enabled). There is no supported way yet to provide connector credentials.
 * **The kill switch needs `sso_subject` to be the can-core subject** (`user:...`). For urgent

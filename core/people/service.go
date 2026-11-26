@@ -69,6 +69,8 @@ type Principal struct {
 	// Perms are the manifest permissions of a personal access token. Nil for a static service
 	// token, which is not restricted; non-nil restricts what the roles can do (see Actor).
 	Perms []string
+	// Lookup marks the identity-lookup credential: no role, and only serveLookup answers it.
+	Lookup bool
 }
 
 // Options configure a Service.

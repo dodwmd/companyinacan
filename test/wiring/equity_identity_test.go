@@ -63,6 +63,22 @@ func TestEquityResolvesCallersThroughThePeopleDirectory(t *testing.T) {
 	if ok, err := d.PersonExists(ctx, "pers_0000000000000000000000ff"); err != nil || ok {
 		t.Fatalf("made-up id exists = %v, %v", ok, err)
 	}
+	// the credential can-core copies to equity: the read-only identity lookup of the real service
+	lookupToken := strings.Repeat("l00kup", 6)
+	people.AddLookupToken(tokens, lookupToken)
+	look := &equity.HTTPDirectory{BaseURL: srv.URL, Token: lookupToken}
+	if got, err := look.PersonForSubject(ctx, "user:ann"); err != nil || got != ann.ID {
+		t.Fatalf("lookup: ann = %q, %v", got, err)
+	}
+	if got, err := look.PersonForSubject(ctx, "user:nobody"); err != nil || got != "" {
+		t.Fatalf("lookup: nobody = %q, %v", got, err)
+	}
+	if ok, err := look.PersonExists(ctx, ann.ID); err != nil || !ok {
+		t.Fatalf("lookup: exists = %v, %v", ok, err)
+	}
+	if ok, err := look.PersonExists(ctx, "pers_0000000000000000000000ff"); err != nil || ok {
+		t.Fatalf("lookup: made-up id exists = %v, %v", ok, err)
+	}
 	// a token that may not see account links, or no token, is "cannot know", never "nobody"
 	for _, tok := range []string{staffToken, "wrong-token-000000000000000000"} {
 		d := &equity.HTTPDirectory{BaseURL: srv.URL, Token: tok}

@@ -360,6 +360,9 @@ retention: {}                # per class overrides
 reviews: { min_responses: 3 } # default anonymity threshold for new cycles (3..50)
 ```
 
+`CAN_PEOPLE_LOOKUP_TOKEN` (optional; can-core gives it to equity) answers only
+`GET /v1/people?sso_subject=` and `GET /v1/people/{id}`, with ids, the subject and the erased flag.
+
 Environment: `CAN_PEOPLE_API_TOKEN` (required, 24+ characters; the can-core service account, roles hr + admin),
 `CAN_PEOPLE_WEBHOOK_SECRET` (required when a webhook is set), `CAN_PEOPLE_INTROSPECT_TOKEN`.
 

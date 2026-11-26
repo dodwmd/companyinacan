@@ -35,7 +35,7 @@ Columns:
 | `files` | experimental | CI; **uploads are refused** (no virus scanner, and no supported way to configure one or switch the requirement off) | yes; browser | CI | CI (into a fresh instance, not through `can restore`) | unit |
 | `finance` | experimental | CI | yes; browser, with contract signing | CI (restore test) | CI | CI (a customer or vendor; what legal retention keeps stays) |
 | `jobs` | experimental | CI; resume uploads are refused (same scanner requirement) | yes; browser, with a careers application | unit | unit | unit |
-| `provisioning` | experimental | CI, **but cannot do its job**: the network rules do not let it reach `people`, and connector credentials cannot be supplied | none | unit | unit | **no** |
+| `provisioning` | experimental | CI; reads `people` on k3d. **Cannot yet do its job**: connector credentials cannot be supplied | none | unit | unit | **no** |
 | `equity` | experimental | CI | none | unit | unit | unit |
 | `board` | experimental | CI | none | unit | unit | unit |
 | `entity` | experimental | CI (its own instance and database) | none | unit | unit | unit |
