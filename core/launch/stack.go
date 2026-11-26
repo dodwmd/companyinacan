@@ -76,8 +76,9 @@ type Options struct {
 	SiteForms []config.HostedForm
 	// ForceCompany overwrites a company.yaml in the cluster that changed since `can up` last pushed it.
 	ForceCompany bool
-	SiteBaseURL  string     // canonical origin baked into the site (sitemap, canonical links)
-	SMTP         *SMTPRelay // nil leaves the relay Secret as it is
+	SiteBaseURL  string       // canonical origin baked into the site (sitemap, canonical links)
+	SMTP         *SMTPRelay   // nil leaves the relay Secret as it is
+	IMAP         *SupportIMAP // nil leaves the support mailbox Secret as it is
 	Backup       *BackupInstall
 	// CLI supplies the `can` installed on the server (specs/060-can-on-server). Required when
 	// Backup is set and there is a server.
@@ -548,6 +549,9 @@ func (r *runner) core(ctx context.Context, c CoreOptions) error {
 		return err
 	}
 	if err := r.relaySecret(ctx); err != nil {
+		return err
+	}
+	if err := r.imapSecret(ctx); err != nil {
 		return err
 	}
 	if _, err := r.apply(ctx, m, false); err != nil {

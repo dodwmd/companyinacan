@@ -41,7 +41,7 @@ Columns:
 | `entity` | experimental | CI (its own instance and database) | none | unit | unit | unit |
 | `analytics` (GoatCounter) | experimental | CI | upstream | CI | CI (can-core's restore operations, not through restic) | **no** |
 | `newsletter` (Listmonk) | experimental | CI | upstream | CI | CI (same) | **no** |
-| `support` (FreeScout, third-party image) | experimental | CI | upstream | CI | CI (same) | **no** |
+| `support` (FreeScout, third-party image) | experimental | CI; mailbox and mail from company.yaml, against an in-memory mail server | upstream | CI | CI (same) | **no** |
 | `wiki` (DokuWiki) | experimental | **never started** (image digests are placeholders) | upstream | **blocks all backups** while enabled without the `can-hooks` image | never run | **no** |
 | `status` (Uptime Kuma) | experimental | **never started** (same) | upstream | **blocks all backups** while enabled without the `can-hooks` image | never run | **no** |
 | `crm` (EspoCRM) | not-deployable | refused by `can validate` and can-core | upstream | **blocks all backups** if recorded and enabled | never run | **no** |
@@ -75,6 +75,7 @@ applications are not in it.
 | OIDC single sign-on, Web Push, SCIM, CSV import, accounting | unit tests against fakes | any real identity provider, push service, SCIM client or accounting system |
 | Contracts signed by emailed link | unit tests; signed in a browser through the compose SMTP sink | a real relay, legal review |
 | Outbound email | fake relays and the compose sink | a real relay, deliverability |
+| Support inbox mail (`company.yaml`) | `support-mail` on k3d: a message in an in-memory IMAP server becomes a ticket, a reply reaches its SMTP side ([specs/059](../specs/059-support-mailbox/spec.md)) | a real mail provider or relay (the job shows an untrusted relay certificate refused), STARTTLS fetch |
 | `make up` phases, backup script, `can verify --server` | `make-up-e2e` on k3d with a fake host and a local restic repository | creating a server, cloud-init, k3s install on a fresh OS, ACME certificates, the five-minute target, `can verify` against a real server |
 | Hetzner, DigitalOcean, Cloudflare DNS | fake HTTP APIs | any real account |
 | Restore onto a new cluster | `restore-e2e` (forms, work, people, finance, with erasures) | a real server or bucket, systemd, restore time, large data |
@@ -93,7 +94,7 @@ gaps, with `can verify --server` for the automatic checks.
 |---|---|---|
 | `ci` (`lint`, `unit`, `contract`, `licences`, `dco`) | every pull request and `main` | red; intended to be required, but `main` has no branch protection yet |
 | `security` | pull requests, `main`, weekly | red (not required); `dependency-review` is informational |
-| `modules-k3d`, `module-backup`, `restore-e2e`, `wrapped-backup`, `node-isolation`, `make-up-e2e` | pull requests touching their paths, on demand. **Not scheduled** | red (not required) |
+| `modules-k3d`, `module-backup`, `restore-e2e`, `wrapped-backup`, `node-isolation`, `make-up-e2e`, `support-mail` | pull requests touching their paths, on demand. **Not scheduled** | red (not required) |
 | `dev-cluster`, `module-routing`, `wrapped-modules` | pull requests touching their paths, on demand. **Not scheduled** | job marked `continue-on-error`: the run can look green while the job failed |
 | `e2e` (jobs `e2e` and `browser-e2e`) | pull requests touching their paths, on demand, nightly | same `continue-on-error` caveat |
 | `footprint`, `footprint-budgets` | pull requests touching their paths, on demand. Not scheduled | same `continue-on-error` caveat |
