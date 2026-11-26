@@ -26,6 +26,9 @@ func (r DumpRun) Alerts() []string {
 			out = append(out, oneLine(s.Message(), 400))
 		}
 	}
+	for _, w := range r.Warnings {
+		out = append(out, oneLine(w, 400))
+	}
 	return out
 }
 
@@ -37,6 +40,8 @@ type DumpRun struct {
 	Error string    `json:"error,omitempty"`
 	// Skipped are the modules this run did not dump although the run succeeded.
 	Skipped []SkippedModule `json:"skipped,omitempty"`
+	// Warnings are other things the run left out (Secrets that could not be read).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // SkippedModule is a module left out of a dump run: a disabled module whose hook cannot run, or
@@ -90,6 +95,11 @@ func WriteDumpRun(dir string, r DumpRun) error {
 		skipped[i].Reason = oneLine(skipped[i].Reason, 200)
 	}
 	r.Skipped = skipped
+	warnings := make([]string, len(r.Warnings))
+	for i, w := range r.Warnings {
+		warnings[i] = oneLine(w, 400)
+	}
+	r.Warnings = warnings
 	b, err := json.Marshal(r)
 	if err != nil {
 		return err

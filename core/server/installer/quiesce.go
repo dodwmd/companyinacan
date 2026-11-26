@@ -1,0 +1,29 @@
+package installer
+
+import "github.com/dodwmd/companyinacan/core/server/kube"
+
+// quiesce turns a rendered release into its restore form: nothing runs and nothing is public.
+// The next normal apply of the module puts the full rendering back (and prunes nothing it needs:
+// what is dropped here is only missing, never replaced).
+func quiesce(objs []kube.Object) []kube.Object {
+	var out []kube.Object
+	for _, o := range objs {
+		switch o["kind"] {
+		case "Job", "Ingress", "IngressRoute":
+			continue // seeding hooks are skipped in a restore; routes appear when the company goes live
+		case "Deployment", "StatefulSet", "CronJob":
+			spec := asMap(o["spec"])
+			if spec == nil {
+				spec = map[string]any{}
+				o["spec"] = spec
+			}
+			if o["kind"] == "CronJob" {
+				spec["suspend"] = true
+			} else {
+				spec["replicas"] = 0
+			}
+		}
+		out = append(out, o)
+	}
+	return out
+}

@@ -44,8 +44,11 @@ type Dumper struct {
 	CompanyFile string
 	Now         func() time.Time // default time.Now
 	Log         *slog.Logger
-	// RestoreMode allows modules to download their dumps (restore hooks). can-core has no restore
-	// mode yet, so nothing sets it and every download is refused.
+	// Secrets exports the Kubernetes Secrets a restore must re-create (secrets.go); nil without a
+	// cluster.
+	Secrets func(ctx context.Context) (*backup.SecretsExport, []string, error)
+	// RestoreMode allows modules to download their dumps (restore hooks). Only a can-core in
+	// restore mode sets it; every download is refused otherwise.
 	RestoreMode bool
 	// HookTimeout bounds one module's hook (default 15 minutes).
 	HookTimeout time.Duration
@@ -170,6 +173,13 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if err := d.dumpCompany(); err != nil {
 		return Result{}, fmt.Errorf("company.yaml: %w", err)
 	}
+	warnings, err := d.dumpSecrets(ctx)
+	if err != nil {
+		return Result{}, fmt.Errorf("export the Secrets: %w", err)
+	}
+	for _, w := range warnings {
+		d.log().Warn(w)
+	}
 	var failed []error
 	var dumped strings.Builder
 	if len(mods) > 0 && d.Hooks == nil {
@@ -244,7 +254,7 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if err := d.Store.writeAtomic(d.Store.Dir, DumpedList, strings.NewReader(dumped.String())); err != nil {
 		return Result{}, fmt.Errorf("write the list of dumped modules: %w", err)
 	}
-	record := backup.DumpRun{RunID: runID, At: d.now(), OK: true, Skipped: skipped}
+	record := backup.DumpRun{RunID: runID, At: d.now(), OK: true, Skipped: skipped, Warnings: warnings}
 	if alerts := record.Alerts(); len(alerts) > 0 {
 		if err := d.Store.writeAtomic(d.Store.Dir, backup.AlertsName, strings.NewReader(strings.Join(alerts, "\n")+"\n")); err != nil {
 			return Result{}, fmt.Errorf("write the alerts: %w", err)

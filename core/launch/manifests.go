@@ -162,6 +162,9 @@ type CoreOptions struct {
 	Domain      string
 	// CookieSecure must be true whenever the admin UI is reached over HTTPS.
 	CookieSecure bool
+	// RestoreID deploys can-core in restore mode (specs/042-restore); RestoreOverwrite, the same
+	// id, lets it replace an existing state database.
+	RestoreID, RestoreOverwrite string
 }
 
 func setEnv(c map[string]any, name, value string) {
@@ -216,6 +219,14 @@ func CoreManifests(o CoreOptions) ([]byte, error) {
 			}
 			if o.Domain != "" {
 				setEnv(cm, "CAN_COMPANY_DOMAIN", o.Domain)
+			}
+			if o.RestoreID != "" {
+				setEnv(cm, "CAN_RESTORE", o.RestoreID)
+				if o.RestoreOverwrite != "" {
+					setEnv(cm, "CAN_RESTORE_OVERWRITE", o.RestoreOverwrite)
+				}
+				// The restore operations run as a second process in the pod (chart rendering).
+				cm["resources"] = map[string]any{"requests": map[string]any{"memory": "48Mi", "cpu": "20m"}, "limits": map[string]any{"memory": "384Mi"}}
 			}
 			patched = true
 		}

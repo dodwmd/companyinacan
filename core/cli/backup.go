@@ -1,14 +1,12 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 
@@ -17,52 +15,29 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/launch"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/validate"
 )
 
 // backupSeams are what tests replace: the command runner (restic, systemctl,
-// the backup script), the object store and the restore cluster adapters.
+// the backup script), the object store and the restore's cluster adapter.
 var backupSeams = struct {
 	runner backup.Runner
 	store  func(k *backup.Kit) backup.ObjectStore
-	// restore returns the provisioner and cluster adapter for `can restore`.
-	// can-core (epic E03) supplies the real ones; until then they report "not implemented".
-	restore func(k *backup.Kit) (backup.Provisioner, backup.Cluster)
+	// cluster is the k3s and can-core adapter of `can restore`.
+	cluster func(c *launch.RestoreCluster) backup.Cluster
+	euid    func() int
 }{
 	runner: backup.ExecRunner{},
 	store: func(k *backup.Kit) backup.ObjectStore {
 		return &backup.S3Store{Endpoint: k.Bucket.Endpoint, Bucket: k.Bucket.Name, Region: k.Bucket.Region,
 			AccessKeyID: k.Bucket.AccessKeyID, SecretAccessKey: k.Bucket.SecretAccessKey}
 	},
-	restore: func(*backup.Kit) (backup.Provisioner, backup.Cluster) {
-		u := unavailable{}
-		return u, u
-	},
+	cluster: func(c *launch.RestoreCluster) backup.Cluster { return c },
+	euid:    os.Geteuid,
 }
-
-// unavailable implements Provisioner and Cluster for steps that need can-core.
-type unavailable struct{}
-
-func (unavailable) nope(what string) error {
-	return provider.NotImplemented("restore step "+what+" (needs can-core)", "E03")
-}
-func (u unavailable) Provision(context.Context, *backup.Kit) error { return u.nope("provision") }
-func (u unavailable) ImportState(context.Context, string) error    { return u.nope("import-state") }
-func (u unavailable) Apply(context.Context) error                  { return u.nope("apply") }
-func (u unavailable) RestoreModules(context.Context) ([]string, error) {
-	return nil, u.nope("module restore hooks")
-}
-func (u unavailable) ScaleDown(context.Context, []string) error { return u.nope("scale-down") }
-func (u unavailable) PVCDirs(context.Context) ([]string, error) { return nil, u.nope("pvc listing") }
-func (u unavailable) Purge(context.Context, string, string) error {
-	return u.nope("purge hooks")
-}
-func (u unavailable) ReapplyTombstones(context.Context, []backup.Entry) error {
-	return u.nope("tombstone re-apply")
-}
-func (u unavailable) ScaleUp(context.Context) error { return u.nope("scale-up") }
 
 // mapErr turns a not-implemented error into exit code 3.
 func mapErr(err error) error {
@@ -571,6 +546,13 @@ func newLedgerSyncCmd() *cobra.Command {
 
 // store builds the bucket client from --repo (s3:https://host/bucket/prefix) and the env file.
 func (f *repoFlags) store(insecure bool) (backup.ObjectStore, string, error) {
+	if backup.LocalRepository(f.repo) {
+		pw, err := os.ReadFile(f.passwordFile) //nolint:gosec // operator-chosen path
+		if err != nil {
+			return nil, "", err
+		}
+		return backup.FileStoreFor(f.repo), strings.TrimSpace(string(pw)), nil
+	}
 	rest, ok := strings.CutPrefix(f.repo, "s3:")
 	if !ok {
 		return nil, "", errors.New("--repo must be an s3: repository")
@@ -601,89 +583,4 @@ func (f *repoFlags) store(insecure bool) (backup.ObjectStore, string, error) {
 		return nil, "", err
 	}
 	return s, strings.TrimSpace(string(pw)), nil
-}
-
-func newRestoreCmd(g *globalOpts) *cobra.Command {
-	var kitPath, passFile, dir, snapshot string
-	var plan, allowNoLedger, forceHost, forceVolumes, acceptBehind, forceOlder bool
-	d := backup.DefaultSettings()
-	var root, dumps, hostState, pvcRoot, staging, statePath string
-	cmd := &cobra.Command{
-		Use:   "restore",
-		Short: "Restore a company from its recovery kit (NOT FUNCTIONAL until the can-core adapters exist; --plan works)",
-		Long: `NOT FUNCTIONAL YET: steps 1-6 need the can-core and provider adapters (epic E03), which are
-not part of this release. A real run stops at step 1 with exit code 3. Only --plan works.
-
-Restore onto a blank host from the recovery kit: (1) provision, k3s, can-core in
-restore mode; (2) dumps directory first, can-core imports its state; (3) restore apply from
-the restored company.yaml; (4) module restore hooks; (5) PVC data; (6) erasure tombstone
-ledger re-applied, then workloads scale up.
-
-Progress is recorded in --state; after a failure run the same command again to resume.
-Use --plan to print the steps without touching anything.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if kitPath == "" {
-				return usage("--kit <file|-> is required")
-			}
-			kit, err := readKit(cmd, kitPath, passFile)
-			if err != nil {
-				return err
-			}
-			if statePath == "" {
-				statePath = filepath.Join(dir, ".can", "restore.json")
-			}
-			prov, cl := backupSeams.restore(kit)
-			pw, cleanup, err := kit.PasswordFile(os.TempDir())
-			if err != nil {
-				return failure("%v", err)
-			}
-			defer cleanup()
-			rs := &backup.Restic{R: backupSeams.runner, Repo: kit.Repo(pw)}
-			o := &backup.Restore{
-				Kit: kit, Provisioner: prov, Restic: rs, Cluster: cl,
-				Ledger: backup.BucketLedger{Store: backupSeams.store(kit), Password: kit.Restic.Password},
-				Root:   root, DumpsDir: dumps, HostStateDir: hostState, ForceHost: forceHost, ForceVolumes: forceVolumes, AcceptLedgerBehind: acceptBehind, ForceOlder: forceOlder, PVCRoot: pvcRoot, StagingDir: staging, CompanyDir: dir,
-				StatePath: statePath, Snapshot: snapshot, AllowNoLedger: allowNoLedger, Out: cmd.ErrOrStderr(),
-			}
-			if plan {
-				steps := o.Plan()
-				if g.json() {
-					return json.NewEncoder(cmd.OutOrStdout()).Encode(steps)
-				}
-				for _, s := range steps {
-					mark := " "
-					if s.Done {
-						mark = "x"
-					}
-					fmt.Fprintf(cmd.OutOrStdout(), "[%s] %d. %s\n      %s\n", mark, s.N, s.Title, s.Detail)
-				}
-				return nil
-			}
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
-			defer stop()
-			if err := o.Run(ctx); err != nil {
-				return mapErr(err)
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), "restore complete")
-			return nil
-		},
-	}
-	cmd.Flags().StringVar(&kitPath, "kit", "", "recovery kit file, or - for stdin")
-	cmd.Flags().StringVar(&passFile, "passphrase-file", "", "passphrase file for an encrypted kit")
-	cmd.Flags().StringVar(&dir, "dir", ".", "directory to write company.yaml back into (the new company repo)")
-	cmd.Flags().BoolVar(&plan, "plan", false, "print the six steps and what is already done; change nothing")
-	cmd.Flags().BoolVar(&allowNoLedger, "allow-no-ledger", false, "go live even if the bucket holds no erasure ledger")
-	cmd.Flags().StringVar(&snapshot, "snapshot", "", "restic snapshot id (default: latest, pinned on first run)")
-	cmd.Flags().StringVar(&root, "root", "/", "host root dumps are restored under")
-	cmd.Flags().StringVar(&dumps, "dumps-dir", d.DumpsDir, "dumps directory")
-	cmd.Flags().StringVar(&hostState, "host-state-dir", d.HostStateDir, "host state directory")
-	cmd.Flags().BoolVar(&forceHost, "force-host", false, "restore over a non-blank host (overwrites existing files)")
-	cmd.Flags().BoolVar(&forceVolumes, "force-volumes", false, "copy into volumes that already hold data (overwrites it)")
-	cmd.Flags().BoolVar(&acceptBehind, "accept-ledger-behind", false, "apply the snapshot's ledger copy although the bucket ledger lacks entries it has (erasures may be lost)")
-	cmd.Flags().BoolVar(&forceOlder, "force-older", false, "skip a newer snapshot that fails its consistency check and use an older one")
-	cmd.Flags().StringVar(&pvcRoot, "pvc-root", d.PVCRoot, "k3s local-path storage directory")
-	cmd.Flags().StringVar(&staging, "staging", "/var/lib/can/restore-staging", "scratch directory for the PVC restore (must be absolute, at least 3 levels deep, empty or created by can restore)")
-	cmd.Flags().StringVar(&statePath, "state", "", "restore progress file (default <dir>/.can/restore.json)")
-	return cmd
 }

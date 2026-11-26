@@ -244,7 +244,7 @@ func validPassword(s string) bool {
 }
 
 // RestoreCaveat is shown by every `can up` with backups on.
-const RestoreCaveat = "RESTORE IS NOT FUNCTIONAL YET: `can restore` stops at its first step. Snapshots are taken, but recovering from them is manual work with restic (docs/backup-restore.md)"
+const RestoreCaveat = "RESTORE IS NOT PROVEN ON A REAL SERVER: `can restore` has only been run on throwaway k3d clusters with a local repository; rehearse it on a spare server before you rely on it (docs/backup-restore.md)"
 
 // warnBackupLimits says, on every run of a company with backups, what the backup does not do,
 // and what the server's last dump run reported.
