@@ -360,7 +360,7 @@ func TestModmgmtPagesNeedAServiceAndASession(t *testing.T) {
 		}
 	}
 	// the dashboard and navigation are unchanged without the service
-	d := h.do("GET", "/", nil, s.with()...)
+	d := h.do("GET", "/dashboard", nil, s.with()...)
 	if d.StatusCode != 200 || strings.Contains(d.body, "/catalogue") || strings.Contains(d.body, "/setup") {
 		t.Fatalf("dashboard without module management: %d", d.StatusCode)
 	}

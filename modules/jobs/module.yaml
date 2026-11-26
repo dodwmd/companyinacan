@@ -53,6 +53,7 @@ resources:
 provides:
   - { capability: jobs, schema: jobs.v1, service: jobs, port: 8080 }
   - { capability: ats, schema: ats.v1, service: jobs, port: 8080 }
+  - { capability: summary, schema: summary.v1, service: jobs, port: 8080 }   # aggregates for the business overview
 publishes:
   - { event: job.opened.v1, schema: ./events/job.opened.v1.json }
   - { event: application.received.v1, schema: ./events/application.received.v1.json }

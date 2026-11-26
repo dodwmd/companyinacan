@@ -161,7 +161,7 @@ func TestManifestInstallabilityAndColours(t *testing.T) {
 func TestPagesCarryMobileAndPWAHeadTags(t *testing.T) {
 	p := newPUI(t)
 	s := p.login()
-	for _, path := range []string{"/login", "/", "/approvals", "/notifications", "/catalogue"} {
+	for _, path := range []string{"/login", "/dashboard", "/overview", "/approvals", "/notifications", "/catalogue"} {
 		var body string
 		if path == "/login" {
 			body = p.do("GET", path, nil).body
@@ -261,7 +261,7 @@ var scriptTagRe = regexp.MustCompile(`(?is)<script\b([^>]*)>`)
 func TestOnlyTheNotificationsPageLoadsAScript(t *testing.T) {
 	p := newPUI(t)
 	s := p.login()
-	for _, path := range []string{"/", "/settings", "/approvals", "/modules", "/audit", "/events", "/catalogue", "/tokens", "/access", "/nope"} {
+	for _, path := range []string{"/dashboard", "/overview", "/settings", "/approvals", "/modules", "/audit", "/events", "/catalogue", "/tokens", "/access", "/nope"} {
 		r := p.do("GET", path, nil, s.with()...)
 		csp := r.Header.Get("Content-Security-Policy")
 		if !strings.Contains(csp, "script-src 'none'") || strings.Contains(csp, "worker-src") || strings.Contains(csp, "connect-src") {

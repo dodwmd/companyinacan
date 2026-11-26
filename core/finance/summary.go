@@ -2,6 +2,7 @@ package finance
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
@@ -105,5 +106,13 @@ func summaryBuilder(s *Store, now func() time.Time) modclient.SummaryBuilder {
 			{Key: "contracts.awaiting_signature", Count: int64(st.AwaitingSignature)},
 			{Key: "contracts.expiring", Count: int64(st.ContractsSoon)},
 		}, nil
+	}
+}
+
+// summaryLimit counts failures on /v1/summary like every other failed authentication.
+func (a *api) summaryLimit() modclient.SummaryLimit {
+	return modclient.SummaryLimit{
+		Client: func(r *http.Request) string { return clientIP(r, a.trustProxy) },
+		Failed: func(ip string) bool { ok, _ := a.failures.allow(ip); return ok },
 	}
 }

@@ -45,7 +45,8 @@ func TestFilesManifest(t *testing.T) {
 		t.Errorf("provider = %v", m["provider"])
 	}
 	prov := asList(m["provides"])
-	if len(prov) != 1 || asMap(prov[0])["capability"] != "files" || asMap(prov[0])["schema"] != "files.v1" || asMap(prov[0])["port"] != 8095 {
+	// the second is the business overview's, on the same listener (summary_test.go)
+	if len(prov) != 2 || asMap(prov[0])["capability"] != "files" || asMap(prov[0])["schema"] != "files.v1" || asMap(prov[0])["port"] != 8095 || asMap(prov[1])["capability"] != "summary" {
 		t.Errorf("provides = %v", prov)
 	}
 	if _, err := os.Stat(filepath.Join(root, "schemas", "capabilities", "files.v1.json")); err != nil {

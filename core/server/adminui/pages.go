@@ -517,8 +517,8 @@ func (s *Server) requeue(w http.ResponseWriter, r *http.Request, sc *sessionCtx)
 	}
 	next := "/events"
 	switch n := r.PostFormValue("next"); n {
-	case "/":
-		next = "/"
+	case "/dashboard":
+		next = n
 	case "/events/" + strconv.FormatInt(id, 10):
 		next = n
 	}
