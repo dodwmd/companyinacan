@@ -121,6 +121,7 @@ func (u *UI) ticketPage(w http.ResponseWriter, r *http.Request) {
 // ticketPost redeems the ticket. Failures are counted per client address (as login failures are)
 // and all look the same; a valid ticket is never throttled.
 func (u *UI) ticketPost(w http.ResponseWriter, r *http.Request) {
+	modclient.LimitPublicForm(w, r) // anyone can post here
 	if u.Sessions == nil {
 		u.renderError(w, r, nil, nil, http.StatusNotFound, "err.not_found_title", "err.not_found")
 		return

@@ -70,7 +70,9 @@ flowchart TB
 
 Bad tokens are refused cheaply and counted per address (the address the service sees: behind a proxy it is not
 told to trust, that is the proxy's, shared by everyone); **valid credentials are never throttled by other
-callers' failures**. Failed-login and failed-token budgets exist in every service.
+callers' failures**. Failed-login and failed-token budgets exist in every service. A form posted to a module
+web UI without a session is limited to 4 KiB and 16 fields: without that, a few hundred posts side by side ran the
+pod out of its 64 MiB. Measured on one machine with 300 connections; larger floods and large headers were not.
 
 can-core's admin sign-in has no limit per account. With `CAN_TRUST_PROXY=true` (as shipped) it limits per client
 address; with it off (the binary's default) it limits nothing, per address or otherwise, and failures only add a

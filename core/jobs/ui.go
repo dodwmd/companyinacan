@@ -405,7 +405,8 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
-	if u.NoTokenLogin { // ui.token_login is false: launch tickets only; nothing is checked or counted
+	modclient.LimitPublicForm(w, r) // anyone can post here
+	if u.NoTokenLogin {             // ui.token_login is false: launch tickets only; nothing is checked or counted
 		u.loginForm(w, r, http.StatusForbidden, u.msg("login.token_off"))
 		return
 	}
