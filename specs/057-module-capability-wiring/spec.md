@@ -79,6 +79,12 @@ modules:
   days ahead**; further ahead is a validation error. It ends by itself; a past value has no effect.
   Whoever can write `company.yaml` can open it; every use is audited by equity.
 
+## Approval
+
+On an installed, running module, a new connection, leaving directory mode and a new break-glass window
+are widening upgrades: they wait for approval (`can apply --plan`, then `--approve <module>=<code>`, or
+the admin UI), and until then the module gets no change at all. A first install is not held.
+
 ## Lifecycle
 
 | Event | Result |

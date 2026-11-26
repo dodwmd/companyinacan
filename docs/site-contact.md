@@ -29,7 +29,8 @@ Two settings, both in company.yaml:
 - `modules.forms.settings.notify_email`: the recipients. Without it, messages are only kept: nobody is
   told ([reading them](#reading-the-messages)).
 - `email.relay`: the SMTP relay they are sent through. The credentials are not in company.yaml:
-  `make up SMTP_CREDENTIALS=smtp.env` ([email.md](email.md)).
+  `make up SMTP_CREDENTIALS=smtp.env`, or without a checkout
+  `can up --smtp-credentials-file smtp.env` ([email.md](email.md)).
 
 ## Reading the messages
 
@@ -43,8 +44,9 @@ TOKEN=$(kubectl -n mod-forms get secret can-module -o go-template='{{index .data
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8081/v1/leads
 ```
 
-The admin UI's `/leads` page shows them only where can-core has been given a leads credential
-(`CAN_LEADS_TOKEN_FILE`, [admin-ui.md](admin-ui.md)); `make up` does not set one yet.
+The admin UI's `/leads` page shows them on an install made by `can up`: can-core reads the forms module's
+token itself. Elsewhere it needs `CAN_LEADS_TOKEN_FILE` ([admin-ui.md](admin-ui.md)). Everyone with
+`platform.view`, the auditor role included, can read that page.
 
 ## Checks
 

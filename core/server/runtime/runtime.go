@@ -335,7 +335,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	uiSrv := &adminui.Server{
 		RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, SSO: ssoSvc, Tickets: tickets,
 		Auth: adminSrv.Auth, DB: db, Audit: al, Registry: reg,
-		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: adminui.FileToken(cfg.LeadsTokenFile)},
+		Leads:   &adminui.HTTPLeads{Resolver: reg, Token: cfg.leadsToken(reg, log)},
 		Company: adminui.Company{Name: cfg.CompanyName, Domain: cfg.CompanyDomain},
 		Log:     log, Secure: cfg.SecureCookies, TrustProxy: cfg.TrustProxy,
 	}
@@ -428,7 +428,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		rec := newReconciler(db, reg, al, inst)
 		rec.FixedWebhookSecret = cfg.DevWebhookSecret // empty outside the development stack (checkDevStack)
 		if cfg.DevStack {
-			rec.Keep = isDevModule
+			rec.Keep, rec.RequireApproval = isDevModule, false
 		}
 		svc, cs, run, merr := cfg.moduleManagement(db, al, rec, log)
 		if merr != nil {

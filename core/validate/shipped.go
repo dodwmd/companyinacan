@@ -3,6 +3,7 @@ package validate
 import (
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -38,6 +39,15 @@ func ManifestPath(modulesDir, id string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// ModuleFS is the directory of the manifest at a path ManifestPath returned, as a file system:
+// on disk, or among the built-in ones.
+func ModuleFS(manifestPath string) (fs.FS, error) {
+	if rel, ok := strings.CutPrefix(manifestPath, BuiltinModules+"/"); ok && shipped != nil {
+		return fs.Sub(shipped, path.Dir(rel))
+	}
+	return os.DirFS(filepath.Dir(manifestPath)), nil
 }
 
 // LoadManifest loads a module.yaml from a path ManifestPath returned, or any file path.

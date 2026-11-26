@@ -4,6 +4,11 @@
 {{if .Data.NoCompany}}<p class="alert warn" role="alert">{{t "cg.no_company"}}</p>{{end}}
 {{if .Data.Truncated}}<p class="alert warn">{{t "cg.truncated"}}</p>{{end}}
 
+{{- range .Data.Pending}}
+<div class="alert warn"><p>{{t "up.held" .Module}}{{range .Widens}}<br>{{.}}{{end}}</p>
+{{if $.Data.CanOperate}}<form method="post" action="/upgrades/{{.Module}}/approve"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="approval" value="{{.Approval}}"><p><button type="submit">{{t "up.approve" .Module}}</button></p></form>{{end}}</div>
+{{- end}}
+
 <section aria-labelledby="h-fp">
 <h2 id="h-fp">{{t "cg.footprint"}}</h2>
 {{template "footprint" .Data.Footprint}}

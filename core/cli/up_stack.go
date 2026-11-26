@@ -398,8 +398,18 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	if !routes.TLS && len(res.AdminURLs) == 0 {
 		res.AdminURLs = []string{"not exposed over plain HTTP: kubectl --kubeconfig " + provider.KubeconfigPath(t.dir) + " -n can-system port-forward svc/can-core 8080:8080, then open http://localhost:8080"}
 	}
+	// A module whose upgrade waits for approval got nothing of the company.yaml just pushed.
+	held, notApplied := heldAfterUp(ctx, d.Kube, lr.CompanyYAML, t.redact.Writer(out))
+	res.Warnings = append(res.Warnings, held...)
 	res.TotalSeconds = lifecycle.now().Sub(started).Seconds()
-	return t.summarize(cmd, g, out, res, lr, f)
+	// The summary comes first: it holds what is shown only once.
+	if err := t.summarize(cmd, g, out, res, lr, f); err != nil {
+		return err
+	}
+	if notApplied != nil {
+		return t.fail(fmt.Errorf("the stack is up, but not everything in company.yaml is in effect:\n%w", notApplied))
+	}
+	return nil
 }
 
 func schemeOf(tls bool) string {

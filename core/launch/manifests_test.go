@@ -126,7 +126,7 @@ func TestCoreManifestsPatchImageAndEnv(t *testing.T) {
 }
 
 func TestSiteManifestsStampArchiveDigest(t *testing.T) {
-	b, err := SiteManifests("can-static:dev", strings.Repeat("a", 64))
+	b, err := SiteManifests("can-static:dev", strings.Repeat("a", 64), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,6 +249,34 @@ func TestBuildSiteArchiveIsDeterministicAndComplete(t *testing.T) {
 	cm := SiteContentConfigMap(a)
 	if !strings.Contains(cm, "binaryData") || !strings.Contains(cm, "site.tar.gz") || !strings.Contains(cm, "name: site-content") {
 		t.Fatalf("configmap:\n%.300s", cm)
+	}
+}
+
+// A rebuilt image keeps its tag: the pod is replaced only if the manifest changes with the bytes.
+func TestARebuiltImageUnderTheSameTagChangesThePodTemplate(t *testing.T) {
+	core := func(sha string) string {
+		b, err := CoreManifests(CoreOptions{Image: "can-core:dev", CookieSecure: true, ImageSHA256: sha})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	site := func(sha string) string {
+		b, err := SiteManifests("can-static:dev", strings.Repeat("a", 64), sha)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	one, two := strings.Repeat("1", 64), strings.Repeat("2", 64)
+	for name, m := range map[string]func(string) string{"can-core": core, "site": site} {
+		first, again, rebuilt := m(one), m(one), m(two)
+		if first != again || first == rebuilt || !strings.Contains(first, "can.dev/image-sha256") || !strings.Contains(first, one) {
+			t.Errorf("%s: the image checksum is not on the pod template", name)
+		}
+		if strings.Contains(m(""), "can.dev/image-sha256") {
+			t.Errorf("%s: a release image needs no annotation", name)
+		}
 	}
 }
 

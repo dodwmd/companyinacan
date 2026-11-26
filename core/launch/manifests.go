@@ -156,9 +156,23 @@ func validImageRef(ref string) bool {
 	return reDigestRef.MatchString(ref) || reLocalRef.MatchString(ref)
 }
 
+// imageAnnotation on a pod template carries the checksum of the uploaded image tarball. A source
+// checkout rebuilds under the same tag (can-core:dev), so without it applying the manifest again
+// changes nothing and the old pod keeps running, with its old module manifests and charts.
+const imageAnnotation = "can.dev/image-sha256"
+
+// stampImage sets imageAnnotation; sha is "" for a release image, whose reference is a digest.
+func stampImage(dep map[string]any, sha string) {
+	if sha != "" {
+		dig(dep, "spec", "template", "metadata", "annotations")[imageAnnotation] = sha
+	}
+}
+
 // CoreOptions are the per-company values patched into deploy/can-core.
 type CoreOptions struct {
-	Image       string
+	Image string
+	// ImageSHA256 is the checksum of the image's tarball, for an image shipped by tag.
+	ImageSHA256 string
 	CompanyName string
 	Domain      string
 	// CookieSecure must be true whenever the admin UI is reached over HTTPS.
@@ -211,6 +225,7 @@ func CoreManifests(o CoreOptions) ([]byte, error) {
 		if !isDeployment(d, "can-core") {
 			continue
 		}
+		stampImage(d, o.ImageSHA256)
 		for _, c := range containersOf(d, "containers") {
 			cm := c.(map[string]any)
 			cm["image"] = o.Image
@@ -238,8 +253,9 @@ func CoreManifests(o CoreOptions) ([]byte, error) {
 	return marshalDocs(docs)
 }
 
-// SiteManifests returns deploy/site with the can-static image and the archive digest patched in.
-func SiteManifests(image, archiveSHA string) ([]byte, error) {
+// SiteManifests returns deploy/site with the can-static image and the archive digest patched in;
+// imageSHA as CoreOptions.ImageSHA256.
+func SiteManifests(image, archiveSHA, imageSHA string) ([]byte, error) {
 	if !validImageRef(image) {
 		return nil, fmt.Errorf("can-static image reference %q is not valid", image)
 	}
@@ -263,6 +279,7 @@ func SiteManifests(image, archiveSHA string) ([]byte, error) {
 				c.(map[string]any)["image"] = image
 			}
 		}
+		stampImage(d, imageSHA)
 		tpl := d["spec"].(map[string]any)["template"].(map[string]any)
 		dig(tpl, "metadata", "annotations")["can.dev/site-sha256"] = archiveSHA
 	}
