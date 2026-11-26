@@ -343,13 +343,16 @@ func TestWrappedModulesThroughCanCore(t *testing.T) {
 		t.Skip("CAN_IT_CANCORE=1 and CAN_IT_WRAPPED=1 are not both set")
 	}
 	mustKubectl(t, "-n", "can-system", "rollout", "status", "deploy/can-core", "--timeout=180s")
-	// A relay that does not resolve: support is configured with it, nothing can be sent. Created
-	// first, because the kubelet takes up to a minute or two to show a new Secret to can-core.
+	// A relay that does not resolve: support is configured with it, nothing can be sent.
 	secret := fmt.Sprintf("apiVersion: v1\nkind: Secret\nmetadata: {name: can-smtp-relay, namespace: can-system}\nstringData:\n  host: smtp.relay.invalid\n  username: ci-user\n  password: %q\n  from: no-reply@%s\n", relayPassword, wrappedDomain)
 	if out, err := kubectlStdin(secret, "apply", "-f", "-"); err != nil {
 		t.Fatalf("creating the relay Secret: %v\n%s", err, out)
 	}
 	t.Cleanup(func() { _, _ = kubectl("-n", "can-system", "delete", "secret", "can-smtp-relay", "--ignore-not-found") })
+	// The kubelet takes up to a minute or two to show a new Secret in can-core's mounted volume, and
+	// support is applied first: a restart mounts it at once.
+	mustKubectl(t, "-n", "can-system", "rollout", "restart", "deploy/can-core")
+	mustKubectl(t, "-n", "can-system", "rollout", "status", "deploy/can-core", "--timeout=180s")
 
 	t.Run("support", func(t *testing.T) {
 		enableWrapped(t, "support")

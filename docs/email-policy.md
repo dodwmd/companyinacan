@@ -38,7 +38,9 @@ senders (today `support` only), from the same relay settings as `email.send` (`c
   `tls: none` is never handed out.
 - The Secret is empty without the opt-in or a usable relay, and the module starts without one. Opting in
   or out, and a change of `email.relay` while opted in, upgrade the module. A change of only the relay
-  Secret (a new password) arrives at the module's next install or upgrade.
+  Secret (a new password) arrives at the module's next install or upgrade. can-core reads that Secret from
+  a mounted volume, which shows a new or changed Secret only after a minute or two: wait that long between
+  writing it and opting in, or the module is given nothing until its next upgrade.
 - **Turning it off** (`enabled: false`, or removing the line) is applied like any change: can-core empties
   `can-smtp` and restarts the pod. It does **not** remove what FreeScout already stored in its database.
   Clear Manage, Settings, Mail Settings and every mailbox's connection settings by hand, and **rotate the
