@@ -204,6 +204,11 @@ func settingsHash(m *config.Module, settings map[string]any, routes string) stri
 	if routes != "" {
 		b = append(append(b, 0), routes...)
 	}
+	if !m.Runtime.InternetEgress {
+		// In the hash so that a module installed when every module could reach the internet is
+		// applied once more, which tightens its network policy.
+		b = append(b, "\x00no-internet"...)
+	}
 	h := sha256.Sum256(append([]byte(m.Version+"\x00"), b...))
 	return hex.EncodeToString(h[:])
 }

@@ -18,6 +18,8 @@ provider:
   upstream: https://github.com/freescout-help-desk/freescout
   upstream_version: "1.8.252"
 runtime:
+  # Internet egress: FreeScout talks to the SMTP relay and the IMAP mailbox itself.
+  internet_egress: true
   chart: ./chart
   values: ./chart/values.yaml
   subdomain: support

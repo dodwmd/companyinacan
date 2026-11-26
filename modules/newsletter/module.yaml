@@ -19,6 +19,8 @@ provider:
   upstream: https://github.com/knadh/listmonk
   upstream_version: "6.2.0"
 runtime:
+  # Internet egress: listmonk sends the campaigns through the SMTP relay itself.
+  internet_egress: true
   chart: ./chart
   values: ./chart/values.yaml
   subdomain: newsletter

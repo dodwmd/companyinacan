@@ -19,6 +19,8 @@ provider:
   upstream: https://github.com/louislam/uptime-kuma
   upstream_version: "2.x"
 runtime:
+  # Internet egress: Uptime Kuma checks sites and services outside the cluster.
+  internet_egress: true
   chart: ./chart
   values: ./chart/values.yaml
   subdomain: status

@@ -29,6 +29,9 @@ type Module struct {
 		// PublicUI says what can-core routes when company.yaml sets `expose.ui` or `expose.api`
 		// (specs/040-module-routing).
 		PublicUI *PublicUI `yaml:"public_ui"`
+		// InternetEgress lets the module's pods connect to the internet; without it the module
+		// namespace allows DNS, can-core, Traefik and the databases only.
+		InternetEgress bool `yaml:"internet_egress" json:"internet_egress,omitempty"`
 		// SiteRoute is a path on the public site's hosts (forms: /_forms).
 		SiteRoute *SiteRoute `yaml:"site_route"`
 		// PublicLink publishes one path of signed links (specs/045-public-access).

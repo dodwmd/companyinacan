@@ -36,6 +36,7 @@
       "dependentRequired": { "ui": ["subdomain"] },
       "properties": {
         "chart": { "$ref": "#/$defs/relPath" },
+        "internet_egress": { "type": "boolean", "description": "The module's pods may open connections to the internet (its own SMTP, IMAP, external APIs). Default false: DNS, can-core, Traefik and, with requires.database, the database only." },
         "subdomain": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$" },
         "ui": {
           "type": "object",
