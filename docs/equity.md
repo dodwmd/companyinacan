@@ -69,7 +69,9 @@ permission that role needs (`core/equity/canauth.go`): `hr`, `finance`, `admin`,
 self-service, and because the grantee separation-of-duties checks need one it is **refused** grant drafting and
 administration (create, edit, submit, amend, activate, cancel, terminate, milestones, acceleration) and
 exercise approval or rejection, payment and share issue. Those need the service account or an introspection
-endpoint that supplies `person_id`. Ledger entries and exercise requests are not covered by this refusal.
+endpoint that supplies `person_id`. Ledger entries and exercise requests are not covered by this refusal: share
+ledger writes have no holder separation-of-duties check for any caller that carries no `person_id`, personal access
+tokens included (see below).
 
 The can-core service-account token carries `hr`, `finance` and `admin`; never `board`. So the service
 account cannot approve a grant.
@@ -101,6 +103,19 @@ variant are one person.
   activate, cancel, terminate, reject, record a milestone or an acceleration trigger) is refused with
   `separation_of_duties` when the caller's directory person id is the holder's, whatever roles the token
   carries (a token holding `hr` and `employee` for the same person cannot touch their own grant).
+- A manual ledger entry (issue, transfer, cancel) is refused with `separation_of_duties` when the caller's
+  directory person id is that of a holder in the entry (either side of a transfer). That is the **only** holder
+  check on ledger writes, and it can apply only to a caller that carries a `person_id`: for every other caller
+  (the service accounts, every can-core personal access token, an introspected token without the claim) there is
+  **no** holder separation-of-duties check at all. A refused entry is audited.
+- **These two checks only stop the straightforward self-dealing case.** A stakeholder's `person_id` is not
+  verified: it is whatever was entered when the record was created, and a record need not have one. A second
+  record of one's own, one with no `person_id` or with a made-up one, gets around both, and no manual ledger write
+  needs a second person. A design with verified identities is follow-up work
+  ([epics backlog](epics/README.md#follow-ups)).
+- Nobody erases their own stakeholder record (`separation_of_duties`, audited): erasure removes the
+  `person_id` these checks compare. After another administrator has erased it, the record has no link and the
+  former holder is not recognised on it. Like the rest, this needs a caller with a `person_id`.
 - Facts that change what has vested (milestones, acceleration triggers, termination) need a second
   actor: not the person who created, edited, submitted or approved the grant. They are refused if dated
   before the grant's approval date, in the future, or more than 90 days back.
@@ -259,7 +274,8 @@ be configured as `legal`.
 legal record and are kept. Erasure therefore pseudonymises: the stakeholder's name, email, tax id and
 person link are removed and the row stays as an opaque id (`[erased]`); free-form grant notes and payment
 references are cleared; draft grants and cached idempotency keys are deleted; open exercise requests are
-cancelled. The response lists what was retained and why. Erasure is refused while a legal hold is set
+cancelled. The response lists what was retained and why. Erasure is refused to the holder themself (see
+separation of duties), while a legal hold is set
 (admin sets and lifts holds) and while the stakeholder has pending, approved or active grants (cancel or
 end them first). It writes tombstones (`stk_` subject, classes `equity-stakeholder` and `equity-grants`)
 that can-core pulls into the E08 erasure ledger so a restore re-applies the erasure, then checkpoints and
@@ -336,8 +352,14 @@ The table stores resource ids only, so a replay re-reads the record under the ca
   account legitimately has none and fails closed would break it; a human token without `person_id` is
   checked by subject only. This is an explicit IdP contract: issue `person_id` to every human who also
   holds equity. can-core personal access tokens carry no `person_id`, so they are refused the grant and
-  exercise actions above; they are **not** refused ledger entries, so do not give those permissions through
-  can-core to someone who also holds equity.
+  exercise actions above. Share ledger writes are different: they are refused only when the caller's `person_id`
+  is a holder's, so no caller without a `person_id` gets any holder separation-of-duties check on them, whether a
+  personal access token, a service account or a human token. Do not give ledger permissions to such a caller
+  when its owner also holds equity. The same goes for erasure: a caller without a `person_id` is not recognised
+  as the holder.
+- **`person_id` is unverified.** Nothing checks a stakeholder's `person_id` against a directory, so every check
+  that compares it can be sidestepped by whoever can create stakeholder records: a second record, or a made-up
+  id. They are guards against mistakes and the straightforward case, not against a determined insider.
 - **One human, two subjects.** Subjects are compared after folding, but two different subjects for the
   same human (a personal and an admin account) are two people to the service unless both carry the same
   `person_id`.

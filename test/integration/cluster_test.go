@@ -56,15 +56,48 @@ func TestPlatformNamespacesExist(t *testing.T) {
 	}
 }
 
+// acme.json must survive a Traefik restart, or every restart asks for the certificates again and
+// runs into the issuer's rate limits. k3s installs its bundled Traefik chart asynchronously, well
+// after the node is Ready and after `make dev` returns, so every step here waits: asking once
+// found no PVC whenever the chart was still being installed.
 func TestTraefikPersistsACMEStore(t *testing.T) {
-	out := mustKubectl(t, "-n", "kube-system", "get", "pvc", "-o", "name")
-	if !strings.Contains(out, "traefik") {
-		t.Fatalf("no Traefik PVC found:\n%s", out)
-	}
-	policy := mustKubectl(t, "-n", "kube-system", "get", "svc", "traefik", "-o", "jsonpath={.spec.externalTrafficPolicy}")
+	const ns = "kube-system"
+	claim := ""
+	eventually(t, 240*time.Second, "Traefik to mount a bound volume claim at /data", func() (bool, string) {
+		vol, err := kubectl("-n", ns, "get", "deploy", "traefik", "-o",
+			`jsonpath={.spec.template.spec.containers[0].volumeMounts[?(@.mountPath=="/data")].name}`)
+		if err != nil || vol == "" {
+			return false, "no volume mounted at /data: " + vol
+		}
+		claim, err = kubectl("-n", ns, "get", "deploy", "traefik", "-o",
+			`jsonpath={.spec.template.spec.volumes[?(@.name=="`+vol+`")].persistentVolumeClaim.claimName}`)
+		if err != nil || claim == "" {
+			return false, "the volume at /data is not a PersistentVolumeClaim (acme.json would be lost on restart): " + claim
+		}
+		phase, err := kubectl("-n", ns, "get", "pvc", claim, "-o", "jsonpath={.status.phase}")
+		return err == nil && phase == "Bound", "claim " + claim + " phase: " + phase
+	})
+	policy := mustKubectl(t, "-n", ns, "get", "svc", "traefik", "-o", "jsonpath={.spec.externalTrafficPolicy}")
 	if policy != "Local" {
 		t.Errorf("externalTrafficPolicy=%q", policy)
 	}
+
+	// The proof itself: a file written next to acme.json is still there in a new Traefik pod.
+	const marker = "/data/.can-persistence-probe"
+	want := fmt.Sprintf("probe-%d", time.Now().UnixNano())
+	mustKubectl(t, "-n", ns, "rollout", "status", "deploy/traefik", "--timeout=240s")
+	mustKubectl(t, "-n", ns, "exec", "deploy/traefik", "--", "sh", "-c", "echo "+want+" > "+marker)
+	before := mustKubectl(t, "-n", ns, "get", "pods", "-l", "app.kubernetes.io/name=traefik", "-o", "jsonpath={.items[*].metadata.uid}")
+	mustKubectl(t, "-n", ns, "rollout", "restart", "deploy/traefik")
+	mustKubectl(t, "-n", ns, "rollout", "status", "deploy/traefik", "--timeout=240s")
+	eventually(t, 120*time.Second, "the old Traefik pod to be gone", func() (bool, string) {
+		now, err := kubectl("-n", ns, "get", "pods", "-l", "app.kubernetes.io/name=traefik", "-o", "jsonpath={.items[*].metadata.uid}")
+		return err == nil && now != "" && !strings.Contains(now, before), "before " + before + ", now " + now
+	})
+	if got := mustKubectl(t, "-n", ns, "exec", "deploy/traefik", "--", "cat", marker); got != want {
+		t.Errorf("claim %s did not keep the file across a restart: got %q, want %q", claim, got, want)
+	}
+	_, _ = kubectl("-n", ns, "exec", "deploy/traefik", "--", "rm", "-f", marker)
 }
 
 // The ACME resolver must reach Traefik's command line: a chart that does not know the values key
