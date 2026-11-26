@@ -34,11 +34,13 @@ func (c Config) newInstaller(log *slog.Logger) (reconcile.ModuleInstaller, error
 	if err != nil {
 		return nil, err
 	}
-	var prov dbprov.Provisioner = dbprov.Unconfigured{}
+	// An external Postgres when the operator configured one; otherwise can-core runs its own in can-data,
+	// from the first module that needs it (specs/041-wrapped-modules-live).
+	var prov dbprov.Provisioner = &dbprov.Managed{API: api}
 	if c.PostgresAdminURL != "" {
 		prov = &dbprov.Postgres{AdminURL: c.PostgresAdminURL, Host: c.PostgresHost, Port: 5432}
 	}
-	return installer.New(installer.Config{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL, NodeIP: c.NodeIP, Domain: c.CompanyDomain, RequireAdmission: true, DB: prov, Log: log}), nil
+	return installer.New(installer.Config{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL, NodeIP: c.NodeIP, Domain: c.CompanyDomain, RequireAdmission: true, DB: prov, Relay: c.appRelay, Log: log}), nil
 }
 
 // reconcileOnce applies the company.yaml at cfg.CompanyFile (in a cluster: the mounted ConfigMap

@@ -24,7 +24,7 @@ func TestEveryInHouseModuleHasItsRequiredSecrets(t *testing.T) {
 			}
 		}
 	}
-	if len(For("support")) != 0 || len(For("")) != 0 {
+	if len(For("wiki")) != 0 || len(For("")) != 0 {
 		t.Error("a module that needs no secrets must get none")
 	}
 }
@@ -46,6 +46,19 @@ func TestGeneratedValuesMeetTheModulesOwnMinimums(t *testing.T) {
 			if v == Generate(s.Kind) {
 				t.Errorf("%s %s: two generated values are equal", mod, s.Key)
 			}
+		}
+	}
+}
+
+func TestWrappedAppPasswordsFitTheApps(t *testing.T) {
+	for _, mod := range []string{"analytics", "newsletter", "support"} {
+		specs := For(mod)
+		if len(specs) != 1 || specs[0].Kind != Password || !specs[0].NoRotate {
+			t.Fatalf("%s: %+v", mod, specs)
+		}
+		// GoatCounter accepts 8 to 50 bytes.
+		if v := Generate(specs[0].Kind); len(v) != 48 || v == Generate(specs[0].Kind) {
+			t.Errorf("%s: %d characters", mod, len(v))
 		}
 	}
 }

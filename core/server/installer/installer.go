@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -43,6 +44,7 @@ const (
 	secretModule  = "can-module"
 	secretDB      = reconcile.DatabaseSecret
 	secretRelease = "can-release"
+	secretSMTP    = "can-smtp"
 
 	labelModule  = "can.dev/module"
 	labelManaged = "app.kubernetes.io/managed-by"
@@ -71,10 +73,22 @@ type Config struct {
 	// SecretsFor lists the secrets can-core generates into a module's `can-module` Secret
 	// (default modsecrets.For). Values are generated once and kept; see ensureSecrets.
 	SecretsFor func(module string) []modsecrets.Spec
+	// Relay returns the SMTP relay a wrapped app may be given (modsecrets.WantsRelay), or nil when none
+	// is configured or the company's rules switch the module's mail off.
+	Relay func(module string) (*SMTPRelay, error)
 
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
 	RBACWait       time.Duration // how long to wait for a fresh RoleBinding to take effect, default 30s
+}
+
+// SMTPRelay is what a wrapped app needs to speak SMTP itself.
+type SMTPRelay struct {
+	Host                     string
+	Port                     int
+	Username, Password, From string
+	// Encryption is `tls` (STARTTLS) or `ssl` (implicit TLS), the names PHP mailers use.
+	Encryption string
 }
 
 // Installer implements reconcile.ModuleInstaller.
@@ -486,7 +500,44 @@ func (in *Installer) ensureSecrets(ctx context.Context, s reconcile.Spec) (strin
 	if err := in.cfg.API.Apply(ctx, secret(s.Namespace, secretModule, s.ID, mod)); err != nil {
 		return "", err
 	}
+	smtp, err := in.ensureRelaySecret(ctx, s)
+	if err != nil {
+		return "", err
+	}
+	if smtp != nil {
+		return secretVersion(mod, db, smtp), nil
+	}
 	return secretVersion(mod, db), nil
+}
+
+// ensureRelaySecret writes `can-smtp` for a module that speaks SMTP itself and declares email.send.
+// Without a usable relay the Secret is written empty, so credentials that were withdrawn do not stay
+// behind. It is written as `data` (not stringData) so that server-side apply removes dropped keys.
+func (in *Installer) ensureRelaySecret(ctx context.Context, s reconcile.Spec) (map[string]string, error) {
+	if !modsecrets.WantsRelay(s.ID) || !slices.Contains(s.Manifest.Requires.Capabilities, "email.send") {
+		return nil, nil
+	}
+	vals := map[string]string{}
+	if in.cfg.Relay != nil {
+		r, err := in.cfg.Relay(s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("reading the email relay settings: %w", err)
+		}
+		if r != nil {
+			vals = map[string]string{"host": r.Host, "port": fmt.Sprint(r.Port), "user": r.Username, "password": r.Password, "from": r.From, "encryption": r.Encryption}
+		}
+	}
+	o := secret(s.Namespace, secretSMTP, s.ID, nil)
+	delete(o, "stringData")
+	data := map[string]any{}
+	for k, v := range vals {
+		data[k] = base64.StdEncoding.EncodeToString([]byte(v))
+	}
+	o["data"] = data
+	if err := in.cfg.API.Apply(ctx, o); err != nil {
+		return nil, fmt.Errorf("writing the email Secret: %w", err)
+	}
+	return vals, nil
 }
 
 // checkRotations refuses a rotation request that names a key the module has no rotatable secret
@@ -557,7 +608,7 @@ func (in *Installer) moduleDir(id string) (string, error) {
 // protected object names that only can-core may write in a module namespace.
 func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 	r := map[string]bool{
-		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true,
+		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true,
 		"ServiceAccount/" + s.ServiceAccount: true,
 		"ResourceQuota/ceiling":              true, "LimitRange/defaults": true,
 	}
