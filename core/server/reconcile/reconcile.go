@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/modsettings"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/modsecrets"
@@ -36,6 +37,8 @@ type Spec struct {
 	ServiceAccount string
 	Settings       map[string]any
 	Manifest       *config.Module
+	// Organisation is company.yaml's facts about the company, which some settings default to.
+	Organisation config.Organisation
 	// HMACSecret signs can-core's webhooks to this module; the installer injects it into the
 	// module's environment (SPEC §3.1).
 	HMACSecret string
@@ -148,6 +151,9 @@ type Desired struct {
 	// Content is what each module is installed from; a module missing here is compared by its
 	// manifest alone.
 	Content map[string]Content
+	// Schemas are the modules' settings schemas, which say what of company.yaml reaches each
+	// (specs/064-module-settings); a module missing here is given nothing.
+	Schemas map[string]*modsettings.Schema
 }
 
 func (d Desired) content(id string) Content {
@@ -247,7 +253,7 @@ func LoadDesiredBytes(name string, data []byte, modulesDir string) (Desired, []p
 	if err != nil {
 		return Desired{}, []problem.Problem{{File: companyFile, Rule: "parse.decode", Severity: problem.Error, Message: err.Error()}}
 	}
-	d := Desired{Company: c, Manifests: map[string]*config.Module{}, Content: map[string]Content{}}
+	d := Desired{Company: c, Manifests: map[string]*config.Module{}, Content: map[string]Content{}, Schemas: map[string]*modsettings.Schema{}}
 	for id, e := range c.Modules {
 		if !e.IsEnabled() {
 			continue
@@ -270,6 +276,12 @@ func LoadDesiredBytes(name string, data []byte, modulesDir string) (Desired, []p
 			return Desired{}, []problem.Problem{{File: path, Rule: "parse.read", Severity: problem.Error, Message: err.Error()}}
 		}
 		d.Content[id] = content
+		// An unusable schema maps nothing; validation has already said so.
+		if module, err := validate.ModuleFS(path); err == nil {
+			if schema, err := modsettings.LoadModule(module, m.SettingsSchema); err == nil && schema != nil {
+				d.Schemas[id] = schema
+			}
+		}
 	}
 	return d, ps // ps may carry warnings
 }
@@ -434,7 +446,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 		rt, rerr := r.routing(ctx, d, id)
 		wanted := links(d, have, id, true)
 		relay, lerr := r.relay(ctx, d, id, rec.HMACSecret, wanted)
-		hash := linkedHash(specHash(d.Company, id, man, rt.Fingerprint, relay), wanted)
+		hash := linkedHash(d.valuesHash(id, specHash(d.Company, id, man, rt.Fingerprint, relay)), wanted)
 		var a *Action
 		switch {
 		case !ok:
@@ -485,6 +497,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 				a.Widens = append(a.Widens, "internet access")
 			}
 			a.Widens = append(a.Widens, linkWidening(d, id, rec, wanted)...)
+			a.Widens = append(a.Widens, d.settingWidening(id, rec)...)
 		}
 		if a.Kind == Upgrade {
 			r.hold(a, rec)
@@ -721,10 +734,10 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	}
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
-		State: store.StateEnabled, SettingsHash: linkedHash(specHash(d.Company, a.Module, man, rt.Fingerprint, relay), wired), HMACSecret: secret, Manifest: *man,
+		State: store.StateEnabled, SettingsHash: linkedHash(d.valuesHash(a.Module, specHash(d.Company, a.Module, man, rt.Fingerprint, relay)), wired), HMACSecret: secret, Manifest: *man,
 		Content: d.content(a.Module).encode(), Applied: appliedOf(d, a.Module, relay, wired).encode(),
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, RecordSecret: prev.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure(), Links: wired})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, RecordSecret: prev.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure(), Links: wired, Organisation: d.Company.Organisation})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.

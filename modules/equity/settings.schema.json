@@ -6,26 +6,18 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "identity": {
-      "type": "string",
-      "enum": ["attestation", "directory"],
-      "description": "How holders and callers are identified. attestation (the default): a second actor attests. directory (needs the people module): callers and holders are checked against the people directory; every acting user needs a linked record and holders need verify-person."
-    },
-    "break_glass_until": {
-      "type": "string",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9:.]+(Z|[+-][0-9:]+))?$",
-      "description": "End of a break-glass window, a date (inclusive, UTC) or RFC 3339 time at most 7 days ahead. The service account may act without a person until then. Every use is audited."
-    },
+    "identity": {"type": "string", "enum": ["attestation", "directory"], "description": "How holders and callers are identified. attestation (the default): a second actor attests. directory (needs the people module): callers and holders are checked against the people directory; every acting user needs a linked record and holders need verify-person.", "x-can": {"handled": "can-core connects equity to the people directory (specs/057-module-capability-wiring)"}},
+    "break_glass_until": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9:.]+(Z|[+-][0-9:]+))?$", "description": "End of a break-glass window, a date (inclusive, UTC) or RFC 3339 time at most 7 days ahead. The service account may act without a person until then. Every use is audited.", "x-can": {"handled": "can-core sets the chart value breakGlassUntil (specs/057-module-capability-wiring)"}},
     "retention": {
       "type": "object",
       "additionalProperties": false,
       "description": "Per data class retention. The ledger and the audit trail are the legal record and can only be `legal`.",
       "properties": {
-        "equity-ledger": { "const": "legal" },
-        "equity-audit": { "const": "legal" },
-        "equity-stakeholder": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "equity-grants": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "equity-valuation": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+        "equity-ledger": {"const": "legal", "x-can": {"config": "retention.equity-ledger"}},
+        "equity-audit": {"const": "legal", "x-can": {"config": "retention.equity-audit"}},
+        "equity-stakeholder": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.equity-stakeholder", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "equity-grants": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.equity-grants", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "equity-valuation": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "x-can": {"config": "retention.equity-valuation", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
       }
     }
   }

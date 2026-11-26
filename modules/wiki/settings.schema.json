@@ -5,9 +5,9 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "wiki_title": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Title shown in the wiki header." },
-    "public_help_centre": { "type": "boolean", "default": false, "description": "Make the `help` namespace readable without logging in. Everything else stays private." },
-    "php_memory_limit": { "type": "string", "pattern": "^[1-9][0-9]*M$", "default": "128M" },
-    "revision_retention_days": { "type": "integer", "minimum": 30, "default": 730, "description": "Matches the wiki-revision data class (2y)." }
+    "wiki_title": {"type": "string", "minLength": 1, "maxLength": 100, "description": "Title shown in the wiki header.", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}},
+    "public_help_centre": {"type": "boolean", "default": false, "description": "Make the `help` namespace readable without logging in. Everything else stays private.", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it; the help namespace stays private until its access list is set there"}},
+    "php_memory_limit": {"type": "string", "pattern": "^[1-9][0-9]*M$", "default": "128M", "x-can": {"value": "app.phpMemoryLimit"}},
+    "revision_retention_days": {"type": "integer", "minimum": 30, "default": 730, "description": "Matches the wiki-revision data class (2y).", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}}
   }
 }

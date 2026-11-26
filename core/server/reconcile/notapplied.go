@@ -28,12 +28,14 @@ type Applied struct {
 	// Links are the connections to other modules; BreakGlass is equity's break-glass window.
 	Links      []config.Link `json:"links,omitempty"`
 	BreakGlass string        `json:"break_glass,omitempty"`
+	// Values are what of the settings and company facts reached the module, by chart value.
+	Values map[string]any `json:"values,omitempty"`
 }
 
 func appliedOf(d Desired, id, relay string, links []config.Link) Applied {
 	entry := d.Company.Modules[id]
 	settings, _ := json.Marshal(entry.Settings) // sorted keys
-	a := Applied{Expose: entry.Exposure(), Settings: digest(settings), Links: links, BreakGlass: breakGlass(d, id)}
+	a := Applied{Expose: entry.Exposure(), Settings: digest(settings), Links: links, BreakGlass: breakGlass(d, id), Values: d.values(id)}
 	var mail []byte
 	if modsecrets.WantsRelay(id) && RelayOptIn(d.Company.Email, id) {
 		a.RelayOptIn = true
@@ -93,6 +95,8 @@ func differences(was, now Applied) (out []string, urgent bool) {
 		"ending or shortening equity's break-glass window (it stays open until "+was.BreakGlass+")")
 	if was.Settings != now.Settings {
 		out = append(out, "changed settings")
+	} else if !sameValues(was.Values, now.Values) {
+		out = append(out, "changed company facts or setting mapping")
 	}
 	return out, urgent
 }
@@ -130,6 +134,7 @@ func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec s
 		hadRelay, herr := r.relay(ctx, old, a.Module, rec.HMACSecret, had)
 		if err == nil && herr == nil && linkedHash(specHash(d.Company, a.Module, &rec.Manifest, rt.Fingerprint, hadRelay), had) == rec.SettingsHash {
 			was, known = appliedOf(d, a.Module, hadRelay, had), true
+			was.Values = nil // that release mapped nothing
 			a.baseline = was.encode()
 		}
 	}
@@ -139,6 +144,10 @@ func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec s
 		return nil
 	}
 	diff, urgent := differences(was, now)
+	// A stricter setting that cannot arrive while the module is held: it stays as loose as it is.
+	for _, c := range d.Schemas[a.Module].Widening(now.Values, was.Values) {
+		diff, urgent = append(diff, "the stricter setting "+c.Setting+" (the module keeps the looser one)"), true
+	}
 	a.NotApplied, a.Urgent = append(a.NotApplied, diff...), a.Urgent || urgent
 	return nil
 }

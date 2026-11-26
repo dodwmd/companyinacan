@@ -5,8 +5,8 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "admin_email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Login of the first GoatCounter user; defaults to admin@<company domain>. Used once, when the site is created." },
-    "site_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$", "description": "Domain of the tracked site; defaults to the company domain." },
-    "retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Matches the pageview-aggregate data class (3y)." }
+    "admin_email": {"type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Login of the first GoatCounter user; defaults to admin@<company domain>. Used once, when the site is created.", "x-can": {"handled": "the chart, when the site is first created", "check": true}},
+    "site_domain": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$", "description": "Domain of the tracked site; defaults to the company domain.", "x-can": {"not_applied": "the tracked site is the module's own host"}},
+    "retention_days": {"type": "integer", "minimum": 30, "default": 1095, "description": "Matches the pageview-aggregate data class (3y).", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}}
   }
 }
