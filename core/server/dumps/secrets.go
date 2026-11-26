@@ -21,7 +21,8 @@ var SystemSecrets = []string{"can-smtp-relay", "sso-client", "can-postgres-admin
 // Not exported: the installer's own record of a release (rewritten by the restore install) and
 // tokens Kubernetes issues itself.
 const (
-	releaseSecret      = "can-release"
+	// ReleaseSecret is also how a module that was never installed is told apart.
+	ReleaseSecret      = "can-release"
 	relaySecret        = "can-smtp" // written from company.yaml and the relay Secret at every apply
 	serviceAccountType = "kubernetes.io/service-account-token"
 )
@@ -42,7 +43,7 @@ func ExportSecrets(ctx context.Context, api kube.API, mods []ModuleRef) (*backup
 	var warnings []string
 	add := func(ns, name string, o kube.Object) {
 		typ, _ := o["type"].(string)
-		if typ == serviceAccountType || name == releaseSecret || name == relaySecret {
+		if typ == serviceAccountType || name == ReleaseSecret || name == relaySecret {
 			return
 		}
 		data := map[string]string{}

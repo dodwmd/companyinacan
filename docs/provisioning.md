@@ -276,9 +276,11 @@ that never include a downstream response, a token or personal data.
   illustrative. RFC 7644 features not implemented: `PUT`, bulk, sort, `/.search`, `or`/`not`/`co`
   filters, `attributes`/`excludedAttributes`, user creation and deletion.
 * **Cluster networking.** The default module-namespace `NetworkPolicy` (`deploy/templates/module-namespace.yaml`)
-  allows a module to reach DNS, can-core, Traefik and the databases only. This module also needs
-  egress to the people module's API and to its connectors' hosts; until the platform grows a supported
-  way to allow that, the module **cannot do its job on a cluster**. It has never run on one.
+  allows a module DNS, can-core, Traefik and the databases; this module's manifest sets
+  `runtime.internet_egress`, so it may also reach internet addresses (its connectors' hosts), never the node or
+  other namespaces. It also needs the people module's API (`mod-people`), which neither side's policy allows;
+  until the platform grows a supported way to allow that, the module **cannot do its job on a cluster**. It has
+  never run against the people module on one.
 * **Secrets for the connectors.** The directory token is wired by can-core (above; the `people` module must be
   enabled). There is no supported way yet to provide connector credentials.
 * **The kill switch needs `sso_subject` to be the can-core subject** (`user:...`). For urgent

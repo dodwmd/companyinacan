@@ -10,7 +10,7 @@ https site has been tried in a browser.** Do not put real company data in it yet
 |---|---|
 | Try it on your own computer | Works: the Docker Compose stack ([getting-started.md](getting-started.md)). Insecure on purpose |
 | Put a company website and a contact form on a server | Built (`make up`) and exercised on a local test cluster; never run on a real server or provider account. The form has its own page that the generated site does not link to by itself |
-| Run the business modules (tracker, people, finance, ...) on a server | Not yet. They install on a test cluster from images CI builds, but those images are not published and `make up` ships only can-core, the site and forms |
+| Run the business modules (tracker, people, finance, ...) on a server | Unverified. No image is published; from a source checkout `make images` builds them all and `make up` ships what `company.yaml` enables. Shown on a test cluster (`work`), never on a real server |
 | Rely on backups | No. Backup and restore have passed on a local test cluster only, never against a real server or bucket |
 
 ## Modules
@@ -42,8 +42,8 @@ Columns:
 | `analytics` (GoatCounter) | experimental | CI | upstream | CI | CI (can-core's restore operations, not through restic) | **no** |
 | `newsletter` (Listmonk) | experimental | CI | upstream | CI | CI (same) | **no** |
 | `support` (FreeScout, third-party image) | experimental | CI | upstream | CI | CI (same) | **no** |
-| `wiki` (DokuWiki) | experimental | **never started** (image digests are placeholders) | upstream | **blocks all backups** while enabled | never run | **no** |
-| `status` (Uptime Kuma) | experimental | **never started** (same) | upstream | **blocks all backups** while enabled | never run | **no** |
+| `wiki` (DokuWiki) | experimental | **never started** (image digests are placeholders) | upstream | **blocks all backups** while enabled without the `can-hooks` image | never run | **no** |
+| `status` (Uptime Kuma) | experimental | **never started** (same) | upstream | **blocks all backups** while enabled without the `can-hooks` image | never run | **no** |
 | `crm` (EspoCRM) | not-deployable | refused by `can validate` and can-core | upstream | **blocks all backups** if recorded and enabled | never run | **no** |
 
 Limits of the erasure column ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger) has all of them):
@@ -54,9 +54,9 @@ Limits of the erasure column ([backup-restore.md](backup-restore.md#erasure-tomb
 - Where a module is marked **no**, what was erased there comes back with a restore of an older backup. Erase it
   again afterwards, by hand.
 
-**No row is verified on a real server.** On a real cluster today, only the can-core, site and forms images can be
-delivered (`make images`, shipped over SSH). The other in-house charts name images in `ghcr.io/dodwmd/` that do not
-exist until a release.
+**No row is verified on a real server.** The images the in-house charts name in `ghcr.io/dodwmd/` do not exist until
+a release. From a source checkout, `make images` builds every in-house image and `can-hooks`, and `make up` ships the
+ones `company.yaml` enables over SSH ([make-up.md](make-up.md#getting-the-images)).
 
 The Docker Compose stack runs site, forms, can-core, `work`, `people`, `jobs`, `finance`, `equity` and `files`. It
 does not install anything: Compose starts the containers. `board`, `entity`, `provisioning` and the wrapped
@@ -101,12 +101,9 @@ Apart from `ci`, `security`, `e2e` and `flaky-hunt`, nothing runs again after a 
 
 ## Known defects an operator would hit
 
-- **A module whose image cannot be pulled stops every backup.** Enabling one that has no published image (today
-  every in-house module except forms) leaves a failed install; its backup job cannot start, so no dump run
-  completes until you disable the module.
-- A first release cannot serve all the charts as they are: forms asks for image tag `0.2.0`, the other in-house
-  charts for `0.1.0`, and the release workflow publishes one version. It also does not generate
-  `deploy/release-images.json`, although [make-up.md](make-up.md) says it does.
+- **Enabling a module in the admin UI does not check that its image is there** (`can up` and `can apply` do). The
+  install then fails; a first install that failed is reported by the backup and does not stop it.
+- The release workflow does not generate `deploy/release-images.json` ([make-up.md](make-up.md#getting-the-images)).
 - The admin UI's Leads page has no credential on an install. Messages arrive by notification email (needs a relay)
   or are read through the forms API.
 - The generated website has no link to the contact form (`/_forms/contact/form`).
@@ -122,7 +119,7 @@ Apart from `ci`, `security`, `e2e` and `flaky-hunt`, nothing runs again after a 
 |---|---|---|
 | **Protect the repository.** Apply branch protection, the `release-tags` ruleset and the `release` environment (`scripts/gh-protect-main.sh` prints the calls; `--apply` runs them) | On 2026-11-26 `main` was unprotected, with no ruleset and no environment: the five "required" checks are not enforced | [maintainers.md](maintainers.md) |
 | **Enable repository security settings**: private vulnerability reporting, secret scanning with push protection, Dependabot alerts and updates, dependency graph, approval for outside contributors' workflow runs | On 2026-11-26 private reporting, secret scanning and Dependabot security updates were off; [SECURITY.md](../SECURITY.md) sends reporters to a button that is not there | [maintainers.md](maintainers.md) |
-| **Publish a first release**, including the `can-hooks` image | Without it module images cannot be pulled, and `wiki`, `status` and `crm` block backups. Check the new packages are public | [releasing.md](releasing.md) |
+| **Publish a first release**, including the `can-hooks` image | Without it module images have to be built from a source checkout (`make images`). Make the new packages public | [releasing.md](releasing.md) |
 | **Provide a real server** (and a test bucket, domain and mail relay) for one verification run | Nearly every "not verified" line above depends on it; it costs money (the runbook estimates about US$5 plus a domain) and needs accounts | [real-server-verification.md](real-server-verification.md) |
 | **Keep, replace or drop the third-party FreeScout image** (PikaPods) | It is a supply-chain dependency on another party's build, amd64 only, with their patch delay; nothing updates pinned digests automatically | [specs/041](../specs/041-wrapped-modules-live/spec.md) |
 | **In-house e-signature or Documenso** | SPEC planned Documenso; finance has its own *simple* signature instead. No legal review; Documenso's licence terms were not checked | [specs/049](../specs/049-contract-esign/spec.md) |

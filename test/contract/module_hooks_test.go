@@ -102,9 +102,9 @@ func TestHooksImageReferencesAreConsistent(t *testing.T) {
 	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(tag) {
 		t.Fatalf("hooks image tag %q", tag)
 	}
-	// A release vX.Y.Z pushes both vX.Y.Z and X.Y.Z, the form manifests and charts use.
+	// A release pushes each image under its own version (core/modimages), the form manifests and charts use.
 	release := readFile(t, ".github/workflows/release.yml")
-	if !strings.Contains(release, `-t $repo:${VERSION#v}`) {
-		t.Error("release.yml does not push the unprefixed version tag the manifests and charts name")
+	if !strings.Contains(release, `tags="$tags -t $repo:$own"`) {
+		t.Error("release.yml does not push the version tag the manifests and charts name")
 	}
 }

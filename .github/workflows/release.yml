@@ -209,6 +209,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ENV_PROTECTED: ${{ vars.RELEASE_ENV_PROTECTED }}
         run: sh scripts/check-release-env.sh
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: image-check
@@ -233,12 +236,26 @@ jobs:
           args=$(grep "^$IMAGE " check/base-digests.txt | cut -d' ' -f2- | sed 's/^/--build-arg /' | tr '\n' ' ')
           [ -n "$args" ] || { echo "no resolved base digests for $IMAGE" >&2; exit 1; }
           context=.; [ "$dir" = deploy/hooks ] && context=deploy/hooks
-          # Charts and hooks.image name the version without the "v" (X.Y.Z): push both forms.
-          tags="-t $repo:$VERSION -t $repo:${VERSION#v}"
-          case "$VERSION" in *-*) ;; *) tags="$tags -t $repo:latest" ;; esac
+          # Charts and hooks.image pull each image by its own version (core/modimages/images.txt), "-" for
+          # can-core and can-static, which go by the release's. Every image is checked before this one is
+          # pushed: a version published from other sources fails the release. A published version tag is
+          # never moved, and a pre-release does not publish the version a final release is to publish.
+          sh scripts/check-image-versions.sh "ghcr.io/$owner" >"$RUNNER_TEMP/versions"
+          read -r state source <<EOF
+          $(awk -v n="$IMAGE" '$1 == n {print $2, $3}' "$RUNNER_TEMP/versions")
+          EOF
+          own=$(awk -v n="$IMAGE" '$1 == n {print $4}' core/modimages/images.txt)
+          [ -n "$own" ] && [ -n "$state" ] || { echo "no version for $IMAGE in core/modimages/images.txt" >&2; exit 1; }
+          label=""
+          [ "$state" = release ] || label="--label dev.companyinacan.source=$source"
+          [ "$own" != - ] || own=${VERSION#v}
+          tags="-t $repo:$VERSION"
+          case "$VERSION" in *-*) final=false ;; *) final=true; tags="$tags -t $repo:latest" ;; esac
+          case "$own" in *-*) wanted=true ;; *) wanted=$final ;; esac
+          if [ "$wanted" = true ] && [ "$state" != published ]; then tags="$tags -t $repo:$own"; fi
           # shellcheck disable=SC2086
           docker buildx build --platform linux/amd64 --provenance=false \
-            -f "$dir/Dockerfile" $args --build-arg "VERSION=$VERSION" $tags \
+            -f "$dir/Dockerfile" $args --build-arg "VERSION=$VERSION" $label $tags \
             --push --metadata-file "$RUNNER_TEMP/md.json" "$context"
           digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/md.json")
           echo "digest=$digest" >>"$GITHUB_OUTPUT"

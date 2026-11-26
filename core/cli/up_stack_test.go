@@ -13,6 +13,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/launch"
+	"github.com/dodwmd/companyinacan/core/modimages"
 	"github.com/dodwmd/companyinacan/core/provider"
 )
 
@@ -34,7 +35,7 @@ func testImagesDir(t *testing.T) string {
 		if i > 0 {
 			idx += ","
 		}
-		idx += `"` + n + `":{"ref":"` + n + `:dev","file":"` + n + `.tar","sha256":"` + hex.EncodeToString(h[:]) + `"}`
+		idx += `"` + n + `":{"ref":"` + modimages.Ref(n) + `","file":"` + n + `.tar","sha256":"` + hex.EncodeToString(h[:]) + `"}`
 	}
 	if err := os.WriteFile(filepath.Join(dir, "images.json"), []byte(idx+"}}"), 0o600); err != nil {
 		t.Fatal(err)

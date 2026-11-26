@@ -22,6 +22,8 @@ provider:
   type: inhouse
   name: can-provision
 runtime:
+  # Internet egress: its connectors call the services accounts are provisioned in.
+  internet_egress: true
   chart: ./chart
   values: ./chart/values.yaml
   # Only the SCIM endpoints are public (see chart/templates/ingressroute.yaml): the identity

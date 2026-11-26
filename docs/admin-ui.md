@@ -115,7 +115,7 @@ made with `can backup kit`) and review. Answers are saved per step, so you can l
 is idempotent. **Close setup** dismisses it.
 
 **Modules that stop backups.** Enabling a module whose backup hook cannot run (`wiki`, `status` and `crm`, until the
-`can-hooks` image is published) stops every backup. The change page and the wizard's review say so, name the
+`can-hooks` image is published, or shipped to the server with `can up --images-from`) stops every backup. The change page and the wizard's review say so, name the
 module, add that a database in the shared Postgres is not backed up, and refuse to apply until a box is
 ticked for each such module.
 

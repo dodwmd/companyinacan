@@ -27,7 +27,8 @@ Helm-compatible templates for the in-house files module, rendered by can-core's 
   keyring. The S3 credentials are not generated and the installer refuses a reference to any other
   Secret, so there is no supported way yet to provide them: the local backend is the working default.
 - **Versioned S3 buckets** keep deleted objects until a lifecycle rule expires them (docs/files.md).
-- **Egress** to an S3 endpoint or a ClamAV service depends on the module namespace NetworkPolicy.
+- **Egress** to an S3 endpoint or a ClamAV service is blocked: the manifest does not set `runtime.internet_egress`.
+  Whoever configures the `s3` backend must set it.
 - **Groups.** No directory group resolver is wired; only user grants apply.
 
 ## What is verified

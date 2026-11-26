@@ -1,9 +1,11 @@
 #!/bin/sh
-# Builds the three container images `can up` deploys (can-core, can-static, can-forms) from this
-# checkout and writes them as tarballs plus an index that `can up --images-from` verifies (epic E24).
+# Builds every in-house container image (core/modimages/images.txt: can-core, can-static, the module
+# images and can-hooks) from this checkout and writes them as tarballs plus an index that
+# `can up --images-from` verifies (epics E24, E06d). `can up` ships only what company.yaml enables.
 #
 #   scripts/build-images.sh [outdir]          default outdir: build/images
 #   ENGINE=podman|docker                      default: podman if present, else docker
+#   ONLY="can-core can-static can-forms"      build a subset (can-core and can-static are always needed)
 #
 # This is the DEV path for a source checkout: the images are built from your working tree, and the
 # base images are resolved to the digests the registry serves right now (scripts/resolve-base-digests.sh),
@@ -24,9 +26,8 @@ if [ -z "$engine" ]; then
 fi
 command -v "$engine" >/dev/null 2>&1 || { echo "build-images: $engine is not installed" >&2; exit 1; }
 
-# The forms chart expects this exact repository:tag (modules/forms/chart/values.yaml).
-forms_tag=$(awk '/^  tag:/ {print $2; exit}' "$root/modules/forms/chart/values.yaml")
-[ -n "$forms_tag" ] || { echo "build-images: cannot read the forms image tag from the chart" >&2; exit 1; }
+# The module images get the tag their charts name: the version column of the list.
+list="$root/core/modimages/images.txt"
 
 mkdir -p "$out"
 rm -f "$out/images.json"
@@ -43,34 +44,42 @@ EOF
 chmod 0755 "$resolver"
 trap 'rm -f "$resolver"' EXIT
 
-# name<TAB>Dockerfile<TAB>tag
-images="can-core	deploy/can-core/Dockerfile	can-core:dev
-can-static	deploy/can-static/Dockerfile	can-static:dev
-can-forms	deploy/forms/Dockerfile	ghcr.io/dodwmd/can-forms:$forms_tag"
-
-tab=$(printf '\t')
 index='{"schema":1,"images":{'
 first=1
-while IFS="$tab" read -r name dockerfile tag; do
+built=""
+while read -r name dockerfile context version; do
+	case "$name" in '' | '#'*) continue ;; esac
+	if [ -n "${ONLY:-}" ]; then
+		case " $ONLY " in *" $name "*) ;; *) continue ;; esac
+	fi
+	# The tarball carries the full reference: podman would file a short name under localhost/, which
+	# the cluster does not match to the name the manifests use.
+	case "$version" in
+	-) tag="$name:dev" full="docker.io/library/$name:dev" version=dev ;;
+	*) tag="ghcr.io/dodwmd/$name:$version" full="ghcr.io/dodwmd/$name:$version" ;;
+	esac
 	echo "build-images: $name -> $tag"
 	args=""
-	for line in $(DIGEST_RESOLVER="$resolver" sh "$here/resolve-base-digests.sh" "$root/$dockerfile"); do
+	for line in $(DIGEST_RESOLVER="$resolver" sh "$here/resolve-base-digests.sh" "$root/$dockerfile" </dev/null); do
 		args="$args --build-arg $line"
 	done
 	# shellcheck disable=SC2086 # $args is a list of --build-arg NAME=VALUE words without spaces
-	"$engine" build -f "$root/$dockerfile" $args -t "$tag" "$root"
+	"$engine" build -f "$root/$dockerfile" $args --build-arg "VERSION=$version" -t "$full" "$root/$context" </dev/null
 	tar="$name.tar"
+	rm -f "$out/$tar"
 	if [ "$engine" = podman ]; then
-		"$engine" save --format docker-archive -o "$out/$tar" "$tag"
+		"$engine" save --format docker-archive -o "$out/$tar" "$full" </dev/null
 	else
-		"$engine" save -o "$out/$tar" "$tag"
+		"$engine" save -o "$out/$tar" "$full" </dev/null
 	fi
 	sum=$(sha256sum "$out/$tar" | cut -d' ' -f1)
 	[ "$first" = 1 ] || index="$index,"
 	first=0
 	index="$index\"$name\":{\"ref\":\"$tag\",\"file\":\"$tar\",\"sha256\":\"$sum\"}"
-done <<EOF
-$images
-EOF
+	built="$built $name"
+done <"$list"
+for want in can-core can-static ${ONLY:-}; do
+	case " $built " in *" $want "*) ;; *) echo "build-images: $want was not built (ONLY must include can-core and can-static, and name images of $list)" >&2; exit 1 ;; esac
+done
 printf '%s}}\n' "$index" >"$out/images.json"
 echo "build-images: wrote $out/images.json; deploy with: make up IMAGES_FROM=$out"
