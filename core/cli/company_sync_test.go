@@ -20,7 +20,6 @@ type companyCluster struct {
 	t          *testing.T
 	data       string
 	serverEdit string
-	rv         int
 	applies    int
 }
 
