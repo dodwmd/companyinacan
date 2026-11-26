@@ -249,9 +249,12 @@ spec:
 	t.Run("provisioning reads the directory", func(t *testing.T) {
 		p := portForward(t, "mod-provisioning", "provisioning", 8090)
 		auth := map[string]string{"Authorization": "Bearer " + secretOf(t, "provisioning", "CAN_PROVISIONING_API_TOKEN")}
-		eventually(t, 2*time.Minute, "a joiner plan for a person of the directory", func() (bool, string) {
-			st, b, _ := doJSON(t, "POST", p+"/v1/provision/plans", auth, map[string]string{"kind": "joiner", "party_id": holder})
-			return st == 200, fmt.Sprint(st, b)
+		// A leaver plan for someone who is joining is refused with the status the directory has for
+		// them: only a module that read the record can say it. (A fresh install has no connectors, so
+		// no plan of this person would have steps.)
+		eventually(t, 2*time.Minute, "provisioning to read the person from the directory", func() (bool, string) {
+			st, b, _ := doJSON(t, "POST", p+"/v1/provision/plans", auth, map[string]string{"kind": "leaver", "party_id": holder})
+			return st == 409 && strings.Contains(fmt.Sprint(b["detail"]), "status onboarding"), fmt.Sprint(st, b)
 		})
 		// An answer that only the directory can give: this person is not in it.
 		if st, b, _ := doJSON(t, "POST", p+"/v1/provision/plans", auth, map[string]string{"kind": "joiner", "party_id": "pers_0000000000000000000000ff"}); st != 404 {
