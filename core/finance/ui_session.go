@@ -157,13 +157,25 @@ func (u *UI) setCookie(w http.ResponseWriter, name, value string, maxAge int) {
 // authenticateToken runs the shared Authenticator over a bearer token, as if it came in an
 // Authorization header of the API.
 func (u *UI) authenticateToken(r *http.Request, token string) (*Principal, error) {
+	return u.checkToken(r, token, u.Auth.Authenticate)
+}
+
+// authenticateNow is authenticateToken without any cached answer, for a step-up.
+func (u *UI) authenticateNow(r *http.Request, token string) (*Principal, error) {
+	if f, ok := u.Auth.(freshAuthenticator); ok {
+		return u.checkToken(r, token, f.AuthenticateFresh)
+	}
+	return u.authenticateToken(r, token)
+}
+
+func (u *UI) checkToken(r *http.Request, token string, check func(*http.Request) (*Principal, error)) (*Principal, error) {
 	if token == "" || len(token) > uiMaxTokenLen || strings.ContainsAny(token, " \r\n\t") {
 		return nil, ErrUnauthenticated
 	}
 	req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(r.Context())
 	req.RemoteAddr = r.RemoteAddr
 	req.Header.Set("Authorization", "Bearer "+token)
-	p, err := u.Auth.Authenticate(req)
+	p, err := check(req)
 	if err != nil || p == nil {
 		return nil, ErrUnauthenticated
 	}

@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"slices"
@@ -19,11 +20,20 @@ type CanAuth struct{ In *modclient.Introspector }
 
 // Authenticate implements Authenticator.
 func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
+	return a.authenticate(r, a.In.Lookup)
+}
+
+// AuthenticateFresh implements freshAuthenticator: introspection without the cache.
+func (a *CanAuth) AuthenticateFresh(r *http.Request) (*Principal, error) {
+	return a.authenticate(r, a.In.Fresh)
+}
+
+func (a *CanAuth) authenticate(r *http.Request, lookup func(context.Context, string) (modclient.Identity, error)) (*Principal, error) {
 	tok, ok := BearerToken(r)
 	if !ok {
 		return nil, ErrUnauthenticated
 	}
-	id, err := a.In.Lookup(r.Context(), tok)
+	id, err := lookup(r.Context(), tok)
 	if err != nil || !id.Active || id.Kind != "user" || !canSubjectRe.MatchString(id.Subject) {
 		return nil, ErrUnauthenticated
 	}
