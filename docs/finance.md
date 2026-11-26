@@ -225,6 +225,13 @@ unpaid invoice or a record still inside its retention refers to it, the purge re
 (`erased_parties_kept`) and the party is retried every hour. Set it to what your jurisdiction requires, or `0` to keep
 everything. `audit_retention_days` must be at least 365.
 
+## Importing customers and suppliers
+
+`can import parties parties.csv` previews and `--apply` writes the whole file or nothing
+(`CAN_FINANCE_URL`, `CAN_FINANCE_TOKEN`). Each row needs `external_id` and `name`; running the same file
+again changes nothing. It needs `finance.write` and a token that is not limited to parties, projects or own
+records. There is no web page for this yet. See [specs/047-csv-import](../specs/047-csv-import/spec.md).
+
 ## CSV exports
 
 `GET /v1/exports/invoices.csv`, `payments.csv`, `expenses.csv` (scoped, audited). Text cells that

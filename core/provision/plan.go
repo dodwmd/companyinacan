@@ -19,6 +19,9 @@ type planInput struct {
 	NotBefore time.Time
 	// Accounts maps connector -> external id for the person's active accounts.
 	Accounts map[string]string
+	// Recorded are the connectors with an account record in any state. A leaver or mover looks the
+	// account up (or flags the step) at every other connector: see unlinked.go.
+	Recorded map[string]bool
 	// Applied maps connector -> groups the person was added to by this module.
 	Applied map[string][]string
 	// Groups are the person's SCIM group names.
@@ -85,7 +88,7 @@ func (p Policy) plan(conns *ConnectorSet, in planInput) ([]Step, error) {
 	for _, name := range conns.Names() {
 		cc := p.Conn[name]
 		desired := desiredGroups(cc, in.Groups)
-		ext, hasAcct := in.Accounts[name]
+		_, hasAcct := in.Accounts[name]
 		switch in.Kind {
 		case KindJoiner:
 			comp := opDisableAccount
@@ -98,7 +101,11 @@ func (p Policy) plan(conns *ConnectorSet, in planInput) ([]Step, error) {
 			}
 		case KindMover:
 			if !hasAcct {
-				continue // the module manages only accounts it created or was told about
+				// The module changes only accounts it created or was told about, and says so.
+				if !in.Recorded[name] {
+					add(Step{Op: opUpdateAccount, Connector: name, Arg: argUnlinked})
+				}
+				continue
 			}
 			add(Step{Op: opUpdateAccount, Connector: name})
 			applied := in.Applied[name]
@@ -114,9 +121,11 @@ func (p Policy) plan(conns *ConnectorSet, in planInput) ([]Step, error) {
 			}
 		case KindLeaver:
 			if !hasAcct {
+				if !in.Recorded[name] {
+					add(Step{Op: opDisableAccount, Connector: name, Arg: argUnlinked, NotBefore: ts(nb), notBefore: nb})
+				}
 				continue
 			}
-			_ = ext
 			for _, g := range in.Applied[name] {
 				add(Step{Op: opRemoveGroup, Connector: name, Arg: g, NotBefore: ts(nb), notBefore: nb})
 			}

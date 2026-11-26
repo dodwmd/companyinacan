@@ -235,6 +235,35 @@ func (s *Store) activeAccounts(ctx context.Context, party string) (map[string]st
 	return out, rows.Err()
 }
 
+// recordedConnectors are the connectors a person has an account record at, in any state.
+func (s *Store) recordedConnectors(ctx context.Context, party string) (map[string]bool, error) {
+	ctx, cancel := s.read(ctx)
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx, `SELECT connector FROM accounts WHERE party_id=?`, party)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]bool{}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		out[c] = true
+	}
+	return out, rows.Err()
+}
+
+// accountOwnedByAnother reports whether a downstream account is recorded for someone else.
+func (s *Store) accountOwnedByAnother(ctx context.Context, party, connector, ext string) (bool, error) {
+	ctx, cancel := s.read(ctx)
+	defer cancel()
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM accounts WHERE connector=? AND external_id=? AND party_id<>?`, connector, ext, party).Scan(&n)
+	return n > 0, err
+}
+
 // accountFor returns the recorded account (any state) of a person at a connector.
 func (s *Store) accountFor(ctx context.Context, party, connector string) (ext, state string, err error) {
 	ctx, cancel := s.read(ctx)

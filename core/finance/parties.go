@@ -224,6 +224,21 @@ func likeEscape(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
+var errMustStayVendor = fmt.Errorf("%w: the party has purchase orders and must stay a vendor", ErrConflict)
+
+// mustStayVendor refuses to narrow a party with purchase orders to a customer. Every path that
+// changes a party's kind calls it.
+func mustStayVendor(ctx context.Context, tx dbq, id int64) error {
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM purchase_orders WHERE vendor_id = ?`, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return errMustStayVendor
+	}
+	return nil
+}
+
 // UpdateParty changes a party. ifMatch, when set, must equal the stored version.
 func (s *Store) UpdateParty(ctx context.Context, a *Principal, id int64, ifMatch *int64, in PartyPatch) (*Party, error) {
 	if err := in.validate(); err != nil {
@@ -263,10 +278,8 @@ func (s *Store) UpdateParty(ctx context.Context, a *Principal, id int64, ifMatch
 		set(&cur.Notes, in.Notes)
 		// Narrowing a party's kind must not strand documents of the dropped kind.
 		if cur.Kind == "customer" {
-			var n int
-			_ = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM purchase_orders WHERE vendor_id = ?`, id).Scan(&n)
-			if n > 0 {
-				return fmt.Errorf("%w: the party has purchase orders and must stay a vendor", ErrConflict)
+			if err := mustStayVendor(ctx, tx, id); err != nil {
+				return err
 			}
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE parties SET kind=?, name=?, contact_name=?, email=?, phone=?, address=?, tax_id=?, currency=?, notes=?, version=version+1, updated_at=? WHERE id=? AND version=?`,

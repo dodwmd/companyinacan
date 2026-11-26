@@ -92,7 +92,7 @@ func TestMigrationsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	if v, _ := s.SchemaVersion(context.Background()); v != 2 {
+	if v, _ := s.SchemaVersion(context.Background()); v != 3 {
 		t.Fatalf("schema version %d", v)
 	}
 }

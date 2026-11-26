@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -89,9 +90,12 @@ type Service struct {
 	keys       *Keyring
 	audit      Auditor
 	deny       denyLimiter
-	rotateHook func() // tests: runs between reading a value and its compare-and-swap
-	retention  map[string]RetentionRule
-	now        func() time.Time
+	rotateHook func()     // tests: runs between reading a value and its compare-and-swap
+	importing  sync.Mutex // one CSV import at a time (specs/047-csv-import)
+	// importTimeout bounds an import's write transaction (tests on slow runners raise it).
+	importTimeout time.Duration
+	retention     map[string]RetentionRule
+	now           func() time.Time
 
 	approvals    ApprovalEngine
 	minResponses int
@@ -113,7 +117,7 @@ func Open(path string, opt Options) (*Service, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // serialises writes (cycle checks rely on it) and keeps idle RAM low
-	s := &Service{db: db, keys: opt.Keyring, audit: opt.Auditor, retention: opt.Retention, now: opt.Now, approvals: opt.Approvals, minResponses: opt.MinResponses}
+	s := &Service{db: db, importTimeout: defaultImportTimeout, keys: opt.Keyring, audit: opt.Auditor, retention: opt.Retention, now: opt.Now, approvals: opt.Approvals, minResponses: opt.MinResponses}
 	if s.now == nil {
 		s.now = time.Now
 	}
