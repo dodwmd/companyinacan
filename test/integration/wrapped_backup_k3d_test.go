@@ -197,10 +197,9 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 	if got := onNode(t, "cat "+dumpsOnNode+"/LAST-RUN"); strings.Contains(got, `"skipped"`) {
 		t.Errorf("something was skipped: %s", got)
 	}
-	t.Log("PROBE dumps:\n" + onNode(t, "ls -la "+dumpsOnNode+" "+dumpsOnNode+"/can-core") + "\n" +
-		mustKubectl(t, "-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "version") + "\n" +
-		mustKubectl(t, "-n", "can-system", "get", "configmap", "company", "-o", "yaml") + "\n" +
-		mustKubectl(t, "-n", "can-system", "get", "pods", "-o", "wide"))
+	t.Log("PROBE company:\n" + onNode(t, "ls -lAR /var/lib/kubelet/pods/*/volumes/kubernetes.io~configmap/company") + "\n" +
+		mustKubectl(t, "-n", "can-system", "get", "deploy", "can-core", "-o", "yaml") + "\n" +
+		mustKubectl(t, "-n", "can-system", "logs", "deploy/can-core", "--tail=80"))
 	t.Log("MEASURE dump set sizes:\n" + onNode(t, "cd "+dumpsOnNode+"/modules && ls -l */ | cat"))
 
 	work := t.TempDir()
