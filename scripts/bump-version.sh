@@ -1,8 +1,9 @@
 #!/bin/sh
 # Computes the next release version and, only with --tag, creates the annotated tag locally (epic E20).
 #   scripts/bump-version.sh <major|minor|patch|vX.Y.Z[-rc.N]> [--tag]
-# The version of the code is the git tag (the Makefile and the release workflow derive everything from
-# it), so there is no version file to edit. This script NEVER pushes: pushing the tag is what starts
+# The version of the code is the git tag (the Makefile and the release workflow derive it from there).
+# The module charts also name that version of the in-house images (core/modimages/version.txt, changed
+# with scripts/set-image-version.sh), and --tag refuses a tag that differs. This script NEVER pushes: pushing the tag is what starts
 # the release workflow, and that is a deliberate, separate step (docs/releasing.md).
 # --tag requires a clean work tree on main (BUMP_ALLOW_BRANCH=1 relaxes the branch check for tests).
 # SIGN=1 creates a signed tag (git tag -s) instead of an annotated one.
@@ -38,6 +39,11 @@ if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
 fi
 echo "current: $latest"
 echo "next:    $next"
+images="$(git rev-parse --show-toplevel)/core/modimages/version.txt"
+if [ -f "$images" ] && [ "v$(cat "$images")" != "$next" ]; then
+	echo "note: the charts name image version $(cat "$images"): first run scripts/set-image-version.sh ${next#v} and merge it" >&2
+	[ "$dotag" -eq 0 ] || exit 1
+fi
 [ "$dotag" -eq 1 ] || { echo "(dry run: add --tag to create the tag locally; nothing is pushed)"; exit 0; }
 
 branch=$(git rev-parse --abbrev-ref HEAD)

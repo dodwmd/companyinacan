@@ -77,6 +77,11 @@ jobs:
         if: steps.v.outputs.publish == 'true'
         run: |
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "the release tag is not an ancestor of main" >&2; exit 1; }
+      - name: The charts name the images this tag will publish
+        if: steps.v.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: sh scripts/check-image-version.sh "$VERSION"
       - name: Full test suite (lint, unit, contract, licences check)
         run: make test
       - name: can licences --check (THIRD_PARTY_LICENSES is current and every wrapped licence is accepted)
