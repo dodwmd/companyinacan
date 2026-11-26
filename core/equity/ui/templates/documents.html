@@ -1,0 +1,13 @@
+{{define "content"}}
+<h1>{{t "docs.title"}}</h1>
+<p>{{t "docs.intro"}}</p>
+{{if .Data.Page.Items}}
+<ul class="list">
+{{range .Data.Page.Items}}<li><a href="/me/grants/{{.Grant.ID}}/statement">{{t "docs.statement_for" .Grant.Type (qty .Grant.Quantity) (date .Grant.GrantDate)}}</a></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "mine.none"}}</p>{{end}}
+{{with .Data.Page.Next}}<p><a href="/me/documents?after={{.}}">{{t "common.more"}}</a></p>{{end}}
+<h2>{{t "docs.disclaimer"}}</h2>
+{{template "disclaimer" .Data.Notice}}
+<p>{{t "docs.not_advice"}}</p>
+{{end}}

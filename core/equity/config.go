@@ -22,7 +22,29 @@ type Config struct {
 	Introspect  IntrospectConfig  `yaml:"introspect"`
 	Retention   map[string]string `yaml:"retention"`
 	Directory   DirectoryConfig   `yaml:"directory"`
+	UI          UIConfig          `yaml:"ui"`
 }
+
+// UIConfig turns on the server-rendered web UI (specs/066-equity-ui). It is off by default: the
+// module then serves the JSON API only.
+type UIConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// InsecureCookies drops the Secure attribute (and the __Host- cookie prefix) for plain-HTTP
+	// local development. Leave it false behind TLS.
+	InsecureCookies bool `yaml:"insecure_cookies"`
+	// TrustProxy reads the client address for failed-login throttling from X-Forwarded-For (the
+	// last entry, as appended by the ingress). Set it only behind a proxy you control.
+	TrustProxy bool `yaml:"trust_proxy"`
+	// IdleMinutes and AbsoluteHours bound a session (defaults 30 minutes and 8 hours).
+	IdleMinutes   int `yaml:"idle_minutes"`
+	AbsoluteHours int `yaml:"absolute_hours"`
+	// TokenLogin keeps the "paste a personal access token" sign-in (default true). With it off the
+	// only way into the UI is a launch ticket (specs/036-module-ui-sso).
+	TokenLogin *bool `yaml:"token_login"`
+}
+
+// tokenLogin reports whether the pasted-token sign-in is offered (default true).
+func (c UIConfig) tokenLogin() bool { return c.TokenLogin == nil || *c.TokenLogin }
 
 // DirectoryConfig points at the people module's directory API. Without a url the service runs in
 // the attestation mode (specs/051-holder-identity).
@@ -121,6 +143,9 @@ func ParseConfig(data []byte) (*Config, error) {
 		if h := u.Hostname(); h != "localhost" && h != "127.0.0.1" && h != "::1" {
 			errs = append(errs, errors.New("directory.url must be https (or loopback); set directory.allow_insecure_http only for a protected in-cluster Service"))
 		}
+	}
+	if c.UI.IdleMinutes < 0 || c.UI.IdleMinutes > 24*60 || c.UI.AbsoluteHours < 0 || c.UI.AbsoluteHours > 24*30 {
+		errs = append(errs, errors.New("ui.idle_minutes and ui.absolute_hours are out of range"))
 	}
 	known := map[string]bool{}
 	for _, cl := range Classes {

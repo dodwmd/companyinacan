@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>{{t "home.title"}}</h1>
+<p>{{t "home.signed_in"}} <code>{{.Data.Subject}}</code></p>
+{{if .Data.DirectoryDown}}<p class="error" role="alert">{{t "err.directory"}}</p>
+{{else if .Caps.NeedsPerson}}<p class="notice">{{t "home.needs_person"}}</p>{{end}}
+{{with .Data.Mine}}
+<h2>{{t "mine.title"}}</h2>
+<p>{{t "home.my_grants" (len .Items)}} <a href="/me">{{t "home.open_mine"}}</a></p>
+{{if .Unconfirmed}}<p class="notice">{{t "mine.unconfirmed"}}</p>{{end}}
+{{end}}
+{{if .Data.Counts}}
+<h2>{{t "home.company"}}</h2>
+<dl class="facts">
+<dt>{{t "home.pending"}}</dt><dd class="num">{{.Data.Pending}}</dd>
+<dt>{{t "home.vesting_soon"}}</dt><dd class="num">{{.Data.VestingSoon}}</dd>
+</dl>
+<p><a href="/company">{{t "home.open_company"}}</a></p>
+{{end}}
+{{if not (or .Caps.Self .Caps.Structure .Caps.NeedsPerson .Data.DirectoryDown)}}<p class="muted">{{t "home.nothing"}}</p>{{end}}
+{{end}}

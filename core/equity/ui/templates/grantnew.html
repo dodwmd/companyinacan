@@ -1,0 +1,27 @@
+{{define "content"}}
+{{$d := .Data}}{{$f := .Data.Form}}
+<h1>{{t "grant.new_title"}}</h1>
+<p><a href="/company/entities/{{$d.Entity.ID}}">{{$d.Entity.Name}}</a></p>
+{{with $f.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<p>{{t "grant.new_intro"}}</p>
+<form method="post" action="/company/entities/{{$d.Entity.ID}}/grants" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="idem" value="{{$f.Idem}}">
+<p><label for="plan_id">{{t "grant.plan"}}</label><select id="plan_id" name="plan_id" required>{{range $d.Plans}}<option value="{{.Value}}"{{if eq .Value $f.Plan}} selected{{end}}>{{.Label}}</option>{{end}}</select></p>
+<p><label for="stakeholder_id">{{t "grant.holder"}}</label><select id="stakeholder_id" name="stakeholder_id" required>{{range $d.Holders}}<option value="{{.Value}}"{{if eq .Value $f.Stakeholder}} selected{{end}}>{{.Label}}</option>{{end}}</select></p>
+<p><label for="type">{{t "grant.type"}}</label><select id="type" name="type"><option value="NSO"{{if eq $f.Type "NSO"}} selected{{end}}>{{t "gtype.NSO"}}</option><option value="ISO"{{if eq $f.Type "ISO"}} selected{{end}}>{{t "gtype.ISO"}}</option><option value="RSU"{{if eq $f.Type "RSU"}} selected{{end}}>{{t "gtype.RSU"}}</option><option value="SAR"{{if eq $f.Type "SAR"}} selected{{end}}>{{t "gtype.SAR"}}</option></select></p>
+<p><label for="quantity">{{t "grant.quantity"}}</label><input id="quantity" name="quantity" inputmode="decimal" required value="{{$f.Quantity}}" autocomplete="off"></p>
+<p><label for="strike">{{t "grant.strike_in" $d.Entity.Currency}}</label><input id="strike" name="strike" inputmode="decimal" value="{{$f.Strike}}" autocomplete="off" aria-describedby="strike-hint"></p>
+<p id="strike-hint" class="hint">{{t "grant.strike_hint"}}</p>
+<p><label for="grant_date">{{t "grant.date"}}</label><input id="grant_date" type="date" name="grant_date" required value="{{$f.GrantDate}}"></p>
+<p><label for="vesting_start">{{t "grant.vest_start"}}</label><input id="vesting_start" type="date" name="vesting_start" required value="{{$f.VestStart}}"></p>
+<p><label for="expiry_date">{{t "grant.expiry"}}</label><input id="expiry_date" type="date" name="expiry_date" required value="{{$f.Expiry}}"></p>
+<p><label for="months">{{t "grant.months"}}</label><input id="months" name="months" inputmode="numeric" required value="{{$f.Months}}"></p>
+<p><label for="cliff_months">{{t "grant.cliff"}}</label><input id="cliff_months" name="cliff_months" inputmode="numeric" required value="{{$f.Cliff}}"></p>
+<p><label for="interval">{{t "grant.interval"}}</label><select id="interval" name="interval"><option value="monthly"{{if eq $f.Interval "monthly"}} selected{{end}}>{{t "interval.monthly"}}</option><option value="quarterly"{{if eq $f.Interval "quarterly"}} selected{{end}}>{{t "interval.quarterly"}}</option></select></p>
+<p><label for="rounding">{{t "grant.rounding"}}</label><select id="rounding" name="rounding"><option value="floor"{{if eq $f.Rounding "floor"}} selected{{end}}>{{t "rounding.floor"}}</option><option value="nearest"{{if eq $f.Rounding "nearest"}} selected{{end}}>{{t "rounding.nearest"}}</option><option value="fractional"{{if eq $f.Rounding "fractional"}} selected{{end}}>{{t "rounding.fractional"}}</option></select></p>
+<p><label for="ptep_days">{{t "grant.ptep_label"}}</label><input id="ptep_days" name="ptep_days" inputmode="numeric" required value="{{$f.PTEP}}"></p>
+<p><label for="notes">{{t "grant.notes"}}</label><textarea id="notes" name="notes" rows="3" maxlength="2000">{{$f.Notes}}</textarea></p>
+<p><button type="submit">{{t "grant.create"}}</button></p>
+</form>
+{{end}}

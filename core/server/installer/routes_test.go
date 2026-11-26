@@ -93,9 +93,13 @@ func TestExposedUIRoutesOnlyUIPaths(t *testing.T) {
 		{"jobs", "8080", "PathPrefix(`/applications/`)"},
 		{"finance", "8080", "PathPrefix(`/invoices/`)"},
 		{"files", "8095", "PathPrefix(`/spaces/`)"},
+		{"equity", "8081", "PathPrefix(`/company/`)"},
 	} {
 		t.Run(c.id, func(t *testing.T) {
 			in, api, spec := routed(t, c.id, config.Expose{UI: true})
+			if c.id == "equity" {
+				spec.Links = nil // its directory connection is links_test.go's
+			}
 			enable(t, in, spec)
 			r := get(t, api, "IngressRoute", spec.Namespace, routeWeb)
 			js := toJSON(r["spec"])

@@ -1,0 +1,39 @@
+{{define "content"}}
+{{$e := .Data.Entity}}
+<h1>{{$e.Name}}</h1>
+<p class="actions">
+{{if .Caps.CapTable}}<a href="/company/entities/{{$e.ID}}/captable">{{t "cap.title"}}</a>{{end}}
+<a href="/company/entities/{{$e.ID}}/stakeholders">{{t "holder.list_title"}}</a>
+<a href="/company/entities/{{$e.ID}}/grants">{{t "grant.list_title"}}</a>
+<a href="/company/entities/{{$e.ID}}/exercises">{{t "ex.list_title"}}</a>
+{{if .Caps.Export}}<a href="/company/entities/{{$e.ID}}/exports">{{t "export.title"}}</a>{{end}}
+</p>
+<h2>{{t "company.pools"}}</h2>
+{{range .Data.Plans}}
+<section class="card">
+<h3>{{.Plan.Name}}</h3>
+<dl class="facts">
+<dt>{{t "company.class"}}</dt><dd>{{.ClassName}}</dd>
+<dt>{{t "company.adopted"}}</dt><dd>{{date .Plan.AdoptedOn}}</dd>
+<dt>{{t "pool.authorised"}}</dt><dd class="num">{{qty .Pool.Authorised}}</dd>
+<dt>{{t "pool.granted"}}</dt><dd class="num">{{qty .Pool.GrantedOutstanding}}</dd>
+<dt>{{t "pool.exercised"}}</dt><dd class="num">{{qty .Pool.Exercised}}</dd>
+<dt>{{t "pool.available"}}</dt><dd class="num">{{qty .Pool.Available}}</dd>
+<dt>{{t "pool.pending"}}</dt><dd class="num">{{qty .Pool.PendingApproval}}</dd>
+</dl>
+</section>
+{{else}}<p class="muted">{{t "company.no_plans"}}</p>
+{{end}}
+<h2>{{t "company.classes"}}</h2>
+{{if .Data.Classes}}
+<div class="scroll" role="region" aria-label="{{t "company.classes"}}" tabindex="0">
+<table>
+<caption class="visually-hidden">{{t "company.classes"}}</caption>
+<thead><tr><th scope="col">{{t "company.class"}}</th><th scope="col">{{t "company.kind"}}</th><th scope="col" class="num">{{t "pool.authorised"}}</th><th scope="col" class="num">{{t "company.issued"}}</th></tr></thead>
+<tbody>
+{{range .Data.Classes}}<tr><th scope="row">{{.Name}}</th><td>{{label "classkind" .Kind}}</td><td class="num">{{qty .Authorised}}</td><td class="num">{{qty .Issued}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "company.no_classes"}}</p>{{end}}
+{{end}}

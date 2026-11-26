@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>{{t "docs.statement_title"}}</h1>
+<p>{{t "docs.statement_note"}}</p>
+<h2>{{t "grant.terms"}}</h2>
+{{template "terms" (dict2 .Data.Position.Grant .Data.Schedule)}}
+<h2>{{t "vest.today"}}</h2>
+{{template "position" .Data.Position}}
+{{template "timeline" .Data.Position}}
+<h2>{{t "docs.disclaimer"}}</h2>
+{{template "disclaimer" .Data.Notice}}
+<p class="noprint">{{t "docs.print"}} <a href="/me/documents">{{t "docs.back"}}</a></p>
+{{end}}

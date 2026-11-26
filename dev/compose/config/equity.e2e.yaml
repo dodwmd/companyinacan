@@ -6,3 +6,7 @@ keyring_file: /secrets/equity-keyring
 introspect:
   url: http://introstub:8099/
   allow_insecure_http: true
+ui:
+  enabled: true
+  insecure_cookies: true
+  trust_proxy: true

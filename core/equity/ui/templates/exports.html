@@ -1,0 +1,12 @@
+{{define "content"}}
+{{$e := .Data.Entity}}
+<h1>{{t "export.title"}}</h1>
+<p><a href="/company/entities/{{$e.ID}}">{{$e.Name}}</a></p>
+<p class="notice">{{t "export.warning"}}</p>
+<form method="post" action="/company/entities/{{$e.ID}}/exports" class="card">
+{{template "csrf" .}}
+<p><label for="name">{{t "export.what"}}</label><select id="name" name="name"><option value="captable">{{t "export.captable"}}</option><option value="grants">{{t "export.grants"}}</option><option value="ledger">{{t "export.ledger"}}</option></select></p>
+<p><label for="as_of">{{t "export.asof"}}</label><input id="as_of" type="date" name="as_of"></p>
+<p><button type="submit">{{t "export.download"}}</button></p>
+</form>
+{{end}}

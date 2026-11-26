@@ -345,6 +345,7 @@ webhook: { url: "" }                          # can-core event endpoint; needs C
 introspect: { url: "", allow_insecure_http: false }
 retention: { equity-stakeholder: 7y, equity-grants: 7y, equity-valuation: 7y }
 directory: { url: "", allow_insecure_http: false }   # the people module's API; empty = attestation mode
+ui: { enabled: false }                        # the web UI, below
 ```
 
 Environment: `CAN_EQUITY_API_TOKEN` (at least 24 characters, the service account), `CAN_EQUITY_WEBHOOK_SECRET`,
@@ -361,6 +362,40 @@ identity-report | purge -subject <stk id> -class <class|all> | version`.
 Create endpoints that make records (grants, exercises, ledger entries) honour an `Idempotency-Key`
 header: the same key and body replays the first result (200), the same key with another body is a 409.
 The table stores resource ids only, so a replay re-reads the record under the caller's current rights.
+
+## Web UI
+
+Off by default. [`specs/066-equity-ui`](../specs/066-equity-ui/spec.md) has the requirements and the
+[route table](../specs/066-equity-ui/contracts/ui-routes.md). Server-rendered pages, no JavaScript, served on the
+module's listener beside `/v1`.
+
+```yaml
+ui:
+  enabled: true
+  # insecure_cookies: true   # plain-HTTP development only (drops Secure and the __Host- prefix)
+  # trust_proxy: true        # behind your ingress: take the client address from X-Forwarded-For
+  # idle_minutes: 30
+  # absolute_hours: 8
+  # token_login: false       # only launch tickets from the admin UI's Apps page
+```
+
+Under can-core, `modules.equity.expose.ui: true` turns it on and routes `https://equity.<domain>`
+([`module-routing.md`](module-routing.md)); **Open** on the Apps page signs a person in. The upgrade that brings
+the UI is held for the operator's approval, because it adds web paths to the module.
+
+- **Holders** see **My equity** and **Documents**: only records linked to their person and confirmed by a
+  second person.
+- **HR, finance, board and admin** see **Company** and **Holder checks**, with what their roles allow.
+- Grant approval, activation, draft deletion, payment, share issue and holder confirmation ask you to confirm
+  who you are again (your token, or an admin sign-in at most 5 minutes old).
+- The service account token cannot sign in.
+
+**Read before relying on it.** For self-service and grant administration the account must be a person: set
+`modules.equity.settings.identity: directory` with the `people` module. And on a stock `can` install **no sign-in
+carries the `board` role**, which grant approval needs (see
+[what the UI cannot do](../specs/066-equity-ui/spec.md#what-the-ui-cannot-do-on-a-stock-can-install)).
+
+In the Compose stack the UI is on at `http://equity.localhost:8080/` and, for Apps, `http://localhost:8186`.
 
 ## Notes on rate limiting, timing and permissions
 

@@ -1,0 +1,14 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>{{t "ex.list_title"}}</h1>
+<p><a href="/company/entities/{{$d.Entity.ID}}">{{$d.Entity.Name}}</a></p>
+<form method="get" action="/company/entities/{{$d.Entity.ID}}/exercises" class="card">
+<p><label for="status">{{t "grant.status"}}</label><select id="status" name="status"><option value="">{{t "common.all"}}</option>{{range $d.Statuses}}<option value="{{.}}"{{if eq . $d.Status}} selected{{end}}>{{label "xstatus" .}}</option>{{end}}</select></p>
+<p><button type="submit">{{t "common.filter"}}</button></p>
+</form>
+{{if $d.Items}}
+<ul class="list">
+{{range $d.Items}}<li><a href="/company/exercises/{{.ID}}">{{if .Holder}}{{.Holder}}{{else}}<code>{{.StakeholderID}}</code>{{end}}: {{t "mine.request" (qty .Quantity) (money .DueMinor .Currency)}}</a> <span class="badge">{{label "xstatus" .Status}}</span></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "ex.none"}}</p>{{end}}
+{{end}}

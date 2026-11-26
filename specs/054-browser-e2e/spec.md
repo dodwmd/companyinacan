@@ -85,4 +85,4 @@ Chrome itself is not distributed: CI uses the one on the GitHub runner.
 - Firefox and WebKit.
 - https: `Secure` cookies, the `__Secure-` prefix and separate host names per module.
 - Public invoice links and payment, OIDC sign-in, the setup wizard's apply step.
-- equity, board and entity have no web UI.
+- board and entity have no web UI. equity's (`specs/066-equity-ui`) is covered since E17g.
