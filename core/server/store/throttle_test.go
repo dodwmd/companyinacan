@@ -35,6 +35,20 @@ func TestRegisterFailureLocksAtomicallyAndExpires(t *testing.T) {
 	}
 }
 
+// A lock that outlives its counting window is not dropped when the window ends.
+func TestRegisterFailureKeepsARunningLock(t *testing.T) {
+	ctx := context.Background()
+	db := open(t)
+	now := time.Unix(10_000, 0)
+	for i := range 3 { // the third, late in the window, locks
+		_, _, _ = db.RegisterFailure(ctx, "k", 3, time.Minute, time.Minute, now.Add(time.Duration(i)*25*time.Second))
+	}
+	a, locked, err := db.RegisterFailure(ctx, "k", 3, time.Minute, time.Minute, now.Add(70*time.Second))
+	if err != nil || locked || !now.Add(70*time.Second).Before(a.LockedUntil) {
+		t.Fatalf("the lock was lifted with the window: %+v %v %v", a, locked, err)
+	}
+}
+
 func TestClearAndPruneLoginAttempts(t *testing.T) {
 	ctx := context.Background()
 	db := open(t)

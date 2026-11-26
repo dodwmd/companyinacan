@@ -54,6 +54,10 @@ type Relay struct {
 // credential.
 var ErrNotConfigured = errors.New("no email relay is configured")
 
+// ErrSecretUnreadable means the relay Secret is there but could not be read: what the relay is, is
+// unknown, which is not the same as there being none.
+var ErrSecretUnreadable = errors.New("the relay Secret cannot be read")
+
 // Source says where the relay settings and sending rules come from. Both are read afresh on every
 // use, so a changed Secret or company.yaml applies without a restart.
 type Source struct {
@@ -195,7 +199,7 @@ func (s Source) For(co *config.Company) (Policy, error) {
 	}
 	relay, err := s.relay(cr, p.domain)
 	if err != nil {
-		p.RelayErr = fmt.Errorf("%w: %s", ErrNotConfigured, err.Error())
+		p.RelayErr = fmt.Errorf("%w: %w", ErrNotConfigured, err)
 		return p, nil
 	}
 	p.Relay = relay
@@ -211,7 +215,7 @@ func (s Source) secret(key string) (string, error) {
 		return "", nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("the relay Secret key %q cannot be read", key)
+		return "", fmt.Errorf("%w (key %q)", ErrSecretUnreadable, key)
 	}
 	return strings.TrimRight(string(b), "\r\n"), nil
 }

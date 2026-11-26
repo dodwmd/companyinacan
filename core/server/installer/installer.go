@@ -626,15 +626,9 @@ func (in *Installer) ensureRelaySecret(ctx context.Context, s reconcile.Spec) (m
 	if !modsecrets.WantsRelay(s.ID) || !slices.Contains(s.Manifest.Requires.Capabilities, "email.send") {
 		return nil, nil
 	}
-	vals := map[string]string{}
-	if in.cfg.Relay != nil && reconcile.RelayOptIn(s.Email, s.ID) {
-		r, err := in.cfg.Relay(s)
-		if err != nil {
-			return nil, fmt.Errorf("reading the email relay settings: %w", err)
-		}
-		if r != nil {
-			vals = map[string]string{"host": r.Host, "port": fmt.Sprint(r.Port), "user": r.Username, "password": r.Password, "from": r.From, "encryption": r.Encryption}
-		}
+	vals, err := in.relayValues(s)
+	if err != nil {
+		return nil, err
 	}
 	o := secret(s.Namespace, secretSMTP, s.ID, nil)
 	delete(o, "stringData")
@@ -647,6 +641,35 @@ func (in *Installer) ensureRelaySecret(ctx context.Context, s reconcile.Spec) (m
 		return nil, fmt.Errorf("writing the email Secret: %w", err)
 	}
 	return vals, nil
+}
+
+// relayValues is what `can-smtp` holds for s: empty without the opt-in or a usable relay.
+func (in *Installer) relayValues(s reconcile.Spec) (map[string]string, error) {
+	vals := map[string]string{}
+	if in.cfg.Relay == nil || !reconcile.RelayOptIn(s.Email, s.ID) {
+		return vals, nil
+	}
+	r, err := in.cfg.Relay(s)
+	if err != nil {
+		return nil, fmt.Errorf("reading the email relay settings: %w", err)
+	}
+	if r != nil {
+		vals = map[string]string{"host": r.Host, "port": fmt.Sprint(r.Port), "user": r.Username, "password": r.Password, "from": r.From, "encryption": r.Encryption}
+	}
+	return vals, nil
+}
+
+// RelayFingerprint implements reconcile.RelayAware. It is keyed with the module's own secret, like
+// the pod's secret version, so the password cannot be compared across installations.
+func (in *Installer) RelayFingerprint(_ context.Context, s reconcile.Spec) (string, error) {
+	if !modsecrets.WantsRelay(s.ID) || s.Manifest == nil || !slices.Contains(s.Manifest.Requires.Capabilities, "email.send") {
+		return "", nil
+	}
+	vals, err := in.relayValues(s)
+	if err != nil || len(vals) == 0 {
+		return "", err
+	}
+	return secretVersion(s.HMACSecret, vals), nil
 }
 
 // checkRotations refuses a rotation request that names a key the module has no rotatable secret

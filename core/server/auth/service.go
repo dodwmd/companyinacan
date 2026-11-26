@@ -316,21 +316,23 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		return finish(LoginResult{}, ErrInvalidCredentials)
 	}
 	var delay time.Duration
-	for _, k := range []struct {
-		key string
-		max int
-	}{{userKey, pol.MaxUserFailures}, {ipKey, pol.MaxIPFailures}} {
-		a, err := s.db.GetLoginAttempt(ctx, k.key)
-		if err != nil {
+	var held []reservation // HardLock only: counted before checking
+	keys := []reservation{{key: userKey, max: pol.MaxUserFailures}, {key: ipKey, max: pol.MaxIPFailures}}
+	if pol.HardLock {
+		var err error
+		if held, err = s.reserve(ctx, keys, now); err != nil {
 			return LoginResult{}, err
 		}
-		if pol.HardLock {
-			if now.Before(a.LockedUntil) {
-				return LoginResult{}, &LockedError{RetryAfter: a.LockedUntil.Sub(now)}
+	} else {
+		for _, k := range keys {
+			a, err := s.db.GetLoginAttempt(ctx, k.key)
+			if err != nil {
+				return LoginResult{}, err
 			}
-		} else if now.Sub(a.FirstFailed) <= pol.Window { // counters decay with the window
-			if d := s.backoff(a.Failures, k.max); d > delay {
-				delay = d
+			if now.Sub(a.FirstFailed) <= pol.Window { // counters decay with the window
+				if d := s.backoff(a.Failures, k.max); d > delay {
+					delay = d
+				}
 			}
 		}
 	}
@@ -362,6 +364,7 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 	if totpOK {
 		pwOK, verr := s.verify(ctx, r.Password, hash)
 		if verr != nil {
+			s.release(ctx, held) // nothing was compared
 			return LoginResult{}, verr
 		}
 		// A disabled account is refused before anything is consumed or cleared: the TOTP step
@@ -371,13 +374,26 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		}
 	}
 	if !ok {
-		if err := s.fail(ctx, userKey, pol.MaxUserFailures, r.Username, r.IP, now); err != nil {
-			return LoginResult{}, err
+		if pol.HardLock { // already counted: only the audit entries are left
+			for _, h := range held {
+				s.auditFailure(ctx, h.key, h.locked, r.Username, r.IP)
+			}
+		} else {
+			for _, k := range keys {
+				if err := s.fail(ctx, k.key, k.max, r.Username, r.IP, now); err != nil {
+					return LoginResult{}, err
+				}
+			}
 		}
-		if err := s.fail(ctx, ipKey, pol.MaxIPFailures, r.Username, r.IP, now); err != nil {
-			return LoginResult{}, err
+		account := ""
+		if uerr == nil {
+			account = u.Username
 		}
+		s.noteFailure(ctx, account, r.IP, now)
 		return finish(LoginResult{}, ErrInvalidCredentials)
+	}
+	if len(held) > 0 {
+		s.release(ctx, held[1:]) // the address keeps its earlier failures; the pair is cleared below
 	}
 	_ = s.db.ClearLoginAttempt(ctx, userKey)
 	if s.opt.LocalPolicy != nil && !s.opt.LocalPolicy(ctx, u) {
@@ -408,12 +424,16 @@ func (s *Service) fail(ctx context.Context, key string, max int, username, ip st
 	if err != nil {
 		return err
 	}
+	s.auditFailure(ctx, key, locked, username, ip)
+	return nil
+}
+
+func (s *Service) auditFailure(ctx context.Context, key string, locked bool, username, ip string) {
 	if locked { // one audit entry per lock, not one per refused attempt
 		s.recordBestEffort(ctx, username, "admin.login.locked", ip)
 	} else if strings.HasPrefix(key, "user:") {
 		s.recordBestEffort(ctx, username, "admin.login.failed", ip)
 	}
-	return nil
 }
 
 // Authenticate resolves a cookie token to a live session and its user.
