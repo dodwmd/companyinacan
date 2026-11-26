@@ -243,14 +243,17 @@ func TestIdentityExistingRecordsAreReportedForReview(t *testing.T) {
 	if len(items) != 2 || items[0].Reason != ReviewUnconfirmedLink {
 		t.Fatalf("review = %+v", items)
 	}
-	// still readable by its holder, not yet writable
+	// still readable by staff, but not by the person it names and not yet writable
 	catSelf := e.actor(Principal{Subject: "user:cat", Roles: []string{RoleEmployee}})
-	m(e.s.GetStakeholder(e.ctx, catSelf, rec))
+	_, err = e.s.GetStakeholder(e.ctx, catSelf, rec)
+	wantErr(t, err, ErrNotFound, "self read of an unconfirmed record")
+	m(e.s.GetStakeholder(e.ctx, e.ben, rec))
 	wantErr(t, e.issue(e.ben, rec), ErrConflict, "legacy record")
 	// made by the service account: the holder alone must not confirm it
 	_, err = e.s.VerifyPerson(e.ctx, e.cat, rec)
 	wantErr(t, err, ErrSeparation, "holder confirming a service-made record")
 	m(e.s.VerifyPerson(e.ctx, e.ben, rec))
+	m(e.s.GetStakeholder(e.ctx, catSelf, rec))
 	e.must(e.issue(e.ben, rec))
 }
 

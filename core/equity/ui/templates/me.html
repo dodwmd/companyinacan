@@ -16,5 +16,6 @@
 <ul class="list">
 {{range .Data.Exercises}}<li><a href="/me/grants/{{.GrantID}}">{{t "mine.request" (qty .Quantity) (money .DueMinor .Currency)}}</a> <span class="badge">{{label "xstatus" .Status}}</span></li>
 {{end}}</ul>
+{{with .Data.MoreExercises}}<p><a href="/me?ex_after={{.}}">{{t "common.more"}}</a></p>{{end}}
 {{end}}
 {{end}}

@@ -2095,8 +2095,8 @@
   "/v1/entities/{id}/exercises":
     "get":
       "operationId": "list_exercises"
-      "summary": "Query: status"
-      "description": "Query: status. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "summary": "Query: status, cursor"
+      "description": "Query: status, cursor (next_cursor of the previous page, 500 per page). Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "exercises"
       "parameters":
@@ -2108,6 +2108,11 @@
             "type": "string"
         -
           "name": "status"
+          "in": "query"
+          "schema":
+            "type": "string"
+        -
+          "name": "cursor"
           "in": "query"
           "schema":
             "type": "string"
@@ -3415,9 +3420,15 @@
     "get":
       "operationId": "list_my_exercises"
       "summary": "The caller's own exercise requests"
-      "description": "The caller's own exercise requests. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "description": "The caller's own exercise requests, on confirmed records, 500 per page (cursor). Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "self"
+      "parameters":
+        -
+          "name": "cursor"
+          "in": "query"
+          "schema":
+            "type": "string"
       "responses":
         "200":
           "description": "ok"
@@ -4598,6 +4609,8 @@
           "type": "array"
           "items":
             "$ref": "#/components/schemas/Exercise"
+        "next_cursor":
+          "type": "string"
       "required":
         - "items"
     "PaymentInput":

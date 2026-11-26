@@ -350,8 +350,17 @@ func (s *Service) DeleteGrant(ctx context.Context, a Actor, id string) error {
 	return nil
 }
 
+// offered reports whether the grant was ever approved, so is something its holder may see. A draft
+// or pending grant is not yet an offer, and one cancelled before approval never was.
+func offered(g *grantRow) bool {
+	return g.ApprovedOn != "" && g.Status != GrantDraft && g.Status != GrantPending
+}
+
+// offeredSQL is offered over the grants table.
+const offeredSQL = `g.approved_on IS NOT NULL AND g.status NOT IN ('draft', 'pending_approval')`
+
 // visibleTo applies record-level visibility: the holder sees their own grant only once it has
-// been approved (a draft or pending grant is not yet an offer); everyone else needs a role.
+// been approved (offered); everyone else needs a role.
 func (s *Service) visibleTo(ctx context.Context, a Actor, g *grantRow) (Fact, bool, error) {
 	f, err := s.selfFact(ctx, s.db, a, g.StakeholderID)
 	if err != nil {
@@ -360,7 +369,7 @@ func (s *Service) visibleTo(ctx context.Context, a Actor, g *grantRow) (Fact, bo
 	if !Decide(a, ActGrantRead, f) {
 		return f, false, nil
 	}
-	if !a.any() && (g.Status == GrantDraft || g.Status == GrantPending) {
+	if !a.any() && !offered(g) {
 		return f, false, nil
 	}
 	return f, true, nil
@@ -436,7 +445,7 @@ func (s *Service) listGrants(ctx context.Context, a Actor, where string, args []
 		args = append(args, f.StakeholderID)
 	}
 	if selfOnly {
-		q += ` AND g.status NOT IN ('draft', 'pending_approval')`
+		q += ` AND ` + offeredSQL
 	}
 	q += ` ORDER BY g.rowid LIMIT ?`
 	args = append(args, f.Limit+1)
@@ -481,12 +490,12 @@ func (s *Service) listGrants(ctx context.Context, a Actor, where string, args []
 	return page, nil
 }
 
-// MyGrants lists the caller's own grants (approved or later) across entities.
+// MyGrants lists the caller's own grants (approved or later, on confirmed records) across entities.
 func (s *Service) MyGrants(ctx context.Context, a Actor, f GrantFilter) (*GrantPage, error) {
 	if err := s.authorize(ctx, a, ActSelfList, Fact{}, "self"); err != nil {
 		return nil, err
 	}
-	return s.listGrants(ctx, a, `g.stakeholder_id IN (SELECT id FROM stakeholders WHERE person_id = ? AND erased_at IS NULL)`, []any{a.PersonID}, f, true)
+	return s.listGrants(ctx, a, `g.stakeholder_id IN `+s.ownRecords(), []any{a.PersonID}, f, true)
 }
 
 // ---- lifecycle -------------------------------------------------------------------------------

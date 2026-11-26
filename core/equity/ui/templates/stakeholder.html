@@ -17,6 +17,8 @@
 <form method="post" action="/company/stakeholders/{{$d.Holder.ID}}/{{if eq $d.Pending "verify"}}verify{{else}}attest{{end}}" class="card">
 {{template "csrf" .}}
 <p>{{if eq $d.Pending "verify"}}{{t "holder.verify_what"}}{{else}}{{t "holder.attest_what"}}{{end}}</p>
+{{if eq $d.Pending "verify"}}<input type="hidden" name="person_id" value="{{$d.Holder.PersonID}}">
+<p>{{t "holder.person"}}: <code>{{$d.Holder.PersonID}}</code> {{if $d.PersonName}}<strong>{{$d.PersonName}}</strong>{{else}}<span class="muted">{{t "holder.person_unnamed"}}</span>{{end}}</p>{{end}}
 {{template "stepup" .}}
 <p><button type="submit">{{if eq $d.Pending "verify"}}{{t "holder.verify"}}{{else}}{{t "holder.attest"}}{{end}}</button></p>
 </form>

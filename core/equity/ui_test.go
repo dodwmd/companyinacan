@@ -203,7 +203,7 @@ func TestUIGrantAndExerciseChain(t *testing.T) {
 	eve.post("/me/grants/"+id+"/exercise", 400, "quantity", "1000.5", "idem", "ex1") // not accepted
 	eve.post("/me/grants/"+id+"/exercise", 303, "quantity", "1000.5", "idem", "ex1", "accept", "yes")
 	eve.post("/me/grants/"+id+"/exercise", 303, "quantity", "1000.5", "idem", "ex1", "accept", "yes")
-	ex := m(u.s.MyExercises(u.ctx, u.eve))
+	ex := m(u.s.MyExercises(u.ctx, u.eve, 0)).Items
 	if len(ex) != 1 {
 		t.Fatalf("a resent request made %d exercises", len(ex))
 	}
@@ -320,7 +320,7 @@ func TestUIHolderQueueAndRegistration(t *testing.T) {
 	has(t, hr2.confirm(page+"/attest", 200).Body.String(), "Holder attested as external.", "Confirmed by a second person")
 	lacks(t, hr.get("/company/identity", 200), "Ada Advisor")
 	// no directory: there is no person link to verify
-	hr2.confirm(page+"/verify", 409)
+	hr2.confirm(page+"/verify", 409, "person_id", personEve)
 }
 
 func TestUIDirectoryModeVerification(t *testing.T) {
@@ -338,8 +338,18 @@ func TestUIDirectoryModeVerification(t *testing.T) {
 	stranger.post(list, 403, "kind", "advisor", "name", "X")
 	has(t, ben.get("/company/identity", 200), "Cat Holder", "Person link not confirmed")
 	has(t, ben.get(page, 200), page+"/verify")
-	ann.confirm(page+"/verify", 403)
-	has(t, ben.confirm(page+"/verify", 200).Body.String(), "Person link confirmed.")
+	// the form posts the person it showed; this fake directory names nobody
+	has(t, ben.get(page, 200), `name="person_id" value="`+personCat+`"`, "No name from the directory")
+	ann.confirm(page+"/verify", 403, "person_id", personCat)
+	ben.confirm(page+"/verify", 400)
+	// relinked after the page was shown: nothing is confirmed
+	stk := page[strings.LastIndex(page, "/")+1:]
+	m(u.s.LinkPerson(u.ctx, m(u.s.ResolveActor(u.ctx, &Principal{Subject: "user:ann", Roles: []string{RoleHR}})), stk, personNew))
+	has(t, ben.confirm(page+"/verify", 409, "person_id", personCat).Body.String(), "changed since it was shown")
+	if n := u.count(`SELECT COUNT(*) FROM stakeholders WHERE id = ? AND person_verified_by IS NOT NULL`, stk); n != 0 {
+		t.Fatal("confirmed a link nobody was shown")
+	}
+	has(t, ben.confirm(page+"/verify", 200, "person_id", personNew).Body.String(), "Person link confirmed.")
 
 	dir.down = true
 	u.s.subjects.m = nil
