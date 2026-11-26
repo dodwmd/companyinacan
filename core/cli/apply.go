@@ -40,6 +40,10 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				}
 				return silent(ExitFailure)
 			}
+			// Warnings (a module not ready, a backup hook that cannot run) are shown at enable time.
+			for _, p := range ps {
+				fmt.Fprintln(cmd.ErrOrStderr(), "warning:", p.String())
+			}
 			if !dryRun && !recordOnly {
 				out, err := syncCompany(cmd, filepath.Join(dir, "company.yaml"), kubeContext)
 				if err != nil {

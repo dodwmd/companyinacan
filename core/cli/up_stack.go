@@ -54,7 +54,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release manifest pinning every image by digest (default deploy/release-images.json when present)")
 	fl.BoolVar(&f.printSecrets, "print-secrets", false, "print the admin password, TOTP secret and recovery kit without a terminal (CI); never the default")
 	fl.BoolVar(&f.noDefaultBundle, "no-default-bundle", false, "do not add the forms module to the company pushed to the cluster")
-	fl.BoolVar(&f.allowBrokenBackup, "allow-broken-backup", false, "accept --backup-*  although backups cannot work yet (the can-core pod cannot mount the host dump directory); the kit is marked with that caveat")
+	fl.BoolVar(&f.allowBrokenBackup, "allow-broken-backup", false, "deprecated, does nothing (kept so existing commands keep working)")
 	fl.BoolVar(&f.writeBundle, "write-bundle", false, "also write the default bundle (the forms module) into company.yaml on disk, so `can apply` keeps it")
 	fl.BoolVar(&f.forceCompany, "force-company", false, "overwrite the company.yaml in the cluster even if it was changed there (admin UI, `can apply`) since the last `can up`")
 	fl.BoolVar(&f.domainLive, "domain-live", false, "the company domain's DNS records resolve to the server: also route and certify it (implied by dns.provider: cloudflare)")
@@ -77,6 +77,7 @@ type stackPrep struct {
 	images      launch.ImageSet
 	backup      *launch.BackupInstall
 	companyYAML []byte
+	mods        map[string]*config.Module
 	smtp        *launch.SMTPRelay
 }
 
@@ -115,9 +116,16 @@ func (t *target) stackPreflight(f *stackFlags) (*stackPrep, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &stackPrep{images: set, companyYAML: raw}
+	p := &stackPrep{images: set, companyYAML: raw, mods: map[string]*config.Module{}}
 	if p.smtp, err = t.smtpRelay(f.smtpCreds); err != nil {
 		return nil, err
+	}
+	// Best effort, for warnings: what cannot be read is judged by the install below, if any.
+	md := resolveModulesDir(f.modulesDir, t.dir)
+	for id := range t.company.Modules {
+		if m, err := loadModule(md, id); err == nil {
+			p.mods[id] = m
+		}
 	}
 	if !f.backupWanted() {
 		return p, nil
@@ -152,26 +160,32 @@ func (t *target) stackPreflight(f *stackFlags) (*stackPrep, error) {
 	if _, err := backup.NewKit(in); err != nil { // validates the endpoint, bucket and credentials shape
 		return nil, fmt.Errorf("backup settings: %w", err)
 	}
-	mods := map[string]*config.Module{}
-	md := resolveModulesDir(f.modulesDir, t.dir)
 	for id, e := range t.company.Modules {
-		if !e.IsEnabled() {
-			continue
-		}
-		mp, ok := validate.ManifestPath(md, id)
-		if !ok {
-			return nil, fmt.Errorf("module %q has no manifest in %s", id, md)
-		}
-		doc, ps := config.Load(mp)
-		if problem.HasErrors(ps) {
-			return nil, errors.New(ps[0].String())
-		}
-		if mods[id], err = config.DecodeModule(doc); err != nil {
-			return nil, fmt.Errorf("%s: %w", mp, err)
+		if e.IsEnabled() && p.mods[id] == nil {
+			if _, err := loadModule(md, id); err != nil {
+				return nil, err
+			}
 		}
 	}
-	p.backup = &launch.BackupInstall{Input: in, Mods: mods, Settings: backup.DefaultSettings()}
+	p.backup = &launch.BackupInstall{Input: in, Mods: p.mods, Settings: backup.DefaultSettings()}
 	return p, nil
+}
+
+// loadModule reads the manifest of module id from the modules directory md.
+func loadModule(md, id string) (*config.Module, error) {
+	mp, ok := validate.ManifestPath(md, id)
+	if !ok {
+		return nil, fmt.Errorf("module %q has no manifest in %s", id, md)
+	}
+	doc, ps := config.Load(mp)
+	if problem.HasErrors(ps) {
+		return nil, errors.New(ps[0].String())
+	}
+	m, err := config.DecodeModule(doc)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", mp, err)
+	}
+	return m, nil
 }
 
 // stackRoutes decides which hostnames are routed, and how.
@@ -247,7 +261,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	o := launch.Options{
 		Dir: t.dir, Company: t.company, CompanyYAML: prep.companyYAML, Images: prep.images, Routes: routes,
-		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, Backup: prep.backup, SMTP: prep.smtp,
+		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, Backup: prep.backup, Mods: prep.mods, SMTP: prep.smtp,
 	}
 	d := launch.Deps{
 		Kube: lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)), Loader: launch.SSHImageLoader{Host: host}, Host: host,
@@ -375,7 +389,6 @@ func (t *target) summarize(cmd *cobra.Command, g *globalOpts, out io.Writer, res
 			p("\nAdmin: %s. Lost it? kubectl -n can-system exec -i deploy/can-core -- /can-core admin reset-password --rotate-totp (password on stdin).\n", lr.AdminNote)
 		}
 		if lr.Kit != nil {
-			p("\nCAVEAT: %s\n", launch.KitCaveat)
 			switch {
 			case f.kitOut != "":
 				p("\nRecovery kit written, encrypted, to %s. Keep it and its passphrase away from this server.\n", f.kitOut)

@@ -80,6 +80,8 @@ jobs:
         env:
           CAN_IT_CANCORE: "1"
           CAN_IT_WORK: "1"
+          # E08b: a module backup hook Job uploads through the dump API (stub module).
+          CAN_IT_BACKUP_HOOKS: "1"
         run: go test -tags integration -count=1 -v -timeout 25m ./test/integration/...
       - name: Measure can-core memory in the cluster
         if: always()

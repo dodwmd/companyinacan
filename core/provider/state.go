@@ -64,8 +64,13 @@ type LaunchState struct {
 	SiteSHA256 string `json:"site_sha256,omitempty"`
 	// BackupInstalled is true once the host backup timer is installed (`can down` removes it).
 	BackupInstalled bool `json:"backup_installed,omitempty"`
+	// BackupVersion says which generation of the install is on the host; an older one is redone.
+	BackupVersion int `json:"backup_version,omitempty"`
 	// KitShown is true once the recovery kit was handed to the operator (it is shown exactly once).
 	KitShown bool `json:"kit_shown,omitempty"`
+	// KitFingerprint is a hash of the repository and password of that kit (neither is stored), so a
+	// change on the server or in the flags gets the new kit shown.
+	KitFingerprint string `json:"kit_fingerprint,omitempty"`
 	// Mode is how the public site is exposed: "https" or "http".
 	Mode string `json:"mode,omitempty"`
 }

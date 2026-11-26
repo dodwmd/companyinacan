@@ -21,6 +21,10 @@ on:
       - "core/cli/up*.go"
       - "core/provider/**"
       - "core/staticsrv/**"
+      - "core/backup/**"
+      - "core/server/dumps/**"
+      - "core/server/runtime/**"
+      - "test/integration/z_backup_k3d_test.go"
       - "cmd/can-static/**"
       - "deploy/**"
       - "scripts/build-images.sh"
@@ -64,6 +68,8 @@ jobs:
         continue-on-error: true
         env:
           CAN_IT_MAKEUP: "1"
+          # E08b: also run the backup end to end (writes under /var/lib on this throwaway runner).
+          CAN_IT_BACKUP: "1"
           CAN_IT_IMAGES: ${{ github.workspace }}/build/images
           CAN_IT_TIMINGS: ${{ runner.temp }}/phase-timings.md
         run: go test -tags integration -count=1 -v -timeout 25m -run TestMakeUpPhasesOnK3d ./test/integration/...

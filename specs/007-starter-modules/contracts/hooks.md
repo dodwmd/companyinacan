@@ -1,7 +1,7 @@
 # Contract: backup and restore hooks
 
-Provisional until epic E08 fixes the dump endpoint (research R9). The scripts and this file change
-together.
+The dump endpoint was fixed by epic E08b (specs/037-backup-dumps/contracts). The scripts and this file
+change together.
 
 ## Execution
 
@@ -26,7 +26,7 @@ same restricted security context as the module's pods.
 | `CAN_API_URL` | `can-module` Secret key `api-url` | all |
 | `CAN_MODULE` | module id | all |
 | `CAN_TOKEN_FILE` | default `/var/run/secrets/can/token` (projected, audience `can`) | all |
-| `DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD` | `can-database` Secret | support, newsletter |
+| `DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD` | `can-db` Secret (written by can-core for `requires.database` postgres or mariadb) | support, newsletter, crm |
 | `GOATCOUNTER_DATA` | default `/data`; the module PVC must be mounted there | analytics |
 
 ## Transport
@@ -48,6 +48,8 @@ same restricted security context as the module's pods.
    (Postgres) or over a dump with `DROP TABLE IF EXISTS` (MariaDB); SQLite replaces the file by an
    atomic rename after the integrity check and removes stale `-wal` and `-shm`.
 6. Secrets only through environment variables (`MYSQL_PWD`, `PGPASSWORD`), never on a command line.
+7. Uploads stream with `curl -T file`; never `--data-binary @file`, which loads the whole dump into the Job's
+   64 MiB of memory (E08b, enforced by `test/contract/backup_hooks_test.go`).
 
 ## Per module
 

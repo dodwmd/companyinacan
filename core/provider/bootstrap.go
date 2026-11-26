@@ -353,11 +353,13 @@ mv /usr/local/sbin/can-firewall.new /usr/local/sbin/can-firewall
 
 echo "$want_config" > /var/lib/can/k3s-config.applied
 
-step backup-placeholder
-install -d -m 0700 /var/lib/can/dumps /etc/can/backup.d
+step backup-dirs
+# can-core (uid 65532, deploy/can-core/can-core.yaml volume can-dumps) writes its dumps here.
+install -d -o 65532 -g 65532 -m 0700 /var/lib/can/dumps
+install -d -m 0700 /etc/can/backup.d
 cat > /etc/can/backup.d/README <<'CAN_BACKUP_README'
-Placeholder for the restic + systemd timer backup (epic E08).
-Dumps are written to /var/lib/can/dumps; E08 installs the timer and restic unit here.
+Credentials of the restic backup timer (docs/backup-restore.md); empty until backup is set up.
+can-core writes its dumps to /var/lib/can/dumps.
 CAN_BACKUP_README
 
 step complete

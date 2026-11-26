@@ -69,6 +69,20 @@ func (h *recHost) Run(_ context.Context, script string) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.ran = append(h.ran, script)
+	// reads of files on the host answer with what was copied there
+	if strings.HasPrefix(script, "if [ -e ") {
+		path := strings.Fields(script)[3]
+		body := string(h.copied[path])
+		if strings.Contains(script, "grep ") {
+			for _, l := range strings.Split(body, "\n") {
+				if strings.HasPrefix(l, "export RESTIC_REPOSITORY=") {
+					return l + "\n", nil
+				}
+			}
+			return "", nil
+		}
+		return body, nil
+	}
 	return "CAN_BACKUP_OK\n", nil
 }
 
@@ -178,6 +192,10 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		Out: red.Writer(io.MultiWriter(&progress, os.Stderr)),
 	}
 
+	withBackup := os.Getenv("CAN_IT_BACKUP") == "1"
+	if withBackup {
+		prepareDumpsDir(t) // host bootstrap's part, before can-core starts
+	}
 	started := time.Now()
 	res, err := launch.Run(context.Background(), opts, deps)
 	if err != nil {
@@ -278,8 +296,11 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatal("the timer unit was not installed on the host")
 	}
 
-	if !strings.Contains(strings.Join(res.Warnings, "\n"), "BACKUPS DO NOT WORK YET") {
-		t.Fatalf("a backup that cannot work yet must say so: %v", res.Warnings)
+	if res.Kit.Note != "" {
+		t.Fatalf("the kit carries a caveat: %q", res.Kit.Note)
+	}
+	if !strings.Contains(strings.Join(host.ran, "\n"), "install -d -o 65532 -g 65532 -m 0700 '/var/lib/can/dumps'") {
+		t.Fatal("the host was not told to hand the dumps directory to can-core")
 	}
 
 	// --- nothing secret on disk or in the progress log -----------------------------------------
@@ -318,6 +339,11 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	loginBody2, _ := json.Marshal(map[string]string{"username": res.Admin.Username, "password": res.Admin.Password, "totp": auth.Code(key, auth.SHA1, 6, 30, time.Now().Add(30*time.Second))})
 	if st, body, _ := edge(t, "POST", "http://"+adminHost+"/api/v1/login", map[string]string{"Content-Type": "application/json"}, bytes.NewReader(loginBody2)); st != 200 {
 		t.Fatalf("the admin password changed across a re-run: %d %s", st, body)
+	}
+
+	// --- backups work: dump, marker, restic snapshot, status, verify, restore of the dumps -------
+	if withBackup {
+		hostBackup(t, host.copied)
 	}
 }
 

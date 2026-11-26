@@ -4,7 +4,7 @@
 <p><span class="badge {{.Data.Row.StatusClass}}">{{.Data.Row.StatusLabel}}</span>{{if .Data.Row.RecordedLabel}} <span class="badge {{.Data.Row.RecordedClass}}">{{.Data.Row.RecordedLabel}}</span>{{end}}{{if .Data.Row.SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</p>
 {{if .Data.Row.Description}}<p>{{.Data.Row.Description}}</p>{{end}}
 {{if .Data.Row.SourceAvailable}}<p class="alert warn">{{t "mod.source_available_note"}}</p>{{end}}
-{{if .Data.Row.Invalid}}<p class="alert err" role="alert">{{t "cg.invalid" .Data.Row.Invalid}}</p>{{end}}
+{{if .Data.Row.BackupWarning}}<p class="alert warn" role="alert">{{t "cg.backup_unrunnable" .Data.Row.BackupWarning}}</p>{{end}}{{if .Data.Row.Invalid}}<p class="alert err" role="alert">{{t "cg.invalid" .Data.Row.Invalid}}</p>{{end}}
 
 <section aria-labelledby="h-sum">
 <h2 id="h-sum">{{t "mod.summary"}}</h2>

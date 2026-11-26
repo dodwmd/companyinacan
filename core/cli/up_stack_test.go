@@ -286,7 +286,7 @@ func TestUpRoutesFollowTheInstantURLDecision(t *testing.T) {
 func TestBackupFlagsAreAllOrNothingAndKitNeedsADestination(t *testing.T) {
 	dir, r := setup(t)
 	useStack(t, false, stackResult(), nil)
-	code, _, errs := run(t, stackArgs(dir, "--backup-bucket", "b", "--allow-broken-backup")...)
+	code, _, errs := run(t, stackArgs(dir, "--backup-bucket", "b")...)
 	if code != ExitFailure || !strings.Contains(errs, "--backup-endpoint") || len(r.ran) != 0 {
 		t.Fatalf("code=%d err=%q", code, errs)
 	}
@@ -294,7 +294,7 @@ func TestBackupFlagsAreAllOrNothingAndKitNeedsADestination(t *testing.T) {
 	if err := os.WriteFile(creds, []byte("AWS_ACCESS_KEY_ID=AKIAEXAMPLE\nAWS_SECRET_ACCESS_KEY=s3cr3t-value-0123456789\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	full := []string{"--backup-endpoint", "https://s3.example", "--backup-bucket", "b", "--backup-credentials-file", creds, "--allow-broken-backup"}
+	full := []string{"--backup-endpoint", "https://s3.example", "--backup-bucket", "b", "--backup-credentials-file", creds}
 	code, _, errs = run(t, stackArgs(dir, full...)...)
 	if code != ExitFailure || !strings.Contains(errs, "--kit-out") || !strings.Contains(errs, "git tree") || len(r.ran) != 0 {
 		t.Fatalf("a kit with nowhere to go must stop before provisioning: code=%d err=%q", code, errs)
@@ -316,7 +316,7 @@ func TestKitOutIsEncryptedAndRefusedInsideAGitTree(t *testing.T) {
 	_ = os.WriteFile(creds, []byte("AWS_ACCESS_KEY_ID=AKIAEXAMPLE\nAWS_SECRET_ACCESS_KEY=s3cr3t-value-0123456789\n"), 0o600)
 	pass := filepath.Join(t.TempDir(), "pass")
 	_ = os.WriteFile(pass, []byte("correct horse battery"), 0o600)
-	full := []string{"--backup-endpoint", "https://s3.example", "--backup-bucket", "b", "--backup-credentials-file", creds, "--kit-passphrase-file", pass, "--allow-broken-backup"}
+	full := []string{"--backup-endpoint", "https://s3.example", "--backup-bucket", "b", "--backup-credentials-file", creds, "--kit-passphrase-file", pass}
 
 	// the fake stack hands back a kit, as the real one does after installing the timer
 	lifecycle.stack = func(_ context.Context, o launch.Options, d launch.Deps) (*launch.Result, error) {
@@ -403,7 +403,7 @@ func TestWriteBundleForceCompanyAndPinnedContext(t *testing.T) {
 	res := stackResult()
 	res.BundleAdded = true
 	res.CompanyYAML = []byte("schema: 1\nname: Acme Co\ndomain: acme.example\nprovider:\n  type: ssh\n  options:\n    host: 203.0.113.7\nmodules:\n  forms: {}\n")
-	res.Warnings = []string{"BACKUPS DO NOT WORK YET"}
+	res.Warnings = []string{"A STACK WARNING"}
 	spy := useStack(t, false, res, nil)
 	var gotKubeconfig, gotCtx string
 	lifecycle.kube = func(kc, c string) launch.Kube { gotKubeconfig, gotCtx = kc, c; return nopKube{} }
@@ -418,34 +418,34 @@ func TestWriteBundleForceCompanyAndPinnedContext(t *testing.T) {
 	if gotCtx != "acme-co" || !strings.HasSuffix(gotKubeconfig, filepath.Join(".can", "kubeconfig")) {
 		t.Fatalf("kubectl must be pinned to the company's kubeconfig and context: %q %q", gotKubeconfig, gotCtx)
 	}
-	if !strings.Contains(out, "BACKUPS DO NOT WORK YET") {
+	if !strings.Contains(out, "A STACK WARNING") {
 		t.Fatalf("stack warnings must reach the summary:\n%s", out)
 	}
 }
 
-func TestBackupIsRefusedWithoutAllowBrokenBackupAndKitCarriesTheCaveat(t *testing.T) {
-	dir, r := setup(t)
+func TestBackupNeedsNoOverrideAndAllowBrokenBackupIsADeprecatedNoOp(t *testing.T) {
+	dir, _ := setup(t)
 	res := stackResult()
 	k, _ := backup.NewKit(backup.KitInput{CompanyName: "A", Domain: "a.example", Endpoint: "https://s3.example", Bucket: "b", Region: "auto", AccessKeyID: "AKIAEXAMPLE", SecretAccessKey: "s3cr3t-value-0123456789", ProviderType: "ssh"})
-	k.Note = launch.KitCaveat
 	res.Kit = k
-	useStack(t, false, res, nil)
+	spy := useStack(t, false, res, nil)
 	creds := filepath.Join(t.TempDir(), "creds")
 	_ = os.WriteFile(creds, []byte("AWS_ACCESS_KEY_ID=AKIAEXAMPLE\nAWS_SECRET_ACCESS_KEY=s3cr3t-value-0123456789\n"), 0o600)
 	full := []string{"--backup-endpoint", "https://s3.example", "--backup-bucket", "b", "--backup-credentials-file", creds, "--print-secrets"}
-	code, _, errs := run(t, stackArgs(dir, full...)...)
-	if code != ExitUsage || !strings.Contains(errs, "--allow-broken-backup") || len(r.ran) != 0 {
-		t.Fatalf("code=%d err=%q ran=%d", code, errs, len(r.ran))
-	}
-	code, out, errs := run(t, stackArgs(dir, append(full, "--allow-broken-backup")...)...)
-	if code != ExitOK {
-		t.Fatal(errs)
-	}
-	if strings.Count(out, "no data yet") < 2 {
-		t.Fatalf("the caveat must be in the kit header and next to the hand-over:\n%s", out)
-	}
-	if !strings.Contains(k.Text(), "CAVEAT: "+launch.KitCaveat) {
-		t.Fatal("kit header lacks the caveat")
+	for _, extra := range [][]string{nil, {"--allow-broken-backup"}} {
+		code, out, errs := run(t, stackArgs(dir, append(append([]string{}, full...), extra...)...)...)
+		if code != ExitOK {
+			t.Fatalf("%v: code=%d err=%q", extra, code, errs)
+		}
+		if spy.opts.Backup == nil {
+			t.Fatal("backup was not passed to the launch")
+		}
+		if strings.Contains(out, "CAVEAT") || strings.Contains(out, "no data yet") {
+			t.Fatalf("no caveat any more:\n%s", out)
+		}
+		if len(extra) > 0 && !strings.Contains(errs, "deprecated") {
+			t.Fatalf("the old flag must say it is deprecated: %q", errs)
+		}
 	}
 }
 

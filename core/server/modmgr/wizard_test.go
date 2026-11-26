@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 )
 
@@ -284,4 +285,16 @@ type failingDisk struct{}
 
 func (failingDisk) Usage(context.Context) ([]DiskUsage, error) {
 	return nil, errors.New("statfs: boom")
+}
+
+// QA 6: the status page carries the outcome of the last backup dump run.
+func TestStatusCarriesTheLastDumpRun(t *testing.T) {
+	r := newRig(t)
+	r.svc.LastDump = func() (backup.DumpRun, error) {
+		return backup.DumpRun{RunID: "r", Error: "module wiki: boom"}, nil
+	}
+	h, err := r.svc.Status(context.Background())
+	if err != nil || h.Dump == nil || h.Dump.OK || !strings.Contains(h.Dump.Error, "boom") {
+		t.Fatalf("%+v %v", h.Dump, err)
+	}
 }

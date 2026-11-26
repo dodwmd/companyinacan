@@ -10,8 +10,39 @@ compliance advice; the 35-day horizon below is a default you must review against
 
 ## How a backup works
 
-1. can-core (E03) runs each module's `backup` hook nightly, writes dumps into `/var/lib/can/dumps`, deletes
-   `COMPLETE` at the start of the run and writes it (run id, finish time) at the end.
+Backups were verified end to end on a k3d cluster with a local restic repository (see "Measured" below), not
+against a real server or bucket. Design and rejected alternatives: [specs/037-backup-dumps](../specs/037-backup-dumps/research.md).
+
+1. can-core writes the dumps to `/var/lib/can/dumps` on the host through the `can-dumps` volume: a
+   PersistentVolume declared by the platform manifests, bound to one claim in `can-system`. No pod has a
+   `hostPath`, and can-core has no permission to create volumes. The directory belongs to uid 65532 (host
+   bootstrap and `can backup install` set that). A run happens nightly at 02:30 UTC (`CAN_DUMP_AT`), about 10
+   minutes after start when no marker younger than 20 h exists, and on request:
+   `sudo k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m` (on the server). It:
+   - puts the previous set back if an earlier run died while swapping it, deletes `COMPLETE` and removes what an
+     earlier run left behind;
+   - writes `can-core/state.db` (`VACUUM INTO` over a read-only connection of its own, then `integrity_check`) and
+     a copy of the applied `company.yaml`. These two are replaced in place, so after a **failed** run they are newer
+     than the module dumps beside them; without a marker the set is not backed up either way;
+   - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
+     data is still there), as a Job in `mod-<id>`: restricted pod, projected audience-`can` token, the module's
+     volume at `/data`, `/storage` and `/app/data` (read-only unless SQLite; none for MariaDB/PostgreSQL modules).
+     A module with neither a volume nor a database is skipped. A hook pod that cannot start (image pull, config)
+     is given up after 2 minutes, a hook after 15;
+   - accepts `PUT /v1/dumps/<module>/<name>` only from the module whose hook is running right now (at most 16
+     files and 8 GiB per module and run, 4 GiB per file), into a staging directory. A hook that succeeds without
+     uploading anything counts as failed;
+   - when every hook succeeded: swaps the staged set in, writes `DUMPED` (which modules, and their database kind),
+     flushes everything to disk, then writes `COMPLETE` (run id, finish time). One failing hook therefore stops
+     backups until it is fixed: `can backup status` and the admin status page show the last failure
+     (`LAST-RUN`).
+   - A run that leaves a database (or vanished data) out is announced: `dump-request --wait` prints it, and the
+     host script logs a warning and POSTs it to the failure webhook after each backup (the run still exits 0).
+   - **A disabled module never stops backups.** If its hook cannot run (the unpublished `can-hooks` image) or fails,
+     it is skipped and reported by `can backup status`, the admin status page and `can up`. Only its raw volume
+     files are then backed up; for a MariaDB or PostgreSQL module **the database is not backed up**. A module that
+     had a dump and suddenly reports no data is reported the same way, and its earlier dump is kept. To get backups
+     back after enabling a module whose hook cannot run, disable it. Downloads (`GET /v1/dumps/...`) are refused: there is no restore mode yet.
 2. The host timer `can-backup.timer` (default 03:30 plus up to 15 min) starts `can-backup.service`, which runs
    `/usr/local/sbin/can-backup`. The script, in order:
    - syncs the erasure ledger (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
@@ -23,8 +54,9 @@ compliance advice; the 35-day horizon below is a default you must review against
      group- or other-writable) and never follows links that can-core controls, but it cannot make a check-then-use race impossible;
    - copies the marker it is about to back up, the k3s SQLite datastore (`sqlite3 .backup`), the node token and the
      secrets-encryption key, and writes `MANIFEST.sha256`, all into `/var/lib/can/host-state` (root-owned, outside the dumps dir);
-   - runs `restic backup` over the dumps, the PVC root (SQLite files of modules covered by a dump are excluded) and the
-     host-state directory, tagged `can`, `run-<id>`, `attempt-<id>`;
+   - runs `restic backup` over the dumps (staging and temporary dot files left out), the PVC root (raw SQLite files
+     are excluded only for the SQLite modules that `DUMPED` says were dumped in this run) and the host-state
+     directory, tagged `can`, `run-<id>`, `attempt-<id>`;
    - re-reads the marker: if can-core started a new dump run meanwhile, the snapshot is tagged `inconsistent` (restore never
      picks it), forget is skipped and the run exits 11;
    - `restic forget --group-by '' --keep-within 35d --prune --tag can`. Grouping is disabled so snapshots from a previous
@@ -32,8 +64,12 @@ compliance advice; the 35-day horizon below is a default you must review against
    restic exit 3 (some files unreadable or vanished) means a snapshot was created: it is logged and treated as success.
 3. Credentials live in `/etc/can/backup.d/restic.env` and `restic.password` (root, 0600). The unit carries none.
 
-Install on the host: `can backup install --kit <kit file> --enable` (writes the script, unit, timer and credential
-files and initialises the repository if none exists). `can backup install --plan` prints the generated script.
+Install on the host: `can up --backup-endpoint ... --backup-bucket ... --backup-credentials-file ...` does it all,
+including `sqlite3` and restic (the upstream release binary pinned by version and sha256 in
+`core/backup/provision.go`, installed to `/usr/local/bin/restic` when restic 0.17 or newer is missing). By hand:
+`can backup install --kit <kit file> --enable` (writes the script, unit, timer and credential files, creates the
+dumps directory and initialises the repository if none exists; install restic and `sqlite3` yourself).
+`can backup install --plan` prints the generated script.
 
 ### Script exit codes
 
@@ -54,7 +90,32 @@ when the unit fails. The unit runs with `ProtectSystem=strict` and a short `Read
 `/etc/can/backup.d/webhook.url` (0600); the script POSTs `{"text": "can-backup failed: (code) message"}` (JSON-escaped); the URL is given to curl on stdin, never on a command line.
 `restic.env` values are single-quoted so any character in a secret survives sourcing.
 
+## Retention and erasure of dumps
+
+The dumps directory holds one set: each successful run replaces all module dumps with the ones it just made, so a
+module that was purged (or no longer has a record) drops out. **One exception keeps data longer:** the dump of a
+module that was skipped (disabled with a hook that cannot run or fails, or suddenly without data) is carried forward
+unchanged, run after run, with no age limit. It is therefore also in every new snapshot, so it outlives the 35-day
+retention for as long as it is carried. It goes away when the module is dumped again or purged, or by hand.
+
+**Clearing a skipped or "no data" module.** If its data is meant to be gone (you deleted its volume or database),
+remove the carried dump on the server: `sudo rm -r /var/lib/can/dumps/modules/<id>`. A "no data" module without a
+database then drops out of the reports at the next run. A database module is reported as skipped (disabled) or fails the
+run (enabled) for as long as can-core records it; there is no production purge yet, so disable it and expect the
+report. Older snapshots keep the data until retention expires them.
+
+Leftovers of interrupted runs are removed when the
+next run starts, and a purge through can-core deletes that module's dumps at once. A failed run keeps the previous
+set on disk (without a marker, so it is not backed up). Older data stays in restic snapshots until the 35-day
+retention expires them; erasure requests are re-applied at restore from the erasure ledger, not by rewriting dumps
+or snapshots.
+
 ## Commands
+
+Run these on the server, as root (`sudo`). `can up` does **not** copy the `can` binary to the server: put the
+Linux release binary at `/usr/local/bin/can` there first (the erasure ledger upload needs it too). Without it,
+`sudo systemctl start can-backup.service` runs a backup and `journalctl -u can-backup` shows the result.
+`status` and `verify` find the repository in `/etc/can/backup.d/restic.env`.
 
 | Command | Use |
 |---|---|
@@ -151,25 +212,44 @@ measured by a person:
 6. Record the results in `specs/008-backup-restore/measurements.md` and update SPEC.md section 6.5 and section 10 with the
    measured number. Until then the claim stays unproven.
 
+## What is and is not in a snapshot
+
+- In: `can-core/state.db`, `company.yaml`, each module hook's dump, the local-path volumes (except can-core's
+  live database and the SQLite files of the modules dumped in that run), a copy of the k3s datastore, node
+  token and encryption key, the erasure ledger copy.
+- Modules without a backup hook (forms, work, people, jobs, finance, files and the other in-house modules) are covered
+  only by the raw volume copy of live SQLite files, which may be inconsistent. `can backup install` warns.
+- Not there: a separate export of Kubernetes Secrets (SPEC 6.5). Module keys exist only inside the k3s datastore
+  copy, so recovering them needs a raw datastore restore.
+
+## Measured (k3d in CI)
+
+Workflow `make-up-e2e` (advisory) runs: dump request, the installed backup script against a local restic
+repository, `can backup status` and `verify`, and a restore of the dumps directory. `dev-cluster` (advisory) runs
+a module backup hook Job. The numbers are in
+[specs/037-backup-dumps/measurements.md](../specs/037-backup-dumps/measurements.md).
+
 ## Not verified (honest list)
 
-Everything below has not been run against a real system; the offline tests cover the logic through fakes.
-
-- Minimum restic version: 0.17 (exit code 10 for "no repository"); older versions return other codes and `can backup kit` would then refuse.
-- Real restic and a real S3-compatible bucket (R2, B2, S3): command lines and exit-code handling are tested against a fake;
-  `restic cat config` exit code 10 for "no repository" is taken from restic's documentation, not observed.
-- The SigV4 client against a real endpoint (it is tested against an `httptest` server that checks the header shape, not the
-  signature). Path-style addressing only; some providers may require virtual-hosted style.
-- The generated script on a real host: `bash -n`, shellcheck and a sandbox run with a fake restic pass; `sqlite3 .backup`,
-  `flock`, `logger`, `curl` and the k3s paths were not exercised. `systemd-analyze verify` runs only where available.
-- Hardening: `ProtectSystem=strict` with `ReadWritePaths` is set from reading the script, not from running it under systemd on a
-  real host; if it blocks a path (for example restic's cache or sqlite's WAL for the k3s database) the first real run will show it.
-- can-core side: the dump PUT/GET endpoints, marker writing, state import, hook Jobs, namespace and Secret re-creation,
-  scale to 0 and up, and purge hooks (E03). `can restore` uses adapters that return "not implemented" (exit 3) until they exist.
-- Provisioning during restore (step 1) through the provider package is not wired.
-- The bootstrap script still installs only a placeholder in `/etc/can/backup.d`: it does not install restic or sqlite3 or
-  call `can backup install`. `make up` does not yet print the kit; use `can backup kit`.
-- The k3d integration test of a full restore, and the footprint check for the backup path.
-- The restore-time target (15 minutes) and the effect of data size on it.
-- Restoring PVC ownership requires running as root; non-root runs keep modes but not owners.
-- The 35-day retention matches the default horizon in SPEC.md section 5; whether it fits your legal obligations is for you to decide.
+- A real S3-compatible bucket (R2, B2, S3). CI uses a filesystem repository: the script's repository line is the
+  one thing changed. The SigV4 ledger client has only met an `httptest` server.
+- Hook file permissions against the real module images (the hook runs as uid 1000; files another user wrote with
+  mode 0600 would be unreadable).
+- A real server: the systemd unit and timer (`ProtectSystem=strict`, `ReadWritePaths`), bootstrap's directory
+  ownership, `apt` installing `sqlite3`, and the script reading the live k3s paths. CI runs the script on the
+  runner against copies of the k3d node's directories.
+- **Restore.** `can restore` is not functional (the provisioning and can-core adapters return exit 3). Restoring
+  onto a blank host, importing can-core state, module `restore` hooks and PVC data have never run. can-core has no
+  restore mode: whoever implements it must keep dump runs off until the import is done.
+- The shipped module hooks (wiki, support, newsletter, analytics, crm, status) and the `can-hooks` image: the
+  image is not built or published, so while one of them is enabled the dump run fails (and no marker is written);
+  disabled, it is skipped. The
+  hook Job mechanism was run with a test module and a public curl image.
+- `can-hooks` Jobs against a database module (DB credentials come from the `can-db` Secret). The wrapped
+  database charts themselves still name a `can-database` Secret that can-core does not write.
+- Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
+  directory and a run holds the old and the new set at once. Hooks retry with `--retry` only, which does not cover
+  a connection refused while a new pod's network rules are still being programmed.
+- The erasure ledger upload (can-core does not write the ledger yet; `can backup ledger-add` does by hand).
+- The restore-time target (15 minutes) and the effect of data size on dump and backup time.
+- Whether the 35-day retention fits your legal obligations is for you to decide.

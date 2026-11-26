@@ -5,7 +5,6 @@
 # Runs as a Job in this module's namespace with the hooks image (deploy/hooks), the module's
 # data volume mounted at GOATCOUNTER_DATA (default /data), and:
 #   CAN_API_URL  CAN_MODULE  [CAN_TOKEN_FILE]   module API and projected audience-`can` token
-# The dump endpoint path is provisional until epic E08 fixes it (contracts/hooks.md).
 set -eu
 
 : "${CAN_API_URL:?}" "${CAN_MODULE:?}"
@@ -28,6 +27,6 @@ gzip -c "$tmp/goatcounter.sqlite3" >"$tmp/dump.sqlite3.gz"
 
 curl --fail --silent --show-error --retry 3 \
 	-X PUT -H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
-	--data-binary @"$tmp/dump.sqlite3.gz" \
+	-T "$tmp/dump.sqlite3.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/goatcounter.sqlite3.gz"
 echo "backup: $CAN_MODULE database dumped"

@@ -20,6 +20,39 @@ spec:
     requests:
       storage: 256Mi
 ---
+# Backup dumps (epic E08b, specs/037-backup-dumps): can-core writes consistent dumps and the
+# completion marker to the host directory the backup timer reads, /var/lib/can/dumps, through a
+# static volume an administrator declares. The pod mounts only a PersistentVolumeClaim, so Pod
+# Security (which forbids hostPath volumes in pod specs) stays in force, and can-core has no
+# permission to create volumes. The directory must be owned by uid 65532 (host bootstrap does
+# that); DirectoryOrCreate would make it root-owned, and dump runs would then fail and say so.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: can-dumps
+  labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+spec:
+  capacity: {storage: 5Gi}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef: {namespace: can-system, name: can-dumps}
+  hostPath: {path: /var/lib/can/dumps, type: DirectoryOrCreate}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: can-dumps
+  namespace: can-system
+  labels: {app.kubernetes.io/name: can-core, app.kubernetes.io/part-of: companyinacan}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ""
+  volumeName: can-dumps
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -69,6 +102,8 @@ spec:
             - {name: CAN_ADMIN_ADDR, value: ":8080"}
             - {name: CAN_MODULE_ADDR, value: ":8090"}
             - {name: CAN_DB_PATH, value: /var/lib/can/state.db}
+            # Nightly dumps at 02:30 UTC (CAN_DUMP_AT), before the host timer's 03:30.
+            - {name: CAN_DUMPS_DIR, value: /var/lib/can-dumps}
             - {name: CAN_TOKEN_REVIEW, value: kubernetes}
             - {name: CAN_PLATFORM_URL, value: "http://can-core.can-system.svc.cluster.local:8090"}
             # Behind Traefik (the only route to the admin port, externalTrafficPolicy: Local): see
@@ -110,6 +145,7 @@ spec:
             failureThreshold: 3
           volumeMounts:
             - {name: data, mountPath: /var/lib/can}
+            - {name: dumps, mountPath: /var/lib/can-dumps}
             - {name: tmp, mountPath: /tmp}
             # The applied company.yaml, written by `can apply`. Optional: can-core starts without it.
             - {name: company, mountPath: /etc/can/company, readOnly: true}
@@ -123,6 +159,8 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: can-core-data}
+        - name: dumps
+          persistentVolumeClaim: {claimName: can-dumps}
         - name: tmp
           emptyDir: {sizeLimit: 16Mi}
         - name: company

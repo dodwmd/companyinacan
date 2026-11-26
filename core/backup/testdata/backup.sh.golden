@@ -37,6 +37,13 @@ notify() {
       --data "{\"text\":\"can-backup failed: $(json_escape "$1")\"}" >/dev/null 2>&1 || true
 }
 
+# A warning does not fail the run: it is logged and sent to the same webhook.
+warn() {
+  logger -t can-backup -p user.warning -- "WARNING: $1" || true
+  echo "can-backup: WARNING: $1" >&2
+  notify "$1"
+}
+
 report() {
   logger -t can-backup -p user.err -- "FAILED($1): $2" || true
   echo "can-backup: FAILED($1): $2" >&2
@@ -136,8 +143,25 @@ for f in server/token server/cred/encryption-config.json; do
 done
 
 # Manifest of every dump file, so 'can backup verify' and restore can compare hashes.
-(cd "$DUMPS" && find . -type f ! -name 'COMPLETE' -print0 | sort -z | xargs -0 -r sha256sum) >"$HOSTSTATE/MANIFEST.sha256.tmp"
+# Dot entries are can-core's staging directories and temporaries: not part of the dumps.
+(cd "$DUMPS" && find . -mindepth 1 -name '.*' -prune -o -type f ! -name 'COMPLETE' -print0 | sort -z | xargs -0 -r sha256sum) >"$HOSTSTATE/MANIFEST.sha256.tmp"
 mv "$HOSTSTATE/MANIFEST.sha256.tmp" "$HOSTSTATE/MANIFEST.sha256"
+
+# Raw SQLite files are left out only for modules whose dump is in this run; a module that was
+# not dumped (added later, or without data then) keeps its raw files.
+PVCROOT='/var/lib/rancher/k3s/storage'
+EXCLUDES=()
+if [ -f "$DUMPS/DUMPED" ]; then
+  while read -r mod db; do
+    [[ "$mod" =~ ^[a-z][a-z0-9-]*$ && "$db" == sqlite ]] || continue
+    for pat in '*.db' '*.sqlite' '*.sqlite3' '*-wal' '*-shm' '*-journal' ; do
+      EXCLUDES+=(--exclude "$PVCROOT/pvc-*_mod-${mod}_*/**/$pat")
+    done
+  done <"$DUMPS/DUMPED"
+fi
+
+rm -f "$HOSTSTATE/ALERTS"
+if [ -f "$DUMPS/ALERTS" ]; then cp -f -- "$DUMPS/ALERTS" "$HOSTSTATE/ALERTS"; fi
 
 # Remove only stale restic locks (restic refuses to remove a live one).
 restic unlock || log "restic unlock failed (continuing)"
@@ -146,6 +170,8 @@ ATTEMPT="$(date +%s)-$$"
 log "backup starting (run $RUN_ID, attempt $ATTEMPT)"
 brc=0
 restic backup --tag can --tag "run-$RUN_ID" --tag "attempt-$ATTEMPT" \
+  --exclude "$DUMPS/.*" --exclude "$DUMPS/**/.*" \
+  ${EXCLUDES[@]+"${EXCLUDES[@]}"} \
   --exclude '/var/lib/rancher/k3s/storage/pvc-*_mod-forms_*/**/*.db' \
   '/var/lib/can/dumps' '/var/lib/rancher/k3s/storage' '/var/lib/can/host-state' || brc=$?
 case "$brc" in
@@ -165,5 +191,11 @@ restic forget --group-by '' --keep-within 35d --prune --tag can || fail 21 "rest
 
 printf 'run_id=%s\nfinished_at=%s\n' "$RUN_ID" "$(date +%s)" >"$STATE/backup-status.tmp"
 mv "$STATE/backup-status.tmp" "$STATE/backup-status"
+# Databases (or vanished data) that this backup does not hold, as can-core reported them.
+if [ -f "$HOSTSTATE/ALERTS" ]; then
+  while IFS= read -r alert; do
+    [ -n "$alert" ] && warn "$alert"
+  done < <(head -n 20 "$HOSTSTATE/ALERTS" | cut -c1-400)
+fi
 log "backup complete (run $RUN_ID)"
 finish

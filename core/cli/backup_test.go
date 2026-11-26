@@ -243,6 +243,10 @@ func TestBackupInstall(t *testing.T) {
 			t.Errorf("%s mode %v want %v", p, st.Mode().Perm(), mode)
 		}
 	}
+	envBody, _ := os.ReadFile(filepath.Join(root, "/etc/can/backup.d/"+backup.EnvFileName))
+	if !strings.Contains(string(envBody), "RESTIC_REPOSITORY=") {
+		t.Error("the installed env file does not name the repository")
+	}
 	var cmds []string
 	for _, c := range fr.Calls {
 		cmds = append(cmds, c.Name+" "+strings.Join(c.Args, " "))
@@ -401,5 +405,23 @@ func TestLedgerSyncRefusesPlainHTTP(t *testing.T) {
 	code, _, errs := runIn(t, "", "backup", "ledger-sync", "--ledger", l, "--repo", "s3:http://127.0.0.1:9/b/restic", "--password-file", pw, "--env-file", credsFile(t))
 	if code != ExitFailure || !strings.Contains(errs, "https") {
 		t.Fatalf("code=%d %s", code, errs)
+	}
+}
+
+// QA 9: on the server `can backup status` finds the repository in the installed env file; no
+// --repo and no shell variables are needed.
+func TestBackupStatusReadsTheRepositoryFromTheEnvFile(t *testing.T) {
+	t.Setenv("RESTIC_REPOSITORY", "")
+	env := filepath.Join(t.TempDir(), backup.EnvFileName)
+	if err := os.WriteFile(env, []byte("AWS_ACCESS_KEY_ID='a'\nRESTIC_REPOSITORY='s3:https://e.invalid/b/restic'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fr := &backup.FakeRunner{Handle: func(backup.Cmd) ([]byte, error) {
+		return []byte(`[{"id":"s1","time":"2026-11-25T03:30:00Z","tags":["can"]}]`), nil
+	}}
+	seams(t, fr)
+	_, out, errs := runIn(t, "", "backup", "status", "--env-file", env, "--dumps-dir", t.TempDir())
+	if strings.Contains(out, "OFF") || len(fr.Calls) == 0 {
+		t.Fatalf("the repository in the env file was not used: %s %s", out, errs)
 	}
 }

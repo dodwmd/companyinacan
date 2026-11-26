@@ -208,7 +208,7 @@ func TestStarterManifests(t *testing.T) {
 func onlyUnexpected(ps []problem.Problem) []problem.Problem {
 	var out []problem.Problem
 	for _, p := range ps {
-		if p.Severity == problem.Warning && (p.Rule == "semantic.module-status" || p.Rule == "semantic.provides-adapter-disabled") {
+		if p.Severity == problem.Warning && (p.Rule == "semantic.module-status" || p.Rule == "semantic.provides-adapter-disabled" || p.Rule == "semantic.backup-hooks-image") {
 			continue
 		}
 		out = append(out, p)

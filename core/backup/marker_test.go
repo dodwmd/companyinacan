@@ -1,8 +1,10 @@
 package backup
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,5 +41,34 @@ func TestMarkerMalformed(t *testing.T) {
 		if _, err := ReadMarker(p); err == nil {
 			t.Errorf("body %q accepted", body)
 		}
+	}
+}
+
+// QA 6: `can backup status` reports the last failed dump run.
+func TestStatusReportsAFailedDumpRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteDumpRun(dir, DumpRun{RunID: "r1", At: time.Unix(1_700_000_000, 0), Error: "module wiki: boom\nsecond line"}); err != nil {
+		t.Fatal(err)
+	}
+	rep := Status(context.Background(), &FakeRestic{}, dir, time.Unix(1_700_000_100, 0), 24*time.Hour)
+	if !strings.Contains(strings.Join(rep.Problems, "\n"), "last dump run failed") || !strings.Contains(strings.Join(rep.Problems, "\n"), "module wiki: boom second line") {
+		t.Fatalf("%v", rep.Problems)
+	}
+}
+
+// QA2 1: skipped modules are reported; an unbacked database or lost data is a problem.
+func TestStatusReportsSkippedModules(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteDumpRun(dir, DumpRun{RunID: "r1", At: time.Unix(1_700_000_000, 0), OK: true, Skipped: []SkippedModule{
+		{ID: "crm", Reason: "disabled", Database: "mariadb"}, {ID: "wiki", Reason: "disabled", Database: "none"}}}); err != nil {
+		t.Fatal(err)
+	}
+	rep := Status(context.Background(), &FakeRestic{}, dir, time.Unix(1_700_000_100, 0), 24*time.Hour)
+	problems, warnings := strings.Join(rep.Problems, "\n"), strings.Join(rep.Warnings, "\n")
+	if !strings.Contains(problems, `"crm"`) || !strings.Contains(problems, "DATABASE IS NOT BACKED UP") || strings.Contains(problems, `"wiki"`) {
+		t.Errorf("problems: %s", problems)
+	}
+	if !strings.Contains(warnings, `"wiki"`) {
+		t.Errorf("warnings: %s", warnings)
 	}
 }
