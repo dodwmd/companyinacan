@@ -46,6 +46,15 @@ var ErrInvalid = errors.New("invalid token request")
 // ErrForbidden is returned when the issuer asks for a permission they do not hold themselves.
 var ErrForbidden = errors.New("not allowed to grant this")
 
+// ErrStepUp is returned when the token would carry a permission that needs a recent sign-in and the
+// request does not say there was one.
+var ErrStepUp = errors.New("recent authentication required")
+
+// recentOnly lists, per module, the permissions a token is only issued with right after the issuer
+// proved who they are: a token outlives the session, and equity.board approves equity grants
+// without any later step-up (specs/068-equity-board-role).
+var recentOnly = map[string][]string{"equity": {"equity.board"}}
+
 func invalid(format string, a ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, a...))
 }
@@ -135,6 +144,9 @@ type IssueRequest struct {
 	Module      string
 	Permissions []string
 	TTL         time.Duration
+	// RecentAuth says that the issuer signed in or confirmed their identity recently
+	// (users.Service.Recent). Without it, permissions of recentOnly are refused.
+	RecentAuth bool
 }
 
 // Issued is the one-time answer to an issue: the only place the token value ever appears.
@@ -229,6 +241,10 @@ func (s *Service) Issue(ctx context.Context, actor string, req IssueRequest) (Is
 				return Issued{}, fmt.Errorf("%w: you do not hold %q yourself", ErrForbidden, p)
 			}
 		}
+	}
+	// After the checks above: somebody who may not have the permission at all is not asked to sign in.
+	if !req.RecentAuth && slices.ContainsFunc(perms, func(p string) bool { return slices.Contains(recentOnly[mod.ID], p) }) {
+		return Issued{}, ErrStepUp
 	}
 	now := s.Now()
 	live, err := s.countLive(ctx, mod.ID, "", now)

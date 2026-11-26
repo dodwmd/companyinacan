@@ -58,8 +58,10 @@ func (s *Server) issueToken(w http.ResponseWriter, r *http.Request, p principal)
 		httpx.Problem(w, http.StatusBadRequest, "ttl_hours must be at least 1 (the maximum is set by can-core, 90 days by default)")
 		return
 	}
-	iss, err := s.PATs.Issue(r.Context(), p.Subject(), pat.IssueRequest{Name: b.Name, Module: b.Module, Permissions: b.Permissions, TTL: time.Duration(b.TTLHours) * time.Hour})
+	iss, err := s.PATs.Issue(r.Context(), p.Subject(), pat.IssueRequest{Name: b.Name, Module: b.Module, Permissions: b.Permissions, TTL: time.Duration(b.TTLHours) * time.Hour, RecentAuth: s.users().Recent(actorOf(p))})
 	switch {
+	case errors.Is(err, pat.ErrStepUp):
+		httpx.Problem(w, http.StatusForbidden, "this permission needs a sign-in of the last 10 minutes: sign in again and repeat the request")
 	case errors.Is(err, pat.ErrForbidden):
 		httpx.Problem(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, pat.ErrInvalid):
