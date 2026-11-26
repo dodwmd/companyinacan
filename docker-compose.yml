@@ -5,8 +5,8 @@
 # Works with docker compose v2 and podman-compose. See docs/local-compose.md.
 #
 # WARNING: insecure dev defaults (public fake tokens in dev/compose/secrets/, plain HTTP, no
-# TLS, fake token review in can-core, unpinned base-image tags). Never expose this stack. The
-# edge listens on 127.0.0.1 only; keep it that way.
+# TLS, fake token review in can-core, module identities read from files, unpinned base-image
+# tags). Never expose this stack. The edge listens on 127.0.0.1 only; keep it that way.
 #
 # Rootless podman note: every container is configured by files baked into its image (no bind
 # mounts), so SELinux relabelling (:z) is not needed.
@@ -25,6 +25,13 @@ x-metrics-env: &metrics-env
   CAN_METRICS_ADDR: "0.0.0.0:9190"
   CAN_METRICS_TOKEN: dev-only-metrics-token-0123456789abcdef
 
+# A PUBLIC DEV secret: can-core signs the events it delivers to jobs, finance and people with it. Those three
+# also carry the in-cluster names can-core delivers to as network aliases.
+x-webhook-secret: &webhook-secret dev-only-webhook-secret-0123456789abcdef
+
+# work, people, jobs, finance and equity ask can-core (CAN_API_URL) who a personal access token or a launch
+# ticket belongs to, presenting the random token the `init` job wrote for each (CAN_TOKEN_FILE). Each module
+# mounts only its own token volume.
 services:
   # One-shot: dev keyrings for people/jobs/files and the can-core admin account. Prints the TOTP secret.
   init:
@@ -34,6 +41,11 @@ services:
     volumes:
       - dev-secrets:/secrets
       - core-data:/var/lib/can
+      - token-work:/tokens/work
+      - token-people:/tokens/people
+      - token-jobs:/tokens/jobs
+      - token-finance:/tokens/finance
+      - token-equity:/tokens/equity
     restart: "no"
 
   site:
@@ -67,7 +79,16 @@ services:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: core, args: *build-args }
     container_name: can-core
     environment:
-      CAN_INSTALLER: none          # record state only: no cluster, no module deploys
+      CAN_INSTALLER: none          # no cluster: nothing is deployed
+      # DEV ONLY, refused by every release build: record modules as installed and know them by the token
+      # files, so the catalogue, personal access tokens and the Apps launcher work.
+      CAN_DEV_STACK: "true"
+      CAN_DEV_MODULE_TOKEN_DIR: /tokens
+      CAN_DEV_WEBHOOK_SECRET: *webhook-secret
+      CAN_COMPANY_FILE: /var/lib/can/company/company.yaml
+      # Where Apps sends the browser. One host name (localhost) on different ports, because the launch
+      # cookie of plain http is host-only: open the admin UI at http://localhost:8180 for this.
+      CAN_MODULE_UI_URLS: "work=http://localhost:8181/ui,people=http://localhost:8182,jobs=http://localhost:8183,finance=http://localhost:8184"
       CAN_TOKEN_REVIEW: fake       # DEV ONLY: module tokens are not verified against Kubernetes
       CAN_COOKIE_SECURE: "false"   # plain HTTP on localhost
       CAN_TRUST_PROXY: "true"      # behind the Caddy edge
@@ -82,6 +103,11 @@ services:
     env_file: [dev/compose/secrets/core-email.env]
     volumes:
       - core-data:/var/lib/can
+      - token-work:/tokens/work:ro
+      - token-people:/tokens/people:ro
+      - token-jobs:/tokens/jobs:ro
+      - token-finance:/tokens/finance:ro
+      - token-equity:/tokens/equity:ro
     depends_on:
       init:
         condition: service_completed_successfully
@@ -105,9 +131,16 @@ services:
     env_file: [dev/compose/secrets/work.env]
     environment:
       <<: *metrics-env
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: work
+      CAN_TOKEN_FILE: /tokens/token
       CAN_RAM_DECLARED_MB: "20"
     volumes:
       - work-data:/data
+      - token-work:/tokens:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/can-work", "healthcheck", "-addr", "127.0.0.1:8080"]
       interval: 15s
@@ -118,12 +151,18 @@ services:
   people:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: people, args: *build-args }
     container_name: can-people
+    networks: { default: { aliases: [people-api.mod-people.svc.cluster.local] } }
     env_file: [dev/compose/secrets/people.env]
     environment:
       <<: *metrics-env
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: people
+      CAN_TOKEN_FILE: /tokens/token
+      CAN_WEBHOOK_SECRET: *webhook-secret
       CAN_RAM_DECLARED_MB: "30"
     volumes:
       - people-data:/data
+      - token-people:/tokens:ro
       - dev-secrets:/secrets:ro
     depends_on:
       init:
@@ -138,12 +177,18 @@ services:
   jobs:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: jobs, args: *build-args }
     container_name: can-jobs
+    networks: { default: { aliases: [jobs.mod-jobs.svc.cluster.local] } }
     env_file: [dev/compose/secrets/jobs.env]
     environment:
       <<: *metrics-env
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: jobs
+      CAN_TOKEN_FILE: /tokens/token
+      CAN_WEBHOOK_SECRET: *webhook-secret
       CAN_RAM_DECLARED_MB: "30"
     volumes:
       - jobs-data:/data
+      - token-jobs:/tokens:ro
       - dev-secrets:/secrets:ro
     depends_on:
       init:
@@ -158,12 +203,21 @@ services:
   finance:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: finance, args: *build-args }
     container_name: can-finance
+    networks: { default: { aliases: [finance.mod-finance.svc.cluster.local] } }
     env_file: [dev/compose/secrets/finance.env]
     environment:
       <<: *metrics-env
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: finance
+      CAN_TOKEN_FILE: /tokens/token
+      CAN_WEBHOOK_SECRET: *webhook-secret
       CAN_RAM_DECLARED_MB: "20"
     volumes:
       - finance-data:/data
+      - token-finance:/tokens:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/can-finance", "healthcheck", "-addr", "127.0.0.1:8080"]
       interval: 15s
@@ -177,9 +231,13 @@ services:
     env_file: [dev/compose/secrets/equity.env]
     environment:
       <<: *metrics-env
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: equity
+      CAN_TOKEN_FILE: /tokens/token
       CAN_RAM_DECLARED_MB: "16"
     volumes:
       - equity-data:/data
+      - token-equity:/tokens:ro
       - dev-secrets:/secrets:ro
     depends_on:
       init:
@@ -216,6 +274,12 @@ services:
     container_name: can-edge
     ports:
       - "127.0.0.1:8080:8080"
+      # The admin UI and the module web UIs on one host name, for the Apps launcher (see core above).
+      - "127.0.0.1:8180:8180"  # admin
+      - "127.0.0.1:8181:8181"  # work
+      - "127.0.0.1:8182:8182"  # people
+      - "127.0.0.1:8183:8183"  # jobs
+      - "127.0.0.1:8184:8184"  # finance
     depends_on: [site, forms, core, work, people, jobs, finance, equity, files, smtpsink]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/_edge/healthz"]
@@ -262,6 +326,11 @@ services:
 # Named volumes: `down` keeps them, `down -v` deletes them.
 volumes:
   dev-secrets:
+  token-work:
+  token-people:
+  token-jobs:
+  token-finance:
+  token-equity:
   core-data:
   forms-data:
   work-data:

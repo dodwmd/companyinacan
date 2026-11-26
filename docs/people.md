@@ -38,6 +38,13 @@ necessary but never sufficient: the policy layer (`core/people/policy.go`) also 
 relationship to the record (self, direct manager, anywhere in the manager chain, same team) and the
 caller's own employment status. Anything not allowed is denied.
 
+**Personal access tokens of managers (module 0.3.0).** A can-core token or launch session is a manager only
+if it carries `people.team.manage`, which only the manifest's `manager` role holds. After upgrading, run
+`can apply` (or let can-core reconcile) so the 0.3.0 manifest and its roles are recorded, then **every manager
+must issue new personal access tokens with `people.team.manage` ticked**: tokens issued before keep their old
+permissions and act as employees only. An operator who overrode the `manager` role's permissions adds
+`people.team.manage` to it.
+
 | Data | self | direct manager | skip-level manager | hr / admin | other staff |
 |---|---|---|---|---|---|
 | Basic fields | yes | yes | yes | yes | yes, for active, on-leave and onboarding people |

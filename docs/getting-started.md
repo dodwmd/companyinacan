@@ -13,7 +13,7 @@ what each one proves: **only the first has been run end to end; the last has nev
 
 ```sh
 make e2e-up        # = docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml up -d --build
-make e2e           # the end-to-end suite, about 30 seconds
+make e2e           # the end-to-end suite, a few minutes
 make e2e-down      # remove the containers and their volumes
 ```
 
@@ -25,7 +25,7 @@ troubleshooting are in [local-compose.md](local-compose.md).
 What is in the stack: the example site, the forms gateway, can-core (admin UI), `work`, `people`, `jobs`,
 `finance` and `equity` services, and the Caddy edge that routes `*.localhost:8080` by host name. The test
 overlay adds a small fake token-introspection service so that `people` and `equity` can be called by several
-identities (HR, a manager, employees, a board member); without it those two services accept one static token.
+identities (HR, a manager, employees, a board member) beside can-core's own tokens.
 
 Things you can do by hand:
 
@@ -37,12 +37,19 @@ Things you can do by hand:
 3. Sign in to the tracker at <http://work.localhost:8080/ui/> with the dev work token, create a project and an
    issue, and look at the board.
 4. Open <http://jobs.localhost:8080/careers>.
+5. In the admin UI, browse **Catalogue**, then under **API tokens** issue a `work` token with `work.read` and use it:
+   `curl -H "Authorization: Bearer canpat_..." http://work.localhost:8080/v1/projects`.
+6. Sign in at <http://localhost:8180> (the same admin UI), open **Apps** and press **Open** next to a module: you
+   are signed in to its web page without pasting a token.
 
-What compose cannot show (so the e2e suite does not claim it): there is no Kubernetes, so can-core runs with
-`CAN_INSTALLER=none`. The module catalogue answers "not available", no module is installed, and therefore no
-personal access token can be issued or verified by a module; modules are not wired to each other, so a lead does
-not become a CRM contact and a hired candidate does not become a person. Those flows are tested with the real
-code in `test/wiring` (`make unit`) and, for `work`, on k3d.
+Add `-p can-e2e` to the compose commands above for this stack; [local-compose.md](local-compose.md#modules-access-tokens-and-single-sign-on)
+has the details (which permissions make which role, the directory entry `people` needs, invoice approval).
+
+What compose cannot show (so the e2e suite does not claim it): there is no Kubernetes. can-core records the
+modules without installing them and knows their containers by token files, a development mode that release
+builds do not contain. Installation, TokenReview, network isolation and TLS are not exercised; a lead does not
+become a CRM contact. Those flows are tested with the real code in `test/wiring` (`make unit`) and, for `work`,
+on k3d.
 
 ## 2. A local Kubernetes cluster with k3d
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +53,34 @@ func TestAnUndeletableBlobDoesNotStopRetention(t *testing.T) {
 	rep, err := e.s.RunRetention(ctx)
 	if err != nil || rep.Purged != 1 || rep.Orphans != 1 {
 		t.Fatalf("%+v %v", rep, err)
+	}
+}
+
+// More undeletable orphans than one page holds must not keep the ones after them from being removed.
+func TestStuckOrphanBlobsDoNotStarveTheRest(t *testing.T) {
+	e, h := hookEnv(t)
+	add := func(k string) {
+		if _, err := e.s.db.Exec(`INSERT INTO pending_blobs (blob_key, created_at) VALUES (?,?)`, k, ts(e.now())); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Inserted first, but last in key order: neither insertion order nor a single page reaches them.
+	add("z-good-1")
+	add("z-good-2")
+	for i := range orphanBatch + 1 {
+		add("stuck-" + strconv.Itoa(10000+i))
+	}
+	h.failKey = func(k string) bool { return strings.HasPrefix(k, "stuck-") }
+	e.advance(2 * pendingBlobGrace)
+	rep, err := e.s.RunRetention(ctx)
+	if err == nil || !strings.Contains(err.Error(), "stuck-10000") {
+		t.Fatalf("the stuck blobs must be reported: %v", err)
+	}
+	if rep.Orphans != 2 {
+		t.Fatalf("%d orphans removed, want 2", rep.Orphans)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM pending_blobs`); n != orphanBatch+1 {
+		t.Fatalf("%d still registered", n)
 	}
 }
 

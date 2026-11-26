@@ -7,8 +7,9 @@ name: e2e
 # (healthchecks, depends_on conditions); locally it was only run with podman-compose.
 #
 # What it covers: site and lead capture, admin login with TOTP, work, people, jobs, finance and equity
-# flows, cross-module negative checks, and data surviving `compose down` / `up`. What it cannot cover (no
-# Kubernetes in compose): personal access tokens verified by modules, NetworkPolicy, TLS, backups. See
+# flows, personal access tokens and Apps sign-in (the compose development stack mode of can-core),
+# cross-module negative checks, and data surviving `compose down` / `up`. What it cannot cover (no
+# Kubernetes in compose): TokenReview, NetworkPolicy, TLS, backups. See
 # docs/getting-started.md and specs/032-e2e-docs. Kept out of ci.yml so it cannot affect the required job names.
 on:
   workflow_dispatch:
@@ -80,7 +81,7 @@ jobs:
           {
             echo "### e2e (advisory)"
             echo "Builds docker-compose.yml with the real Docker Compose v2 and runs test/e2e through the Caddy edge. The step results above, not this text, say what passed."
-            echo "Not covered: Kubernetes (TokenReview, NetworkPolicy, admission), TLS, backups, personal access tokens verified by modules. Identities for people and equity come from a fake introspection service (dev/compose/introstub)."
+            echo "Not covered: Kubernetes (TokenReview, NetworkPolicy, admission), TLS, backups. Some people and equity identities come from a fake introspection service (dev/compose/introstub)."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Tear down
         if: always()

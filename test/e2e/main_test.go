@@ -98,17 +98,22 @@ func adminSecret(t *testing.T) string {
 // it waits for the next step and tries once more.
 func adminLogin(t *testing.T, s *harness.Client) *harness.Response {
 	t.Helper()
-	const host = "admin.localhost"
+	return adminLoginAt(t, s, "admin.localhost", env.Port)
+}
+
+// adminLoginAt is adminLogin at one of the admin UI's addresses.
+func adminLoginAt(t *testing.T, s *harness.Client, host, port string) *harness.Response {
+	t.Helper()
 	secret := adminSecret(t)
 	pw := env.Secret(t, "core", "CAN_ADMIN_PASSWORD")
-	hdr := map[string]string{"Origin": "http://" + host + ":" + env.Port}
+	hdr := map[string]string{"Origin": "http://" + host + ":" + port}
 	for attempt := 0; ; attempt++ {
-		page := s.Do(t, harness.Req{Host: host, Path: "/login"}).Expect(t, "admin login page", 200)
+		page := s.Do(t, harness.Req{Host: host, Port: port, Path: "/login"}).Expect(t, "admin login page", 200)
 		code, err := harness.TOTP(secret, time.Now())
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		r := s.Do(t, harness.Req{Method: "POST", Host: host, Path: "/login", Headers: hdr,
+		r := s.Do(t, harness.Req{Method: "POST", Host: host, Port: port, Path: "/login", Headers: hdr,
 			Body: url.Values{"csrf": {harness.CSRF(page.String())}, "username": {"admin"}, "password": {pw}, "totp": {code}}})
 		if r.Status == 303 || attempt >= 1 {
 			return r.Expect(t, "admin login with password and TOTP", 303)

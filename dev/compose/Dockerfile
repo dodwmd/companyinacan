@@ -29,11 +29,13 @@ COPY dev/compose/introstub ./dev/compose/introstub
 COPY dev/compose/smtpsink ./dev/compose/smtpsink
 COPY templates ./templates
 RUN set -e; mkdir -p /out; \
-    for b in can can-core can-static can-forms can-work can-people can-jobs can-finance can-equity can-files; do \
+    for b in can can-static can-forms can-work can-people can-jobs can-finance can-equity can-files; do \
       CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/$b ./cmd/$b; \
     done; \
     CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/introstub ./dev/compose/introstub; \
-    CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/smtpsink ./dev/compose/smtpsink
+    CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/smtpsink ./dev/compose/smtpsink; \
+    CGO_ENABLED=0 go build -tags candevstack -trimpath -ldflags "-s -w" -o /out/can-core ./cmd/can-core
+# ^ DEV ONLY tag: it compiles in CAN_DEV_STACK (core/server/runtime/devstack.go). No release build uses it.
 # The example site, rendered once at build time and baked into the `site` image.
 COPY dev/compose/site-extra /site-extra
 RUN /out/can site build examples/acme-co --out /site --base-url http://localhost:8080 \
@@ -125,7 +127,6 @@ FROM base AS core
 COPY --from=build /out/can-core /can-core
 COPY --from=build --chown=65532:65532 /rootfs/var/lib/can /var/lib/can
 COPY modules /modules
-COPY dev/compose/config/company.yaml /etc/can/company/company.yaml
 ENV CAN_MODULES_DIR=/modules CAN_DB_PATH=/var/lib/can/state.db CAN_MEMLIMIT_MB=64
 EXPOSE 8080 8090
 ENTRYPOINT ["/can-core"]
@@ -136,6 +137,7 @@ CMD ["serve"]
 FROM ${GO_IMAGE} AS init
 COPY --from=build /out/can-core /usr/local/bin/can-core
 COPY dev/compose/init.sh /init.sh
+COPY dev/compose/config/company.yaml /company.seed.yaml
 ENTRYPOINT ["/bin/sh", "/init.sh"]
 
 FROM ${EDGE_IMAGE} AS edge

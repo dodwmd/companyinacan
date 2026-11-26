@@ -119,7 +119,8 @@ func (db *DB) TouchSSOIdentity(ctx context.Context, id int64, email string, emai
 
 // LinkSSOIdentity binds an identity to an existing local admin user (an explicit administrator
 // action). The user the identity was provisioned for is deleted with its sessions and the roles the
-// sign-in sync gave it. audit runs in the same transaction.
+// sign-in sync gave it. audit runs in the same transaction. Deleting the last enabled owner that way
+// is refused with ErrLastOwner, whoever calls: roles do not move to the target account.
 func (db *DB) LinkSSOIdentity(ctx context.Context, identityID, targetUserID int64, linkedBy string, audit func(tx *sql.Tx, from SSOIdentity, target AdminUser) error) error {
 	return db.InTx(ctx, func(tx *sql.Tx) error {
 		from, err := scanSSO(tx.QueryRowContext(ctx, `SELECT `+ssoCols+` FROM sso_identities i JOIN admin_users u ON u.id=i.user_id WHERE i.id=?`, identityID))
@@ -139,6 +140,13 @@ func (db *DB) LinkSSOIdentity(ctx context.Context, identityID, targetUserID int6
 		}
 		if n > 0 {
 			return ErrSSOConflict
+		}
+		if from.UserSource == SourceSSO {
+			if last, err := lastEnabledOwner(ctx, tx, from.UserID, "user:"+from.Username); err != nil {
+				return err
+			} else if last {
+				return ErrLastOwner
+			}
 		}
 		if audit != nil {
 			if err := audit(tx, from, target); err != nil {

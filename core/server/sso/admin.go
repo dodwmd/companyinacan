@@ -246,6 +246,9 @@ func (s *Service) Link(ctx context.Context, actor string, identityID int64, user
 	if errors.Is(err, store.ErrSSOConflict) || errors.Is(err, store.ErrNotFound) {
 		return ErrLinkInvalid
 	}
+	if errors.Is(err, store.ErrLastOwner) {
+		return rbac.ErrLastOwner
+	}
 	if s.RBAC != nil {
 		s.RBAC.Invalidate()
 	}

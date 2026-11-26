@@ -7,22 +7,27 @@ import (
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
+// PermTeamManage is held by the manifest's manager role and by no other.
+const PermTeamManage = "people.team.manage"
+
 // rolesFromPermissions maps the manifest permissions of a personal access token to the roles this
 // module's policy layer knows (modules/people/module.yaml roles). The permission sets of the
 // manifest roles overlap, so the mapping uses the permission that is unique to a role:
 //
-//	people.read                      -> employee (everyone in the directory)
-//	performance.write w/o sensitive-write -> manager (the manager set has no sensitive-write)
-//	people.write                     -> hr
-//	people.admin                     -> admin
+//	people.read        -> employee (everyone in the directory)
+//	people.team.manage -> manager
+//	people.write       -> hr
+//	people.admin       -> admin
 //
-// Nothing else grants a role: a token with no people.* or performance.* permission has none.
+// Nothing else grants a role: a token with no people.read has none. Every rule requires a permission
+// to be present, never absent: a token can be issued with any subset of what its issuer holds, so a
+// rule on a missing permission would let leaving one out add a role the issuer does not have.
 func rolesFromPermissions(perms []string) []string {
 	has := func(p string) bool { return slices.Contains(perms, p) }
 	var roles []string
 	if has("people.read") {
 		roles = append(roles, RoleEmployee)
-		if has("performance.write") && !has("people.sensitive-write") {
+		if has(PermTeamManage) {
 			roles = append(roles, RoleManager)
 		}
 		if has("people.write") {

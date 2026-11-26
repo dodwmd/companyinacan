@@ -2,7 +2,9 @@
 # DEV ONLY. One-shot init for docker-compose.yml (runs as root in the `init` image).
 #  1. generates random dev keyrings for can-people, can-jobs, can-equity and can-files into the dev-secrets volume
 #     (only if absent, so data stays readable across restarts);
-#  2. bootstraps the can-core admin account once and prints its TOTP secret.
+#  2. generates one random identity token per module that can-core knows (CAN_DEV_STACK), each into a
+#     volume of its own (token-<module>), and seeds can-core's company.yaml (both only if absent);
+#  3. bootstraps the can-core admin account once and prints its TOTP secret.
 # Idempotent: safe to run on every `compose up`.
 set -eu
 
@@ -17,6 +19,21 @@ for svc in people jobs equity files; do
   chown 65532:65532 "$f"
   chmod 0400 "$f"
 done
+
+TOKENS=/tokens
+for svc in work people jobs finance equity; do
+  f="$TOKENS/$svc/token"
+  if [ ! -s "$f" ]; then
+    echo "init: generating dev module token for $svc"
+    printf 'dev-module-%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" > "$f"
+  fi
+  chown 65532:65532 "$f"
+  chmod 0400 "$f"
+  chmod 0755 "$TOKENS/$svc"
+done
+# The directory is handed to can-core below: the admin UI replaces the file by renaming over it.
+mkdir -p /var/lib/can/company
+[ -s /var/lib/can/company/company.yaml ] || cp /company.seed.yaml /var/lib/can/company/company.yaml
 
 export CAN_DB_PATH="${CAN_DB_PATH:-/var/lib/can/state.db}"
 if [ -z "${CAN_ADMIN_PASSWORD:-}" ]; then echo "init: CAN_ADMIN_PASSWORD is not set" >&2; exit 1; fi

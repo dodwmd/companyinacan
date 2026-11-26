@@ -201,9 +201,9 @@ that module's session only.
 **Not routed by default.** Set `modules.<id>.expose.ui: true` in `company.yaml`
 ([`module-routing.md`](module-routing.md)): can-core routes the UI on `<id>.<domain>`, switches it on in
 the module, and offers it under **Apps** without `CAN_MODULE_UI_URLS`. Without that, and without an
-address of your own in `CAN_MODULE_UI_URLS`, a module does not appear. The compose stack
-(`CAN_INSTALLER=none`) installs no module, so Apps is empty there and the modules' token login is the
-way in.
+address of your own in `CAN_MODULE_UI_URLS`, a module does not appear. The compose stack offers work,
+people, jobs and finance in Apps when the admin UI is opened at `http://localhost:8180`
+([local-compose.md](local-compose.md#modules-access-tokens-and-single-sign-on)).
 
 **Not verified:** no browser or cluster run. See `specs/036-module-ui-sso/tasks.md`.
 

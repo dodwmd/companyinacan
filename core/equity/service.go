@@ -273,7 +273,7 @@ func (a Actor) auditID() string {
 // ResolveActor turns an authenticated Principal into an Actor. Roles were filtered by the
 // authenticator; a caller with no known role is blocked by the policy layer.
 func (s *Service) ResolveActor(_ context.Context, p *Principal) (Actor, error) {
-	return Actor{Subject: p.Subject, Roles: p.Roles, PersonID: p.PersonID}, nil
+	return Actor{Subject: p.Subject, Roles: p.Roles, PersonID: p.PersonID, CanCore: p.CanCore}, nil
 }
 
 // authorize returns ErrForbidden (and audits the denial) when the policy says no.

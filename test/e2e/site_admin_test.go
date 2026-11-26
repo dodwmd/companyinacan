@@ -51,11 +51,7 @@ func TestSiteAndLeadCapture(t *testing.T) {
 
 // (b) Admin login with password and TOTP (the secret comes from `can-core admin reset-password
 // --rotate-totp`, like dev/compose/bootstrap-admin.sh), then the dashboard, the module pages, the
-// audit log, and the API token page.
-//
-// Known limit of the compose stack, asserted here so a change shows up: can-core runs with
-// CAN_INSTALLER=none, so module management is off (the catalogue answers "not available") and no
-// module is enabled, so no personal access token can be issued. See docs/local-compose.md.
+// audit log, the API token page and the module catalogue.
 func TestAdminLoginTOTPAndPages(t *testing.T) {
 	s := harness.NewSession(env)
 	const host = "admin.localhost"
@@ -86,15 +82,18 @@ func TestAdminLoginTOTPAndPages(t *testing.T) {
 		t.Fatalf("the audit log does not show the login just made")
 	}
 	s.Do(t, harness.Req{Host: host, Path: "/leads"}).Expect(t, "leads page", 200)
+	// Module management is on (the dev stack records the modules it runs): the catalogue renders and
+	// the tokens page offers their permissions (devstack_test.go uses them).
 	tokens := s.Do(t, harness.Req{Host: host, Path: "/tokens"}).Expect(t, "API tokens page", 200)
-	if !strings.Contains(tokens.String(), "No enabled module offers a permission you hold") {
-		t.Errorf("API tokens page changed: it no longer says no module offers a permission (installer on? update docs/local-compose.md and this test)")
+	if !strings.Contains(tokens.String(), `value="work.read"`) {
+		t.Errorf("the API tokens page offers no work permission: %.300s", tokens.String())
 	}
-	cat := s.Do(t, harness.Req{Host: host, Path: "/catalogue"})
-	if cat.Status != 503 && cat.Status != 200 {
-		t.Fatalf("catalogue page: unexpected HTTP %d", cat.Status)
+	cat := s.Do(t, harness.Req{Host: host, Path: "/catalogue"}).Expect(t, "module catalogue", 200)
+	for _, id := range []string{"work", "people", "jobs", "finance", "equity"} {
+		if !strings.Contains(cat.String(), "/catalogue/"+id) {
+			t.Errorf("the catalogue does not list %s", id)
+		}
 	}
-	t.Logf("module catalogue page answers HTTP %d (503 = module management off, expected in compose)", cat.Status)
 
 	// Log out ends the session.
 	out := s.Do(t, harness.Req{Method: "POST", Host: host, Path: "/logout", Headers: origin, Body: url.Values{"csrf": {harness.CSRF(dash.String())}}})

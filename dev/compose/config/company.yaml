@@ -1,9 +1,18 @@
-# DEV ONLY: the company.yaml of the Docker Compose stack, baked into the can-core image. can-core uses
-# it for email.send (the relay is the in-repo SMTP sink, which keeps mail instead of delivering it).
+# DEV ONLY: the company.yaml of the Docker Compose stack. The `init` job copies it into can-core's data
+# volume when there is none yet; after that the admin UI's catalogue edits that copy. Its modules are the
+# ones Compose runs: enabling or disabling one only changes what can-core records (and so whether its
+# tokens and the Apps launcher work); no container is started or stopped. can-core also reads it for
+# email.send (the relay is the in-repo SMTP sink, which keeps mail instead of delivering it).
 schema: 1
 name: Acme Co
 domain: acme.example
 provider: { type: local }
+modules:
+  work: {}
+  people: {}
+  jobs: {}
+  finance: {}
+  equity: {}
 email:
   # tls: none is accepted only because the compose stack sets CAN_SMTP_ALLOW_INSECURE=true.
   relay: { host: smtpsink, port: 1025, tls: none, from: no-reply@acme.example }

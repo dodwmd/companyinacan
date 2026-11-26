@@ -94,7 +94,7 @@ compose-test: ## run the smoke test against the running compose stack
 
 # End-to-end suite against the compose stack through the Caddy edge (epic E23, specs/032-e2e-docs).
 # The stack is project `can-e2e` with the dev/compose/e2e.yml overlay (fake token introspection for people and
-# equity). Override with E2E_COMPOSE / E2E_PORT. Needs docker compose v2 or podman-compose, curl-free, Go only.
+# equity). Override with E2E_COMPOSE / E2E_PORT / E2E_APPS_PORT. Needs docker compose v2 or podman-compose, curl-free, Go only.
 E2E_COMPOSE ?= docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml
 
 e2e-up: ## DEV ONLY: build and start the compose stack for the e2e suite (project can-e2e)
