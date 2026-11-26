@@ -29,9 +29,6 @@ const (
 
 type uiSession = session.Session[Principal]
 
-// strongRecheck is how often sessions that write or administer re-check.
-const strongRecheck = session.PrivilegedRecheck
-
 func (u *UI) newSessions() *session.Manager[Principal] {
 	return session.New(session.Config[Principal]{
 		Module: "jobs", SessionCookie: sessionCookie, CSRFCookie: loginCSRFCookie,

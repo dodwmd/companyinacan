@@ -20,7 +20,7 @@ whenever a session is created. A restart empties the table.
 
 | Name | Value | Lifetime |
 |---|---|---|
-| `work_session` / `__Host-work_session` | session id | 24 h maximum |
+| `work_session` / `__Host-work_session` | session id | the browser session (the server ends it after 8 h idle or 24 h) |
 | `work_login_csrf` / `__Host-work_login_csrf` | double-submit token of the login form | 1 h, removed on success |
 
 ## Query parameters (state kept in the URL)

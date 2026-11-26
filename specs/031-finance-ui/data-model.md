@@ -7,7 +7,7 @@ The UI adds **no table, no migration and no persisted data**. It reads and write
 
 | Thing | Where | Bound | Lifetime |
 |---|---|---|---|
-| Session `{subject, principal, token, csrf, created, last, checked}` keyed by SHA-256 of a random id | `sessionStore` | 5000 overall, 5 per subject (oldest dropped) | idle 30 min, absolute 8 h, logout, a failed re-check; lost on restart |
+| Session `{subject, principal, token, csrf, created, last, checked}` keyed by SHA-256 of a random id | `core/uikit/session` | 5000 overall, 5 per subject (oldest dropped) | idle 30 min, absolute 8 h, logout, a failed re-check; lost on restart |
 | Failed-login counter per client address | `rateLimiter` | 10 per minute, 10000 keys | one window |
 | Request counter per subject | `rateLimiter` | 600 per minute | one window |
 | Parsed page templates | `UI.tpl` | one per page (31) | parsed on first use |

@@ -53,10 +53,13 @@ func TestUIRevealsOfOthersAreLimited(t *testing.T) {
 	}
 }
 
-func TestUIHRSessionsRecheckFaster(t *testing.T) {
+func TestUIPrivilegedSessionsRecheckFaster(t *testing.T) {
 	u := newUIEnv(t)
 	if d := u.ui.recheckFor(Principal{Roles: []string{RoleHR}}); d != time.Minute {
 		t.Fatalf("hr recheck = %v", d)
+	}
+	if d := u.ui.recheckFor(Principal{Roles: []string{RoleEmployee, RoleManager}}); d != time.Minute {
+		t.Fatalf("manager recheck = %v", d)
 	}
 	if d := u.ui.recheckFor(Principal{Roles: []string{RoleEmployee}}); d != defaultRecheck {
 		t.Fatalf("employee recheck = %v", d)

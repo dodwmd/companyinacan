@@ -3,13 +3,14 @@ package finance
 import (
 	"errors"
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/uikit/session"
 	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 func stringsUpper(s string) string { return strings.ToUpper(s) }

@@ -2,11 +2,12 @@ package finance
 
 import (
 	"fmt"
-	"github.com/dodwmd/companyinacan/core/uikit/session"
 	"net/http"
 	"slices"
 	"strconv"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 var invoiceStatuses = []string{StDraft, StApproved, StSent, StPartiallyPaid, StPaid, StVoid}

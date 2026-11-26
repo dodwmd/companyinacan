@@ -3,7 +3,6 @@ package files
 import (
 	"context"
 	"errors"
-	"github.com/dodwmd/companyinacan/core/uikit/session"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 // Every handler here parses a form, calls Store methods (the same ones the JSON API calls, in api.go)

@@ -2,11 +2,12 @@ package finance
 
 import (
 	"errors"
-	"github.com/dodwmd/companyinacan/core/uikit/session"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 // ---- shared helpers --------------------------------------------------------------------------

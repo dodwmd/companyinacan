@@ -7,12 +7,13 @@ package finance
 // only an unscoped token in.
 
 import (
-	"github.com/dodwmd/companyinacan/core/uikit/session"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 const reconQueueSize = 25
