@@ -120,6 +120,53 @@ func TestOnlyGrantedModulesAreConnected(t *testing.T) {
 	}
 }
 
+// noRights answers as the API server does for a namespace can-core has no RoleBinding in.
+type noRights struct {
+	*kube.Fake
+	ns string
+}
+
+func (n noRights) Get(ctx context.Context, kind, ns, name string) (kube.Object, error) {
+	if ns == n.ns {
+		return nil, &kube.StatusError{Code: 403, Reason: "Forbidden"}
+	}
+	return n.Fake.Get(ctx, kind, ns, name)
+}
+
+// Planning to enable people where equity runs: mod-people does not exist yet.
+func TestFingerprintBeforeTheProviderExists(t *testing.T) {
+	in, api, enable := linkFixture(t)
+	s := enable("equity", false)
+	s.Links = testLinks("equity")
+	in.cfg.API = noRights{Fake: api, ns: "mod-people"}
+	if f, err := in.WiringFingerprint(context.Background(), s); err != nil || f != "" {
+		t.Fatalf("fingerprint %q, %v", f, err)
+	}
+}
+
+// A restore reconnects nothing and reads nothing of the provider: it keeps the seeded credential.
+func TestRestoreKeepsTheSeededCredential(t *testing.T) {
+	in, api, _ := linkFixture(t)
+	const seeded = "seeded-lookup-token-seeded-lookup-token"
+	in.cfg.Quiesce, in.cfg.API = true, noRights{Fake: api, ns: "mod-people"}
+	in.cfg.Seed = func(ctx context.Context, s reconcile.Spec) error {
+		return api.Apply(ctx, secret(s.Namespace, secretModule, s.ID, map[string]string{modsecrets.EquityDirectoryKey: seeded}))
+	}
+	_, _, _, spec := fixture(t, nil)
+	spec.ID, spec.Namespace, spec.ServiceAccount = "equity", "mod-equity", "equity"
+	spec.Manifest = loadManifest(t, "../../../modules/equity/module.yaml")
+	spec.Manifest.Requires.Database, spec.Links = "none", testLinks("equity")
+	if err := in.Enable(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if got := secretValue(t, api, "mod-equity", modsecrets.EquityDirectoryKey); got != seeded {
+		t.Errorf("credential %q", got)
+	}
+	if exists(api, "NetworkPolicy", "mod-equity", "can-wire-to-people") {
+		t.Error("a restore made the connection")
+	}
+}
+
 func TestAChartCannotNameAConnectionPolicy(t *testing.T) {
 	in, _, _, spec := fixture(t, map[string]string{"stub/chart/templates/np.yaml": "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: can-wire-to-people\nspec:\n  podSelector: {matchLabels: {app: stub}}\n  policyTypes: [Egress]\n  egress: [{to: [{podSelector: {matchLabels: {app: stub}}}]}]\n"})
 	if err := in.Enable(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "can-core owns it") {

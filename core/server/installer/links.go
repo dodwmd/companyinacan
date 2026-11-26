@@ -61,7 +61,9 @@ func (in *Installer) wireSecrets(ctx context.Context, s reconcile.Spec, data map
 		}
 		link, required := linked(s, g.Provider), slices.Contains(s.Manifest.Requires.Capabilities, g.Capability)
 		var tok string
-		if link {
+		// A restore does not look: the provider's namespace may not be there yet, and the seeded
+		// value is the one to keep.
+		if link && !in.cfg.Quiesce {
 			if tok, err = in.secretKey(ctx, "mod-"+g.Provider, secretModule, g.ProviderKey); err != nil {
 				return nil, err
 			}
@@ -109,7 +111,10 @@ func (in *Installer) WiringFingerprint(ctx context.Context, s reconcile.Spec) (s
 			continue
 		}
 		tok, err := in.secretKey(ctx, "mod-"+g.Provider, secretModule, g.ProviderKey)
-		if err != nil {
+		// Forbidden: can-core has no rights in a namespace it has not made yet, so a provider that
+		// this apply is still to install answers like that. It has no token, and the plan must still
+		// show what happens to the consumer.
+		if err != nil && !kube.IsForbidden(err) {
 			return "", err
 		}
 		if tok != "" {
