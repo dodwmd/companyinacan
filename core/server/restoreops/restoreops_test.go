@@ -393,3 +393,26 @@ func TestEraseCleansCoreState(t *testing.T) {
 		t.Errorf("events=%d deliveries=%d", events, deliveries)
 	}
 }
+
+// A restore hook never runs while a pod of the module still does.
+func TestRunHooksWaitsForTheModuleToStop(t *testing.T) {
+	ctx := context.Background()
+	o, h, api := ops(t, module("wiki", "enabled", func(m *config.Module) { m.Hooks.Restore = "./r.sh" }))
+	o.Wait = 20 * time.Millisecond
+	p := filepath.Join(o.DumpsDir, "modules", "wiki")
+	_ = os.MkdirAll(p, 0o700)
+	_ = os.WriteFile(filepath.Join(p, "d"), []byte("x"), 0o600)
+	pod := func(phase string) {
+		if err := api.Apply(ctx, kube.Object{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "wiki-0", "namespace": "mod-wiki"}, "status": map[string]any{"phase": phase}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pod("Running")
+	if _, err := o.RunHooks(ctx, backup.HookOptions{}); err == nil || !strings.Contains(err.Error(), "still running") || len(h.calls) != 0 {
+		t.Fatal(err, h.calls)
+	}
+	pod("Succeeded")
+	if _, err := o.RunHooks(ctx, backup.HookOptions{}); err != nil || len(h.calls) != 1 {
+		t.Fatal(err, h.calls)
+	}
+}

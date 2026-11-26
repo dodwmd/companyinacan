@@ -54,8 +54,8 @@ Implemented in specs/042-restore.
    with the same environment. It downloads the set from `GET /v1/dumps`, which only a can-core in restore mode
    serves, or reads `-from DIR`.
 5. Run the erasure replay (`purge`) after the hooks and before scaling up.
-6. Use the module version that made the dump, or a newer one: the service migrates on start, and nothing refuses a
-   database from a newer schema.
+6. Use the module version that made the dump, or a newer one: the service migrates on start, and `restore` refuses a
+   dump whose `schema_version` is newer than the binary knows.
 
 `-allow-missing-blobs` (`can restore --allow-missing-blobs <module>`) is only right for files destroyed after the dump was taken; otherwise it means the volume
 was not restored. A `restore` of files with the s3 backend checks nothing in the bucket.

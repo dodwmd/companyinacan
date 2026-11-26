@@ -73,3 +73,11 @@ which includes reclaimable page cache). Restore is not limited by a Job yet.
 - `can restore` itself and can-core's restore mode: epic E08c, specs/042-restore.
 - Publishing `can-hooks` or any image. Until a release publishes `can-hooks`, enabling analytics, crm,
   newsletter, status, support or wiki still stops backups; disabling it brings them back.
+
+## Follow-ups made with E08c (specs/042-restore)
+
+- `backup` requires an applied migration in `schema_migrations`; the manifest records `schema_version`.
+- `restore` holds the existing database exclusively while it replaces it and refuses when it is in use (a process
+  that holds the file open without ever having read it cannot be seen: stop the service), and refuses a dump
+  whose schema is newer than the binary's.
+- The missing-file errors of both name the record and the purge that clears it.

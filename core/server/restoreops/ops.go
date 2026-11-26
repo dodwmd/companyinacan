@@ -277,9 +277,14 @@ func (o *Ops) RunHooks(ctx context.Context, opt backup.HookOptions) (backup.Hook
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q: its dump is NOT loaded (no restore hook)", m.ID))
 			continue
 		}
+		// Quiesced: a restore replaces the database, and nothing else may be using it.
+		if err := o.idle(ctx, m.Namespace); err != nil {
+			errs = append(errs, fmt.Errorf("restore %s: %w", m.ID, err))
+			continue
+		}
 		missing := slices.Contains(opt.MissingBlobs, m.ID)
 		if missing {
-			rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q: --allow-missing-blobs: files its database names may be absent", m.ID))
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q: --allow-missing-blobs: if its database refers to files that are not there, EVERY later backup of it fails until those records are purged (POST /v1/purge; deleting is not enough) or the files are put back. `can backup status` on this server names them after the next dump run", m.ID))
 		}
 		if err := o.Hooks.RunRestore(ctx, m.ID, missing); err != nil {
 			if slices.Contains(accept, m.ID) {
@@ -298,6 +303,38 @@ func (o *Ops) RunHooks(ctx context.Context, opt backup.HookOptions) (backup.Hook
 	}
 	sort.Strings(rep.Warnings)
 	return rep, errors.Join(errs...)
+}
+
+// idle waits until no pod runs in the namespace: the modules are installed with 0 replicas, but
+// on a server being overwritten the old pods may still be on their way out.
+func (o *Ops) idle(ctx context.Context, ns string) error {
+	poll, wait := o.wait()
+	deadline := time.Now().Add(wait)
+	for {
+		pods, err := o.API.List(ctx, "Pod", ns, "")
+		if err != nil {
+			return fmt.Errorf("list pods: %w", err)
+		}
+		running := ""
+		for _, p := range pods {
+			st, _ := p["status"].(map[string]any)
+			if phase := st["phase"]; phase != "Succeeded" && phase != "Failed" {
+				md, _ := p["metadata"].(map[string]any)
+				running, _ = md["name"].(string)
+			}
+		}
+		if running == "" {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("pod %s/%s is still running: stop it, then run the restore again", ns, running)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(poll):
+		}
+	}
 }
 
 // How a module's purge(subject, class) is replayed.

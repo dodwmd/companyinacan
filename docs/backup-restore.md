@@ -101,6 +101,11 @@ refers to (size and SHA-256); the bytes themselves are in the volume copy, and t
 (delete or purge the affected record, or put the file back). With the files `s3` backend the bucket is **not**
 backed up by this project.
 
+`restore` takes the existing database exclusively first and refuses while any process uses it, refuses a dump from a
+newer schema than the binary knows, and `backup` refuses an empty or schemaless database file. A referenced file that
+is missing fails the backup with the record to **purge** (`POST /v1/purge`; deleting a file only moves it to the trash
+and keeps the reference); the same is true after a restore with `-allow-missing-blobs`, which prints it.
+
 To dump or restore one instance by hand, with the service stopped for a restore:
 
 ```

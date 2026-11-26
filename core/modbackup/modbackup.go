@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -50,8 +51,10 @@ type blobSpec struct {
 	defaultDir string
 	// sharded selects the can-files layout dir/ab/cd/<key>; else dir/<key>.
 	sharded bool
-	// query lists (key, size, sha256) of every file the database says exists.
+	// query lists (key, size, sha256, record id) of every file the database says exists.
 	query string
+	// record names what the record id is; class is the data class whose purge clears it.
+	record, class string
 }
 
 // spec is what differs between the services.
@@ -61,6 +64,7 @@ type spec struct {
 	defaultConfig string
 	defaultDB     string
 	blobs         *blobSpec
+	latest        int // the newest schema this binary knows
 }
 
 var specs = map[string]spec{
@@ -72,12 +76,12 @@ var specs = map[string]spec{
 	"can-board":     {configEnv: "CAN_BOARD_CONFIG", defaultConfig: "/etc/can-board/board.yaml", defaultDB: "/data/board.db"},
 	"can-provision": {configEnv: "CAN_PROVISIONING_CONFIG", defaultConfig: "/etc/can-provisioning/provisioning.yaml", defaultDB: "/data/provision.db"},
 	"can-jobs": {configEnv: "CAN_JOBS_CONFIG", defaultConfig: "/etc/can-jobs/jobs.yaml", defaultDB: "/data/jobs.db",
-		blobs: &blobSpec{defaultDir: "/data/resumes",
-			query: `SELECT resume_key, resume_size, resume_sha256 FROM applications WHERE resume_key != '' ORDER BY resume_key`}},
+		blobs: &blobSpec{defaultDir: "/data/resumes", record: "candidate", class: "candidate-resumes",
+			query: `SELECT resume_key, resume_size, resume_sha256, candidate_id FROM applications WHERE resume_key != '' ORDER BY resume_key`}},
 	"can-files": {configEnv: "CAN_FILES_CONFIG", defaultConfig: "/etc/can-files/files.yaml", defaultDB: "/data/files.db",
-		blobs: &blobSpec{defaultDir: "/data/blobs", sharded: true,
+		blobs: &blobSpec{defaultDir: "/data/blobs", sharded: true, record: "file", class: "file-content",
 			// A file being purged may already have lost its bytes; the restored service finishes it.
-			query: `SELECT v.blob_key, v.size, v.sha256 FROM versions v JOIN files f ON f.id = v.file_id
+			query: `SELECT v.blob_key, v.size, v.sha256, f.id FROM versions v JOIN files f ON f.id = v.file_id
 WHERE v.purged_at IS NULL AND v.blob_key != '' AND f.status IN ('active','deleted') ORDER BY v.blob_key`}},
 }
 
@@ -143,33 +147,40 @@ func Handles(args []string) bool {
 	return len(args) > 0 && (args[0] == "backup" || args[0] == "restore")
 }
 
-// Main runs `<binary> backup|restore` and returns the exit code.
-func Main(binary string, args []string, getenv func(string) string, stdout, stderr io.Writer) int {
+// Main runs `<binary> backup|restore` and returns the exit code. migrations is the service's
+// embedded migration set: restore refuses a database from a newer schema than it knows.
+func Main(binary string, migrations fs.FS, args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	s, ok := specs[binary]
 	if !ok || !Handles(args) {
 		fmt.Fprintf(stderr, "%s: no such backup command\n", binary)
 		return ExitUsage
 	}
 	s.binary = binary
+	latest, err := latestVersion(migrations)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", binary, err)
+		return ExitUsage
+	}
+	s.latest = latest
 	cmd := args[0]
-	fs := flag.NewFlagSet(binary+" "+cmd, flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	cfgPath := fs.String("config", "", "path to the service config file (default "+s.defaultConfig+" when present)")
+	flags := flag.NewFlagSet(binary+" "+cmd, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	cfgPath := flags.String("config", "", "path to the service config file (default "+s.defaultConfig+" when present)")
 	var out, from, blobs *string
 	var replace, allowMissing *bool
 	if cmd == "backup" {
-		out = fs.String("out", "", "write the dump set into this directory instead of uploading it to can-core")
+		out = flags.String("out", "", "write the dump set into this directory instead of uploading it to can-core")
 	} else {
-		from = fs.String("from", "", "directory holding the dump set (default: download it from can-core, which allows that only in restore mode)")
-		blobs = fs.String("blobs", "", "copy referenced files that are missing or wrong from this directory (a restored volume's blob or resume directory)")
-		replace = fs.Bool("replace", false, "replace an existing database; the service must be stopped")
-		allowMissing = fs.Bool("allow-missing-blobs", false, "restore even if referenced files cannot be found")
+		from = flags.String("from", "", "directory holding the dump set (default: download it from can-core, which allows that only in restore mode)")
+		blobs = flags.String("blobs", "", "copy referenced files that are missing or wrong from this directory (a restored volume's blob or resume directory)")
+		replace = flags.Bool("replace", false, "replace an existing database; the service must be stopped")
+		allowMissing = flags.Bool("allow-missing-blobs", false, "restore even if referenced files cannot be found")
 	}
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := flags.Parse(args[1:]); err != nil {
 		return ExitUsage
 	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "unexpected argument %q\n", fs.Arg(0))
+	if flags.NArg() > 0 {
+		fmt.Fprintf(stderr, "unexpected argument %q\n", flags.Arg(0))
 		return ExitUsage
 	}
 	// A named file must exist. The hook Job's mounted ConfigMap (CAN_BACKUP_CONFIG) and the default

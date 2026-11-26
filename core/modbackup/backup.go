@@ -28,8 +28,11 @@ type Manifest struct {
 	Module  string    `json:"module,omitempty"`
 	TakenAt time.Time `json:"taken_at"`
 	// Database is the gzip of the copy; Size and SHA256 are of the uncompressed database.
-	Database Part       `json:"database"`
-	Blobs    *BlobsPart `json:"blobs,omitempty"`
+	Database Part `json:"database"`
+	// SchemaVersion is the newest migration applied to the database (0 in sets made before it
+	// was recorded; restore then reads it from the database).
+	SchemaVersion int        `json:"schema_version,omitempty"`
+	Blobs         *BlobsPart `json:"blobs,omitempty"`
 }
 
 // Part is one file of the set.
@@ -50,9 +53,10 @@ type BlobsPart struct {
 }
 
 type blob struct {
-	key  string
-	size int64
-	sha  string
+	key    string
+	size   int64
+	sha    string
+	record string // the id of the record that refers to the file
 }
 
 // retryPause is how long backup waits before a second look at a file that is missing (a purge
@@ -86,6 +90,7 @@ func runBackup(ctx context.Context, s spec, l layout, module string, api *client
 	copyPath := filepath.Join(tmp, "copy.db")
 	var blobs []blob
 	var taken time.Time
+	var version int
 	for try := 1; ; try++ {
 		taken = time.Now().UTC()
 		if err := snapshot(ctx, l.db, copyPath); err != nil {
@@ -93,6 +98,9 @@ func runBackup(ctx context.Context, s spec, l layout, module string, api *client
 		}
 		if err := integrity(ctx, copyPath); err != nil {
 			return fmt.Errorf("the copy of the database: %w", err)
+		}
+		if version, err = schemaVersion(ctx, copyPath); err != nil {
+			return fmt.Errorf("refusing to dump %s: %w", l.db, err)
 		}
 		if s.blobs == nil {
 			break
@@ -108,8 +116,7 @@ func runBackup(ctx context.Context, s spec, l layout, module string, api *client
 			break
 		}
 		if try == attempts {
-			return fmt.Errorf("%d file(s) the database refers to are missing or have the wrong size under %s (first: %s); "+
-				"delete or purge the affected records, or put the files back", len(missing), l.blobDir, missing[0])
+			return fmt.Errorf("%d referenced file(s) missing or of the wrong size under %s. %s", len(missing), l.blobDir, s.blobs.missingFiles(missing, records(blobs)))
 		}
 		select {
 		case <-ctx.Done():
@@ -121,7 +128,7 @@ func runBackup(ctx context.Context, s spec, l layout, module string, api *client
 		}
 	}
 
-	m := Manifest{Format: 1, Binary: s.binary, Module: module, TakenAt: taken}
+	m := Manifest{Format: 1, Binary: s.binary, Module: module, TakenAt: taken, SchemaVersion: version}
 	if m.Database, err = compress(copyPath, filepath.Join(tmp, DatabaseName), DatabaseName); err != nil {
 		return err
 	}
@@ -230,7 +237,7 @@ func listBlobs(ctx context.Context, path, query string) ([]blob, error) {
 	var out []blob
 	for rows.Next() {
 		var b blob
-		if err := rows.Scan(&b.key, &b.size, &b.sha); err != nil {
+		if err := rows.Scan(&b.key, &b.size, &b.sha, &b.record); err != nil {
 			return nil, err
 		}
 		if !blobKeyRe.MatchString(b.key) {
@@ -239,6 +246,14 @@ func listBlobs(ctx context.Context, path, query string) ([]blob, error) {
 		out = append(out, b)
 	}
 	return out, rows.Err()
+}
+
+func records(blobs []blob) map[string]string {
+	out := map[string]string{}
+	for _, b := range blobs {
+		out[b.key] = b.record
+	}
+	return out
 }
 
 // absent returns the keys whose file is not there with the recorded size. Contents are hashed at
