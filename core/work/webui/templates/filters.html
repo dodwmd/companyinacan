@@ -1,0 +1,36 @@
+{{define "content"}}<h1>{{t "filters.title"}}</h1>
+<p>{{t "filters.intro"}}</p>
+{{if .D.Filters}}<div class="scroll">
+<table class="filters-list">
+<caption>{{t "filters.caption"}}</caption>
+<thead><tr><th scope="col">{{t "col.name"}}</th><th scope="col">{{t "filters.project"}}</th><th scope="col">{{t "filters.query"}}</th><th scope="col">{{t "filters.who"}}</th>{{if .CanWrite}}<th scope="col">{{t "col.actions"}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .D.Filters}}<tr>
+<td data-label="{{t "col.name"}}"><a href="/ui/filters/{{.ID}}">{{.Name}}</a></td>
+<td data-label="{{t "filters.project"}}">{{if .Project}}{{.Project}}{{else}}{{t "filters.every_project"}}{{end}}</td>
+<td data-label="{{t "filters.query"}}" class="title">{{if .Query}}<code>{{.Query}}</code>{{else}}<span class="muted">{{t "filters.everything"}}</span>{{end}}</td>
+<td data-label="{{t "filters.who"}}">{{if not .Shared}}{{t "filters.only_you"}}{{else if .Mine}}{{t "filters.shared_by_you"}}{{else}}{{t "filters.shared_by" .Owner}}{{end}}</td>
+{{if $.CanWrite}}<td data-label="{{t "col.actions"}}">{{if or .Mine $.D.CanAdmin}}<form method="post" action="/ui/filters/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="quiet">{{t "filters.delete"}}<span class="sr"> {{.Name}}</span></button></form>{{end}}</td>{{end}}
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "filters.empty"}}</p>
+{{end}}{{if .CanWrite}}<section aria-labelledby="new-filter">
+<h2 id="new-filter">{{t "filters.new"}}</h2>
+<form method="post" action="/ui/filters" class="create">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<div><label for="sf-name">{{t "col.name"}}</label>
+<input id="sf-name" name="name" type="text" required maxlength="80"></div>
+<div><label for="sf-project">{{t "filters.project"}}</label>
+<select id="sf-project" name="project"><option value="">{{t "filters.every_project"}}</option>{{range .D.Projects}}<option value="{{.Key}}">{{.Key}} {{.Name}}</option>{{end}}</select></div>
+<div><label for="sf-sort">{{t "filter.sort"}}</label>
+<select id="sf-sort" name="sort">{{range .D.Sorts}}<option value="{{.}}"{{if eq . "priority"}} selected{{end}}>{{t (printf "sort.%s" .)}}</option>{{end}}</select></div>
+<div class="wide"><label for="sf-query">{{t "filters.query"}}</label>
+<input id="sf-query" name="query" type="text" maxlength="500" aria-describedby="sf-query-hint">
+<p id="sf-query-hint" class="hint">{{t "filters.query_hint"}}</p></div>
+<div class="wide"><label for="sf-shared" class="check"><input id="sf-shared" name="shared" type="checkbox" value="1"> {{t "filters.share"}}</label></div>
+<div class="actions"><button type="submit">{{t "filters.save"}}</button></div>
+</form>
+</section>
+{{end}}{{end}}

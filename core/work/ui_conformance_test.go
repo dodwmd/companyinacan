@@ -45,8 +45,8 @@ func TestUISecurityConformance(t *testing.T) {
 			}
 			return &conformance.Env{H: app.Handler(), Core: core, Advance: clk.Advance}
 		},
-		// no page here is for administrators alone, so the demotion is to read-only and the request
-		// is a write
+		// the demotion is to read-only and the request is a write; the administrators' routes are
+		// covered by TestUIRoutePermissionTable
 		Demoted: []string{PermRead},
 		Gated: func(t *testing.T, _ *conformance.Env, _ *conformance.Browser) (string, string, url.Values) {
 			setup := &Principal{Subject: "user:setup", Permissions: []string{PermAdmin}}

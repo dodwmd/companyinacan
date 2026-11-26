@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>Who is on what - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/">Projects</a></li>
+<li><a href="/ui/team/workload" aria-current="page">Team</a></li>
+<li><a href="/ui/filters">Saved filters</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (boss@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Team">
+<ul>
+<li><a href="/ui/team/workload" aria-current="page">Workload</a></li>
+<li><a href="/ui/team/ageing">P0 and P1 ageing</a></li>
+<li><a href="/ui/team/stale">Stale work</a></li>
+<li><a href="/ui/dashboard">Urgent by person</a></li>
+</ul>
+</nav>
+<h1>Who is on what</h1>
+<p>Unresolved work by person, most urgent first. Epics and archived projects are left out.</p>
+<form method="get" action="/ui/team/workload" class="inline">
+<label for="r-project">Project</label>
+<select id="r-project" name="project"><option value="">Every project</option><option value="WEB">WEB Website</option></select>
+<button type="submit">Apply filter</button>
+</form>
+<div class="scroll">
+<table class="workload">
+<caption>Unresolved issues per person</caption>
+<thead><tr><th scope="col">Person</th><th scope="col">Open</th><th scope="col">P0</th><th scope="col">P1</th><th scope="col">P2</th><th scope="col">P3</th><th scope="col">In progress</th><th scope="col">Blocked</th><th scope="col">Overdue</th><th scope="col">Working on</th></tr></thead>
+<tbody>
+<tr>
+<th scope="row" data-label="Person">ann@example.com</th>
+<td data-label="Open">0</td>
+<td data-label="P0">0</td>
+<td data-label="P1">0</td>
+<td data-label="P2">0</td>
+<td data-label="P3">0</td>
+<td data-label="In progress">0</td>
+<td data-label="Blocked">0</td>
+<td data-label="Overdue">0</td>
+<td data-label="Working on" class="title"><span class="muted">Nothing in progress</span></td>
+</tr>
+<tr>
+<th scope="row" data-label="Person">idle@example.com</th>
+<td data-label="Open">0</td>
+<td data-label="P0">0</td>
+<td data-label="P1">0</td>
+<td data-label="P2">0</td>
+<td data-label="P3">0</td>
+<td data-label="In progress">0</td>
+<td data-label="Blocked">0</td>
+<td data-label="Overdue">0</td>
+<td data-label="Working on" class="title"><span class="muted">Nothing in progress</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

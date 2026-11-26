@@ -341,11 +341,8 @@ func launchBinding(t *testing.T, r *run) {
 func workFlow(t *testing.T, r *run) {
 	s := r.admin.in(t)
 	r.key = projectKey(r.u)
-	apiOf(t, "work", "CAN_WORK_ADMIN_TOKEN").Post(t, "/v1/projects", map[string]any{"key": r.key, "name": "Browser project " + r.u}).
-		Expect(t, "create project", 201)
 	open(s, "work", appURL(1))
-
-	s.goTo(workURL() + "/projects/" + r.key)
+	createProject(s, r.key, "Browser project "+r.u)
 	title := "Browser issue " + r.u + " with a rather long title that has to wrap on a phone screen"
 	s.fill("#c-title", title)
 	s.fill("#c-labels", "browser, averyveryveryveryveryveryverylonglabel")
@@ -364,7 +361,8 @@ func workFlow(t *testing.T, r *run) {
 	}
 	s.goTo(workURL() + "/projects/" + r.key + "/board?sprint=all")
 	s.has(r.key + "-1")
-	s.crawl(workURL()+"/", 25, skipCrawl)
+	workManage(s, r)
+	s.crawl(workURL()+"/", 35, skipCrawl)
 }
 
 func peopleFlow(t *testing.T, r *run) {

@@ -17,7 +17,7 @@ var dynamicMessageFamilies = map[string][]string{
 	"linktype.": LinkTypes,
 	"status.":   {"todo"},
 	"activity.": {"created", "transitioned", "updated", "commented", "ranked", "linked", "linked_hidden", "unlinked", "attachment_added", "attachment_removed"},
-	"flash.":    {"created", "updated", "moved", "ranked", "commented", "linked", "unlinked", "watching", "unwatched", "sprint_created", "sprint_started", "sprint_completed", "logged_out"},
+	"flash.":    {"created", "updated", "moved", "ranked", "commented", "linked", "unlinked", "watching", "unwatched", "sprint_created", "sprint_started", "sprint_completed", "logged_out", "project_created", "project_saved", "project_archived", "project_restored", "member_added", "member_removed", "filter_saved", "filter_deleted"},
 }
 
 func TestUIMessageCatalogueMatchesUsage(t *testing.T) {

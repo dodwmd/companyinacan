@@ -594,7 +594,7 @@ func TestWebhookEventsSignedAndRetried(t *testing.T) {
 
 	d := h.app.dispatcher
 	ctx := context.Background()
-	if n, err := d.DeliverDue(ctx); err != nil || n != 4 { // the first call fails with 500, the next four succeed
+	if n, err := d.DeliverDue(ctx); err != nil || n != 5 { // the first call fails with 500, the next five succeed
 		t.Fatalf("first pass: %d %v", n, err)
 	}
 	if n, _ := d.DeliverDue(ctx); n != 0 {
@@ -605,7 +605,7 @@ func TestWebhookEventsSignedAndRetried(t *testing.T) {
 		t.Fatalf("after backoff: %d %v", n, err)
 	}
 	calls := recv.calls()
-	if len(calls) != 5 { // raising the priority to P0 raised its own event too
+	if len(calls) != 6 { // raising the priority to P0 raised two events of its own
 		t.Fatalf("%d deliveries", len(calls))
 	}
 	types := map[string]int{}
@@ -630,7 +630,7 @@ func TestWebhookEventsSignedAndRetried(t *testing.T) {
 			t.Error("comment body must not travel in events")
 		}
 	}
-	for _, want := range []string{EventIssueCreated, EventIssueUpdated, EventIssueTransition, EventCommentCreated, EventIssueP0} {
+	for _, want := range []string{EventIssueCreated, EventIssueUpdated, EventIssueTransition, EventCommentCreated, EventPriorityChanged, EventIssueP0} {
 		if types[want] != 1 {
 			t.Errorf("event %s delivered %d times: %v", want, types[want], types)
 		}

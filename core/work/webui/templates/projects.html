@@ -1,5 +1,6 @@
 {{define "content"}}<h1>{{t "projects.title"}}</h1>
-{{if .D.Projects}}<div class="scroll">
+{{if and .D.Projects .CanCreateProject}}<p><a class="button" href="/ui/projects/new">{{t "project.new"}}</a></p>
+{{end}}{{if .D.Projects}}<div class="scroll">
 <table>
 <caption>{{t "projects.caption"}}</caption>
 <thead><tr><th scope="col">{{t "col.key"}}</th><th scope="col">{{t "col.name"}}</th><th scope="col">{{t "col.issues"}}</th><th scope="col">{{t "col.views"}}</th></tr></thead>
@@ -13,5 +14,10 @@
 {{end}}</tbody>
 </table>
 </div>
+{{else if .CanCreateProject}}<section class="empty" aria-labelledby="first">
+<h2 id="first">{{t "first.title"}}</h2>
+<p>{{t "first.intro"}}</p>
+<p><a class="button" href="/ui/projects/new">{{t "first.create"}}</a></p>
+</section>
 {{else}}<p class="empty">{{t "projects.empty"}}</p>
 {{end}}{{end}}

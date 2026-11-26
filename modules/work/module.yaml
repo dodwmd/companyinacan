@@ -11,8 +11,9 @@ category: operations
 # job builds the image and installs work through can-core (see docs/module-wiring.md for what that
 # proves). `can validate` warns so it is not offered as enable-ready until that is checked.
 status: experimental
-# 0.2.0: reminder events and notification rules (specs/060-reminders). The new version makes `apply` record the manifest again.
-version: 0.2.0
+# 0.3.0: work.issue.priority_changed.v1, project and manager views (specs/065-work-manager). 0.2.0 was the
+# reminders change (specs/060-reminders). The new version makes `apply` record the manifest again.
+version: 0.3.0
 provider:
   type: inhouse
   name: can-work
@@ -51,6 +52,7 @@ publishes:
   - { event: work.issue.updated.v1, schema: ./events/work.issue.updated.v1.json }
   - { event: work.issue.transitioned.v1, schema: ./events/work.issue.transitioned.v1.json }
   - { event: work.comment.created.v1, schema: ./events/work.comment.created.v1.json }
+  - { event: work.issue.priority_changed.v1, schema: ./events/work.issue.priority_changed.v1.json }
   - { event: work.issue.p0.v1, schema: ./events/work.issue.p0.v1.json }
 # A P0 reaches its assignee and the managers, e-mail without waiting for quiet hours to end.
 notifications:
@@ -67,7 +69,8 @@ data_classes:
   # Retention counts from resolution: resolved issues are deleted after the period. Open issues
   # are kept. The default matches 5 years (core/work Config.RetentionDays).
   # The personal data is the identifiers people appear under (reporter, assignee, comment author,
-  # activity actor, watcher, token subject) and whatever texts mention. Erasing a person replaces the
+  # activity actor, watcher, project member, saved filter owner or search term, token subject) and
+  # whatever texts mention. Erasing a person replaces the
   # identifier with a pseudonym (POST /v1/people/erase), writes a tombstone of this class
   # (GET /v1/erasures) and is replayed by a restore with `can-work purge`.
   - { class: work-issue, retention: 5y, sensitivity: standard }
