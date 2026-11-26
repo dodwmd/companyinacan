@@ -3,8 +3,9 @@
 // state dump, and the completion marker the host backup script checks before it runs restic.
 //
 // The directory this package writes is read by a root-owned script on the host, so nothing here
-// ever creates a link, every file is created 0600 and renamed into place, and names are
-// restricted to a small alphabet. Temporary and staging entries start with a dot, which the
+// ever creates a symbolic link (the script refuses them), every file is created 0600 and renamed
+// into place, and names are restricted to a small alphabet. The one kind of hard link is
+// carryForward's, from a published dump into the next set. Temporary and staging entries start with a dot, which the
 // backup script and restic leave out.
 package dumps
 

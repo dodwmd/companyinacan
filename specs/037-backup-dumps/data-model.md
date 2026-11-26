@@ -15,5 +15,6 @@ Host `/var/lib/can/dumps` is the `can-dumps` volume, which can-core sees as `/va
 
 Run states: idle -> running (marker and `DUMPED` removed; one module's hook window open at a time; uploads staged)
 -> published (staged `modules/` swapped in, `DUMPED`, `LAST-RUN`, fsync, marker) or failed (staging discarded,
-previous `modules/` kept without a marker, `LAST-RUN` records why). Modules without a record (purged) are removed
+previous `modules/` kept without a marker, `LAST-RUN` records why). A skipped module's published files are hard
+linked into the new set (carried forward, no age limit). Modules without a record (purged) are removed
 from the directory at the next run; a purge through can-core removes them at once.

@@ -6,7 +6,35 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dodwmd/companyinacan/core/backup"
 )
+
+// E08b QA3 3: the documented way to clear a "no data" module: remove its carried dump.
+func TestRemovingACarriedDumpClearsTheReport(t *testing.T) {
+	gone := false
+	d, _ := newDumper(t, []string{"wiki"}, &fakeHooks{})
+	d.Hooks = hookFunc(func(_ context.Context, m string) error {
+		if gone {
+			return ErrNoData
+		}
+		return upload(d, m, "a", "v")
+	})
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	gone = true
+	if err := os.RemoveAll(filepath.Join(d.Store.Dir, "modules", "wiki")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r, err := backup.ReadDumpRun(d.Store.Dir)
+	if err != nil || len(r.Skipped) != 0 {
+		t.Fatalf("%+v %v", r, err)
+	}
+}
 
 // E08b QA3 2: when even the rollback fails, the staging directory holding the previous set
 // survives, and the next run puts it back.

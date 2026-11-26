@@ -91,7 +91,18 @@ when the unit fails. The unit runs with `ProtectSystem=strict` and a short `Read
 ## Retention and erasure of dumps
 
 The dumps directory holds one set: each successful run replaces all module dumps with the ones it just made, so a
-module that was purged (or no longer has a record) drops out. Leftovers of interrupted runs are removed when the
+module that was purged (or no longer has a record) drops out. **One exception keeps data longer:** the dump of a
+module that was skipped (disabled with a hook that cannot run or fails, or suddenly without data) is carried forward
+unchanged, run after run, with no age limit. It is therefore also in every new snapshot, so it outlives the 35-day
+retention for as long as it is carried. It goes away when the module is dumped again or purged, or by hand.
+
+**Clearing a skipped or "no data" module.** If its data is meant to be gone (you deleted its volume or database),
+remove the carried dump on the server: `sudo rm -r /var/lib/can/dumps/modules/<id>`. A "no data" module without a
+database then drops out of the reports at the next run. A database module is reported as skipped (disabled) or fails the
+run (enabled) for as long as can-core records it; there is no production purge yet, so disable it and expect the
+report. Older snapshots keep the data until retention expires them.
+
+Leftovers of interrupted runs are removed when the
 next run starts, and a purge through can-core deletes that module's dumps at once. A failed run keeps the previous
 set on disk (without a marker, so it is not backed up). Older data stays in restic snapshots until the 35-day
 retention expires them; erasure requests are re-applied at restore from the erasure ledger, not by rewriting dumps
