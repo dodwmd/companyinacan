@@ -160,6 +160,7 @@ cat > /usr/local/sbin/can-firewall.new <<'CAN_FIREWALL_SCRIPT'
 #   run       keep the rules loaded and the set current (can-firewall-sync.service)
 #   install   apply, verify, write and enable the systemd units; roll back on failure
 #   check     print key=value status; exit 0 only when enforcing
+#             (on demand: nothing runs it on a schedule or raises an alert)
 #   disable   stop enforcing and do not start again at boot (the escape hatch)
 #   uninstall disable and remove the units and this script
 #   rules     print the ruleset
@@ -184,8 +185,8 @@ log() { echo "can-firewall: $*"; }
 err() { echo "CAN_ERROR: can-firewall: $*" >&2; }
 
 # The ruleset. DNS is matched on the port the pod ASKED for (ct original proto-dst): a resolver on
-# the host is often reached through DNAT to another port (k3d does this). "add" keeps an existing set (and its elements); the chains are flushed and
-# refilled, so loading it again converges. nft -f applies a file as one transaction.
+# the host is often reached through DNAT to another port (k3d does this). apply() replaces the
+# whole table with this in one transaction (nft -f is atomic), so loading it again converges.
 rules() {
   local t="$TABLE_FAMILY $TABLE_NAME"
   cat <<RULES
@@ -214,26 +215,31 @@ extra_namespaces() {
   grep -E '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' "$CONF_DIR/trusted-namespaces" | grep -v '^mod-' || true
 }
 
-pod_ips() { # namespace [selector flags]
-  local ns=$1
-  shift
-  # Finished pods keep their podIP in status although the address is free again: exclude them.
-  "${KC[@]}" --request-timeout=5s get pods -n "$ns" "$@" \
+# Every unfinished pod: namespace|app.kubernetes.io/name|hostNetwork|podIP|deletionTimestamp.
+# Finished pods keep their podIP in status although the address is free again: exclude them.
+all_pods() {
+  "${KC[@]}" --request-timeout=5s get pods --all-namespaces \
     --field-selector=status.phase!=Succeeded,status.phase!=Failed \
-    -o 'jsonpath={range .items[*]}{.spec.hostNetwork}{"|"}{.status.podIP}{"\n"}{end}' 2>/dev/null
+    -o 'jsonpath={range .items[*]}{.metadata.namespace}{"|"}{.metadata.labels.app\.kubernetes\.io/name}{"|"}{.spec.hostNetwork}{"|"}{.status.podIP}{"|"}{.metadata.deletionTimestamp}{"\n"}{end}' 2>/dev/null
 }
 
-# Prints the trusted pod addresses, one per line; fails if any query fails.
+# Prints the trusted pod addresses, one per line; fails if the query fails.
+# An address that a non-trusted pod (not on the host network) also reports is NOT trusted: one of
+# the two records is stale and there is no telling which. A terminating trusted pod stays trusted
+# only until its grace period ends (its deletionTimestamp); a terminating non-trusted pod keeps
+# its claim for as long as it is listed.
 trusted_ips() {
-  local all out ns
-  all=$(pod_ips kube-system) || return 1
-  out=$(pod_ips can-system -l app.kubernetes.io/name=can-core) || return 1
-  all+=$'\n'$out
-  for ns in $(extra_namespaces); do
-    out=$(pod_ips "$ns") || return 1
-    all+=$'\n'$out
-  done
-  printf '%s\n' "$all" | awk -F'|' '$1 != "true" && $2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {print $2}' | sort -u
+  local all
+  all=$(all_pods) || return 1
+  awk -F'|' -v now="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v extra="$(extra_namespaces | tr '\n' ' ')" '
+    BEGIN { n = split(extra, e, " "); for (i = 1; i <= n; i++) ns[e[i]] = 1; ns["kube-system"] = 1 }
+    $3 == "true" || $4 !~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { next }
+    ($1 in ns) || ($1 == "can-system" && $2 == "can-core") {
+      if ($5 == "" || $5 > now) want[$4] = 1
+      next
+    }
+    { claimed[$4] = 1 }
+    END { for (ip in want) if (!(ip in claimed)) print ip }' <<<"$all" | sort -u
 }
 
 set_commands() { # newline separated addresses
@@ -249,39 +255,65 @@ load() { # nft commands: checked, then applied as one transaction
   printf '%s\n' "$1" | nft -c -f - && printf '%s\n' "$1" | nft -f -
 }
 
+# The whole table is replaced in one transaction: that also undoes what flushing the chains would
+# not (a dormant table, a chain with another hook or priority, a changed set). If the pods cannot
+# be listed the addresses already in the set are carried over.
 apply() {
-  local tx ips
-  tx=$(rules)
-  if ips=$(trusted_ips); then
-    tx+=$'\n'$(set_commands "$ips")
-  fi
+  local t="$TABLE_FAMILY $TABLE_NAME" tx ips
+  tx="add table $t
+delete table $t
+$(rules)"
+  ips=$(trusted_ips) || ips=$(set_elements | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+  tx+=$'\n'$(set_commands "$ips")
   if ! load "$tx"; then
     err "the rules did not load; whatever was loaded before is unchanged"
     return 1
   fi
 }
 
+# 1: the pods could not be listed. 2: nft refused the new set.
 sync_set() {
   local ips
   ips=$(trusted_ips) || return 1
-  load "$(set_commands "$ips")"
+  load "$(set_commands "$ips")" || return 2
 }
 
-chain_listing() { nft list chain "$TABLE_FAMILY" "$TABLE_NAME" "$1" 2>/dev/null; }
+# A chain listing without its traffic counters.
+strip_counters() { sed -E 's/counter packets [0-9]+ bytes [0-9]+/counter/'; }
 
-# True when both chains hold what rules() loads, and nothing more.
+list_chains() {
+  nft list chain "$TABLE_FAMILY" "$TABLE_NAME" input && nft list chain "$TABLE_FAMILY" "$TABLE_NAME" forward
+}
+
+# What list_chains must print: rules() loaded into a new, empty network namespace (discarded at
+# once, nothing on the host changes) and listed by the same nft, so no nft version's formatting is
+# assumed. Computed once per process.
+EXPECTED=''
+load_expected() {
+  [ -z "$EXPECTED" ] || return 0
+  local t="$TABLE_FAMILY $TABLE_NAME" out
+  out=$(rules | unshare --net sh -c "nft -f - && nft list chain $t input && nft list chain $t forward") || return 1
+  EXPECTED=$(strip_counters <<<"$out")
+}
+
+# Succeeds when the table is live and both chains hold exactly what rules() loads, line for line.
+# Sets RULES_STATE: ok, missing, dormant (loaded but hooked to nothing), changed, or unknown (no
+# reference to compare with).
+RULES_STATE=''
 rules_intact() {
-  local in fwd
-  in=$(chain_listing input) || return 1
-  fwd=$(chain_listing forward) || return 1
-  grep -q 'hook input priority' <<<"$in" &&
-    grep -q 'iifname != .*"cni0".* accept' <<<"$in" &&
-    grep -q '@trusted4 tcp dport' <<<"$in" &&
-    grep -Eq '^[[:space:]]*counter packets [0-9]+ bytes [0-9]+ drop' <<<"$in" &&
-    [ "$(grep -cE '(accept|drop)$' <<<"$(grep -v 'hook ' <<<"$in")")" -eq 6 ] &&
-    grep -q 'hook forward priority' <<<"$fwd" &&
-    grep -q 'ip daddr 169.254.0.0/16 .*drop' <<<"$fwd" &&
-    [ "$(grep -cE '(accept|drop)$' <<<"$(grep -v 'hook ' <<<"$fwd")")" -eq 3 ]
+  local table have
+  if ! table=$(nft list table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null); then
+    RULES_STATE=missing
+  elif grep -Eq '^[[:space:]]*flags .*dormant' <<<"$table"; then
+    RULES_STATE=dormant
+  elif ! load_expected; then
+    RULES_STATE=unknown
+  elif have=$(list_chains 2>/dev/null) && [ "$(strip_counters <<<"$have")" = "$EXPECTED" ]; then
+    RULES_STATE=ok
+  else
+    RULES_STATE=changed
+  fi
+  [ "$RULES_STATE" = ok ]
 }
 
 set_elements() {
@@ -290,10 +322,10 @@ set_elements() {
 }
 
 run() {
-  local sig last='' next=0 burst=0 tick=0 failed=0
+  local sig last='' next=0 burst=0 tick=0 failed=0 rc
   while true; do
     if [ $((tick % 5)) -eq 0 ] && ! rules_intact; then
-      log "rules missing or changed: loading them"
+      log "rules $RULES_STATE: loading them"
       apply || true
     fi
     tick=$((tick + 1))
@@ -306,12 +338,16 @@ run() {
       last=$sig
     fi
     if [ "$burst" -gt 0 ] || [ "$SECONDS" -ge "$next" ]; then
-      if sync_set; then
-        [ "$failed" -eq 0 ] || log "pod list available again"
-        failed=0
-      else
-        [ "$failed" -eq 1 ] || log "cannot list pods: keeping the current trusted set"
-        failed=1
+      rc=0
+      sync_set || rc=$?
+      # Logged when the outcome changes, not on every attempt.
+      if [ "$rc" -ne "$failed" ]; then
+        case $rc in
+          0) log "trusted set updated again" ;;
+          1) log "cannot list pods: keeping the current trusted set" ;;
+          *) log "nft could not update the trusted set: keeping the current one" ;;
+        esac
+        failed=$rc
       fi
       next=$((SECONDS + INTERVAL))
       [ "$burst" -eq 0 ] || burst=$((burst - 1))
@@ -326,12 +362,15 @@ check() {
     echo "problem=$*"
     bad=1
   }
-  if rules_intact; then
-    echo "rules=ok"
-  else
-    echo "rules=missing"
-    problem "the isolation rules are not loaded"
-  fi
+  rules_intact || true
+  echo "rules=$RULES_STATE"
+  case $RULES_STATE in
+    ok) ;;
+    missing) problem "the isolation rules are not loaded" ;;
+    dormant) problem "the isolation table is dormant: nothing is filtered" ;;
+    changed) problem "the isolation rules differ from the expected ones" ;;
+    *) problem "cannot build the reference rules to compare with (needs unshare --net as root)" ;;
+  esac
   if ip link show dev "$POD_BRIDGE" >/dev/null 2>&1; then
     echo "bridge=present"
   else
@@ -339,13 +378,22 @@ check() {
     problem "interface $POD_BRIDGE not found: the rules match nothing"
   fi
   if command -v "$SYSTEMCTL" >/dev/null 2>&1; then
-    if "$SYSTEMCTL" is-active --quiet can-firewall-sync.service &&
-      "$SYSTEMCTL" is-enabled --quiet can-firewall.service; then
-      echo "service=active"
-    else
-      echo "service=inactive"
-      problem "can-firewall services are not enabled and running"
+    local unit service=active
+    for unit in "${UNITS[@]}"; do
+      "$SYSTEMCTL" is-enabled --quiet "$unit" || {
+        service=inactive
+        problem "$unit is not enabled: isolation would not come back after a reboot"
+      }
+    done
+    "$SYSTEMCTL" is-active --quiet can-firewall-sync.service || {
+      service=inactive
+      problem "can-firewall-sync.service is not running"
+    }
+    if "$SYSTEMCTL" is-failed --quiet can-firewall.service; then
+      service=failed
+      problem "can-firewall.service failed: the rules were not loaded by it"
     fi
+    echo "service=$service"
   else
     echo "service=n/a"
   fi
@@ -389,7 +437,7 @@ UNIT
   cat >"$UNIT_DIR/can-firewall-sync.service" <<UNIT
 [Unit]
 Description=Company in a Can: trusted system pod addresses for the isolation rules
-After=can-firewall.service k3s.service
+After=can-firewall.service
 Wants=can-firewall.service
 
 [Service]
@@ -418,7 +466,7 @@ wait_for_cluster() {
 verify() {
   local want
   rules_intact || {
-    err "verify: the rules are not loaded"
+    err "verify: the rules are not loaded as expected ($RULES_STATE)"
     return 1
   }
   # Several attempts: a system pod may be replaced between listing and comparing.
@@ -441,8 +489,34 @@ delete table $t
 $1" || nft delete table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null || true
 }
 
+# Undoes a failed unit installation: every unit goes back to the enabled and running state it
+# had before, with its previous unit file, and the previous table is loaded again.
+# Reads SAVED (unit name to previous file), WAS_ENABLED and WAS_ACTIVE, set by install_all.
+roll_back_units() { # previous table
+  local unit
+  for unit in "${UNITS[@]}"; do
+    [[ " $WAS_ENABLED " == *" $unit "* ]] || "$SYSTEMCTL" disable "$unit" >/dev/null 2>&1 || true
+    [[ " $WAS_ACTIVE " == *" $unit "* ]] || "$SYSTEMCTL" stop "$unit" >/dev/null 2>&1 || true
+  done
+  restore "$1"
+  for unit in "${UNITS[@]}"; do
+    if [ -n "${SAVED[$unit]:-}" ]; then
+      printf '%s\n' "${SAVED[$unit]}" >"$UNIT_DIR/$unit"
+    else
+      rm -f "${UNIT_DIR:?}/${unit:?}"
+    fi
+  done
+  "$SYSTEMCTL" daemon-reload >/dev/null 2>&1 || true
+  for unit in $WAS_ENABLED; do
+    "$SYSTEMCTL" enable "$unit" >/dev/null 2>&1 || err "could not enable $unit again"
+  done
+  for unit in $WAS_ACTIVE; do
+    "$SYSTEMCTL" restart "$unit" >/dev/null 2>&1 || err "could not restart $unit"
+  done
+}
+
 install_all() {
-  local previous
+  local previous unit
   if ! wait_for_cluster; then
     err "no pod bridge ($POD_BRIDGE) or no system pods after ${WAIT}s: nothing was changed"
     return 1
@@ -454,10 +528,18 @@ install_all() {
     err "rolled back"
     return 1
   fi
+  local -A SAVED=()
+  local WAS_ENABLED='' WAS_ACTIVE=''
+  for unit in "${UNITS[@]}"; do
+    [ ! -f "$UNIT_DIR/$unit" ] || SAVED[$unit]=$(cat "$UNIT_DIR/$unit")
+    ! "$SYSTEMCTL" is-enabled --quiet "$unit" 2>/dev/null || WAS_ENABLED+="$unit "
+    case $("$SYSTEMCTL" is-active "$unit" 2>/dev/null) in
+      active | activating | reloading) WAS_ACTIVE+="$unit " ;;
+    esac
+  done
   write_units
   if ! { "$SYSTEMCTL" daemon-reload && "$SYSTEMCTL" enable "${UNITS[@]}" && "$SYSTEMCTL" restart "${UNITS[@]}"; }; then
-    "$SYSTEMCTL" disable --now "${UNITS[@]}" >/dev/null 2>&1 || true
-    restore "$previous"
+    roll_back_units "$previous"
     err "systemd refused the units; rolled back"
     return 1
   fi

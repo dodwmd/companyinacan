@@ -7,4 +7,7 @@
 - [x] T005 k3d test `test/integration/z_hostfw_k3d_test.go`; Phase 0 egress proof fails if installed and reachable
 - [x] T006 Workflow `node-isolation.yml`: shellcheck, namespaces, real systemd units, k3d
 - [x] T007 SPEC.md, security model, providers, node-isolation doc, template comment
+- [x] T009 Follow-ups: line-for-line and dormant detection, unit state restored on a failed re-install,
+  stricter service check, contested and terminating pod addresses, `can up`/`status` warning, gzipped
+  cloud-init payload, CI coverage
 - [ ] T008 Verify on a real server: ufw, reboot, current k3s, metadata, footprint (needs a provider account)

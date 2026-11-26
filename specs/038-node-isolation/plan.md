@@ -28,7 +28,7 @@ inet can_isolation
 | Unit | Does | Order |
 |---|---|---|
 | `can-firewall.service` (oneshot) | `can-firewall apply` | after `nftables.service` and `ufw.service`, before `k3s.service` |
-| `can-firewall-sync.service` | `can-firewall run`: refresh the set, reload a missing table | after k3s; restarts always |
+| `can-firewall-sync.service` | `can-firewall run`: refresh the set, reload a missing, changed or dormant table | after `can-firewall.service` (not after k3s, so a hung k3s does not delay repairs); restarts always |
 
 The bootstrap step `node-firewall` runs after the node is Ready: installs `nftables` if absent, writes
 the script, runs `can-firewall install`. A failure fails the bootstrap; the script on the server can be
@@ -40,7 +40,7 @@ run again.
 the server (apt, if absent); no Go dependency added.
 **Testing**: Go unit tests (static properties, bootstrap order, check parsing, CLI),
 `test/hostfw/netns.sh`, `test/integration/z_hostfw_k3d_test.go`, workflow `node-isolation.yml`.
-**Footprint**: one idle bash process plus a `k3s kubectl get pods` twice every 15 s (transient). **Not
+**Footprint**: one idle bash process plus one `k3s kubectl get pods --all-namespaces` every 15 s and three short `nft` listings every 5 s (transient). **Not
 measured.** No container, no pod.
 
 ## Constitution Check

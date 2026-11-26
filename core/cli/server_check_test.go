@@ -93,3 +93,36 @@ func TestDiagnoseServerIncludesFirewall(t *testing.T) {
 		}
 	}
 }
+
+func TestUpAndStatusWarnWithoutNodeFirewall(t *testing.T) {
+	for _, tc := range []struct{ name, check, want string }{
+		{"never installed", "status=not-installed\n", "has no node firewall"},
+		{"disabled", "rules=missing\nstatus=fail\n", "not enforcing"},
+		{"dormant", "rules=dormant\nstatus=fail\n", "not enforcing"},
+		{"enforcing", "rules=ok\nstatus=ok\n", ""},
+		{"enforcing with a stopped service", "rules=ok\nstatus=fail\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := sshCompany(t)
+			r := newRunner()
+			r.mu["can-firewall check"] = tc.check
+			useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
+			for _, args := range [][]string{{"up", "--provision-only"}, {"status"}, {"up", "--provision-only", "--output", "json"}, {"status", "--output", "json"}} {
+				code, out, errs := run(t, append(args, dir, "--modules-dir", "../../modules")...)
+				if code != ExitOK {
+					t.Fatalf("%v: a warning must not fail the command: code=%d out=%q err=%q", args, code, out, errs)
+				}
+				if tc.want == "" {
+					if strings.Contains(out+errs, "node firewall") {
+						t.Errorf("%v: unexpected warning: %q %q", args, out, errs)
+					}
+					continue
+				}
+				// In JSON mode progress goes to stderr and the warning is also in the document.
+				if !strings.Contains(out, tc.want) {
+					t.Errorf("%v: want %q in %q (stderr %q)", args, tc.want, out, errs)
+				}
+			}
+		})
+	}
+}
