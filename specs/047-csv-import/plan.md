@@ -15,7 +15,13 @@
 
 No new process, dependency or idle memory. An import holds at most 1 MiB of file plus its parsed rows and
 report, one at a time per module. The write transaction holds the module's single writer connection for the
-length of the import; the size limits keep that short (exercised by the 2000-row tests).
+length of the import; the size limits keep that short.
+
+Measured once (linux/amd64, `go test` binary, `GOMEMLIMIT=48MiB`, not the container): a 1.0 MB, 2000-row
+issue file with events on, previewed, applied and re-run, raised the process's peak RSS from 25.6 MiB to
+44.1 MiB, under work's 64 MiB limit; each run took well under a second. People and finance were not
+measured separately, and no import has been measured in a running pod. Tests use 500 to 1000 rows because
+the race detector makes the pure-Go SQLite about forty times slower.
 
 ## Constitution check
 

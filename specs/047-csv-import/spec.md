@@ -33,8 +33,8 @@ mark is ignored). Query parameters, any other is refused:
 
 ## Requirements
 
-- **FR-001 Limits.** At most 1 MiB, 2000 data rows and 64 columns. The file is read once, with a hard cap,
-  and parsed in one pass. One import per module runs at a time (`409`), which bounds memory.
+- **FR-001 Limits.** At most 1 MiB, 2000 data rows, 64 columns and 128000 commas. The file is read once,
+  with a hard cap, and parsed in one pass. One import per module runs at a time (`409`), which bounds memory.
 - **FR-002 All or nothing.** An apply writes every row or none, in one database transaction, together with
   its audit entries and events. Any row error means nothing is written (`422` with the report).
 - **FR-003 Preview is the real thing.** A preview runs the same code in a transaction that is rolled back,

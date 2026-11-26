@@ -31,6 +31,22 @@ E14b, spec in `specs/022-reviews-timeoff/`.
 Not included: payroll (never built, see SPEC.md), pay or tax computation, statutory leave rules, praise,
 the admin and portal UI, search and reporting.
 
+## Importing from CSV
+
+HR or an admin can load existing staff from a CSV. The first command only previews; `--apply` writes the
+whole file or nothing:
+
+```sh
+export CAN_PEOPLE_URL=http://127.0.0.1:8080 CAN_PEOPLE_TOKEN=...
+can import people staff.csv --map external_id="Employee No"
+can import people staff.csv --map external_id="Employee No" --apply
+```
+
+Each row needs `external_id`, `given_name` and `family_name`. Running the same file again changes nothing,
+and empty cells never clear a value. New rows default to active employees, publish `person.created.v1`
+(identity provisioning may act on it) and cannot carry sensitive fields. There is no web page for this yet.
+Columns, limits and rules: [specs/047-csv-import](../specs/047-csv-import/spec.md).
+
 ## Roles and who can see what
 
 Roles come from the caller's token (SSO groups): `employee`, `manager`, `hr`, `admin`. A role is
