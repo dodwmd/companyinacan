@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -189,9 +188,7 @@ func (c *Collector) feed(ctx context.Context, m store.Module, tokenKey string) (
 			if _, err := time.Parse("2006-01-02", t.Date); err != nil {
 				t.Date = c.now().UTC().Format("2006-01-02")
 			}
-			if !slices.ContainsFunc(out, func(e backup.Entry) bool { return e.Subject == t.Subject && e.Class == t.Class }) {
-				out = append(out, backup.Entry{Subject: t.Subject, Class: t.Class, Date: t.Date})
-			}
+			out = append(out, backup.Entry{Subject: t.Subject, Class: t.Class, Date: t.Date}) // duplicates are dropped on append
 		}
 		if next <= after {
 			return out, rejected, errors.New("the feed does not advance")
