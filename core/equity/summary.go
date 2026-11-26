@@ -118,7 +118,8 @@ func (s *Service) vestingDue(ctx context.Context) (int64, error) {
 }
 
 // summaryBuilder answers for a person as can-core describes them, with the same mapping to roles as
-// their personal access tokens (so, like a token, it is never the board).
+// their personal access tokens and launch tickets (canRoles): the board only with equity.board. The
+// answer is counts only, and nothing can be approved through it.
 func summaryBuilder(s *Service) modclient.SummaryBuilder {
 	return func(ctx context.Context, subject string, permissions []string) ([]modclient.SummaryFigure, error) {
 		a := Actor{Subject: subject, Roles: rolesFromPermissions(permissions), CanCore: true}

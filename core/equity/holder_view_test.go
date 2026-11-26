@@ -85,6 +85,18 @@ func TestExerciseListsArePaged(t *testing.T) {
 		return m(e.s.ListExercises(e.ctx, e.fin, e.ent.ID, ExerciseFilter{After: a}))
 	})
 	walk(func(a int64) *ExercisePage { return m(e.s.MyExercises(e.ctx, e.eve, a)) })
+
+	// A cursor survives a VACUUM that renumbers the implicit rowids. A gap makes VACUUM do so here.
+	first := m(e.s.MyExercises(e.ctx, e.eve, 0))
+	for _, stmt := range []string{`UPDATE exercises SET rowid = rowid + 1000`, `VACUUM`} {
+		if _, err := e.s.db.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	after := m(strconv.ParseInt(first.Next, 10, 64))
+	if next := m(e.s.MyExercises(e.ctx, e.eve, after)); len(next.Items) != 2 || next.Items[0].ID != want[2] || next.Items[1].ID != want[3] {
+		t.Fatalf("page after VACUUM: %+v", next.Items)
+	}
 	if all := m(e.s.GrantExercises(e.ctx, e.hr, grant)); len(all) != 5 {
 		t.Fatalf("grant page: %d", len(all))
 	}
