@@ -71,8 +71,11 @@ func dummyHash() string {
 }
 
 // releaseHashMemory returns argon2's working memory to the operating system; otherwise the 19 MiB
-// of one login stays resident in an idle process for a long time. It costs one garbage collection,
-// a few milliseconds beside a hash that takes tens.
+// of one login stays resident in an idle process for a long time. It is a forced, blocking garbage
+// collection plus the return of the pages, and the next hash faults them in again: measured on a
+// development machine (amd64), a verification went from about 13 ms to 17-19 ms, 30 to 45% more,
+// with 8 to 40 MiB of live heap. It is bounded by the hash slot, hidden inside MinLoginTime for a
+// login, and paid only where a password is hashed.
 func releaseHashMemory() {
 	if currentParams.Memory >= 4*1024 { // pointless under TestingParams
 		debug.FreeOSMemory()
