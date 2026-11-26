@@ -93,6 +93,29 @@ func (a *api) eraseParty(w http.ResponseWriter, r *http.Request, p *Principal) {
 	writeJSON(w, http.StatusOK, rep)
 }
 
+// erasures is GET /v1/erasures?after=N: the tombstones, for the collector of the erasure ledger.
+func (a *api) erasures(w http.ResponseWriter, r *http.Request, p *Principal) {
+	if !p.Unscoped() {
+		a.fail(w, ErrForbidden)
+		return
+	}
+	after := int64(0)
+	if v := r.URL.Query().Get("after"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "bad_request", "after is invalid")
+			return
+		}
+		after = n
+	}
+	items, err := a.store.ListErasures(r.Context(), after)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (a *api) listTaxRates(w http.ResponseWriter, r *http.Request, _ *Principal) {
 	items, err := a.store.ListTaxRates(r.Context())
 	if err != nil {

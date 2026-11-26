@@ -26,13 +26,15 @@ import (
 // feeds are the modules with an erasure feed (GET /v1/erasures) and the key of the module's
 // `can-module` Secret that may read it. A module that is not here records nothing in the ledger.
 var feeds = map[string]string{
-	"people": "CAN_PEOPLE_API_TOKEN",
-	"equity": "CAN_EQUITY_API_TOKEN",
-	"board":  "CAN_BOARD_ADMIN_TOKEN",
-	"entity": "CAN_BOARD_ADMIN_TOKEN",
-	"files":  "CAN_FILES_API_TOKEN",
-	"forms":  "CAN_FORMS_API_TOKEN",
-	"jobs":   "CAN_JOBS_ADMIN_TOKEN",
+	"people":  "CAN_PEOPLE_API_TOKEN",
+	"equity":  "CAN_EQUITY_API_TOKEN",
+	"board":   "CAN_BOARD_ADMIN_TOKEN",
+	"entity":  "CAN_BOARD_ADMIN_TOKEN",
+	"files":   "CAN_FILES_API_TOKEN",
+	"finance": "CAN_FINANCE_ADMIN_TOKEN",
+	"forms":   "CAN_FORMS_API_TOKEN",
+	"jobs":    "CAN_JOBS_ADMIN_TOKEN",
+	"work":    "CAN_WORK_ADMIN_TOKEN",
 }
 
 const (

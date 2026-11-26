@@ -306,7 +306,9 @@ type Retained struct {
 
 // ErasureReport is what an erasure did and did not do.
 type ErasureReport struct {
-	PartyID       int64      `json:"party_id"`
+	PartyID int64 `json:"party_id"`
+	// Subject names this erasure in the erasure ledger (data class finance-party-contact).
+	Subject       string     `json:"subject"`
 	ErasedFields  []string   `json:"erased_fields"`
 	DeletedDrafts int        `json:"deleted_drafts"`
 	Retained      []Retained `json:"retained"`
@@ -386,6 +388,15 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 			}
 		}
 		rep.ErasedFields = []string{"name", "contact_name", "email", "phone", "address", "tax_id", "notes"}
+		// The tombstone a restore replays. Erasing again moves it only when something was erased, so
+		// that the later erasure is replayed into a backup made between the two.
+		rep.Subject = erasureSubject(id, cur.CreatedAt)
+		if !cur.Erased || rep.DeletedDrafts > 0 {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO erasures (subject, class, created_at) VALUES (?, ?, ?)
+				ON CONFLICT (subject, class) DO UPDATE SET created_at = excluded.created_at, scrubbed = 0`, rep.Subject, ClassPartyContact, ts(s.now())); err != nil {
+				return err
+			}
+		}
 		var cnt int
 		var last sql.NullString
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM invoices WHERE party_id = ? AND kind = 'invoice' AND status IN ('approved', 'sent', 'partially_paid')`, id).Scan(&cnt); err != nil {
@@ -435,7 +446,10 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Scrub(ctx); err != nil {
+	// The erasure is committed: the scrub goes on even if the caller has gone away.
+	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+	defer cancel()
+	if err := s.scrubErasures(sctx); err != nil {
 		return rep, fmt.Errorf("erased, but the write-ahead log could not be truncated: %w", err)
 	}
 	return rep, nil

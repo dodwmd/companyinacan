@@ -276,6 +276,9 @@ func (a *App) purgeLoop(ctx context.Context) {
 		} else if rep != (PurgeReport{}) {
 			a.log.Info("retention purge", "report", rep)
 		}
+		if err := a.store.ResumeScrub(ctx); err != nil && ctx.Err() == nil {
+			a.log.Error("scrubbing after an erasure", "error", err)
+		}
 		today := dateOf(a.now())
 		if ids, err := a.store.RunRecurring(ctx, today); err != nil && ctx.Err() == nil {
 			a.log.Error("recurring invoices", "error", err)
