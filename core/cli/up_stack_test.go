@@ -79,7 +79,9 @@ func useStack(t *testing.T, tty bool, res *launch.Result, err error) *stackSpy {
 		}
 		return res, err
 	}
-	t.Cleanup(func() { lifecycle = old })
+	// A fake cluster has no module deployments: waiting for them takes no real time.
+	moduleWaitSleep = func(context.Context, time.Duration) {}
+	t.Cleanup(func() { lifecycle, moduleWaitSleep = old, nil })
 	return spy
 }
 

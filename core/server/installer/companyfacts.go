@@ -17,6 +17,9 @@ import (
 func (in *Installer) companyValues(ctx context.Context, s reconcile.Spec) (map[string]any, error) {
 	if s.ID == "equity" { // the break-glass window; the identity mode is a connection (links.go)
 		st, err := config.ReadEquitySettings(s.Settings)
+		if err == nil && s.Within != nil {
+			st.BreakGlassUntil = reconcile.WithinBreakGlass(*s.Within, st.BreakGlassUntil)
+		}
 		if err != nil || st.BreakGlassUntil == "" {
 			return nil, err
 		}

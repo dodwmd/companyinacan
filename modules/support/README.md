@@ -39,9 +39,13 @@ verified**; no automatic reply is sent). can-core hands it over ([specs/067](../
 failures are retried and listed in the admin UI under Events, where a dead one can be requeued. FreeScout has no API
 here, so the chart runs a listener inside the pod (port 8081, in-cluster only, requests signed by can-core).
 
+Adding a form on an installed module **waits for your approval**, and nothing is sent before it. To stop, write
+`tickets_from_forms: []`: no new lead is taken and erasures still reach the module. With the line removed the
+listener is gone too, and erasures of earlier leads are dead-lettered until it is back.
+
 **Erasing a lead does not delete its conversation.** The conversation gets an internal note and is reopened; delete
 it and the customer record in FreeScout if the request covers them. An installation of 0.2.0 that is upgraded by
-itself **waits for your approval**.
+itself also waits for your approval.
 
 ## Set up mail
 

@@ -41,6 +41,10 @@ conversations, or, for senders who ticked a consent box, unconfirmed newsletter 
 - **FR-010** An upgrade of an installed `support` or `newsletter` to the version that receives leads waits for
   approval (the rule of can-core's unattended upgrades).
 - **FR-011** No automatic reply is sent for a conversation made from a form: the address is unverified.
+- **FR-012** The settings are mapped ([064](../064-module-settings/spec.md)). A form added to
+  `tickets_from_forms` or `subscribe_from_forms` of an installed module widens it: the upgrade waits for approval, and
+  can-core hands over only what the installed module was given. A form taken out stops at once. `default_list` and
+  the consent wording do not widen.
 
 ## Design
 
@@ -48,7 +52,7 @@ conversations, or, for senders who ticked a consent box, unconfirmed newsletter 
   subscription marked `via: can-core` in a manifest is delivered to an in-process adapter instead of a webhook.
 - **Why a listener in the support pod.** FreeScout's free core has no API. As for its mail settings
   ([059](../059-support-mailbox/spec.md)), a PHP script in the chart uses FreeScout's own models, served by PHP's
-  built-in server on port 8081, only while a form is named. It depends on FreeScout 1.8.252's internals.
+  built-in server on port 8081, only while `tickets_from_forms` is written. It depends on FreeScout 1.8.252's internals.
 - **Listmonk 6.2.0**, as probed: the API user creates the subscriber (on no list, with the attribute
   `can_lead`), then the public subscription adds the list and sends the confirmation, and reports a mail failure.
   Its search finds nothing for a `+`, so the longest part without one is searched.
@@ -69,7 +73,9 @@ conversations, or, for senders who ticked a consent box, unconfirmed newsletter 
 - Anybody can type anybody's address: the confirmation mail then goes to a stranger (rate limited by forms), and
   a support conversation can carry somebody else's address. Check before replying. The name in the confirmation
   mail is replaced when it is long or looks like a link.
-- Leads that arrived while the module was off, or before the form was named, are not handed on later.
+- Leads that arrived while the module was off, or before the form was named and approved, are not handed on later.
+- Removing the `tickets_from_forms` line (rather than writing `[]`) removes the listener: erasures of earlier leads
+  are then dead-lettered until it is back, which waits for approval again.
 - `forms` publishes `lead.created.v1` without an outbox of its own: if can-core is unreachable for its retries,
   that lead is stored and notified but not handed on.
 - After a restore of can-core, the applications and the links are as old as their backups.

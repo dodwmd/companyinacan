@@ -1,5 +1,5 @@
 {{- /* The lead listener (templates/_leads.tpl): cluster-internal, and no IngressRoute names it. */ -}}
-{{- if .Values.leadIntake.enabled }}
+{{- if hasKey .Values.app "ticketsFromForms" }}
 apiVersion: v1
 kind: Service
 metadata:

@@ -11,13 +11,13 @@
       "additionalProperties": false,
       "description": "Per data class retention, counted from the day a person becomes former (1:1 meetings and closed goals also expire by age). Review against local employment and data-protection law; the defaults are not advice.",
       "properties": {
-        "directory-basic": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "people-sensitive": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "people-checklists": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "performance-oneonone": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "performance-goals": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "performance-reviews": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "people-timeoff": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+        "directory-basic": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.directory-basic", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "people-sensitive": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.people-sensitive", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "people-checklists": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.people-checklists", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "performance-oneonone": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.performance-oneonone", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "performance-goals": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.performance-goals", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "performance-reviews": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 2y.", "x-can": {"config": "retention.performance-reviews", "widens": "retention", "unset": "2y", "risk": "data of this class is deleted sooner"}},
+        "people-timeoff": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.people-timeoff", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
       }
     },
     "reviews": {
@@ -25,7 +25,15 @@
       "additionalProperties": false,
       "description": "Review defaults. Leave entitlements and statutory rules vary by jurisdiction: leave types, accruals, holidays and blackouts are data entered through the API, not settings, and no legal rule is built in. This is a tool, not legal or HR advice.",
       "properties": {
-        "min_responses": { "type": "integer", "minimum": 3, "maximum": 50, "description": "Default number of feedback answers needed before any feedback about a person is shown. Never below 3: fewer could identify the authors. A cycle can raise it." }
+        "min_responses": {"type": "integer", "minimum": 3, "maximum": 50, "description": "Default number of feedback answers needed before any feedback about a person is shown. Never below 3: fewer could identify the authors. A cycle can raise it.", "x-can": {"config": "reviews.min_responses", "widens": "lower", "unset": 3, "risk": "fewer answers hide who gave feedback"}}
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idle_minutes": {"type": "integer", "minimum": 5, "maximum": 1440, "description": "Web UI: sign out after this many minutes without activity (default 30).", "x-can": {"config": "ui.idle_minutes", "widens": "higher", "unset": 30, "risk": "idle web sessions stay signed in longer"}},
+        "absolute_hours": {"type": "integer", "minimum": 1, "maximum": 720, "description": "Web UI: the longest a session lasts (default 8).", "x-can": {"config": "ui.absolute_hours", "widens": "higher", "unset": 8, "risk": "web sessions last longer"}}
       }
     }
   }

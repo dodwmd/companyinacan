@@ -128,26 +128,33 @@ func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
-func (f *Filter) addTerm(tok string, now time.Time, me string) error {
-	neg := false
+// splitTerm takes one token of tokenize apart. ok is false for free text, and then rest is the text.
+func splitTerm(tok string) (neg bool, field, op, rest string, ok bool) {
 	if strings.HasPrefix(tok, "-") && len(tok) > 1 && !relDateRE.MatchString(tok) {
 		neg, tok = true, tok[1:]
 	}
 	idx := strings.IndexAny(tok, ":<>=")
 	if idx <= 0 {
+		return neg, "", "", tok, false
+	}
+	field, op, rest = strings.ToLower(tok[:idx]), string(tok[idx]), tok[idx+1:]
+	if (op == "<" || op == ">") && strings.HasPrefix(rest, "=") {
+		op += "="
+		rest = rest[1:]
+	}
+	return neg, field, op, rest, true
+}
+
+func (f *Filter) addTerm(tok string, now time.Time, me string) error {
+	neg, field, op, rest, ok := splitTerm(tok)
+	if !ok {
+		tok = rest
 		// Free text. A leading "-" on plain text negates it too.
 		if f.text++; f.text > maxTextTerms {
 			return fmt.Errorf("at most %d free-text terms (use field:value terms to narrow)", maxTextTerms)
 		}
 		f.add(neg, "(i.title LIKE ? ESCAPE '\\' OR i.description LIKE ? ESCAPE '\\')", "%"+escapeLike(tok)+"%", "%"+escapeLike(tok)+"%")
 		return nil
-	}
-	field := strings.ToLower(tok[:idx])
-	op := string(tok[idx])
-	rest := tok[idx+1:]
-	if (op == "<" || op == ">") && strings.HasPrefix(rest, "=") {
-		op += "="
-		rest = rest[1:]
 	}
 	if rest == "" {
 		return fmt.Errorf("%s: missing value", field)

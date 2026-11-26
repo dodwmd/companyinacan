@@ -44,7 +44,8 @@ func (s *Store) ListMembers(ctx context.Context, a *Principal, project string) (
 	return out, rs.Err()
 }
 
-// SetMember adds (on) or removes a project member. It needs work.admin; repeating it is fine.
+// SetMember adds (on) or removes a project member. It needs work.admin; repeating it is fine. The
+// members of an archived project cannot change.
 func (s *Store) SetMember(ctx context.Context, a *Principal, project, subject string, on bool) error {
 	if !a.Can(PermAdmin) {
 		return ErrForbidden
@@ -53,7 +54,7 @@ func (s *Store) SetMember(ctx context.Context, a *Principal, project, subject st
 		return invalid("subject", "must be a non-empty identifier of at most %d characters", maxSubject)
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		p, err := s.loadProject(ctx, tx, a, project)
+		p, err := s.writableProject(ctx, tx, a, project)
 		if err != nil {
 			return err
 		}

@@ -127,6 +127,12 @@ const initContactForm = `modules:
 # email:
 #   relay: { host: smtp.example.com, from: no-reply@%[1]s }
 # SMTP credentials never go in this file: can up --smtp-credentials-file smtp.env (docs/email.md)
+# What modules print and compute with, for example the seller on invoices (docs/module-wiring.md):
+# organisation:
+#   legal_name: Example Pty Ltd
+#   address: 1 Example Street, Example City
+#   currency: USD
+#   timezone: Etc/UTC
 site:
   contact:
     title: Contact us

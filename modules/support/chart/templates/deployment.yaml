@@ -55,7 +55,7 @@ spec:
               $mail['stream'] = ['ssl' => ['verify_peer' => $verify, 'verify_peer_name' => $verify, 'allow_self_signed' => !$verify]];
               return $mail;
               CANCONF
-              {{- if .Values.leadIntake.enabled }}
+              {{- if hasKey .Values.app "ticketsFromForms" }}
               # Website leads (templates/_leads.tpl): started again if it ever stops.
               cat >/tmp/can-leads.php <<'CANLEADS'
               {{- include "support.leads" . | nindent 14 }}
@@ -85,7 +85,7 @@ spec:
               exec docker-php-serversideup-entrypoint /init
           ports:
             - {name: http, containerPort: {{ .Values.service.port }}}
-            {{- if .Values.leadIntake.enabled }}
+            {{- if hasKey .Values.app "ticketsFromForms" }}
             - {name: leads, containerPort: {{ .Values.leadIntake.port }}}
             {{- end }}
           env:

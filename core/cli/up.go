@@ -67,11 +67,18 @@ type target struct {
 // load validates company.yaml in dir and builds the provider.
 func load(cmd *cobra.Command, g *globalOpts, dir, modulesDir string) (*target, error) {
 	file := filepath.Join(dir, "company.yaml")
-	if ps := validate.CompanyFile(file, resolveModulesDir(modulesDir, dir)); problem.HasErrors(ps) {
-		if err := printProblems(cmd, g, ps); err != nil {
+	checked := validate.CompanyFile(file, resolveModulesDir(modulesDir, dir))
+	if problem.HasErrors(checked) {
+		if err := printProblems(cmd, g, checked); err != nil {
 			return nil, err
 		}
 		return nil, silent(ExitFailure)
+	}
+	// A setting that reaches no module is said, never dropped quietly (specs/064-module-settings).
+	for _, p := range checked {
+		if p.Rule == "semantic.organisation" || strings.HasPrefix(p.Rule, "semantic.setting-") {
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning:", p.String())
+		}
 	}
 	doc, ps := config.Load(file)
 	if problem.HasErrors(ps) {
@@ -149,7 +156,9 @@ type upResult struct {
 	SiteURLs      []string    `json:"site_urls,omitempty"`
 	AdminURLs     []string    `json:"admin_urls,omitempty"`
 	SiteReachable bool        `json:"site_reachable,omitempty"`
-	AdminUser     string      `json:"admin_user,omitempty"`
+	// ModulesNotReady are the enabled modules can-core had not installed when `can up` stopped waiting.
+	ModulesNotReady []string `json:"modules_not_ready,omitempty"`
+	AdminUser       string   `json:"admin_user,omitempty"`
 	// Admin and Kit are present only with --print-secrets (or never, without a terminal).
 	Admin        *credsJSON `json:"admin,omitempty"`
 	Kit          string     `json:"recovery_kit,omitempty"`
@@ -168,7 +177,8 @@ func newUpCmd(g *globalOpts) *cobra.Command {
 		Long: `Provision the server named by company.yaml (provider.type: ssh, hetzner, digitalocean),
 install k3s, then deploy the company: platform base, container images, can-core, the admin account,
 company.yaml, the site, the routes, the backup timer (with --backup-*), DNS, and wait until it is ready.
-It ends with the URLs, the one-time admin password and TOTP secret and the recovery kit.
+It ends with the URLs, the one-time admin password and TOTP secret and the recovery kit, after waiting
+(at most --module-wait) for can-core to install the enabled modules.
 
 Phases are checkpointed in .can/state.json: after an interruption at any point run the same command
 again and it resumes. Nothing is ever wiped by running it again.

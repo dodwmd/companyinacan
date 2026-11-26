@@ -62,8 +62,9 @@ Deliveries and their errors are in the admin UI under Events; a dead one can be 
 Erasing a lead deletes the subscriber that lead created. A subscriber who was there before is **not** deleted
 (audit: `lead.copy_kept`); erase them in Listmonk. All limits: [specs/067](../../specs/067-lead-adapters/spec.md#limits).
 
-An installation of 0.1.0 that is upgraded by itself **waits for your approval**: from 0.2.0 can-core may send the
-module personal data of leads.
+Adding a form to `subscribe_from_forms` on an installed module **waits for your approval**, as does an unattended
+upgrade from 0.1.0: can-core may then send the module personal data of leads. Nothing is sent before it is approved;
+taking a form out takes effect at once.
 
 ## First sign-in
 
@@ -84,5 +85,6 @@ release that bumps the digest and the module's `version`.
 
 - A new installation has Listmonk's example SMTP server: set a real one before sending.
 - Set the root URL in Listmonk's settings to `https://newsletter.<domain>`, or links in mail are wrong.
-- Of the settings of `settings.schema.json`, only `subscribe_from_forms` and `default_list` do anything.
+- Of the settings of `settings.schema.json`, only `subscribe_from_forms` and `default_list` do anything; `can validate`
+  warns about the others ([docs/module-wiring.md](../../docs/module-wiring.md#settings)).
 - Upgrades to a newer Listmonk are untested.

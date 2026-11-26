@@ -83,6 +83,11 @@ silently undoes it. If you use both, copy the stored document from `/company` in
 `can apply`, or stop using `can apply` for that company. The UI also refuses to edit a document that uses YAML
 aliases or anchors.
 
+**Settings forms.** The form of a module shows every setting of its schema, nested ones included; lists and long text
+get a text area. Settings the module cannot be given are listed with the reason instead, and what of the current
+`company.yaml` is unknown, invalid or not applied is listed above the form. A value that is only shown (a default) is
+not written. Company facts (`organisation`) are edited in `company.yaml`.
+
 **Preview and apply.** The preview lists the diff, the reconcile actions (install, upgrade, enable, disable),
 for each module the namespace `mod-<id>`, its Secrets, ingress host, declared disk and database, and for a
 disable what is kept (namespace, volumes, Secrets, database). Apply audits the intent, writes the document,
@@ -102,7 +107,8 @@ permission or role grant, an event it may publish or receives, a capability it s
 public host or path, internet access (not for a module installed before manifests declared it: every module had
 it), a shorter approval chain, a new notification recipient, a new hook, hook command or hook image, signing
 users into its web UI, a changed data class, a new connection to another module, leaving equity's directory
-mode, or a new break-glass window. Until then the running release and its recorded manifest stay.
+mode, a new break-glass window, or a setting that widens what the module does, exposes or deletes
+([module-wiring.md](module-wiring.md#settings)). Until then the running release and its recorded manifest stay.
 **Limitation: a waiting module gets no change at all.** Switching exposure off, secret rotation, mail relay
 opt-out or new credentials, and settings do not reach it, because can-core does not rebuild the installed
 release without its chart. `can apply` names each requested change as NOT APPLIED and exits non-zero when
@@ -113,7 +119,8 @@ the new version without asking). Backups of a waiting module use the hooks of wh
 module installed before hook scripts were recorded uses the shipped script). Approve on the catalogue page, with
 the tick on a change's apply form, or with `can apply --approve <module>=<code>`, where the code is the one the
 plan shows; `can status` and `can up` name the modules that wait. The approval covers exactly the list shown. A
-restore applies without asking.
+restore applies without asking, but no setting that widens
+([module-wiring.md](module-wiring.md#settings)).
 `can apply` prints can-core's plan before it syncs `company.yaml`; `can apply --plan` prints it and changes
 nothing (`--dry-run` plans against the local state file, not the cluster).
 

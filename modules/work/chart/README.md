@@ -16,8 +16,8 @@ installer. The other in-house module charts (forms, people, jobs, finance) use t
 Secrets are not chart values. can-core writes them once into the `can-module` Secret and the installer
 injects that Secret as environment into every container, with `CAN_API_URL`, `CAN_MODULE_ID`,
 `CAN_WEBHOOK_SECRET`, `CAN_TOKEN_FILE` and `CAN_TOKEN_AUDIENCE`. The chart sets only `CAN_WORK_CONFIG`.
-Settings from `company.yaml` are not yet mapped onto `config:` (no `values.tmpl.yaml`); change the
-defaults in `values.yaml`.
+Settings from `company.yaml` are laid over `config:`
+([docs/module-wiring.md](../../../docs/module-wiring.md#settings)).
 
 ## What is verified
 

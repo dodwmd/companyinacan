@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -66,9 +65,10 @@ func canSeeFilter(a *Principal, f *SavedFilter) bool {
 	return f.Mine || (f.Shared && (f.Project != "" || a.Unscoped()))
 }
 
-// ListFilters returns the filters the caller may use, by name.
+// ListFilters returns the filters the caller may use: their own by name, then other people's shared
+// ones by name. Own ones come first so that the limit can never crowd them out.
 func (s *Store) ListFilters(ctx context.Context, a *Principal) ([]SavedFilter, error) {
-	rs, err := s.db.QueryContext(ctx, filterSelect+` WHERE owner = ? OR shared = 1 ORDER BY name COLLATE NOCASE, id LIMIT 500`, a.Subject)
+	rs, err := s.db.QueryContext(ctx, filterSelect+` WHERE owner = ?1 OR shared = 1 ORDER BY owner = ?1 DESC, name COLLATE NOCASE, id LIMIT 500`, a.Subject)
 	if err != nil {
 		return nil, err
 	}
@@ -177,15 +177,21 @@ func (s *Store) DeleteFilter(ctx context.Context, a *Principal, id int64) error 
 	})
 }
 
-// personTermRE finds the values of the terms that name people.
-var personTermRE = regexp.MustCompile(`(?i)(?:^|\s)-?(?:assignee|reporter)[:=]("[^"]*"|\S+)`)
-
-// filterPeople returns the identifiers a filter query names.
+// filterPeople returns the identifiers a filter query names. It reads the query as the search does
+// (tokenize, splitTerm), so quoting does not hide a name from an erasure.
 func filterPeople(query string) []string {
+	toks, err := tokenize(query)
+	if err != nil { // an unterminated quote: no stored filter should have one, close it
+		toks, _ = tokenize(query + `"`)
+	}
 	var out []string
-	for _, m := range personTermRE.FindAllStringSubmatch(query, -1) {
-		for _, v := range strings.Split(strings.ReplaceAll(m[1], `"`, ""), ",") {
-			if v != "" && v != "me" && v != "none" && !slices.Contains(out, v) {
+	for _, tok := range toks {
+		_, field, op, rest, ok := splitTerm(tok)
+		if !ok || (field != "assignee" && field != "reporter") || (op != ":" && op != "=") {
+			continue
+		}
+		for _, v := range strings.Split(rest, ",") {
+			if v = strings.TrimSpace(v); v != "" && v != "me" && v != "none" && !slices.Contains(out, v) {
 				out = append(out, v)
 			}
 		}

@@ -20,12 +20,16 @@ type PendingUpgrade struct {
 // UpgradeAck is the confirmation Apply takes as the approval of a held upgrade.
 func UpgradeAck(module, approval string) string { return "upgrade:" + module + ":" + approval }
 
+// maxWidenRunes holds the longest line of a widening (a setting with its entry, risk and digest).
+const maxWidenRunes = 600
+
 // HeldLines is what the pages list for a held upgrade: what it would allow, then what was asked
 // of the module and is not applied.
 func HeldLines(widens, notApplied []string) []string {
 	var out []string
 	for _, w := range widens {
-		out = append(out, Sanitise(w))
+		// Whole: what is approved must be what is read.
+		out = append(out, sanitise(w, maxWidenRunes))
 	}
 	for _, n := range notApplied {
 		out = append(out, "NOT APPLIED: "+Sanitise(n))

@@ -5,15 +5,15 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "from_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "From address of mail the CRM sends (needs email.send)." },
+    "from_address": {"type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "From address of mail the CRM sends (needs email.send).", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}},
     "lead_intake": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean", "default": true, "description": "Create a contact for each form submission once the adapter exists." },
-        "form_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" }, "description": "Only these forms feed the CRM; empty means every form." }
+        "enabled": {"type": "boolean", "default": true, "description": "Create a contact for each form submission once the adapter exists.", "x-can": {"not_applied": "the module's adapter, which would apply it, is not built"}},
+        "form_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$"}, "description": "Only these forms feed the CRM; empty means every form.", "x-can": {"not_applied": "the module's adapter, which would apply it, is not built"}}
       }
     },
-    "contact_retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Matches the crm-contact data class (3y), counted from the last activity." }
+    "contact_retention_days": {"type": "integer", "minimum": 30, "default": 1095, "description": "Matches the crm-contact data class (3y), counted from the last activity.", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}}
   }
 }

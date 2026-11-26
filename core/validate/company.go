@@ -181,6 +181,8 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		}
 	}
 
+	settingWarnings(c, enabled, manifests, modulesDir, add, func() { ps[len(ps)-1].Severity = problem.Warning })
+
 	// unique subdomains
 	owner := map[string]string{}
 	for _, id := range enabled {

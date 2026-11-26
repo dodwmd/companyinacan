@@ -63,11 +63,14 @@ the aging report; nothing reached the customer.
   backlog), no step is claimed while an earlier one is waiting, the next is at least 3 days after the
   earlier one was handed to the mail service, and a sweep claims at most 20.
 - **FR-008** The sweep runs hourly and on `POST /v1/dunning/run`. When the mail service cannot take a
-  message it stops, retries with the same idempotency key, and gives up after 72 hours.
+  message it stops, retries with the same idempotency key, and gives up after 72 hours. A reminder
+  whose reply was lost may have left, so the 3-day gap of FR-007 counts from the last such attempt,
+  also after it is given up.
 - **FR-009** Delivery status per message MUST be visible: `pending`, `retry`, `queued`, `sent`
   (accepted by the relay), `failed`, `not_allowed`, `cancelled`, `unknown`. A manual send whose reply
   is lost MUST be asked once more with the same key and, unanswered, be `unknown` (never `failed`),
-  which counts for the one-minute cooldown.
+  which counts for the one-minute cooldown. A send that never reached can-core (no connection, for
+  example refused) is `failed`.
 - **FR-010** Claiming a message, every status change, holds and schedule changes MUST be audited in
   the same transaction. No address, name, subject, body or link is stored in the delivery records,
   audited, logged or put in an event. No new event type is added.

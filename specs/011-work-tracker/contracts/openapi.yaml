@@ -96,12 +96,13 @@ paths:
       operationId: updateProject
       x-required-scope: work.admin
       summary: Rename, archive, or change the workflow or SLA hints (work.admin)
-      description: A new workflow must still contain every status in use by issues (422 otherwise). resolved_at follows the new status categories.
+      description: A new workflow must still contain every status in use by issues (422 otherwise). resolved_at follows the new status categories. An archived project takes no change (409) unless the same patch restores it.
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectPatch" } } } }
       responses:
         "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Invalid" }
   /v1/projects/{key}/issues:
     parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
@@ -228,6 +229,7 @@ paths:
         "204": { description: Not a member }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /v1/reports/workload:
     get:
       tags: [reports]
@@ -266,7 +268,7 @@ paths:
       tags: [filters]
       operationId: listFilters
       x-required-scope: work.read
-      summary: Your saved filters and the shared ones you may see
+      summary: Your saved filters (listed first) and the shared ones you may see, at most 500
       responses:
         "200": { description: Filters, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/SavedFilter" } } } } } } }
     post:

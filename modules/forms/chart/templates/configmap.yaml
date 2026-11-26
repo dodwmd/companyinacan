@@ -13,11 +13,3 @@ metadata:
 data:
   {{ .Chart.Name }}.yaml: |
     {{- toYaml .Values.config | nindent 4 }}
-    {{- with .Values.settings }}
-    {{- with .notify_email }}
-    notify_email: {{ toJson . }}
-    {{- end }}
-    {{- with .newsletter_consent }}
-    newsletter_consent: {{ toJson . }}
-    {{- end }}
-    {{- end }}

@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/leadadapter"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/webhook"
 )
@@ -35,6 +38,46 @@ func leadIntake(data []byte) (config.LeadIntake, error) {
 	}
 	in, _ := config.LeadIntakeOf(co)
 	return in, nil
+}
+
+// installedIntake narrows what company.yaml asks for to what the installed modules were given. A
+// form that was added reaches a module only once its upgrade is applied, which for an installed
+// module waits for approval (specs/064-module-settings); a form that was taken out stops at once.
+func installedIntake(ctx context.Context, db *store.DB, asked config.LeadIntake) (config.LeadIntake, error) {
+	installed := func(id, key string) (any, error) {
+		m, err := db.GetModule(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return reconcile.ParseApplied(m.Applied).Values[key], nil
+	}
+	narrow := func(asked []string, id, key string) ([]string, error) {
+		v, err := installed(id, key)
+		if err != nil {
+			return nil, err
+		}
+		given, _ := config.FormList(v)
+		return slices.DeleteFunc(slices.Clone(asked), func(f string) bool { return !slices.Contains(given, f) }), nil
+	}
+	out := config.LeadIntake{NewsletterList: config.DefaultNewsletterList}
+	var err error
+	if out.SupportForms, err = narrow(asked.SupportForms, leadadapter.Support, "app.ticketsFromForms"); err != nil {
+		return config.LeadIntake{}, err
+	}
+	if out.NewsletterForms, err = narrow(asked.NewsletterForms, leadadapter.Newsletter, "app.subscribeFromForms"); err != nil {
+		return config.LeadIntake{}, err
+	}
+	list, err := installed(leadadapter.Newsletter, "app.defaultList")
+	if err != nil {
+		return config.LeadIntake{}, err
+	}
+	if v, _ := list.(string); strings.TrimSpace(v) != "" {
+		out.NewsletterList = strings.TrimSpace(v)
+	}
+	return out, nil
 }
 
 // newLeadAdapter builds the adapters. company holds the store of company.yaml once module
@@ -64,7 +107,11 @@ func (c Config) newLeadAdapter(db *store.DB, al *audit.Log, leads adminui.LeadsC
 				}
 				data = b
 			}
-			return leadIntake(data)
+			asked, err := leadIntake(data)
+			if err != nil {
+				return config.LeadIntake{}, err
+			}
+			return installedIntake(ctx, db, asked)
 		},
 		Lead: func(ctx context.Context, id string) (leadadapter.Lead, error) {
 			l, err := leads.Get(ctx, id)

@@ -5,8 +5,8 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "page_slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$", "default": "main", "description": "Slug of the public status page, served at /status/<slug>." },
-    "heartbeat_retention_days": { "type": "integer", "minimum": 7, "default": 180, "description": "Matches the monitor-heartbeat data class (180d)." },
-    "external_probe_hint": { "type": "boolean", "default": true, "description": "Remind the operator that a monitor on the same server cannot report that server being down; also watch it from outside." }
+    "page_slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$", "default": "main", "description": "Slug of the public status page, served at /status/<slug>.", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}},
+    "heartbeat_retention_days": {"type": "integer", "minimum": 7, "default": 180, "description": "Matches the monitor-heartbeat data class (180d).", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}},
+    "external_probe_hint": {"type": "boolean", "default": true, "description": "Remind the operator that a monitor on the same server cannot report that server being down; also watch it from outside.", "x-can": {"not_applied": "nothing reads it"}}
   }
 }

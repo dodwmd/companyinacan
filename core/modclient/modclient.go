@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +29,16 @@ import (
 // ErrUnavailable means can-core could not give an answer (network error, 5xx, 429, or it refused
 // this module's own credential). Callers must treat it as "no", and may retry later.
 var ErrUnavailable = errors.New("can-core is unavailable")
+
+// ErrNotSent matches an ErrUnavailable whose request never left this process (no connection could be
+// made), so can-core cannot have acted on it. Without it a lost request may have been carried out.
+var ErrNotSent = errors.New("the request was not sent")
+
+// notSent marks err as ErrNotSent and leaves its text.
+type notSent struct{ error }
+
+func (e notSent) Unwrap() error      { return e.error }
+func (notSent) Is(target error) bool { return target == ErrNotSent }
 
 // StatusError is an HTTP refusal or failure of a platform service. 401, 429 and 5xx also match
 // ErrUnavailable.
@@ -115,7 +126,7 @@ func (c *Client) client() *http.Client {
 func (c *Client) do(ctx context.Context, method, path string, body any, header map[string]string) (int, []byte, error) {
 	tok, err := os.ReadFile(c.TokenFile) //nolint:gosec // fixed in-cluster path from configuration
 	if err != nil || len(bytes.TrimSpace(tok)) == 0 {
-		return 0, nil, fmt.Errorf("%w: the projected token is unreadable", ErrUnavailable)
+		return 0, nil, notSent{fmt.Errorf("%w: the projected token is unreadable", ErrUnavailable)}
 	}
 	var rd io.Reader
 	if body != nil {
@@ -138,7 +149,12 @@ func (c *Client) do(ctx context.Context, method, path string, body any, header m
 	}
 	resp, err := c.client().Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: %v", ErrUnavailable, errors.Unwrap(err))
+		lost := fmt.Errorf("%w: %v", ErrUnavailable, errors.Unwrap(err))
+		var op *net.OpError
+		if errors.As(err, &op) && op.Op == "dial" {
+			return 0, nil, notSent{lost}
+		}
+		return 0, nil, lost
 	}
 	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponse))

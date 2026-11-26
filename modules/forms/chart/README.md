@@ -14,7 +14,8 @@ Helm-compatible templates for the in-house forms gateway, rendered by can-core's
 - `CAN_FORMS_API_TOKEN` reads, changes and, since 0.2.0, **erases** leads: give it only to what may do that.
 - Secrets (`CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN`, `CAN_FORMS_API_READ_TOKEN`) come from the
   `can-module` Secret that can-core generates once and injects as environment.
-- Settings from `company.yaml` are not yet mapped onto `config:`.
+- Settings from `company.yaml` are laid over `config:`
+  ([docs/module-wiring.md](../../../docs/module-wiring.md#settings)).
 
 ## What is verified
 
