@@ -242,5 +242,9 @@ func TestFormsVersionAndImageTagMoveTogether(t *testing.T) {
 		if err != nil || !strings.Contains(string(raw), "can-forms:"+version) {
 			t.Errorf("%s must import can-forms:%s (%v)", f, version, err)
 		}
+		// what is imported has to be what is built: the build loop takes its tag from the chart
+		if !strings.Contains(string(raw), `"modules/$m/chart/values.yaml"`) || !strings.Contains(string(raw), `can-$m:$tag"`) {
+			t.Errorf("%s builds the module images under a tag of its own", f)
+		}
 	}
 }
