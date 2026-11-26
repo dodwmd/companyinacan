@@ -471,6 +471,11 @@ func (r *runner) hostDumpsDir(ctx context.Context) error {
 		return err
 	}
 	if r.o.Backup == nil && st.Launch != nil && st.Launch.BackupInstalled {
+		if ok, err := r.timerOnHost(ctx, backup.DefaultSettings()); err != nil {
+			return err
+		} else if !ok {
+			r.res.Warnings = append(r.res.Warnings, "THIS SERVER IS NOT BEING BACKED UP: it has no working backup timer, although this directory installed one (a replaced or restored server). Run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file")
+		}
 		if st.Launch.BackupVersion < BackupInstallVersion {
 			r.res.Warnings = append(r.res.Warnings, "the backup script on the server was installed by an older version: run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file to update it")
 		}
@@ -548,6 +553,17 @@ func (r *runner) admin(ctx context.Context) (bool, string, error) {
 	// Kubernetes Secret that would outlive this command.
 	out, err := r.exec(ctx, pw, "bootstrap", "--username", r.o.AdminUser)
 	note := ""
+	if err != nil && strings.Contains(err.Error()+out, "already exists") && (st.Launch == nil || !st.Launch.AdminCreated) {
+		// A server restored from a backup has the account it had before: never replace it.
+		s, serr := r.kube(ctx, nil, "-n", SystemNS, "exec", "deploy/can-core", "--", "/can-core", "restore", "status")
+		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "normal restored ") {
+			r.res.AdminNote = "this server was restored from a backup: the admin login is the one from before the restore"
+			return true, "restored admin account kept", nil
+		}
+		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "restoring ") {
+			return false, "", errors.New("this server is in the middle of a restore: finish `can restore` on it first")
+		}
+	}
 	if err != nil && strings.Contains(err.Error()+out, "already exists") {
 		// Created by a run that stopped before showing the credentials: nobody holds them, so issue new ones.
 		out, err = r.exec(ctx, pw, "reset-password", "--username", r.o.AdminUser, "--rotate-totp")

@@ -69,20 +69,20 @@ notify() {
   # The URL is a secret: it goes to curl on stdin (-K -), never on the command line.
   { printf 'url = "%s"\n' "$(tr -d '"\\\n' <{{q .Webhook}})"; } |
     curl -fsS -m 10 -K - -X POST -H 'Content-Type: application/json' \
-      --data "{\"text\":\"can-backup failed: $(json_escape "$1")\"}" >/dev/null 2>&1 || true
+      --data "{\"text\":\"can-backup $(json_escape "$1")\"}" >/dev/null 2>&1 || true
 }
 
 # A warning does not fail the run: it is logged and sent to the same webhook.
 warn() {
   logger -t can-backup -p user.warning -- "WARNING: $1" || true
   echo "can-backup: WARNING: $1" >&2
-  notify "$1"
+  notify "warning: $1"
 }
 
 report() {
   logger -t can-backup -p user.err -- "FAILED($1): $2" || true
   echo "can-backup: FAILED($1): $2" >&2
-  notify "($1) $2"
+  notify "failed: ($1) $2"
 }
 
 finish() {

@@ -15,7 +15,7 @@ import (
 
 func main() {
 	if modbackup.Handles(os.Args[1:]) { // `backup` and `restore` (specs/043-module-backup-hooks)
-		os.Exit(modbackup.Main("can-equity", os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
+		os.Exit(modbackup.Main("can-equity", equity.Migrations(), os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
 	}
 	os.Exit(equity.Main(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
 }

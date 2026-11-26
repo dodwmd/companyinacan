@@ -69,19 +69,6 @@ func (h *KubeHooks) builtin(module string) (*config.Module, error) {
 	return m, nil
 }
 
-// RunBuiltinRestore replaces a wrapped module's data with its dump. The module must not be
-// running, and can-core must be in restore mode (the dumps are downloaded).
-func (h *KubeHooks) RunBuiltinRestore(ctx context.Context, module string) error {
-	m, err := h.builtin(module)
-	if err != nil {
-		return err
-	}
-	if m == nil {
-		return fmt.Errorf("module %s has no built-in restore", module)
-	}
-	return h.builtinJob(ctx, module, m, true)
-}
-
 func (h *KubeHooks) builtinJob(ctx context.Context, module string, m *config.Module, restore bool) error {
 	if !moduleRe.MatchString(module) {
 		return ErrBadName

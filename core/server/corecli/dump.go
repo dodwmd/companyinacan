@@ -44,6 +44,9 @@ func dumpRequestCmd(getenv func(string) string) *cobra.Command {
 						for _, s := range run.Skipped {
 							fmt.Fprintln(cmd.OutOrStdout(), "WARNING:", s.Message())
 						}
+						for _, w := range run.Warnings {
+							fmt.Fprintln(cmd.OutOrStdout(), "WARNING:", w)
+						}
 					}
 					return nil
 				}

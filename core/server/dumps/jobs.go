@@ -99,16 +99,21 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 	return h.wait(ctx, ns, name)
 }
 
-// hasData reports whether the module has anything to dump. A database module always has: its
-// data is in the database server, so a missing namespace or database Secret is an error, never
-// "nothing to dump". Otherwise a module without a volume (never installed, or removed by hand)
+// hasData reports whether the module has anything to dump. A database module's data is in the
+// database server, so a missing namespace or database Secret is an error, never "nothing to
+// dump". The one exception: a Secret without DB_HOST belongs to a database that was never
+// provisioned (the installer writes the password first and the connection settings only once the
+// server accepted it, and never removes them), so such a module has never held data. Otherwise a module without a volume (never installed, or removed by hand)
 // has nothing.
 func (h *KubeHooks) hasData(ctx context.Context, ns string, database bool) (bool, error) {
 	if database {
-		if _, err := h.API.Get(ctx, "Secret", ns, reconcile.DatabaseSecret); err != nil {
+		sec, err := h.API.Get(ctx, "Secret", ns, reconcile.DatabaseSecret)
+		if err != nil {
 			return false, fmt.Errorf("the database module's Secret %s/%s cannot be read: %w", ns, reconcile.DatabaseSecret, err)
 		}
-		return true, nil
+		data, _ := sec["data"].(obj)
+		host, _ := data["DB_HOST"].(string)
+		return host != "", nil
 	}
 	if _, err := h.API.Get(ctx, "Namespace", "", ns); kube.IsNotFound(err) {
 		return false, nil

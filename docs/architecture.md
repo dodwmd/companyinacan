@@ -55,7 +55,7 @@ chain of approvers from policy, records every step, and sends `approval.decided.
 
 **Backup** is a host-level restic timer over the dumps that can-core asks each module to write, plus the k3s
 datastore and secrets key, with a recovery kit printed at install time ([backup-restore.md](backup-restore.md)).
-`can restore` is not functional until the provisioning adapters exist.
+`can restore` runs on the new server and has only been exercised on k3d in CI ([backup-restore.md](backup-restore.md)).
 
 **Local equivalents.** `make dev` is the same base manifests on k3d. The Docker Compose stack
 ([local-compose.md](local-compose.md)) runs the same binaries without Kubernetes: can-core records state only, the

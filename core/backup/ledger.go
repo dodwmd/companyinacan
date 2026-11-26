@@ -69,8 +69,8 @@ func VerifyChain(es []Entry) error {
 	return nil
 }
 
-// Ledger is the append-only erasure tombstone file written by can-core (single
-// writer) and read by the host timer and by restore.
+// Ledger is the append-only erasure tombstone file, written today only by `can backup
+// ledger-add` and by a restore (no service records erasures by itself) and read by the host timer and by restore.
 type Ledger struct {
 	Path string
 	Now  func() time.Time // default time.Now

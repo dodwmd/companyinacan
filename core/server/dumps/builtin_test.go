@@ -122,7 +122,10 @@ func TestBuiltinRestoreJob(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.ModulesDir, "wiki", "module.yaml"), []byte(manifest), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	raw, j := runBuiltinJob(t, api, func(ctx context.Context) error { return h.RunBuiltinRestore(ctx, "wiki") })
+	if !h.HasSubcommandRestore("wiki") {
+		t.Error("a restore must see the built-in hook")
+	}
+	raw, j := runBuiltinJob(t, api, func(ctx context.Context) error { return h.RunRestore(ctx, "wiki", false) })
 	spec := j.Spec.Template.Spec
 	if len(spec.InitContainers) != 1 || spec.InitContainers[0].Command[2] != "restore" || spec.InitContainers[0].mounts() != "work tmp can-token:ro data" ||
 		len(spec.Containers) != 1 || !strings.Contains(spec.Containers[0].Command[2], "pg_restore") {

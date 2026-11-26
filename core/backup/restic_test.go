@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/backup/backuptest"
 )
 
 func TestResticArgvAndCredentials(t *testing.T) {
@@ -124,6 +126,37 @@ func TestExecRunnerError(t *testing.T) {
 
 // --- verify, status -------------------------------------------------------
 
+// verify fails for a snapshot a restore would refuse or could not complete.
+func TestVerifyAgreesWithRestore(t *testing.T) {
+	good := func() map[string]string {
+		return map[string]string{StateDump: string(backuptest.StateDB(t)), SecretsDump: `{"version":1}`, CompanyDump: "c"}
+	}
+	o := VerifyOptions{DumpsDir: "/var/lib/can/dumps", TempDir: t.TempDir()}
+	if _, err := Verify(context.Background(), fakeRepo(good()), o); err != nil {
+		t.Fatal(err)
+	}
+	for want, change := range map[string]func(map[string]string){
+		"company.yaml":      func(m map[string]string) { delete(m, CompanyDump) },
+		"state.db":          func(m map[string]string) { m[StateDump] = "not a database" },
+		"--without-secrets": func(m map[string]string) { delete(m, SecretsDump) },
+		"no restore hook": func(m map[string]string) {
+			m[StateDump] = string(backuptest.StateDB(t, backuptest.Module{ID: "people", State: "enabled", Database: "sqlite"}))
+			m["modules/people/x"] = "x"
+		},
+	} {
+		m := good()
+		change(m)
+		if _, err := Verify(context.Background(), fakeRepo(m), o); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v", want, err)
+		}
+	}
+	f := fakeRepo(good())
+	f.Files["/var/lib/can/host-state/"+MarkerCopy] = []byte("run_id=other\nfinished_at=1800000000\n")
+	if _, err := Verify(context.Background(), f, o); err == nil || !strings.Contains(err.Error(), "inconsistent") {
+		t.Errorf("marker mismatch: %v", err)
+	}
+}
+
 func hashOf(b []byte) string { return fmt.Sprintf("%x", sha256.Sum256(b)) }
 
 func fakeRepo(files map[string]string) *FakeRestic {
@@ -134,11 +167,14 @@ func fakeRepo(files map[string]string) *FakeRestic {
 		fmt.Fprintf(&man, "%s  ./%s\n", hashOf([]byte(c)), p)
 	}
 	f.Files["/var/lib/can/host-state/"+ManifestName] = []byte(man.String())
+	marker := []byte("run_id=r1\nfinished_at=1800000000\n")
+	f.Files["/var/lib/can/dumps/"+MarkerName] = marker
+	f.Files["/var/lib/can/host-state/"+MarkerCopy] = marker
 	return f
 }
 
 func TestVerifyOK(t *testing.T) {
-	f := fakeRepo(map[string]string{"state.db": "s", "modules/a.dump": "A", "modules/b.dump": "B", "company.yaml": "c"})
+	f := fakeRepo(map[string]string{StateDump: string(backuptest.StateDB(t)), SecretsDump: `{"version":1}`, "modules/a/a.dump": "A", "modules/b/b.dump": "B", CompanyDump: "c"})
 	tmp := t.TempDir()
 	rep, err := Verify(context.Background(), f, VerifyOptions{DumpsDir: "/var/lib/can/dumps", Sample: 2, TempDir: tmp})
 	if err != nil {
