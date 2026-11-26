@@ -19,7 +19,7 @@ func (f *planExec) Run(ctx context.Context, c cluster.Cmd) (string, error) {
 	line := strings.Join(c.Args, " ")
 	f.calls = append(f.calls, line)
 	if strings.Contains(line, "/can-core modules plan") {
-		return `{"actions":[{"kind":"upgrade","module":"forms","reason":"manifest changed","widens":["new permission leads.erase"],"held":"approval","approval":"0123456789abcdef"}]}`, nil
+		return `{"actions":[{"kind":"upgrade","module":"forms","reason":"manifest changed","widens":["new permission leads.erase"],"held":"approval","approval":"0123456789abcdef","not_applied":["switching off the public routes (they stay public)"],"urgent":true}]}`, nil
 	}
 	return f.fileExec.Run(ctx, c)
 }
@@ -40,10 +40,17 @@ func TestApplyPreviewsTheClusterPlanAndApproves(t *testing.T) {
 	if code != ExitOK || len(f.calls) != 1 || len(f.written) != 0 {
 		t.Fatalf("--plan changed something: %d %v %q", code, f.calls, errs)
 	}
-	for _, want := range []string{"waiting for approval: upgrade: forms", "newly allowed: new permission leads.erase", "can apply --approve forms=0123456789abcdef"} {
+	for _, want := range []string{"waiting for approval: upgrade: forms", "newly allowed: new permission leads.erase", "can apply --approve forms=0123456789abcdef", "NOT APPLIED: switching off the public routes", "takes it offline"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("lacks %q in %q", want, out)
 		}
+	}
+
+	// An apply that cannot take the exposure away syncs the rest and fails, loudly.
+	use()
+	code, out, errs = run(t, args...)
+	if code != ExitFailure || !strings.Contains(out, "synced company.yaml") || !strings.Contains(errs, "module forms: NOT APPLIED: switching off the public routes") || !strings.Contains(errs, "Two ways out") {
+		t.Fatalf("%d %q %q", code, out, errs)
 	}
 
 	f = use()

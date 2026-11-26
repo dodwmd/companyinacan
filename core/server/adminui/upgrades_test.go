@@ -42,9 +42,12 @@ func TestWideningUpgradeIsShownAndApproved(t *testing.T) {
 		t.Fatalf("held %+v", held)
 	}
 
+	must(t, m.db.RequestRotation(ctx, "web", "CAN_WEBHOOK_SECRET", "test"))
+	apply()
+
 	ops := m.loginAs("ops")
 	page := m.do("GET", "/catalogue", nil, ops.cookie).body
-	for _, want := range []string{"new permission leads.export", `action="/upgrades/web/approve"`, held[0].Approval} {
+	for _, want := range []string{"NOT APPLIED: secret rotation of CAN_WEBHOOK_SECRET", "new permission leads.export", `action="/upgrades/web/approve"`, held[0].Approval} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("catalogue lacks %q", want)
 		}
@@ -59,8 +62,17 @@ func TestWideningUpgradeIsShownAndApproved(t *testing.T) {
 	ch, err := m.svc.Propose(ctx, "ops", modmgr.Proposal{Patch: modmgr.Patch{Ops: []modmgr.Op{modmgr.SetEnabled("solo", true)}}})
 	must(t, err)
 	change := m.do("GET", "/changes/"+ch.ID, nil, ops.cookie).body
-	if !strings.Contains(change, modmgr.UpgradeAck("web", held[0].Approval)) || !strings.Contains(change, "new permission leads.export") {
-		t.Fatalf("change page does not offer the approval")
+	if !strings.Contains(change, modmgr.UpgradeAck("web", held[0].Approval)) || !strings.Contains(change, "new permission leads.export") || !strings.Contains(change, "NOT APPLIED: secret rotation") {
+		t.Fatalf("change page does not offer the approval or say what is left out")
+	}
+	// Applying without the tick is not reported as a success.
+	run, err := m.svc.Apply(ctx, "ops", ch.ID)
+	must(t, err)
+	if run.State != modmgr.RunFailed || !strings.Contains(run.Error, "module web waits for approval, NOT APPLIED: secret rotation") {
+		t.Fatalf("run %q %q", run.State, run.Error)
+	}
+	if page := m.do("GET", "/runs/"+run.ID, nil, ops.cookie).body; !strings.Contains(page, "NOT APPLIED: secret rotation") {
+		t.Fatal("the result page does not say what was left out")
 	}
 
 	post := func(s session, approval string) int {

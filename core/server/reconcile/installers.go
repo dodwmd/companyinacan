@@ -16,9 +16,6 @@ func (RecordOnly) Enable(context.Context, Spec) error { return nil }
 // Disable implements ModuleInstaller.
 func (RecordOnly) Disable(context.Context, string) error { return nil }
 
-// Restrict implements Restricter.
-func (RecordOnly) Restrict(context.Context, Spec) error { return nil }
-
 // FakeInstaller is an in-memory ModuleInstaller that records what it was asked to do.
 type FakeInstaller struct {
 	mu          sync.Mutex
@@ -26,7 +23,6 @@ type FakeInstaller struct {
 	Calls       []string        // "enable:<id>" / "disable:<id>" in order
 	FailEnable  map[string]error
 	FailDisable map[string]error
-	Restricted  map[string]Spec // what Restrict was last given
 }
 
 // NewFakeInstaller returns an empty fake.
@@ -55,21 +51,6 @@ func (f *FakeInstaller) Disable(_ context.Context, id string) error {
 		return err
 	}
 	delete(f.Enabled, id)
-	return nil
-}
-
-// Restrict implements Restricter.
-func (f *FakeInstaller) Restrict(_ context.Context, s Spec) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.Calls = append(f.Calls, "restrict:"+s.ID)
-	if err := f.FailEnable[s.ID]; err != nil {
-		return err
-	}
-	if f.Restricted == nil {
-		f.Restricted = map[string]Spec{}
-	}
-	f.Restricted[s.ID] = s
 	return nil
 }
 

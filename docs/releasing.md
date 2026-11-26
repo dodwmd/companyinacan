@@ -45,6 +45,8 @@ Say this in the release notes of the first release that has it:
   0.2.0 is one: until it is approved there is no `leads.erase`.
 - **The admin UI's leads page now works without setup, so everyone with `platform.view`, the auditor role
   included, can read the leads** (names, addresses, messages). Check who holds those roles.
+- **A module waiting for approval gets no change at all**, exposure removal, secret rotation and mail relay
+  opt-out included. To take something away at once, approve the upgrade or disable the module (offline).
 - can-core uses the forms module's read and write token for it; users with `leads.erase` can erase from the UI.
 
 ## Cutting a release

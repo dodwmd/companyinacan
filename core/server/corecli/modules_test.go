@@ -83,3 +83,25 @@ func TestModulesApproveAndPendingProblem(t *testing.T) {
 		t.Fatal(m.ApprovedUpgrade, err)
 	}
 }
+
+// A rotation asked of a module that waits for approval does not happen, and the command says so.
+func TestSecretsRotateOfAHeldModuleSaysItIsNotApplied(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	db, err := store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertModule(ctx, store.Module{ID: "forms", Version: "1", Namespace: "mod-forms", ServiceAccount: "forms", State: store.StateEnabled}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetPendingUpgrade(ctx, "forms", `{"approval":"0123456789abcdef","widens":["new permission leads.erase"]}`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	var out, errs bytes.Buffer
+	code := Execute([]string{"admin", "secrets", "rotate", "forms", "CAN_WEBHOOK_SECRET", "--db", path}, strings.NewReader(""), &out, &errs, func(string) string { return "" })
+	if code == exitOK || !strings.Contains(errs.String(), "NOT APPLIED") || !strings.Contains(errs.String(), "disable the module") {
+		t.Fatal(code, out.String(), errs.String())
+	}
+}

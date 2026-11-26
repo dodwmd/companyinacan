@@ -102,10 +102,13 @@ permission or role grant, an event it may publish or receives, a capability it s
 public host or path, internet access (not for a module installed before manifests declared it: every module had
 it), a shorter approval chain, a new notification recipient, a new hook, hook command or hook image, signing
 users into its web UI, or a changed data class. Until then the running release and its recorded manifest stay.
-**What takes something away is still applied to that release**: secret rotation, switching exposure off and
-mail relay changes (including opt-out). Settings and newly exposed routes wait with the upgrade; the app's own
-configuration for a removed route is only rewritten by the upgrade. If these cannot be applied (no record of the
-installed release), `can status` says so. Backups of a waiting module use the hooks of what is installed (a
+**Limitation: a waiting module gets no change at all.** Switching exposure off, secret rotation, mail relay
+opt-out or new credentials, and settings do not reach it, because can-core does not rebuild the installed
+release without its chart. `can apply` names each requested change as NOT APPLIED and exits non-zero when
+exposure or access was to be taken away (or when it cannot tell, for a module installed before this was
+recorded); `can status`, `secrets rotate` and the admin UI's preview and result say the same. **Two ways out:**
+approve the upgrade, or disable the module in `company.yaml`, which takes it offline (enabling it again installs
+the new version without asking). Backups of a waiting module use the hooks of what is installed (a
 module installed before hook scripts were recorded uses the shipped script). Approve on the catalogue page, with
 the tick on a change's apply form, or with `can apply --approve <module>=<code>`, where the code is the one the
 plan shows; `can status` and `can up` name the modules that wait. The approval covers exactly the list shown. A

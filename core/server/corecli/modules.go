@@ -20,6 +20,8 @@ type moduleProblem struct {
 	ID    string `json:"id"`
 	State string `json:"state"`
 	Error string `json:"error"`
+	// NotApplied is what was asked of a module that waits for approval and does not reach it.
+	NotApplied string `json:"not_applied,omitempty"`
 }
 
 const statePendingApproval = "pending-approval"
@@ -110,12 +112,13 @@ func modulesCmd(getenv func(string) string) *cobra.Command {
 		for _, m := range mods {
 			// A failed upgrade leaves the previous release enabled, with the error.
 			if m.State == store.StateFailed || m.LastError != "" {
-				out = append(out, moduleProblem{m.ID, m.State, modmgr.Sanitise(m.LastError)})
+				out = append(out, moduleProblem{ID: m.ID, State: m.State, Error: modmgr.Sanitise(m.LastError)})
 			}
 		}
 		for _, m := range mods {
 			if p, ok := reconcile.ParsePending(m.Pending); ok && m.State == store.StateEnabled {
-				out = append(out, moduleProblem{m.ID, statePendingApproval, modmgr.Sanitise(strings.Join(p.Widens, "; "))})
+				out = append(out, moduleProblem{ID: m.ID, State: statePendingApproval, Error: modmgr.Sanitise(strings.Join(p.Widens, "; ")),
+					NotApplied: modmgr.Sanitise(strings.Join(p.NotApplied, "; "))})
 			}
 		}
 		return json.NewEncoder(c.OutOrStdout()).Encode(out)

@@ -422,9 +422,6 @@ const (
 func resources(actions []reconcile.Action, cat *Catalogue, domain string) []ResourcePlan {
 	var out []ResourcePlan
 	for _, a := range actions {
-		if a.Kind == reconcile.Restrict {
-			continue // nothing is created or removed
-		}
 		rp := ResourcePlan{Module: a.Module, Action: string(a.Kind), Reason: Sanitise(a.Reason), Namespace: "mod-" + a.Module}
 		if a.Kind == reconcile.Disable {
 			rp.Keeps = []string{"namespace", "pvc", "secrets"}
@@ -720,6 +717,11 @@ func (s *Service) start(runID, actor, changeID string, d reconcile.Desired) {
 		}
 		if err != nil {
 			msg = err.Error()
+		}
+		// A run that leaves out what was asked for must not read as a success.
+		if left := notAppliedSummary(res.Held); left != "" {
+			state = RunFailed
+			msg = strings.TrimSpace(left + " " + msg)
 		}
 		s.finishRun(ctx, runID, state, msg, res.Actions, res.Failed)
 		s.RecordReconcile(ctx, res, err)

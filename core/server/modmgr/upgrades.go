@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/store"
@@ -19,6 +20,33 @@ type PendingUpgrade struct {
 // UpgradeAck is the confirmation Apply takes as the approval of a held upgrade.
 func UpgradeAck(module, approval string) string { return "upgrade:" + module + ":" + approval }
 
+// HeldLines is what the pages list for a held upgrade: what it would allow, then what was asked
+// of the module and is not applied.
+func HeldLines(widens, notApplied []string) []string {
+	var out []string
+	for _, w := range widens {
+		out = append(out, Sanitise(w))
+	}
+	for _, n := range notApplied {
+		out = append(out, "NOT APPLIED: "+Sanitise(n))
+	}
+	return out
+}
+
+// notAppliedSummary says what a run left out of held modules, "" when nothing.
+func notAppliedSummary(held []reconcile.Action) string {
+	var out []string
+	for _, a := range held {
+		if a.Held == reconcile.HeldApproval && len(a.NotApplied) > 0 {
+			out = append(out, fmt.Sprintf("module %s waits for approval, NOT APPLIED: %s", a.Module, strings.Join(a.NotApplied, "; ")))
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return strings.Join(out, ". ") + ". Two ways out: " + reconcile.WaysOut
+}
+
 // PendingUpgrades lists the upgrades the reconciler holds.
 func (s *Service) PendingUpgrades(ctx context.Context) ([]PendingUpgrade, error) {
 	mods, err := s.DB.ListModules(ctx)
@@ -32,9 +60,7 @@ func (s *Service) PendingUpgrades(ctx context.Context) ([]PendingUpgrade, error)
 			continue
 		}
 		u := PendingUpgrade{Module: m.ID, Approval: p.Approval}
-		for _, w := range p.Widens {
-			u.Widens = append(u.Widens, Sanitise(w))
-		}
+		u.Widens = HeldLines(p.Widens, p.NotApplied)
 		out = append(out, u)
 	}
 	return out, nil

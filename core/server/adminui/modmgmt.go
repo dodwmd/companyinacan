@@ -526,7 +526,7 @@ type actionView struct{ Kind, KindLabel, Module, Reason string }
 
 var actionLabels = map[reconcile.Kind]string{
 	reconcile.Install: "ch.act_install", reconcile.Upgrade: "ch.act_upgrade",
-	reconcile.Enable: "ch.act_enable", reconcile.Disable: "ch.act_disable", reconcile.Restrict: "ch.act_restrict",
+	reconcile.Enable: "ch.act_enable", reconcile.Disable: "ch.act_disable",
 }
 
 var keepLabels = map[string]string{
@@ -555,9 +555,7 @@ func (s *Server) previewData(pv *modmgr.Preview) changeData {
 		h := heldView{Module: a.Module, Reason: modmgr.Sanitise(a.Reason)}
 		if a.Held == reconcile.HeldApproval {
 			h.Ack = modmgr.UpgradeAck(a.Module, a.Approval)
-			for _, w := range a.Widens {
-				h.Widens = append(h.Widens, modmgr.Sanitise(w))
-			}
+			h.Widens = modmgr.HeldLines(a.Widens, a.NotApplied)
 		}
 		d.Held = append(d.Held, h)
 	}

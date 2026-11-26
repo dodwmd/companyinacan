@@ -48,7 +48,8 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 			}
 			if !dryRun && !recordOnly {
 				// What can-core would do, before anything changes; approvals are recorded here.
-				if err := clusterPreview(cmd, filepath.Join(dir, "company.yaml"), kubeContext, approve, planOnly); err != nil {
+				notApplied, err := clusterPreview(cmd, filepath.Join(dir, "company.yaml"), kubeContext, approve, planOnly)
+				if err != nil {
 					return failure("%v", err)
 				}
 				if planOnly {
@@ -72,6 +73,9 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 					return failure("%v", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "synced company.yaml to ConfigMap can-system/company (%s)\ncan-core applies it within its reconcile interval; watch with: kubectl -n can-system logs deploy/can-core\n", out)
+				if notApplied != nil {
+					return failure("%v", notApplied)
+				}
 				return nil
 			}
 
@@ -131,6 +135,9 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				if len(res.Actions)+len(res.Held) == 0 {
 					fmt.Fprintln(w, "nothing to do: recorded state matches company.yaml")
 				}
+			}
+			if applyErr == nil && !dryRun {
+				applyErr = notAppliedError(res.Held)
 			}
 			if applyErr != nil {
 				return failure("%v", applyErr)

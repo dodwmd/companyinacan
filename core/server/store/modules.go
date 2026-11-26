@@ -36,8 +36,8 @@ type Module struct {
 	// approval given for it. UpsertModule clears both.
 	Pending         string
 	ApprovedUpgrade string
-	// RestrictKey identifies the exposure and mail relay the running release has.
-	RestrictKey string
+	// Applied is what of company.yaml the running release was installed with (JSON, reconcile.Applied).
+	Applied string
 }
 
 // Provider is one module's provision of a capability.
@@ -73,13 +73,13 @@ func (db *DB) UpsertModule(ctx context.Context, m Module, providers []Provider, 
 		return err
 	}
 	return db.InTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO modules(id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json,restrict_key)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO modules(id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json,applied_json)
 			VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(id) DO UPDATE SET version=excluded.version, namespace=excluded.namespace, service_account=excluded.service_account,
 			  state=excluded.state, settings_hash=excluded.settings_hash, hmac_secret=excluded.hmac_secret, manifest_json=excluded.manifest_json,
-			  last_error=excluded.last_error, updated_at=excluded.updated_at, content_json=excluded.content_json, restrict_key=excluded.restrict_key,
+			  last_error=excluded.last_error, updated_at=excluded.updated_at, content_json=excluded.content_json, applied_json=excluded.applied_json,
 			  pending_json='', approved_upgrade=''`,
-			m.ID, m.Version, m.Namespace, m.ServiceAccount, m.State, m.SettingsHash, m.HMACSecret, string(mj), m.LastError, db.Now().Unix(), m.Content, m.RestrictKey); err != nil {
+			m.ID, m.Version, m.Namespace, m.ServiceAccount, m.State, m.SettingsHash, m.HMACSecret, string(mj), m.LastError, db.Now().Unix(), m.Content, m.Applied); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM capability_providers WHERE module_id=?`, m.ID); err != nil {
@@ -104,13 +104,13 @@ func (db *DB) UpsertModule(ctx context.Context, m Module, providers []Provider, 
 	})
 }
 
-const moduleCols = `id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json,pending_json,approved_upgrade,restrict_key`
+const moduleCols = `id,version,namespace,service_account,state,settings_hash,hmac_secret,manifest_json,last_error,updated_at,content_json,pending_json,approved_upgrade,applied_json`
 
 func scanModule(row interface{ Scan(...any) error }) (Module, error) {
 	var m Module
 	var mj string
 	var up int64
-	if err := row.Scan(&m.ID, &m.Version, &m.Namespace, &m.ServiceAccount, &m.State, &m.SettingsHash, &m.HMACSecret, &mj, &m.LastError, &up, &m.Content, &m.Pending, &m.ApprovedUpgrade, &m.RestrictKey); err != nil {
+	if err := row.Scan(&m.ID, &m.Version, &m.Namespace, &m.ServiceAccount, &m.State, &m.SettingsHash, &m.HMACSecret, &mj, &m.LastError, &up, &m.Content, &m.Pending, &m.ApprovedUpgrade, &m.Applied); err != nil {
 		return m, notFound(err)
 	}
 	m.UpdatedAt = time.Unix(up, 0)
@@ -181,16 +181,26 @@ func (db *DB) SetPendingUpgrade(ctx context.Context, id, pending string) error {
 	return err
 }
 
-// RecordRestricted records what was applied to the running release of a module whose upgrade is
-// held: its signing secret and restrict key, and the UI host its record names. The manifest, content
-// and held upgrade stay.
-func (db *DB) RecordRestricted(ctx context.Context, m Module) error {
-	mj, err := json.Marshal(m.Manifest)
-	if err != nil {
-		return err
+// SetApplied records what the running release was installed with, learnt after the fact.
+func (db *DB) SetApplied(ctx context.Context, id, applied string) error {
+	_, err := db.ExecContext(ctx, `UPDATE modules SET applied_json=? WHERE id=?`, applied, id)
+	return err
+}
+
+// PendingSecret returns the signing secret that is on its way into a module, storing candidate as
+// that secret when none is.
+func (db *DB) PendingSecret(ctx context.Context, id, candidate string) (string, error) {
+	if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO module_pending_secrets(module_id,secret) VALUES (?,?)`, id, candidate); err != nil {
+		return "", err
 	}
-	_, err = db.ExecContext(ctx, `UPDATE modules SET hmac_secret=?, restrict_key=?, manifest_json=?, last_error='', updated_at=? WHERE id=?`,
-		m.HMACSecret, m.RestrictKey, string(mj), db.Now().Unix(), m.ID)
+	var s string
+	err := db.QueryRowContext(ctx, `SELECT secret FROM module_pending_secrets WHERE module_id=?`, id).Scan(&s)
+	return s, err
+}
+
+// ClearPendingSecret forgets it, once it is recorded as the module's secret or the module is purged.
+func (db *DB) ClearPendingSecret(ctx context.Context, id string) error {
+	_, err := db.ExecContext(ctx, `DELETE FROM module_pending_secrets WHERE module_id=?`, id)
 	return err
 }
 
@@ -217,7 +227,7 @@ func (db *DB) DeleteDisabledModule(ctx context.Context, id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return db.ClearPendingSecret(ctx, id)
 }
 
 // Providers returns the enabled modules that provide a capability, ordered by module id.

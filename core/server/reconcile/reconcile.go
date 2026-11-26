@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -87,13 +88,6 @@ type ModuleInstaller interface {
 	Disable(ctx context.Context, id string) error
 }
 
-// Restricter is implemented by installers that can change the installed release without upgrading
-// it: Spec.Manifest is the recorded manifest, and only exposure is taken away, secrets are rotated
-// and the mail relay credentials are written again (or emptied).
-type Restricter interface {
-	Restrict(ctx context.Context, s Spec) error
-}
-
 // Kind of reconciliation step.
 type Kind string
 
@@ -103,9 +97,6 @@ const (
 	Upgrade Kind = "upgrade" // version or settings changed
 	Enable  Kind = "enable"  // recorded as disabled, wanted enabled
 	Disable Kind = "disable" // enabled but no longer wanted
-	// Restrict applies rotation, exposure removal and mail relay changes to the running release of
-	// a module whose upgrade waits for approval.
-	Restrict Kind = "restrict"
 )
 
 // Action is one planned step.
@@ -120,8 +111,14 @@ type Action struct {
 	// Approval is what approves a step held for HeldApproval.
 	Approval string `json:"approval,omitempty"`
 
-	target      string // identifies what is wanted, for the retry delay
-	restrictKey string
+	// NotApplied is what was asked of a module whose upgrade is held for approval and does not
+	// reach it: a held module gets no change at all. Urgent says that this includes taking away
+	// exposure or access (or that it cannot be ruled out).
+	NotApplied []string `json:"not_applied,omitempty"`
+	Urgent     bool     `json:"urgent,omitempty"`
+
+	target   string // identifies what is wanted, for the retry delay
+	baseline string // what the running release has, learnt from an old record (store.Module.Applied)
 }
 
 // Why a planned step is held.
@@ -435,6 +432,9 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			}
 			var was Content
 			if rec.Content == "" || json.Unmarshal([]byte(rec.Content), &was) != nil {
+				// What an old record's hash was made of is not known, so "settings changed"
+				// would be a guess.
+				why = slices.DeleteFunc(why, func(s string) bool { return s == "settings changed" })
 				why = append(why, "recording the installed manifest and chart (once)")
 			} else {
 				why = append(why, d.content(id).changes(was)...)
@@ -465,12 +465,8 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			r.hold(a, rec)
 		}
 		if a.Held == HeldApproval {
-			extra, err := r.restriction(ctx, d, a, rec, relay, lerr)
-			if err != nil {
+			if err := r.notApplied(ctx, d, a, rec, relay, rerr, lerr); err != nil {
 				return nil, err
-			}
-			if extra != nil {
-				enables = append(enables, *extra)
 			}
 		}
 		enables = append(enables, *a)
@@ -487,14 +483,9 @@ func (r *Reconciler) hold(a *Action, rec store.Module) {
 			return
 		}
 	}
-	r.delay(a)
-}
-
-// delay holds a step that failed before until its next try.
-func (r *Reconciler) delay(a *Action) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if f, ok := r.failed[a.failureKey()]; r.Backoff && ok && f.target == a.target && r.db.Now().Before(f.next) {
+	if f, ok := r.failed[a.Module]; r.Backoff && ok && f.target == a.target && r.db.Now().Before(f.next) {
 		a.Held = HeldRetry
 		a.Reason += fmt.Sprintf("; failed %d times, next try after %s", f.count, f.next.UTC().Format("15:04:05 UTC"))
 	}
@@ -505,11 +496,11 @@ func (r *Reconciler) delay(a *Action) {
 func (r *Reconciler) outcome(a Action, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err == nil || (a.Kind != Upgrade && a.Kind != Restrict) {
-		delete(r.failed, a.failureKey())
+	if err == nil || a.Kind != Upgrade {
+		delete(r.failed, a.Module)
 		return
 	}
-	f := r.failed[a.failureKey()]
+	f := r.failed[a.Module]
 	if f.target != a.target {
 		f = failure{target: a.target}
 	}
@@ -518,103 +509,7 @@ func (r *Reconciler) outcome(a Action, err error) {
 	if r.failed == nil {
 		r.failed = map[string]failure{}
 	}
-	r.failed[a.failureKey()] = f
-}
-
-func (a Action) failureKey() string { return string(a.Kind) + " " + a.Module }
-
-// restrictKey identifies what of company.yaml a held module is still given: its exposure and its
-// mail relay.
-func restrictKey(d Desired, id, relay string) string {
-	expose, _ := json.Marshal(d.Company.Modules[id].Exposure())
-	var mail []byte
-	if modsecrets.WantsRelay(id) && RelayOptIn(d.Company.Email, id) {
-		mail, _ = json.Marshal(d.Company.Email.Relay)
-	}
-	return digest(expose, mail, []byte(relay))
-}
-
-// restriction is the step that applies to the running release of a held module what must not wait
-// for the approval, nil when there is nothing. When the installer cannot, the held step says so.
-func (r *Reconciler) restriction(ctx context.Context, d Desired, held *Action, rec store.Module, relay string, relayErr error) (*Action, error) {
-	rotate, err := r.db.PendingRotations(ctx, held.Module)
-	if err != nil {
-		return nil, err
-	}
-	var why []string
-	if len(rotate) > 0 {
-		why = append(why, "secret rotation ("+strings.Join(rotate, ", ")+")")
-	}
-	key := rec.RestrictKey
-	if relayErr == nil {
-		key = restrictKey(d, held.Module, relay)
-	}
-	if key != rec.RestrictKey {
-		why = append(why, "exposure and mail relay settings")
-	}
-	if _, ok := r.Installer.(Restricter); !ok {
-		if len(why) > 0 {
-			held.Reason += "; NOT applied until you approve: " + strings.Join(why, ", ")
-		}
-		return nil, nil
-	}
-	if len(why) == 0 {
-		return nil, nil
-	}
-	a := &Action{Kind: Restrict, Module: held.Module, restrictKey: key,
-		Reason: "applied to the running release while its upgrade waits: " + strings.Join(why, ", ")}
-	a.target = digest([]byte(key), []byte(strings.Join(rotate, ",")))
-	r.delay(a)
-	return a, nil
-}
-
-// restrict runs a Restrict step: the recorded manifest and release stay.
-func (r *Reconciler) restrict(ctx context.Context, d Desired, a Action) error {
-	rec, err := r.getModule(ctx, a.Module)
-	if err != nil {
-		return fmt.Errorf("reading the recorded module: %w", err)
-	}
-	rotate, err := r.db.PendingRotations(ctx, a.Module)
-	if err != nil {
-		return err
-	}
-	secret := rec.HMACSecret
-	for _, k := range rotate {
-		if k == modsecrets.WebhookKey {
-			secret = newSecret()
-		}
-	}
-	if r.FixedWebhookSecret != "" {
-		secret = r.FixedWebhookSecret
-	}
-	man := rec.Manifest
-	expose := d.Company.Modules[a.Module].Exposure()
-	err = r.Installer.(Restricter).Restrict(ctx, Spec{ID: a.Module, Version: rec.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount,
-		Manifest: &man, HMACSecret: secret, RecordSecret: rec.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: expose})
-	if err != nil {
-		err = fmt.Errorf("rotation, exposure or mail relay changes could not be applied to the running release: %w", err)
-		_ = r.db.SetModuleState(ctx, a.Module, rec.State, err.Error())
-		r.log(ctx, "module.restrict-failed", a, map[string]any{"error": err.Error()})
-		return err
-	}
-	key := a.restrictKey
-	if secret != rec.HMACSecret { // the relay fingerprint is keyed with it
-		if relay, lerr := r.relay(ctx, d, a.Module, secret); lerr == nil {
-			key = restrictKey(d, a.Module, relay)
-		}
-	}
-	if !expose.UI {
-		rec.Manifest.Runtime.RoutedUIHost = ""
-	}
-	rec.HMACSecret, rec.RestrictKey = secret, key
-	if err := r.db.RecordRestricted(ctx, rec); err != nil {
-		return err
-	}
-	if err := r.db.ClearRotations(ctx, a.Module, rotate); err != nil {
-		return err
-	}
-	r.log(ctx, "module.restrict", a, nil)
-	return nil
+	r.failed[a.Module] = f
 }
 
 // recordHeld keeps store.Module.Pending in step with the plan, so that the admin UI and `can status`
@@ -634,7 +529,12 @@ func (r *Reconciler) recordHeld(ctx context.Context, held []Action) error {
 		pending := ""
 		a, ok := want[m.ID]
 		if ok {
-			b, _ := json.Marshal(Pending{Approval: a.Approval, Widens: a.Widens})
+			b, _ := json.Marshal(Pending{Approval: a.Approval, Widens: a.Widens, NotApplied: a.NotApplied, Urgent: a.Urgent})
+			if a.baseline != "" && m.Applied == "" {
+				if err := r.db.SetApplied(ctx, m.ID, a.baseline); err != nil {
+					return err
+				}
+			}
 			pending = string(b)
 		}
 		if pending == m.Pending {
@@ -644,7 +544,7 @@ func (r *Reconciler) recordHeld(ctx context.Context, held []Action) error {
 			return err
 		}
 		if ok {
-			r.log(ctx, "module.upgrade-held", a, map[string]any{"widens": a.Widens})
+			r.log(ctx, "module.upgrade-held", a, map[string]any{"widens": a.Widens, "not_applied": a.NotApplied})
 		}
 	}
 	return nil
@@ -710,13 +610,9 @@ func (r *Reconciler) Apply(ctx context.Context, d Desired, opt Options) (Result,
 	}
 	for _, a := range run {
 		var err error
-		switch a.Kind {
-		case Disable:
+		if a.Kind == Disable {
 			err = r.disable(ctx, a)
-		case Restrict:
-			err = r.restrict(ctx, d, a)
-			r.outcome(a, err)
-		default:
+		} else {
 			err = r.enable(ctx, d, a)
 			r.outcome(a, err)
 		}
@@ -751,21 +647,21 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
 		return err
 	}
-	secret := prev.HMACSecret
-	if perr != nil || secret == "" {
-		secret = newSecret()
-	}
 	rotate, err := r.db.PendingRotations(ctx, a.Module)
 	if err != nil {
 		return err
 	}
-	for _, k := range rotate {
-		if k == modsecrets.WebhookKey {
-			secret = newSecret() // takes effect only if the install succeeds (the recorded one is kept otherwise)
-		}
-	}
-	if r.FixedWebhookSecret != "" {
+	secret := prev.HMACSecret
+	switch {
+	case r.FixedWebhookSecret != "":
 		secret = r.FixedWebhookSecret
+	case secret == "" || slices.Contains(rotate, modsecrets.WebhookKey):
+		// Stored before the installer sees it and reused by every retry: whatever of it reaches
+		// the cluster (the module's Secret, the release record's signature) is still known after
+		// a failure or a crash. It becomes the recorded secret only when the install succeeds.
+		if secret, err = r.db.PendingSecret(ctx, a.Module, newSecret()); err != nil {
+			return err
+		}
 	}
 	settings := d.Company.Modules[a.Module].Settings
 	// On an error the installer decides (it fails a module that needs the routing facts); the
@@ -783,7 +679,7 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
 		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man, rt.Fingerprint, relay), HMACSecret: secret, Manifest: *man,
-		Content: d.content(a.Module).encode(), RestrictKey: restrictKey(d, a.Module, relay),
+		Content: d.content(a.Module).encode(), Applied: appliedOf(d, a.Module, relay).encode(),
 	}
 	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, RecordSecret: prev.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
@@ -801,6 +697,9 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	}
 	if ierr != nil {
 		rec.State, rec.LastError = store.StateFailed, ierr.Error()
+		if prev.HMACSecret != "" {
+			rec.HMACSecret = prev.HMACSecret
+		}
 	} else {
 		rec.Manifest.Runtime.RoutedUIHost = rt.UIHost
 	}
@@ -810,6 +709,11 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	if ierr != nil {
 		r.log(ctx, "module.failed", a, map[string]any{"error": ierr.Error()})
 		return ierr
+	}
+	// Before the rotation requests: a request left over after a crash rotates once more, whereas a
+	// pending secret left over would make the next rotation reuse the current secret.
+	if err := r.db.ClearPendingSecret(ctx, a.Module); err != nil {
+		return err
 	}
 	if err := r.db.ClearRotations(ctx, a.Module, rotate); err != nil {
 		return err

@@ -13,6 +13,9 @@ import (
 type Pending struct {
 	Approval string   `json:"approval"`
 	Widens   []string `json:"widens"`
+	// NotApplied and Urgent are Action's.
+	NotApplied []string `json:"not_applied,omitempty"`
+	Urgent     bool     `json:"urgent,omitempty"`
 }
 
 // ParsePending reads a recorded store.Module.Pending; ok is false when nothing is held.
