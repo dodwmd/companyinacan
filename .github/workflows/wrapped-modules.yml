@@ -1,0 +1,87 @@
+name: wrapped-modules
+
+# Not a required check (continue-on-error). Installs the wrapped apps (analytics: GoatCounter,
+# support: FreeScout, newsletter: Listmonk) through can-core on a throw-away k3d cluster, from the
+# upstream images pinned by digest in their charts, signs in with the generated admin password, makes
+# each write to its database, records idle memory, disables them and deletes their namespaces
+# (specs/041-wrapped-modules-live). Its own workflow, because it pulls several hundred MB of upstream
+# images and idles for minutes. No real domain, certificate or mail relay is involved.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "modules/analytics/**"
+      - "modules/support/**"
+      - "modules/newsletter/**"
+      - "core/server/installer/**"
+      - "core/server/dbprov/**"
+      - "core/server/modsecrets/**"
+      - "core/server/runtime/**"
+      - "core/server/reconcile/**"
+      - "core/routing/**"
+      - "deploy/**"
+      - "test/integration/wrapped_test.go"
+      - ".github/workflows/wrapped-modules.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: wrapped modules on k3d
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Install k3d
+        # Pinned release binary, verified against its published sha256 (checksums.txt of v5.8.3).
+        run: |
+          curl -fsSL -o /tmp/k3d https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          echo "dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+      - name: Create the cluster
+        run: make dev
+      - name: Build the can-core image and import it into the cluster
+        # The release Dockerfile pins base images by digest (placeholders until a release); the
+        # throwaway cluster uses plain tags. The image carries the module directories.
+        run: |
+          docker build -f deploy/can-core/Dockerfile \
+            --build-arg GO_IMAGE=golang:1.27 \
+            --build-arg RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot \
+            -t can-core:dev .
+          k3d image import can-core:dev -c companyinacan-dev
+      - name: Deploy can-core
+        run: |
+          kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
+          kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
+      - name: Install, exercise and remove each wrapped module
+        env:
+          CAN_IT_CANCORE: "1"
+          CAN_IT_WRAPPED: "1"
+          CAN_IT_MEASURE_FILE: ${{ runner.temp }}/measurements.md
+        run: go test -tags integration -count=1 -v -timeout 50m -run '^TestWrappedModulesThroughCanCore$' ./test/integration/
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context k3d-companyinacan-dev get pods,pvc -A -o wide || true
+          kubectl --context k3d-companyinacan-dev -n can-system logs deploy/can-core --tail=200 || true
+          kubectl --context k3d-companyinacan-dev get events -A --sort-by=.lastTimestamp | tail -60 || true
+      - name: Summary
+        if: always()
+        env:
+          MEASURE_FILE: ${{ runner.temp }}/measurements.md
+        run: |
+          {
+            echo "### wrapped-modules (advisory)"
+            echo "Advisory: the step results say what passed. Measurements recorded by this run:"
+            cat "$MEASURE_FILE" 2>/dev/null || echo "- none recorded"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Delete the cluster
+        if: always()
+        run: go run ./cmd/can dev down

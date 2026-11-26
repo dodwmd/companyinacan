@@ -55,7 +55,8 @@ audited before anything is touched. The executor is an interface; this build shi
 ### US5. Onboarding wizard (P1)
 
 At first login the owner is taken to a wizard: company name and domain and server size; a template
-(starter bundle or blank); modules with the footprint meter; email relay settings (SMTP credentials go
+(starter bundle or blank; since [specs/041](../041-wrapped-modules-live/spec.md) the starter bundle is forms
+only); modules with the footprint meter; email relay settings (SMTP credentials go
 into a Secret and are never echoed); the DNS records to create, with the sslip.io instant URL and its
 status; admin account hardening (rotate password, replace the authentication secret, a pointer to
 `can backup kit`); review and apply. Answers are saved per step (resumable) and applying is idempotent.

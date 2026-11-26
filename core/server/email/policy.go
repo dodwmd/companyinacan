@@ -143,24 +143,29 @@ func readBounded(path string, limit int64) ([]byte, error) {
 // Load reads the current policy. An unreadable or unparsable company.yaml is an error: the sending
 // rules are unknown, so nothing may be sent.
 func (s Source) Load() (Policy, error) {
-	p := Policy{domain: s.Domain, notify: map[string][]string{}}
 	var co *config.Company
 	if s.CompanyFile != "" {
 		raw, err := readBounded(s.CompanyFile, maxCompanyFile)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 		case err != nil:
-			return p, fmt.Errorf("reading company.yaml: %w", err)
+			return Policy{}, fmt.Errorf("reading company.yaml: %w", err)
 		default:
 			doc, ps := config.LoadBytes(s.CompanyFile, raw)
 			if doc == nil {
-				return p, fmt.Errorf("company.yaml does not parse (%d problems)", len(ps))
+				return Policy{}, fmt.Errorf("company.yaml does not parse (%d problems)", len(ps))
 			}
 			if co, err = config.DecodeCompany(doc); err != nil {
-				return p, errors.New("company.yaml does not decode")
+				return Policy{}, errors.New("company.yaml does not decode")
 			}
 		}
 	}
+	return s.For(co)
+}
+
+// For is Load with a company.yaml the caller already holds (nil: none); CompanyFile is not read.
+func (s Source) For(co *config.Company) (Policy, error) {
+	p := Policy{domain: s.Domain, notify: map[string][]string{}}
 	var cr config.EmailRelay
 	if co != nil {
 		if co.Domain != "" {

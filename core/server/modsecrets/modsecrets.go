@@ -23,6 +23,9 @@ const (
 	Token Kind = iota
 	// Keyring is a field-encryption keyring: lines of `<key-id> <64 hex>`, newest first.
 	Keyring
+	// Password is 24 random bytes as 48 hex characters, for a login in a wrapped app: GoatCounter
+	// refuses passwords over 50 bytes.
+	Password
 )
 
 // KeyringKey is the key name of a sealed-field keyring in the module Secret.
@@ -54,7 +57,21 @@ var table = map[string][]Spec{
 	// The service token, the restore-only credential of the purge hook, the HMAC secret that signs share links (rotating it ends every live link, which
 	// is its own decision, so it is rotatable) and the sealed-field keyring for names and descriptions.
 	"files": {{Key: "CAN_FILES_API_TOKEN"}, {Key: "CAN_FILES_RESTORE_TOKEN"}, {Key: "CAN_FILES_LINK_SECRET"}, {Key: KeyringKey, Kind: Keyring}},
+	// Wrapped apps (specs/041): the first admin's password, so none of them starts with a default one. The app
+	// reads it only when it creates that user and keeps its own hash afterwards, so a new value would change
+	// nothing but what the operator reads: never rotated.
+	"analytics":  {{Key: "CAN_ANALYTICS_ADMIN_PASSWORD", Kind: Password, NoRotate: true}},
+	"newsletter": {{Key: "CAN_NEWSLETTER_ADMIN_PASSWORD", Kind: Password, NoRotate: true}},
+	"support":    {{Key: "CAN_SUPPORT_ADMIN_PASSWORD", Kind: Password, NoRotate: true}},
 }
+
+// smtpApps lists the wrapped apps that speak SMTP themselves and therefore get the relay credentials
+// (docs/email-policy.md). The list is here, not in the manifest: handing out the relay password is
+// can-core's decision, and in-house modules send through email.send instead.
+var smtpApps = map[string]bool{"support": true}
+
+// WantsRelay reports whether the module is given the SMTP relay in its `can-smtp` Secret.
+func WantsRelay(module string) bool { return smtpApps[module] }
 
 // For returns the secrets generated for a module (none for modules that need none).
 func For(module string) []Spec { return append([]Spec(nil), table[module]...) }
@@ -69,8 +86,11 @@ func randHex(n int) string {
 
 // Generate returns a new value of the kind.
 func Generate(k Kind) string {
-	if k == Keyring {
+	switch k {
+	case Keyring:
 		return "k1 " + randHex(32) + "\n"
+	case Password:
+		return randHex(24)
 	}
 	return randHex(32)
 }

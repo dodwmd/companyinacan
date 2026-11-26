@@ -2,9 +2,9 @@
 # (<subdomain>.<domain>); see specs/007-starter-modules/contracts/module-charts.md.
 image:
   repository: docker.io/listmonk/listmonk
-  tag: v5.0.0              # verify the newest 5.x tag when pinning (research.md R4)
-  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
-  digest: sha256:REPLACE_WITH_DIGEST
+  tag: v6.2.0
+  # Multi-arch index digest of the upstream image (specs/041-wrapped-modules-live/research.md).
+  digest: sha256:f535d59e14991337a9f2d570273685378ae86b0d7698c3e00da444e3bc205286
   pullPolicy: IfNotPresent
 service:
   port: 9000
@@ -38,9 +38,10 @@ securityContext:
   allowPrivilegeEscalation: false
   capabilities: { drop: [ALL] }
 secrets:
-  database: can-database   # keys: host port name user password
+  database: can-db         # DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD
   smtp: can-smtp           # bulk relay credentials; applied through the Listmonk API, not env (README)
-  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+  module: can-module       # CAN_NEWSLETTER_ADMIN_PASSWORD (generated once by can-core)
+adminUser: admin           # login of the first Listmonk super admin
 probes:
   readiness: { path: /health, port: http }
   liveness: { path: /health, port: http }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -61,7 +62,8 @@ func (e *DetailError) Error() string {
 func (e *DetailError) Unwrap() error { return e.Kind }
 
 // AckError is returned when acknowledgements are missing: "licence:<id>" for a source-available
-// module, "experimental:<id>" for an experimental one.
+// module, "experimental:<id>" for an experimental one, "backup:<id>" (at apply) for one whose enabling
+// stops all backups.
 type AckError struct{ Missing []string }
 
 func (e *AckError) Error() string {
@@ -175,10 +177,36 @@ type Preview struct {
 	Blockers      []string
 	NotDeployable []string
 	AckNeeded     []AckNeed
+	// BackupStops lists the newly enabled modules whose backup hook cannot run. While one is enabled
+	// every dump run fails, so applying needs BackupAck(module) to be confirmed explicitly.
+	BackupStops []BackupStop
 
 	newData []byte
 	desired reconcile.Desired
 	cat     *Catalogue
+}
+
+// BackupStop is a module whose enabling stops all backups.
+type BackupStop struct {
+	Module, Why string
+	// Postgres is set when the module's database lives in the shared Postgres, which is then not backed up.
+	Postgres bool
+}
+
+// BackupAck is the confirmation Apply requires for a module that stops backups.
+func BackupAck(module string) string { return "backup:" + module }
+
+func missingBackupAcks(stops []BackupStop, confirmed []string) error {
+	var missing []string
+	for _, b := range stops {
+		if !slices.Contains(confirmed, BackupAck(b.Module)) {
+			missing = append(missing, BackupAck(b.Module))
+		}
+	}
+	if len(missing) > 0 {
+		return &AckError{Missing: missing}
+	}
+	return nil
 }
 
 // AckNeed is an acknowledgement the change requires and whether it was given.
@@ -298,6 +326,9 @@ func (s *Service) build(ctx context.Context, cur Snapshot, patch Patch, acks []s
 		if e.SourceAvailable() {
 			k := "licence:" + id
 			pv.AckNeeded = append(pv.AckNeeded, AckNeed{Key: k, Module: id, Kind: "licence", Given: given[k]})
+		}
+		if why := e.BackupWarning(); why != "" {
+			pv.BackupStops = append(pv.BackupStops, BackupStop{Module: id, Why: why, Postgres: e.Manifest.Requires.Database == "postgres"})
 		}
 		if e.Status() == "experimental" {
 			k := "experimental:" + id
@@ -587,8 +618,9 @@ func (s *Service) finishRun(ctx context.Context, id, state, errText string, acti
 // Apply writes a proposed change to company.yaml and reconciles. It refuses a stale or expired
 // change, runs at most one apply at a time, records the intent in the audit log before the write
 // (and refuses to write when it cannot) and the result after it. Applying an applied change returns
-// its run.
-func (s *Service) Apply(ctx context.Context, actor, id string) (Run, error) {
+// its run. confirmed carries the confirmations given with this very request: BackupAck for every
+// module in the preview's BackupStops (an acknowledgement stored with the proposal does not count).
+func (s *Service) Apply(ctx context.Context, actor, id string, confirmed ...string) (Run, error) {
 	ch, err := s.GetChange(ctx, id)
 	if err != nil {
 		return Run{}, err
@@ -611,6 +643,9 @@ func (s *Service) Apply(ctx context.Context, actor, id string) (Run, error) {
 		return Run{}, err
 	}
 	if err := pv.Err(); err != nil {
+		return Run{}, err
+	}
+	if err := missingBackupAcks(pv.BackupStops, confirmed); err != nil {
 		return Run{}, err
 	}
 	runID, err := s.claimRun(ctx, actor, ch.ID)

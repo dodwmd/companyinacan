@@ -3,4 +3,4 @@ name: support
 description: Shared support inbox (FreeScout) for companyinacan
 type: application
 version: 0.1.0
-appVersion: "1.x"
+appVersion: "1.8.252"

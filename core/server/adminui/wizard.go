@@ -355,7 +355,7 @@ func (s *Server) setupPost(w http.ResponseWriter, r *http.Request, sc *sessionCt
 		}
 		back("flash.saved")
 	case "apply":
-		run, err := s.Mod.WizardApply(ctx, actor)
+		run, err := s.Mod.WizardApply(ctx, actor, boundedAcks(r.PostForm["ack"])...)
 		switch {
 		case errors.Is(err, modmgr.ErrNoChange):
 			s.redirect(w, r, "/", "flash.wizard_done")

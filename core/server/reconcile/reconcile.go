@@ -37,6 +37,9 @@ type Spec struct {
 	HMACSecret string
 	// Domain is the company domain from company.yaml (a module's public host is <subdomain>.<domain>).
 	Domain string
+	// Email is the email block of the company.yaml being applied (nil without one). It is the one
+	// being applied, not the mounted copy, which can lag behind.
+	Email *config.Email
 	// Rotate lists the keys of the module's `can-module` Secret to regenerate in this run (operator
 	// requests, see store.RequestRotation). CAN_WEBHOOK_SECRET is rotated by the reconciler itself
 	// through HMACSecret; the installer only validates the name.
@@ -198,6 +201,30 @@ func settingsHash(m *config.Module, settings map[string]any, routes string) stri
 	return hex.EncodeToString(h[:])
 }
 
+// RelayOptIn reports whether the company lets this module have the SMTP relay's credentials:
+// email.modules.<id>.enabled must be written as true. Absent means no, unlike for email.send,
+// because the credentials leave can-core for a third-party application.
+func RelayOptIn(e *config.Email, module string) bool {
+	if e == nil {
+		return false
+	}
+	on := e.Modules[module].Enabled
+	return on != nil && *on
+}
+
+// specHash is settingsHash of the module as company c has it. For a module that speaks SMTP itself
+// and is opted in it also covers email.relay, so that opting in, opting out (which empties the
+// module's Secret) or changing the relay is an upgrade.
+func specHash(c *config.Company, id string, man *config.Module, routes string) string {
+	h := settingsHash(man, c.Modules[id].Settings, routes)
+	if !modsecrets.WantsRelay(id) || !RelayOptIn(c.Email, id) {
+		return h
+	}
+	b, _ := json.Marshal(c.Email.Relay)
+	sum := sha256.Sum256(append([]byte(h+"\x00relay\x00"), b...))
+	return hex.EncodeToString(sum[:])
+}
+
 func (r *Reconciler) routing(ctx context.Context, d Desired, id string) (Routing, error) {
 	ra, ok := r.Installer.(RouteAware)
 	if !ok {
@@ -258,7 +285,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 		// A routing read that fails must not stop the plan (disables above all): the hash is then
 		// unknown and is not compared.
 		rt, rerr := r.routing(ctx, d, id)
-		hash := settingsHash(man, d.Company.Modules[id].Settings, rt.Fingerprint)
+		hash := specHash(d.Company, id, man, rt.Fingerprint)
 		switch {
 		case !ok:
 			enables = append(enables, Action{Install, id, "not installed"})
@@ -400,14 +427,19 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	}
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
-		State: store.StateEnabled, SettingsHash: settingsHash(man, settings, rt.Fingerprint), HMACSecret: secret, Manifest: *man,
+		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man, rt.Fingerprint), HMACSecret: secret, Manifest: *man,
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.
-		// The next apply sees the unchanged version/settings hash and retries the upgrade.
+		// The settings hash is forgotten, so the next apply retries whatever is wanted then. The
+		// rollback does not cover everything a failed upgrade did (routes already removed, Secrets
+		// rewritten), so reverting company.yaml to the recorded state must still be an upgrade.
 		_ = r.db.SetModuleState(ctx, a.Module, store.StateEnabled, ierr.Error())
+		if err := r.db.ForgetSettingsHash(ctx, a.Module); err != nil {
+			r.log(ctx, "module.upgrade-failed", a, map[string]any{"error": "the upgrade is not marked for retry: " + err.Error()})
+		}
 		r.log(ctx, "module.upgrade-failed", a, map[string]any{"error": ierr.Error(), "kept_version": prev.Version})
 		return ierr
 	}

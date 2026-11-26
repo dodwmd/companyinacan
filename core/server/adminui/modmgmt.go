@@ -503,6 +503,7 @@ type changeData struct {
 	Footprint          fpView
 	Issues             []string
 	MissingAcks        []ackView
+	BackupStops        []modmgr.BackupStop
 	CanApply           bool
 	Conflicts          []modmgr.Conflict
 	Needs              []needRow
@@ -554,6 +555,7 @@ func (s *Server) previewData(pv *modmgr.Preview) changeData {
 	for _, id := range pv.NotDeployable {
 		d.Issues = append(d.Issues, s.msg("ch.not_deployable", id))
 	}
+	d.BackupStops = pv.BackupStops
 	for _, a := range pv.AckNeeded {
 		key := "ch.ack_licence"
 		if a.Kind == "experimental" {
@@ -579,7 +581,7 @@ func (s *Server) changePage(w http.ResponseWriter, r *http.Request, sc *sessionC
 }
 
 func (s *Server) changeApply(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
-	run, err := s.Mod.Apply(r.Context(), sc.User.Username, r.PathValue("id"))
+	run, err := s.Mod.Apply(r.Context(), sc.User.Username, r.PathValue("id"), boundedAcks(r.PostForm["ack"])...)
 	if err != nil {
 		s.failMod(w, r, sc, err)
 		return

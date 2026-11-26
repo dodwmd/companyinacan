@@ -43,7 +43,7 @@
 <thead><tr><th scope="col">{{t "mod.module"}}</th><th scope="col">{{t "mod.licence"}}</th><th scope="col">{{t "mod.ram"}}</th><th scope="col">{{t "cg.graph"}}</th><th scope="col">{{t "cg.enable"}}</th></tr></thead>
 <tbody>
 {{range .Data.Rows}}<tr>
-<th scope="row">{{.Name}} <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{if .Description}}<span class="hint">{{.Description}}</span>{{end}}</th>
+<th scope="row">{{.Name}} <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{if .Description}}<span class="hint">{{.Description}}</span>{{end}}{{if .BackupWarning}}<span class="hint errtext">{{t "cg.backup_unrunnable" .BackupWarning}}</span>{{end}}</th>
 <td>{{.Licence}}{{if .SourceAvailable}} <span class="badge warn">{{t "mod.source_available"}}</span>{{end}}</td>
 <td>{{t "mod.mb" .RAMMB}}</td>
 <td>{{if .Requires}}<ul>{{template "needs" .Requires}}</ul>{{end}}{{if .Provides}}<ul>{{template "provides" .Provides}}</ul>{{end}}{{range .ConflictNote}}<p class="errtext">{{t "cg.conflicts_with" .}}</p>{{end}}</td>
@@ -116,6 +116,7 @@
 {{if .Data.RunID}}<p><a href="/runs/{{.Data.RunID}}">{{t "ch.see_run"}}</a></p>{{end}}
 {{if .Data.CanApply}}<form method="post" action="/setup/apply" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
+{{template "backupacks" .Data.Review.BackupStops}}
 <p>{{t "ch.apply_help"}}</p>
 <p><button type="submit">{{t "wz.apply"}}</button></p>
 </form>{{end}}

@@ -2,13 +2,12 @@
 # (<subdomain>.<domain>) and may override anything below from the module's settings.
 # See specs/007-starter-modules/contracts/module-charts.md for the Secret key contract.
 image:
-  # Community image of FreeScout (no official upstream image exists). Unverified here: it must
-  # run as a non-root user to satisfy the `restricted` pod-security profile of module namespaces;
-  # see modules/support/README.md "Open items".
-  repository: docker.io/tiredofit/freescout
-  tag: REPLACE_WITH_TAG    # unverified offline: resolve the FreeScout release tag when pinning (README)
-  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
-  digest: sha256:REPLACE_WITH_DIGEST
+  # FreeScout publishes no image. This one is built by PikaPods (a hosting company) from the upstream
+  # release on serversideup/php, runs as www-data (uid 82) and listens on 8080, so it satisfies the
+  # `restricted` profile (specs/041-wrapped-modules-live/research.md).
+  repository: docker.io/pikapods/docker-freescout
+  tag: "1.8.252-r2"
+  digest: sha256:fcb46451971ae10046e4008f036203f64fd0dc6f637cfd45ab0c9ee31ccdebfa
   pullPolicy: IfNotPresent
 service:
   port: 8080
@@ -24,34 +23,35 @@ persistence:
   size: 2Gi
   storageClass: ""
   mountPath: /data         # attachments, uploaded modules, logs
+settings: {}               # module settings from company.yaml (admin_email)
 resources:
-  requests: { memory: 240Mi, cpu: 50m }
-  limits: { memory: 480Mi }
+  requests: { memory: 176Mi, cpu: 50m }
+  limits: { memory: 640Mi }
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 1000
-  runAsGroup: 1000
-  fsGroup: 1000
+  runAsUser: 82
+  runAsGroup: 82
+  fsGroup: 82
   seccompProfile: { type: RuntimeDefault }
 securityContext:
   runAsNonRoot: true
   allowPrivilegeEscalation: false
   capabilities: { drop: [ALL] }
-# Names of the Secrets can-core creates in the module namespace (docs/email-policy.md).
+# Names of the Secrets can-core creates in the module namespace.
 secrets:
-  database: can-database   # keys: host port name user password
-  smtp: can-smtp           # keys: host port user password from encryption
-  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+  database: can-db         # DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD
+  smtp: can-smtp           # host port user password from encryption; empty without a relay
+  module: can-module       # CAN_SUPPORT_ADMIN_PASSWORD (generated once by can-core)
 probes:
+  # /healthcheck is answered by nginx alone; /login only once the first-boot migrations are done.
   readiness: { path: /login, port: http }
-  liveness: { path: /login, port: http }
-  startup: { path: /login, port: http, failureThreshold: 60, periodSeconds: 5 }   # first boot runs migrations
+  liveness: { path: /healthcheck, port: http }
+  startup: { path: /login, port: http, failureThreshold: 90, periodSeconds: 5 }   # first boot runs migrations
 app:
-  nginxListenPort: 8080
   applicationName: Support
+  phpMaxChildren: 6        # PHP-FPM workers (on demand)
 email:
-  # false: no relay credentials injected; the app starts and keeps conversations, mail stays queued.
-  injectRelay: true
+  injectRelay: true        # apply the company's SMTP relay to FreeScout's system mail settings
 inbound:
   mode: imap               # imap | webhook (a setting of the module, docs/email-policy.md)
 adapter:

@@ -2,9 +2,9 @@
 # (<subdomain>.<domain>); see specs/007-starter-modules/contracts/module-charts.md.
 image:
   repository: docker.io/arp242/goatcounter
-  tag: v2.6.0              # verify the newest release when pinning (research.md R4)
-  # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
-  digest: sha256:REPLACE_WITH_DIGEST
+  tag: "2.7.0"
+  # Multi-arch index digest of the upstream image (specs/041-wrapped-modules-live/research.md).
+  digest: sha256:791df3317bf5ce379511181a4802aaf29127a318b372d4fe39ec59e1c5af44be
   pullPolicy: IfNotPresent
 service:
   port: 8080
@@ -14,16 +14,16 @@ ingress:
   tls: true                # false on local dev (plain HTTP, no certificate resolver)
   certResolver: letsencrypt
   adapterRoutes: []
-goatcounter:
-  tlsMode: proxy           # value of the -tls flag behind Traefik
+settings: {}               # module settings from company.yaml (admin_email)
 persistence:
   enabled: true
   size: 1Gi
   storageClass: ""
   mountPath: /data         # goatcounter.sqlite3
 resources:
-  requests: { memory: 14Mi, cpu: 10m }
-  limits: { memory: 64Mi }
+  requests: { memory: 48Mi, cpu: 10m }
+  limits: { memory: 128Mi }
+goMemLimit: 64MiB          # soft Go heap limit
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -35,9 +35,9 @@ securityContext:
   allowPrivilegeEscalation: false
   capabilities: { drop: [ALL] }
 secrets:
-  database: can-database   # unused (SQLite); kept so every starter chart has the same contract
+  database: can-db         # unused (SQLite)
   smtp: can-smtp           # unused: GoatCounter sends no mail by default
-  module: can-module       # keys: api-url webhook-secret admin-user admin-password admin-email
+  module: can-module       # CAN_ANALYTICS_ADMIN_PASSWORD (generated once by can-core)
 probes:
   readiness: { path: /status, port: http }
   liveness: { path: /status, port: http }

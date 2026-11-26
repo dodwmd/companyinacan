@@ -39,7 +39,9 @@ type Bundle struct {
 
 // DefaultBundles are the templates offered by the wizard.
 var DefaultBundles = []Bundle{
-	{ID: "starter", Modules: []string{"forms", "support"}},
+	// support is left out while its backup hook cannot run: enabling it would stop all backups,
+	// forms' included (specs/041-wrapped-modules-live).
+	{ID: "starter", Modules: []string{"forms"}},
 	{ID: "blank"},
 }
 
@@ -333,8 +335,8 @@ func (s *Service) WizardPreview(ctx context.Context) (*Preview, error) {
 
 // WizardApply proposes and applies the answers. It is idempotent: once applied, calling it again
 // returns the same run and does no further work; an identical retry after a failure reuses the same
-// proposal.
-func (s *Service) WizardApply(ctx context.Context, actor string) (Run, error) {
+// proposal. confirmed is passed to Apply.
+func (s *Service) WizardApply(ctx context.Context, actor string, confirmed ...string) (Run, error) {
 	ws, err := s.WizardState(ctx)
 	if err != nil {
 		return Run{}, err
@@ -378,7 +380,7 @@ func (s *Service) WizardApply(ctx context.Context, actor string) (Run, error) {
 			return Run{}, err
 		}
 	}
-	run, err := s.Apply(ctx, actor, changeID)
+	run, err := s.Apply(ctx, actor, changeID, confirmed...)
 	if err != nil {
 		return Run{}, err
 	}

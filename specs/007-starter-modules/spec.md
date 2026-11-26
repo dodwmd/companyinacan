@@ -4,7 +4,9 @@
 
 **Created**: 2026-11-25
 
-**Status**: Built offline (manifests, charts, hooks, contracts, email policy); adapters, images and cluster checks pending
+**Status**: Built offline (manifests, charts, hooks, contracts, email policy); adapters pending. Images, databases,
+admin bootstrap and cluster checks were delivered by [specs/041](../041-wrapped-modules-live/spec.md), which
+supersedes the Secret names, database engine of `support`, status markers and footprint figures below.
 
 **Input**: Epic E07 in `docs/epics/README.md`: "Module manifests and charts for FreeScout,
 Listmonk and GoatCounter (or Umami), with resource declarations, probes, backup/restore hooks and

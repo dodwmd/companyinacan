@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "admin_email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Login of the first FreeScout administrator; defaults to admin@<company domain>. Used once, on the first start." },
     "support_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Address customers write to, e.g. support@example.com. Replies leave with this From address." },
     "inbound": {
       "type": "object",
