@@ -777,7 +777,6 @@ func TestExportEscapesFormulasAndIsAudited(t *testing.T) {
 	evil := m(e.s.CreateStakeholder(e.ctx, e.hr, e.ent.ID, StakeholderInput{Kind: "investor", Identity: Identity{Name: `=HYPERLINK("http://evil.test","x")`}}))
 	plus := m(e.s.CreateStakeholder(e.ctx, e.hr, e.ent.ID, StakeholderInput{Kind: "investor", Identity: Identity{Name: "+1+1"}}))
 	for _, st := range []*Stakeholder{evil, plus} {
-		m(e.s.AttestExternal(e.ctx, e.fin, st.ID))
 		_, _, err := e.s.IssueNewShares(e.ctx, e.fin, e.ent.ID, LedgerInput{ClassID: e.class.ID, StakeholderID: st.ID, Quantity: q(10), EffectiveDate: "2026-01-01"}, "", nil)
 		e.must(err)
 	}

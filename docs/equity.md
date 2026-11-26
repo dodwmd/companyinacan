@@ -108,12 +108,11 @@ variant are one person.
   check on ledger writes, and it can apply only to a caller that carries a `person_id`: for every other caller
   (the service accounts, every can-core personal access token, an introspected token without the claim) there is
   **no** holder separation-of-duties check at all. A refused entry is audited.
-- Shares are issued or transferred by a manual entry only to a recipient the service can tie to a person: with a
-  directory `person_id`, or attested external by someone other than who created the record (the rule for grants
-  below; 409 otherwise). So a second, unlinked record of one's own cannot receive shares unnoticed; founders
-  and investors without a link need that attestation before their first issuance. It relies on the attester's
-  honesty, and rows already in the ledger are not affected. Apart from that attestation, no manual ledger
-  write needs a second person, and cancellations and the sending side of a transfer need no link.
+- **These two checks only stop the straightforward self-dealing case.** A stakeholder's `person_id` is not
+  verified: it is whatever was entered when the record was created, and a record need not have one. A second
+  record of one's own, one with no `person_id` or with a made-up one, gets around both, and no manual ledger write
+  needs a second person. A design with verified identities is follow-up work
+  ([epics backlog](epics/README.md#follow-ups)).
 - Nobody erases their own stakeholder record (`separation_of_duties`, audited): erasure removes the
   `person_id` these checks compare. After another administrator has erased it, the record has no link and the
   former holder is not recognised on it. Like the rest, this needs a caller with a `person_id`.
@@ -358,6 +357,9 @@ The table stores resource ids only, so a replay re-reads the record under the ca
   personal access token, a service account or a human token. Do not give ledger permissions to such a caller
   when its owner also holds equity. The same goes for erasure: a caller without a `person_id` is not recognised
   as the holder.
+- **`person_id` is unverified.** Nothing checks a stakeholder's `person_id` against a directory, so every check
+  that compares it can be sidestepped by whoever can create stakeholder records: a second record, or a made-up
+  id. They are guards against mistakes and the straightforward case, not against a determined insider.
 - **One human, two subjects.** Subjects are compared after folding, but two different subjects for the
   same human (a personal and an admin account) are two people to the service unless both carry the same
   `person_id`.

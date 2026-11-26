@@ -83,38 +83,3 @@ func TestHolderCannotEraseOwnRecord(t *testing.T) {
 		t.Fatalf("another admin may erase it: %v", err)
 	}
 }
-
-// Shares go only to a holder tied to a person or attested external by a second actor, so a second,
-// unlinked record of one's own cannot receive them unnoticed.
-func TestSharesNeedALinkedOrAttestedRecipient(t *testing.T) {
-	e := newEnv(t).base()
-	eve := Actor{Subject: "sso-eve", Roles: []string{RoleFinance, RoleHR}, PersonID: personEve}
-	second := m(e.s.CreateStakeholder(e.ctx, eve, e.ent.ID, StakeholderInput{Kind: "investor", Identity: Identity{Name: "Eve Holdings"}}))
-	e.must(func() error {
-		_, _, err := e.s.IssueNewShares(e.ctx, e.fin, e.ent.ID, LedgerInput{ClassID: e.class.ID, StakeholderID: e.founder.ID, Quantity: q(10), EffectiveDate: "2026-01-01"}, "", nil)
-		return err
-	}())
-	issue := func() error {
-		_, _, err := e.s.IssueNewShares(e.ctx, eve, e.ent.ID, LedgerInput{ClassID: e.class.ID, StakeholderID: second.ID, Quantity: q(5), EffectiveDate: "2026-01-01"}, "", nil)
-		return err
-	}
-	transfer := func() error {
-		_, _, err := e.s.TransferShares(e.ctx, eve, e.ent.ID, LedgerInput{ClassID: e.class.ID, StakeholderID: e.founder.ID, ToID: second.ID, Quantity: q(5), EffectiveDate: "2026-01-02"}, "", nil)
-		return err
-	}
-	if err := issue(); !isErr(err, ErrConflict) {
-		t.Fatalf("issue to an unlinked record: %v", err)
-	}
-	if err := transfer(); !isErr(err, ErrConflict) {
-		t.Fatalf("transfer to an unlinked record: %v", err)
-	}
-	if n := e.count(`SELECT COUNT(*) FROM ledger`); n != 1 {
-		t.Fatalf("a refused entry left rows: %d", n)
-	}
-	if _, err := e.s.AttestExternal(e.ctx, eve, second.ID); !isErr(err, ErrSeparation) {
-		t.Fatalf("the creator cannot attest: %v", err)
-	}
-	m(e.s.AttestExternal(e.ctx, e.hr, second.ID))
-	e.must(issue())
-	e.must(transfer())
-}
