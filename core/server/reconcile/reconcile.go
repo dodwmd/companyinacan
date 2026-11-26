@@ -561,6 +561,12 @@ func (r *Reconciler) recordHeld(ctx context.Context, held []Action) error {
 				}
 			}
 			pending = string(b)
+			// What waits has changed: an unused approval of another list must not apply later.
+			if was, _ := ParsePending(m.Pending); was.Approval != a.Approval {
+				if err := r.db.ConsumeApproval(ctx, m.ID, m.ApprovedUpgrade); err != nil {
+					return err
+				}
+			}
 		}
 		if pending == m.Pending {
 			continue
@@ -744,8 +750,9 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	if err := r.reg.Register(ctx, rec); err != nil {
 		return err
 	}
-	// The approval there was when this started is used up (and a restore's, which covers one apply).
-	if ierr == nil {
+	// An approval is used up by the upgrade it covered (a restore's by the next one). One for
+	// something else, such as for a company.yaml not synced yet, stays.
+	if ierr == nil && (prev.ApprovedUpgrade == "*" || (len(a.Widens) > 0 && prev.ApprovedUpgrade == approvalOf(a.Widens))) {
 		if err := r.db.ConsumeApproval(ctx, a.Module, prev.ApprovedUpgrade); err != nil {
 			return err
 		}

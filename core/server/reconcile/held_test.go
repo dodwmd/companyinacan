@@ -377,18 +377,77 @@ func TestApprovalSurvivesARunningApplyAndIsConsumed(t *testing.T) {
 	inst := &approvingInstaller{FakeInstaller: g.fk}
 	g.r.Installer = inst
 	apply(t, g, desired(nil, nil, mf("work", "1", nil)))
+	code := approvalOf([]string{"new permission a"})
 	inst.during = func() {
-		if err := g.db.ApproveUpgrade(ctx, "work", "0123456789abcdef"); err != nil {
+		if err := g.db.ApproveUpgrade(ctx, "work", code); err != nil {
 			t.Error(err)
 		}
 	}
 	apply(t, g, desired(nil, nil, mf("work", "2", nil)))
-	if rec, _ := g.db.GetModule(ctx, "work"); rec.ApprovedUpgrade != "0123456789abcdef" {
+	if rec, _ := g.db.GetModule(ctx, "work"); rec.ApprovedUpgrade != code {
 		t.Fatalf("lost: %q", rec.ApprovedUpgrade)
 	}
 	inst.during = nil
-	apply(t, g, desired(nil, nil, mf("work", "3", nil)))
+	covered := mf("work", "3", nil)
+	covered.Permissions = []string{"a"}
+	apply(t, g, desired(nil, nil, covered))
 	if rec, _ := g.db.GetModule(ctx, "work"); rec.ApprovedUpgrade != "" {
 		t.Fatalf("not consumed: %q", rec.ApprovedUpgrade)
+	}
+}
+
+// Ending or shortening a break-glass window of a held equity does not happen, which is urgent.
+func TestAHeldBreakGlassWindowThatStaysOpenIsUrgent(t *testing.T) {
+	for name, c := range map[string]struct {
+		was, now string
+		urgent   bool
+	}{
+		"removed":   {"2026-12-03", "", true},
+		"shortened": {"2026-12-03", "2026-12-01", true},
+		"earlier":   {"2026-12-01T12:00:00Z", "2026-12-01T11:00:00Z", true},
+		"extended":  {"2026-12-01", "2026-12-03", false},
+		"unchanged": {"2026-12-01", "2026-12-01", false},
+		"opened":    {"", "2026-12-01", false},
+	} {
+		got, urgent := differences(Applied{BreakGlass: c.was}, Applied{BreakGlass: c.now})
+		if urgent != c.urgent || strings.Contains(strings.Join(got, " "), "stays open") != c.urgent {
+			t.Errorf("%s: urgent=%v %q", name, urgent, got)
+		}
+	}
+}
+
+// A provider that failed can be back by the time its consumer is upgraded: the connection is
+// listed all the same. An approval of something else is neither used up nor kept for ever.
+func TestWideningWithAFailedProviderAndUnusedApprovals(t *testing.T) {
+	ctx := context.Background()
+	d := desired(nil, nil, shipped(t, "provisioning"), shipped(t, "people"))
+	got := linkWidening(d, "provisioning", store.Module{}, links(d, map[string]store.Module{"people": {State: store.StateFailed}}, "provisioning", true))
+	if len(got) != 1 || !strings.HasPrefix(got[0], "connects to people") {
+		t.Fatalf("%q", got)
+	}
+
+	g := newRig(t)
+	g.r.RequireApproval = true
+	work := func(version string, perms ...string) Desired {
+		m := mf("work", version, nil)
+		m.Permissions = perms
+		return desired(nil, nil, m)
+	}
+	approved := func() string {
+		rec, _ := g.db.GetModule(ctx, "work")
+		return rec.ApprovedUpgrade
+	}
+	apply(t, g, work("1"))
+	// approved ahead of a company.yaml that is not applied yet; an apply of the old one keeps it
+	if err := g.db.ApproveUpgrade(ctx, "work", approvalOf([]string{"new permission a"})); err != nil {
+		t.Fatal(err)
+	}
+	apply(t, g, work("2"))
+	if approved() == "" {
+		t.Fatal("an apply it did not cover used the approval up")
+	}
+	// what waits is something else: the old approval goes
+	if res := apply(t, g, work("3", "b")); len(res.Held) != 1 || approved() != "" {
+		t.Fatalf("%+v, approval %q", res, approved())
 	}
 }

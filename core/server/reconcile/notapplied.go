@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/modsecrets"
@@ -88,10 +89,19 @@ func differences(was, now Applied) (out []string, urgent bool) {
 	case was.Relay != now.Relay && (!linksChanged || now.RelayOptIn):
 		away(true, "new mail relay or wired credentials (the module keeps the old ones)")
 	}
+	away(was.BreakGlass != "" && (now.BreakGlass == "" || windowEnd(now.BreakGlass).Before(windowEnd(was.BreakGlass))),
+		"ending or shortening equity's break-glass window (it stays open until "+was.BreakGlass+")")
 	if was.Settings != now.Settings {
 		out = append(out, "changed settings")
 	}
 	return out, urgent
+}
+
+// windowEnd is when a break-glass value ends, whether or not it is too far ahead to be accepted;
+// zero for a value that cannot be read.
+func windowEnd(v string) time.Time {
+	t, _ := config.ParseBreakGlass("", v, time.Date(9000, 1, 1, 0, 0, 0, 0, time.UTC))
+	return t
 }
 
 // notApplied fills in what a held step keeps from its module.
@@ -113,9 +123,14 @@ func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec s
 	if _, routes := r.Installer.(RouteAware); !known && routes && routesErr == nil && relayErr == nil && rec.SettingsHash != "" {
 		// A record from before Applied: its hash says whether company.yaml still asks for what
 		// was installed. If it does, that is the baseline from here on.
+		// Hashed with the connections the record has, not those now wanted.
 		old := Desired{Company: d.Company, Manifests: map[string]*config.Module{a.Module: &rec.Manifest}}
-		if rt, err := r.routing(ctx, old, a.Module); err == nil && linkedHash(specHash(d.Company, a.Module, &rec.Manifest, rt.Fingerprint, relay), wanted) == rec.SettingsHash {
-			was, known, a.baseline = now, true, now.encode()
+		had := rec.Manifest.Runtime.Wired
+		rt, err := r.routing(ctx, old, a.Module)
+		hadRelay, herr := r.relay(ctx, old, a.Module, rec.HMACSecret, had)
+		if err == nil && herr == nil && linkedHash(specHash(d.Company, a.Module, &rec.Manifest, rt.Fingerprint, hadRelay), had) == rec.SettingsHash {
+			was, known = appliedOf(d, a.Module, hadRelay, had), true
+			a.baseline = was.encode()
 		}
 	}
 	if !known {

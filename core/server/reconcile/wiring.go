@@ -88,7 +88,8 @@ func linkedHash(hash string, ls []config.Link) string {
 func linkWidening(d Desired, id string, recorded store.Module, wanted []config.Link) []string {
 	had := recorded.Manifest.Runtime.Wired
 	var out []string
-	for _, l := range wanted {
+	// Also a provider that has failed: if this apply brings it back, the consumer is connected.
+	for _, l := range links(d, nil, id, true) {
 		if g, ok := modsecrets.GrantFor(id, l.Provider); ok && !linksTo(had, l.Provider) {
 			out = append(out, "connects to "+l.Provider+": "+g.Gains)
 		}
