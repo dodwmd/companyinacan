@@ -10,7 +10,8 @@ id: people
 name: People and performance
 description: Directory (people records, org chart, employment status with effective dating, onboarding and offboarding checklists), performance (1:1s with shared and private notes, goals and key results, review cycles with self, manager and anonymous peer feedback, calibration and approved release) and time off (leave types and accruals as data, balances ledger, requests approved by the manager, holiday calendars, team calendar showing only out). Per-field access control by role, audited sensitive reads, encrypted sensitive fields, retention, legal hold and erasure tombstones. Not payroll, and not legal or HR advice.
 category: people
-version: 0.2.0
+# 0.3.0: the manager role gained people.team.manage. The new version makes `apply` record the manifest again.
+version: 0.3.0
 # experimental: unit-, contract- and race-tested, and the chart installs through can-core's installer
 # in unit tests (specs/016-module-wiring); not yet exercised on a cluster, no portal or admin UI.
 # can-core generates the API token and the keyring, introspects personal access tokens and delivers

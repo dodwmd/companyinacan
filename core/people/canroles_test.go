@@ -7,7 +7,21 @@ import (
 	"github.com/dodwmd/companyinacan/core/config"
 )
 
+// Installations record a manifest again only when its version (or settings) change, so the version
+// that introduced people.team.manage must differ from the one before it.
+func TestTheManagerPermissionShipsWithANewModuleVersion(t *testing.T) {
+	m := peopleManifest(t)
+	if m.Version == "0.2.0" || m.Version == "0.1.0" || !slices.Contains(m.Permissions, PermTeamManage) {
+		t.Fatalf("version %s, permissions %v", m.Version, m.Permissions)
+	}
+}
+
 func manifestRoles(t *testing.T) map[string][]string {
+	t.Helper()
+	return peopleManifest(t).Roles
+}
+
+func peopleManifest(t *testing.T) *config.Module {
 	t.Helper()
 	doc, ps := config.Load("../../modules/people/module.yaml")
 	if doc == nil {
@@ -17,7 +31,7 @@ func manifestRoles(t *testing.T) map[string][]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return m.Roles
+	return m
 }
 
 // A personal access token carries any subset of what its issuer holds. With the permissions of any
