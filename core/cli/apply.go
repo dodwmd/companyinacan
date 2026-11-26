@@ -18,7 +18,7 @@ import (
 
 func newApplyCmd(g *globalOpts) *cobra.Command {
 	var modulesDir, statePath string
-	var dryRun, recordOnly, planOnly, skipImageCheck bool
+	var dryRun, recordOnly, planOnly, skipImageCheck, forceCompany bool
 	var approve []string
 	var kubeContext string
 	cmd := &cobra.Command{
@@ -53,6 +53,27 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 						return failure("%v", err)
 					}
 				}
+				// Not over a change made in the admin UI (or by anyone else) since this directory saw it.
+				cc, err := readClusterCompany(cmd, kubeContext)
+				if err != nil {
+					return failure("%v", err)
+				}
+				local, err := os.ReadFile(filepath.Join(dir, "company.yaml")) //nolint:gosec // validated above
+				if err != nil {
+					return failure("%v", err)
+				}
+				if !forceCompany {
+					if err := overwriteRefusal(dir, cc, local); err != nil {
+						if !planOnly {
+							return failure("%v", err)
+						}
+						fmt.Fprintln(cmd.ErrOrStderr(), "warning:", err)
+					}
+				}
+				expect := cc.ResourceVersion
+				if forceCompany {
+					expect = ""
+				}
 				// What can-core would do, before anything changes; approvals are recorded here.
 				notApplied, err := clusterPreview(cmd, filepath.Join(dir, "company.yaml"), kubeContext, approve, planOnly)
 				if err != nil {
@@ -78,9 +99,15 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				for _, n := range reconcile.ModeNotes(companyInForce(cmd, kubeContext), desired.Company) {
 					fmt.Fprintln(cmd.OutOrStdout(), "note:", n)
 				}
-				out, err := syncCompany(cmd, filepath.Join(dir, "company.yaml"), kubeContext)
+				out, err := syncCompany(cmd, filepath.Join(dir, "company.yaml"), kubeContext, expect)
 				if err != nil {
 					return failure("%v", err)
+				}
+				// What the cluster holds now, for the next apply to compare with.
+				if after, err := readClusterCompany(cmd, kubeContext); err == nil && after.Found {
+					if err := recordBase(dir, after.UID, []byte(after.Data)); err != nil {
+						fmt.Fprintln(cmd.ErrOrStderr(), "warning: could not record what was applied:", err)
+					}
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "synced company.yaml to ConfigMap can-system/company (%s)\ncan-core applies it within its reconcile interval; watch with: kubectl -n can-system logs deploy/can-core\n", out)
 				if notApplied != nil {
@@ -159,6 +186,7 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 	cmd.Flags().StringVar(&statePath, "state", "", "recorded-state database (default <dir>/.can/state.db)")
 	cmd.Flags().BoolVar(&skipImageCheck, "skip-image-check", false, skipImageCheckHelp)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan and change nothing")
+	cmd.Flags().BoolVar(&forceCompany, "force-company", false, "overwrite the company.yaml in the cluster even if it was changed there (admin UI) since this directory last applied or pulled it")
 	cmd.Flags().BoolVar(&recordOnly, "record-only", false, "update recorded state without deploying (development)")
 	cmd.Flags().BoolVar(&planOnly, "plan", false, "print what can-core in the cluster would do and change nothing")
 	cmd.Flags().StringSliceVar(&approve, "approve", nil, "module=code of a waiting upgrade to approve, as the plan shows it")

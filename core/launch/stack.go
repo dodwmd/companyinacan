@@ -450,8 +450,8 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 		switch {
 		case have == want:
 			return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
-		case have != last && !r.o.ForceCompany:
-			return errors.New("the company.yaml in the cluster differs from the one `can up` last pushed (it was changed through the admin UI or `can apply`); applying this directory's company.yaml would discard those changes. Review them (kubectl -n can-system get configmap company -o yaml), then run `can up --force-company` to overwrite, or copy them into company.yaml first")
+		case have != last && !r.o.ForceCompany && !r.seenCompany(ctx, st, have):
+			return errors.New("the company.yaml in the cluster differs from the one `can up` last pushed (it was changed through the admin UI or `can apply`); applying this directory's company.yaml would discard those changes. Bring them into this directory with `can pull` (`can pull --out other.yaml` to compare first), or run `can up --force-company` to overwrite them")
 		}
 	}
 	cm, err := CompanyConfigMap(string(body))
@@ -464,6 +464,16 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 		return err
 	}
 	return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
+}
+
+// seenCompany reports whether `can apply` or `can pull` of this directory last saw the document
+// the cluster has (its digest is have).
+func (r *runner) seenCompany(ctx context.Context, st *provider.State, have string) bool {
+	if st.Launch == nil || len(st.Launch.CompanyBases) == 0 {
+		return false
+	}
+	uid, err := r.kube(ctx, nil, "-n", SystemNS, "get", "configmap", "company", "-o", "jsonpath={.metadata.uid}")
+	return err == nil && st.Launch.CompanyBases[strings.TrimSpace(uid)] == have
 }
 
 func (r *runner) facts() routing.Config {

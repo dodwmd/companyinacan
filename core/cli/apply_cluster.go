@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -16,11 +17,16 @@ import (
 )
 
 // companyConfigMap renders the applied company.yaml as the ConfigMap can-core mounts and
-// reconciles (CAN_COMPANY_FILE=/etc/can/company/company.yaml).
-func companyConfigMap(content string) (string, error) {
+// reconciles (CAN_COMPANY_FILE=/etc/can/company/company.yaml). A resourceVersion makes the API
+// server refuse the apply if the object changed since it was read.
+func companyConfigMap(content, resourceVersion string) (string, error) {
+	md := map[string]any{"name": "company", "namespace": "can-system", "labels": map[string]any{"app.kubernetes.io/part-of": "companyinacan"}}
+	if resourceVersion != "" {
+		md["resourceVersion"] = resourceVersion
+	}
 	b, err := yaml.Marshal(map[string]any{
 		"apiVersion": "v1", "kind": "ConfigMap",
-		"metadata": map[string]any{"name": "company", "namespace": "can-system", "labels": map[string]any{"app.kubernetes.io/part-of": "companyinacan"}},
+		"metadata": md,
 		"data":     map[string]any{"company.yaml": content},
 	})
 	return string(b), err
@@ -141,12 +147,12 @@ func companyInForce(cmd *cobra.Command, kubeContext string) *config.Company {
 // syncCompany writes the (already validated) company.yaml into the cluster as a ConfigMap with
 // kubectl. can-core, running in the cluster, picks the change up within its reconcile interval and
 // installs, upgrades or disables modules (core/server/runtime/sync.go).
-func syncCompany(cmd *cobra.Command, companyFile, kubeContext string) (string, error) {
+func syncCompany(cmd *cobra.Command, companyFile, kubeContext, resourceVersion string) (string, error) {
 	raw, err := os.ReadFile(companyFile) //nolint:gosec // user-supplied company.yaml, already validated
 	if err != nil {
 		return "", err
 	}
-	manifest, err := companyConfigMap(string(raw))
+	manifest, err := companyConfigMap(string(raw), resourceVersion)
 	if err != nil {
 		return "", err
 	}
@@ -168,6 +174,9 @@ func syncCompany(cmd *cobra.Command, companyFile, kubeContext string) (string, e
 	}
 	out, err := newExecutor(cmd).Run(context.Background(), cluster.Cmd{Name: "kubectl", Args: args})
 	if err != nil {
+		if strings.Contains(err.Error()+out, "the object has been modified") {
+			return "", errors.New("the company.yaml in the cluster changed while applying; run `can apply` again")
+		}
 		return "", fmt.Errorf("kubectl apply: %w", err)
 	}
 	return strings.TrimSpace(out), nil
