@@ -80,14 +80,16 @@ account cannot approve a grant.
 [`specs/068-equity-board-role`](../specs/068-equity-board-role/spec.md). Under can-core, assign the role
 `equity:board` on the users pages. It needs a recent sign-in, and only an owner (or somebody who already holds
 it) can do it. That account's tokens and Apps sign-ins then carry the board role. Owners hold every
-permission, so an owner is a board member too. It works in **directory mode only**: set
+permission, so an owner is a board member too. A personal access token carrying `equity.board` is only issued
+within 10 minutes of a sign-in or confirmation. It works in **directory mode only**: set
 `modules.equity.settings.identity: directory`, give each acting person a directory record with their
 `sso_subject`, and let one person draft and another approve.
 
 **A single founder cannot approve a grant.** Two people can grant to a third; a grant to one of only two
 founders needs break-glass; three people need none. See the
 [table](../specs/068-equity-board-role/spec.md#single-founder-and-small-companies). Upgrading to 0.3.0 is held
-for your approval; whoever already has `equity:board` becomes a board member when you apply it.
+for your approval; whoever already has `equity:board` becomes a board member when you apply it, and the held
+upgrade names them. The release's fix for relinked holder records does not apply until then.
 
 Per-field access (sensitive fields are read and written per field, and reads are audited per field):
 

@@ -31,6 +31,9 @@ func printActions(w io.Writer, verb string, actions []reconcile.Action) {
 			fmt.Fprintf(w, "    newly allowed: %s\n", x)
 		}
 		if a.Held == reconcile.HeldApproval {
+			for _, x := range a.Notes {
+				fmt.Fprintf(w, "    note: %s\n", x)
+			}
 			for _, x := range a.NotApplied {
 				fmt.Fprintf(w, "    NOT APPLIED: %s\n", x)
 			}

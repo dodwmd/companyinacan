@@ -114,6 +114,8 @@ type Action struct {
 	Reason string `json:"reason"`
 	// Widens is what the module may newly do after this step (see Widening).
 	Widens []string `json:"widens,omitempty"`
+	// Notes, for a step held for HeldApproval, names who holds the roles that gain (holderNotes).
+	Notes []string `json:"notes,omitempty"`
 	// Held, when set, says why Apply will not run this step now: HeldApproval or HeldRetry.
 	Held string `json:"held,omitempty"`
 	// Approval is what approves a step held for HeldApproval.
@@ -512,6 +514,9 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			r.hold(a, rec)
 		}
 		if a.Held == HeldApproval {
+			if a.Notes, err = r.holderNotes(ctx, id, a.Widens); err != nil {
+				return nil, err
+			}
 			if err := r.notApplied(ctx, d, a, rec, wanted, relay, rerr, lerr); err != nil {
 				return nil, err
 			}
@@ -576,7 +581,7 @@ func (r *Reconciler) recordHeld(ctx context.Context, held []Action) error {
 		pending := ""
 		a, ok := want[m.ID]
 		if ok {
-			b, _ := json.Marshal(Pending{Approval: a.Approval, Widens: a.Widens, NotApplied: a.NotApplied, Urgent: a.Urgent})
+			b, _ := json.Marshal(Pending{Approval: a.Approval, Widens: a.Widens, Notes: a.Notes, NotApplied: a.NotApplied, Urgent: a.Urgent})
 			if a.baseline != "" && m.Applied == "" {
 				if err := r.db.SetApplied(ctx, m.ID, a.baseline); err != nil {
 					return err

@@ -23,13 +23,17 @@ func UpgradeAck(module, approval string) string { return "upgrade:" + module + "
 // maxWidenRunes holds the longest line of a widening (a setting with its entry, risk and digest).
 const maxWidenRunes = 600
 
-// HeldLines is what the pages list for a held upgrade: what it would allow, then what was asked
+// HeldLines is what the pages list for a held upgrade: what it would allow, any notes (who holds
+// the roles that gain), then what was asked
 // of the module and is not applied.
-func HeldLines(widens, notApplied []string) []string {
+func HeldLines(widens, notApplied []string, notes ...string) []string {
 	var out []string
 	for _, w := range widens {
 		// Whole: what is approved must be what is read.
 		out = append(out, sanitise(w, maxWidenRunes))
+	}
+	for _, n := range notes {
+		out = append(out, sanitise(n, maxWidenRunes))
 	}
 	for _, n := range notApplied {
 		out = append(out, "NOT APPLIED: "+Sanitise(n))
@@ -64,7 +68,7 @@ func (s *Service) PendingUpgrades(ctx context.Context) ([]PendingUpgrade, error)
 			continue
 		}
 		u := PendingUpgrade{Module: m.ID, Approval: p.Approval}
-		u.Widens = HeldLines(p.Widens, p.NotApplied)
+		u.Widens = HeldLines(p.Widens, p.NotApplied, p.Notes...)
 		out = append(out, u)
 	}
 	return out, nil

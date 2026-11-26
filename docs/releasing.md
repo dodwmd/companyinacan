@@ -63,6 +63,23 @@ and bump `version` in the module's `module.yaml`: can-core upgrades an installed
 settings change, not when only the image does. `test/contract/module_images_test.go` fails when a chart, a
 manifest or a workflow disagrees with the list.
 
+## Upgrade note: equity 0.3.0
+
+Say this in the release notes of the first release that has it (specs/068-equity-board-role):
+
+- The `equity` module **waits for approval**: it gains the permission `equity.board`.
+- **The release contains a privacy fix that the held upgrade holds back.** Until it is approved, a holder record
+  relinked to another person still shows that person the grant and the previous holder's name, email and tax
+  id, and lets them request and cancel exercises, before anybody confirmed the new link. Approve it promptly,
+  or disable the module (offline).
+- **Approving it activates the existing `equity:board` assignments**: everyone assigned that role becomes an
+  equity board member, who can approve grants (directory identity mode), as every owner does. The held upgrade
+  names them (`can apply --plan`, `can status`, the admin UI catalogue): read the names and remove whoever
+  should not be on the board **before** approving.
+- After approval, self service shows only records a second person confirmed (**Holder checks**).
+- A personal access token carrying `equity.board` is only issued within 10 minutes of a sign-in or
+  confirmation (admin UI and API).
+
 ## Upgrade note: work 0.3.0
 
 Say this in the release notes of the first release that has it:
