@@ -277,6 +277,7 @@ func (s *Service) ensureNextFiling(ctx context.Context, tx *sqlTx, obID, entityI
 // applyFilingsDue announces filings that are coming due: for each pending filing of an active obligation,
 // the reminder point that has been reached and not yet announced is sent once as entity.filing.due.v1
 // (ids and dates only); earlier points are marked sent with it so a sweep that was down does not repeat itself.
+// The marks and the events commit together.
 func (s *Service) applyFilingsDue(ctx context.Context) (int, error) {
 	today := s.today()
 	rows, err := s.db.QueryContext(ctx, `SELECT f.id, f.obligation_id, f.entity_id, f.due_on, f.reminders_sent, o.lead_days FROM filings f JOIN filing_obligations o ON o.id = f.obligation_id
@@ -284,10 +285,9 @@ func (s *Service) applyFilingsDue(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	type item struct{ id, ob, ent, due, sent, leads string }
-	var items []item
+	var items []filingItem
 	for rows.Next() {
-		var it item
+		var it filingItem
 		if err := rows.Scan(&it.id, &it.ob, &it.ent, &it.due, &it.sent, &it.leads); err != nil {
 			_ = rows.Close()
 			return 0, err
@@ -295,7 +295,12 @@ func (s *Service) applyFilingsDue(ctx context.Context) (int, error) {
 		items = append(items, it)
 	}
 	_ = rows.Close()
-	n := 0
+	type due struct {
+		filingItem
+		newSent string
+		best    int
+	}
+	var dues []due
 	for _, it := range items {
 		days, err := daysBetween(today, it.due)
 		if err != nil {
@@ -324,24 +329,44 @@ func (s *Service) applyFilingsDue(ctx context.Context) (int, error) {
 		for d := range sent {
 			all = append(all, d)
 		}
-		newSent := joinInts(sortedInts(all))
-		err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
-			res, err := tx.ExecContext(ctx, `UPDATE filings SET reminders_sent = ? WHERE id = ? AND reminders_sent = ? AND status = 'pending'`, newSent, it.id, it.sent)
+		dues = append(dues, due{it, joinInts(sortedInts(all)), best})
+	}
+	// Many at once (the first sweep after an upgrade, or after the service was down) are announced as
+	// one event with a count, so that a backlog cannot use up the notification and e-mail allowances.
+	summary := len(dues) > summaryAbove
+	n := 0
+	err = s.tx(ctx, func(ctx context.Context, tx *sqlTx) error {
+		n = 0
+		for _, d := range dues {
+			res, err := tx.ExecContext(ctx, `UPDATE filings SET reminders_sent = ? WHERE id = ? AND reminders_sent = ? AND status = 'pending'`, d.newSent, d.id, d.sent)
 			if err != nil {
 				return err
 			}
 			if k, _ := res.RowsAffected(); k == 0 {
-				return nil // another sweep announced it
+				continue // another sweep announced it
 			}
 			n++
-			return s.enqueue(ctx, tx, EventFilingDue, map[string]any{"filing_id": it.id, "obligation_id": it.ob, "entity_id": it.ent, "due_on": it.due, "days_before": best})
-		})
-		if err != nil {
-			return n, err
+			if !summary {
+				if err := s.enqueue(ctx, tx, EventFilingDue, map[string]any{"filing_id": d.id, "obligation_id": d.ob, "entity_id": d.ent, "due_on": d.due, "days_before": d.best}); err != nil {
+					return err
+				}
+			}
 		}
+		if summary && n > 0 {
+			return s.enqueue(ctx, tx, EventFilingDue, map[string]any{"count": n})
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 	return n, nil
 }
+
+// summaryAbove is the most filing reminders one sweep announces one by one.
+const summaryAbove = 5
+
+type filingItem struct{ id, ob, ent, due, sent, leads string }
 
 func sortedInts(l []int) []int {
 	for i := 1; i < len(l); i++ {

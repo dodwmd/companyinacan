@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // Event types. Payload schemas: schemas/events/<type>.json. Payloads carry opaque ids, dates and
@@ -24,7 +26,10 @@ const (
 	EventResolutionPassed = "board.resolution.passed.v1"
 	EventFilingDue        = "entity.filing.due.v1"
 
-	maxDeliveryAttempts       = 8
+	maxDeliveryAttempts = 8
+	// can-core refuses events until it has recorded the manifest that declares them, and may be
+	// unreachable: with the backoff capped at 2^14 s this is about a week of trying.
+	maxCanDeliveryAttempts    = 50
 	outboxDeliveredRetention  = 7 * 24 * time.Hour
 	outboxBatch               = 20
 	outboxHTTPTimeout         = 10 * time.Second
@@ -68,6 +73,8 @@ type Dispatcher struct {
 	Secret []byte
 	Client *http.Client
 	Log    *slog.Logger
+	// Can, when set, publishes through can-core's module API instead of URL.
+	Can *modclient.Client
 }
 
 // NewDispatcher builds a dispatcher whose client never follows redirects.
@@ -81,8 +88,12 @@ func NewDispatcher(url string, secret []byte, log *slog.Logger) *Dispatcher {
 // DeliverPending sends due events and prunes old delivered ones. It returns the number sent.
 func (s *Service) DeliverPending(ctx context.Context, d *Dispatcher) (int, error) {
 	now := s.now().Unix()
+	attempts := maxDeliveryAttempts
+	if d.Can != nil {
+		attempts = maxCanDeliveryAttempts
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT seq, id, type, payload, attempts FROM outbox
-		WHERE delivered_at IS NULL AND attempts < ? AND next_attempt <= ? ORDER BY seq LIMIT ?`, maxDeliveryAttempts, now, outboxBatch)
+		WHERE delivered_at IS NULL AND attempts < ? AND next_attempt <= ? ORDER BY seq LIMIT ?`, attempts, now, outboxBatch)
 	if err != nil {
 		return 0, err
 	}
@@ -130,6 +141,9 @@ func truncate(s string, n int) string {
 func isUnique(err error) bool { return err != nil && strings.Contains(err.Error(), "UNIQUE") }
 
 func (d *Dispatcher) post(ctx context.Context, id, typ string, body []byte, now time.Time) error {
+	if d.Can != nil {
+		return d.Can.PublishEnvelope(ctx, body)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.URL, bytes.NewReader(body))
 	if err != nil {
 		return err

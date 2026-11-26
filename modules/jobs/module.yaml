@@ -10,7 +10,8 @@ id: jobs
 name: Jobs and recruiting
 description: Job requisitions and postings, public careers pages with Google for Jobs data, XML and JSON feeds, application intake with spam controls and resume upload, an ATS pipeline with scorecards and blind feedback, talent pool, duplicate detection, consent and retention, erasure with tombstones, and the hire hand-off event. Partner API connectors for LinkedIn, Indeed and Glassdoor are documented stubs.
 category: people
-version: 0.1.0
+# 0.2.0: reminder events and notification rules (specs/060-reminders). The new version makes `apply` record the manifest again.
+version: 0.2.0
 # experimental: unit-, contract- and race-tested offline, and the chart installs through can-core's
 # installer in unit tests (specs/016-module-wiring); the image has not been built or run on a
 # cluster, there is no web UI for recruiters and no real virus scanner or board connector.
@@ -60,6 +61,9 @@ publishes:
   - { event: application.stage_changed.v1, schema: ./events/application.stage_changed.v1.json }
   # the hand-off the people module consumes to start onboarding
   - { event: candidate.hired.v1, schema: ./events/candidate.hired.v1.json }
+# The job's hiring manager and the recruiters (the owners when nobody is a recruiter).
+notifications:
+  - { event: application.received.v1, recipients: ["field:hiring_manager", "role:recruiter"] }
 # can-core's approvals engine decides requisitions (approval.decided.v1 comes back signed).
 approvals:
   - { type: requisition, default_chain: [admin] }

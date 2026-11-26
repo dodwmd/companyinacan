@@ -393,8 +393,10 @@ func (s *Store) SubmitTimesheet(ctx context.Context, a *Principal, id int64, ifM
 		if err := s.checkUnlocked(ctx, tx, t.WeekStart); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = 'submitted', submitted_at = ?, submitted_by = ?, reject_reason = '', version = version + 1, updated_at = ? WHERE id = ?`, ts(s.now()), a.Subject, ts(s.now()), t.ID)
-		return err
+		if _, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = 'submitted', submitted_at = ?, submitted_by = ?, reject_reason = '', version = version + 1, updated_at = ? WHERE id = ?`, ts(s.now()), a.Subject, ts(s.now()), t.ID); err != nil {
+			return err
+		}
+		return s.emit(ctx, tx, EventTimesheetSubmitted, timesheetStepData{TimesheetID: t.ID, Owner: t.Owner})
 	})
 }
 
@@ -460,6 +462,9 @@ func (s *Store) decideTimesheet(ctx context.Context, a *Principal, id int64, ifM
 			return err
 		}
 		if err := s.audit(ctx, tx, a.Subject, "timesheet."+status, fmt.Sprint(id), map[string]any{"owner": t.Owner}); err != nil {
+			return err
+		}
+		if err := s.emit(ctx, tx, EventTimesheetDecided, timesheetStepData{TimesheetID: id, Owner: t.Owner}); err != nil {
 			return err
 		}
 		if approve {

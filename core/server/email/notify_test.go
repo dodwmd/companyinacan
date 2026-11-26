@@ -136,3 +136,53 @@ func TestOnlyTheNotificationChannelSendsAsCanCore(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Mail about approvals a module opened has its own allowance for that module: the module's other mail
+// cannot crowd it out, and it never counts as can-core's own, which invitations need.
+func TestApprovalMailHasItsOwnAllowancePerModule(t *testing.T) {
+	f := newFixture(t, baseCompany+"  modules:\n    jobs: {per_hour: 1}\n    off: {enabled: false}\n")
+	ctx := context.Background()
+	m := NotifyMailer{S: f.s}
+	spam := notify.Message{To: "alice@acme.example", ForUser: "user:alice", Module: "jobs", Authored: true, Type: "application.received", Subject: "New", Text: "x"}
+	var qe *QuotaError
+	if err := m.Send(ctx, spam); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Send(ctx, spam); !errors.As(err, &qe) {
+		t.Fatal("the module quota should be used up:", err)
+	}
+	approval := notify.Message{To: "alice@acme.example", ForUser: "user:alice", Module: "jobs", Platform: true, Type: "approval.requested", Subject: "Approval needed", Text: "waiting"}
+	if err := m.Send(ctx, approval); err != nil {
+		t.Fatal("approval mail:", err)
+	}
+	if err := m.Send(ctx, approval); !errors.As(err, &qe) {
+		t.Fatal("approval mail has a limit too:", err)
+	}
+	sources := map[string]int{}
+	rows, err := f.db.QueryContext(ctx, `SELECT source, COUNT(*) FROM email_outbox GROUP BY source`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var s string
+		var n int
+		if err := rows.Scan(&s, &n); err != nil {
+			t.Fatal(err)
+		}
+		sources[s] = n
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if sources[SystemSource] != 0 || sources["jobs"] != 1 || sources["@approvals:jobs"] != 1 {
+		t.Fatalf("%v", sources)
+	}
+	// Queued mail is still sent: the module's switch is what counts for the new source.
+	if _, err := f.s.RunOnce(ctx); err != nil || len(f.tr.sent) != 2 {
+		t.Fatalf("sent %d: %v", len(f.tr.sent), err)
+	}
+	approval.Module = "off"
+	if err := m.Send(ctx, approval); !errors.Is(err, ErrNotAllowed) {
+		t.Fatal("a module with email turned off:", err)
+	}
+}

@@ -1,0 +1,10 @@
+{
+  "id": "nope",
+  "type": "timesheet.decided.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "timesheet_id": 7,
+    "owner": "user:ann"
+  }
+}

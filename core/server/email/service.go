@@ -302,7 +302,7 @@ func actor(source string) string {
 	if source == SystemSource {
 		return "can-core"
 	}
-	return "module:" + source
+	return "module:" + strings.TrimPrefix(source, approvalPrefix)
 }
 
 // Message is the status of one queued message. It never carries the address, subject or body.

@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -68,7 +69,19 @@ type applicationReceivedData struct {
 	CandidateID   string    `json:"candidate_id"`
 	Source        string    `json:"source"`
 	NewCandidate  bool      `json:"new_candidate"`
+	HiringManager string    `json:"hiring_manager,omitempty"`
 	ReceivedAt    time.Time `json:"received_at"`
+}
+
+var hiringAccountRe = regexp.MustCompile(`^user:[A-Za-z0-9_.@-]{1,64}$`)
+
+// hiringAccount is a job's hiring manager when it names a can-core account, "" otherwise: only an
+// account can be notified.
+func hiringAccount(subject string) string {
+	if hiringAccountRe.MatchString(subject) {
+		return subject
+	}
+	return ""
 }
 
 type applicationStageData struct {

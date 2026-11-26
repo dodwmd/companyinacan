@@ -24,6 +24,12 @@ func (m NotifyMailer) Send(ctx context.Context, msg notify.Message) error {
 	if msg.Module != "" && msg.Module != "can-core" {
 		source = msg.Module
 	}
+	// Mail about an approval a module opened has an allowance of its own for that module: what the
+	// module (or the public, through it) sends cannot crowd it out, and a module opening approvals
+	// cannot use up can-core's, which invitations and password resets need.
+	if msg.Platform && source != SystemSource {
+		source = ApprovalSource(source)
+	}
 	subject, text := msg.Subject, msg.Text
 	if msg.Authored && source != SystemSource {
 		p, err := m.S.source.Load()

@@ -100,6 +100,7 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("GET /v1/contracts", a.guard(read, biz, a.listContracts))
 	mux.HandleFunc("POST /v1/contracts", a.guard(write, biz, a.createContract))
 	mux.HandleFunc("POST /v1/contracts/sweep", a.guard(admin, biz, a.sweepContracts))
+	mux.HandleFunc("POST /v1/invoices/overdue-sweep", a.guard(admin, biz, a.sweepOverdue))
 	mux.HandleFunc("GET /v1/contracts/{id}", a.guard(read, biz, a.getContract))
 	mux.HandleFunc("POST /v1/contracts/{id}/versions", a.guard(write, biz, a.newVersion))
 	mux.HandleFunc("GET /v1/contracts/{id}/versions/{n}", a.guard(read, biz, a.getVersion))

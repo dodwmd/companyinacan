@@ -19,19 +19,24 @@ import (
 
 // Event types. Payload schemas: schemas/events/<type>.json.
 const (
-	EventPersonCreated        = "person.created.v1"
-	EventPersonStatusChanged  = "person.status_changed.v1"
-	EventPersonOffboarded     = "person.offboarded.v1"
-	EventPersonErased         = "person.erased.v1"
-	EventOneOnOneScheduled    = "oneonone.scheduled.v1"
-	EventGoalUpdated          = "goal.updated.v1"
-	EventChecklistTaskDone    = "checklist.task_completed.v1"
-	EventReviewCycleOpened    = "review.cycle.opened.v1"
-	EventReviewReleased       = "review.released.v1"
-	EventTimeOffApproved      = "timeoff.approved.v1"
-	EventTimeOffCancelled     = "timeoff.cancelled.v1"
-	eventSource               = "people"
-	maxDeliveryAttempts       = 8
+	EventPersonCreated       = "person.created.v1"
+	EventPersonStatusChanged = "person.status_changed.v1"
+	EventPersonOffboarded    = "person.offboarded.v1"
+	EventPersonErased        = "person.erased.v1"
+	EventOneOnOneScheduled   = "oneonone.scheduled.v1"
+	EventGoalUpdated         = "goal.updated.v1"
+	EventChecklistTaskDone   = "checklist.task_completed.v1"
+	EventReviewCycleOpened   = "review.cycle.opened.v1"
+	EventReviewReleased      = "review.released.v1"
+	EventTimeOffApproved     = "timeoff.approved.v1"
+	EventTimeOffCancelled    = "timeoff.cancelled.v1"
+	EventTimeOffRequested    = "timeoff.requested.v1"
+	EventTimeOffDecided      = "timeoff.decided.v1"
+	eventSource              = "people"
+	maxDeliveryAttempts      = 8
+	// can-core refuses events until it has recorded the manifest that declares them (a module may
+	// start before that): with the backoff capped at 2^14 s this is about a week of trying.
+	maxCanDeliveryAttempts    = 50
 	outboxDeliveredRetention  = 7 * 24 * time.Hour
 	outboxBatch               = 20
 	outboxHTTPTimeout         = 10 * time.Second
@@ -93,8 +98,12 @@ func NewDispatcher(url string, secret []byte, log *slog.Logger) *Dispatcher {
 // DeliverPending sends due events and prunes old delivered ones. It returns the number sent.
 func (s *Service) DeliverPending(ctx context.Context, d *Dispatcher) (int, error) {
 	now := s.now().Unix()
+	attempts := maxDeliveryAttempts
+	if d.Can != nil {
+		attempts = maxCanDeliveryAttempts
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT seq, id, type, payload, attempts FROM outbox
-		WHERE delivered_at IS NULL AND attempts < ? AND next_attempt <= ? ORDER BY seq LIMIT ?`, maxDeliveryAttempts, now, outboxBatch)
+		WHERE delivered_at IS NULL AND attempts < ? AND next_attempt <= ? ORDER BY seq LIMIT ?`, attempts, now, outboxBatch)
 	if err != nil {
 		return 0, err
 	}

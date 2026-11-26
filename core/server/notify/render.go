@@ -19,6 +19,25 @@ var builtinTemplates = map[string]tmpl{
 	"approval.escalated": {"Approval escalated: {{.approval_type}}", "A {{.approval_type}} request ({{.request_id}}) has waited too long and is now also assigned to you."},
 	"approval.decided":   {"Approval {{.outcome}}: {{.approval_type}}", "Your {{.approval_type}} request ({{.request_id}}) was {{.outcome}}."},
 	"lead.created":       {"New lead", "A new lead ({{.lead_id}}) arrived."},
+
+	// Reminders and attention items raised by module events (specs/060-reminders). Ids and counts
+	// only: names, amounts and free text stay in the module.
+	"invoice.overdue": {"{{if .count}}Invoices overdue{{else}}Invoice overdue{{end}}",
+		"{{if .count}}{{.count}} invoices are past their due date.{{else}}Invoice {{.invoice_id}} is past its due date.{{end}} See Finance."},
+	"contract.expiring": {"{{if .count}}Contract renewals due{{else}}Contract renewal due{{end}}",
+		"{{if .count}}{{.count}} contracts are{{else}}Contract {{.contract_id}} is{{end}} within the renewal reminder window. See Finance."},
+	"contract.signed":      {"Contract signed", "Contract {{.contract_id}} has been signed. See Finance."},
+	"contract.declined":    {"Contract signature declined", "A signer declined contract {{.contract_id}}; it is a draft again. See Finance."},
+	"expense.submitted":    {"Expense waiting for approval", "Expense {{.expense_id}} is waiting for a decision. See Finance."},
+	"expense.decided":      {"Your expense was decided", "Expense {{.expense_id}} was approved or sent back. See Finance."},
+	"timesheet.submitted":  {"Timesheet waiting for approval", "Timesheet {{.timesheet_id}} is waiting for a decision. See Finance."},
+	"timesheet.decided":    {"Your timesheet was decided", "Timesheet {{.timesheet_id}} was approved or sent back. See Finance."},
+	"timeoff.requested":    {"Time off waiting for approval", "Time off request {{.request_id}} is waiting for a decision. See People."},
+	"timeoff.decided":      {"Your time off request was decided", "Time off request {{.request_id}} was approved or refused. See People."},
+	"application.received": {"New job application", "Application {{.application_id}} arrived for job {{.job_id}}. See Jobs."},
+	"work.issue.p0":        {"P0 issue: {{.issue_id}}", "Issue {{.issue_id}} is priority P0. See Work."},
+	"entity.filing.due": {"{{if .count}}Filings coming due{{else}}Filing coming due{{end}}",
+		"{{if .count}}{{.count}} filings are due or coming due.{{else}}Filing {{.filing_id}} is due or coming due.{{end}} See the entity calendar."},
 }
 
 const genericSubject = `{{if .title}}{{.title}}{{else}}Notification: {{.type}}{{end}}`

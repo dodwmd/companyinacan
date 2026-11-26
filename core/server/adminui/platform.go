@@ -510,9 +510,36 @@ var digestKeys = map[string]string{"off": "nt.digest_off", "hourly": "nt.digest_
 var prefLabelKeys = map[string]string{
 	"approval.requested": "nt.type_approval_requested", "approval.escalated": "nt.type_approval_escalated",
 	"approval.decided": "nt.type_approval_decided", "lead" + ".created": "nt.type_lead_created",
+	"invoice" + ".overdue":      "nt.type_invoice_overdue",
+	"contract" + ".expiring":    "nt.type_contract_expiring",
+	"contract" + ".signed":      "nt.type_contract_signed",
+	"contract" + ".declined":    "nt.type_contract_declined",
+	"expense" + ".submitted":    "nt.type_expense_submitted",
+	"expense" + ".decided":      "nt.type_expense_decided",
+	"timesheet" + ".submitted":  "nt.type_timesheet_submitted",
+	"timesheet" + ".decided":    "nt.type_timesheet_decided",
+	"timeoff" + ".requested":    "nt.type_timeoff_requested",
+	"timeoff" + ".decided":      "nt.type_timeoff_decided",
+	"application" + ".received": "nt.type_application_received",
+	"work.issue" + ".p0":        "nt.type_issue_p0",
+	"entity.filing" + ".due":    "nt.type_filing_due",
 }
 
-var prefTypes = []string{"approval.requested", "approval.escalated", "approval.decided", "lead" + ".created", "*"}
+var prefTypes = []string{"approval.requested", "approval.escalated", "approval.decided", "lead" + ".created",
+	"invoice" + ".overdue",
+	"contract" + ".expiring",
+	"contract" + ".signed",
+	"contract" + ".declined",
+	"expense" + ".submitted",
+	"expense" + ".decided",
+	"timesheet" + ".submitted",
+	"timesheet" + ".decided",
+	"timeoff" + ".requested",
+	"timeoff" + ".decided",
+	"application" + ".received",
+	"work.issue" + ".p0",
+	"entity.filing" + ".due",
+	"*"}
 
 func (s *Server) notificationsPage(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 	if s.Notify == nil {

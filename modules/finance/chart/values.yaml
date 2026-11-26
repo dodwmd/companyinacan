@@ -4,7 +4,7 @@
 # which every container receives as environment.
 image:
   repository: ghcr.io/dodwmd/can-finance
-  tag: 0.2.0
+  tag: 0.3.0
   # Pinned by digest at release time; `make release-check` fails while this placeholder remains.
   digest: sha256:REPLACE_WITH_DIGEST
   pullPolicy: IfNotPresent
