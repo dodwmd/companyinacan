@@ -75,7 +75,7 @@ func UIRoutes() []UIRoute {
 }
 
 func (u *webUI) routes() []uiRoute {
-	r, w, none := PermRead, PermWrite, ""
+	r, w, adm, none := PermRead, PermWrite, PermAdmin, ""
 	return []uiRoute{
 		{UIRoute{"GET", "/ui/login", false, none}, u.loginPage},
 		{UIRoute{"POST", "/ui/login", false, none}, u.loginPost},
@@ -84,6 +84,20 @@ func (u *webUI) routes() []uiRoute {
 		{UIRoute{"POST", "/ui/logout", true, r}, u.logout},
 		{UIRoute{"GET", "/ui/{$}", true, r}, u.projects},
 		{UIRoute{"GET", "/ui/dashboard", true, r}, u.dashboard},
+		{UIRoute{"GET", "/ui/team/workload", true, r}, u.workloadPage},
+		{UIRoute{"GET", "/ui/team/ageing", true, r}, u.ageingPage},
+		{UIRoute{"GET", "/ui/team/stale", true, r}, u.stalePage},
+		{UIRoute{"GET", "/ui/filters", true, r}, u.filtersPage},
+		{UIRoute{"GET", "/ui/filters/{filter}", true, r}, u.filterPage},
+		{UIRoute{"POST", "/ui/filters", true, w}, u.filterCreate},
+		{UIRoute{"POST", "/ui/filters/{filter}/delete", true, w}, u.filterDelete},
+		{UIRoute{"GET", "/ui/projects/new", true, adm}, u.newProjectPage},
+		{UIRoute{"POST", "/ui/projects", true, adm}, u.createProject},
+		{UIRoute{"GET", "/ui/projects/{key}/settings", true, adm}, u.projectSettings},
+		{UIRoute{"POST", "/ui/projects/{key}/settings", true, adm}, u.saveSettings},
+		{UIRoute{"POST", "/ui/projects/{key}/archive", true, adm}, u.archiveProject},
+		{UIRoute{"POST", "/ui/projects/{key}/members", true, adm}, u.memberAdd},
+		{UIRoute{"POST", "/ui/projects/{key}/members/remove", true, adm}, u.memberRemove},
 		{UIRoute{"GET", "/ui/projects/{key}", true, r}, u.projectPage},
 		{UIRoute{"POST", "/ui/projects/{key}/issues", true, w}, u.createIssue},
 		{UIRoute{"GET", "/ui/projects/{key}/board", true, r}, u.board},
@@ -229,6 +243,10 @@ func (u *webUI) wrap(rt uiRoute) http.HandlerFunc {
 			}
 		}
 		if rt.Perm != "" && !c.p.Can(rt.Perm) {
+			if rt.Perm == PermAdmin {
+				c.errorPage(http.StatusForbidden, "err.forbidden", "err.admin_only")
+				return
+			}
 			c.errorPage(http.StatusForbidden, "err.read_only", "err.read_only_msg")
 			return
 		}
@@ -350,7 +368,9 @@ type uiBase struct {
 	Current                        string // nav entry
 	Project                        string // key when inside a project
 	ProjectTab                     string
-	CanWrite                       bool
+	TeamTab                        string // set on the manager views
+	CanWrite, CanAdmin             bool
+	CanCreateProject               bool
 	Nav                            []uiNav
 	D                              any
 }
@@ -359,6 +379,8 @@ func (c *uiCtx) base(title, current string) *uiBase {
 	b := &uiBase{Lang: "en", Title: title, Current: current}
 	if c.p != nil {
 		b.User, b.CSRF, b.CanWrite = c.p.Subject, c.sess.CSRF, c.p.Can(PermWrite)
+		b.CanAdmin = c.p.Can(PermAdmin)
+		b.CanCreateProject = b.CanAdmin && c.p.Unscoped()
 		if c.sess.SSO() { // a launch-ticket session shows the person's name, not their account id
 			if n := c.u.sessions.Name(c.sess); n != "" {
 				b.User = n
@@ -366,7 +388,8 @@ func (c *uiCtx) base(title, current string) *uiBase {
 		}
 		b.Nav = []uiNav{
 			{"/ui/", msg("nav.projects"), current == "projects"},
-			{"/ui/dashboard", msg("nav.dashboard"), current == "dashboard"},
+			{"/ui/team/workload", msg("nav.team"), current == "team"},
+			{"/ui/filters", msg("nav.filters"), current == "filters"},
 		}
 	}
 	if ok := c.r.URL.Query().Get("ok"); ok != "" {

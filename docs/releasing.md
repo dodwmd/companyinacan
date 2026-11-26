@@ -63,6 +63,17 @@ and bump `version` in the module's `module.yaml`: can-core upgrades an installed
 settings change, not when only the image does. `test/contract/module_images_test.go` fails when a chart, a
 manifest or a workflow disagrees with the list.
 
+## Upgrade note: work 0.3.0
+
+Say this in the release notes of the first release that has it:
+
+- The `work` module **waits for approval**: it publishes a new event, `work.issue.priority_changed.v1`.
+  Until approved it gets no other change either. `can apply --plan` shows the code,
+  `can apply --approve work=<code>` approves; the admin UI's catalogue does the same. A first install
+  and a restore ask for nothing.
+- The tracker's database gains two tables and a column (migration 005). The date of each issue's current
+  priority is filled from its history.
+
 ## Upgrade note: module internet access
 
 Modules reach the internet only when their manifest sets `runtime.internet_egress` (`support`, `newsletter`,

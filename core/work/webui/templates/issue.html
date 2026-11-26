@@ -115,7 +115,7 @@
 <form method="post" action="/ui/issues/{{$i.Key}}/assignee" class="inline">
 <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="version" value="{{$i.Version}}">
 <label for="s-assignee" class="sr">{{t "col.assignee"}}</label>
-<input id="s-assignee" name="assignee" type="text" maxlength="254" value="{{if $i.Assignee}}{{$i.Assignee}}{{end}}" aria-describedby="s-assignee-hint">
+<input id="s-assignee" name="assignee" type="text" maxlength="254" value="{{if $i.Assignee}}{{$i.Assignee}}{{end}}" aria-describedby="s-assignee-hint"{{if .D.Members}} list="members"{{end}}>{{template "memberlist" .D.Members}}
 <button type="submit">{{t "issue.set"}}</button>
 </form>
 <p id="s-assignee-hint" class="hint">{{t "issue.assignee_hint"}}</p>

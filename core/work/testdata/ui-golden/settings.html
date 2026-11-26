@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0b5cad">
+<title>WEB settings - Work tracker</title>
+<link rel="manifest" href="/ui/manifest.webmanifest">
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/work.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Work tracker</p>
+<nav aria-label="Main">
+<ul>
+<li><a href="/ui/" aria-current="page">Projects</a></li>
+<li><a href="/ui/team/workload">Team</a></li>
+<li><a href="/ui/filters">Saved filters</a></li>
+</ul>
+</nav>
+<form class="logout" method="post" action="/ui/logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit" class="link">Log out (boss@example.com)</button>
+</form>
+</header>
+<main id="main" tabindex="-1">
+<nav class="subnav" aria-label="Project">
+<p class="crumb"><a href="/ui/projects/WEB">WEB</a></p>
+<ul>
+<li><a href="/ui/projects/WEB">Backlog</a></li>
+<li><a href="/ui/projects/WEB/board">Board</a></li>
+<li><a href="/ui/projects/WEB/sprints">Sprints</a></li>
+<li><a href="/ui/projects/WEB/epics">Epics</a></li>
+<li><a href="/ui/projects/WEB/settings" aria-current="page">Settings</a></li>
+</ul>
+</nav>
+<h1>WEB settings</h1>
+<section aria-labelledby="details">
+<h2 id="details">Name and description</h2>
+<form method="post" action="/ui/projects/WEB/settings" class="create">
+<input type="hidden" name="csrf" value="CSRF">
+<div class="wide"><label for="p-name">Name</label>
+<input id="p-name" name="name" type="text" required maxlength="100" value="Website"></div>
+<div class="wide"><label for="p-desc">Description</label>
+<textarea id="p-desc" name="description" rows="4" maxlength="2000"></textarea></div>
+<div class="actions"><button type="submit">Save changes</button></div>
+</form>
+</section>
+<section aria-labelledby="members">
+<h2 id="members">Members</h2>
+<p class="hint">Who works on this project. Members are suggested as assignees and are listed in the workload view even when they have nothing to do. Membership does not change who can see or edit the project.</p>
+<ul class="plain">
+<li><form method="post" action="/ui/projects/WEB/members/remove" class="inline">
+<input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="subject" value="ann@example.com">
+<span>ann@example.com</span>
+<button type="submit" class="quiet">Remove<span class="sr"> ann@example.com</span></button>
+</form></li>
+<li><form method="post" action="/ui/projects/WEB/members/remove" class="inline">
+<input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="subject" value="idle@example.com">
+<span>idle@example.com</span>
+<button type="submit" class="quiet">Remove<span class="sr"> idle@example.com</span></button>
+</form></li>
+</ul>
+<form method="post" action="/ui/projects/WEB/members" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<label for="m-subject">Person</label>
+<input id="m-subject" name="subject" type="text" required maxlength="254" autocomplete="off" aria-describedby="m-hint">
+<button type="submit">Add member</button>
+</form>
+<p id="m-hint" class="hint">As it should appear as assignee. People who sign in from the admin UI are user:name.</p>
+</section>
+<section aria-labelledby="archive">
+<h2 id="archive">Archive project</h2>
+<p>An archived project stays readable but nothing in it can change, and it is left out of the team views. You can restore it later.</p>
+<form method="post" action="/ui/projects/WEB/archive">
+<input type="hidden" name="csrf" value="CSRF"><input type="hidden" name="archived" value="1">
+<button type="submit" class="quiet">Archive this project</button>
+</form>
+</section>
+
+</main>
+<footer>
+<p>Company in a Can work tracker. Apache-2.0.</p>
+</footer>
+</body>
+</html>

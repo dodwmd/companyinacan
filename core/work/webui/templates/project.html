@@ -1,5 +1,6 @@
 {{define "content"}}<h1>{{.D.Project.Key}} {{.D.Project.Name}}</h1>
-{{if .D.Project.Description}}<div class="prose">{{md .D.Project.Description}}</div>{{end}}
+{{if .D.Project.Archived}}<p class="empty">{{t "project.archived_note"}}</p>
+{{end}}{{if .D.Project.Description}}<div class="prose">{{md .D.Project.Description}}</div>{{end}}
 <section aria-labelledby="filters">
 <h2 id="filters">{{t "filter.title"}}</h2>
 <form method="get" action="/ui/projects/{{.D.Project.Key}}" class="filters">
@@ -23,7 +24,20 @@
 </form>
 <p id="f-q-hint" class="hint">{{t "filter.q_hint"}}</p>
 <p id="f-assignee-hint" class="hint">{{t "filter.assignee_hint"}}</p>
-</section>
+{{if .CanWrite}}<details>
+<summary>{{t "filters.save_this"}}</summary>
+<form method="post" action="/ui/filters" class="inline">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="project" value="{{.D.Project.Key}}">
+<input type="hidden" name="query" value="{{.D.Query}}">
+<input type="hidden" name="sort" value="{{.D.Filter.Sort}}">
+<label for="sf-name">{{t "filters.name"}}</label>
+<input id="sf-name" name="name" type="text" required maxlength="80">
+<label for="sf-shared" class="check"><input id="sf-shared" name="shared" type="checkbox" value="1"> {{t "filters.share"}}</label>
+<button type="submit">{{t "filters.save"}}</button>
+</form>
+</details>
+{{end}}</section>
 {{if .CanWrite}}{{if not .D.Project.Archived}}<section aria-labelledby="create">
 <h2 id="create">{{t "create.title"}}</h2>
 <form method="post" action="/ui/projects/{{.D.Project.Key}}/issues" class="create">
@@ -36,7 +50,7 @@
 <div><label for="c-priority">{{t "col.priority"}}</label>
 <select id="c-priority" name="priority">{{range .D.Priorities}}<option value="{{.}}"{{if eq . "P2"}} selected{{end}}>{{.}}</option>{{end}}</select></div>
 <div><label for="c-assignee">{{t "col.assignee"}}</label>
-<input id="c-assignee" name="assignee" type="text" maxlength="254"></div>
+<input id="c-assignee" name="assignee" type="text" maxlength="254"{{if .D.Members}} list="members"{{end}}>{{template "memberlist" .D.Members}}</div>
 <div><label for="c-labels">{{t "col.labels"}}</label>
 <input id="c-labels" name="labels" type="text" maxlength="400" aria-describedby="c-labels-hint"></div>
 <div><label for="c-estimate">{{t "col.estimate"}}</label>

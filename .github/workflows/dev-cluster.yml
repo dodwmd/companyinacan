@@ -70,8 +70,8 @@ jobs:
             --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
             --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
             --build-arg VERSION=ci \
-            -t ghcr.io/dodwmd/can-work:0.1.0 .
-          k3d image import ghcr.io/dodwmd/can-work:0.1.0 -c companyinacan-dev
+            -t ghcr.io/dodwmd/can-work:0.3.0 .
+          k3d image import ghcr.io/dodwmd/can-work:0.3.0 -c companyinacan-dev
       - name: Deploy can-core
         run: |
           kubectl --context k3d-companyinacan-dev apply -k deploy/can-core

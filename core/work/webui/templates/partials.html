@@ -5,8 +5,21 @@
 <li><a href="/ui/projects/{{.Project}}/board"{{if eq .ProjectTab "board"}} aria-current="page"{{end}}>{{t "nav.board"}}</a></li>
 <li><a href="/ui/projects/{{.Project}}/sprints"{{if eq .ProjectTab "sprints"}} aria-current="page"{{end}}>{{t "nav.sprints"}}</a></li>
 <li><a href="/ui/projects/{{.Project}}/epics"{{if eq .ProjectTab "epics"}} aria-current="page"{{end}}>{{t "nav.epics"}}</a></li>
+{{if .CanAdmin}}<li><a href="/ui/projects/{{.Project}}/settings"{{if eq .ProjectTab "settings"}} aria-current="page"{{end}}>{{t "nav.settings"}}</a></li>
+{{end}}</ul>
+</nav>{{end}}
+{{define "teamnav"}}<nav class="subnav" aria-label="{{t "nav.team"}}">
+<ul>
+<li><a href="/ui/team/workload"{{if eq .TeamTab "workload"}} aria-current="page"{{end}}>{{t "nav.workload"}}</a></li>
+<li><a href="/ui/team/ageing"{{if eq .TeamTab "ageing"}} aria-current="page"{{end}}>{{t "nav.ageing"}}</a></li>
+<li><a href="/ui/team/stale"{{if eq .TeamTab "stale"}} aria-current="page"{{end}}>{{t "nav.stale"}}</a></li>
+<li><a href="/ui/dashboard"{{if eq .TeamTab "dashboard"}} aria-current="page"{{end}}>{{t "nav.dashboard"}}</a></li>
 </ul>
 </nav>{{end}}
+{{define "projectselect"}}<label for="r-project">{{t "filters.project"}}</label>
+<select id="r-project" name="project"><option value="">{{t "filters.every_project"}}</option>{{range .Projects}}<option value="{{.Key}}"{{if eq .Key $.Selected}} selected{{end}}>{{.Key}} {{.Name}}</option>{{end}}</select>{{end}}
+{{define "reportstatus"}}<span class="status status-{{.Category}}">{{stat .Status}}</span>{{end}}
+{{define "memberlist"}}{{if .}}<datalist id="members">{{range .}}<option value="{{.Subject}}"></option>{{end}}</datalist>{{end}}{{end}}
 {{define "prio"}}<span class="prio prio-{{.}}"><span class="sr">{{t "issue.priority"}} </span>{{.}}</span>{{end}}
 {{define "type"}}<span class="type type-{{.}}">{{t (printf "type.%s" .)}}</span>{{end}}
 {{define "status"}}<span class="status status-{{.StatusCategory}}">{{stat .Status}}</span>{{end}}

@@ -30,6 +30,8 @@ tags:
   - { name: issues }
   - { name: sprints }
   - { name: admin }
+  - { name: reports }
+  - { name: filters }
 paths:
   /healthz:
     get:
@@ -193,6 +195,109 @@ paths:
       responses:
         "201": { description: Created (state planned), content: { application/json: { schema: { $ref: "#/components/schemas/Sprint" } } } }
         "422": { $ref: "#/components/responses/Invalid" }
+  /v1/projects/{key}/members:
+    parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
+    get:
+      tags: [projects]
+      operationId: listMembers
+      x-required-scope: work.read
+      summary: Who works on the project (a roster; it does not change who may see it)
+      responses:
+        "200": { description: Members, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Member" } } } } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/projects/{key}/members/{subject}:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectKey" }
+      - { name: subject, in: path, required: true, schema: { type: string, maxLength: 254 } }
+    put:
+      tags: [projects]
+      operationId: addMember
+      x-required-scope: work.admin
+      summary: Add a project member (repeating is fine; at most 200)
+      responses:
+        "204": { description: Member }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+    delete:
+      tags: [projects]
+      operationId: removeMember
+      x-required-scope: work.admin
+      responses:
+        "204": { description: Not a member }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/reports/workload:
+    get:
+      tags: [reports]
+      operationId: workload
+      x-required-scope: work.read
+      summary: Unresolved work per person (epics and archived projects left out)
+      parameters: [{ $ref: "#/components/parameters/ReportProject" }]
+      responses:
+        "200": { description: Workload, content: { application/json: { schema: { $ref: "#/components/schemas/Workload" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/reports/ageing:
+    get:
+      tags: [reports]
+      operationId: ageing
+      x-required-scope: work.read
+      summary: Unresolved P0 and P1 by time at that priority
+      parameters: [{ $ref: "#/components/parameters/ReportProject" }]
+      responses:
+        "200": { description: Ageing, content: { application/json: { schema: { $ref: "#/components/schemas/Ageing" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/reports/stale:
+    get:
+      tags: [reports]
+      operationId: staleWork
+      x-required-scope: work.read
+      summary: Issues in progress with no activity (ranking is not activity)
+      parameters:
+        - { $ref: "#/components/parameters/ReportProject" }
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 365, default: 7 } }
+      responses:
+        "200": { description: Stale work, content: { application/json: { schema: { $ref: "#/components/schemas/Stale" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/filters:
+    get:
+      tags: [filters]
+      operationId: listFilters
+      x-required-scope: work.read
+      summary: Your saved filters and the shared ones you may see
+      responses:
+        "200": { description: Filters, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/SavedFilter" } } } } } } }
+    post:
+      tags: [filters]
+      operationId: createFilter
+      x-required-scope: work.write
+      summary: Save a search (at most 50 each). Run it with GET /v1/issues and its project, query and sort.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NewFilter" } } } }
+      responses:
+        "201": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/SavedFilter" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/filters/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }]
+    get:
+      tags: [filters]
+      operationId: getFilter
+      x-required-scope: work.read
+      responses:
+        "200": { description: The filter, content: { application/json: { schema: { $ref: "#/components/schemas/SavedFilter" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [filters]
+      operationId: deleteFilter
+      x-required-scope: work.write
+      summary: Your own filter; with work.admin also a shared one
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /v1/sprints/{id}:
     parameters: [{ $ref: "#/components/parameters/SprintId" }]
     get:
@@ -556,6 +661,7 @@ components:
     ProjectKey: { name: key, in: path, required: true, schema: { type: string, pattern: "^[A-Z][A-Z0-9]{1,9}$" } }
     IssueKey: { name: key, in: path, required: true, schema: { $ref: "#/components/schemas/IssueKey" } }
     SprintId: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    ReportProject: { name: project, in: query, description: Only this project, schema: { type: string } }
     IfMatch: { name: If-Match, in: header, description: 'Issue version, for example "3". A stale version is 412.', schema: { type: string } }
     IdempotencyKey: { name: Idempotency-Key, in: header, description: 8 to 128 characters; scoped to the caller, schema: { type: string, minLength: 8, maxLength: 128 } }
     Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
@@ -751,6 +857,98 @@ components:
               category: { enum: [todo, active, done] }
               count: { type: integer, description: "Total in the column; issues is capped at 200" }
               issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
+    Member:
+      type: object
+      properties: { subject: { type: string }, added_by: { type: string }, added_at: { type: string, format: date-time } }
+    ReportIssue:
+      type: object
+      properties:
+        key: { type: string }
+        title: { type: string }
+        priority: { enum: [P0, P1, P2, P3] }
+        status: { type: string }
+        status_category: { enum: [todo, active, done] }
+        assignee: { type: [string, "null"] }
+    Workload:
+      type: object
+      properties:
+        truncated: { type: boolean, description: "More than 500 people" }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              person: { type: string, description: "Empty for unassigned work" }
+              open: { type: integer }
+              p0: { type: integer }
+              p1: { type: integer }
+              p2: { type: integer }
+              p3: { type: integer }
+              in_progress: { type: integer }
+              blocked: { type: integer }
+              overdue: { type: integer }
+              current: { type: array, maxItems: 5, items: { $ref: "#/components/schemas/ReportIssue" } }
+    Ageing:
+      type: object
+      properties:
+        truncated: { type: boolean, description: "items holds the first 200; bands count all" }
+        bands:
+          type: array
+          items:
+            type: object
+            properties:
+              priority: { enum: [P0, P1] }
+              under_2_days: { type: integer }
+              days_2_to_7: { type: integer }
+              days_7_to_28: { type: integer }
+              over_28_days: { type: integer }
+              past_target: { type: integer }
+        items:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/ReportIssue" }
+              - type: object
+                properties:
+                  created_at: { type: string, format: date-time }
+                  priority_since: { type: string, format: date-time }
+                  open_days: { type: integer }
+                  priority_days: { type: integer }
+                  past_target: { type: boolean }
+    Stale:
+      type: object
+      properties:
+        days: { type: integer }
+        truncated: { type: boolean }
+        items:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/ReportIssue" }
+              - type: object
+                properties: { last_activity: { type: string, format: date-time }, quiet_days: { type: integer } }
+    NewFilter:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 80 }
+        project: { type: string, description: "Empty for every project" }
+        query: { type: string, maxLength: 500, description: "The search language of GET /v1/issues" }
+        sort: { type: string, description: "A sort of GET /v1/issues; default priority" }
+        shared: { type: boolean }
+    SavedFilter:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        project: { type: string }
+        query: { type: string }
+        sort: { type: string }
+        shared: { type: boolean }
+        owner: { type: string }
+        mine: { type: boolean }
+        created_at: { type: string, format: date-time }
     NewToken:
       type: object
       additionalProperties: false

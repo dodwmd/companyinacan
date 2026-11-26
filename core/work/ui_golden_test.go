@@ -117,6 +117,7 @@ func renderAllUI(t *testing.T) map[string]string {
 		t.Fatalf("read-only: %d", ro403.Code)
 	}
 	out["error-read-only"] = normaliseUIPage(ro403.Body)
+	renderManagerUI(t, out)
 	return out
 }
 

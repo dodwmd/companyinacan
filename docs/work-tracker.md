@@ -171,6 +171,20 @@ curl -sS -X POST  $CAN_WORK_URL/v1/sprints/1/complete -H "Authorization: Bearer 
 # Issues that move get a new version, an activity entry and a work.issue.updated.v1 event (changes.sprint_id).
 ```
 
+## Members, manager reports and saved filters
+
+```sh
+curl -sS -X PUT $CAN_WORK_URL/v1/projects/ACME/members/bob@example.com -H "Authorization: Bearer $ADMIN"
+curl -sS "$CAN_WORK_URL/v1/reports/workload?project=ACME" -H "Authorization: Bearer $TOKEN"
+curl -sS $CAN_WORK_URL/v1/reports/ageing -H "Authorization: Bearer $TOKEN"
+curl -sS "$CAN_WORK_URL/v1/reports/stale?days=5" -H "Authorization: Bearer $TOKEN"
+curl -sS -X POST $CAN_WORK_URL/v1/filters -H "Authorization: Bearer $TOKEN" \
+  -d '{"name":"My urgent","query":"assignee:me priority:P0,P1 is:open"}'
+```
+
+Membership (`work.admin`) is a roster and does not change access. What the reports count and how
+saved filters are shared: [specs/065-work-manager](../specs/065-work-manager/spec.md).
+
 ## Workflows and SLA hints
 
 ```sh
