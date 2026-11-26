@@ -447,12 +447,38 @@ func (r *runner) facts() routing.Config {
 // every `can up`, whether or not company.yaml changed: the flags (--domain-live) and the version of
 // can change it, and without it the admission policy refuses every module route.
 func (r *runner) routingFacts(ctx context.Context) error {
-	m, err := r.facts().Manifest()
+	facts := r.facts()
+	if facts.NoEdgeLimitReason == routing.ReasonProxied {
+		unknown, err := r.edgeLimitsOffForUnknownReason(ctx)
+		if err != nil {
+			return err
+		}
+		if unknown {
+			facts.NoEdgeLimitReason = ""
+		}
+	}
+	m, err := facts.Manifest()
 	if err != nil {
 		return err
 	}
 	_, err = r.apply(ctx, m, true)
 	return err
+}
+
+// edgeLimitsOffForUnknownReason reports routing facts written by an older can with the limits off:
+// it may have had --no-edge-limits as well as dns.proxied, so the reason is not guessed.
+func (r *runner) edgeLimitsOffForUnknownReason(ctx context.Context) (bool, error) {
+	out, err := r.kube(ctx, nil, "-n", routing.Namespace, "get", "configmap", routing.ConfigMapName, "--ignore-not-found", "-o", "json")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return false, err
+	}
+	var cm struct {
+		Data map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &cm); err != nil {
+		return false, fmt.Errorf("ConfigMap %s/%s is not readable: %w", routing.Namespace, routing.ConfigMapName, err)
+	}
+	return cm.Data["edgeLimit"] == "off" && cm.Data["edgeLimitReason"] == "", nil
 }
 
 // hostDumpsDir makes the host directory behind the can-dumps volume belong to can-core's user.

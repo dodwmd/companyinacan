@@ -26,6 +26,8 @@ func TestApplyKeepsTheEdgeLimitChoice(t *testing.T) {
 		{"dns.proxied added", proxied, cm("a.example", "on", ""), false, []string{`edgeLimit: "off"`, "edgeLimitReason: proxied"}},
 		{"dns.proxied removed", applyCompany, cm("a.example", "off", "proxied"), false, []string{`edgeLimit: "on"`}},
 		{"off with no recorded reason stays", applyCompany, cm("a.example", "off", ""), false, nil},
+		{"off with no recorded reason is not put down to dns.proxied", proxied, cm("a.example", "off", ""), false, nil},
+		{"nor on a new domain", proxied, cm("old.example", "off", ""), false, []string{`edgeLimit: "off"`, `edgeLimitReason: ""`}},
 		{"off with no recorded reason stays on a new domain", applyCompany, cm("old.example", "off", ""), false, []string{`edgeLimit: "off"`}},
 	} {
 		f := &fileExec{facts: c.facts, site: site}

@@ -54,9 +54,10 @@ func syncRouting(cmd *cobra.Command, domain, kubeContext string, proxied, rememb
 	}
 	reason := have.Data["edgeLimitReason"]
 	off, why := routing.EdgeLimits(reason == routing.ReasonFlag || (!exists && remembered), proxied)
-	// Off for a reason nobody recorded (an older can): not switched on by guessing.
-	if !off && reason == "" && have.Data["edgeLimit"] == "off" {
-		off = true
+	// Off for a reason nobody recorded (an older can, which may have had the flag as well as
+	// dns.proxied): it stays off and unrecorded, so that removing dns.proxied does not switch it on.
+	if reason == "" && have.Data["edgeLimit"] == "off" {
+		off, why = true, ""
 	}
 	write := func(facts routing.Config, note string) (string, error) {
 		facts.NoEdgeLimit, facts.NoEdgeLimitReason = off, why
