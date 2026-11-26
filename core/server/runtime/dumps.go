@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/dumps"
 	"github.com/dodwmd/companyinacan/core/server/kube"
@@ -90,6 +91,18 @@ func backupModules(db *store.DB, modulesDir string) func(context.Context) ([]str
 	}
 }
 
+func (c Config) kubeHooks(api kube.API, db *store.DB) *dumps.KubeHooks {
+	return &dumps.KubeHooks{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL,
+		Manifest: func(ctx context.Context, id string) (*config.Module, error) {
+			m, err := db.GetModule(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			man := recordedManifest(c.ModulesDir, m)
+			return &man, nil
+		}}
+}
+
 // newDumper builds the dump runner; hooks can only run (as Jobs) with the Kubernetes installer.
 func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error) {
 	record := func(ctx context.Context, id string) (store.Module, bool) {
@@ -122,15 +135,18 @@ func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error)
 		if err != nil {
 			return nil, err
 		}
-		d.Hooks = &dumps.KubeHooks{API: api, ModulesDir: c.ModulesDir, PlatformURL: c.PlatformURL,
-			Manifest: func(ctx context.Context, id string) (*config.Module, error) {
-				m, err := db.GetModule(ctx, id)
-				if err != nil {
-					return nil, err
-				}
-				man := recordedManifest(c.ModulesDir, m)
-				return &man, nil
-			}}
+		d.Hooks = c.kubeHooks(api, db)
+		d.Secrets = func(ctx context.Context) (*backup.SecretsExport, []string, error) {
+			mods, err := db.ListModules(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			refs := make([]dumps.ModuleRef, 0, len(mods))
+			for _, m := range mods {
+				refs = append(refs, dumps.ModuleRef{ID: m.ID, Enabled: m.State == store.StateEnabled})
+			}
+			return dumps.ExportSecrets(ctx, api, refs)
+		}
 	}
 	return d, nil
 }

@@ -14,6 +14,7 @@ requires:
 hooks:
   image: curlimages/curl:8.11.1
   backup: ./hooks/backup.sh
+  restore: ./hooks/restore.sh
 resources:
   ram_mb: 20
   ram_limit_mb: 40

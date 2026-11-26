@@ -34,10 +34,12 @@ type Authenticator interface {
 
 // Server holds the module API's dependencies.
 type Server struct {
-	Auth     Authenticator
-	Registry *registry.Registry
-	Bus      *events.Bus
-	Log      *slog.Logger
+	// Restoring marks a can-core in restore mode: a disabled module may then download its dump.
+	Restoring bool
+	Auth      Authenticator
+	Registry  *registry.Registry
+	Bus       *events.Bus
+	Log       *slog.Logger
 	// Shared platform services (epic E11a, platform.go); nil answers 503 on their routes.
 	RBAC      *rbac.Service
 	Approvals *approvals.Engine
@@ -74,7 +76,8 @@ func (s *Server) routes() []route {
 		{"POST /v1/notifications", s.authed(s.sendNotification)},
 		{"POST /v1/identity/revoke", s.authed(s.revokeIdentity)},
 		{"PUT /v1/dumps/{module}/{name}", s.authedAnyState(s.putDump)},
-		{"GET /v1/dumps/{module}/{name}", s.authed(s.getDump)},
+		// In restore mode a disabled module is admitted too: its dump is restored as well.
+		{"GET /v1/dumps/{module}/{name}", s.authn(s.Restoring, s.getDump)},
 		{"POST /v1/tickets/peek", s.authed(s.peekTicket)},
 		{"POST /v1/tickets/redeem", s.authed(s.redeemTicket)},
 		{"POST /v1/tickets/revalidate", s.authed(s.revalidateSession)},
@@ -109,7 +112,8 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, store.Module)
 }
 
 // authedAnyState also admits a recorded module that is disabled or failed. Used only for the
-// dump upload, which the dump store accepts solely while that module's backup hook is running.
+// dump upload (accepted solely while that module's backup hook is running) and, while restoring,
+// for the dump download.
 func (s *Server) authedAnyState(h func(http.ResponseWriter, *http.Request, store.Module)) http.HandlerFunc {
 	return s.authn(true, h)
 }

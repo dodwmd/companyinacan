@@ -105,7 +105,7 @@ func TestBackupWarningsReachTheOperator(t *testing.T) {
 			t.Fatal(err)
 		}
 		all := strings.Join(res.Warnings, "\n")
-		for _, want := range []string{"RESTORE IS NOT FUNCTIONAL", `"people" keeps SQLite`, `"wiki" has a backup hook that cannot run`} {
+		for _, want := range []string{"RESTORE IS NOT PROVEN", `"people" keeps SQLite`, `"wiki" has a backup hook that cannot run`} {
 			if !strings.Contains(all, want) {
 				t.Errorf("run %d: missing %q in:\n%s", i+1, want, all)
 			}
@@ -135,7 +135,7 @@ func TestPlainReRunShowsBackupLimitsAndSkippedModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := strings.Join(res.Warnings, "\n")
-	for _, want := range []string{"RESTORE IS NOT FUNCTIONAL", `"crm" is disabled`, "DATABASE IS NOT BACKED UP", `"oldwiki" was NOT dumped`} {
+	for _, want := range []string{"RESTORE IS NOT PROVEN", `"crm" is disabled`, "DATABASE IS NOT BACKED UP", `"oldwiki" was NOT dumped`} {
 		if !strings.Contains(all, want) {
 			t.Errorf("missing %q in:\n%s", want, all)
 		}

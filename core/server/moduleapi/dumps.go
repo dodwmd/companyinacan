@@ -67,7 +67,7 @@ func (s *Server) getDump(w http.ResponseWriter, r *http.Request, m store.Module)
 	f, err := s.Dumps.Open(m.ID, r.PathValue("name"))
 	switch {
 	case errors.Is(err, dumps.ErrNotRestoring):
-		httpx.Problem(w, http.StatusConflict, "dumps can only be downloaded in restore mode, which does not exist yet")
+		httpx.Problem(w, http.StatusConflict, "dumps can only be downloaded while the server is being restored")
 		return
 	case errors.Is(err, dumps.ErrBadName):
 		httpx.Problem(w, http.StatusBadRequest, "not an acceptable dump name")

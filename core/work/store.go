@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"sort"
 	"strconv"
@@ -20,6 +21,10 @@ import (
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+// Migrations is the embedded schema history ("migrations/NNN_name.sql"), for the backup and
+// restore subcommands (core/modbackup).
+func Migrations() fs.FS { return migrationFS }
 
 // dbq is what both *sql.DB and *sql.Tx offer; helpers take it so they work in either.
 type dbq interface {

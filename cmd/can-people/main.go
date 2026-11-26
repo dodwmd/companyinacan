@@ -12,7 +12,7 @@ import (
 
 func main() {
 	if modbackup.Handles(os.Args[1:]) { // `backup` and `restore` (specs/043-module-backup-hooks)
-		os.Exit(modbackup.Main("can-people", os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
+		os.Exit(modbackup.Main("can-people", people.Migrations(), os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
 	}
 	os.Exit(people.Main(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
 }

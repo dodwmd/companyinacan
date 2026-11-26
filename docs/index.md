@@ -23,7 +23,7 @@ and the code is the truth.
 | [dev-cluster.md](dev-cluster.md) | `make dev`: the local k3d cluster |
 | [node-isolation.md](node-isolation.md) | Keeping pods away from the server: the host firewall rules, checking them, what is unverified |
 | [make-up.md](make-up.md), [providers.md](providers.md) | `make up` on a server; the ssh, Hetzner and DigitalOcean providers; Cloudflare DNS |
-| [backup-restore.md](backup-restore.md) | Backups, the recovery kit, `can restore` (not functional yet) |
+| [backup-restore.md](backup-restore.md) | Backups, the recovery kit, `can restore` |
 | [observability.md](observability.md) | Metrics, `/readyz`, request ids, log redaction, alert rules, `can diagnose` support bundles, measured cost |
 | [releasing.md](releasing.md), [maintainers.md](maintainers.md) | Cutting a release, required checks, branch protection, advisories |
 | [module-routing.md](module-routing.md) | Which module pages are reachable from the internet and how to switch them on |

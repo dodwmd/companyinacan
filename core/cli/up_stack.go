@@ -61,7 +61,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.acmeEmail, "acme-email", "", "registration address for Let's Encrypt certificates (optional)")
 	fl.StringVar(&f.backupEndpoint, "backup-endpoint", "", "S3 endpoint URL; with --backup-bucket and --backup-credentials-file turns the backup timer and recovery kit on")
 	fl.StringVar(&f.backupBucket, "backup-bucket", "", "backup bucket name")
-	fl.StringVar(&f.backupRegion, "backup-region", "auto", "backup bucket region")
+	fl.StringVar(&f.backupRegion, "backup-region", "", "backup bucket region (default: what the server already uses, otherwise auto)")
 	fl.StringVar(&f.backupCreds, "backup-credentials-file", "", "KEY=VALUE file with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
 	fl.StringVar(&f.kitOut, "kit-out", "", "write the recovery kit encrypted to this new file (outside any git tree) instead of showing it")
 	fl.StringVar(&f.kitPassFile, "kit-passphrase-file", "", "passphrase file for --kit-out (default: prompt)")
