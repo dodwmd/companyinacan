@@ -52,12 +52,14 @@ jobs:
           for m in board equity files finance forms jobs people provisioning work; do
             name=can-$m
             if [ "$m" = provisioning ]; then name=can-provision; fi
+            # the tag the chart asks for (entity runs the board image: the same tag)
+            tag="$(awk '/^  tag:/ {print $2; exit}' "modules/$m/chart/values.yaml")"
             docker build -f "deploy/$m/Dockerfile" \
               --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
               --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
               --build-arg VERSION=ci \
-              -t "ghcr.io/dodwmd/$name:0.1.0" .
-            images="$images ghcr.io/dodwmd/$name:0.1.0"
+              -t "ghcr.io/dodwmd/$name:$tag" .
+            images="$images ghcr.io/dodwmd/$name:$tag"
           done
           # shellcheck disable=SC2086
           k3d image import $images -c companyinacan-dev
