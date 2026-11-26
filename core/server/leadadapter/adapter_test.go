@@ -341,6 +341,17 @@ func TestRecordSharedByTwoLeadsGoesWithTheLast(t *testing.T) {
 	}
 }
 
+func TestGreetingNameCarriesNoMessage(t *testing.T) {
+	for in, want := range map[string]string{
+		"Casey Customer": "Casey Customer", "": "casey", "Win at http://spam.example": "casey",
+		"see www.spam.example": "casey", strings.Repeat("a", 61): "casey",
+	} {
+		if got := greetingName(in, "casey@customer.example"); got != want {
+			t.Errorf("%q: %q", in, got)
+		}
+	}
+}
+
 func TestMissingAPIUserIsVisible(t *testing.T) {
 	r := newRig(t)
 	r.lead(leadA, true)

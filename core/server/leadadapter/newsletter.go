@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
@@ -163,6 +164,20 @@ func (l *listmonk) find(ctx context.Context, email string) (*subscriber, error) 
 	return nil, nil
 }
 
+const maxName = 60
+
+// greetingName is the name the confirmation mail greets. Anybody can type anybody's address into a
+// form, so a "name" that could carry a message or a link to a stranger is replaced by the local part
+// of the address.
+func greetingName(name, email string) string {
+	name = strings.TrimSpace(name)
+	lower := strings.ToLower(name)
+	if name == "" || utf8.RuneCountInString(name) > maxName || strings.ContainsAny(name, "/\\@:<>\r\n") || strings.Contains(lower, "www.") {
+		name, _, _ = strings.Cut(email, "@")
+	}
+	return name
+}
+
 // subscribe is safe to repeat: the record is made at most once, and the public subscription changes
 // nothing for somebody already confirmed.
 func (a *Adapter) subscribe(ctx context.Context, serviceURL, listName string, lead Lead, link *store.LeadLink) error {
@@ -175,10 +190,7 @@ func (a *Adapter) subscribe(ctx context.Context, serviceURL, listName string, le
 		return err
 	}
 	email := strings.ToLower(lead.Email)
-	name := strings.TrimSpace(lead.Name)
-	if name == "" {
-		name, _, _ = strings.Cut(email, "@")
-	}
+	name := greetingName(lead.Name, email)
 	if link.Ref == "" {
 		// A record of our own, on no list: its number is known at once and it carries the lead's id.
 		var s subscriber
@@ -224,9 +236,6 @@ func (a *Adapter) subscribe(ctx context.Context, serviceURL, listName string, le
 // unsubscribe deletes the subscriber record a lead made. kept reports a record that stays: one that
 // existed before the form, or that another lead that still exists led to as well.
 func (a *Adapter) unsubscribe(ctx context.Context, serviceURL string, link store.LeadLink) (kept bool, err error) {
-	if link.Ref == "" {
-		return false, nil // nothing was made
-	}
 	id, err := strconv.ParseInt(link.Ref, 10, 64)
 	if err != nil {
 		return false, errors.New("a lead link holds no subscriber number")

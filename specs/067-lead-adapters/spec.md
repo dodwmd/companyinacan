@@ -67,7 +67,8 @@ conversations, or, for senders who ticked a consent box, unconfirmed newsletter 
 - The consent record is the fact and the lead's date; the wording is not stored with it. Keep a record of what
   you showed. The double opt-in confirmation is Listmonk's.
 - Anybody can type anybody's address: the confirmation mail then goes to a stranger (rate limited by forms), and
-  a support conversation can carry somebody else's address. Check before replying.
+  a support conversation can carry somebody else's address. Check before replying. The name in the confirmation
+  mail is replaced when it is long or looks like a link.
 - Leads that arrived while the module was off, or before the form was named, are not handed on later.
 - `forms` publishes `lead.created.v1` without an outbox of its own: if can-core is unreachable for its retries,
   that lead is stored and notified but not handed on.

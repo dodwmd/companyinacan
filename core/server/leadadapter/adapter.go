@@ -181,8 +181,8 @@ func (a *Adapter) erased(ctx context.Context, del store.Delivery, url string, d 
 	}
 	switch del.ModuleID {
 	case Newsletter:
-		if !known {
-			return nil
+		if !known || link.Ref == "" {
+			break // nothing was made that could be found
 		}
 		kept, err := a.unsubscribe(ctx, url, link)
 		if err != nil {
