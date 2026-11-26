@@ -55,8 +55,8 @@ uploaded, unlike the in-house sets).
 
 ## Restore contract (specs/042-restore, epic E08c)
 
-`KubeHooks.RunBuiltinRestore(module)` is the restore hook: the module at 0 replicas, its database provisioned, can-core
-in restore mode. The Job is `can-core module-data restore` (init container for a database module) followed by
+`KubeHooks.RunRestore(module)`, which `can restore` calls, is the restore hook: the module at 0 replicas, its database
+provisioned, can-core in restore mode. The Job is `can-core module-data restore` (init container for a database module) followed by
 `pg_restore | psql` in the Postgres image. It drops the schema `public` with its content inside the same transaction
 that loads the dump, so it works on a fresh database and on one the application already wrote to. A raw volume copy
 restored before it is replaced by the archive, which belongs to the database dump.
@@ -78,7 +78,7 @@ restored before it is replaced by the archive, which belongs to the database dum
 - **SC-001** Unit: files, SQLite and database sets survive upload, download and restore; a damaged part or an
   unreadable file changes nothing and keeps nothing.
 - **SC-002** On k3d in CI (`wrapped-backup`): data made in analytics, support and newsletter is dumped, removed, restored
-  into a fresh database and volume, and read back.
+  onto nothing (module namespaces and database server deleted) by can-core's restore operations, and read back.
 
 ## Not verified / out of scope
 

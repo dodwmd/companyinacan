@@ -4,7 +4,7 @@ package integration
 
 // Epic E08e (specs/046-wrapped-backups): analytics, support and newsletter installed through
 // can-core on k3d from their pinned images, data made in each through the application, one dump
-// run, and the dump restored into fresh databases and checked. Runs only with
+// run; then the module namespaces and the database server are deleted and restored from the dumps. Runs only with
 // CAN_IT_WRAPPED_BACKUP=1 (.github/workflows/wrapped-backup.yml); it installs three modules, so
 // use a throw-away cluster.
 
@@ -12,12 +12,12 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,22 +101,49 @@ func tarEntry(t *testing.T, file, name string) string {
 	}
 }
 
-// restorePostgres loads a pg_dump archive into a database created empty for it, as the module's
-// own role (what the restore does), and returns a query function for it.
-func restorePostgres(t *testing.T, role, file string) func(string) string {
+// coreRestore runs one of `can restore`'s operations in the can-core pod (specs/042-restore).
+func coreRestore(t *testing.T, args ...string) string {
 	t.Helper()
-	db := fmt.Sprintf("e08e_fresh_%s_%d", role, time.Now().UnixNano())
-	moduleSQL(t, "postgres", "create database "+db+" owner "+role)
-	t.Cleanup(func() { moduleSQL(t, "postgres", "drop database "+db+" with (force)") })
-	raw, err := os.ReadFile(file) //nolint:gosec // test file
+	out, err := kubectlStdin("{}", append([]string{"-n", "can-system", "exec", "-i", "deploy/can-core", "--", "/can-core", "restore"}, args...)...)
 	if err != nil {
-		t.Fatal(err)
+		logs, _ := kubectl("-n", "can-system", "logs", "deploy/can-core", "--tail=80")
+		jobs, _ := kubectl("get", "jobs,pods", "-A", "-o", "wide")
+		t.Fatalf("restore %v: %v\n%s\ncan-core log:\n%s\n%s", args, err, out, logs, jobs)
 	}
-	if out, err := kubectlStdin(string(raw), "-n", "can-data", "exec", "-i", "deploy/postgres", "--",
-		"pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "--no-privileges", "--role="+role, "-U", "postgres", "-d", db); err != nil {
-		t.Fatalf("pg_restore into %s: %v\n%s", db, err, out)
+	t.Logf("restore %v: %s", args, out)
+	return out
+}
+
+func setRestoreMode(t *testing.T, env ...string) {
+	t.Helper()
+	mustKubectl(t, append([]string{"-n", "can-system", "set", "env", "deploy/can-core"}, env...)...)
+	mustKubectl(t, "-n", "can-system", "rollout", "status", "deploy/can-core", "--timeout=240s")
+}
+
+// restoreOntoNothing deletes every module namespace and the shared Postgres with its volume, and
+// restores from the dumps that are on the node: new volumes, a new database server.
+func restoreOntoNothing(t *testing.T) {
+	t.Helper()
+	// Restore mode first: it imports the state dump and stops the reconciler and the dump runs.
+	setRestoreMode(t, "CAN_RESTORE=e08e-ci", "CAN_RESTORE_OVERWRITE=e08e-ci")
+	if got := coreRestore(t, "status"); !strings.HasPrefix(got, "restoring") {
+		t.Fatalf("not in restore mode: %s", got)
 	}
-	return func(q string) string { return moduleSQL(t, db, q) }
+	mustKubectl(t, "delete", "namespace", "mod-analytics", "mod-support", "mod-newsletter", "--wait=true", "--timeout=300s")
+	mustKubectl(t, "-n", "can-data", "delete", "deploy/postgres", "service/postgres", "secret/can-postgres", "--wait=true", "--timeout=180s")
+	mustKubectl(t, "-n", "can-data", "delete", "pvc/postgres-data", "--wait=true", "--timeout=180s")
+
+	coreRestore(t, "apply")
+	start := time.Now()
+	out := coreRestore(t, "hooks")
+	t.Logf("MEASURE restore hooks of analytics, support and newsletter: %s", time.Since(start).Round(time.Second))
+	for _, id := range []string{"analytics", "support", "newsletter"} {
+		if !strings.Contains(out, `"`+id+`"`) {
+			t.Fatalf("%s was not restored: %s", id, out)
+		}
+	}
+	coreRestore(t, "complete")
+	setRestoreMode(t, "CAN_RESTORE-", "CAN_RESTORE_OVERWRITE-")
 }
 
 func TestWrappedModuleBackupOnK3d(t *testing.T) {
@@ -181,7 +208,6 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 	checkParts(t, set("support"), "support", "database.pgdump", "files.tar.gz")
 	checkParts(t, set("newsletter"), "newsletter", "database.pgdump", "files.tar.gz")
 
-	// --- the dumps load into fresh databases and hold the data ---------------------------------
 	for id := range wrappedVolumes {
 		if got := tarEntry(t, set(id, "files.tar.gz"), markerPath); got != fileMarker {
 			t.Errorf("%s: archived file holds %q", id, got)
@@ -192,38 +218,55 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 	if got := tarEntry(t, set("support", "files.tar.gz"), "config"); !strings.Contains(got, "APP_KEY") {
 		t.Error("support: the archived volume lacks FreeScout's application key")
 	}
-	q := restorePostgres(t, "mod_support", set("support", "database.pgdump"))
-	if got := q("select email from mailboxes where name = 'CI mailbox'"); got != "help@"+wrappedDomain {
-		t.Errorf("support: the mailbox is not in the restored database: %q", got)
+
+	// --- everything gone, then restored from the dumps -----------------------------------------
+	appKey := mustKubectl(t, "-n", "mod-support", "exec", "deploy/support", "-c", "app", "--", "grep", "^APP_KEY", "/data/config")
+	restoreOntoNothing(t)
+	for _, id := range []string{"support", "analytics", "newsletter"} {
+		eventually(t, 15*time.Minute, id+" to be back", func() (bool, string) {
+			o, err := kubectl("-n", "mod-"+id, "rollout", "status", "deploy/"+id, "--timeout=5s")
+			return err == nil, o
+		})
 	}
-	q = restorePostgres(t, "mod_newsletter", set("newsletter", "database.pgdump"))
-	if got := q("select count(*) from lists where name = 'ci-list'"); got != "1" {
-		t.Errorf("newsletter: the list is not in the restored database: %q", got)
+	for id, dir := range wrappedVolumes {
+		if got := mustKubectl(t, "-n", "mod-"+id, "exec", "deploy/"+id, "-c", "app", "--", "cat", dir+"/"+markerPath); got != fileMarker {
+			t.Errorf("%s: the restored file holds %q", id, got)
+		}
 	}
-	gz, err := os.Open(set("analytics", "database.sqlite3.gz"))
-	if err != nil {
-		t.Fatal(err)
+	if got := mustKubectl(t, "-n", "mod-support", "exec", "deploy/support", "-c", "app", "--", "grep", "^APP_KEY", "/data/config"); got != appKey {
+		t.Error("support: the application key changed")
 	}
-	defer func() { _ = gz.Close() }()
-	zr, err := gzip.NewReader(gz)
-	if err != nil {
-		t.Fatal(err)
+	if got := moduleSQL(t, "mod_support", "select email from mailboxes where name = 'CI mailbox'"); got != "help@"+wrappedDomain {
+		t.Errorf("support: the mailbox was not restored: %q", got)
 	}
-	raw, err := io.ReadAll(zr)
-	if err != nil {
-		t.Fatal(err)
+	if got := moduleSQL(t, "mod_newsletter", "select count(*) from lists where name = 'ci-list'"); got != "1" {
+		t.Errorf("newsletter: the list was not restored: %q", got)
 	}
-	fresh := filepath.Join(work, "analytics.db")
-	if err := os.WriteFile(fresh, raw, 0o600); err != nil {
-		t.Fatal(err)
+	eventually(t, 90*time.Second, "the restored page view", func() (bool, string) {
+		o, err := kubectl("-n", "mod-analytics", "exec", "deploy/analytics", "-c", "app", "--",
+			"goatcounter", "db", "query", "select path from paths where path = '/ci-page'", "-db", "sqlite+/data/goatcounter.sqlite3")
+		return err == nil && strings.Contains(o, "/ci-page"), o
+	})
+	// The administrators of the restored apps are the ones from before: sign in again.
+	signInSupport(t)
+	// And the restored server can be backed up again.
+	requestDump(t)
+}
+
+// signInSupport signs in to FreeScout with the password in the restored Secret.
+func signInSupport(t *testing.T) {
+	t.Helper()
+	host := "support." + wrappedDomain
+	pw := adminPassword(t, "support", "CAN_SUPPORT_ADMIN_PASSWORD")
+	throughTraefik(t, host, "/login", `name="password"`)
+	b := newBrowser(portForward(t, "mod-support", "support", 8080), host)
+	p := b.do(t, "GET", "/login", "", "", nil)
+	m := csrfRE.FindStringSubmatch(p.body)
+	if p.status != 200 || m == nil {
+		t.Fatalf("login page: %d", p.status)
 	}
-	db, err := sql.Open("sqlite", "file:"+fresh+"?mode=ro&immutable=1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	var path string
-	if err := db.QueryRow(`select path from paths where path = '/ci-page'`).Scan(&path); err != nil { //nolint:noctx // test helper
-		t.Errorf("analytics: the page view is not in the restored database: %v", err)
+	p = b.form(t, "/login", url.Values{"_token": {m[1]}, "email": {"admin@" + wrappedDomain}, "password": {pw}})
+	if p.status != 302 || strings.HasSuffix(p.location, "/login") {
+		t.Errorf("signing in after the restore: %d to %q", p.status, p.location)
 	}
 }

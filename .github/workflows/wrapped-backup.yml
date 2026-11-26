@@ -2,8 +2,8 @@ name: wrapped-backup
 
 # Epic E08e (specs/046-wrapped-backups). Not a required check, and a failure fails the job.
 # analytics, support and newsletter installed through can-core on a throw-away k3d cluster from
-# their pinned upstream images, data made in each, dumped by can-core's hook Jobs, and the dumps
-# restored into fresh databases and checked.
+# their pinned upstream images, data made in each, dumped by can-core's hook Jobs; then their namespaces
+# and the database server are deleted and restored by `can-core restore` (specs/042-restore) and checked.
 on:
   workflow_dispatch:
   pull_request:
@@ -17,6 +17,7 @@ on:
       - "core/server/runtime/**"
       - "core/server/installer/**"
       - "core/server/restoreops/**"
+      - "core/server/dbprov/**"
       - "deploy/**"
       - "test/integration/wrapped_backup_k3d_test.go"
       - ".github/workflows/wrapped-backup.yml"
@@ -55,7 +56,7 @@ jobs:
         run: |
           kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
           kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
-      - name: Make data, dump, restore into fresh databases
+      - name: Make data, dump, delete, restore
         env:
           CAN_IT_WRAPPED_BACKUP: "1"
         run: go test -tags integration -count=1 -v -timeout 30m -run '^TestWrappedModuleBackupOnK3d$' ./test/integration/
