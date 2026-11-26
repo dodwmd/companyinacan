@@ -170,8 +170,8 @@ func TestInhouseModuleChartsInstall(t *testing.T) {
 				}
 			}
 			routes := 0
-			for k := range objs {
-				if strings.HasPrefix(k, "IngressRoute/") {
+			for k, o := range objs {
+				if strings.HasPrefix(k, "IngressRoute/") && dig(o, "metadata", "labels", "can.dev/route") == nil {
 					routes++
 				}
 			}

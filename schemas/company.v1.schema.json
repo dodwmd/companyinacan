@@ -43,7 +43,18 @@
         "additionalProperties": false,
         "properties": {
           "enabled": { "type": "boolean" },
-          "settings": { "type": "object" }
+          "settings": { "type": "object" },
+          "expose": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "What of the module is reachable through the ingress (docs/module-routing.md).",
+            "properties": {
+              "ui": { "type": "boolean", "description": "Route the web UI on https://<module id>.<domain>. Default false." },
+              "api": { "type": "boolean", "description": "Route the module API (/v1) on the same host. Default false." },
+              "public": { "type": "boolean", "description": "Route the module's anonymous surface (careers pages, /_forms). Default true." },
+              "token_login": { "type": "boolean", "description": "Keep the paste-a-token sign-in on a routed web UI. Default false." }
+            }
+          }
         }
       }
     },

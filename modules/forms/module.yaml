@@ -13,6 +13,8 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
+  # The public form post, https://<site host>/_forms with the prefix stripped (specs/040-module-routing).
+  site_route: { path: /_forms, service: forms, port: 8080 }
 requires:
   database: sqlite
   capabilities: [email.send]

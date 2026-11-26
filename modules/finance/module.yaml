@@ -34,6 +34,16 @@ runtime:
   # The web UI (ui.enabled) accepts can-core launch tickets (specs/036-module-ui-sso). No chart
   # routes it: the operator gives its address with CAN_MODULE_UI_URLS.
   web_login: {}
+  # Routed on finance.<domain> only when company.yaml sets modules.finance.expose.ui (specs/040-module-routing).
+  # An allowlist of the web UI's own paths (/v1 is not one); test/contract checks it covers every UI route.
+  public_ui:
+    service: finance
+    port: 8080
+    exact: [/, /manifest.webmanifest]
+    prefixes: [/approvals, /bank, /contracts, /expenses, /exports, /invoices, /ledger, /login, /logout, /parties, /purchase-orders, /recurring, /reports, /settings, /static, /timesheets]
+    config:
+      trust_proxy: true
+      ui: { enabled: true, force_secure: true }
 requires:
   database: sqlite
   sso: none

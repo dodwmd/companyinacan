@@ -41,6 +41,23 @@ type Spec struct {
 	// requests, see store.RequestRotation). CAN_WEBHOOK_SECRET is rotated by the reconciler itself
 	// through HMACSecret; the installer only validates the name.
 	Rotate []string
+	// Expose is company.yaml's modules.<id>.expose (specs/040-module-routing).
+	Expose config.Expose
+	// Values are chart value overrides the installer derives itself; the reconciler leaves it empty.
+	Values map[string]any
+}
+
+// Routing is what a RouteAware installer would route for a Spec.
+type Routing struct {
+	// Fingerprint changes whenever the routes would: it is part of the recorded settings hash.
+	Fingerprint string
+	// UIHost is the host of the module's web UI when it is routed.
+	UIHost string
+}
+
+// RouteAware is implemented by installers that route modules.
+type RouteAware interface {
+	Routing(ctx context.Context, s Spec) (Routing, error)
 }
 
 // ModuleInstaller applies and removes module workloads. Implementations must be idempotent.
@@ -165,10 +182,21 @@ func LoadDesiredBytes(name string, data []byte, modulesDir string) (Desired, []p
 	return d, ps // ps may carry warnings
 }
 
-func settingsHash(m *config.Module, settings map[string]any) string {
+func settingsHash(m *config.Module, settings map[string]any, routes string) string {
 	b, _ := json.Marshal(settings) // map keys sorted
+	if routes != "" {
+		b = append(append(b, 0), routes...)
+	}
 	h := sha256.Sum256(append([]byte(m.Version+"\x00"), b...))
 	return hex.EncodeToString(h[:])
+}
+
+func (r *Reconciler) routing(ctx context.Context, d Desired, id string) (Routing, error) {
+	ra, ok := r.Installer.(RouteAware)
+	if !ok {
+		return Routing{}, nil
+	}
+	return ra.Routing(ctx, Spec{ID: id, Manifest: d.Manifests[id], Domain: d.Company.Domain, Expose: d.Company.Modules[id].Exposure()})
 }
 
 func newSecret() string {
@@ -220,7 +248,11 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 	for _, id := range installOrder(want) {
 		man := want[id]
 		rec, ok := have[id]
-		hash := settingsHash(man, d.Company.Modules[id].Settings)
+		rt, err := r.routing(ctx, d, id)
+		if err != nil {
+			return nil, fmt.Errorf("routing of %s: %w", id, err)
+		}
+		hash := settingsHash(man, d.Company.Modules[id].Settings, rt.Fingerprint)
 		switch {
 		case !ok:
 			enables = append(enables, Action{Install, id, "not installed"})
@@ -351,11 +383,16 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		}
 	}
 	settings := d.Company.Modules[a.Module].Settings
+	rt, err := r.routing(ctx, d, a.Module)
+	if err != nil {
+		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
+		return err
+	}
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
-		State: store.StateEnabled, SettingsHash: settingsHash(man, settings), HMACSecret: secret, Manifest: *man,
+		State: store.StateEnabled, SettingsHash: settingsHash(man, settings, rt.Fingerprint), HMACSecret: secret, Manifest: *man,
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Rotate: rotate})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.
@@ -366,6 +403,8 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	}
 	if ierr != nil {
 		rec.State, rec.LastError = store.StateFailed, ierr.Error()
+	} else {
+		rec.Manifest.Runtime.RoutedUIHost = rt.UIHost
 	}
 	if err := r.reg.Register(ctx, rec); err != nil {
 		return err
