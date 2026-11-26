@@ -1,5 +1,5 @@
 {
-  "comment": "Footprint regression budgets in MiB (docs/measurements/footprint.md). Memory is the anonymous resident memory (RssAnon) of each compose container's main process, idle and after the e2e suite run with E2E_RESTART=0 on the same processes; binaries are linux/amd64 with -trimpath -ldflags '-s -w'. They are guard rails with headroom over the measured values, not targets.",
+  "comment": "Footprint regression budgets in MiB (docs/measurements/footprint.md). Memory is the anonymous resident memory (RssAnon) of each compose container's main process, idle and after the e2e suite run with E2E_RESTART=0 on the same processes; binaries are linux/amd64 with -trimpath -ldflags '-s -w'. They are guard rails with headroom over the measured values, not targets. Unbudgeted services are test fixtures: equity-core is a second equity of the e2e overlay (equity is the budgeted one).",
   "services": {
     "core":    {"idle_anon_mib": 20, "loaded_anon_mib": 30, "peak_rss_mib": 64},
     "site":    {"idle_anon_mib": 4,  "loaded_anon_mib": 4,  "peak_rss_mib": 20},
@@ -11,7 +11,7 @@
     "equity":  {"idle_anon_mib": 7,  "loaded_anon_mib": 9,  "peak_rss_mib": 28},
     "files":   {"idle_anon_mib": 7,  "loaded_anon_mib": 12, "peak_rss_mib": 36}
   },
-  "unbudgeted": ["edge", "introstub", "smtpsink"],
+  "unbudgeted": ["edge", "equity-core", "introstub", "smtpsink"],
   "idle_total_anon_mib": 62,
   "loaded_total_anon_mib": 90,
   "binary_mib": {
