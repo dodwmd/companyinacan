@@ -2,11 +2,13 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/installer"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
@@ -54,6 +56,20 @@ func TestRelayFingerprintFollowsTheMountedSecret(t *testing.T) {
 	write("password", "second")
 	if got := fp(); got == "" || got == first {
 		t.Fatalf("a new password is not seen: %q", got)
+	}
+	// Unreadable (here: a directory in a key's place) is not "no relay": neither the reconciler nor the
+	// installer may take it for a removed Secret and empty can-smtp.
+	if err := os.Remove(filepath.Join(dir, "password")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "password"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := ra.RelayFingerprint(context.Background(), spec); !errors.Is(err, email.ErrSecretUnreadable) {
+		t.Fatalf("fingerprint of an unreadable Secret: %q %v", v, err)
+	}
+	if r, err := c.appRelay(spec); r != nil || !errors.Is(err, email.ErrSecretUnreadable) {
+		t.Fatalf("relay of an unreadable Secret: %v %v", r != nil, err)
 	}
 	spec.Email = nil
 	if got := fp(); got != "" {

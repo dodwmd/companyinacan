@@ -68,6 +68,10 @@ func (c Config) appRelay(spec reconcile.Spec) (*installer.SMTPRelay, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Unreadable is not "no relay": answering so would empty the module's can-smtp.
+	if errors.Is(p.RelayErr, email.ErrSecretUnreadable) {
+		return nil, p.RelayErr
+	}
 	if p.RelayErr != nil {
 		return nil, nil
 	}
