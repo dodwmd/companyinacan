@@ -8,9 +8,23 @@ import (
 	"time"
 )
 
+// Key prefixes of the per-account sign-in counters (auth's guard); the lower-case username follows.
+const (
+	LoginAccountKey = "login:"
+	LoginCodeKey    = "login-code:"
+)
+
+// ReleaseFailure takes back one attempt that was counted before it was checked, lifting the lock
+// when what remains is below max.
+func (db *DB) ReleaseFailure(ctx context.Context, key string, max int) error {
+	_, err := db.ExecContext(ctx, `UPDATE login_attempts SET failures=failures-1,
+		locked_until=CASE WHEN failures-1<? THEN 0 ELSE locked_until END WHERE key=? AND failures>0`, max, key)
+	return err
+}
+
 // RegisterFailure atomically records one failed attempt for key and returns the new state and
 // whether this failure established a lock. Failures older than window, or an expired lock, start a
-// fresh count. The read-modify-write runs in one transaction.
+// fresh count, but a lock that is still running is never dropped. The read-modify-write runs in one transaction.
 func (db *DB) RegisterFailure(ctx context.Context, key string, max int, window, lockFor time.Duration, now time.Time) (LoginAttempt, bool, error) {
 	var a LoginAttempt
 	locked := false
@@ -23,7 +37,7 @@ func (db *DB) RegisterFailure(ctx context.Context, key string, max int, window, 
 		}
 		a.FirstFailed, a.LockedUntil = time.Unix(f, 0), time.Unix(l, 0)
 		lockExpired := l > 0 && !now.Before(a.LockedUntil)
-		if a.Failures == 0 || lockExpired || now.Sub(a.FirstFailed) > window {
+		if a.Failures == 0 || lockExpired || (now.Sub(a.FirstFailed) > window && !now.Before(a.LockedUntil)) {
 			a = LoginAttempt{Key: key, FirstFailed: now}
 		}
 		a.Failures++
@@ -49,14 +63,16 @@ func (db *DB) PruneLoginAttempts(ctx context.Context, now time.Time, window time
 }
 
 // ClearLoginAttempts removes throttling state: all of it, or only keys for one username
-// (`user:<name>|<ip>`) when username is not empty.
+// (`user:<name>|<ip>` and the account counters) when username is not empty.
 func (db *DB) ClearLoginAttempts(ctx context.Context, username string) (int64, error) {
 	var res sql.Result
 	var err error
 	if username == "" {
 		res, err = db.ExecContext(ctx, `DELETE FROM login_attempts`)
 	} else {
-		res, err = db.ExecContext(ctx, `DELETE FROM login_attempts WHERE key LIKE ? ESCAPE '\'`, escapeLike("user:"+strings.ToLower(username)+"|")+"%")
+		name := strings.ToLower(username)
+		res, err = db.ExecContext(ctx, `DELETE FROM login_attempts WHERE key LIKE ? ESCAPE '\' OR key IN (?, ?)`,
+			escapeLike("user:"+name+"|")+"%", LoginAccountKey+name, LoginCodeKey+name)
 	}
 	if err != nil {
 		return 0, err
@@ -79,6 +95,12 @@ func (db *DB) SetAdminCredentials(ctx context.Context, id int64, hash, totpSecre
 			if _, err := tx.ExecContext(ctx, `UPDATE admin_users SET totp_secret=?, totp_last_step=0 WHERE id=?`, totpSecret, id); err != nil {
 				return err
 			}
+		}
+		// A new password or seed ends a lock that guessing against the old one caused.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE key IN
+			(SELECT ?||lower(username) FROM admin_users WHERE id=? UNION SELECT ?||lower(username) FROM admin_users WHERE id=?)`,
+			LoginAccountKey, id, LoginCodeKey, id); err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=?`, id); err != nil {
 			return err

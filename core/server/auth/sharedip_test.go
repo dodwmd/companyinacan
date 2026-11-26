@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -72,8 +73,13 @@ func TestJunkLoginsNeverTouchArgon2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Within the account's free attempts, and for every name that is only tried a few times.
 	for i := 0; i < 50; i++ {
-		_, err := e.svc.Login(ctx, LoginRequest{Username: "root", Password: e.pw, Code: "000000", IP: "10.42.0.7"})
+		name := "root"
+		if i >= accountFreeAttempts {
+			name = fmt.Sprintf("sprayed%d", i)
+		}
+		_, err := e.svc.Login(ctx, LoginRequest{Username: name, Password: e.pw, Code: "000000", IP: "10.42.0.7"})
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("a login with a wrong TOTP code reached argon2 or was refused: %v", err)
 		}

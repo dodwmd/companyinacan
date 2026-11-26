@@ -33,7 +33,7 @@ paths:
       summary: Log in with password and TOTP code
       description: |
         Every failure (unknown user, wrong password, wrong or already-used code) returns the same 401.
-        Input limits: body 4 KiB, username 64 characters, password 1024. With CAN_TRUST_PROXY (real client addresses) each address is limited to 10 attempts a minute, 5 failures lock a (username, address) pair and 20 lock an address (429 with Retry-After); without it failures only delay logins and nothing is refused. The TOTP code is checked before argon2, which runs under a concurrency cap (503 when busy).
+        Input limits: body 4 KiB, username 64 characters, password 1024. With CAN_TRUST_PROXY (real client addresses) each address is limited to 10 attempts a minute, 5 failures lock a (username, address) pair and 20 lock an address (429 with Retry-After); without it failures by address only delay logins. In both modes, after 10 attempts on a username in 15 minutes the password is checked first, and 5 wrong codes with the right password make the account take no code for 15 minutes (same 401). Otherwise the TOTP code is checked before argon2, which runs under a concurrency cap (503 when busy).
       security: []
       requestBody:
         required: true

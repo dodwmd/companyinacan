@@ -248,6 +248,9 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	if cfg.ShutdownTimeout == 0 {
 		cfg.ShutdownTimeout = 15 * time.Second
 	}
+	if !cfg.TrustProxy {
+		log.Warn("CAN_TRUST_PROXY is off: sign-in has no lockout or rate limit by client address, only delays and the per-account limit on codes. Behind Traefik set CAN_TRUST_PROXY=true (specs/005-can-core-mvp/deployment.md)")
+	}
 	db, err := store.Open(ctx, cfg.DBPath)
 	if err != nil {
 		return fmt.Errorf("opening state database: %w", err)

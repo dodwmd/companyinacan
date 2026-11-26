@@ -162,6 +162,8 @@ The full CLI contract, including `--output json`, is in `specs/033-make-up-e2e/c
 - DigitalOcean: `a droplet named ... was not created by can`: rename or delete it, or set `provider.options.server_name`.
 - Cloudflare: `cannot read DNS records in the zone`, `no Cloudflare zone found`, `already exists ... not created by can`:
   see [providers.md](providers.md).
+- A module that does not update: `can status` warns about modules whose last install or upgrade failed, with
+  can-core's error (a failed upgrade is rolled back, so the module keeps running the previous release).
 - `.can/state.json` says something that is no longer true (server deleted by hand): `can status` reports
   `absent`; remove `.can/` to start clean.
 
@@ -231,7 +233,9 @@ Do not run this from CI. With a fresh Hetzner account:
   TOTP and login throttling. Behind Traefik can-core throttles per client address (`CAN_TRUST_PROXY=true`, the
   last `X-Forwarded-For` entry Traefik appends): repeated failures lock that (username, address) pair, so an
   attacker can lock out the admin only from their own address. Add an IP allowlist (SPEC.md section 3.1) if the
-  admin works from fixed addresses. In the plain-HTTP fallback the admin UI is not routed at all.
+  admin works from fixed addresses. Someone who has the password and guesses codes makes the account take no
+  code for 15 minutes (`admin.login.code_locked` in the audit log): change the password, `can-core admin unlock`
+  lifts the lock. In the plain-HTTP fallback the admin UI is not routed at all.
 - **No HTTP to HTTPS redirect.** Only the `websecure` entrypoint serves the routes in https mode; plain `http://`
   gets Traefik's 404. A redirect middleware belongs in the platform base and is not part of E24; type the
   `https://` URL.

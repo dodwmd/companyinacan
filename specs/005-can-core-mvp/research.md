@@ -53,8 +53,14 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   junk logins cost no memory, and every login takes at least 150 ms so the failing step is not observable.
   Tests simulate all clients on one address while 500 junk logins for the admin's own username run, and require the
   admin to still log in. See [deployment.md](deployment.md).
-- **Known limit**: in the shared-address mode an attacker who knows the password can guess TOTP codes at a bounded
-  rate; `CAN_TRUST_PROXY=true` plus the Traefik IP allowlist (SPEC 3.1) is the control.
+- **Per-account guard** (`auth/guard.go`, both modes). The back-off did not bound guesses sent side by side: someone
+  who knew the password could try about 128 codes a second without the proxy. Attempts per username are counted before
+  checking; above 10 per window the password is checked before the code, and only right-password attempts count toward
+  a 15-minute code lock (5). About 15 codes per window can be tried, and only a password holder can cause a refusal.
+  The attempt that is refused answers like any other, so the lock confirms nothing. Alternatives rejected: a cap on
+  all attempts per account (anyone could lock the owner out); verifying the password for every attempt (junk would
+  always cost argon2). With the proxy, the (username, address) and address counters are also taken before checking and
+  given back on success or when nothing was compared.
 - **Limits of the back-off (documented, accepted)**:
   - `maxSleepers` (256) bounds logins waiting out a back-off, not a burst of concurrent junk logins that all start at zero failure counters; those are bounded only by the HTTP server timeouts and connection limits.
   - `ErrBusy` (503) returns immediately and is not padded to the 150 ms floor; the timing difference reveals only that the server is saturated, a negligible oracle.

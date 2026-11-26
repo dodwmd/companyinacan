@@ -283,9 +283,10 @@ func (s *Service) backoff(failures, threshold int) time.Duration {
 //
 // Throttling has two modes (Policy.HardLock). Behind a trusted proxy client addresses are real, so
 // repeated failures refuse further attempts from that (username, address) pair or address. When
-// addresses are not trustworthy (every client looks like the ingress), refusing would let an
-// anonymous attacker lock the admin out, so failures only add an increasing delay: the admin with
-// valid credentials and TOTP code always gets in, just slower.
+// addresses are not trustworthy (every client looks like the ingress), refusing on them would let an
+// anonymous attacker lock the admin out, so they only add an increasing delay. In both modes the
+// per-account guard (guard.go) bounds how many codes can be tried; only someone who knows the
+// password can make it refuse.
 func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error) {
 	start := s.opt.Now()
 	now := start
@@ -315,21 +316,23 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		return finish(LoginResult{}, ErrInvalidCredentials)
 	}
 	var delay time.Duration
-	for _, k := range []struct {
-		key string
-		max int
-	}{{userKey, pol.MaxUserFailures}, {ipKey, pol.MaxIPFailures}} {
-		a, err := s.db.GetLoginAttempt(ctx, k.key)
-		if err != nil {
+	var held []reservation
+	keys := []reservation{{key: userKey, max: pol.MaxUserFailures}, {key: ipKey, max: pol.MaxIPFailures}}
+	if pol.HardLock {
+		var err error
+		if held, err = s.reserve(ctx, keys, now); err != nil {
 			return LoginResult{}, err
 		}
-		if pol.HardLock {
-			if now.Before(a.LockedUntil) {
-				return LoginResult{}, &LockedError{RetryAfter: a.LockedUntil.Sub(now)}
+	} else {
+		for _, k := range keys {
+			a, err := s.db.GetLoginAttempt(ctx, k.key)
+			if err != nil {
+				return LoginResult{}, err
 			}
-		} else if now.Sub(a.FirstFailed) <= pol.Window { // counters decay with the window
-			if d := s.backoff(a.Failures, k.max); d > delay {
-				delay = d
+			if now.Sub(a.FirstFailed) <= pol.Window { // counters decay with the window
+				if d := s.backoff(a.Failures, k.max); d > delay {
+					delay = d
+				}
 			}
 		}
 	}
@@ -345,6 +348,10 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		}
 	}
 
+	guard, err := s.guardAccount(ctx, r.Username, now)
+	if err != nil {
+		return LoginResult{}, err
+	}
 	u, uerr := s.db.AdminByUsername(ctx, r.Username)
 	secret, hash := s.dummyTOTP, s.dummy
 	if uerr == nil && u.AuthSource != store.SourceLocal {
@@ -357,27 +364,48 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 		secret, hash = u.TOTPSecret, u.PasswordHash
 	}
 	step, totpOK := ValidateTOTP(secret, r.Code, now)
-	ok := false
-	if totpOK {
+	ok, codeLocking := false, false
+	if totpOK || guard.passwordFirst {
 		pwOK, verr := s.verify(ctx, r.Password, hash)
 		if verr != nil {
+			s.release(ctx, held) // nothing was compared
 			return LoginResult{}, verr
 		}
 		// A disabled account is refused before anything is consumed or cleared: the TOTP step
 		// stays unused and the failure counts like any other bad login.
 		if uerr == nil && pwOK && !s.db.AdminDisabled(ctx, u.ID) {
-			ok, _ = s.db.AdvanceTOTPStep(ctx, u.ID, step) // single use; consumed only once the password is right
+			allowed, locking, err := s.takeCodeAttempt(ctx, guard, now)
+			if err != nil {
+				return LoginResult{}, err
+			}
+			codeLocking = locking
+			if allowed && totpOK {
+				ok, _ = s.db.AdvanceTOTPStep(ctx, u.ID, step) // single use; consumed only once the password is right
+			}
 		}
 	}
 	if !ok {
-		if err := s.fail(ctx, userKey, pol.MaxUserFailures, r.Username, r.IP, now); err != nil {
-			return LoginResult{}, err
+		if codeLocking {
+			s.opt.Log.Warn("sign-in: the password was right but the codes kept being wrong, so no code is taken for a while; if this was not you, change the password", "username", u.Username)
+			s.recordBestEffort(ctx, u.Username, "admin.login.code_locked", r.IP)
 		}
-		if err := s.fail(ctx, ipKey, pol.MaxIPFailures, r.Username, r.IP, now); err != nil {
-			return LoginResult{}, err
+		if pol.HardLock { // already counted: only the audit entries are left
+			for _, h := range held {
+				s.auditFailure(ctx, h.key, h.locked, r.Username, r.IP)
+			}
+		} else {
+			for _, k := range keys {
+				if err := s.fail(ctx, k.key, k.max, r.Username, r.IP, now); err != nil {
+					return LoginResult{}, err
+				}
+			}
 		}
 		return finish(LoginResult{}, ErrInvalidCredentials)
 	}
+	if len(held) > 0 {
+		s.release(ctx, held[1:]) // the address keeps its earlier failures; the pair is cleared below
+	}
+	s.clearGuard(ctx, guard)
 	_ = s.db.ClearLoginAttempt(ctx, userKey)
 	if s.opt.LocalPolicy != nil && !s.opt.LocalPolicy(ctx, u) {
 		s.recordBestEffort(ctx, u.Username, "admin.login.refused_local", r.IP)
@@ -407,12 +435,16 @@ func (s *Service) fail(ctx context.Context, key string, max int, username, ip st
 	if err != nil {
 		return err
 	}
+	s.auditFailure(ctx, key, locked, username, ip)
+	return nil
+}
+
+func (s *Service) auditFailure(ctx context.Context, key string, locked bool, username, ip string) {
 	if locked { // one audit entry per lock, not one per refused attempt
 		s.recordBestEffort(ctx, username, "admin.login.locked", ip)
 	} else if strings.HasPrefix(key, "user:") {
 		s.recordBestEffort(ctx, username, "admin.login.failed", ip)
 	}
-	return nil
 }
 
 // Authenticate resolves a cookie token to a live session and its user.
