@@ -825,3 +825,16 @@ func TestQA3DownloadWaitIsBounded(t *testing.T) {
 		t.Errorf("with a free slot = %d, want 404 for a batch that does not exist", code)
 	}
 }
+
+// QA round 3, 5: a session that can post journals or change the ledger re-authenticates as often as an approver's.
+func TestQA3LedgerPrivilegeUsesTheShortRecheck(t *testing.T) {
+	u := &UI{RecheckEvery: uiRecheckDefault}
+	for perm, want := range map[string]time.Duration{
+		PermLedgerApprove: uiRecheckPrivil, PermLedgerAdmin: uiRecheckPrivil, PermApprove: uiRecheckPrivil, PermAdmin: uiRecheckPrivil,
+		PermLedgerRead: uiRecheckDefault, PermRead: uiRecheckDefault,
+	} {
+		if got := u.recheckFor(&Principal{Permissions: []string{perm}}); got != want {
+			t.Errorf("%s: recheck every %s, want %s", perm, got, want)
+		}
+	}
+}

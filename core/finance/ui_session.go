@@ -223,7 +223,7 @@ func constEq(a, b string) bool {
 // recheckFor is how often a session re-authenticates: every minute for a session that can approve
 // or administer, RecheckEvery for everyone else. This only picks an interval; it grants nothing.
 func (u *UI) recheckFor(p *Principal) time.Duration {
-	if p.Can(PermApprove) || p.Can(PermAdmin) {
+	if p.Can(PermApprove) || p.Can(PermAdmin) || p.Can(PermLedgerApprove) || p.Can(PermLedgerAdmin) {
 		return min(u.RecheckEvery, uiRecheckPrivil)
 	}
 	return u.RecheckEvery
