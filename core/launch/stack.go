@@ -439,7 +439,7 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 }
 
 func (r *runner) facts() routing.Config {
-	return routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll}
+	return routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll, NoEdgeLimit: r.o.Routes.NoEdgeLimit}
 }
 
 // routingFacts writes which hosts serve the site, and whether over TLS, as ConfigMap
@@ -620,6 +620,9 @@ func (r *runner) routes(ctx context.Context) error {
 		mode = "https"
 	}
 	if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).Mode = mode; return nil }); err != nil {
+		return err
+	}
+	if err := r.redirect(ctx); err != nil {
 		return err
 	}
 	if !r.formsWanted() || !r.o.Company.Modules["forms"].Exposure().PublicOn() {

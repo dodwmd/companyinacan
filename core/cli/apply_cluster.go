@@ -29,7 +29,7 @@ func companyConfigMap(content string) (string, error) {
 // (also made by `can up`) says, never from assumptions: TLS and the hosts differ between a domain,
 // sslip.io names and plain HTTP on the address. Without a site route nothing is written, and the
 // returned note says so.
-func syncRouting(cmd *cobra.Command, domain, kubeContext string) (note string, err error) {
+func syncRouting(cmd *cobra.Command, domain, kubeContext string, noEdgeLimit bool) (note string, err error) {
 	kubectl := func(args ...string) (string, error) {
 		if kubeContext != "" {
 			args = append([]string{"--context", kubeContext}, args...)
@@ -54,6 +54,7 @@ func syncRouting(cmd *cobra.Command, domain, kubeContext string) (note string, e
 	if err != nil {
 		return "", fmt.Errorf("%w; run `can up` to write ConfigMap %s/%s", err, routing.Namespace, routing.ConfigMapName)
 	}
+	facts.NoEdgeLimit = noEdgeLimit
 	manifest, err := facts.Manifest()
 	if err != nil {
 		return "", err

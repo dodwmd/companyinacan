@@ -14,6 +14,12 @@ type Record struct {
 	Name  string `json:"name"` // fully qualified, no trailing dot
 	Value string `json:"value"`
 	TTL   int    `json:"ttl"`
+	// Purpose says what the name is for, in lists shown to the operator.
+	Purpose string `json:"purpose,omitempty"`
+	// NoAdopt marks a module's hostname (specs/045-public-access): a plugin never changes a record
+	// it did not create there, whatever dns.adopt_existing says, and skips the name instead of
+	// failing.
+	NoAdopt bool `json:"-"`
 }
 
 // DNS is a DNS plugin (manual, cloudflare; provider-native is not built yet).
@@ -126,9 +132,9 @@ func Records(domain, ip string, subs []string) ([]Record, error) {
 	if a.Unmap().Is6() {
 		typ = "AAAA"
 	}
-	recs := []Record{{typ, domain, a.Unmap().String(), DefaultTTL}}
+	recs := []Record{{Type: typ, Name: domain, Value: a.Unmap().String(), TTL: DefaultTTL}}
 	for _, s := range subs {
-		recs = append(recs, Record{typ, s + "." + domain, a.Unmap().String(), DefaultTTL})
+		recs = append(recs, Record{Type: typ, Name: s + "." + domain, Value: a.Unmap().String(), TTL: DefaultTTL})
 	}
 	return recs, nil
 }
@@ -143,9 +149,9 @@ func (Manual) Name() string { return "manual" }
 func (Manual) Apply(_ context.Context, domain string, recs []Record, w io.Writer) error {
 	fmt.Fprintf(w, "Add these DNS records for %s at your DNS host:\n\n", domain)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "TYPE\tNAME\tVALUE\tTTL")
+	fmt.Fprintln(tw, "TYPE\tNAME\tVALUE\tTTL\tFOR")
 	for _, r := range recs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n", r.Type, r.Name, r.Value, r.TTL)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", r.Type, r.Name, r.Value, r.TTL, r.Purpose)
 	}
 	if err := tw.Flush(); err != nil {
 		return err

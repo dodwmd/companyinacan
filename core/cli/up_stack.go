@@ -45,6 +45,7 @@ type stackFlags struct {
 	kitPassFile       string
 	modulesDir        string
 	smtpCreds         string
+	noEdgeLimits      bool
 }
 
 func (f *stackFlags) register(cmd *cobra.Command) {
@@ -58,6 +59,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.BoolVar(&f.writeBundle, "write-bundle", false, "also write the default bundle (the forms module) into company.yaml on disk, so `can apply` keeps it")
 	fl.BoolVar(&f.forceCompany, "force-company", false, "overwrite the company.yaml in the cluster even if it was changed there (admin UI, `can apply`) since the last `can up`")
 	fl.BoolVar(&f.domainLive, "domain-live", false, "the company domain's DNS records resolve to the server: also route and certify it (implied by dns.provider: cloudflare)")
+	fl.BoolVar(&f.noEdgeLimits, "no-edge-limits", false, "no per-address rate limit on sign-in and public routes: for a server behind your own proxy or CDN (implied by dns.proxied)")
 	fl.StringVar(&f.acmeEmail, "acme-email", "", "registration address for Let's Encrypt certificates (optional)")
 	fl.StringVar(&f.backupEndpoint, "backup-endpoint", "", "S3 endpoint URL; with --backup-bucket and --backup-credentials-file turns the backup timer and recovery kit on")
 	fl.StringVar(&f.backupBucket, "backup-bucket", "", "backup bucket name")
@@ -90,7 +92,7 @@ func stackPlanActions(f *stackFlags) []provider.Action {
 		{ID: "stack.core", Description: "deploy can-core and wait for it"},
 		{ID: "stack.admin", Description: "create the admin account inside can-core with a generated password and TOTP secret (password on stdin, never in argv)"},
 		{ID: "stack.site", Description: "build the site and publish it to the site pod (ConfigMap site-content, unpacked by an init container)"},
-		{ID: "stack.routes", Description: "route the site, the admin UI and the same-origin /_forms path through Traefik"},
+		{ID: "stack.routes", Description: "route the site, the admin UI and the same-origin /_forms path through Traefik (on TLS installs plain http:// page loads redirect to https://)"},
 	}
 	if f.smtpCreds != "" {
 		a = append(a, provider.Action{ID: "stack.email", Description: "store the SMTP relay credentials in Secret can-system/can-smtp-relay"})
@@ -254,6 +256,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	defer closeTunnel()
 
 	routes, base := t.stackRoutes(instant, ip, f, dns.Name())
+	routes.NoEdgeLimit = f.noEdgeLimits || t.dnsCfg.Proxied
 	res.SiteURLs = hostURLs(schemeOf(routes.TLS), routes.SiteHosts)
 	res.AdminURLs = hostURLs(schemeOf(routes.TLS), routes.AdminHosts)
 	if routes.CatchAll {
