@@ -64,5 +64,5 @@ Open verification work is tracked per spec: `specs/041-wrapped-modules-live/task
 ## Not modules yet
 
 Simple tasks (Vikunja) from Epic E10, SSO, the approval engine and notifications (E11; the latter two
-are built inside can-core, not as modules), the admin dashboard (E12), booking and e-sign are
+are built inside can-core, not as modules), the admin dashboard (E12), booking and e-sign (as a wrapped application; finance has a simple signature by emailed link of its own, `specs/049-contract-esign/`) are
 not in `modules/`.

@@ -249,6 +249,10 @@ func TestSigningHappyPathWithCountersign(t *testing.T) {
 	if len(ev) != 1 {
 		t.Fatalf("%d signed events", len(ev))
 	}
+	// Paths the router redirects or does not know must not reach the log either.
+	for _, p := range []string{"/" + link, "/public//sign/" + strings.TrimPrefix(link, "/public/sign/"), link + "/", link + "/x/y"} {
+		e.public("GET", p, nil)
+	}
 	// No personal data in events, the audit log or the logs; no link in any of them.
 	var audit []string
 	rows, err := e.app.store.db.Query(`SELECT actor || ' ' || action || ' ' || target || ' ' || detail FROM audit_log`)

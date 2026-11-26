@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -125,6 +126,9 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	store.base = cfg.BaseCurrency
 	store.payInstr = cfg.PaymentInstructions
 	store.sign.log, store.sign.baseURL, store.sign.company = log, cfg.SignBaseURL, cfg.Seller.Name
+	if u, err := url.Parse(cfg.SignBaseURL); err == nil && store.sign.company == "" {
+		store.sign.company = u.Host // a mail that names nobody looks like phishing
+	}
 	if cfg.SigningRecordIP != "" {
 		store.sign.ipMode = cfg.SigningRecordIP
 	}

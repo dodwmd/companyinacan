@@ -148,7 +148,8 @@ func (c *Config) Validate() error {
 	}
 	if u := c.SignBaseURL; u != "" {
 		p, err := url.Parse(u)
-		if err != nil || p.Host == "" || p.User != nil || p.Path != "" || p.RawQuery != "" || p.Fragment != "" || (p.Scheme != "https" && !(p.Scheme == "http" && localHost(p.Hostname()))) {
+		origin := err == nil && p.Host != "" && p.User == nil && p.Path == "" && p.RawQuery == "" && p.Fragment == ""
+		if !origin || (p.Scheme != "https" && (p.Scheme != "http" || !localHost(p.Hostname()))) {
 			errs = append(errs, errors.New("sign_base_url must be an https origin without a path or trailing slash (http only for localhost)"))
 		}
 	}

@@ -11,6 +11,7 @@ Spec: [specs/039-email-send](../specs/039-email-send/spec.md).
 |---|---|---|
 | Forms gateway: new lead | `POST /v1/email` on the module API | the form's `notify_email` only |
 | Notifications and approvals | can-core's own e-mail channel ([notifications.md](notifications.md)) | the address a person set, if it is vouched for (below) |
+| Finance: contract signing invitations and certificates | `POST /v1/email` | the signers, within its allow-list or `external_recipients` |
 | Other modules | `POST /v1/email`, if they declare `email.send` | their allow-list |
 
 SMTP-speaking third-party apps (FreeScout, Listmonk) cannot call this API and are **not** served by
@@ -98,6 +99,19 @@ email:
 
 A form added by editing the module's `config` (not its settings) with its own `notify_email` outside
 the company domain also needs that address under `email.modules.forms.recipients`.
+
+**Contract signers.** `finance` mails the people asked to sign a contract
+([finance.md](finance.md#signing-by-emailed-link)), who are usually outside the company. List their
+domains under `email.modules.finance.recipients`, or set
+
+```yaml
+email:
+  modules:
+    finance: { external_recipients: true }   # finance only; default false
+```
+
+With it, the finance module may mail **any** address (still within its quota). The default is the
+allow-list. A queued invitation contains the signing link until it has been sent.
 
 At most 500 messages per sender may be waiting at once. A refused message is not stored
 (HTTP 403, 429 or 503) and the caller records the failure.
