@@ -396,7 +396,8 @@ func (d *Dispatcher) sendEmail(ctx context.Context, e Email) (int, error) {
 		for try := 1; ; try++ {
 			attempts++
 			err := d.mailer.Send(ctx, e)
-			if err == nil {
+			// A conflict speaks for this part only: the others may never have been sent.
+			if err == nil || alreadyQueued(err) {
 				break
 			}
 			if !errors.Is(err, modclient.ErrUnavailable) || modclient.RetryAfter(err) > 0 || try == 3 {

@@ -22,6 +22,9 @@ import (
 	"time"
 )
 
+// noReply as a reply makes the relay stay silent.
+const noReply = "(no reply)"
+
 // fakeRelay is a minimal in-process SMTP server.
 type fakeRelay struct {
 	addr     string
@@ -113,6 +116,9 @@ func (f *fakeRelay) serve(c net.Conn) {
 		f.secure = append(f.secure, secure)
 		reply := f.replies[verb]
 		f.mu.Unlock()
+		if reply == noReply {
+			continue
+		}
 		if reply != "" {
 			say(reply)
 			continue

@@ -46,7 +46,8 @@ that was left pending (`specs/005-can-core-mvp/tasks.md` T032). Operator guide: 
 - **FR-005a** Notification mail caused by a module MUST obey that module's switch and quota, MUST
   carry a fixed text instead of module-authored content unless the operator opted in, and MUST only
   go to the company domain, `email.notification_recipients` or the person's verified single sign-on
-  address.
+  address (verified when it was stored, with single sign-on still on and requiring verification).
+  Module-chosen notification types MUST NOT be linkable in mail.
 - **FR-006** Per-module hourly and daily quotas and a waiting-message cap MUST be enforced in the
   transaction that queues.
 - **FR-007** No input may add or end a header: addresses are bare ASCII addr-specs without `%` or
@@ -63,7 +64,8 @@ that was left pending (`specs/005-can-core-mvp/tasks.md` T032). Operator guide: 
 - **FR-013** Forms lead notifications and the notification email channel MUST use this path.
 - **FR-015** A lead notification MUST be stored with the lead and retried (honouring `Retry-After`)
   until accepted or seven days have passed, and a failure MUST be visible to the operator.
-- **FR-016** A relay-level failure MUST pause delivery instead of spending every message's attempts;
+- **FR-016** A relay-level failure MUST pause delivery instead of spending every message's attempts
+  (one message left without an answer is not one; three different ones in a row are);
   senders MUST take turns; a shutdown after the relay accepted a message MUST NOT resend it.
 - **FR-014** The compose stack MUST include an in-repository SMTP sink, and an end-to-end test MUST
   show that a form submission produces an email.

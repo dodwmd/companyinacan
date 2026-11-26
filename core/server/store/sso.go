@@ -17,12 +17,14 @@ type SSOIdentity struct {
 	Username   string // of the bound admin user
 	UserSource string // auth_source of the bound admin user: sso (provisioned) or local (linked by an admin)
 	Email      string
-	Name       string
-	GroupsJSON string
-	AMRJSON    string
-	CreatedAt  time.Time
-	LastLogin  time.Time
-	LinkedBy   string
+	// EmailVerified: the provider said Email was verified at the sign-in that stored it.
+	EmailVerified bool
+	Name          string
+	GroupsJSON    string
+	AMRJSON       string
+	CreatedAt     time.Time
+	LastLogin     time.Time
+	LinkedBy      string
 }
 
 // ErrLastOwner means the change would leave no enabled account holding the owner role.
@@ -31,12 +33,12 @@ var ErrLastOwner = errors.New("that is the last enabled owner")
 // ErrSSOConflict means the user already has an identity or the identity is already bound.
 var ErrSSOConflict = errors.New("sso identity conflict")
 
-const ssoCols = `i.id, i.issuer_hash, i.subject, i.user_id, u.username, u.auth_source, i.email, i.name, i.groups_json, i.amr_json, i.created_at, i.last_login, i.linked_by`
+const ssoCols = `i.id, i.issuer_hash, i.subject, i.user_id, u.username, u.auth_source, i.email, i.email_verified, i.name, i.groups_json, i.amr_json, i.created_at, i.last_login, i.linked_by`
 
 func scanSSO(row interface{ Scan(...any) error }) (SSOIdentity, error) {
 	var i SSOIdentity
 	var c, l int64
-	err := row.Scan(&i.ID, &i.IssuerHash, &i.Subject, &i.UserID, &i.Username, &i.UserSource, &i.Email, &i.Name, &i.GroupsJSON, &i.AMRJSON, &c, &l, &i.LinkedBy)
+	err := row.Scan(&i.ID, &i.IssuerHash, &i.Subject, &i.UserID, &i.Username, &i.UserSource, &i.Email, &i.EmailVerified, &i.Name, &i.GroupsJSON, &i.AMRJSON, &c, &l, &i.LinkedBy)
 	i.CreatedAt, i.LastLogin = time.Unix(c, 0), time.Unix(l, 0)
 	return i, notFound(err)
 }
@@ -87,8 +89,8 @@ func (db *DB) CreateSSOUser(ctx context.Context, username string, id SSOIdentity
 			return err
 		}
 		uid, _ := res.LastInsertId()
-		res, err = tx.ExecContext(ctx, `INSERT INTO sso_identities(issuer_hash, subject, user_id, email, name, groups_json, amr_json, created_at, last_login) VALUES (?,?,?,?,?,?,?,?,?)`,
-			id.IssuerHash, id.Subject, uid, id.Email, id.Name, id.GroupsJSON, id.AMRJSON, now.Unix(), now.Unix())
+		res, err = tx.ExecContext(ctx, `INSERT INTO sso_identities(issuer_hash, subject, user_id, email, email_verified, name, groups_json, amr_json, created_at, last_login) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			id.IssuerHash, id.Subject, uid, id.Email, id.EmailVerified, id.Name, id.GroupsJSON, id.AMRJSON, now.Unix(), now.Unix())
 		if err != nil {
 			return err
 		}
@@ -110,8 +112,8 @@ func (db *DB) CreateSSOUser(ctx context.Context, username string, id SSOIdentity
 }
 
 // TouchSSOIdentity records the claims of a successful sign-in.
-func (db *DB) TouchSSOIdentity(ctx context.Context, id int64, email, name, groupsJSON, amrJSON string) error {
-	_, err := db.ExecContext(ctx, `UPDATE sso_identities SET email=?, name=?, groups_json=?, amr_json=?, last_login=? WHERE id=?`, email, name, groupsJSON, amrJSON, db.Now().Unix(), id)
+func (db *DB) TouchSSOIdentity(ctx context.Context, id int64, email string, emailVerified bool, name, groupsJSON, amrJSON string) error {
+	_, err := db.ExecContext(ctx, `UPDATE sso_identities SET email=?, email_verified=?, name=?, groups_json=?, amr_json=?, last_login=? WHERE id=?`, email, emailVerified, name, groupsJSON, amrJSON, db.Now().Unix(), id)
 	return err
 }
 
