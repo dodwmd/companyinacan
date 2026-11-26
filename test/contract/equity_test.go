@@ -310,6 +310,8 @@ func equityDrive(t *testing.T) (*equity.Service, equity.Actor, *equity.Stakehold
 	must(err)
 	stk, err := s.CreateStakeholder(ctx, hr, ent.ID, equity.StakeholderInput{Kind: "employee", PersonID: "pers_0123456789abcdef01234567", Identity: equity.Identity{Name: "Eve Example"}})
 	must(err)
+	_, err = s.AttestExternal(ctx, equity.Actor{Subject: "admin-ada", Roles: []string{equity.RoleAdmin}}, stk.ID)
+	must(err)
 	in := equity.GrantInput{StakeholderID: stk.ID, Type: "NSO", Quantity: 4800 * equity.QtyScale, StrikeMinor: 125, Currency: "USD", GrantDate: "2026-01-15", VestStart: "2026-01-15",
 		Schedule: equity.Schedule{Kind: "periodic", Months: 48, CliffMonths: 12, Interval: "monthly"}, ExpiryDate: "2036-01-15", PTEPDays: 90}
 	gid, _, err := s.CreateGrant(ctx, hr, plan.ID, in, "", nil)

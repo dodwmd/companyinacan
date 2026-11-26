@@ -82,6 +82,7 @@ func (s *Service) purgeClass(ctx context.Context, q querier, id, class string) e
 	case ClassStakeholder:
 		stmts = []string{
 			fmt.Sprintf(`UPDATE stakeholders SET sens_name=NULL, sens_email=NULL, sens_tax_id=NULL, person_id=NULL, legal_hold_reason='',
+				person_linked_by=NULL, person_verified_by=NULL, person_verified_on=NULL, identity_by=NULL, external_attested_by=NULL, external_attested_on=NULL,
 				erased_at=COALESCE(erased_at, %d), updated_at=%d WHERE id=?`, now, now),
 		}
 	case ClassGrants:
@@ -162,6 +163,10 @@ func (s *Service) RequestErasure(ctx context.Context, a Actor, id string) (*Eras
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM exercises WHERE stakeholder_id = ? AND status = 'issued'`, id).Scan(&exercises)
 	date := s.today()
 	err = s.txAudit(ctx, a, "erase", "stakeholder:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
+		// Who erased: they alone cannot then move the record's shares (guardHolders).
+		if _, err := tx.ExecContext(ctx, `UPDATE stakeholders SET erased_by = COALESCE(erased_by, ?) WHERE id = ?`, canonSubject(a.Subject), id); err != nil {
+			return err
+		}
 		for _, c := range PurgeClasses {
 			if err := s.purgeClass(ctx, tx, id, c); err != nil {
 				return err

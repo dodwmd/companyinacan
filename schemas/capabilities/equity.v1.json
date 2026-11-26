@@ -142,7 +142,42 @@
       "response": "Stakeholder",
       "write": true,
       "permission": "equity.write",
-      "description": "hr, finance, board or admin, never the person who created the stakeholder. A grant cannot leave draft for a holder with neither a person_id nor this attestation."
+      "description": "hr, finance, board or admin, never whoever created the stakeholder or last set its identity or link. A grant, exercise or ledger entry needs this or a confirmed person link."
+    },
+    {
+      "verb": "link_person",
+      "method": "PUT",
+      "path": "/v1/stakeholders/{id}/person",
+      "request": "PersonLinkRequest",
+      "response": "Stakeholder",
+      "write": true,
+      "permission": "equity.write",
+      "description": "Directory mode. Nobody links a record to or away from themself. The link is unconfirmed until verify_person."
+    },
+    {
+      "verb": "verify_person",
+      "method": "POST",
+      "path": "/v1/stakeholders/{id}/verify-person",
+      "response": "Stakeholder",
+      "write": true,
+      "permission": "equity.write",
+      "description": "Directory mode. A second person confirms the record is the directory person it names."
+    },
+    {
+      "verb": "list_identity_review",
+      "method": "GET",
+      "path": "/v1/identity/review",
+      "response": "IdentityReviewList",
+      "permission": "equity.read",
+      "description": "Holder records that are not established, and erased ones still holding shares. Ids and counts only."
+    },
+    {
+      "verb": "get_my_identity",
+      "method": "GET",
+      "path": "/v1/me/identity",
+      "response": "MyIdentity",
+      "permission": "equity.self-read",
+      "description": "The identity mode and the directory person the caller is linked to."
     },
     {
       "verb": "erase_stakeholder",
@@ -894,7 +929,11 @@
         },
         "external_holder_attested": {
           "type": "boolean",
-          "description": "A second person attested the holder as external (not a director or approver); stands in for a directory person link."
+          "description": "A second actor attested the holder as external (not a director or approver), or, without a directory, established the record."
+        },
+        "person_verified": {
+          "type": "boolean",
+          "description": "A second actor confirmed that the record is the directory person person_id names."
         }
       },
       "required": [
@@ -905,6 +944,50 @@
         "erased"
       ],
       "description": "No personal data: the identity is a separate sealed, audited read."
+    },
+    "PersonLinkRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["person_id"],
+      "properties": {
+        "person_id": {"type": "string", "pattern": "^pers_[0-9a-f]{24}$"}
+      }
+    },
+    "IdentityReviewList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stakeholder_id", "entity_id", "kind", "reason", "open_grants", "ledger_entries"],
+            "properties": {
+              "stakeholder_id": {"type": "string", "pattern": "^stk_[0-9a-f]{24}$"},
+              "entity_id": {"type": "string", "pattern": "^ent_[0-9a-f]{24}$"},
+              "kind": {"enum": ["founder", "employee", "investor", "advisor"]},
+              "person_id": {"type": "string", "pattern": "^pers_[0-9a-f]{24}$"},
+              "reason": {"enum": ["unconfirmed_person_link", "unattested_holder", "erased_holder"]},
+              "open_grants": {"type": "integer", "minimum": 0},
+              "ledger_entries": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "MyIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "mode", "directory_available", "break_glass"],
+      "properties": {
+        "subject": {"type": "string"},
+        "mode": {"enum": ["directory", "attestation"]},
+        "person_id": {"type": "string", "pattern": "^pers_[0-9a-f]{24}$"},
+        "directory_available": {"type": "boolean"},
+        "break_glass": {"type": "boolean"}
+      }
     },
     "StakeholderInput": {
       "type": "object",

@@ -26,6 +26,9 @@ rejects a non-in-house module that declares a sensitive class (Constitution V, S
 | Footprint | 16 MB requested, 64 MB limit; measured idle RSS: see `specs/018-equity/measurements.md` |
 | Data classes | `equity-ledger` (legal), `equity-stakeholder` (7y, sensitive), `equity-grants` (7y, sensitive), `equity-valuation` (7y, sensitive), `equity-audit` (legal) |
 
+**Holder identity:** grants, exercises and ledger entries need a holder confirmed by a second actor
+(`docs/equity.md#holder-identity`).
+
 Read `docs/equity.md` for the access matrix, vesting rules, encryption and key rotation, audit,
 retention, legal hold, erasure, the round-model formula, events and the gaps. The contract is
 `specs/018-equity/contracts/equity-api.yaml`.
