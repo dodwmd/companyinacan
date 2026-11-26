@@ -137,7 +137,7 @@ func modulesCmd(getenv func(string) string) *cobra.Command {
 		}
 		for _, m := range mods {
 			if p, ok := reconcile.ParsePending(m.Pending); ok && m.State == store.StateEnabled {
-				out = append(out, moduleProblem{ID: m.ID, State: statePendingApproval, Error: modmgr.Sanitise(strings.Join(p.Widens, "; ")),
+				out = append(out, moduleProblem{ID: m.ID, State: statePendingApproval, Error: strings.Join(modmgr.HeldLines(p.Widens, nil), "; "),
 					NotApplied: modmgr.Sanitise(strings.Join(p.NotApplied, "; "))})
 			}
 		}

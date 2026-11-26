@@ -5,7 +5,7 @@
 {{range .D.Problems}}<li><strong>{{.Field}}</strong>: {{.Message}}</li>
 {{end}}</ul>
 {{end}}</div>
-{{end}}<section aria-labelledby="details">
+{{end}}{{if not .D.Project.Archived}}<section aria-labelledby="details">
 <h2 id="details">{{t "settings.details"}}</h2>
 <form method="post" action="/ui/projects/{{.D.Project.Key}}/settings" class="create">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -16,25 +16,25 @@
 <div class="actions"><button type="submit">{{t "issue.save"}}</button></div>
 </form>
 </section>
-<section aria-labelledby="members">
+{{end}}<section aria-labelledby="members">
 <h2 id="members">{{t "members.title"}}</h2>
 <p class="hint">{{t "members.intro"}}</p>
 {{if .D.Members}}<ul class="plain">
-{{range .D.Members}}<li><form method="post" action="/ui/projects/{{$.D.Project.Key}}/members/remove" class="inline">
+{{range .D.Members}}<li>{{if $.D.Project.Archived}}<span>{{.Subject}}</span>{{else}}<form method="post" action="/ui/projects/{{$.D.Project.Key}}/members/remove" class="inline">
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="subject" value="{{.Subject}}">
 <span>{{.Subject}}</span>
 <button type="submit" class="quiet">{{t "members.remove"}}<span class="sr"> {{.Subject}}</span></button>
-</form></li>
+</form>{{end}}</li>
 {{end}}</ul>
 {{else}}<p class="empty">{{t "members.none"}}</p>
-{{end}}<form method="post" action="/ui/projects/{{.D.Project.Key}}/members" class="inline">
+{{end}}{{if not .D.Project.Archived}}<form method="post" action="/ui/projects/{{.D.Project.Key}}/members" class="inline">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <label for="m-subject">{{t "members.person"}}</label>
 <input id="m-subject" name="subject" type="text" required maxlength="254" autocomplete="off" aria-describedby="m-hint">
 <button type="submit">{{t "members.add"}}</button>
 </form>
 <p id="m-hint" class="hint">{{t "members.hint"}}</p>
-</section>
+{{end}}</section>
 <section aria-labelledby="archive">
 <h2 id="archive">{{if .D.Project.Archived}}{{t "archive.restore_title"}}{{else}}{{t "archive.title"}}{{end}}</h2>
 <p>{{if .D.Project.Archived}}{{t "archive.restore_intro"}}{{else}}{{t "archive.intro"}}{{end}}</p>

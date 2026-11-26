@@ -11,11 +11,11 @@
       "additionalProperties": false,
       "description": "Per data class retention. Minutes, resolutions and the audit trail are the legal record and can only be `legal`.",
       "properties": {
-        "board-minutes": { "const": "legal" },
-        "board-resolutions": { "const": "legal" },
-        "board-audit": { "const": "legal" },
-        "board-packs": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" },
-        "board-private": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+        "board-minutes": {"const": "legal", "x-can": {"config": "retention.board-minutes"}},
+        "board-resolutions": {"const": "legal", "x-can": {"config": "retention.board-resolutions"}},
+        "board-audit": {"const": "legal", "x-can": {"config": "retention.board-audit"}},
+        "board-packs": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.board-packs", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}},
+        "board-private": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.board-private", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
       }
     }
   }

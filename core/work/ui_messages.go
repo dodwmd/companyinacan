@@ -66,7 +66,7 @@ var messagesEN = map[string]string{
 	"project.key_hint":      "2 to 10 letters or digits, starting with a letter, for example WEB. It starts every issue number (WEB-1) and cannot be changed.",
 	"project.create":        "Create project",
 	"project.cancel":        "Cancel",
-	"project.archived_note": "This project is archived: its issues can be read but not changed.",
+	"project.archived_note": "This project is archived: it can be read, but nothing in it can change until it is restored.",
 
 	"first.title":  "Start by creating your first project",
 	"first.intro":  "Issues, boards and sprints live in a project. Create one, then add the people who work on it and their first tasks.",
@@ -87,7 +87,7 @@ var messagesEN = map[string]string{
 	"archive.intro":         "An archived project stays readable but nothing in it can change, and it is left out of the team views. You can restore it later.",
 	"archive.submit":        "Archive this project",
 	"archive.restore_title": "Restore project",
-	"archive.restore_intro": "Restoring makes the project and its issues editable again.",
+	"archive.restore_intro": "Restoring makes the project, its members and its issues editable again.",
 	"archive.restore":       "Restore this project",
 
 	"workload.title":     "Who is on what",

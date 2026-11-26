@@ -11,10 +11,10 @@
       "additionalProperties": false,
       "description": "Per data class retention. Statutory registers, filings and the audit trail are the legal record and can only be `legal`.",
       "properties": {
-        "entity-register": { "const": "legal" },
-        "entity-filings": { "const": "legal" },
-        "entity-audit": { "const": "legal" },
-        "entity-person": { "type": "string", "pattern": "^(0|legal|[1-9][0-9]*[dmy])$" }
+        "entity-register": {"const": "legal", "x-can": {"config": "retention.entity-register"}},
+        "entity-filings": {"const": "legal", "x-can": {"config": "retention.entity-filings"}},
+        "entity-audit": {"const": "legal", "x-can": {"config": "retention.entity-audit"}},
+        "entity-person": {"type": "string", "pattern": "^(0|legal|[1-9][0-9]{0,4}[dmy])$", "description": "30d, 12m, 7y, 0 (delete at once) or legal (keep). Default 7y.", "x-can": {"config": "retention.entity-person", "widens": "retention", "unset": "7y", "risk": "data of this class is deleted sooner"}}
       }
     }
   }

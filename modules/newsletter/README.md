@@ -52,5 +52,6 @@ release that bumps the digest and the module's `version`.
 
 - A new installation has Listmonk's example SMTP server: set a real one before sending.
 - Set the root URL in Listmonk's settings to `https://newsletter.<domain>`, or links in mail are wrong.
-- The settings of `settings.schema.json` are accepted but not applied.
+- The settings of `settings.schema.json` are not applied; `can validate` warns
+  ([docs/module-wiring.md](../../docs/module-wiring.md#settings)).
 - Upgrades to a newer Listmonk are untested.

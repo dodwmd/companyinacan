@@ -443,7 +443,7 @@ func (s *Store) deliverMail(ctx context.Context, id int64) (*DocumentMail, error
 		return nil, err
 	}
 	if msg != nil {
-		status, coreID := s.handOver(ctx, m.Kind, *msg)
+		status, coreID, lost := s.handOver(ctx, m.Kind, *msg)
 		// Recorded even if the caller has gone: the message may already be on its way.
 		rctx, done := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer done()
@@ -451,6 +451,12 @@ func (s *Store) deliverMail(ctx context.Context, id int64) (*DocumentMail, error
 			cur, err := scanMail(tx.QueryRowContext(rctx, `SELECT `+mailCols+` FROM document_mails WHERE id = ?`, id))
 			if err != nil {
 				return err
+			}
+			// It may have left, whatever becomes of the row: the next reminder keeps its distance.
+			if lost {
+				if _, err := tx.ExecContext(rctx, `UPDATE document_mails SET handed_at = ? WHERE id = ?`, ts(s.now()), id); err != nil {
+					return err
+				}
 			}
 			// A row cancelled while the call was in flight still records an acceptance.
 			if cur.Status != DMPending && cur.Status != DMRetry && status != DMQueued {
@@ -478,21 +484,23 @@ func (s *Store) deliverMail(ctx context.Context, id int64) (*DocumentMail, error
 // handOver calls email.send. Error texts are not kept or logged: they may quote addresses.
 //
 // A reply that is lost leaves it open whether the message was accepted. A reminder is tried again
-// later. A manual send is asked once more at once with the same key, which cannot make a second
-// message; with still no answer it is "unknown", never "failed".
-func (s *Store) handOver(ctx context.Context, kind string, msg modclient.Email) (status, coreID string) {
+// later, and lost is reported so that the gap to the next one counts from now. A manual send is
+// asked once more at once with the same key, which cannot make a second message; with still no
+// answer it is "unknown", never "failed". A request that never left (connection refused) is not a
+// lost reply: nothing was sent.
+func (s *Store) handOver(ctx context.Context, kind string, msg modclient.Email) (status, coreID string, lost bool) {
 	sendCtx, cancel := context.WithTimeout(ctx, mailBudget)
 	defer cancel()
 	status, coreID = s.sendOnce(sendCtx, kind, msg)
 	if status == DMUnknown && kind != DocReminder {
 		if again, id := s.sendOnce(sendCtx, kind, msg); again == DMQueued {
-			return again, id
+			return again, id, false
 		}
 	}
 	if status == DMUnknown && kind == DocReminder {
-		return DMRetry, ""
+		return DMRetry, "", true
 	}
-	return status, coreID
+	return status, coreID, false
 }
 
 func (s *Store) sendOnce(ctx context.Context, kind string, msg modclient.Email) (status, coreID string) {
@@ -511,7 +519,13 @@ func (s *Store) sendOnce(ctx context.Context, kind string, msg modclient.Email) 
 	}
 	var se *modclient.StatusError
 	if !errors.As(err, &se) {
-		return DMUnknown, ""
+		if !errors.Is(err, modclient.ErrNotSent) {
+			return DMUnknown, ""
+		}
+		if kind == DocReminder {
+			return DMRetry, ""
+		}
+		return DMFailed, ""
 	}
 	switch se.Status {
 	case http.StatusConflict:
@@ -539,9 +553,10 @@ func (s *Store) setMailStatus(ctx context.Context, tx dbq, actor string, m *Docu
 		return nil
 	}
 	// handed_at is when it left (or may have left) for the mail service: reminders are spaced from it.
+	// A waiting row that is accepted counts from now, whatever a lost reply stamped before.
 	now := ts(s.now())
 	if _, err := tx.ExecContext(ctx, `UPDATE document_mails SET status = ?, core_id = ?, updated_at = ?,
-		handed_at = CASE WHEN handed_at = 0 AND ? IN ('queued', 'unknown') THEN ? ELSE handed_at END WHERE id = ?`, status, coreID, now, status, now, m.ID); err != nil {
+		handed_at = CASE WHEN ? IN ('queued', 'unknown') AND (handed_at = 0 OR status IN ('pending', 'retry')) THEN ? ELSE handed_at END WHERE id = ?`, status, coreID, now, status, now, m.ID); err != nil {
 		return err
 	}
 	return s.audit(ctx, tx, actor, "document.email.outcome", strconv.FormatInt(m.ID, 10), map[string]any{"status": status})

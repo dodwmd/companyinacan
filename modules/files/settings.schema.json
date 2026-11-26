@@ -6,10 +6,25 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "max_file_mb": { "type": "integer", "minimum": 1, "maximum": 1024, "description": "The largest file accepted, in MiB. Uploads are streamed, so this does not raise the memory the service needs." },
-    "quota_gb_per_owner": { "type": "integer", "minimum": 1, "maximum": 100000, "description": "Storage one space owner may use across the spaces they own." },
-    "trash_days": { "type": "integer", "minimum": 0, "maximum": 3650, "description": "A deleted file is purged this many days later (0: never). A legal hold or an unpassed retention date stops the purge." },
-    "scanner_required": { "type": "boolean", "description": "Refuse every upload while no real virus scanner is wired in (default true). Turn off only for development." },
-    "inline_images": { "type": "boolean", "description": "Allow ?inline=1 for raster images (png, jpg, gif, webp), served sandboxed. Everything else is always an attachment. Default false." }
+    "max_file_mb": {"type": "integer", "minimum": 1, "maximum": 1024, "description": "The largest file accepted, in MiB. Uploads are streamed, so this does not raise the memory the service needs.", "x-can": {"config": "limits.max_file_bytes", "scale": 1048576}},
+    "quota_gb_per_owner": {"type": "integer", "minimum": 1, "maximum": 100000, "description": "Storage one space owner may use across the spaces they own.", "x-can": {"config": "limits.quota_bytes_per_owner", "scale": 1073741824}},
+    "trash_days": {"type": "integer", "minimum": 0, "maximum": 3650, "description": "A deleted file is purged this many days later (0: never). A legal hold or an unpassed retention date stops the purge.", "x-can": {"config": "retention.trash_days", "widens": "keep_less", "unset": 30, "risk": "deleted files are purged sooner"}},
+    "scanner_required": {"type": "boolean", "description": "Refuse every upload while no real virus scanner is wired in (default true). Turn off only for development.", "default": true, "x-can": {"config": "scanner.required", "widens": "becomes_false", "unset": true, "risk": "uploads are accepted without a virus scan"}},
+    "inline_images": {"type": "boolean", "description": "Allow ?inline=1 for raster images (png, jpg, gif, webp), served sandboxed. Everything else is always an attachment. Default false.", "default": false, "x-can": {"config": "download.inline", "also_when_true": {"download.inline_types": ["png", "jpg", "gif", "webp"]}, "widens": "becomes_true", "unset": false, "risk": "uploaded images are shown in the browser instead of downloaded"}},
+    "share": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_ttl_hours": {"type": "integer", "minimum": 24, "maximum": 8760, "description": "The longest a share link may live, in hours (default 720).", "x-can": {"config": "share.max_ttl_hours", "widens": "higher", "unset": 720, "risk": "share links can stay open longer"}}
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idle_minutes": {"type": "integer", "minimum": 5, "maximum": 1440, "description": "Web UI: sign out after this many minutes without activity (default 30).", "x-can": {"config": "ui.idle_minutes", "widens": "higher", "unset": 30, "risk": "idle web sessions stay signed in longer"}},
+        "absolute_hours": {"type": "integer", "minimum": 1, "maximum": 720, "description": "Web UI: the longest a session lasts (default 8).", "x-can": {"config": "ui.absolute_hours", "widens": "higher", "unset": 8, "risk": "web sessions last longer"}}
+      }
+    }
   }
 }

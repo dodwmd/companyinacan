@@ -26,7 +26,9 @@ var (
 // Sanitise makes an error text safe to show an operator: control characters go, credentials in
 // URLs and `password=...` style pairs are redacted, and the length is bounded. It is applied to
 // everything that reaches a page from the installer or the cluster (last_error).
-func Sanitise(s string) string {
+func Sanitise(s string) string { return sanitise(s, MaxErrorRunes) }
+
+func sanitise(s string, max int) string {
 	s = reURLCred.ReplaceAllString(s, "${1}[redacted]@")
 	s = reSecret.ReplaceAllString(s, "$1=[redacted]")
 	s = reBearer.ReplaceAllString(s, "bearer [redacted]")
@@ -41,8 +43,8 @@ func Sanitise(s string) string {
 		}
 	}
 	out := strings.TrimSpace(b.String())
-	if rs := []rune(out); len(rs) > MaxErrorRunes {
-		out = string(rs[:MaxErrorRunes]) + "..."
+	if rs := []rune(out); len(rs) > max {
+		out = string(rs[:max]) + "..."
 	}
 	return out
 }

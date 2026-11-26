@@ -91,17 +91,23 @@
 
 </p>
 <p>
-<label for="f-3">site_title</label>
-<input type="text" id="f-3" name="s.site_title" value="Acme" maxlength="20" required autocomplete="off">
+<label for="f-3">origins</label>
+<textarea id="f-3" name="s.origins" rows="4">
+</textarea>
+<span class="hint">One per line.</span>
+</p>
+<p>
+<label for="f-4">site_title</label>
+<input type="text" id="f-4" name="s.site_title" value="Acme" maxlength="20" required autocomplete="off">
 
 <span class="hint">Shown in the page header.</span>
 </p>
 <p>
-<input type="checkbox" id="f-4" name="s.verbose" value="on"> <label class="check" for="f-4">verbose</label>
+<input type="checkbox" id="f-5" name="s.verbose" value="on"> <label class="check" for="f-5">verbose</label>
 
 </p>
 
-<p class="hint">These settings are kept as they are; edit them in company.yaml: <code>origins</code></p>
+
 <p><button type="submit">Preview settings change</button></p>
 </form>
 
