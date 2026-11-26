@@ -372,6 +372,9 @@ type Stakeholder struct {
 	// ExternalAttested is true when a second person attested the holder as external (not a
 	// director or approver); it stands in for a directory person link.
 	ExternalAttested bool `json:"external_holder_attested"`
+	// PersonVerified is true when someone else confirmed the record is the directory person
+	// person_id names.
+	PersonVerified bool `json:"person_verified"`
 }
 
 // Identity is the sealed part of a stakeholder.
@@ -441,11 +444,16 @@ func (s *Service) CreateStakeholder(ctx context.Context, a Actor, entityID strin
 	if in.PersonID != "" && !personIDRe.MatchString(in.PersonID) {
 		return nil, invalid("person_id must be a directory person id")
 	}
-	if in.PersonID != "" && in.PersonID == a.PersonID && a.has(RoleBoard) {
-		return nil, ErrSeparation // a board member cannot register themself as a holder
+	if in.PersonID != "" && in.PersonID == a.PersonID {
+		return nil, ErrSeparation // nobody registers or links themself as a holder
 	}
 	if err := validIdentity(in.Identity); err != nil {
 		return nil, err
+	}
+	if in.PersonID != "" {
+		if err := s.verifyPersonID(ctx, in.PersonID); err != nil {
+			return nil, err
+		}
 	}
 	st := &Stakeholder{ID: newID("stk"), EntityID: entityID, Kind: in.Kind, PersonID: in.PersonID}
 	n, e, t, err := s.sealIdentity(st.ID, in.Identity)
@@ -454,8 +462,12 @@ func (s *Service) CreateStakeholder(ctx context.Context, a Actor, entityID strin
 	}
 	err = s.txAudit(ctx, a, "stakeholder.create", "stakeholder:"+st.ID, []string{FieldIdentity}, func(ctx context.Context, tx *sqlTx) error {
 		now := s.now().Unix()
-		_, err := tx.ExecContext(ctx, `INSERT INTO stakeholders (id, entity_id, kind, person_id, sens_name, sens_email, sens_tax_id, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-			st.ID, entityID, st.Kind, nullStr(st.PersonID), n, e, t, canonSubject(a.Subject), now, now)
+		var linkedBy any
+		if st.PersonID != "" {
+			linkedBy = canonSubject(a.Subject)
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO stakeholders (id, entity_id, kind, person_id, sens_name, sens_email, sens_tax_id, created_by, created_at, updated_at, person_linked_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			st.ID, entityID, st.Kind, nullStr(st.PersonID), n, e, t, canonSubject(a.Subject), now, now, linkedBy)
 		return err
 	})
 	if err != nil {
@@ -487,7 +499,9 @@ func (s *Service) SetIdentity(ctx context.Context, a Actor, id string, in Identi
 	}
 	err = s.txAudit(ctx, a, "stakeholder.identity.write", "stakeholder:"+id, []string{FieldIdentity}, func(ctx context.Context, tx *sqlTx) error {
 		var erased sql.NullInt64
-		if err := tx.QueryRowContext(ctx, `SELECT erased_at FROM stakeholders WHERE id = ?`, id).Scan(&erased); err != nil {
+		var person string
+		var confirmed bool
+		if err := tx.QueryRowContext(ctx, `SELECT erased_at, IFNULL(person_id, ''), person_verified_by IS NOT NULL OR external_attested_by IS NOT NULL FROM stakeholders WHERE id = ?`, id).Scan(&erased, &person, &confirmed); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
 			}
@@ -496,8 +510,18 @@ func (s *Service) SetIdentity(ctx context.Context, a Actor, id string, in Identi
 		if erased.Valid {
 			return conflict("the stakeholder is erased")
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE stakeholders SET sens_name = ?, sens_email = ?, sens_tax_id = ?, updated_at = ? WHERE id = ?`, n, e, t, s.now().Unix(), id)
-		return err
+		if !sodOK(a, person) {
+			return ErrSeparation // the holder never writes their own identity
+		}
+		// A confirmation was of the record as it then read: a changed identity needs a new one.
+		if _, err := tx.ExecContext(ctx, `UPDATE stakeholders SET sens_name = ?, sens_email = ?, sens_tax_id = ?, identity_by = ?, person_verified_by = NULL,
+			person_verified_on = NULL, external_attested_by = NULL, external_attested_on = NULL, updated_at = ? WHERE id = ?`, n, e, t, canonSubject(a.Subject), s.now().Unix(), id); err != nil {
+			return err
+		}
+		if confirmed {
+			return s.auditIn(ctx, tx, a, "stakeholder.confirmation.cleared", "stakeholder:"+id, nil)
+		}
+		return nil
 	})
 	if err != nil {
 		return err
@@ -513,8 +537,8 @@ func (s *Service) stakeholder(ctx context.Context, q querier, id string) (*Stake
 	var pid sql.NullString
 	var hold int
 	var erased sql.NullInt64
-	err := q.QueryRowContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at, external_attested_by IS NOT NULL FROM stakeholders WHERE id = ?`, id).
-		Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased, &st.ExternalAttested)
+	err := q.QueryRowContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at, external_attested_by IS NOT NULL, person_verified_by IS NOT NULL FROM stakeholders WHERE id = ?`, id).
+		Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased, &st.ExternalAttested, &st.PersonVerified)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -555,7 +579,7 @@ func (s *Service) ListStakeholders(ctx context.Context, a Actor, entityID string
 	}
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at, external_attested_by IS NOT NULL FROM stakeholders WHERE entity_id = ? ORDER BY created_at, id LIMIT 5000`, entityID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, entity_id, kind, person_id, legal_hold, erased_at, external_attested_by IS NOT NULL, person_verified_by IS NOT NULL FROM stakeholders WHERE entity_id = ? ORDER BY created_at, id LIMIT 5000`, entityID)
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +590,7 @@ func (s *Service) ListStakeholders(ctx context.Context, a Actor, entityID string
 		var pid sql.NullString
 		var hold int
 		var erased sql.NullInt64
-		if err := rows.Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased, &st.ExternalAttested); err != nil {
+		if err := rows.Scan(&st.ID, &st.EntityID, &st.Kind, &pid, &hold, &erased, &st.ExternalAttested, &st.PersonVerified); err != nil {
 			return nil, err
 		}
 		st.PersonID, st.LegalHold, st.Erased = pid.String, hold == 1, erased.Valid
@@ -625,10 +649,10 @@ func (s *Service) openIdentity(ctx context.Context, q querier, id string) (*Iden
 	return &out, nil
 }
 
-// AttestExternal records that a stakeholder with no directory link is an external holder: not a
-// director, not someone who approves grants. It exists so that the board's separation of duties
-// cannot be sidestepped by a holder the service cannot tie to a person. The attester must be
-// someone other than whoever created the stakeholder, and is audited. hr, finance, board or admin.
+// AttestExternal records that a stakeholder is an external holder: not a director, not someone
+// who approves grants. Without a directory it is also how a record carrying an unverifiable
+// person_id is established. The attester is not whoever created the record or last set its
+// identity or link, and is audited. hr, finance, board or admin.
 func (s *Service) AttestExternal(ctx context.Context, a Actor, id string) (*Stakeholder, error) {
 	if err := validID("stk", id); err != nil {
 		return nil, err
@@ -636,26 +660,28 @@ func (s *Service) AttestExternal(ctx context.Context, a Actor, id string) (*Stak
 	if err := s.authorize(ctx, a, ActStakeholderEdit, Fact{}, "stakeholder:"+id); err != nil {
 		return nil, err
 	}
+	if a.Service && !a.BreakGlass {
+		return nil, ErrIdentityRequired // a machine credential is not a second person
+	}
 	err := s.txAudit(ctx, a, "stakeholder.attest_external", "stakeholder:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		var created string
-		var pid, att sql.NullString
+		var pid, att, linked, identity, verified sql.NullString
 		var erased sql.NullInt64
-		if err := tx.QueryRowContext(ctx, `SELECT created_by, person_id, external_attested_by, erased_at FROM stakeholders WHERE id = ?`, id).Scan(&created, &pid, &att, &erased); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT created_by, person_id, external_attested_by, person_linked_by, identity_by, person_verified_by, erased_at FROM stakeholders WHERE id = ?`, id).
+			Scan(&created, &pid, &att, &linked, &identity, &verified, &erased); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
 			}
 			return err
 		}
-		if erased.Valid {
+		switch {
+		case erased.Valid:
 			return conflict("the stakeholder is erased")
-		}
-		if pid.Valid {
-			return conflict("the stakeholder is linked to a directory person; no attestation is needed")
-		}
-		if att.Valid {
+		case verified.Valid || (pid.Valid && s.directory != nil):
+			return conflict("the stakeholder is linked to a directory person: confirm the link with verify-person")
+		case att.Valid:
 			return conflict("the stakeholder is already attested")
-		}
-		if !sodOK(a, created) {
+		case !sodOK(a, created, linked.String, identity.String, pid.String):
 			return ErrSeparation
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE stakeholders SET external_attested_by = ?, external_attested_on = ?, updated_at = ? WHERE id = ?`, canonSubject(a.Subject), s.today(), s.now().Unix(), id)

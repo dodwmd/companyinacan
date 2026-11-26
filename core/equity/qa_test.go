@@ -20,29 +20,30 @@ func (txFailAuditor) RecordTx(context.Context, *sql.Tx, []AuditEvent) error {
 
 func TestUnlinkedHolderCannotBeUsedToSidestepTheBoardCheck(t *testing.T) {
 	e := newEnv(t).base()
-	// a stakeholder with no directory person: the founder created by finance
-	id := e.draft(e.hr, e.founder.ID, q(10))
+	// a stakeholder with no directory person, created by finance and not yet attested
+	stranger := m(e.s.CreateStakeholder(e.ctx, e.fin, e.ent.ID, StakeholderInput{Kind: "investor", Identity: Identity{Name: "Sam Stranger"}}))
+	id := e.draft(e.hr, stranger.ID, q(10))
 	if _, err := e.s.SubmitGrant(e.ctx, e.hr, id); !isErr(err, ErrConflict) {
 		t.Fatalf("submitting a grant for an unlinked holder: %v", err)
 	}
 	// the creator of the stakeholder cannot attest it, nor can a holder-less non-staff role
-	if _, err := e.s.AttestExternal(e.ctx, e.fin, e.founder.ID); !isErr(err, ErrSeparation) {
+	if _, err := e.s.AttestExternal(e.ctx, e.fin, stranger.ID); !isErr(err, ErrSeparation) {
 		t.Fatalf("creator attesting: %v", err)
 	}
-	if _, err := e.s.AttestExternal(e.ctx, Actor{Subject: "FIN-Frank ", Roles: []string{RoleFinance}}, e.founder.ID); !isErr(err, ErrSeparation) {
+	if _, err := e.s.AttestExternal(e.ctx, Actor{Subject: "FIN-Frank ", Roles: []string{RoleFinance}}, stranger.ID); !isErr(err, ErrSeparation) {
 		t.Fatalf("creator (variant) attesting: %v", err)
 	}
-	if _, err := e.s.AttestExternal(e.ctx, e.eve, e.founder.ID); !isErr(err, ErrForbidden) {
+	if _, err := e.s.AttestExternal(e.ctx, e.eve, stranger.ID); !isErr(err, ErrForbidden) {
 		t.Fatalf("employee attesting: %v", err)
 	}
-	if _, err := e.s.db.Exec(`UPDATE stakeholders SET external_attested_by = created_by WHERE id = ?`, e.founder.ID); err == nil {
+	if _, err := e.s.db.Exec(`UPDATE stakeholders SET external_attested_by = created_by WHERE id = ?`, stranger.ID); err == nil {
 		t.Fatal("the database accepted the creator as attester")
 	}
-	// linked holders need no attestation, and cannot be attested
+	// an established holder cannot be attested again
 	if _, err := e.s.AttestExternal(e.ctx, e.admin, e.eveStk.ID); !isErr(err, ErrConflict) {
 		t.Fatalf("attesting a linked holder: %v", err)
 	}
-	st := m(e.s.AttestExternal(e.ctx, e.admin, e.founder.ID))
+	st := m(e.s.AttestExternal(e.ctx, e.admin, stranger.ID))
 	if !st.ExternalAttested {
 		t.Fatal("not attested")
 	}
@@ -54,9 +55,9 @@ func TestUnlinkedHolderCannotBeUsedToSidestepTheBoardCheck(t *testing.T) {
 	}
 	m(e.s.ApproveGrant(e.ctx, e.board, id))
 	// and the link cannot be removed behind the service's back by approval time
-	id2 := e.draft(e.hr, e.founder.ID, q(10))
+	id2 := e.draft(e.hr, stranger.ID, q(10))
 	m(e.s.SubmitGrant(e.ctx, e.hr, id2))
-	if _, err := e.s.db.Exec(`UPDATE stakeholders SET external_attested_by = NULL WHERE id = ?`, e.founder.ID); err != nil {
+	if _, err := e.s.db.Exec(`UPDATE stakeholders SET external_attested_by = NULL WHERE id = ?`, stranger.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.s.ApproveGrant(e.ctx, e.board, id2); !isErr(err, ErrConflict) {

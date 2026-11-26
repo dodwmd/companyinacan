@@ -45,6 +45,7 @@ func TestGrantorCannotApproveOwnGrant(t *testing.T) {
 	}
 	// the grantee (a board member who is also an employee stakeholder) cannot approve their own grant
 	bobStk := m(e.s.CreateStakeholder(e.ctx, e.hr, e.ent.ID, StakeholderInput{Kind: "employee", PersonID: personBob, Identity: Identity{Name: "Bob Board"}}))
+	e.link(bobStk.ID)
 	id3 := e.draft(e.hr, bobStk.ID, q(10))
 	m(e.s.SubmitGrant(e.ctx, e.hr, id3))
 	if _, err := e.s.ApproveGrant(e.ctx, e.board, id3); !isErr(err, ErrSeparation) {
@@ -777,6 +778,7 @@ func TestExportEscapesFormulasAndIsAudited(t *testing.T) {
 	evil := m(e.s.CreateStakeholder(e.ctx, e.hr, e.ent.ID, StakeholderInput{Kind: "investor", Identity: Identity{Name: `=HYPERLINK("http://evil.test","x")`}}))
 	plus := m(e.s.CreateStakeholder(e.ctx, e.hr, e.ent.ID, StakeholderInput{Kind: "investor", Identity: Identity{Name: "+1+1"}}))
 	for _, st := range []*Stakeholder{evil, plus} {
+		e.link(st.ID)
 		_, _, err := e.s.IssueNewShares(e.ctx, e.fin, e.ent.ID, LedgerInput{ClassID: e.class.ID, StakeholderID: st.ID, Quantity: q(10), EffectiveDate: "2026-01-01"}, "", nil)
 		e.must(err)
 	}

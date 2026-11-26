@@ -546,7 +546,7 @@ func (s *Service) SubmitGrant(ctx context.Context, a Actor, id string) (*Grant, 
 		if st.Erased {
 			return conflict("the stakeholder is erased")
 		}
-		if _, err := s.holderLink(ctx, tx, g.StakeholderID); err != nil {
+		if _, err := s.holderLink(ctx, tx, a, g.StakeholderID); err != nil {
 			return err
 		}
 		history := g.editedBy
@@ -624,6 +624,7 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 			return conflict("only a pending grant can be approved (status is %s)", g.Status)
 		}
 		approver := canonSubject(a.Subject)
+		decider := Actor{Subject: approver}
 		if s.approvals != nil {
 			st, err := s.approvals.Status(ctx, g.ApprovalRef)
 			if err != nil {
@@ -632,14 +633,17 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 			if st.Outcome != "approved" {
 				return conflict("the approval engine has not approved this grant (outcome %q)", st.Outcome)
 			}
-			approver = canonSubject(st.DecidedBy)
+			if decider, err = s.approver(ctx, st.DecidedBy); err != nil {
+				return err
+			}
+			approver = decider.Subject
 		}
-		link, err := s.holderLink(ctx, tx, g.StakeholderID)
+		link, err := s.holderLink(ctx, tx, a, g.StakeholderID)
 		if err != nil {
 			return err
 		}
-		chain := append([]string{g.createdBy, g.submittedBy, link.person, link.attester, link.createdBy}, g.editedBy...)
-		if !sodOK(Actor{Subject: approver}, chain...) || !sodOK(a, chain...) {
+		chain := append([]string{g.createdBy, g.submittedBy, link.person, link.attester, link.verifier, link.linker, link.createdBy}, g.editedBy...)
+		if !sodOK(decider, chain...) || !sodOK(a, chain...) {
 			return ErrSeparation
 		}
 		if g.SupersedesID != "" {
@@ -1136,17 +1140,15 @@ func (s *Service) secondActor(a Actor, g *grantRow) error {
 	return nil
 }
 
-type holderLinkInfo struct{ person, attester, createdBy string }
+type holderLinkInfo struct{ person, attester, verifier, linker, createdBy string }
 
-// holderLink requires the stakeholder to be tied to a directory person, or to an external-holder
-// attestation made by a second actor. It returns whichever is recorded.
-func (s *Service) holderLink(ctx context.Context, q querier, stakeholderID string) (holderLinkInfo, error) {
+// holderLink requires the stakeholder to be established (requireEstablished) and returns who
+// stands behind the record: those people cannot approve its grants.
+func (s *Service) holderLink(ctx context.Context, q querier, a Actor, stakeholderID string) (holderLinkInfo, error) {
 	var l holderLinkInfo
-	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), IFNULL(external_attested_by, ''), created_by FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&l.person, &l.attester, &l.createdBy); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), IFNULL(external_attested_by, ''), IFNULL(person_verified_by, ''), IFNULL(person_linked_by, ''), created_by FROM stakeholders WHERE id = ?`, stakeholderID).
+		Scan(&l.person, &l.attester, &l.verifier, &l.linker, &l.createdBy); err != nil {
 		return l, err
 	}
-	if l.person == "" && l.attester == "" {
-		return l, conflict("the holder is not linked to a directory person: set person_id, or have a second person attest the holder as external (not a director or approver) before a grant can leave draft")
-	}
-	return l, nil
+	return l, s.requireEstablished(ctx, q, a, stakeholderID)
 }

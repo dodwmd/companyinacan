@@ -56,6 +56,11 @@ type Options struct {
 	Retention map[string]RetentionRule
 	Approvals ApprovalEngine // optional: where board approval requests are also registered
 	Now       func() time.Time
+	// Directory verifies callers and person links (specs/051-holder-identity). nil: the
+	// attestation mode, for installations without the people module.
+	Directory Directory
+	// BreakGlassUntil ends the operator's break-glass window for service accounts.
+	BreakGlassUntil time.Time
 }
 
 // Service is the application layer: authorisation, storage, audit and events.
@@ -69,6 +74,10 @@ type Service struct {
 	rotateHook func() // tests: runs between reading a value and its compare-and-swap
 	retention  map[string]RetentionRule
 	now        func() time.Time
+
+	directory       Directory
+	subjects        subjectCache
+	breakGlassUntil time.Time
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -87,7 +96,8 @@ func Open(path string, opt Options) (*Service, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // serialises writes (pool and balance checks rely on it) and keeps idle RAM low
-	s := &Service{db: db, keys: opt.Keyring, audit: opt.Auditor, retention: opt.Retention, now: opt.Now, approvals: opt.Approvals}
+	s := &Service{db: db, keys: opt.Keyring, audit: opt.Auditor, retention: opt.Retention, now: opt.Now, approvals: opt.Approvals,
+		directory: opt.Directory, breakGlassUntil: opt.BreakGlassUntil}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -276,16 +286,47 @@ func (a Actor) auditID() string {
 }
 
 // ResolveActor turns an authenticated Principal into an Actor. Roles were filtered by the
-// authenticator; a caller with no known role is blocked by the policy layer.
-func (s *Service) ResolveActor(_ context.Context, p *Principal) (Actor, error) {
-	return Actor{Subject: p.Subject, Roles: p.Roles, PersonID: p.PersonID, CanCore: p.CanCore}, nil
+// authenticator; a caller with no known role is blocked by the policy layer. With a directory,
+// the caller's person is the one the directory links to the subject, whatever the credential
+// claimed: a claim that disagrees leaves the caller unlinked.
+func (s *Service) ResolveActor(ctx context.Context, p *Principal) (Actor, error) {
+	a := Actor{Subject: p.Subject, Roles: p.Roles, PersonID: p.PersonID, CanCore: p.CanCore, Service: p.Service}
+	a.BreakGlass = p.Service && s.breakGlass()
+	if s.directory == nil {
+		return a, nil
+	}
+	a.PersonID, a.NeedPerson = "", !a.BreakGlass
+	if p.Service {
+		return a, nil
+	}
+	pid, err := s.personFor(ctx, p.Subject)
+	if err != nil {
+		a.DirectoryDown = true // reads by role still work; everything about a person is refused
+		return a, nil
+	}
+	if p.PersonID == "" || p.PersonID == pid {
+		a.PersonID = pid
+	}
+	return a, nil
 }
 
-// authorize returns ErrForbidden (and audits the denial) when the policy says no.
+// authorize returns ErrForbidden (and audits the denial) when the policy says no. A refusal
+// only for want of a person says so, and every use of break-glass is on record first.
 func (s *Service) authorize(ctx context.Context, a Actor, act Action, f Fact, resource string) error {
 	if !Decide(a, act, f) {
 		s.auditDeny(ctx, a, string(act), resource, nil)
+		linked := a
+		linked.NeedPerson, linked.CanCore = false, false
+		if a.unidentified(act) && Decide(linked, act, f) {
+			if a.DirectoryDown {
+				return ErrIdentityUnavailable
+			}
+			return ErrIdentityRequired
+		}
 		return ErrForbidden
+	}
+	if a.BreakGlass && needsIdentity[act] {
+		return s.audit.Record(ctx, AuditEvent{Time: s.now(), Actor: a.auditID(), Action: "break_glass:" + string(act), Resource: resource, Outcome: "ok"})
 	}
 	return nil
 }

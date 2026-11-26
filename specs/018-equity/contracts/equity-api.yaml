@@ -932,7 +932,7 @@
     "post":
       "operationId": "attest_external_holder"
       "summary": "hr, finance, board or admin"
-      "description": "Records that a stakeholder with no directory person link is an external holder (not a director or approver). The attester must not be the person who created the stakeholder. A grant cannot leave draft for a holder with neither a person_id nor this attestation. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "description": "Records that a stakeholder with no directory person link is an external holder (not a director or approver). The attester must not be the person who created the stakeholder. A grant, exercise or ledger entry needs this or a confirmed person link. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "stakeholders"
       "parameters":
@@ -3178,6 +3178,178 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}/person":
+    "put":
+      "operationId": "link_person"
+      "summary": "hr, finance, board or admin"
+      "description": "Directory mode. Sets or changes the person link; unconfirmed until verify-person. Nobody links a record to or away from themself. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/PersonLinkRequest"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Stakeholder"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "forbidden, separation_of_duties or identity_required"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "503":
+          "description": "directory_unavailable"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/stakeholders/{id}/verify-person":
+    "post":
+      "operationId": "verify_person"
+      "summary": "hr, finance, board or admin"
+      "description": "Directory mode. A second person confirms the record is the directory person it names. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "parameters":
+        -
+          "name": "id"
+          "in": "path"
+          "required": true
+          "schema":
+            "type": "string"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Stakeholder"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "forbidden, separation_of_duties or identity_required"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "503":
+          "description": "directory_unavailable"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/identity/review":
+    "get":
+      "operationId": "list_identity_review"
+      "summary": "hr, finance, board or admin"
+      "description": "Holder records that are not established. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "stakeholders"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/IdentityReviewList"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "forbidden, separation_of_duties or identity_required"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "503":
+          "description": "directory_unavailable"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/v1/me/identity":
+    "get":
+      "operationId": "get_my_identity"
+      "summary": "any role"
+      "description": "The identity mode and the caller's directory person. Requires permission equity.self-read (coarse); the policy layer decides per caller, record and field."
+      "tags":
+        - "self"
+      "responses":
+        "200":
+          "description": "ok"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/MyIdentity"
+        "401":
+          "description": "unauthenticated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "forbidden, separation_of_duties or identity_required"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "conflict"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "503":
+          "description": "directory_unavailable"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
   "/v1/me/grants":
     "get":
       "operationId": "list_my_grants"
@@ -3700,7 +3872,10 @@
           "type": "boolean"
         "external_holder_attested":
           "type": "boolean"
-          "description": "A second person attested the holder as external (not a director or approver); stands in for a directory person link."
+          "description": "A second actor attested the holder as external (not a director or approver), or, without a directory, established the record."
+        "person_verified":
+          "type": "boolean"
+          "description": "A second actor confirmed that the record is the directory person person_id names."
       "required":
         - "id"
         - "entity_id"
@@ -3708,6 +3883,54 @@
         - "legal_hold"
         - "erased"
       "description": "No personal data: the identity is a separate sealed, audited read."
+    "PersonLinkRequest":
+      "type": "object"
+      "additionalProperties": false
+      "required":
+        - "person_id"
+      "properties":
+        "person_id":
+          "type": "string"
+          "pattern": "^pers_[0-9a-f]{24}$"
+    "IdentityReviewList":
+      "type": "object"
+      "properties":
+        "items":
+          "type": "array"
+          "items":
+            "type": "object"
+            "properties":
+              "stakeholder_id":
+                "type": "string"
+              "entity_id":
+                "type": "string"
+              "kind":
+                "type": "string"
+              "person_id":
+                "type": "string"
+              "reason":
+                "enum":
+                  - "unconfirmed_person_link"
+                  - "unattested_holder"
+              "open_grants":
+                "type": "integer"
+              "ledger_entries":
+                "type": "integer"
+    "MyIdentity":
+      "type": "object"
+      "properties":
+        "subject":
+          "type": "string"
+        "mode":
+          "enum":
+            - "directory"
+            - "attestation"
+        "person_id":
+          "type": "string"
+        "directory_available":
+          "type": "boolean"
+        "break_glass":
+          "type": "boolean"
     "StakeholderInput":
       "type": "object"
       "additionalProperties": false

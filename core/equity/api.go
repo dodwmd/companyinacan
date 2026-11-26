@@ -94,6 +94,10 @@ func (a *API) fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, apiError{"invalid", inv.Msg})
 	case errors.Is(err, ErrNotFound):
 		writeJSON(w, http.StatusNotFound, apiError{"not_found", "not found"})
+	case errors.Is(err, ErrIdentityRequired):
+		writeJSON(w, http.StatusForbidden, apiError{"identity_required", ErrIdentityRequired.Error()})
+	case errors.Is(err, ErrIdentityUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, apiError{"directory_unavailable", ErrIdentityUnavailable.Error()})
 	case errors.Is(err, ErrSeparation):
 		writeJSON(w, http.StatusForbidden, apiError{"separation_of_duties", ErrSeparation.Error()})
 	case errors.Is(err, ErrForbidden):
@@ -337,6 +341,36 @@ func (a *API) Handler() http.Handler {
 			return result{}, err
 		}
 		return noContent()
+	})
+	route("PUT /v1/stakeholders/{id}/person", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
+		var in struct {
+			PersonID string `json:"person_id"`
+		}
+		if _, err := decode(r, &in); err != nil {
+			return result{}, err
+		}
+		st, err := svc().LinkPerson(ctx, ac, r.PathValue("id"), in.PersonID)
+		if err != nil {
+			return result{}, err
+		}
+		return ok(st)
+	})
+	route("POST /v1/stakeholders/{id}/verify-person", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
+		st, err := svc().VerifyPerson(ctx, ac, r.PathValue("id"))
+		if err != nil {
+			return result{}, err
+		}
+		return ok(st)
+	})
+	route("GET /v1/identity/review", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
+		list, err := svc().IdentityReview(ctx, ac)
+		if err != nil {
+			return result{}, err
+		}
+		return items(list)
+	})
+	route("GET /v1/me/identity", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
+		return ok(svc().WhoAmI(ac))
 	})
 	route("POST /v1/stakeholders/{id}/attest-external", func(ctx context.Context, ac Actor, r *http.Request) (result, error) {
 		st, err := svc().AttestExternal(ctx, ac, r.PathValue("id"))

@@ -285,6 +285,7 @@ func (s *Service) ApproveExercise(ctx context.Context, a Actor, id string) (*Exe
 			return conflict("only a requested exercise can be approved (status is %s)", e.Status)
 		}
 		approver := canonSubject(a.Subject)
+		decider := Actor{Subject: approver}
 		if s.approvals != nil {
 			st, err := s.approvals.Status(ctx, e.ApprovalRef)
 			if err != nil {
@@ -293,14 +294,20 @@ func (s *Service) ApproveExercise(ctx context.Context, a Actor, id string) (*Exe
 			if st.Outcome != "approved" {
 				return conflict("the approval engine has not approved this exercise (outcome %q)", st.Outcome)
 			}
-			approver = canonSubject(st.DecidedBy)
+			if decider, err = s.approver(ctx, st.DecidedBy); err != nil {
+				return err
+			}
+			approver = decider.Subject
 		}
 		var person string
 		if err := tx.QueryRowContext(ctx, `SELECT IFNULL(person_id, '') FROM stakeholders WHERE id = ?`, e.StakeholderID).Scan(&person); err != nil {
 			return err
 		}
-		if !sodOK(Actor{Subject: approver}, e.requestedBy, person) || !sodOK(a, e.requestedBy, person) {
+		if !sodOK(decider, e.requestedBy, person) || !sodOK(a, e.requestedBy, person) {
 			return ErrSeparation
+		}
+		if err := s.requireEstablished(ctx, tx, a, e.StakeholderID); err != nil {
+			return err
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE exercises SET status=?, approved_by=?, updated_at=? WHERE id=?`, ExApproved, approver, s.now().Unix(), id)
 		return err
@@ -391,6 +398,9 @@ func (s *Service) RecordPayment(ctx context.Context, a Actor, id string, in Paym
 		if !sodOK(a, e.requestedBy, person) {
 			return ErrSeparation
 		}
+		if err := s.requireEstablished(ctx, tx, a, e.StakeholderID); err != nil {
+			return err
+		}
 		var ref any
 		if in.Reference != "" {
 			if ref, err = s.keys.Seal(in.Reference, id+":payment_ref"); err != nil {
@@ -422,6 +432,9 @@ func (s *Service) IssueShares(ctx context.Context, a Actor, id string) (*Exercis
 		}
 		if !sodOK(a, e.requestedBy, person, e.paymentBy) {
 			return ErrSeparation
+		}
+		if err := s.requireEstablished(ctx, tx, a, e.StakeholderID); err != nil {
+			return err
 		}
 		if g.Status != GrantActive {
 			return conflict("the grant is %s: it can no longer be exercised", g.Status)
