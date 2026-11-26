@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -24,6 +25,7 @@ type restoreFlags struct {
 	confirm                                                                        string
 	plan, allowNoLedger, acceptBehind, forceOlder, withoutSecrets                  bool
 	acceptUnrestored, acceptUnerased, missingBlobs                                 []string
+	acceptCompany                                                                  string
 }
 
 const k3sKubeconfig = "/etc/rancher/k3s/k3s.yaml"
@@ -62,6 +64,7 @@ run ` + "`can up`" + ` afterwards. docs/backup-restore.md lists what has not bee
 	fl.StringArrayVar(&f.acceptUnrestored, "accept-unrestored", nil, "module id or namespace/claim volume that may stay unrestored (repeatable)")
 	fl.StringArrayVar(&f.acceptUnerased, "accept-unerased", nil, "module:class whose tombstones cannot be replayed and that you will erase by hand (repeatable)")
 	fl.StringArrayVar(&f.missingBlobs, "allow-missing-blobs", nil, "module (files, jobs) to restore although files its database names are missing; only right for files destroyed after the backup's dump (repeatable)")
+	fl.StringVar(&f.acceptCompany, "accept-company", "", "restore a snapshot whose company.yaml has this name although the kit names another (a company renamed since the kit was made)")
 	fl.StringVar(&f.repo, "repo", "", "restore from this repository instead of the kit's bucket: a local directory holding a copy of it (the ledger is read from ../ledger)")
 	fl.StringVar(&f.imagesFrom, "images-from", "", "directory written by make images (verified and imported into k3s)")
 	fl.StringVar(&f.releaseManifest, "release-manifest", "", "release image manifest (digest-pinned)")
@@ -87,12 +90,16 @@ func runRestore(cmd *cobra.Command, g *globalOpts, f *restoreFlags) error {
 	if err != nil {
 		return err
 	}
+	dir, err := filepath.Abs(f.dir)
+	if err != nil {
+		return failure("%v", err)
+	}
 	if f.state == "" {
 		f.state = filepath.Join(f.root, "var/lib/can/restore-state.json")
 	}
 	o := &backup.Restore{
 		Kit: kit, Root: f.root, DumpsDir: f.dumps, HostStateDir: f.hostState, PVCRoot: f.pvcRoot, StagingDir: f.staging,
-		CompanyDir: f.dir, ConfigDir: backup.DefaultSettings().ConfigDir, LedgerPath: backup.DefaultSettings().LedgerSource,
+		CompanyDir: dir, DirChosen: cmd.Flags().Changed("dir"), Source: f.repo, AcceptCompany: f.acceptCompany, ConfigDir: backup.DefaultSettings().ConfigDir, LedgerPath: backup.DefaultSettings().LedgerSource,
 		StatePath: f.state, Snapshot: f.snapshot, ConfirmOverwrite: f.confirm, AllowNoLedger: f.allowNoLedger,
 		AcceptLedgerBehind: f.acceptBehind, ForceOlder: f.forceOlder, WithoutSecrets: f.withoutSecrets,
 		AcceptUnrestored: f.acceptUnrestored, AcceptUnerased: f.acceptUnerased, AllowMissingBlobs: f.missingBlobs, Out: cmd.ErrOrStderr(),
@@ -173,9 +180,16 @@ func runRestore(cmd *cobra.Command, g *globalOpts, f *restoreFlags) error {
 		return mapErr(err)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), `restore complete.
+THIS SERVER IS NOT BEING BACKED UP YET.
 Next, from a machine that reaches this server: run `+"`can up`"+` in %s (site, admin and module routes, DNS),
 with the --backup-* flags to install the backup timer again (the password is already on this server).
 Check that the old server is really gone: two servers backing up to one repository, or sending mail, is not supported.
+Erasures: only those recorded with `+"`can backup ledger-add`"+` were replayed; modules do not record them by themselves,
+so repeat any erasure made in a module after the snapshot that was not added by hand.
 `, f.dir)
+	if len(f.acceptUnrestored) > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "NOT restored (%s): it is not in later backups, and the snapshots holding it are deleted after %d days.\n",
+			strings.Join(f.acceptUnrestored, ", "), backup.DefaultSettings().RetentionDays)
+	}
 	return nil
 }

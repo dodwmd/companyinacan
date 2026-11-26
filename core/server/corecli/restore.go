@@ -80,6 +80,23 @@ func restoreCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 			RunE: func(c *cobra.Command, _ []string) error {
 				return run(c, func(ctx context.Context, o *restoreops.Ops, _ restoreInput) (any, error) { return o.Complete(ctx) }, false)
 			}},
+		&cobra.Command{Use: "serving", Short: "Ask the running can-core whether it serves normally or is in restore mode", Args: cobra.NoArgs,
+			RunE: func(c *cobra.Command, _ []string) error {
+				cfg, err := runtime.FromEnv(getenv)
+				if err != nil {
+					return fail("%v", err)
+				}
+				ctx := c.Context()
+				if ctx == nil {
+					ctx = context.Background()
+				}
+				s, err := cfg.Serving(ctx)
+				if err != nil {
+					return fail("%v", err)
+				}
+				fmt.Fprintln(c.OutOrStdout(), s)
+				return nil
+			}},
 		&cobra.Command{Use: "status", Short: "Print whether can-core is in restore mode", Args: cobra.NoArgs,
 			RunE: func(c *cobra.Command, _ []string) error {
 				cfg, err := runtime.FromEnv(getenv)

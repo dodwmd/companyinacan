@@ -27,6 +27,8 @@ type rec struct {
 	overwrite bool
 	company   []byte
 	atStart   func() // observes the host when the platform starts
+	mode      string // what can-core says, tracked from start and complete
+	id        string
 }
 
 func (r *rec) step(name string) error {
@@ -58,6 +60,7 @@ func (r *rec) Halt(context.Context) error                { return r.step("halt")
 func (r *rec) Inspect(context.Context) ([]string, error) { return r.live, r.step("inspect") }
 func (r *rec) Start(_ context.Context, o StartOptions) error {
 	r.company, r.overwrite = o.CompanyYAML, o.Overwrite
+	r.mode, r.id = "restoring "+o.ID, o.ID
 	if r.atStart != nil {
 		r.atStart()
 	}
@@ -76,7 +79,14 @@ func (r *rec) Erase(_ context.Context, es []Entry, accept []string) (EraseReport
 	r.erased, r.accept = es, accept
 	return EraseReport{}, r.step("erase")
 }
-func (r *rec) Complete(context.Context) error { return r.step("complete") }
+func (r *rec) Complete(context.Context) error {
+	err := r.step("complete")
+	if err == nil {
+		r.mode = "normal restored " + r.id
+	}
+	return err
+}
+func (r *rec) Mode(context.Context) (string, error) { return r.mode, nil }
 func (r *rec) Fetch(context.Context) ([]Entry, error) {
 	r.events = append(r.events, "fetch-ledger")
 	return r.ledger, r.ledgErr
@@ -89,6 +99,8 @@ type restoreEnv struct {
 	root string
 	out  *bytes.Buffer
 }
+
+const tCompany = "schema: 1\nname: Acme\n"
 
 const (
 	tDumps = "/var/lib/can/dumps"
@@ -118,7 +130,7 @@ func snapshotFiles(dumps map[string][]byte, pvc map[string][]byte) map[string][]
 
 func goodDumps(t *testing.T) map[string][]byte {
 	return map[string][]byte{
-		"company.yaml":                  []byte("schema: 1\n"),
+		"company.yaml":                  []byte(tCompany),
 		"can-core/state.db":             backuptest.StateDB(t, backuptest.Module{ID: "forms", State: "enabled", Database: "sqlite"}),
 		"can-core/secrets.json":         []byte(`{"version":1,"secrets":[{"namespace":"mod-forms","name":"can-module","data":{"K":"dg=="}}]}`),
 		"modules/wiki/storage.tar.gz":   []byte("dump-a"),
@@ -187,10 +199,10 @@ func TestRestoreOrderAndHostEffects(t *testing.T) {
 	if e.r.events[len(e.r.events)-1] != "complete" {
 		t.Errorf("complete must be last: %v", e.r.events)
 	}
-	if len(e.r.erased) != 2 || e.r.overwrite || string(e.r.company) != "schema: 1\n" {
+	if len(e.r.erased) != 2 || e.r.overwrite || string(e.r.company) != tCompany {
 		t.Errorf("erased=%v overwrite=%v company=%q", e.r.erased, e.r.overwrite, e.r.company)
 	}
-	if got := e.read("company/company.yaml"); got != "schema: 1\n" {
+	if got := e.read("company/company.yaml"); got != tCompany {
 		t.Errorf("company.yaml = %q", got)
 	}
 	if got := e.read("pvc/pvc-NEW9_mod-forms_data/uploads/f.txt"); got != "file" {
@@ -206,10 +218,13 @@ func TestRestoreOrderAndHostEffects(t *testing.T) {
 	if _, err := os.Stat(e.o.StagingDir); !os.IsNotExist(err) {
 		t.Errorf("the staged snapshot (secrets, erased data) must be removed: %v", err)
 	}
-	// A completed restore is a no-op when re-run.
+	// A completed restore is refused when re-run, whatever flags it is given: it would do nothing.
 	n := len(e.r.events)
-	if err := e.run(); err != nil || len(e.r.events) != n {
-		t.Errorf("re-run did work: %v %v", err, e.r.events[n:])
+	for _, change := range []func(){func() {}, func() { e.o.Snapshot = "other" }, func() { e.o.Snapshot, e.o.ConfirmOverwrite = "", "Acme" }} {
+		change()
+		if err := e.run(); err == nil || !strings.Contains(err.Error(), "NOTHING was done") || len(e.r.events) != n {
+			t.Errorf("re-run of a complete restore: %v %v", err, e.r.events[n:])
+		}
 	}
 }
 
@@ -722,15 +737,136 @@ func TestRestoreBucketLedgerMissingButSnapshotHasOne(t *testing.T) {
 	}
 }
 
-func TestRestoreSnapshotFlagConflictOnResume(t *testing.T) {
+func TestRestoreRefusesConflictingFlagsOnResume(t *testing.T) {
+	for name, change := range map[string]func(*Restore){
+		"--snapshot":          func(o *Restore) { o.Snapshot = "other" },
+		"--force-older":       func(o *Restore) { o.ForceOlder = true },
+		"--confirm-overwrite": func(o *Restore) { o.ConfirmOverwrite = "Acme" }, // the server was blank
+		"--dir":               func(o *Restore) { o.CompanyDir, o.DirChosen = o.CompanyDir+"-else", true },
+		"different":           func(o *Restore) { o.Source = "/some/copy/restic" }, // --repo
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newRestoreEnv(t)
+			e.r.failOnce["apply"] = errors.New("x")
+			_ = e.run()
+			n := len(e.r.events)
+			change(e.o)
+			err := e.run()
+			if err == nil || !strings.Contains(err.Error(), name) || e.r.count("apply") != 1 {
+				t.Fatalf("err = %v, events %v", err, e.r.events[n:])
+			}
+		})
+	}
+	// the same flags resume, and an unfinished first step conflicts too
 	e := newRestoreEnv(t)
+	e.o.Snapshot = "snapA"
 	e.r.failOnce["apply"] = errors.New("x")
 	_ = e.run()
-	e.o.Snapshot = "other"
-	if err := e.run(); err == nil || !strings.Contains(err.Error(), "conflicts") {
-		// the failed step does not need the snapshot; a later one does
-		if err != nil {
-			t.Fatal(err)
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A volume copy that fails after another volume was copied can be resumed: the finished one is
+// recorded and left alone.
+func TestRestoreResumesAfterAPartialVolumeCopy(t *testing.T) {
+	e := newRestoreEnv(t)
+	e.rs.Files["/pvc/pvc-OLD4_mod-wiki_data/page.txt"] = []byte("page")
+	e.r.volumes = append(e.r.volumes, Volume{VolumeRef{"mod-wiki", "data"}, "/pvc/pvc-NEW8_mod-wiki_data"})
+	put(e, "pvc/pvc-NEW8_mod-wiki_data/in-the-way") // the second volume (mod-forms is first) fails
+	if err := e.run(); err == nil || !strings.Contains(err.Error(), "mod-wiki/data") {
+		t.Fatalf("err = %v", err)
+	}
+	if e.read("pvc/pvc-NEW9_mod-forms_data/uploads/f.txt") != "file" {
+		t.Fatal("the first volume should have been copied")
+	}
+	put(e, "pvc/pvc-NEW9_mod-forms_data/written-since")
+	_ = os.Remove(filepath.Join(e.root, "pvc/pvc-NEW8_mod-wiki_data/in-the-way"))
+	if err := e.run(); err != nil {
+		t.Fatal("resume after a partial copy: ", err)
+	}
+	if e.read("pvc/pvc-NEW8_mod-wiki_data/page.txt") != "page" || e.read("pvc/pvc-NEW9_mod-forms_data/written-since") == "" {
+		t.Error("the second volume must be copied and the first left alone")
+	}
+	for _, v := range []string{"pvc/pvc-NEW9_mod-forms_data", "pvc/pvc-NEW8_mod-wiki_data"} {
+		if _, err := os.Stat(filepath.Join(e.root, v, copyMarker)); err == nil {
+			t.Error("copy marker left in", v)
+		}
+	}
+}
+
+// A claim does not outlive its half-restored server: later, or on a can-core that is not in
+// this restore, the blank-server check applies again.
+func TestRestoreStaleClaimChecksBlankAgain(t *testing.T) {
+	later := time.Now().Add(claimTTL + time.Hour)
+	for name, change := range map[string]func(*restoreEnv){
+		"old":              func(e *restoreEnv) { e.o.Now = func() time.Time { return later } },
+		"can-core is live": func(e *restoreEnv) { e.r.mode = "normal" },
+		"another restore":  func(e *restoreEnv) { e.r.mode = "restoring someoneelse" },
+		"cluster rebuilt":  func(e *restoreEnv) { e.r.mode = "" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newRestoreEnv(t)
+			e.r.failOnce["hooks"] = errors.New("x")
+			if e.run() == nil {
+				t.Fatal("expected failure")
+			}
+			change(e)
+			e.r.live = []string{"can-core is deployed"}
+			err := e.run()
+			if err == nil || !strings.Contains(err.Error(), "not blank") || e.r.count("hooks") != 1 || e.r.count("apply") != 1 {
+				t.Fatalf("err = %v events %v", err, e.r.events)
+			}
+			if !strings.Contains(e.out.String(), "stale") {
+				t.Error("not said why")
+			}
+			e.o.ConfirmOverwrite = "Acme"
+			if err := e.run(); err != nil {
+				t.Fatal("confirmed: ", err)
+			}
+		})
+	}
+	// can-core that cannot be asked is not proof of anything: resume
+	e := newRestoreEnv(t)
+	e.r.failOnce["hooks"] = errors.New("x")
+	_ = e.run()
+	e.r.mode = "unknown"
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestoreRefusesAnotherCompanysSnapshot(t *testing.T) {
+	e := newRestoreEnv(t)
+	d := goodDumps(t)
+	delete(d, "modules/wiki/storage.tar.gz")
+	delete(d, "modules/forms/placeholder.txt")
+	d["company.yaml"] = []byte("schema: 1\nname: Other Co\n")
+	e.rs.Files = snapshotFiles(d, nil)
+	for _, accept := range []string{"", "Acme", "other co"} {
+		e.o.AcceptCompany = accept
+		if err := e.run(); err == nil || !strings.Contains(err.Error(), "Other Co") || e.r.count("start") != 0 {
+			t.Fatalf("accept %q: %v", accept, err)
+		}
+	}
+	e.o.AcceptCompany = "Other Co"
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// What a restore may leave behind, and what the replay cannot know, is said.
+func TestRestoreWarnsWhatWillBeLost(t *testing.T) {
+	e := newRestoreEnv(t)
+	e.o.AcceptUnrestored = []string{"mod-forms/data"}
+	e.r.volumes = nil
+	if err := e.run(); err != nil {
+		t.Fatal(err)
+	}
+	out := e.out.String()
+	for _, want := range []string{"35 days", "snapshot snapA", "lost for good", "ledger-add", "is BACK now"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
 }

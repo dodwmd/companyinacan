@@ -501,6 +501,9 @@ func TestRestoreOnK3d(t *testing.T) {
 	// --- the restored server can be backed up again, and is not "blank" any more -------------------
 	requestDump(t)
 	onNode(t, "test -s /var/lib/can/dumps/COMPLETE")
+	if again, aerr := canRestore(t); aerr == nil || !strings.Contains(again, "NOTHING was done") {
+		t.Fatalf("running a finished restore again must be refused: %v", aerr)
+	}
 	out, err = canRestore(t, "--state", "/root/second.json", "--accept-unerased", "forms:lead-submission")
 	if err == nil || !strings.Contains(out, "not blank") {
 		t.Fatalf("a second restore over a live server must be refused: %v", err)

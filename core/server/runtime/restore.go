@@ -19,6 +19,35 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
+// restoringHeader marks the answers of a can-core process that is in restore mode.
+const restoringHeader = "X-Can-Restoring"
+
+// Serving asks the can-core running in this pod how it behaves: "restoring" or "normal". The
+// latch on disk says what the next start will do; only the process says what it does now.
+func (c Config) Serving(ctx context.Context) (string, error) {
+	_, port, err := net.SplitHostPort(c.AdminAddr)
+	if err != nil {
+		return "", fmt.Errorf("CAN_ADMIN_ADDR: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+port+"/", nil)
+	if err != nil {
+		return "", err
+	}
+	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("can-core does not answer: %w", err)
+	}
+	_ = resp.Body.Close()
+	switch {
+	case resp.Header.Get(restoringHeader) != "":
+		return "restoring", nil
+	case resp.StatusCode >= http.StatusInternalServerError:
+		return "", fmt.Errorf("can-core answers %d", resp.StatusCode)
+	}
+	return "normal", nil
+}
+
 // restoringHandler answers 503 to everything but what allowed admits.
 func restoringHandler(next http.Handler, allowed func(*http.Request) bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +56,7 @@ func restoringHandler(next http.Handler, allowed func(*http.Request) bool) http.
 			return
 		}
 		w.Header().Set("Retry-After", "60")
+		w.Header().Set(restoringHeader, "1")
 		http.Error(w, "this server is being restored from a backup", http.StatusServiceUnavailable)
 	})
 }

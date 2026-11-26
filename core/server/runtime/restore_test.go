@@ -95,6 +95,11 @@ func TestRunInRestoreMode(t *testing.T) {
 	if c := get("http://" + a[1] + "/v1/self"); c != 503 {
 		t.Error("module API during a restore:", c)
 	}
+	served := cfg
+	served.AdminAddr = a[0]
+	if got, err := served.Serving(ctx); err != nil || got != "restoring" {
+		t.Error("serving:", got, err)
+	}
 	time.Sleep(200 * time.Millisecond)
 	if _, err := os.Stat(filepath.Join(dumps, backup.MarkerName)); err == nil {
 		t.Error("a dump run happened in restore mode")
@@ -102,5 +107,18 @@ func TestRunInRestoreMode(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestServingNormal(t *testing.T) {
+	srv := httptest.NewServer(http.RedirectHandler("/login", http.StatusSeeOther))
+	defer srv.Close()
+	c := Config{AdminAddr: srv.Listener.Addr().String()}
+	if got, err := c.Serving(context.Background()); err != nil || got != "normal" {
+		t.Fatal(got, err)
+	}
+	c.AdminAddr = "127.0.0.1:1"
+	if _, err := c.Serving(context.Background()); err == nil {
+		t.Fatal("nothing listening is not normal")
 	}
 }

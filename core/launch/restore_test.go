@@ -91,3 +91,38 @@ func TestRestoreClusterReportsKeepTheError(t *testing.T) {
 		t.Error("the entries go on stdin")
 	}
 }
+
+// Going live always restarts can-core and ends only when the new process serves normally.
+func TestRestoreClusterCompleteVerifiesNormalMode(t *testing.T) {
+	rules := func(serving string) []kubeRule {
+		return []kubeRule{
+			{contains: "restore status", out: "normal restored r1\n"},
+			{contains: "restore serving", out: serving},
+			{contains: "get configmap company", out: "name: A\ndomain: a.example\n"},
+		}
+	}
+	k := &fakeKube{rules: rules("normal\n")}
+	if err := restoreCluster(k).Complete(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	all := k.joined()
+	if !strings.Contains(all, "rollout restart deploy/can-core") || strings.Index(all, "rollout restart") > strings.Index(all, "restore serving") {
+		t.Error("no restart before the check:\n" + all)
+	}
+	k = &fakeKube{rules: rules("restoring\n")}
+	if err := restoreCluster(k).Complete(context.Background()); err == nil || !strings.Contains(err.Error(), "restore mode") {
+		t.Fatalf("a latched can-core must not be reported as live: %v", err)
+	}
+}
+
+func TestRestoreClusterMode(t *testing.T) {
+	for want, rules := range map[string][]kubeRule{
+		"":             {{contains: "get deployment can-core", out: ""}},
+		"restoring r1": {{contains: "get deployment can-core", out: "deployment.apps/can-core\n"}, {contains: "restore status", out: "restoring r1\n"}},
+		"unknown":      {{contains: "get deployment can-core", out: "deployment.apps/can-core\n"}, {contains: "restore status", err: context.DeadlineExceeded}},
+	} {
+		if got, err := restoreCluster(&fakeKube{rules: rules}).Mode(context.Background()); err != nil || got != want {
+			t.Errorf("want %q got %q %v", want, got, err)
+		}
+	}
+}

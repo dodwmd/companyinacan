@@ -63,6 +63,22 @@ func lines(s string) []string {
 	return out
 }
 
+// Mode implements backup.Cluster.
+func (c *RestoreCluster) Mode(ctx context.Context) (string, error) {
+	out, err := c.runner().kube(ctx, nil, "-n", SystemNS, "get", "deployment", "can-core", "--ignore-not-found", "-o", "name")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(out) == "" {
+		return "", nil
+	}
+	s, err := c.exec(ctx, nil, "restore", "status")
+	if err != nil {
+		return "unknown", nil // deployed but not running: nothing can be concluded
+	}
+	return strings.TrimSpace(s), nil
+}
+
 // Inspect implements backup.Cluster.
 func (c *RestoreCluster) Inspect(ctx context.Context) ([]string, error) {
 	r := c.runner()
@@ -377,8 +393,30 @@ func (c *RestoreCluster) Complete(ctx context.Context) error {
 	if _, err := r.apply(ctx, manifests, false); err != nil {
 		return err
 	}
+	// Always restart: when the manifests are already the normal ones (a resumed restore, or
+	// someone re-applied them) applying changes nothing, and the old process would stay in
+	// restore mode behind a healthy rollout.
+	if _, err := r.kube(ctx, nil, "-n", SystemNS, "rollout", "restart", "deploy/can-core"); err != nil {
+		return err
+	}
 	if err := c.rollout(ctx, r); err != nil {
 		return err
+	}
+	if err := r.poll(ctx, r.o.Timeouts.Rollout, func() error {
+		status, err := c.exec(ctx, nil, "restore", "status")
+		if err != nil {
+			return err
+		}
+		serving, err := c.exec(ctx, nil, "restore", "serving")
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(strings.TrimSpace(status), "normal") || strings.TrimSpace(serving) != "normal" {
+			return fmt.Errorf("can-core is still in restore mode (latch %q, serving %q)", strings.TrimSpace(status), strings.TrimSpace(serving))
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("can-core did not come back in normal mode: %w", err)
 	}
 	// The reconcile that now runs puts the modules' workloads and routes back. A module that does
 	// not come up is reported, not fatal: the data is restored and can-core keeps retrying it.

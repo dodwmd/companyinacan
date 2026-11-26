@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // Restore (specs/042-restore) runs on the server being restored, as root, next to its k3s. The
@@ -86,6 +88,10 @@ type Cluster interface {
 	// Halt stops a can-core that already runs on a server being overwritten, so that it cannot
 	// dump over the dumps being restored; Start brings it back.
 	Halt(ctx context.Context) error
+	// Mode is what a can-core already on this server says about itself: "" when none is
+	// deployed, "restoring <id>", "normal restored <id>", "normal", or "unknown" when it is
+	// deployed but cannot be asked.
+	Mode(ctx context.Context) (string, error)
 	// Inspect lists what already runs on this server that a restore would overwrite; nothing for a
 	// freshly bootstrapped k3s.
 	Inspect(ctx context.Context) ([]string, error)
@@ -140,6 +146,11 @@ type Restore struct {
 	LedgerPath   string // the server's erasure ledger ("" skips)
 	StatePath    string
 	Snapshot     string // "" = latest, pinned on first run
+	// DirChosen says CompanyDir was asked for (--dir), not a default that follows the shell.
+	DirChosen bool
+	// DirChosen says CompanyDir was asked for (--dir), not a default that follows the shell.
+	Source string
+	Now    func() time.Time // default time.Now
 
 	// Each override is separate and dangerous in its own way.
 	ConfirmOverwrite   string   // the company name: restore over a server that is not blank
@@ -150,6 +161,8 @@ type Restore struct {
 	AcceptUnrestored   []string // module ids, or namespace/claim volumes, that may stay unrestored
 	AcceptUnerased     []string // module:class tombstones that may stay unapplied
 	AllowMissingBlobs  []string // modules restored without files destroyed after their dump
+	// AcceptCompany restores a snapshot whose company.yaml names another company than the kit.
+	AcceptCompany string
 
 	// StopTimer stops the backup timer of a server being overwritten (nil: nothing to stop).
 	StopTimer func(ctx context.Context) error
@@ -201,6 +214,29 @@ type restoreState struct {
 	Overwrite bool                 `json:"overwrite,omitempty"`
 	Steps     map[string]stepState `json:"steps"`
 	Entries   []Entry              `json:"ledger,omitempty"`
+	// Updated is when this restore last did something; a claim does not last forever.
+	Updated    time.Time `json:"updated,omitempty"`
+	SnapshotAt time.Time `json:"snapshot_at,omitempty"`
+	// ForceOlder and CompanyDir are the choices a resume may not change.
+	ForceOlder bool   `json:"force_older,omitempty"`
+	CompanyDir string `json:"company_dir,omitempty"`
+	// Volumes are the volume directories already copied: a resume leaves them alone.
+	Volumes map[string]bool `json:"volumes,omitempty"`
+}
+
+// claimTTL is how long an unfinished restore may sit before its claim on the server expires.
+const claimTTL = 72 * time.Hour
+
+// RetentionWarning is said about everything a restore is allowed to leave behind.
+func RetentionWarning(snapshot string) string {
+	return fmt.Sprintf("what is not restored is NOT in this server's later backups either, and the snapshots that hold it are deleted %d days after they were made: recover it from snapshot %s before then, or it is lost for good", DefaultSettings().RetentionDays, snapshot)
+}
+
+func (o *Restore) now() time.Time {
+	if o.Now != nil {
+		return o.Now()
+	}
+	return time.Now()
 }
 
 // PlanStep is one line of `can restore --plan`.
@@ -213,7 +249,11 @@ type PlanStep struct {
 }
 
 func (o *Restore) fingerprint() string {
-	h := sha256.Sum256([]byte(o.Kit.Restic.Repository + "\x00" + o.Kit.Restic.Password))
+	repo := o.Kit.Restic.Repository
+	if o.Source != "" {
+		repo = o.Source
+	}
+	h := sha256.Sum256([]byte(repo + "\x00" + o.Kit.Restic.Password))
 	return hex.EncodeToString(h[:8])
 }
 
@@ -250,6 +290,7 @@ func (o *Restore) load() (*restoreState, error) {
 }
 
 func (o *Restore) save(st *restoreState) error {
+	st.Updated = o.now().UTC()
 	b, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err
@@ -315,10 +356,82 @@ func (o *Restore) warn(ws []string) {
 	}
 }
 
-// Run executes the remaining steps.
+// complete reports whether every step is done.
+func (st *restoreState) complete() bool {
+	for _, s := range stepTitles {
+		if !st.Steps[s.id].Done {
+			return false
+		}
+	}
+	return true
+}
+
+// stale says why an unfinished restore's claim on this server no longer holds, "" if it does.
+// A claim lets a resume skip the blank-server check, so it must not outlive the half-restored
+// server it was made on.
+func (o *Restore) stale(ctx context.Context, st *restoreState) (string, error) {
+	if !st.Claimed {
+		return "", nil
+	}
+	if age := o.now().Sub(st.Updated); age > claimTTL {
+		return fmt.Sprintf("it has not run for %s", age.Round(time.Hour)), nil
+	}
+	mode, err := o.Cluster.Mode(ctx)
+	if err != nil {
+		return "", fmt.Errorf("ask can-core which restore this server is in: %w", err)
+	}
+	switch {
+	case mode == "unknown", mode == "restoring "+st.ID:
+		return "", nil
+	case mode == "normal restored "+st.ID && st.Steps[StepErasure].Done:
+		return "", nil // only going live was left
+	case mode == "":
+		if st.Steps[StepPlatform].Done {
+			return "the can-core this restore deployed is gone", nil
+		}
+		return "", nil
+	case !st.Steps[StepPlatform].Done && st.Overwrite:
+		return "", nil // the server being overwritten still runs its old can-core
+	}
+	return fmt.Sprintf("can-core on this server says %q, not that it is in this restore", mode), nil
+}
+
+// conflicts refuses flags that contradict what an earlier run of this restore already did.
+func (o *Restore) conflicts(st *restoreState) error {
+	again := fmt.Sprintf("this restore was started differently; run it with the same flags, or delete %s to start over", o.StatePath)
+	switch {
+	case st.Snapshot != "" && o.Snapshot != "" && o.Snapshot != st.Snapshot:
+		return fmt.Errorf("--snapshot %s conflicts with snapshot %s: %s", o.Snapshot, st.Snapshot, again)
+	case st.Snapshot != "" && o.ForceOlder && !st.ForceOlder:
+		return fmt.Errorf("--force-older conflicts with the already chosen snapshot %s: %s", st.Snapshot, again)
+	case o.ConfirmOverwrite != "" && st.Claimed && (!st.Overwrite || o.ConfirmOverwrite != o.Kit.Company.Name):
+		return fmt.Errorf("--confirm-overwrite %q conflicts (the server was blank when this restore claimed it, or the name differs): %s", o.ConfirmOverwrite, again)
+	case st.CompanyDir != "" && o.DirChosen && o.CompanyDir != st.CompanyDir:
+		return fmt.Errorf("--dir %s conflicts with %s, where company.yaml was written: %s", o.CompanyDir, st.CompanyDir, again)
+	}
+	return nil
+}
+
+// Run executes the remaining steps. It refuses a restore that already finished: running it
+// again would do nothing, and saying "complete" would let the operator believe otherwise.
 func (o *Restore) Run(ctx context.Context) error {
 	st, err := o.load()
 	if err != nil {
+		return err
+	}
+	if st.complete() {
+		return fmt.Errorf("this server was already restored from snapshot %s (finished %s): NOTHING was done now, and any --snapshot or --confirm-overwrite given was not applied. To restore again over this server, delete %s and run with --confirm-overwrite %q",
+			st.Snapshot, st.Steps[StepLive].Finished.Format(time.RFC3339), o.StatePath, o.Kit.Company.Name)
+	}
+	why, err := o.stale(ctx, st)
+	if err != nil {
+		return err
+	}
+	if why != "" {
+		o.say("the unfinished restore recorded in %s is stale (%s): starting over, with the blank-server check", o.StatePath, why)
+		st = &restoreState{Version: 2, Steps: map[string]stepState{}}
+	}
+	if err := o.conflicts(st); err != nil {
 		return err
 	}
 	st.Fingerprint = o.fingerprint()
@@ -394,11 +507,9 @@ func markersAt(root, dumpsDir, hostStateDir string) (Marker, error) {
 // The chosen snapshot id and time are always reported.
 func (o *Restore) pin(ctx context.Context, st *restoreState) (string, error) {
 	if st.Snapshot != "" {
-		if o.Snapshot != "" && o.Snapshot != st.Snapshot {
-			return "", fmt.Errorf("this restore was started with snapshot %s; --snapshot %s conflicts (delete %s to start over)", st.Snapshot, o.Snapshot, o.StatePath)
-		}
 		return st.Snapshot, nil
 	}
+	st.ForceOlder = o.ForceOlder
 	if o.Snapshot != "" {
 		st.Snapshot = o.Snapshot
 		o.say("using snapshot %s (chosen with --snapshot)", o.Snapshot)
@@ -441,7 +552,7 @@ func (o *Restore) pin(ctx context.Context, st *restoreState) (string, error) {
 			continue
 		}
 		o.say("using snapshot %s (%s)", sn.ID, when)
-		st.Snapshot = sn.ID
+		st.Snapshot, st.SnapshotAt = sn.ID, sn.Time
 		return sn.ID, nil
 	}
 	return "", errors.New("repository has no usable snapshot (tagged can and not inconsistent)")
@@ -589,6 +700,28 @@ func (o *Restore) checkDumps() ([]string, error) {
 
 func (o *Restore) accepted(what string) bool { return slices.Contains(o.AcceptUnrestored, what) }
 
+// checkCompany refuses a snapshot of another company than the kit's: one kit, one company.
+func (o *Restore) checkCompany(dumps string) error {
+	b, err := os.ReadFile(filepath.Join(dumps, CompanyDump)) //nolint:gosec // our staging dir
+	if err != nil {
+		return err
+	}
+	var c struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal(b, &c); err != nil {
+		return fmt.Errorf("the snapshot's company.yaml: %w", err)
+	}
+	switch {
+	case c.Name == o.Kit.Company.Name:
+		return nil
+	case o.AcceptCompany != "" && o.AcceptCompany == c.Name:
+		o.say("WARNING: --accept-company: the snapshot is of %q, the kit of %q", c.Name, o.Kit.Company.Name)
+		return nil
+	}
+	return fmt.Errorf("the snapshot's company.yaml is of %q but this recovery kit is of %q: wrong kit or wrong repository. If the company was renamed since the kit was made, add --accept-company %q", c.Name, o.Kit.Company.Name, c.Name)
+}
+
 // stepFetch does every check that can be done before the server is changed.
 func (o *Restore) stepFetch(ctx context.Context, st *restoreState) error {
 	if _, err := o.pin(ctx, st); err != nil {
@@ -609,6 +742,9 @@ func (o *Restore) stepFetch(ctx context.Context, st *restoreState) error {
 	if err != nil {
 		return err
 	}
+	if err := o.checkCompany(o.staged(o.DumpsDir)); err != nil {
+		return err
+	}
 	var blocking []string
 	if !c.HasSecrets && !o.WithoutSecrets {
 		blocking = append(blocking, c.Problems()[0])
@@ -622,6 +758,9 @@ func (o *Restore) stepFetch(ctx context.Context, st *restoreState) error {
 		return fmt.Errorf("this restore would be incomplete: %s", strings.Join(blocking, "; "))
 	}
 	o.warn(c.Problems())
+	if len(o.AcceptUnrestored) > 0 {
+		o.say("WARNING: --accept-unrestored %s: %s", strings.Join(o.AcceptUnrestored, ", "), RetentionWarning(st.Snapshot))
+	}
 	entries, err := o.mergedLedger(ctx)
 	if err != nil {
 		return err
@@ -638,7 +777,7 @@ func (o *Restore) stepDumps(ctx context.Context, st *restoreState) error {
 	if err := o.checkBlank(ctx, st); err != nil {
 		return err
 	}
-	st.Claimed = true
+	st.Claimed, st.CompanyDir = true, o.CompanyDir
 	if err := o.save(st); err != nil {
 		return err
 	}
@@ -783,7 +922,7 @@ func (o *Restore) stepVolumes(ctx context.Context, st *restoreState) error {
 		case ref.Namespace == "kube-system":
 			o.say("not restored: volume %s (certificates and ingress state are re-created by the new cluster)", ref)
 		case o.accepted(ref.String()):
-			o.say("WARNING: --accept-unrestored: volume %s is NOT restored", ref)
+			o.say("WARNING: --accept-unrestored: volume %s is NOT restored; %s", ref, RetentionWarning(st.Snapshot))
 		default:
 			return fmt.Errorf("the snapshot holds volume %s, which this restore cannot bring back (--accept-unrestored %s to go on without it)", ref, ref)
 		}
@@ -806,20 +945,37 @@ func (o *Restore) stepVolumes(ctx context.Context, st *restoreState) error {
 			if !o.accepted(ref.String()) {
 				return fmt.Errorf("backed-up volume %s has no matching claim on the new cluster (--accept-unrestored %s to go on without it)", ref, ref)
 			}
-			o.say("WARNING: --accept-unrestored: volume %s is NOT restored", ref)
+			o.say("WARNING: --accept-unrestored: volume %s is NOT restored; %s", ref, RetentionWarning(st.Snapshot))
 			continue
 		}
-		if err := o.copyVolume(vols[ref], o.hostPath(dir), st.Overwrite); err != nil {
-			return fmt.Errorf("copying %s: %w", ref, err)
+		dst := o.hostPath(dir)
+		guard := filepath.Join(dst, copyMarker)
+		if !st.Volumes[dst] {
+			if err := o.copyVolume(vols[ref], dst, st.Overwrite); err != nil {
+				return fmt.Errorf("copying %s: %w", ref, err)
+			}
+			// Recorded before the guard goes: a resume must never find a copied volume that it
+			// cannot tell from one that holds someone else's data.
+			if st.Volumes == nil {
+				st.Volumes = map[string]bool{}
+			}
+			st.Volumes[dst] = true
+			if err := o.save(st); err != nil {
+				return err
+			}
+			o.say("restored volume %s", ref)
 		}
-		o.say("restored volume %s", ref)
+		if err := os.Remove(guard); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	return nil
 }
 
 // copyVolume replaces the content of a new volume with the staged copy. A destination that
 // already holds data is refused unless it carries our in-progress marker (an earlier
-// interrupted copy) or the operator confirmed an overwrite. Replacing, not merging, matters:
+// interrupted copy) or the operator confirmed an overwrite. The marker is left for the caller
+// to remove once the copy is recorded. Replacing, not merging, matters:
 // a stale SQLite -wal file next to a restored database corrupts it.
 func (o *Restore) copyVolume(src, dst string, overwrite bool) error {
 	guard := filepath.Join(dst, copyMarker)
@@ -841,20 +997,26 @@ func (o *Restore) copyVolume(src, dst string, overwrite bool) error {
 	if err := os.WriteFile(guard, nil, 0o600); err != nil {
 		return err
 	}
-	if err := CopyTree(src, dst); err != nil {
-		return err
-	}
-	return os.Remove(guard)
+	return CopyTree(src, dst)
 }
 
-func (o *Restore) stepHooks(ctx context.Context, _ *restoreState) error {
+func (o *Restore) stepHooks(ctx context.Context, st *restoreState) error {
 	rep, err := o.Cluster.RunHooks(ctx, HookOptions{Accept: o.AcceptUnrestored, MissingBlobs: o.AllowMissingBlobs})
 	o.warn(rep.Warnings)
 	if err != nil {
 		return err
 	}
 	o.say("restore hooks run for: %s", orNothing(rep.Restored))
+	if len(o.AcceptUnrestored) > 0 {
+		o.say("WARNING: %s", RetentionWarning(st.Snapshot))
+	}
 	return nil
+}
+
+// ErasureWarning is the limit of the replay: only what is in the ledger can be replayed, and
+// nothing writes it by itself.
+func ErasureWarning(snapshot string) string {
+	return fmt.Sprintf("only erasures recorded with `can backup ledger-add` were replayed. Modules do NOT record their erasures in the ledger by themselves: any erasure made in a module after snapshot %s and not added by hand is BACK now. Check your erasure requests and repeat those", snapshot)
 }
 
 // mergedLedger is every tombstone known: the bucket's ledger, the copy inside the snapshot and
@@ -921,6 +1083,7 @@ func (o *Restore) stepErasure(ctx context.Context, st *restoreState) error {
 	}
 	st.Entries = es
 	o.say("%d tombstones replayed; %d derived rows removed from can-core", len(es), rep.CoreRows)
+	o.say("WARNING: %s", ErasureWarning(st.Snapshot))
 	return nil
 }
 
