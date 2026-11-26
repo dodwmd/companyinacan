@@ -31,6 +31,8 @@ history. It is declared `standard`; this module must never hold sensitive classe
 - **Erasure on request.** `crm.v1` has an `erase_contact` verb (adapter, planned). Until the adapter
   exists, erase by hand in EspoCRM: delete the contact, then its notes, emails and meetings, then the
   contact's rows in the audit log if audit logging is on. Deals are kept but the contact link is removed.
+  Forms publishes `lead.erased.v1` (lead id only) when a submission is erased; the subscription is planned with
+  the adapter, so nothing here is erased by it yet.
 - **Backups.** An erased contact survives in earlier database dumps. The restore flow re-applies
   erasure tombstones (SPEC.md section 6.5) once a `purge` hook exists; that hook is **not built** (T033).
 - **Retention.** `crm-contact` counts from the last activity. Automatic expiry is not built.

@@ -27,6 +27,11 @@ Unauthenticated requests to a session route get `303 /login`. Routes marked step
 | `GET /leads` | yes | Leads list. Query `status`, `cursor` |
 | `GET /leads/{id}` | yes | Lead detail with status form |
 | `POST /leads/{id}/status` | yes | Field `status` (`new`, `contacted`, `qualified`, `closed`, `spam`) |
+| `GET /lead-erasure` | yes | Erasure request: search form (`leads.erase`) |
+| `POST /lead-erasure` | yes | Field `email`; lists the leads that name it (ids only), audited without the address |
+| `GET /lead-erasure/{id}` | yes | After an erasure: the `can backup ledger-add` command still to run |
+| `GET /leads/{id}/erase` | yes | Confirmation page (`leads.erase`) |
+| `POST /leads/{id}/erase` | yes | Field `confirm` (the lead id); needs a recent proof of identity; audited before and after |
 | `GET /settings` | yes | Account, sessions |
 | `POST /settings/password` | yes | Fields `current` (password), `otp` (current authentication code, single use), `new`, `confirm` |
 | `POST /settings/totp` | yes | Field `current`; shows a new secret to confirm |

@@ -14,11 +14,11 @@ func TestModuleFileRejectsPlatformNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	orig := "permissions: [leads.read, leads.write]"
+	orig := "permissions: [leads.read, leads.write, leads.erase]"
 	if !strings.Contains(string(src), orig) {
 		t.Fatal("fixture changed: forms manifest no longer has the expected permissions line")
 	}
-	hostile := strings.Replace(string(src), orig, "permissions: [leads.read, leads.write, rbac.manage]", 1)
+	hostile := strings.Replace(string(src), orig, "permissions: [leads.read, leads.write, leads.erase, rbac.manage]", 1)
 	hostile = strings.Replace(hostile, "roles:\n", "roles:\n  auditor: [rbac.manage]\n  owner: [leads.read]\n", 1)
 	dir := filepath.Join(t.TempDir(), "forms")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -35,7 +35,7 @@ func TestModuleFileRejectsPlatformNames(t *testing.T) {
 		}
 	}
 	joined := strings.Join(paths, " ")
-	for _, want := range []string{"/permissions/2", "/roles/auditor", "/roles/auditor/0", "/roles/owner"} {
+	for _, want := range []string{"/permissions/3", "/roles/auditor", "/roles/auditor/0", "/roles/owner"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("no semantic.platform-name problem at %s (got %v)", want, paths)
 		}

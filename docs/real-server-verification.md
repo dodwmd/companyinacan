@@ -117,7 +117,7 @@ ssh $S 'ufw status verbose; can-firewall check; nft list table inet can_isolatio
 ssh $S 'ss -ltn | grep -E ":(22|6443|10250) "; nc -zvw5 169.254.169.254 80'   # on the node: all four answer
 nc -zvw5 SERVER_IP 22                                                          # from your machine: answers
 ssh $S 'k3s kubectl run probe --rm -i --restart=Never --image=busybox:1.36 -- sh -c "
-  nslookup kubernetes.default >/dev/null && echo CONTROL-DNS; nc -zw5 1.1.1.1 443 && echo CONTROL-NET;
+  nslookup kubernetes.default.svc.cluster.local >/dev/null && echo CONTROL-DNS; nc -zw5 1.1.1.1 443 && echo CONTROL-NET;
   nc -zw5 SERVER_IP 10250 && echo KUBELET-OPEN; nc -zw5 SERVER_IP 22 && echo SSH-OPEN;
   nc -zw5 SERVER_IP 6443 && echo API-OPEN; nc -zw5 10.43.0.1 443 && echo API-SERVICE-OPEN;
   nc -zw5 169.254.169.254 80 && echo METADATA-OPEN; echo done"'
@@ -150,8 +150,13 @@ backup ran, **not** that it restores. This section **destroys the first server**
 ### 4.1 Make a backup that holds something to check
 
 Put a `can` built from the same commit on the server (the erasure ledger upload needs it). Submit the contact
-form twice, with names you will recognise: `keep-me` and `erase-me`. In the admin UI, Leads, open `erase-me` and
-note the id in its address (`/leads/<id>`).
+form three times, with names and addresses you will recognise: `keep-me`, `erase-me` and `erase-now`. In the admin
+UI, Leads, open `erase-me` and note the id in its address (`/leads/<id>`). Leave `erase-me` in place: its tombstone
+is added by hand below, so that only the restore can erase it.
+
+Erase `erase-now` as an operator would for a request
+([erasure requests](../modules/forms/README.md#erasure-requests): `can leads find`, then `can leads erase`).
+Expected: it is gone from the admin UI.
 
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o can-linux ./cmd/can
@@ -183,6 +188,17 @@ Do not go on until every line is true:
 - `can backup status` and `can backup verify` on the server both exit 0, **today**, after the last change.
 - The recovery kit is saved in your password manager, and you have written it to a file `kit.txt` (mode 0600,
   outside any repository). Without it the backup cannot be read.
+- **`kit.txt` itself opens the backups.** The checks above used the server's own credential files, which are about
+  to be destroyed: a kit saved wrongly, or from another repository, passes all of them. This lists the snapshots
+  with what is in the file and nothing else (not `/etc/can`, no variable of the shell), then removes the copy:
+
+  ```sh
+  scp kit.txt $S:/root/kit-check.txt
+  ssh $S 'chmod 600 /root/kit-check.txt; can backup snapshots --kit /root/kit-check.txt; echo exit=$?; rm /root/kit-check.txt'
+  ```
+
+  Expected: `exit=0`, the newest snapshot is the one `can backup status` named, `usable by a restore` is at least 1,
+  and `erasure ledger:` counts at least 1 entry. Anything else: **stop**. (It reads the repository; it does not prove a restore.)
 - You have copied what the new server needs: `scp $S:/usr/local/bin/restic restic-linux` (Ubuntu's packaged
   restic is too old), and you still have `can-linux`, `build/images` and your company directory.
 
@@ -205,27 +221,24 @@ scp -r build/images $S:/root/images
 ssh $S 'chmod 600 /root/kit.txt; can restore --kit /root/kit.txt --images-from /root/images --dir /root/company'
 ```
 
-Expected: this **first attempt stops at the erasure step** (`[7/8]`) saying tombstones cannot be replayed for
-`forms:lead-submission`. That is correct: the forms module has no purge by subject, and the refusal shows that
-the ledger came back from the bucket and was matched. Run the same command again with the entry accepted:
+Expected: at the erasure step (`[7/8]`) a line `erased: forms: lead-submission LEAD_ID`, and the restore
+finishes. If it stops there instead, note the message (that is a finding) and see
+[backup-restore.md](backup-restore.md#restore-can-restore---kit) before using `--accept-unerased`. Then:
 
 ```sh
-ssh $S 'can restore --kit /root/kit.txt --images-from /root/images --dir /root/company \
-  --accept-unerased forms:lead-submission'
 make up ARGS="../verify-co --backup-endpoint https://ENDPOINT --backup-bucket NAME \
   --backup-credentials-file $HOME/verify-bucket.env" IMAGES_FROM=build/images
 ssh $S 'rm /root/kit.txt'
 ```
 
-Expected: a `WARNING` that those tombstones were not replayed; the restore finishes; `can up` keeps the restored
-admin account (same password and TOTP) and installs the timer; **both leads are there**, `erase-me` included.
-It was not erased: there is no replay for forms, and no API deletes a single lead, so an erasure request for a
-contact-form entry cannot be honoured after (or before) a restore except by editing the database. Record that.
-Certificates are not in the backup: new ones are issued. Any other module with data you enabled must have come
+Expected: `can up` keeps the restored admin account (same password and TOTP) and installs the timer; **`keep-me`
+is there, `erase-me` and `erase-now` are not**. `erase-me` was in the backup, so its absence shows the ledger came
+back from the bucket and the forms module replayed it. Certificates are not in the backup: new ones are issued. Any other module with data you enabled must have come
 back too.
 
-**What this does not test:** that a purge is actually replayed. Only people, equity, board, files and jobs can
-replay one, and their images are not built by `make images`. If you have release images, enable `people`, create
+**What this does not test:** the replay of the other modules (people, equity, board, files and jobs; their images
+are not built by `make images`), and that an erasure reaches the ledger without `ledger-add`. If you have release
+images, enable `people`, create
 and erase a former person (`POST /v1/people/{id}/erasure`), add each returned class with `ledger-add` before the
 backup, and check the person is still erased after the restore ([people.md](people.md)).
 
@@ -360,7 +373,8 @@ from section 0.
 **Never put a `can diagnose` bundle, command output or logs from this runbook in a public issue.** If a maintainer
 needs a bundle, make it with `can diagnose --server --company-dir ../verify-co` and send it **privately** (the
 private channel in [SECURITY.md](../SECURITY.md)). `can diagnose` replaces the company name, domain, server
-address, SSH user, key paths, identity provider and relay it knows about, but it cannot know every hostname or
+address, SSH user, key paths, identity provider and relay it knows about, common spellings of the company name
+and public IPv4 and IPv6 addresses (also inside `sslip.io` names), but it cannot know every hostname or
 name in a log line.
 
 The `can verify` report is built to carry no secrets, addresses, domain or user names (module names and counts are
@@ -395,7 +409,7 @@ this runbook covers it.
 | SMTP relay, pod egress, deliverability, SPF/DKIM/DMARC, inbound mail | [email.md](email.md), epics E03d, E07b | 8, 11 (inbound mail: not built) |
 | Real identity provider, mounted Secret and reload, browser redirect flow | [sso.md](sso.md), specs/021, 036 | 2, 10 |
 | Modules never installed on a cluster (forms events, people, jobs, finance, equity, board, entity, files, provisioning, wrapped apps) | module READMEs and docs, epics E05, E13-E17 | 11 |
-| Purge replay of a tombstone on a restored server; erasing a single contact-form lead (no way to) | [backup-restore.md](backup-restore.md), specs/042 | 4 (replay only with release images; lead erasure: a gap, not testable) |
+| Purge replay of a tombstone on a restored server; erasing a single contact-form lead | [backup-restore.md](backup-restore.md), specs/042, specs/054 | 4 (forms; other modules only with release images) |
 | Real S3 and ClamAV for files; SCIM and SaaS connectors; e-sign, payment, accounting, bank and job board adapters | [files.md](files.md), [provisioning.md](provisioning.md), [finance.md](finance.md), [accounting.md](accounting.md), [recruiting.md](recruiting.md) | not covered: stubs or not wired on a cluster; test against each vendor separately |
 | Certificate, disk, DNS and installer probes behind the admin UI | [admin-ui.md](admin-ui.md) | 12 |
 | Browsers, screen readers, phones, PWA install, real push services, Lighthouse | [pwa.md](pwa.md), [security-model.md](security-model.md), specs/010, 023, 026, 027, 031, 044 | 12 |

@@ -1,0 +1,31 @@
+{{define "content"}}
+<p><a href="/leads">{{t "lead.back"}}</a></p>
+<h1>{{t "le.title"}}</h1>
+{{if .Data.Unavailable}}<p class="empty">{{t "lead.unavailable"}}</p>
+{{else}}
+<p>{{t "le.help"}}</p>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+<form method="post" action="/lead-erasure" class="filters">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="le-email">{{t "le.email"}}</label>
+<input id="le-email" name="email" type="email" autocomplete="off" maxlength="254" required></p>
+<p><button type="submit">{{t "le.search"}}</button></p>
+</form>
+{{if .Data.Searched}}{{if .Data.Truncated}}<p class="alert warn">{{t "le.truncated"}}</p>{{end}}
+{{if .Data.Items}}<div class="table-wrap" role="region" aria-labelledby="cap-matches" tabindex="0">
+<table>
+<caption id="cap-matches" class="sr">{{t "le.results"}}</caption>
+<thead><tr><th scope="col">{{t "lead.received"}}</th><th scope="col">{{t "lead.form"}}</th><th scope="col">{{t "lead.status"}}</th><th scope="col">{{t "le.match"}}</th><th scope="col">{{t "le.review"}}</th></tr></thead>
+<tbody>
+{{range .Data.Items}}<tr>
+<th scope="row"><a href="/leads/{{.ID}}"><time datetime="{{iso .CreatedAt}}">{{ts .CreatedAt}}</time></a></th>
+<td>{{.FormID}}</td><td><span class="badge neutral">{{.StatusLabel}}</span></td>
+<td>{{if .Mention}}{{t "le.match_mention"}}{{else}}{{t "le.match_address"}}{{end}}</td>
+<td><a href="/leads/{{.ID}}/erase">{{t "le.erase_title" .ID}}</a></td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "le.none"}}</p>{{end}}{{end}}
+{{end}}
+{{end}}

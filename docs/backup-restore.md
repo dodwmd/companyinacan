@@ -187,6 +187,7 @@ Linux release binary at `/usr/local/bin/can` there first (the erasure ledger upl
 | `can backup run` | run the script now |
 | `can backup verify` | `restic check`, restore a sample of dump files into a temp dir, compare SHA-256 with the manifest, then the checks a restore makes of the snapshot (marker, state database, company.yaml, Secrets export, every dump loadable) |
 | `can backup kit` | generate the recovery kit (see below) |
+| `can backup snapshots --kit <file>` | list the snapshots, and read the erasure ledger, with the kit alone (not the installed credential files or the shell's variables); no lock, nothing written. Run it before destroying a server |
 | `can restore --kit <file or -> [--plan]` | restore onto a blank server, run on that server as root |
 
 ## Recovery kit
@@ -275,8 +276,9 @@ one not tagged `can` is ignored, a newer `can` snapshot that fails its marker ch
 restic error while checking also stops it. The chosen snapshot is pinned for resumes.
 
 Which modules lose what, today: every shipped in-house module is restored from its own consistent dump, by
-`<binary> restore -replace`; `forms`, `finance`, `work`, `provisioning` and `entity` have no purge by subject and class,
-so tombstones of their classes need `--accept-unerased`. If `files` or `jobs` refuse to restore because files their
+`<binary> restore -replace`; `forms` replays lead erasures over `/v1/purge` ([erasure requests](../modules/forms/README.md#erasure-requests));
+`finance`, `work`, `provisioning` and `entity` have no purge by subject and class, so tombstones of their classes need
+`--accept-unerased`. If `files` or `jobs` refuse to restore because files their
 database names are missing, and those files were destroyed after the backup's dump was taken,
 `--allow-missing-blobs <module>` goes on without them; otherwise it means the volume was not restored.
 

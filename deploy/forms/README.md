@@ -31,7 +31,7 @@ digests it built with next to the image.
 | API listener | `:8081` (`leads` capability, ClusterIP only, bearer token) |
 | Data | `/data/forms.db` (SQLite, WAL), one persistent volume |
 | Config | `/etc/can-forms/forms.yaml` (see `modules/forms/README.md`) |
-| Secrets (env) | `CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN`; optional `CAN_FORMS_API_READ_TOKEN`, `CAN_FORMS_WEBHOOK_SECRET`, `CAN_FORMS_CAPTCHA_SECRET`, `CAN_FORMS_EMAIL_TOKEN` |
+| Secrets (env) | `CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN` (since 0.2.0 it can also erase leads for good); optional `CAN_FORMS_API_READ_TOKEN`, `CAN_FORMS_WEBHOOK_SECRET`, `CAN_FORMS_CAPTCHA_SECRET`, `CAN_FORMS_EMAIL_TOKEN` |
 | Idle RAM | 13.9 MiB RSS measured (15.4 MiB after 200 requests); target 15 MB, limit 32 MB |
 | Root filesystem | read-only works: only `/data` is written |
 

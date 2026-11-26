@@ -108,7 +108,7 @@ func (s *Server) routes() []route {
 }
 
 func (s *Server) coreRoutes() []route {
-	return []route{
+	return append(s.leadEraseRoutes(), []route{
 		{"GET /login", s.loginPage},
 		{"POST /login", s.loginPost},
 		{"POST /logout", s.authed(s.logout)},
@@ -133,7 +133,7 @@ func (s *Server) coreRoutes() []route {
 		{"GET /static/{file}", s.static},
 		{"GET /manifest.webmanifest", s.manifest},
 		{"GET /sw.js", s.serviceWorker},
-	}
+	}...)
 }
 
 // Routes lists the "METHOD /path" patterns served; a contract test compares them with

@@ -32,8 +32,11 @@ func TestCRMWiring(t *testing.T) {
 		t.Error("crm must consume leads")
 	}
 	subs := asList(m["subscribes"])
-	if len(subs) != 1 {
+	if len(subs) != 2 {
 		t.Fatalf("subscribes = %v", subs)
+	}
+	if erased := asMap(subs[1]); erased["event"] != "lead.erased.v1" || erased["optional"] != true || erased["status"] != "planned" {
+		t.Errorf("subscribes = %v: the adapter that keeps copies of leads must hear of erasures", subs)
 	}
 	sub := asMap(subs[0])
 	if sub["event"] != "lead.created.v1" || sub["optional"] != true || sub["webhook"] != "/hooks/lead" || sub["status"] != "planned" || sub["service"] != "crm-adapter" {

@@ -149,6 +149,7 @@ type seeded struct {
 	admin                       adminLogin
 	keptID, goneID              string
 	peopleToken, formsReadToken string
+	goneLeadID                  string
 	secretKeyring               string
 	workToken                   string
 }
@@ -250,6 +251,30 @@ func seed(t *testing.T) seeded {
 		t.Fatalf("form post: %d", resp.StatusCode)
 	}
 	s.formsReadToken = moduleToken(t, "mod-forms", "CAN_FORMS_API_READ_TOKEN")
+	// a second lead, to be erased after the backup
+	form.Set("name", "Lead Erased")
+	form.Set("email", "gone@restore.example")
+	resp, err = http.PostForm(forms+"/contact", form) //nolint:noctx // loopback
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	leadsAPI := portForward(t, "mod-forms", "forms-api", 8081)
+	st, body = rcall(t, "GET", leadsAPI+"/v1/leads", s.formsReadToken, nil)
+	var list struct {
+		Items []struct{ ID, Email string }
+	}
+	if st != 200 || json.Unmarshal([]byte(body), &list) != nil {
+		t.Fatalf("leads: %d %s", st, body)
+	}
+	for _, l := range list.Items {
+		if l.Email == "gone@restore.example" {
+			s.goneLeadID = l.ID
+		}
+	}
+	if s.goneLeadID == "" {
+		t.Fatalf("the second lead is not stored: %s", body)
+	}
 
 	// --- stub: a dump (which binds its volume), then a raw file on that volume ---
 	requestDump(t)
@@ -382,7 +407,9 @@ func TestRestoreOnK3d(t *testing.T) {
 		mustSudo(t, can, "backup", "ledger-add", "--ledger", ledger, "--subject", s.goneID, "--class", class)
 	}
 	// A class nothing can replay: the restore must refuse to go live until it is acknowledged.
-	mustSudo(t, can, "backup", "ledger-add", "--ledger", ledger, "--subject", "lead_000", "--class", "lead-submission")
+	mustSudo(t, can, "backup", "ledger-add", "--ledger", ledger, "--subject", "x_000", "--class", "no-such-class")
+	// one contact-form lead erased after the backup: the forms module replays it
+	mustSudo(t, can, "backup", "ledger-add", "--ledger", ledger, "--subject", s.goneLeadID, "--class", "lead-submission")
 	mustSudo(t, can, "backup", "ledger-sync", "--ledger", ledger, "--repo", e2eRepo)
 
 	// --- disaster ------------------------------------------------------------------------------
@@ -396,7 +423,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	// --- restore: stops, fail closed, at the tombstone it cannot replay -------------------------
 	restoreStart := time.Now()
 	out, err := canRestore(t)
-	if err == nil || !strings.Contains(out, "forms:lead-submission") || !strings.Contains(out, "step 7 (erasure)") {
+	if err == nil || !strings.Contains(out, "*:no-such-class") || !strings.Contains(out, "step 7 (erasure)") {
 		t.Fatalf("the restore must stop at the erasure step: %v", err)
 	}
 	if got := mustKubectl(t, "-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "restore", "status"); !strings.HasPrefix(got, "restoring ") {
@@ -418,11 +445,11 @@ func TestRestoreOnK3d(t *testing.T) {
 
 	// --- resume ---------------------------------------------------------------------------------
 	firstRun := out // the hooks ran in the run that stopped at the erasure step
-	out, err = canRestore(t, "--accept-unerased", "forms:lead-submission")
+	out, err = canRestore(t, "--accept-unerased", "*:no-such-class")
 	if err != nil {
 		t.Fatalf("resumed restore: %v", err)
 	}
-	for _, want := range []string{"already done", "restore complete", "erased: people: directory-basic " + s.goneID} {
+	for _, want := range []string{"already done", "restore complete", "erased: people: directory-basic " + s.goneID, "erased: forms: lead-submission " + s.goneLeadID} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q", want)
 		}
@@ -485,6 +512,8 @@ func TestRestoreOnK3d(t *testing.T) {
 	api = portForward(t, "mod-forms", "forms-api", 8081)
 	if st, leads := rcall(t, "GET", api+"/v1/leads", s.formsReadToken, nil); st != 200 || !strings.Contains(leads, "lead@restore.example") {
 		t.Fatalf("the lead: %d %s", st, leads)
+	} else if strings.Contains(leads, "gone@restore.example") {
+		t.Fatalf("THE ERASED LEAD IS BACK: %s", leads)
 	}
 	stub := volumeDir(t, "mod-stub", "data")
 	if got := onNode(t, "cat "+stub+"/raw.txt"); got != "raw-volume-data" {
@@ -504,7 +533,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	if again, aerr := canRestore(t); aerr == nil || !strings.Contains(again, "NOTHING was done") {
 		t.Fatalf("running a finished restore again must be refused: %v", aerr)
 	}
-	out, err = canRestore(t, "--state", "/root/second.json", "--accept-unerased", "forms:lead-submission")
+	out, err = canRestore(t, "--state", "/root/second.json", "--accept-unerased", "*:no-such-class")
 	if err == nil || !strings.Contains(out, "not blank") {
 		t.Fatalf("a second restore over a live server must be refused: %v", err)
 	}

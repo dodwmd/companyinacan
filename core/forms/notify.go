@@ -293,6 +293,10 @@ type Dispatcher struct {
 	workers sync.WaitGroup
 	mu      sync.Mutex
 	closed  bool
+	// inflight are the notifications being sent, by lead, so that an erasure can stop them;
+	// wake makes the retry loop run now.
+	inflight map[string]map[*underWay]bool
+	wake     chan struct{}
 }
 
 // NewDispatcher builds a dispatcher; mailer and webhook may be nil (channel disabled).
@@ -300,7 +304,7 @@ func NewDispatcher(store *Store, mailer Mailer, webhook *WebhookSender, log *slo
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Dispatcher{store: store, mailer: mailer, webhook: webhook, log: log, now: time.Now, queue: make(chan job, 256)}
+	return &Dispatcher{store: store, mailer: mailer, webhook: webhook, log: log, now: time.Now, queue: make(chan job, 256), wake: make(chan struct{}, 1)}
 }
 
 // Start launches n workers.
@@ -360,14 +364,21 @@ func (d *Dispatcher) Shutdown(ctx context.Context) error {
 func (d *Dispatcher) run(j job) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	// A lead erased while it waited in the queue is not sent anywhere; erasing it during a send
+	// cancels ctx.
+	ctx, done, ok := d.hold(ctx, j.lead.ID)
+	defer done()
+	if !ok {
+		return
+	}
 	if d.mailer != nil && len(j.form.NotifyEmail) > 0 {
 		d.deliverEmail(ctx, j.lead, j.form)
 	}
-	if d.webhook != nil {
+	if d.webhook != nil && ctx.Err() == nil {
 		n, err := d.webhook.Send(ctx, NewLeadCreated(j.lead, d.now()))
 		d.record(ctx, j.lead.ID, "webhook", n, err)
 	}
-	if d.can != nil {
+	if d.can != nil && ctx.Err() == nil {
 		sleep := d.sleep
 		if sleep == nil {
 			sleep = sleepCtx
@@ -413,6 +424,9 @@ func (d *Dispatcher) sendEmail(ctx context.Context, e Email) (int, error) {
 }
 
 func (d *Dispatcher) record(ctx context.Context, leadID, kind string, attempts int, err error) {
+	if errors.Is(context.Cause(ctx), errErased) {
+		return // nothing is recorded about a lead that no longer exists
+	}
 	msg := ""
 	if err != nil {
 		msg = err.Error()

@@ -6,7 +6,9 @@ id: forms
 name: Forms gateway
 description: Lead capture for the static site. Same-origin /_forms route, honeypot, timing check and optional Turnstile/hCaptcha, SQLite storage, the leads capability, email and webhook notifications, and the lead.created.v1 event.
 category: sales
-version: 0.1.0
+# 0.2.0: leads.erase, forms:admin, lead.erased.v1. The new version makes `apply` record the manifest again
+# and upgrade the release; the image tag in the chart changes with it, so that the pod is replaced.
+version: 0.2.0
 provider:
   type: inhouse
   name: can-forms
@@ -30,13 +32,16 @@ provides:
   - { capability: summary, schema: summary.v1, service: forms-api, port: 8081 }   # aggregates for the business overview
 publishes:
   - { event: lead.created.v1, schema: ./events/lead.created.v1.json }
-permissions: [leads.read, leads.write]
+  - { event: lead.erased.v1, schema: ./events/lead.erased.v1.json }   # ids only: consumers delete their copies
+permissions: [leads.read, leads.write, leads.erase]
 # A new lead notifies the people holding the sales role (in-app, and e-mail per their settings).
 notifications:
   - { event: lead.created.v1, recipients: ["role:sales"] }
 roles:
   sales: [leads.read, leads.write]
   viewer: [leads.read]
+  # Finds leads by address and erases them for good: for whoever answers erasure requests.
+  admin: [leads.read, leads.write, leads.erase]
 data_classes:
   # Names, email addresses and free-text messages typed into public forms. Personal data,
   # but not in a sensitive class (no health, financial, identity-document or HR data).

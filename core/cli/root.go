@@ -84,6 +84,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newFootprintCmd(g),
 		newWorkCmd(g),
 		newImportCmd(g),
+		newLeadsCmd(g),
 	)
 	err := root.Execute()
 	if err == nil {

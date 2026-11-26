@@ -558,6 +558,7 @@ type leadRow struct {
 
 type leadsData struct {
 	Unavailable bool
+	CanErase    bool
 	Status      string
 	Statuses    []statusOption
 	Items       []leadRow
@@ -596,6 +597,9 @@ func (s *Server) leads(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 		return
 	}
 	d := leadsData{Status: status, Statuses: s.statusOptions(status)}
+	if _, ok := s.Leads.(LeadEraser); ok {
+		d.CanErase, _ = s.allowed(r, sc, PermLeadsErase)
+	}
 	for _, l := range page.Items {
 		d.Items = append(d.Items, leadRow{Lead: l, StatusLabel: s.leadStatusLabel(l.Status)})
 	}
@@ -612,6 +616,7 @@ func (s *Server) leads(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 type kv struct{ Key, Value string }
 
 type leadDetail struct {
+	CanErase    bool
 	Lead        Lead
 	StatusLabel string
 	Fields      []kv
@@ -647,6 +652,9 @@ func (s *Server) lead(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 		return
 	}
 	d := leadDetail{Lead: l, StatusLabel: s.leadStatusLabel(l.Status), Statuses: s.statusOptions(l.Status)}
+	if _, ok := s.Leads.(LeadEraser); ok {
+		d.CanErase, _ = s.allowed(r, sc, PermLeadsErase) // an error hides the link; the page itself checks again
+	}
 	keys := make([]string, 0, len(l.Fields))
 	for k := range l.Fields {
 		keys = append(keys, k)

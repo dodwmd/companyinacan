@@ -43,6 +43,8 @@ publishes:
 subscribes:
   # Only forms that carry the newsletter opt-in field are subscribed; the adapter ignores the rest.
   - { event: lead.created.v1, service: newsletter-adapter, port: 8081, webhook: /hooks/lead, optional: true, status: planned }
+  # a lead erased on request, by id only: the adapter drops the subscription that lead created
+  - { event: lead.erased.v1, service: newsletter-adapter, port: 8081, webhook: /hooks/lead-erased, optional: true, status: planned }
 permissions: [newsletter.read, newsletter.write, newsletter.admin]
 roles:
   marketing: [newsletter.read, newsletter.write]

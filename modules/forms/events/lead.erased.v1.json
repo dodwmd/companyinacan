@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/lead.erased.v1.json",
+  "title": "lead.erased.v1",
+  "description": "Published by the forms gateway when one lead is erased on request. Consumers of the leads capability delete their copies of that lead. Ids only. Delivered at least once; consumers de-duplicate on `id`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "time", "source", "data"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^evt_[0-9a-f]{24}$", "description": "Derived from the lead id, stable across redeliveries." },
+    "type": { "const": "lead.erased.v1" },
+    "time": { "type": "string", "format": "date-time", "description": "When the lead was erased (UTC)." },
+    "source": { "const": "forms" },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lead_id", "form_id", "erased_at"],
+      "properties": {
+        "lead_id": { "type": "string", "pattern": "^ld_[0-9a-f]{24}$" },
+        "form_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" },
+        "erased_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

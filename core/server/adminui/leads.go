@@ -161,6 +161,17 @@ func (c *HTTPLeads) do(ctx context.Context, method, path string, q url.Values, b
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrLeadNotFound
 	}
+	if resp.StatusCode == http.StatusForbidden {
+		return ErrLeadsForbidden
+	}
+	if resp.StatusCode == http.StatusInternalServerError {
+		var e struct {
+			Code string `json:"code"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&e) == nil && e.Code == "scrub_failed" {
+			return ErrLeadScrub
+		}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("leads gateway answered %d", resp.StatusCode)
 	}

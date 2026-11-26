@@ -11,6 +11,7 @@ Helm-compatible templates for the in-house forms gateway, rendered by can-core's
 - `values.yaml` `config:` is written to `forms.yaml` (strict loader). It ships one sample `contact`
   form because the loader requires at least one; replace it with the company's forms. No `webhook.url`:
   `lead.created.v1` goes to can-core's module API and from there to subscribers and notification rules.
+- `CAN_FORMS_API_TOKEN` reads, changes and, since 0.2.0, **erases** leads: give it only to what may do that.
 - Secrets (`CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN`, `CAN_FORMS_API_READ_TOKEN`) come from the
   `can-module` Secret that can-core generates once and injects as environment.
 - Settings from `company.yaml` are not yet mapped onto `config:`.
