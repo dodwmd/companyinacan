@@ -37,13 +37,7 @@ func approverSession(t *testing.T, name string, roles ...string) *harness.Client
 		env.Run(t, "exec", "-T", "core", "/can-core", "admin", "roles", "grant", name, role)
 	}
 	s := harness.NewSession(env)
-	page := s.Do(t, harness.Req{Host: "admin.localhost", Path: "/login"}).Expect(t, "login page", 200)
-	code, err := harness.TOTP(secret, time.Now())
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-	s.Do(t, harness.Req{Method: "POST", Host: "admin.localhost", Path: "/login", Headers: adminOrigin(),
-		Body: url.Values{"csrf": {harness.CSRF(page.String())}, "username": {name}, "password": {pw}, "totp": {code}}}).Expect(t, name+" signs in", 303)
+	loginAt(t, s, "admin.localhost", env.Port, name, secret)
 	return s
 }
 
@@ -101,7 +95,7 @@ func TestFinanceRecordsAreApprovedInTheInbox(t *testing.T) {
 	}
 	// The engine told the approver; no second reminder comes from the module's event.
 	notes := notifiedSession(t, approver, regexp.MustCompile(`Approval needed: expense`))
-	if strings.Contains(notes, "expense.submitted") {
+	if strings.Contains(notes, "Expense "+ex+" is waiting for a decision") {
 		t.Errorf("the approver was told twice")
 	}
 	decideInInbox(t, approver, page, "approve")
