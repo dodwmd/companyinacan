@@ -18,9 +18,17 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
-  # The web UI accepts can-core launch tickets (specs/036-module-ui-sso). No chart routes it: the
-  # operator gives its address with CAN_MODULE_UI_URLS.
+  # The web UI accepts can-core launch tickets (specs/036-module-ui-sso).
   web_login: { base_path: /ui }
+  # Routed on work.<domain> only when company.yaml sets modules.work.expose.ui (specs/040-module-routing).
+  public_ui:
+    service: work
+    port: 8080
+    exact: [/]
+    prefixes: [/ui]
+    config:
+      trust_proxy: true # the client address Traefik appends
+      ui: { force_secure: true }
 requires:
   database: sqlite
   sso: none

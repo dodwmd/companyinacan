@@ -126,7 +126,8 @@ func (in *Installer) jobFor(s reconcile.Spec, dir, chart string) renderJob {
 				"SecretName": secretModule, "DBSecretName": secretDB, "TokenDir": TokenDir},
 			"Module": map[string]any{"ID": s.ID, "Version": s.Version},
 		},
-		Host:    in.hostFor(s),
-		Release: ReleaseInfo{Name: s.ID, Namespace: s.Namespace},
+		Host:      in.hostFor(s),
+		Overrides: s.Values,
+		Release:   ReleaseInfo{Name: s.ID, Namespace: s.Namespace},
 	}
 }

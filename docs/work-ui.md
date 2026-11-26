@@ -19,8 +19,9 @@ compose stack. No manual screen-reader or real-device pass has been done. Design
 | `/` | redirects to `/ui/` |
 
 The API (`/v1/...`) and `/healthz` are unchanged. In the compose stack the UI is at
-<http://work.localhost:8080/ui/>. On a cluster the tracker has no public route yet (the module has
-no subdomain; see "Reaching it on a cluster"), so use a port-forward:
+<http://work.localhost:8080/ui/>. On a cluster set
+`modules.work.expose.ui: true` for `https://work.<domain>` ([`module-routing.md`](module-routing.md)),
+or leave it private and use a port-forward:
 
 ```sh
 kubectl -n mod-work port-forward svc/work 8080:8080     # then open http://localhost:8080/ui/

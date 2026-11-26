@@ -29,7 +29,34 @@ type Provider struct {
 type ModuleEntry struct {
 	Enabled  *bool          `yaml:"enabled"`
 	Settings map[string]any `yaml:"settings"`
+	// Expose says what of the module is reachable through the ingress (specs/040-module-routing);
+	// nil means the defaults.
+	Expose *Expose `yaml:"expose"`
 }
+
+// Expose is company.yaml `modules.<id>.expose`. It is a deployment decision: the admin UI does not
+// edit it.
+type Expose struct {
+	// UI routes the web UI on https://<id>.<domain> (default off).
+	UI bool `yaml:"ui" json:"ui,omitempty"`
+	// API routes the module API (/v1) on the same host (default off).
+	API bool `yaml:"api" json:"api,omitempty"`
+	// Public routes the module's anonymous surface: careers pages, /_forms (default on).
+	Public *bool `yaml:"public" json:"public,omitempty"`
+	// TokenLogin keeps the paste-a-token sign-in on a routed web UI (default off).
+	TokenLogin bool `yaml:"token_login" json:"token_login,omitempty"`
+}
+
+// Exposure returns the entry's exposure settings (the zero value when nothing is set).
+func (m ModuleEntry) Exposure() Expose {
+	if m.Expose == nil {
+		return Expose{}
+	}
+	return *m.Expose
+}
+
+// PublicOn reports whether the module's anonymous surface is routed (default true).
+func (e Expose) PublicOn() bool { return e.Public == nil || *e.Public }
 
 // IsEnabled reports whether the module is enabled (default true).
 func (m ModuleEntry) IsEnabled() bool { return m.Enabled == nil || *m.Enabled }

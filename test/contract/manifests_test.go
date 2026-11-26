@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/dodwmd/companyinacan/core/provider"
 )
 
 // Offline validation of deploy/base and dev/k3d.yaml (epic E02). Nothing here talks to a
@@ -620,4 +622,22 @@ func asStrings(v any) []string {
 		}
 	}
 	return out
+}
+
+// Development and CI must run the k3s servers get: an older one bundles another Traefik chart.
+func TestK3dImagesMatchTheServerK3sVersion(t *testing.T) {
+	want := "image: rancher/k3s:" + strings.ReplaceAll(provider.DefaultK3sVersion, "+", "-")
+	paths, _ := filepath.Glob("../../dev/footprint/k3d-*.yaml")
+	for _, p := range append(paths, "../../dev/k3d.yaml") {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), want) {
+			t.Errorf("%s: want %q", p, want)
+		}
+	}
+	if len(paths) < 3 {
+		t.Fatalf("footprint configs not found: %v", paths)
+	}
 }

@@ -47,8 +47,10 @@ Disabling scales the module to zero and keeps its volume, Secrets and database.
 - **FR-004** No app may start with a default password. can-core generates a password per module, once,
   of at most 50 bytes, in the Secret `mod-<id>/can-module`; the app's first administrator is created
   with it before the app serves requests.
-- **FR-005** Public routing is the existing one: `Host(<subdomain>.<domain>)` to the module's Service.
-  Module routing is the subject of `epic/E03e-module-routing` and is not changed here.
+- **FR-005** Public routing is the existing one: `Host(<subdomain>.<domain>)` to the module's Service,
+  under the rules of [specs/040](../040-module-routing/spec.md): it needs the routing facts `can up`
+  writes (ConfigMap `can-system/can-routing`), `modules.<id>.expose.public: false` removes it, and the
+  ingress controller reaches the routed port only. Routing itself is not changed here.
 - **FR-006** Probes MUST not report an app ready before its first-boot migrations are done.
 - **FR-007** A module in the SMTP list (`support`) that declares `email.send` MUST receive the relay of
   [docs/email.md](../../docs/email.md) in the Secret `can-smtp` only when `company.yaml` says
@@ -71,6 +73,10 @@ Disabling scales the module to zero and keeps its volume, Secrets and database.
 - **FR-013** The managed Postgres's data directory MUST be left out of the file backup, and the
   documents and the enable screens MUST say that Postgres is not backed up.
 - **FR-014** Third-party packaged and infrastructure images MUST be listed in `THIRD_PARTY_LICENSES`.
+
+- **FR-015** After a failed upgrade, the next apply MUST upgrade the module again even if `company.yaml`
+  was reverted to what is recorded (the failed upgrade may already have removed routes or rewritten
+  Secrets).
 
 ## Success Criteria
 

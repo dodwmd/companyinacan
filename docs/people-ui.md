@@ -26,8 +26,8 @@ ui:
 
 The UI is served on the module's listener at `/`; `/v1/*` and `GET /healthz` stay the API. In the dev
 compose stack it is at `http://people.localhost:8080/` (`dev/compose/config/people.yaml` turns it
-on). Behind TLS leave the cookie flags at their defaults. The Helm chart does not expose the `ui`
-block or a route yet (follow-up).
+on). Behind TLS leave the cookie flags at their defaults. On a cluster, `modules.people.expose.ui: true` turns it on and routes
+`https://people.<domain>` ([`module-routing.md`](module-routing.md)); not yet run on a cluster for people.
 
 ## Signing in
 

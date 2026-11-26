@@ -47,6 +47,28 @@
           }
         },
         "values": { "$ref": "#/$defs/relPath" },
+        "public_ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["service", "port"],
+          "properties": {
+            "service": { "$ref": "#/$defs/dnsLabel" },
+            "port": { "$ref": "#/$defs/port" },
+            "exact": { "type": "array", "maxItems": 40, "items": { "type": "string", "pattern": "^/([a-z0-9][a-z0-9._-]{0,62})?$" } },
+            "prefixes": { "type": "array", "maxItems": 40, "items": { "type": "string", "pattern": "^/[a-z0-9][a-z0-9-]{0,62}$" } },
+            "config": { "type": "object" }
+          }
+        },
+        "site_route": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "service", "port"],
+          "properties": {
+            "path": { "enum": ["/_forms"] },
+            "service": { "$ref": "#/$defs/dnsLabel" },
+            "port": { "$ref": "#/$defs/port" }
+          }
+        },
         "web_login": {
           "type": "object",
           "additionalProperties": false,

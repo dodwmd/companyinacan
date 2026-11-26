@@ -67,6 +67,17 @@ func TestTraefikPersistsACMEStore(t *testing.T) {
 	}
 }
 
+// The ACME resolver must reach Traefik's command line: a chart that does not know the values key
+// ignores it silently (k3s before v1.32.2), and every TLS route then keeps the default certificate.
+func TestTraefikHasTheACMEResolver(t *testing.T) {
+	eventually(t, 240*time.Second, "Traefik to be configured with the letsencrypt resolver", func() (bool, string) {
+		args, err := kubectl("-n", "kube-system", "get", "deploy", "traefik", "-o", "jsonpath={.spec.template.spec.containers[0].args}")
+		low := strings.ToLower(args)
+		return err == nil && strings.Contains(low, "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json") &&
+			strings.Contains(low, "--certificatesresolvers.letsencrypt.acme.tlschallenge"), args
+	})
+}
+
 // probe runs a throw-away busybox pod in ns, prints its output and fails the test if the pod
 // itself could not run (a failing probe pod must never be read as "traffic blocked").
 func probe(t *testing.T, ns, name, labels, script string) string {

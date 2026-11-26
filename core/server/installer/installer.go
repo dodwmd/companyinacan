@@ -145,16 +145,26 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err := in.checkRotations(s); err != nil {
 		return err
 	}
-	// 1. Render and validate before touching the cluster.
+	// 1. Plan the routes, render and validate before touching the cluster.
+	plan, err := in.planRoutes(ctx, s)
+	if err != nil {
+		return err
+	}
+	s.Values = plan.values
 	objs, err := in.renderBounded(ctx, s)
 	if err != nil {
 		return err
 	}
-	if err := in.checkAdmission(ctx); err != nil {
+	ports, err := routedPorts(objs, plan)
+	if err != nil {
+		return err
+	}
+	if err := in.checkAdmission(ctx, len(ports) > 0); err != nil {
 		return err
 	}
 	// 2. Namespace, RBAC, policies, quota.
-	if err := in.ensureNamespace(ctx, s); err != nil {
+	policy, err := in.ensureNamespace(ctx, s)
+	if err != nil {
 		return err
 	}
 	// 3. Database and Secrets.
@@ -163,8 +173,22 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 		return err
 	}
 	stampSecretVersion(objs, version)
-	// 4. The module's workloads, atomically.
-	return in.rollout(ctx, s, objs)
+	stampExposure(objs, plan.values)
+	// 4. Routes that are no longer wanted go first.
+	if err := in.pruneRoutes(ctx, s.ID, plan.objects); err != nil {
+		return err
+	}
+	if !s.Expose.PublicOn() {
+		if err := in.closePublic(ctx, s); err != nil {
+			return err
+		}
+	}
+	// 5. The module's workloads, atomically.
+	if err := in.rollout(ctx, s, objs); err != nil {
+		return err
+	}
+	// 6. Only a module that runs is opened to the ingress controller, and only on routed ports.
+	return in.applyRoutes(ctx, s, traefikPolicy(policy, ports), plan)
 }
 
 // Disable implements reconcile.ModuleInstaller: scales workloads to zero, keeps everything else.
@@ -176,6 +200,9 @@ func (in *Installer) Disable(ctx context.Context, id string) error {
 	if _, err := in.cfg.API.Get(ctx, "Namespace", "", ns); kube.IsNotFound(err) {
 		return nil
 	} else if err != nil {
+		return err
+	}
+	if err := in.closeRoutes(ctx, id); err != nil {
 		return err
 	}
 	for _, kind := range []string{"Deployment", "StatefulSet"} {
@@ -271,19 +298,21 @@ func setLabels(o kube.Object, labels map[string]string) {
 	}
 }
 
-func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) error {
+// ensureNamespace creates the namespace and applies its policies. The one that admits the ingress
+// controller is only created closed; the template is returned for applyRoutes.
+func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) (kube.Object, error) {
 	if !nodeIPRE.MatchString(in.cfg.NodeIP) {
-		return fmt.Errorf("CAN_NODE_IP %q is not an IP address", in.cfg.NodeIP)
+		return nil, fmt.Errorf("CAN_NODE_IP %q is not an IP address", in.cfg.NodeIP)
 	}
 	req, lim := quota(s.Manifest.Resources.RAMMB, s.Manifest.Resources.RAMLimitMB)
 	repl := map[string]string{"MODULE_NAMESPACE": s.Namespace, "NODE_IP": in.cfg.NodeIP, "QUOTA_REQUESTS_MEMORY": req, "QUOTA_LIMITS_MEMORY": lim}
 	objs, err := in.template("module-namespace.yaml", repl)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rbac, err := in.template("module-rbac.yaml", repl)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	labels := map[string]string{labelManaged: "can-core", labelModule: s.ID}
 	// Namespace and RoleBinding are created, never patched: can-core's RBAC grants create only
@@ -292,32 +321,49 @@ func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) erro
 		setLabels(o, labels)
 		created, err := in.cfg.API.Create(ctx, o)
 		if err != nil {
-			return fmt.Errorf("creating %v %s: %w", o["kind"], nameOf(o), err)
+			return nil, fmt.Errorf("creating %v %s: %w", o["kind"], nameOf(o), err)
 		}
 		if !created { // already there: adopt it only if it is what we would have made
 			if err := in.verifyAdopted(ctx, o, s); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 	// Policies, limits and quota are applied (kept current on every enable). The first call can
 	// race the RoleBinding becoming effective, so it is retried while it is forbidden.
+	var traefik kube.Object
 	for i, o := range objs[1:] {
 		setLabels(o, labels)
+		if o["kind"] == "NetworkPolicy" && nameOf(o) == policyTraefik {
+			// Created closed if missing and left as it is otherwise (an upgrade must not cut the
+			// running release off); applyRoutes opens the routed ports after the rollout.
+			traefik = o
+			closed, err := closedPolicy(o)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := in.cfg.API.Create(ctx, closed); err != nil {
+				return nil, fmt.Errorf("creating NetworkPolicy %s: %w", policyTraefik, err)
+			}
+			continue
+		}
 		if i == 0 {
 			if err := in.retryForbidden(ctx, func() error { return in.cfg.API.Apply(ctx, o) }); err != nil {
-				return fmt.Errorf("applying %v %s: %w", o["kind"], nameOf(o), err)
+				return nil, fmt.Errorf("applying %v %s: %w", o["kind"], nameOf(o), err)
 			}
 			continue
 		}
 		if err := in.cfg.API.Apply(ctx, o); err != nil {
-			return fmt.Errorf("applying %v %s: %w", o["kind"], nameOf(o), err)
+			return nil, fmt.Errorf("applying %v %s: %w", o["kind"], nameOf(o), err)
 		}
 	}
 	sa := kube.Object{"apiVersion": "v1", "kind": "ServiceAccount", "automountServiceAccountToken": false,
 		"metadata": map[string]any{"name": s.ServiceAccount, "namespace": s.Namespace}}
 	setLabels(sa, labels)
-	return in.cfg.API.Apply(ctx, sa)
+	if traefik == nil {
+		return nil, fmt.Errorf("template module-namespace.yaml has no NetworkPolicy %s", policyTraefik)
+	}
+	return traefik, in.cfg.API.Apply(ctx, sa)
 }
 
 func (in *Installer) retryForbidden(ctx context.Context, f func() error) error {
@@ -640,6 +686,7 @@ func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true,
 		"ServiceAccount/" + s.ServiceAccount: true,
 		"ResourceQuota/ceiling":              true, "LimitRange/defaults": true,
+		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true,
 	}
 	for _, n := range []string{"default-deny", "allow-ingress-from-traefik", "allow-ingress-from-can-core", "module-egress"} {
 		r["NetworkPolicy/"+n] = true
@@ -726,6 +773,10 @@ func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.
 	prev, err := in.loadRelease(ctx, s)
 	if err != nil {
 		return fmt.Errorf("the recorded release in Secret %s is unreadable or fails its HMAC check (%w); inspect it or delete it to reinstall", secretRelease, err)
+	}
+	if !s.Expose.PublicOn() {
+		// A rollback must not put a public route back.
+		prev = slices.DeleteFunc(prev, func(o kube.Object) bool { return o["kind"] == "IngressRoute" })
 	}
 	if err := in.applyAll(ctx, objs); err != nil {
 		in.restore(ctx, s, prev, objs)

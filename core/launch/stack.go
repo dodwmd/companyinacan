@@ -5,16 +5,19 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/provider"
+	"github.com/dodwmd/companyinacan/core/routing"
 )
 
 // Phase ids, in the order Run executes them. The ids are the keys of .can/state.json
@@ -23,6 +26,7 @@ const (
 	PhaseBase    = "base"
 	PhaseImages  = "images"
 	PhaseCompany = "company"
+	PhaseRouting = "routing"
 	PhaseCore    = "core"
 	PhaseAdmin   = "admin"
 	PhaseSite    = "site"
@@ -137,6 +141,7 @@ var hints = map[string]string{
 	PhaseBase:    "kubectl --kubeconfig .can/kubeconfig get pods -A  (is the SSH tunnel up? `can status`)",
 	PhaseImages:  "rebuild the tarballs with `make images` and check free disk on the server (df -h /var/lib/rancher); for a release manifest check the server can reach the registry",
 	PhaseCompany: "kubectl -n can-system get configmap company -o yaml",
+	PhaseRouting: "kubectl -n can-system get configmap can-routing -o yaml",
 	PhaseCore:    "kubectl -n can-system logs deploy/can-core; kubectl -n can-system describe pod -l app.kubernetes.io/name=can-core",
 	PhaseAdmin:   "kubectl -n can-system logs deploy/can-core; the admin is created with `can-core admin bootstrap` inside the pod",
 	PhaseSite:    "kubectl -n can-system describe pod -l app.kubernetes.io/name=site; kubectl -n can-system logs deploy/site -c extract",
@@ -296,6 +301,7 @@ func Run(ctx context.Context, o Options, d Deps) (*Result, error) {
 		{PhaseBase, "platform base: namespaces, network policies, RBAC, admission policy, Traefik", func() (bool, string, error) { return false, "", r.base(ctx) }},
 		{PhaseImages, "container images", func() (bool, string, error) { return r.images(ctx) }},
 		{PhaseCompany, "company.yaml as ConfigMap can-system/company", func() (bool, string, error) { return false, "", r.company(ctx, body) }},
+		{PhaseRouting, "routing facts as ConfigMap can-system/can-routing", func() (bool, string, error) { return false, "", r.routingFacts(ctx) }},
 		{PhaseCore, "can-core", func() (bool, string, error) { return false, "", r.core(ctx, core) }},
 		{PhaseAdmin, "admin account", func() (bool, string, error) { return r.admin(ctx) }},
 		{PhaseSite, "build and publish the site", func() (bool, string, error) { return false, "", r.site(ctx) }},
@@ -430,6 +436,23 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 		return err
 	}
 	return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
+}
+
+func (r *runner) facts() routing.Config {
+	return routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll}
+}
+
+// routingFacts writes which hosts serve the site, and whether over TLS, as ConfigMap
+// can-system/can-routing: can-core routes modules from it and may not write it itself. It runs on
+// every `can up`, whether or not company.yaml changed: the flags (--domain-live) and the version of
+// can change it, and without it the admission policy refuses every module route.
+func (r *runner) routingFacts(ctx context.Context) error {
+	m, err := r.facts().Manifest()
+	if err != nil {
+		return err
+	}
+	_, err = r.apply(ctx, m, true)
+	return err
 }
 
 // hostDumpsDir makes the host directory behind the can-dumps volume belong to can-core's user.
@@ -599,11 +622,11 @@ func (r *runner) routes(ctx context.Context) error {
 	if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).Mode = mode; return nil }); err != nil {
 		return err
 	}
-	if !r.formsWanted() {
+	if !r.formsWanted() || !r.o.Company.Modules["forms"].Exposure().PublicOn() {
 		return nil
 	}
-	// can-core installs the forms module on its next reconcile; its namespace and Service do not
-	// exist before that, and Traefik only routes within a namespace.
+	// can-core installs the forms module on its next reconcile and then routes /_forms on the site
+	// hosts (specs/040-module-routing); wait for both.
 	if err := r.poll(ctx, r.o.Timeouts.Module, func() error {
 		_, err := r.kube(ctx, nil, "-n", FormsNS, "get", "svc", "forms", "-o", "name")
 		return err
@@ -613,12 +636,15 @@ func (r *runner) routes(ctx context.Context) error {
 	if _, err := r.kube(ctx, nil, "-n", FormsNS, "rollout", "status", "deploy/forms", secs(r.o.Timeouts.Rollout)); err != nil {
 		return err
 	}
-	fr, err := FormsRoute(r.o.Routes)
-	if err != nil {
-		return err
-	}
-	if _, err := r.apply(ctx, fr, false); err != nil {
-		return err
+	// A route from an earlier run is not enough: it must be the one these routing facts ask for.
+	if err := r.poll(ctx, r.o.Timeouts.Module, func() error {
+		out, err := r.kube(ctx, nil, "-n", FormsNS, "get", "ingressroutes.traefik.io", "forms-public", "-o", "json")
+		if err != nil {
+			return err
+		}
+		return checkFormsRoute([]byte(out), r.facts())
+	}); err != nil {
+		return fmt.Errorf("can-core did not route /_forms in time: %w", err)
 	}
 	r.res.FormsRouted = true
 	return nil
@@ -632,6 +658,40 @@ func (r *runner) ready(ctx context.Context) error {
 		if _, err := r.kube(ctx, nil, "-n", FormsNS, "wait", "--for=condition=Available", "deploy/forms", secs(r.o.Timeouts.Rollout)); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkFormsRoute reports how the route differs from the one can-core makes for the facts.
+func checkFormsRoute(raw []byte, c routing.Config) error {
+	var got struct {
+		Metadata struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+		Spec struct {
+			EntryPoints []string `json:"entryPoints"`
+			Routes      []struct {
+				Match string `json:"match"`
+			} `json:"routes"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		return fmt.Errorf("the route is not readable: %w", err)
+	}
+	var matches []string
+	for _, r := range got.Spec.Routes {
+		matches = append(matches, r.Match)
+	}
+	want := c.SiteMatches(routing.SitePrefixes["forms"])
+	slices.Sort(matches)
+	slices.Sort(want)
+	switch {
+	case got.Metadata.Labels["can.dev/route"] != "true":
+		return errors.New("route forms-public is not the one can-core makes")
+	case !slices.Equal(got.Spec.EntryPoints, []string{c.EntryPoint()}):
+		return fmt.Errorf("route forms-public is on %v, want %s", got.Spec.EntryPoints, c.EntryPoint())
+	case !slices.Equal(matches, want):
+		return fmt.Errorf("route forms-public matches %v, want %v", matches, want)
 	}
 	return nil
 }

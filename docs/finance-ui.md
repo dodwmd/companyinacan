@@ -29,9 +29,8 @@ ui:
 The UI is served on the module's listener at `/`; `/v1/*`, `GET /public/invoices/{token}` and
 `GET /healthz` stay the API. Unlike the work UI (which decides per request and defaults `force_secure` from its public URL), cookies here are `Secure` with a `__Host-` name **unless** `insecure_cookies` is set, so a forgotten setting fails safe; `force_secure` states the intent and makes a contradicting `insecure_cookies` a configuration error, as does an https `public_base_url`. Behind
 a proxy also set the top-level `trust_proxy: true` so failed sign-ins are throttled per client address. In the dev
-compose stack it is at `http://finance.localhost:8080/` (`dev/compose/config/finance.yaml` turns it on). The Helm chart
-does not expose the `ui` block or a route yet: the module has no subdomain, so can-core's installer cannot route
-it (follow-up).
+compose stack it is at `http://finance.localhost:8080/` (`dev/compose/config/finance.yaml` turns it on). On a cluster, `modules.finance.expose.ui: true` turns it on and routes
+`https://finance.<domain>` ([`module-routing.md`](module-routing.md)); not yet run on a cluster for finance.
 
 ## Signing in
 

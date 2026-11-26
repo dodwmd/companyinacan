@@ -30,6 +30,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/routing"
 )
 
 const (
@@ -343,6 +345,9 @@ func TestWrappedModulesThroughCanCore(t *testing.T) {
 		t.Skip("CAN_IT_CANCORE=1 and CAN_IT_WRAPPED=1 are not both set")
 	}
 	mustKubectl(t, "-n", "can-system", "rollout", "status", "deploy/can-core", "--timeout=180s")
+	// The routing facts `can up` would write (specs/040): without them can-core leaves every module
+	// unrouted, and the route policy refuses any route.
+	applyRoutingFacts(t, routing.Default(wrappedDomain))
 	// A relay that does not resolve: support is configured with it, nothing can be sent.
 	secret := fmt.Sprintf("apiVersion: v1\nkind: Secret\nmetadata: {name: can-smtp-relay, namespace: can-system}\nstringData:\n  host: smtp.relay.invalid\n  username: ci-user\n  password: %q\n  from: no-reply@%s\n", relayPassword, wrappedDomain)
 	if out, err := kubectlStdin(secret, "apply", "-f", "-"); err != nil {

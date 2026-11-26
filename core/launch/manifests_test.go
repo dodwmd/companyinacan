@@ -163,24 +163,10 @@ func TestSiteRoutes(t *testing.T) {
 	}
 }
 
-func TestFormsRouteOutranksSiteAndStripsPrefix(t *testing.T) {
-	b, err := FormsRoute(RouteOptions{SiteHosts: []string{"acme.example"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	docs := decodeDocs(t, b)
-	if got := strings.Join(kinds(docs), ","); got != "Middleware,IngressRoute" {
-		t.Fatalf("kinds %s", got)
-	}
-	s := string(b)
-	for _, want := range []string{"namespace: mod-forms", "stripPrefix", "/_forms", "Host(`acme.example`) && PathPrefix(`/_forms`)", "name: forms", "port: 8080", "priority: 100"} {
-		if !strings.Contains(s, want) {
-			t.Errorf("missing %q in\n%s", want, s)
-		}
-	}
+func TestSiteRouteHasLowPriority(t *testing.T) {
 	site, _ := SiteRoutes(RouteOptions{SiteHosts: []string{"acme.example"}})
 	if !strings.Contains(string(site), "priority: 1\n") {
-		t.Fatalf("the site catch-all must have a low priority:\n%s", site)
+		t.Fatalf("the site catch-all must have a low priority (can-core's /_forms route outranks it):\n%s", site)
 	}
 }
 

@@ -43,6 +43,7 @@ func (f *fakeKube) Run(_ context.Context, stdin []byte, args ...string) (string,
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, kubeCall{Args: args, Stdin: string(stdin)})
 	line := strings.Join(args, " ")
+	defaults := []kubeRule{{contains: "get ingressroutes.traefik.io forms-public", out: formsRoute}}
 	for i := range f.rules {
 		r := &f.rules[i]
 		if !strings.Contains(line, r.contains) || (r.times > 0 && r.used >= r.times) {
@@ -50,6 +51,11 @@ func (f *fakeKube) Run(_ context.Context, stdin []byte, args ...string) (string,
 		}
 		r.used++
 		return r.out, r.err
+	}
+	for _, r := range defaults {
+		if strings.Contains(line, r.contains) {
+			return r.out, r.err
+		}
 	}
 	return "", nil
 }
@@ -120,6 +126,9 @@ func testCompany(t *testing.T) (dir string, co *config.Company, yamlSrc []byte) 
 	return dir, co, src
 }
 
+// formsRoute is what can-core's /_forms route looks like for the test's routes.
+const formsRoute = `{"metadata":{"labels":{"can.dev/route":"true"}},"spec":{"entryPoints":["web"],"routes":[{"match":"Host(` + "`acme.example`" + `) && PathPrefix(` + "`/_forms`" + `)"}]}}`
+
 func newStack(t *testing.T, k *fakeKube, l *fakeLoader) (Options, Deps, *bytes.Buffer) {
 	t.Helper()
 	dir, co, src := testCompany(t)
@@ -153,7 +162,7 @@ func TestRunExecutesPhasesInOrderAndCheckpoints(t *testing.T) {
 	for _, p := range res.Phases {
 		got = append(got, p.Name)
 	}
-	want := "base,images,company,core,admin,site,routes,ready"
+	want := "base,images,company,routing,core,admin,site,routes,ready"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("phases %v, want %s", got, want)
 	}
@@ -329,15 +338,37 @@ func TestFormsRoutedAfterModuleAppears(t *testing.T) {
 	if len(k.called("get svc forms")) != 3 {
 		t.Fatalf("must poll until the service exists: %d", len(k.called("get svc forms")))
 	}
-	var forms *kubeCall
-	for _, c := range k.calls {
-		if strings.Contains(c.Stdin, "forms-strip") {
-			c := c
-			forms = &c
-		}
+	if len(k.called("get ingressroutes.traefik.io forms-public")) == 0 {
+		t.Fatal("did not wait for can-core to route /_forms")
 	}
-	if forms == nil || !strings.Contains(forms.Stdin, "mod-forms") {
-		t.Fatal("the /_forms route was not applied")
+}
+
+// A re-run with an unchanged company.yaml and other routes (--domain-live: TLS and the domain) must
+// rewrite the facts, and must not accept the route left from the run before.
+func TestRerunWithChangedRoutesRewritesTheFacts(t *testing.T) {
+	k := &fakeKube{rules: []kubeRule{{contains: "admin bootstrap", out: bootstrapOut}}}
+	o, d, _ := newStack(t, k, &fakeLoader{})
+	first, err := Run(context.Background(), o, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.rules = append(k.rules, kubeRule{contains: "get configmap company", out: string(first.CompanyYAML)})
+	k.calls = nil
+	o.Routes = RouteOptions{SiteHosts: []string{"acme.example"}, AdminHosts: []string{"admin.acme.example"}, TLS: true}
+	_, err = Run(context.Background(), o, d)
+	var pe *PhaseError
+	if !errors.As(err, &pe) || pe.Phase != "routes" || !strings.Contains(err.Error(), "want websecure") {
+		t.Fatalf("the stale route was accepted: %v", err)
+	}
+	var written bool
+	for _, c := range k.calls {
+		if strings.Contains(c.Stdin, "company.yaml:") {
+			t.Fatal("test setup: company.yaml should be unchanged")
+		}
+		written = written || strings.Contains(c.Stdin, "name: can-routing") && strings.Contains(c.Stdin, `tls: "true"`)
+	}
+	if !written {
+		t.Fatal("the routing facts were not rewritten")
 	}
 }
 

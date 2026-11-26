@@ -17,6 +17,8 @@ on:
       - "core/server/dbprov/**"
       - "core/server/modsecrets/**"
       - "core/server/runtime/**"
+      - "core/server/reconcile/**"
+      - "core/routing/**"
       - "deploy/**"
       - "test/integration/wrapped_test.go"
       - ".github/workflows/wrapped-modules.yml"

@@ -141,6 +141,8 @@ func TestBootstrapDefaultsHaveNoOperatorRestriction(t *testing.T) {
 
 func TestBootstrapRejectsUnsafeValues(t *testing.T) {
 	bad := map[string]func(*BootstrapOptions){
+		"version too old":   func(o *BootstrapOptions) { o.K3sVersion = "v1.31.5+k3s1" },
+		"version just old":  func(o *BootstrapOptions) { o.K3sVersion = "v1.32.1+k3s1" },
 		"version unpinned":  func(o *BootstrapOptions) { o.K3sVersion = "latest" },
 		"version injection": func(o *BootstrapOptions) { o.K3sVersion = "v1.33.5+k3s1'; rm -rf /; '" },
 		"node injection":    func(o *BootstrapOptions) { o.NodeName = "a;b" },
