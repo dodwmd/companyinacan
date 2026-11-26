@@ -18,7 +18,7 @@ or a 2 GB server, and VM creation and the image build are not included.
 | **`make up`** on a machine without k3s | **59 to 76** (6 runs) | 600 | the promise is 300; k3s install, platform, site, forms, admin, backup timer |
 | contact form submitted, from the site's link | 4 | 60 | the form refuses anything faster than 3 s |
 | notification at the relay | under 1 | 180 | STARTTLS and AUTH |
-| enable `work` and `support` (`make up` again) | 47 to 59 | 900 | `can up` returns after 12 to 16 s; the modules are ready 35 to 45 s later |
+| enable `work` and `support` (`make up` again) | 47 to 59 | 900 | `can up` returned after 12 to 16 s and the modules were ready 35 to 45 s later; it now waits for them (`--module-wait`) |
 | SSO launch and an issue in `work` | 12 to 29 | 180 | mostly waiting for a fresh TOTP step |
 | backup: dump, restic, verify, kit check | 23 to 30 | 900 | about 11 MiB of data |
 | `can down` | 3 to 8 | 300 | |

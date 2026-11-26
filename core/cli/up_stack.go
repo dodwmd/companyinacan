@@ -50,11 +50,13 @@ type stackFlags struct {
 	noEdgeLimits      bool
 	skipImageCheck    bool
 	canBinary         string
+	moduleWait        time.Duration
 }
 
 func (f *stackFlags) register(cmd *cobra.Command) {
 	fl := cmd.Flags()
 	fl.BoolVar(&f.skipImageCheck, "skip-image-check", false, skipImageCheckHelp)
+	fl.DurationVar(&f.moduleWait, "module-wait", defaultModuleWait, "at most how long to wait for can-core to install the enabled modules (0: do not wait); a module that is not ready by then is reported, not an error")
 	fl.StringVar(&f.canBinary, "can-binary", "", "static linux can to install on the server as /usr/local/bin/can (default: the release manifest's, this binary if it fits, or a build of the source checkout)")
 	fl.BoolVar(&f.provisionOnly, "provision-only", false, "stop after the server, k3s, kubeconfig and DNS (the pre-E24 behaviour); deploy nothing")
 	fl.StringVar(&f.imagesFrom, "images-from", "", "directory written by `make images`: tarballs are verified, those company.yaml needs are shipped over ssh and imported (no registry needed)")
@@ -368,7 +370,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	res.Warnings = append(res.Warnings, lr.Warnings...)
 	if m, _ := config.SupportMailOf(t.company); m.Enabled {
-		res.Warnings = append(res.Warnings, "support is installed by can-core after this command: `can support credentials` shows its sign-in, `can support status` the state of its mail (modules/support/README.md)")
+		res.Warnings = append(res.Warnings, "support is installed by can-core: `can support credentials` shows its sign-in, `can support status` the state of its mail (modules/support/README.md)")
 	}
 	if lr.BundleAdded {
 		if f.writeBundle {
@@ -401,6 +403,15 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	// A module whose upgrade waits for approval got nothing of the company.yaml just pushed.
 	held, notApplied := heldAfterUp(ctx, d.Kube, lr.CompanyYAML, t.redact.Writer(out))
 	res.Warnings = append(res.Warnings, held...)
+	// Before the summary, so that it can say what is not ready. An interrupt ends the wait only: the
+	// summary, which holds what is shown once, still follows.
+	progress := d.Redactor.Writer(out)
+	notReady, waitWarnings := waitForModules(ctx, d.Kube, lr.CompanyYAML, f.moduleWait, provider.KubeconfigPath(t.dir), progress)
+	if fl, ok := progress.(provider.Flusher); ok {
+		fl.Flush()
+	}
+	res.ModulesNotReady = notReady
+	res.Warnings = append(res.Warnings, waitWarnings...)
 	res.TotalSeconds = lifecycle.now().Sub(started).Seconds()
 	// The summary comes first: it holds what is shown only once.
 	if err := t.summarize(cmd, g, out, res, lr, f); err != nil {
