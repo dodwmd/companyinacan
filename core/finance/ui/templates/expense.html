@@ -25,25 +25,29 @@
 <button type="submit">{{t "expense.submit"}}</button>
 </form>
 {{end}}
-{{if .Data.CanDecide}}
+{{- if and .Data.Engine.On .Data.Engine.State}}
+<p class="notice" role="status">{{t (printf "engine.%s" .Data.Engine.State)}}{{with .Data.Engine.Note}} ({{.}}){{end}}</p>{{end}}
+{{if and .Data.CanDecide (or .Data.Engine.MayApprove .Data.Engine.MaySendBack)}}
 <section aria-labelledby="h-dec">
 <h2 id="h-dec">{{t "ts.decide"}}</h2>
 {{if .Data.DecideDisabled}}
 <p><button type="button" disabled aria-describedby="sod">{{t "common.approve"}}</button></p>
 <p class="hint" id="sod">{{t "sod.hint"}}</p>
 {{else}}
+{{- if .Data.Engine.MayApprove}}
 <form method="post" action="/expenses/{{.Data.E.ID}}/approve" class="inline">
 {{template "csrf" .}}
 <input type="hidden" name="version" value="{{.Data.Version}}">
 <button type="submit">{{t "common.approve"}}</button>
-</form>
+</form>{{end}}
+{{- if .Data.Engine.MaySendBack}}
 <form method="post" action="/expenses/{{.Data.E.ID}}/reject" class="card">
 {{template "csrf" .}}
 <input type="hidden" name="version" value="{{.Data.Version}}">
 <p><label for="rej">{{t "f.reason"}}</label>
 <input id="rej" name="reason" required maxlength="500"></p>
 <p><button type="submit">{{t "common.reject"}}</button></p>
-</form>
+</form>{{end}}
 {{end}}
 </section>
 {{end}}

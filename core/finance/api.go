@@ -140,6 +140,7 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("POST /v1/purchase-orders", a.guard(write, biz, a.createPO))
 	mux.HandleFunc("GET /v1/purchase-orders/{id}", a.guard(read, biz, a.getPO))
 	mux.HandleFunc("PUT /v1/purchase-orders/{id}", a.guard(write, biz, a.updatePO))
+	mux.HandleFunc("POST /v1/purchase-orders/{id}/request-approval", a.guard(write, biz, a.requestPOApproval))
 	mux.HandleFunc("POST /v1/purchase-orders/{id}/approve", a.guard(approve, biz, a.approvePO))
 	mux.HandleFunc("POST /v1/purchase-orders/{id}/status", a.guard(write, biz, a.poStatus))
 

@@ -295,6 +295,11 @@ var uiMessagesEN = map[string]string{
 
 	"expense.new": "New expense", "expense.title": "Expense", "expenses.caption": "Expenses", "expenses.none": "No expense yet.", "expense.category": "Category",
 	"expense.category_hint": "A lower-case word such as travel or meals.", "expense.incurred": "Date incurred", "expense.submit": "Submit for approval",
+	"po.request":       "Request approval",
+	"approvals.engine": "Timesheets, expenses and purchase orders are decided in the approvals inbox of the admin UI.",
+	"engine.queued":    "Waiting to be sent to the approvals inbox of the admin UI.", "engine.pending": "Waiting for a decision in the approvals inbox of the admin UI.",
+	"engine.refused": "The approval engine could not take this: nobody can approve it yet. It is tried again.", "engine.approved": "Approved in the approvals inbox, but not applied yet.",
+	"engine.rejected":    "Turned down in the approvals inbox.",
 	"expense.decided_by": "Decided by", "expense.reference": "Reimbursement reference", "expense.reimburse": "Record reimbursement",
 	"receipt.legend": "Receipt (optional)", "receipt.hint": "Only the receipt's name, type, size and SHA-256 are recorded here. The file itself is kept elsewhere.",
 	"receipt.filename": "File name", "receipt.type": "File type", "receipt.size": "Size in bytes", "receipt.sha256": "SHA-256 of the file",

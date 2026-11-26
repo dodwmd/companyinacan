@@ -279,6 +279,7 @@ func (s *Store) UpdateExpense(ctx context.Context, a *Principal, id int64, ifMat
 
 // SubmitExpense sends an expense for approval.
 func (s *Store) SubmitExpense(ctx context.Context, a *Principal, id int64, ifMatch *int64) (*Expense, error) {
+	defer s.pump.Kick() // send the approval request now rather than at the next pass
 	return s.withExpense(ctx, a, id, ifMatch, func(tx *sql.Tx, e *Expense) error {
 		if e.Owner != a.Subject {
 			return ErrNotFound
@@ -290,6 +291,9 @@ func (s *Store) SubmitExpense(ctx context.Context, a *Principal, id int64, ifMat
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE expenses SET status='submitted', reject_reason='', version=version+1, updated_at=? WHERE id=?`, ts(s.now()), id); err != nil {
+			return err
+		}
+		if err := s.requestDecision(ctx, tx, apExpense, id, 0, a.Subject); err != nil {
 			return err
 		}
 		return s.emit(ctx, tx, EventExpenseSubmitted, expenseStepData{ExpenseID: id, Owner: e.Owner})
@@ -316,31 +320,43 @@ func (s *Store) decideExpense(ctx context.Context, a *Principal, id int64, ifMat
 		if e.Status != ExSubmitted {
 			return fmt.Errorf("%w: the expense is %s, not submitted", ErrConflict, e.Status)
 		}
-		if err := s.checkUnlocked(ctx, tx, e.IncurredOn); err != nil {
+		if err := s.engineAllows(ctx, tx, apExpense, id, 0, a, approve); err != nil {
 			return err
 		}
-		now := s.now()
-		status := ExRejected
-		if approve {
-			status = ExApproved
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE expenses SET status=?, decided_by=?, decided_at=?, reject_reason=?, version=version+1, updated_at=? WHERE id=?`, status, a.Subject, ts(now), reason, ts(now), id); err != nil {
+		if err := s.applyExpense(ctx, tx, e, approve, a.Subject, reason); err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, a.Subject, "expense."+status, fmt.Sprint(id), map[string]any{"owner": e.Owner, "amount_minor": e.AmountMinor, "currency": e.Currency}); err != nil {
-			return err
-		}
-		if err := s.emit(ctx, tx, EventExpenseDecided, expenseStepData{ExpenseID: id, Owner: e.Owner}); err != nil {
-			return err
-		}
-		if approve {
-			if err := s.postExpenseTx(ctx, tx, e, a.Subject); err != nil {
-				return err
-			}
-			return s.emit(ctx, tx, EventExpenseApproved, expenseApprovedData{ExpenseID: id, Person: e.Owner, AmountMinor: e.AmountMinor, Currency: e.Currency, Category: e.Category, ApprovedAt: now.UTC()})
-		}
-		return nil
+		return s.withdrawDecision(ctx, tx, apExpense, id)
 	})
+}
+
+// applyExpense records the decision on a submitted expense: the one place for both the module's own
+// routes and the engine's decisions. The caller has authorised it.
+func (s *Store) applyExpense(ctx context.Context, tx *sql.Tx, e *Expense, approve bool, by, reason string) error {
+	if err := s.checkUnlocked(ctx, tx, e.IncurredOn); err != nil {
+		return err
+	}
+	now := s.now()
+	status := ExRejected
+	if approve {
+		status = ExApproved
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE expenses SET status=?, decided_by=?, decided_at=?, reject_reason=?, version=version+1, updated_at=? WHERE id=?`, status, by, ts(now), reason, ts(now), e.ID); err != nil {
+		return err
+	}
+	if err := s.audit(ctx, tx, by, "expense."+status, fmt.Sprint(e.ID), map[string]any{"owner": e.Owner, "amount_minor": e.AmountMinor, "currency": e.Currency}); err != nil {
+		return err
+	}
+	if err := s.emit(ctx, tx, EventExpenseDecided, expenseStepData{ExpenseID: e.ID, Owner: e.Owner}); err != nil {
+		return err
+	}
+	if approve {
+		if err := s.postExpenseTx(ctx, tx, e, by); err != nil {
+			return err
+		}
+		return s.emit(ctx, tx, EventExpenseApproved, expenseApprovedData{ExpenseID: e.ID, Person: e.Owner, AmountMinor: e.AmountMinor, Currency: e.Currency, Category: e.Category, ApprovedAt: now.UTC()})
+	}
+	return nil
 }
 
 // ApproveExpense approves a submitted expense; nobody approves their own.

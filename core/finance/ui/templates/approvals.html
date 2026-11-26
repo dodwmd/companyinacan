@@ -1,6 +1,8 @@
 {{define "content"}}
 <h1>{{t "nav.approvals"}}</h1>
 <p class="hint">{{t "approvals.hint"}}</p>
+{{- if .Data.Engine}}
+<p class="notice">{{t "approvals.engine"}}</p>{{end}}
 {{if not .Data.Total}}<p class="muted">{{t "home.approvals_none"}}</p>{{end}}
 {{if .Data.More}}<p class="notice">{{t "approvals.more"}}</p>{{end}}
 {{if .Data.Invoices}}

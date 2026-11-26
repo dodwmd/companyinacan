@@ -380,6 +380,7 @@ func (s *Store) SetEntries(ctx context.Context, a *Principal, id int64, ifMatch 
 
 // SubmitTimesheet sends a sheet for approval.
 func (s *Store) SubmitTimesheet(ctx context.Context, a *Principal, id int64, ifMatch *int64) (*Timesheet, error) {
+	defer s.pump.Kick() // send the approval request now rather than at the next pass
 	return s.withTimesheet(ctx, a, id, ifMatch, func(tx *sql.Tx, t *Timesheet) error {
 		if !canActOn(a, t.Owner) {
 			return ErrNotFound
@@ -394,6 +395,9 @@ func (s *Store) SubmitTimesheet(ctx context.Context, a *Principal, id int64, ifM
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = 'submitted', submitted_at = ?, submitted_by = ?, reject_reason = '', version = version + 1, updated_at = ? WHERE id = ?`, ts(s.now()), a.Subject, ts(s.now()), t.ID); err != nil {
+			return err
+		}
+		if err := s.requestDecision(ctx, tx, apTimesheet, t.ID, 0, a.Subject); err != nil {
 			return err
 		}
 		return s.emit(ctx, tx, EventTimesheetSubmitted, timesheetStepData{TimesheetID: t.ID, Owner: t.Owner})
@@ -450,28 +454,40 @@ func (s *Store) decideTimesheet(ctx context.Context, a *Principal, id int64, ifM
 		if t.Status != TsSubmitted {
 			return fmt.Errorf("%w: the timesheet is %s, not submitted", ErrConflict, t.Status)
 		}
-		if err := s.checkUnlocked(ctx, tx, t.WeekStart); err != nil {
+		if err := s.engineAllows(ctx, tx, apTimesheet, id, 0, a, approve); err != nil {
 			return err
 		}
-		now := s.now()
-		status := TsRejected
-		if approve {
-			status = TsApproved
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = ?, decided_by = ?, decided_at = ?, reject_reason = ?, version = version + 1, updated_at = ? WHERE id = ?`, status, a.Subject, ts(now), reason, ts(now), id); err != nil {
+		if err := s.applyTimesheet(ctx, tx, t, approve, a.Subject, reason); err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, a.Subject, "timesheet."+status, fmt.Sprint(id), map[string]any{"owner": t.Owner}); err != nil {
-			return err
-		}
-		if err := s.emit(ctx, tx, EventTimesheetDecided, timesheetStepData{TimesheetID: id, Owner: t.Owner}); err != nil {
-			return err
-		}
-		if approve {
-			return s.emit(ctx, tx, EventTimesheetApproved, timesheetApprovedData{TimesheetID: id, Person: t.Owner, WeekStart: t.WeekStart, TotalMinutes: t.TotalMinutes, BillableMinutes: t.BillableMinutes, ApprovedAt: now.UTC()})
-		}
-		return nil
+		return s.withdrawDecision(ctx, tx, apTimesheet, id)
 	})
+}
+
+// applyTimesheet records the decision on a submitted sheet: the one place for both the module's own
+// routes and the engine's decisions. The caller has authorised it.
+func (s *Store) applyTimesheet(ctx context.Context, tx *sql.Tx, t *Timesheet, approve bool, by, reason string) error {
+	if err := s.checkUnlocked(ctx, tx, t.WeekStart); err != nil {
+		return err
+	}
+	now := s.now()
+	status := TsRejected
+	if approve {
+		status = TsApproved
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE timesheets SET status = ?, decided_by = ?, decided_at = ?, reject_reason = ?, version = version + 1, updated_at = ? WHERE id = ?`, status, by, ts(now), reason, ts(now), t.ID); err != nil {
+		return err
+	}
+	if err := s.audit(ctx, tx, by, "timesheet."+status, fmt.Sprint(t.ID), map[string]any{"owner": t.Owner}); err != nil {
+		return err
+	}
+	if err := s.emit(ctx, tx, EventTimesheetDecided, timesheetStepData{TimesheetID: t.ID, Owner: t.Owner}); err != nil {
+		return err
+	}
+	if approve {
+		return s.emit(ctx, tx, EventTimesheetApproved, timesheetApprovedData{TimesheetID: t.ID, Person: t.Owner, WeekStart: t.WeekStart, TotalMinutes: t.TotalMinutes, BillableMinutes: t.BillableMinutes, ApprovedAt: now.UTC()})
+	}
+	return nil
 }
 
 // ApproveTimesheet approves a submitted sheet. Nobody approves their own time, and neither

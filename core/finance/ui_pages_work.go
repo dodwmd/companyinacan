@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/modapproval"
 	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
@@ -410,6 +411,7 @@ type timesheetData struct {
 	CanDecide  bool
 	Disabled   bool // decision buttons shown but disabled: the viewer is involved with the sheet
 	Version    int64
+	Engine     engineView
 }
 
 func (u *UI) timesheet(c *uiCtx) error {
@@ -459,6 +461,9 @@ func (u *UI) timesheet(c *uiCtx) error {
 	}
 	d.CanDecide = capsOf(c.p).Approve && t.Status == TsSubmitted
 	d.Disabled = d.CanDecide && c.selfMade(t.Owner, t.CreatedBy, t.updatedBy, t.submittedBy)
+	if d.Engine, err = u.Store.engineView(c.ctx(), apTimesheet, id, t.Status == TsSubmitted); err != nil {
+		return err
+	}
 	u.render(c.w, c.r, c, http.StatusOK, "timesheet.html", "timesheet.title", d)
 	return nil
 }
@@ -646,6 +651,7 @@ type expenseData struct {
 	CanDecide, DecideDisabled bool
 	CanReimburse              bool
 	Version                   int64
+	Engine                    engineView
 }
 
 func (u *UI) expense(c *uiCtx) error {
@@ -662,6 +668,9 @@ func (u *UI) expense(c *uiCtx) error {
 	d.CanSubmit = cp.Write && e.Status == ExDraft && sameSubject(e.Owner, c.p.Subject)
 	d.CanDecide = cp.Approve && e.Status == ExSubmitted
 	d.DecideDisabled = d.CanDecide && c.selfMade(e.Owner)
+	if d.Engine, err = u.Store.engineView(c.ctx(), apExpense, id, e.Status == ExSubmitted); err != nil {
+		return err
+	}
 	d.CanReimburse = cp.Write && !cp.OwnOnly && e.Status == ExApproved && !sameSubject(e.Owner, c.p.Subject)
 	u.render(c.w, c.r, c, http.StatusOK, "expense.html", "expense.title", d)
 	return nil
@@ -813,7 +822,9 @@ type poData struct {
 	Vendor                   string
 	CanApprove, ApproveBlock bool
 	CanReceive, CanCancel    bool
+	CanRequest               bool
 	Version                  int64
+	Engine                   engineView
 }
 
 func (u *UI) purchaseOrder(c *uiCtx) error {
@@ -833,10 +844,27 @@ func (u *UI) purchaseOrder(c *uiCtx) error {
 	d := poData{O: *o, Vendor: names[o.VendorID], Version: o.Version}
 	d.CanApprove = cp.Approve && o.Status == PoDraft
 	d.ApproveBlock = d.CanApprove && c.selfMade(o.CreatedBy, o.updatedBy)
+	if d.Engine, err = u.Store.engineView(c.ctx(), apPurchaseOrder, id, false); err != nil {
+		return err
+	}
+	d.CanRequest = d.Engine.On && cp.Write && o.Status == PoDraft && (d.Engine.State == "" || d.Engine.State == modapproval.Rejected)
+	d.CanApprove = d.CanApprove && d.Engine.MayApprove()
+	d.ApproveBlock = d.ApproveBlock && d.CanApprove
 	d.CanReceive = cp.Write && o.Status == PoApproved
 	d.CanCancel = cp.Write && (o.Status == PoDraft || o.Status == PoApproved)
 	u.render(c.w, c.r, c, http.StatusOK, "po.html", "po.title", d)
 	return nil
+}
+
+func (u *UI) poRequestApproval(c *uiCtx) error {
+	id, err := c.id("id")
+	if err != nil {
+		return err
+	}
+	if _, err := u.Store.RequestPurchaseOrderApproval(c.ctx(), c.p, id); err != nil {
+		return err
+	}
+	return c.redirect("/purchase-orders/"+itoa(id), "flash.requested")
 }
 
 func (u *UI) poApprove(c *uiCtx) error {

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/modapproval"
 	"github.com/dodwmd/companyinacan/core/modclient"
 	"github.com/dodwmd/companyinacan/core/obs/obssql"
 
@@ -51,6 +52,8 @@ type Store struct {
 	approver Approver
 	// core is can-core's approvals engine when the module runs installed (nil standalone).
 	core modclient.Approvals
+	// pump queues the records that wait for core's decision (specs/070-approvals-inbox).
+	pump *modapproval.Pump
 	// downloads holds the slots for export downloads, each of which holds one batch file in memory; a request
 	// waits downloadWait for one.
 	downloads    chan struct{}
