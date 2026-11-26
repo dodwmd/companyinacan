@@ -903,8 +903,16 @@ func (s *Store) Decline(ctx context.Context, token, reason, clientAddr string) e
 		if _, err := tx.ExecContext(ctx, `UPDATE signing_signers SET status = 'declined', token_hash = NULL, declined_at = ?, decline_reason = ?, ip = ? WHERE id = ?`, now, reason, ip, g.ID); err != nil {
 			return err
 		}
-		return s.closeEnvelope(ctx, tx, "signer:"+strconv.FormatInt(g.ID, 10), e, EnvDeclined, "declined", g.ID,
-			map[string]any{"digest": signatureDigest(g.ID, reason, "", ip, now)})
+		if err := s.closeEnvelope(ctx, tx, "signer:"+strconv.FormatInt(g.ID, 10), e, EnvDeclined, "declined", g.ID,
+			map[string]any{"digest": signatureDigest(g.ID, reason, "", ip, now)}); err != nil {
+			return err
+		}
+		// Ids only: the reason and the signer stay in finance.
+		var party int64
+		if err := tx.QueryRowContext(ctx, `SELECT party_id FROM contracts WHERE id = ?`, e.ContractID).Scan(&party); err != nil {
+			return err
+		}
+		return s.emit(ctx, tx, EventContractDeclined, contractDeclinedData{ContractID: e.ContractID, PartyID: party, Version: e.Version})
 	})
 }
 

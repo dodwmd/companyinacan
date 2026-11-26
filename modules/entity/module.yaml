@@ -9,7 +9,8 @@ id: entity
 name: Entity and legal calendar
 description: Legal entities with sealed registration numbers, the registered agent and addresses with history, officers and directors with effective dates, statutory registers (members, directors, charges) as append-only ledgers viewable as of any date, a filings calendar with reminder events, document references and links to equity share classes. Record-keeping only.
 category: governance
-version: 0.1.0
+# 0.2.0: filing reminders reach can-core and notify (specs/060-reminders).
+version: 0.2.0
 # experimental: see the `board` module (same binary). can-core installs `entity` as its own instance
 # with its own database, so rules that need board membership find nothing there. No admin UI.
 # See modules/entity/README.md.
@@ -34,6 +35,8 @@ provides:
 publishes:
   # ids and dates only
   - { event: entity.filing.due.v1, schema: ./events/entity.filing.due.v1.json }
+notifications:
+  - { event: entity.filing.due.v1, recipients: ["role:secretary"] }
 permissions: [entity.read, entity.write, entity.attest, entity.sensitive-read, entity.admin]
 roles:
   secretary: [entity.read, entity.write, entity.sensitive-read]

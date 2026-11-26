@@ -11,7 +11,8 @@ id: board
 name: Board and governance
 description: Boards and committees, meetings, agendas, board packs, quorum and recusal, resolutions by roll call, written consent or secret ballot, minutes with versions, action items. Directors see only the bodies they sit on; board materials are sealed and every read is audited. Exposes a `resolutions` capability so other modules (equity grants) can ask for a resolution and read its outcome. Record-keeping only.
 category: governance
-version: 0.1.0
+# 0.2.0: the shared can-board image publishes events through can-core (specs/060-reminders).
+version: 0.2.0
 # experimental: unit-, contract- and race-tested offline. The chart installs through can-core, which
 # generates the keyring and tokens (CI only waits for Ready on k3d). No admin UI; token introspection,
 # events and the equity approval seam are not wired, and `entity` runs as a separate instance. See

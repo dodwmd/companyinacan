@@ -36,6 +36,7 @@ var workEvents = map[string][]byte{
 	"work.issue.updated.v1":      events.WorkIssueUpdatedV1,
 	"work.issue.transitioned.v1": events.WorkIssueTransitionedV1,
 	"work.comment.created.v1":    events.WorkCommentCreatedV1,
+	"work.issue.p0.v1":           events.WorkIssueP0V1,
 }
 
 func TestWorkManifest(t *testing.T) {
@@ -251,7 +252,7 @@ func TestLiveEventsMatchSchemas(t *testing.T) {
 	do("POST", "/v1/issues/ACME-2/comments", map[string]any{"body": "hello"})
 
 	seen := map[string]int{}
-	for len(seen) < 4 || seen["work.issue.created.v1"] < 2 {
+	for len(seen) < len(workEvents) || seen["work.issue.created.v1"] < 2 {
 		select {
 		case c := <-got:
 			var ev struct {

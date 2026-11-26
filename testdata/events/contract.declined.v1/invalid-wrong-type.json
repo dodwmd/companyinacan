@@ -1,0 +1,11 @@
+{
+  "id": "evt_0123456789abcdef01234560",
+  "type": "other.thing.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "contract_id": 4,
+    "party_id": 3,
+    "version": 1
+  }
+}

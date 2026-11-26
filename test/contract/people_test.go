@@ -37,6 +37,8 @@ var peopleEvents = map[string][]byte{
 	"review.cycle.opened.v1":      events.ReviewCycleOpenedV1,
 	"review.released.v1":          events.ReviewReleasedV1,
 	"timeoff.approved.v1":         events.TimeOffApprovedV1,
+	"timeoff.requested.v1":        events.TimeOffRequestedV1,
+	"timeoff.decided.v1":          events.TimeOffDecidedV1,
 	"timeoff.cancelled.v1":        events.TimeOffCancelledV1,
 }
 

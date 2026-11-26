@@ -105,6 +105,16 @@ points are marked sent with it, so a sweep that was down over a due date announc
 second sweep announces nothing. can-core turns the event into a notification and de-duplicates by id. No names,
 amounts or document contents are in the event.
 
+Installed by can-core, `entity` publishes the event through the module API and the holders of the
+`secretary` role are notified ([notifications.md](notifications.md#reminders)). A sweep that finds more
+than five at once publishes one event with `count` only.
+
+**Upgrading a standalone install** (run without can-core, with or without `webhook.url`): migration
+`005_reminders.sql` runs there too. Outbox events that were **never attempted** are marked delivered and
+will not be sent, and pending filings with no delivered `entity.filing.due.v1` in the outbox (delivered
+events are kept seven days) are announced again by the next sweep. Deliver the outbox before upgrading
+if a consumer needs every old event.
+
 ## Retention, legal hold and erasure
 
 Registers and filings are legal records. Erasure of a person (`POST /v1/people/{person}/erasure`, admin; see
