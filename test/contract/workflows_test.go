@@ -31,6 +31,8 @@ type wfJob struct {
 	Uses        string         `yaml:"uses"`
 	Permissions map[string]any `yaml:"permissions"`
 	Steps       []wfStep       `yaml:"steps"`
+	// A bool, or an expression string.
+	ContinueOnError any `yaml:"continue-on-error"`
 }
 
 type workflow struct {

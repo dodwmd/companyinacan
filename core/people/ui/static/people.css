@@ -84,7 +84,7 @@ ol.chain { padding-left: 1.25rem; }
 progress { width: 8rem; max-width: 100%; vertical-align: middle; }
 .pct { font-variant-numeric: tabular-nums; }
 
-dl.facts { display: grid; grid-template-columns: 1fr; gap: 0; }
+dl.facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
 dl.facts dt { color: var(--muted); font-size: .9rem; margin-top: .5rem; }
 dl.facts dd { margin: 0; }
 
@@ -95,10 +95,17 @@ th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--line);
 
 @media (min-width: 40rem) {
   header nav { flex: 1 1 auto; }
-  dl.facts { grid-template-columns: 12rem 1fr; gap: .25rem 1rem; }
+  dl.facts { grid-template-columns: 12rem minmax(0, 1fr); gap: .25rem 1rem; }
   dl.facts dt { margin-top: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Phones (specs/054-browser-e2e): long names, addresses and file names wrap instead of widening the
+   page, and a checkbox is at least 24 pixels, the WCAG 2.2 minimum target. */
+body { overflow-wrap: break-word; }
+dl.facts dd { overflow-wrap: anywhere; }
+fieldset { min-width: 0; }
+input[type="checkbox"]:not([hidden]), input[type="radio"]:not([hidden]) { width: 1.5rem; height: 1.5rem; min-height: 1.5rem; vertical-align: middle; }

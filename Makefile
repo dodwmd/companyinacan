@@ -9,7 +9,7 @@ LDFLAGS := -X github.com/dodwmd/companyinacan/core/cli.version=$(VERSION) \
 GOLANGCI_LINT_VERSION := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build test unit contract lint licences dev doctor images up down status server-down release-check lint-scripts scan-secrets release-build compose-up compose-down compose-logs compose-test e2e e2e-up e2e-down docs-check
+.PHONY: help build test unit contract lint licences dev doctor images up down status server-down release-check lint-scripts scan-secrets release-build compose-up compose-down compose-logs compose-test e2e e2e-browser e2e-up e2e-down docs-check
 
 help: ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -102,6 +102,9 @@ e2e-up: ## DEV ONLY: build and start the compose stack for the e2e suite (projec
 
 e2e: ## run the end-to-end suite against the running e2e stack (make e2e-up first); E2E_RESTART=0 skips the restart test
 	E2E_COMPOSE="$(E2E_COMPOSE)" $(GO) test -tags e2e -count=1 -timeout 15m -v ./test/e2e/...
+
+e2e-browser: ## run the headless-Chrome suite against the running e2e stack (make e2e-up first; E2E_CHROME=path)
+	E2E_COMPOSE="$(E2E_COMPOSE)" $(GO) test -tags browser -count=1 -timeout 15m -v ./test/browser/
 
 e2e-down: ## tear down the e2e stack and delete its volumes
 	$(E2E_COMPOSE) down -v

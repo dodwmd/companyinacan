@@ -189,7 +189,7 @@ func TestSigningHappyPathWithCountersign(t *testing.T) {
 			t.Fatalf("%d %s", w.Code, body)
 		}
 		for k, want := range map[string]string{"Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "X-Frame-Options": "DENY", "X-Robots-Tag": "noindex, nofollow",
-			"Content-Security-Policy": "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"} {
+			"Content-Security-Policy": "default-src 'none'; style-src 'self'; img-src data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"} {
 			if got := w.Header().Get(k); got != want {
 				t.Errorf("%s = %q", k, got)
 			}
