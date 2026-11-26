@@ -173,6 +173,37 @@ func TestSiteRouteHasLowPriority(t *testing.T) {
 	}
 }
 
+// With --domain-live on an address without a certificate of its own the site has a catch-all rule
+// and the admin UI a host rule on the same entry point: the admin rule must win, not tie.
+func TestAdminRouteOutranksTheCatchAll(t *testing.T) {
+	m, err := SiteRoutes(RouteOptions{TLS: true, CatchAll: true, SiteHosts: []string{"acme.example"}, AdminHosts: []string{"admin.acme.example"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, err := parseDocs(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catchAll, admin := 0, 0
+	for _, d := range docs {
+		spec, _ := d["spec"].(map[string]any)
+		routes, _ := spec["routes"].([]any)
+		for _, r := range routes {
+			rule := r.(map[string]any)
+			match, priority := rule["match"].(string), rule["priority"].(int)
+			switch match {
+			case "PathPrefix(`/`)":
+				catchAll = priority
+			case "Host(`admin.acme.example`)":
+				admin = priority
+			}
+		}
+	}
+	if catchAll == 0 || admin <= catchAll {
+		t.Fatalf("admin priority %d, catch-all priority %d:\n%s", admin, catchAll, m)
+	}
+}
+
 func TestCompanyConfigMapDefaultBundle(t *testing.T) {
 	src := "schema: 1\nname: Acme\ndomain: acme.example\nprovider:\n  type: ssh\nmodules:\n  example: {}\n"
 	out, added, err := WithDefaultBundle([]byte(src))
