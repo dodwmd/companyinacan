@@ -110,4 +110,9 @@ data_classes:
   # Admin actions, approvals, exports and personal-data reads. Append-only; never holds secrets or contact data.
   - { class: finance-audit, retention: 7y, sensitivity: standard }
 settings_schema: ./settings.schema.json
+# `can-finance backup` and `restore`, run by can-core in this module's own image (specs/043-module-backup-hooks).
+hooks:
+  command: /can-finance
+  backup: backup
+  restore: restore
 healthcheck: /healthz

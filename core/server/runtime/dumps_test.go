@@ -58,8 +58,29 @@ func TestModulesWithBackupHooks(t *testing.T) {
 	add("crm", store.StateDisabled, "./hooks/backup.sh")
 	add("status", store.StateFailed, "./hooks/backup.sh")
 	// QA 2: disabled and failed modules still hold data, so their hooks run too.
-	got, err := backupModules(db)(ctx)
+	got, err := backupModules(db, "")(ctx)
 	if err != nil || !reflect.DeepEqual(got, []string{"crm", "status", "wiki"}) {
 		t.Fatalf("%v %v", got, err)
+	}
+}
+
+// A module recorded before its in-house hook existed is dumped with the shipped manifest's
+// subcommands, disabled or not; a record of another provider, or a script hook, is left as it was.
+func TestRecordedManifestGainsShippedSubcommands(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "modules")
+	old := config.Module{ID: "forms"}
+	old.Provider.Name = "can-forms"
+	got := recordedManifest(dir, store.Module{ID: "forms", State: store.StateDisabled, Manifest: old})
+	if got.Hooks.Command != "/can-forms" || got.Hooks.Backup != "backup" {
+		t.Fatalf("%+v", got.Hooks)
+	}
+	other := old
+	other.Provider.Name = "something-else"
+	if got := recordedManifest(dir, store.Module{ID: "forms", Manifest: other}); got.Hooks.Backup != "" {
+		t.Fatalf("another provider: %+v", got.Hooks)
+	}
+	wiki := config.Module{ID: "wiki"}
+	if got := recordedManifest(dir, store.Module{ID: "wiki", Manifest: wiki}); got.Hooks.Backup != "" {
+		t.Fatalf("script hooks are not added: %+v", got.Hooks)
 	}
 }

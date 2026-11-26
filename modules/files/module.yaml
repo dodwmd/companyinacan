@@ -61,4 +61,9 @@ data_classes:
   # lists included, audited before it is returned; never in events.
   - { class: file-metadata, retention: 30d, sensitivity: sensitive }
 settings_schema: ./settings.schema.json
+# `can-files backup` and `restore`, run by can-core in this module's own image (specs/043-module-backup-hooks).
+hooks:
+  command: /can-files
+  backup: backup
+  restore: restore
 healthcheck: /healthz

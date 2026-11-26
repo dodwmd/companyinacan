@@ -55,6 +55,9 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 	if err != nil {
 		return err
 	}
+	if m.Hooks.Command != "" {
+		return h.runNative(ctx, module, m)
+	}
 	if m.Hooks.Image == "" {
 		return errors.New("the module has a backup hook but no hooks.image to run it in")
 	}
