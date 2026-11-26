@@ -42,6 +42,9 @@ type State struct {
 	// NoEdgeLimits remembers `can up --no-edge-limits`, so later runs need not repeat it.
 	NoEdgeLimits bool `json:"no_edge_limits,omitempty"`
 
+	// CLI is the `can` installed on the server (specs/061-can-on-server).
+	CLI *CLIState `json:"cli,omitempty"`
+
 	// Launch is the checkpoint record of the in-cluster phases of `can up` (epic E24, core/launch).
 	// Like everything here it never holds a secret: only that something happened, and a digest.
 	Launch *LaunchState `json:"launch,omitempty"`
@@ -76,6 +79,15 @@ type LaunchState struct {
 	KitFingerprint string `json:"kit_fingerprint,omitempty"`
 	// Mode is how the public site is exposed: "https" or "http".
 	Mode string `json:"mode,omitempty"`
+}
+
+// CLIState records which `can` was last installed on the server. The server is what counts:
+// `can status` asks it.
+type CLIState struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit,omitempty"`
+	Arch    string `json:"arch"`
+	SHA256  string `json:"sha256"`
 }
 
 // ServerState identifies the server.

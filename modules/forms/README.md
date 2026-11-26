@@ -158,8 +158,8 @@ or anything that was submitted.
 - **Exports** (`export.csv`) and anything copied from the admin UI.
 - **Backups.** Module dumps and snapshots made before the erasure hold the lead until they expire. A restore
   applies the erasure again if the tombstone is in the erasure ledger. Installed under can-core, can-core puts it
-  there by itself, normally within about 15 minutes, on a server with backups and the `can` binary at
-  `/usr/local/bin/can` ([backup-restore.md](../../docs/backup-restore.md#erasure-tombstone-ledger)). Run on its own,
+  there by itself, normally within about 15 minutes, on a server with backups (`can up` installs the
+  `can` binary they need) ([backup-restore.md](../../docs/backup-restore.md#erasure-tombstone-ledger)). Run on its own,
   record it with `sudo can backup ledger-add --subject <lead id> --class lead-submission`.
 
 **Retention** is separate: the hourly purge deletes expired leads and truncates the write-ahead log. It makes no

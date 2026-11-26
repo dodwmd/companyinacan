@@ -62,6 +62,8 @@ func (l *k3dLoader) Load(ctx context.Context, set launch.ImageSet, progress func
 }
 
 type recHost struct {
+	// node answers the scripts that install `can` for real (canhost_test.go).
+	node   nodeHost
 	mu     sync.Mutex
 	copied map[string][]byte
 	ran    []string
@@ -71,6 +73,9 @@ func (h *recHost) Run(_ context.Context, script string) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.ran = append(h.ran, script)
+	if strings.HasPrefix(script, "# can: ") {
+		return h.node.Run(context.Background(), script)
+	}
 	// reads of files on the host answer with what was copied there
 	if strings.HasPrefix(script, "if [ -e ") {
 		path := strings.Fields(script)[3]
@@ -88,7 +93,10 @@ func (h *recHost) Run(_ context.Context, script string) (string, error) {
 	return "CAN_BACKUP_OK\nCAN_CREDS_OK\nCAN_TIMER_OK\n", nil
 }
 
-func (h *recHost) Copy(_ context.Context, p string, b []byte, _ string) error {
+func (h *recHost) Copy(ctx context.Context, p string, b []byte, mode string) error {
+	if strings.HasPrefix(p, "/usr/local/bin/") {
+		return h.node.Copy(ctx, p, b, mode)
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.copied == nil {
@@ -200,12 +208,13 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	red := provider.NewRedactor()
 	var progress bytes.Buffer
 	loader := &k3dLoader{cluster: strings.TrimPrefix(kubeContext(), "k3d-")}
-	host := &recHost{}
+	host := &recHost{node: nodeHost{nodeName()}}
 	opts := launch.Options{
 		Dir: dir, Company: co, CompanyYAML: []byte(s), Images: images, DefaultBundle: true,
 		Routes:      launch.RouteOptions{SiteHosts: []string{siteHost}, AdminHosts: []string{adminHost}}, // plain HTTP: a throwaway cluster cannot get a certificate
 		SiteBaseURL: "http://" + siteHost,
 		Timeouts:    launch.Timeouts{Rollout: 4 * time.Minute, CRD: 3 * time.Minute, Module: 6 * time.Minute},
+		CLI:         canSource(t),
 		Backup: &launch.BackupInstall{
 			Input: backup.KitInput{CompanyName: co.Name, Domain: co.Domain, Endpoint: "https://s3.example.invalid", Bucket: "e2e", Region: "auto",
 				AccessKeyID: "AKIAE2EEXAMPLE", SecretAccessKey: "e2e-secret-0123456789abcdef", ProviderType: "ssh"},
@@ -228,6 +237,10 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatalf("launch.Run: %v\nprogress:\n%s", err, progress.String())
 	}
 	t.Logf("launch.Run finished in %s", time.Since(started).Round(time.Second))
+	if res.CLI == nil || !res.CLI.Changed {
+		t.Fatalf("can was not installed on the server: %+v", res.CLI)
+	}
+	checkNodeCan(t, host.node)
 	writeTimings(t, res)
 
 	// --- can-core is healthy --------------------------------------------------------------
@@ -351,6 +364,9 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	res2, err := launch.Run(context.Background(), opts, deps)
 	if err != nil {
 		t.Fatalf("second launch.Run: %v", err)
+	}
+	if res2.CLI == nil || res2.CLI.Changed {
+		t.Fatalf("an unchanged can must not be installed again: %+v", res2.CLI)
 	}
 	if res2.Admin != nil || res2.Kit != nil {
 		t.Fatal("a re-run must not issue new credentials or a new kit once they were handed over")
