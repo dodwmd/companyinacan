@@ -16,6 +16,8 @@ type PurgeReport struct {
 	Contracts      int64 `json:"contracts"`
 	PurchaseOrders int64 `json:"purchase_orders"`
 	ErasedParties  int64 `json:"erased_parties"`
+	// BankTransactions counts decided bank transactions past retention (E15c).
+	BankTransactions int64 `json:"bank_transactions"`
 	// ErasedPartiesKept counts erased parties that cannot be deleted yet because a record (an
 	// invoice not yet past retention, an unpaid invoice, a contract) still refers to them.
 	ErasedPartiesKept int64 `json:"erased_parties_kept"`
@@ -54,6 +56,18 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 				return nil
 			}
 			var ignore int64
+			// Bank transactions (E15c): a decided one is evidence for its payment and goes with the retention
+			// period of its booking date; an unmatched one is open work and is never purged. Journal entries are not
+			// purged: they hold no personal data and removing old ones would change every later balance.
+			if err := exec(&rep.BankTransactions, `DELETE FROM bank_transactions WHERE status <> 'unmatched' AND booked_on < ?`, cutoff); err != nil {
+				return err
+			}
+			if err := exec(&ignore, `DELETE FROM bank_statements WHERE date(imported_at, 'unixepoch') < ? AND NOT EXISTS (SELECT 1 FROM bank_transactions t WHERE t.statement_id = bank_statements.id)`, cutoff); err != nil {
+				return err
+			}
+			if err := exec(&ignore, `DELETE FROM bank_reconciliations WHERE period < ?`, cutoff[:7]); err != nil {
+				return err
+			}
 			if err := exec(&rep.Timesheets, `DELETE FROM time_entries WHERE timesheet_id IN (SELECT id FROM timesheets WHERE status = 'approved' AND week_start < ?)`, cutoff); err != nil {
 				return err
 			}
@@ -72,8 +86,16 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			if err := exec(&ignore, `UPDATE time_entries SET invoice_id = NULL WHERE invoice_id IN (SELECT id FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?)`, cutoff); err != nil {
 				return err
 			}
-			if err := exec(&ignore, `DELETE FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?
-				AND NOT EXISTS (SELECT 1 FROM invoices c WHERE c.original_id = invoices.id))`, cutoff); err != nil {
+			// A payment about to be deleted is first unlinked from the bank transaction that confirmed it. This runs
+			// after the credit notes are gone and uses the same predicate as the delete below: evaluated any
+			// earlier, an invoice that still had a credit note would be left linked and the delete would fail on the
+			// foreign key, on every purge from then on.
+			const purgedPayments = `SELECT id FROM payments WHERE invoice_id IN (SELECT id FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?
+				AND NOT EXISTS (SELECT 1 FROM invoices c WHERE c.original_id = invoices.id))`
+			if err := exec(&ignore, `UPDATE bank_transactions SET matched_payment_id = NULL WHERE matched_payment_id IN (`+purgedPayments+`)`, cutoff); err != nil {
+				return err
+			}
+			if err := exec(&ignore, `DELETE FROM payments WHERE id IN (`+purgedPayments+`)`, cutoff); err != nil {
 				return err
 			}
 			if err := exec(&rep.Invoices, `DELETE FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?
@@ -116,7 +138,7 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 		_, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 0, audit_before = 0`)
 		return err
 	})
-	if err == nil && (rep.Invoices+rep.Expenses+rep.Timesheets+rep.Contracts+rep.PurchaseOrders+rep.ErasedParties+rep.AuditEntries) > 0 {
+	if err == nil && (rep.Invoices+rep.Expenses+rep.Timesheets+rep.Contracts+rep.PurchaseOrders+rep.ErasedParties+rep.AuditEntries+rep.BankTransactions) > 0 {
 		err = s.Scrub(ctx)
 	}
 	return rep, err

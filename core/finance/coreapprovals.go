@@ -136,7 +136,7 @@ type CoreApprover struct{ store *Store }
 
 // CanApprove implements Approver. It fails closed on any error.
 func (c *CoreApprover) CanApprove(ctx context.Context, a *Principal, req ApprovalRequest) (bool, error) {
-	if !a.Can(PermApprove) {
+	if !a.Can(req.perm()) {
 		return false, nil
 	}
 	if req.Kind != "invoice" || req.Ref == "" {

@@ -26,6 +26,8 @@ var (
 	// ErrSeparation is returned when someone tries to approve their own work.
 	ErrSeparation = errors.New("separation of duties: the creator of a record cannot approve it")
 	ErrLocked     = errors.New("the period is locked")
+	// ErrNotImplemented is a documented adapter stub (xero, quickbooks, wave): no network call is made.
+	ErrNotImplemented = errors.New("not implemented")
 )
 
 // ProblemField names one invalid input.
@@ -87,7 +89,7 @@ var (
 
 // reservedSeries are the counters of other document classes. An invoice cannot use them, so a
 // purchase order or credit note number can never be burned (or duplicated) through an invoice.
-var reservedSeries = []string{"CN", "PO"}
+var reservedSeries = []string{"CN", "PO", "JE"}
 
 func validInvoiceSeries(s string) error {
 	if !seriesRE.MatchString(s) {

@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,7 @@ type route struct {
 
 func (u *UI) routes() []route {
 	r, w, a, d := PermRead, PermWrite, PermApprove, PermAdmin
+	lr, lw := PermLedgerRead, PermLedgerWrite
 	return []route{
 		{"GET /{$}", "", true, u.home},
 
@@ -146,6 +148,13 @@ func (u *UI) routes() []route {
 		{"POST /purchase-orders/{id}/status", w, false, u.poStatus},
 
 		{"GET /approvals", a, false, u.approvals},
+		{"GET /ledger/accounts", lr, false, u.ledgerAccounts},
+		{"GET /ledger/journals", lr, false, u.ledgerJournals},
+		{"GET /ledger/journals/{id}", lr, false, u.ledgerJournal},
+		{"GET /ledger/trial-balance", lr, false, u.ledgerTrialBalance},
+		{"GET /bank/reconciliation", lr, false, u.bankReconciliation},
+		{"POST /bank/transactions/{id}/confirm", lw, false, u.bankConfirm},
+		{"POST /bank/transactions/{id}/ignore", lw, false, u.bankIgnore},
 		{"GET /reports/aging", r, false, u.aging},
 		{"GET /reports/statement", r, false, u.statement},
 		{"GET /settings", r, false, u.settings},
@@ -390,6 +399,10 @@ func allowedBy(p *Principal, perm string, own bool) bool {
 	if perm != "" && !p.Can(perm) {
 		return false
 	}
+	// Accounting data spans every party and project: a scoped or own-only token never reaches it.
+	if slices.Contains(ledgerPerms, perm) && (!p.Unscoped() || p.OwnOnly) {
+		return false
+	}
 	return !p.OwnOnly || own
 }
 
@@ -460,10 +473,14 @@ type navItem struct {
 // presentation: the routes and the Store check the same things again.
 type caps struct {
 	Read, Write, Approve, Admin, OwnOnly bool
+	// Ledger and LedgerWrite are the accounting permissions, which only an unscoped token has (allowedBy):
+	// they decide whether the navigation shows the accounting pages and the reconciliation forms.
+	Ledger, LedgerWrite bool
 }
 
 func capsOf(p *Principal) caps {
-	return caps{Read: p.Can(PermRead), Write: p.Can(PermWrite), Approve: p.Can(PermApprove), Admin: p.Can(PermAdmin), OwnOnly: p.OwnOnly}
+	return caps{Read: p.Can(PermRead), Write: p.Can(PermWrite), Approve: p.Can(PermApprove), Admin: p.Can(PermAdmin), OwnOnly: p.OwnOnly,
+		Ledger: allowedBy(p, PermLedgerRead, false), LedgerWrite: allowedBy(p, PermLedgerWrite, false)}
 }
 
 // page is the data every template receives.
@@ -492,6 +509,7 @@ func (u *UI) nav(path string, p *Principal) []navItem {
 		{"/invoices", "nav.invoices", biz}, {"/recurring", "nav.recurring", biz}, {"/contracts", "nav.contracts", biz},
 		{"/purchase-orders", "nav.pos", biz}, {"/timesheets", "nav.timesheets", cp.Read}, {"/expenses", "nav.expenses", cp.Read},
 		{"/reports/aging", "nav.reports", biz}, {"/settings", "nav.settings", biz},
+		{"/ledger/accounts", "nav.ledger", cp.Ledger}, {"/bank/reconciliation", "nav.bank", cp.Ledger},
 	}
 	out := make([]navItem, 0, len(items))
 	for _, i := range items {
@@ -500,6 +518,12 @@ func (u *UI) nav(path string, p *Principal) []navItem {
 		}
 		cur := path == i.href || (i.href != "/" && strings.HasPrefix(path, i.href+"/"))
 		if i.href == "/reports/aging" && strings.HasPrefix(path, "/reports/") {
+			cur = true
+		}
+		if i.href == "/ledger/accounts" && strings.HasPrefix(path, "/ledger/") {
+			cur = true
+		}
+		if i.href == "/bank/reconciliation" && strings.HasPrefix(path, "/bank/") {
 			cur = true
 		}
 		out = append(out, navItem{Href: i.href, Label: u.msg(i.key), Current: cur})

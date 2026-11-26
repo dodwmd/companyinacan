@@ -6,10 +6,14 @@
 # lightweight OSS invoicer passed the licence and footprint check (SPEC.md section 5; Invoice
 # Ninja and Akaunting are not OSI-approved). A wrapped invoicer can later provide the same
 # `invoices` capability. This is a tool, not accounting, tax or legal advice.
+# E15c (specs/035-accounting) adds the accounting interfaces: a chart of accounts, a double-entry journal posted
+# from finance events, period close, bank statement import (CSV, OFX, CAMT.053) with reconciliation, and file
+# adapters (a CSV journal export, a CSV payroll journal import; xero, quickbooks and wave are documented stubs
+# that make no network call). It is bookkeeping support, not an accounting system of record and not advice.
 schema: 1
 id: finance
 name: Finance
-description: Customers and vendors, invoices and credit notes with gap-free numbering and immutability after approval, multi-currency with a stored FX rate per document, payments, receivables aging, recurring invoices, contracts with versions, hashes and e-signature, timesheets with approval and billing, expenses with receipt metadata and approval, and minimal purchase orders. Integer minor-unit money, tax as data, separation of duties, per-party and per-project scoping, audited exports, retention and erasure that respects legal retention.
+description: Customers and vendors, chart of accounts, double-entry journal with period close, bank statement import and reconciliation, invoices and credit notes with gap-free numbering and immutability after approval, multi-currency with a stored FX rate per document, payments, receivables aging, recurring invoices, contracts with versions, hashes and e-signature, timesheets with approval and billing, expenses with receipt metadata and approval, and minimal purchase orders. Integer minor-unit money, tax as data, separation of duties, per-party and per-project scoping, audited exports, retention and erasure that respects legal retention.
 category: finance
 version: 0.1.0
 # experimental: the service and its tests are complete and measured locally, and the chart installs
@@ -34,6 +38,9 @@ requires:
   database: sqlite
   sso: none
 resources:
+  # E15c re-measured (specs/035-accounting/research.md R9): 18.5 MB idle, 31.7 MiB (32460 kB) at the peak of a load that adds
+  # 200 approved invoices with their journal entries, 800 ledger report reads, a 5000-row statement import, an export and
+  # 800 page renders (accounting pages included), under 28 x 1.2 = 33.6, so the budget stays 28/64.
   # RAM target 28 MB (loaded, with the web UI; was 20 idle-only before E15b), limit 64. Measured on the static linux/amd64 build: 16.1 MiB RSS idle and 24.8 MiB
   # after 200 invoice creates and 400 list/aging reads (specs/014-finance-basics/research.md R8). With the
   # web UI enabled (templates parse on first use): 17.2 MiB idle (17624 kB), 27.9 MiB (28576 kB) after the same load plus 700
@@ -52,17 +59,26 @@ publishes:
   - { event: contract.expiring.v1, schema: ./events/contract.expiring.v1.json }
   - { event: timesheet.approved.v1, schema: ./events/timesheet.approved.v1.json }
   - { event: expense.approved.v1, schema: ./events/expense.approved.v1.json }
+  - { event: journal.posted.v1, schema: ./events/journal.posted.v1.json }
+  - { event: bank.statement.imported.v1, schema: ./events/bank.statement.imported.v1.json }
 # can-core's approvals engine decides invoices (approval.decided.v1 comes back signed); the other
 # approval types are declared for policy and notification but still use the finance.approve rule.
 subscribes:
   - { event: approval.decided.v1, service: finance, port: 8080, webhook: /v1/can/events }
-permissions: [finance.read, finance.write, finance.approve, finance.admin]
+# finance.ledger.* (E15c) guard the journal, the reports and the bank data. Only an unscoped token may use them: a
+# token limited to some parties or projects, or an employee's own-only token, is refused even if it holds one.
+# ledger.approve (post a manual journal, reverse an entry, sign off a month) is separate from ledger.write so the
+# person who drafts a journal is never the person who posts it.
+permissions: [finance.read, finance.write, finance.approve, finance.admin, finance.ledger.read, finance.ledger.write, finance.ledger.approve, finance.ledger.admin]
 roles:
   employee: []                       # nothing in can-core: its tokens are never own-only (use finance's own_only tokens)
   finance: [finance.read, finance.write]
   approver: [finance.read, finance.approve]
   admin: [finance.read, finance.write, finance.approve, finance.admin]
   finance-auditor: [finance.read]
+  accountant: [finance.read, finance.write, finance.ledger.read, finance.ledger.write]
+  controller: [finance.read, finance.ledger.read, finance.ledger.approve, finance.ledger.admin]
+  ledger-auditor: [finance.read, finance.ledger.read]
 approvals:
   - { type: invoice, default_chain: [finance] }
   - { type: timesheet, default_chain: [manager] }
@@ -83,6 +99,14 @@ data_classes:
   # Expense claims and receipt metadata (name, type, size, hash; no file bytes).
   - { class: finance-expense, retention: 7y, sensitivity: standard }
   - { class: finance-purchase-order, retention: 7y, sensitivity: standard }
+  # Chart of accounts, journal entries, period closes and export batches (E15c). Accounting records: legal retention
+  # overrides erasure, and they hold no personal data (memos name document numbers, never people). 7 years from the
+  # entry date; the retention purge removes them with the invoices they came from.
+  - { class: finance-ledger, retention: 7y, sensitivity: standard }
+  # Bank accounts, statements and transactions (E15c). The account number is sealed (XChaCha20-Poly1305, additional data
+  # = row) and shown only as ****last4; transaction text (counterparty, reference) can name people, so reads are
+  # audited. Kept 7 years from the booking date as accounting evidence; erasing a party does not touch it.
+  - { class: finance-bank, retention: 7y, sensitivity: sensitive }
   # Admin actions, approvals, exports and personal-data reads. Append-only; never holds secrets or contact data.
   - { class: finance-audit, retention: 7y, sensitivity: standard }
 settings_schema: ./settings.schema.json

@@ -217,3 +217,13 @@ var FileDeletedV1 []byte
 //
 //go:embed file.infected.v1.json
 var FileInfectedV1 []byte
+
+// JournalPostedV1 is the JSON Schema of the journal.posted.v1 event.
+//
+//go:embed journal.posted.v1.json
+var JournalPostedV1 []byte
+
+// BankStatementImportedV1 is the JSON Schema of the bank.statement.imported.v1 event.
+//
+//go:embed bank.statement.imported.v1.json
+var BankStatementImportedV1 []byte

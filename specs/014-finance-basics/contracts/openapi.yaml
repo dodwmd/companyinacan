@@ -1968,6 +1968,790 @@ paths:
         "412": { description: "If-Match version is stale" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
+  /v1/ledger/accounts:
+    get:
+      summary: "List the chart of accounts (query include_inactive=true)"
+      operationId: GET_v1_ledger_accounts
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+    post:
+      summary: "Add an account: code, name, type (asset, liability, equity, income, expense), optional tax_code"
+      operationId: POST_v1_ledger_accounts
+      x-scope: finance.ledger.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/accounts/template:
+    post:
+      summary: "Apply the default minimal chart (data, no jurisdiction rules); apply_mappings maps it when no mapping exists. Safe to repeat"
+      operationId: POST_v1_ledger_accounts_template
+      x-scope: finance.ledger.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/accounts/{id}:
+    patch:
+      summary: "Rename, deactivate or (while unused) re-code an account; used accounts keep code, type and tax code (409)"
+      operationId: PATCH_v1_ledger_accounts_id
+      x-scope: finance.ledger.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/mappings:
+    get:
+      summary: "Account mapping for automatic posting and what is missing"
+      operationId: GET_v1_ledger_mappings
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+    put:
+      summary: "Set mapping keys (ar, cash, income, tax_payable, expense, expense_payable, opening_equity); setting the last one posts the cut-over opening entry to account codes; each is validated (exists, active, right type)"
+      operationId: PUT_v1_ledger_mappings
+      x-scope: finance.ledger.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/journals:
+    get:
+      summary: "List journal entries (status, source, from, to, cursor)"
+      operationId: GET_v1_ledger_journals
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+    post:
+      summary: "Draft a manual journal (balanced, one currency, Idempotency-Key). It posts only when another person approves"
+      operationId: POST_v1_ledger_journals
+      x-scope: finance.ledger.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/journals/{id}:
+    get:
+      summary: "One entry with its lines"
+      operationId: GET_v1_ledger_journals_id
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+    delete:
+      summary: "Delete a draft; a posted entry is corrected by reversal (409)"
+      operationId: DELETE_v1_ledger_journals_id
+      x-scope: finance.ledger.write
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/journals/{id}/post:
+    post:
+      summary: "Approve and post a draft: not its drafter (403 separation_of_duties), not into a closed period (409 period_locked)"
+      operationId: POST_v1_ledger_journals_id_post
+      x-scope: finance.ledger.approve
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/journals/{id}/reverse:
+    post:
+      summary: "Post the mirror image of a posted entry on a date in an open period; once per entry; manual and payroll journals only (409), not by its drafter or poster (403)"
+      operationId: POST_v1_ledger_journals_id_reverse
+      x-scope: finance.ledger.approve
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/reports/trial-balance:
+    get:
+      summary: "Trial balance as_of a date, per currency, integer minor units"
+      operationId: GET_v1_ledger_reports_trial_balance
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/reports/general-ledger:
+    get:
+      summary: "General ledger of one account (account code, from, to, cursor) with running balances"
+      operationId: GET_v1_ledger_reports_general_ledger
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/reports/profit-loss:
+    get:
+      summary: "Income less expenses between from and to, per currency"
+      operationId: GET_v1_ledger_reports_profit_loss
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/reports/balance-sheet:
+    get:
+      summary: "Assets, liabilities and equity as_of a date, per currency"
+      operationId: GET_v1_ledger_reports_balance_sheet
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/periods:
+    get:
+      summary: "The ledger close date and the close and reopen history"
+      operationId: GET_v1_ledger_periods
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/periods/close:
+    post:
+      summary: "Close the ledger through a date (forward only; refused while a draft is dated inside it)"
+      operationId: POST_v1_ledger_periods_close
+      x-scope: finance.ledger.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/periods/reopen:
+    post:
+      summary: "Move the close date back, with a reason (audited)"
+      operationId: POST_v1_ledger_periods_reopen
+      x-scope: finance.ledger.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/exports:
+    get:
+      summary: "List export batches"
+      operationId: GET_v1_ledger_exports
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+    post:
+      summary: "Export posted entries after the adapter's cursor as one batch (adapter csv; xero, quickbooks and wave are stubs: 501). Idempotency-Key replays the batch; an entry is never exported twice"
+      operationId: POST_v1_ledger_exports
+      x-scope: finance.ledger.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/exports/{id}/download:
+    get:
+      summary: "Download a batch byte for byte (audited before it is returned)"
+      operationId: GET_v1_ledger_exports_id_download
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/ledger/payroll-import:
+    post:
+      summary: "Import a payroll journal CSV (query adapter=csv, body is the file) as draft journals; no payroll is calculated"
+      operationId: POST_v1_ledger_payroll_import
+      x-scope: finance.ledger.write
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/accounts:
+    get:
+      summary: "List bank accounts (number masked as ****last4)"
+      operationId: GET_v1_bank_accounts
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+    post:
+      summary: "Add a bank account; the number is sealed and never shown again (503 without CAN_FINANCE_SEAL_KEY)"
+      operationId: POST_v1_bank_accounts
+      x-scope: finance.ledger.admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/accounts/{id}:
+    get:
+      summary: "One bank account (masked)"
+      operationId: GET_v1_bank_accounts_id
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/accounts/{id}/statements:
+    post:
+      summary: "Import a statement file (body is the file; format csv, ofx or camt053; csv needs explicit delimiter and column parameters). The same file again changes nothing"
+      operationId: POST_v1_bank_accounts_id_statements
+      x-scope: finance.ledger.write
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/accounts/{id}/reconciliation:
+    get:
+      summary: "Reconciliation status per month (audited read)"
+      operationId: GET_v1_bank_accounts_id_reconciliation
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+    post:
+      summary: "Sign off a month with nothing unmatched"
+      operationId: POST_v1_bank_accounts_id_reconciliation
+      x-scope: finance.ledger.approve
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/transactions:
+    get:
+      summary: "List bank transactions (account_id, status, from, to, cursor); an audited read that fails closed"
+      operationId: GET_v1_bank_transactions
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/transactions/{id}/suggestions:
+    get:
+      summary: "Suggested invoices for an incoming transaction: advice only (audited read)"
+      operationId: GET_v1_bank_transactions_id_suggestions
+      x-scope: finance.ledger.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/transactions/{id}/confirm:
+    post:
+      summary: "Confirm a match: records a payment through the payment path (also needs finance.write); Idempotency-Key"
+      operationId: POST_v1_bank_transactions_id_confirm
+      x-scope: finance.ledger.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
+  /v1/bank/transactions/{id}/ignore:
+    post:
+      summary: "Ignore a transaction with a reason; final"
+      operationId: POST_v1_bank_transactions_id_ignore
+      x-scope: finance.ledger.write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope (accounting scopes also refuse party- and project-limited and own-only tokens), or separation of duties" }
+        "404": { description: "Not found" }
+        "409": { description: "State conflict, closed period or duplicate" }
+        "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+        "501": { description: "A documented adapter stub: nothing was done and no network call was made" }
+        "503": { description: "Not configured (for example no seal key) or timed out" }
   /healthz:
     get:
       summary: "Liveness"

@@ -30,7 +30,7 @@ digests it built with next to the image.
 | API listener | `:8080` (`invoices`, `contracts` and `timesheets` capabilities, ClusterIP only, bearer token; `GET /healthz` needs none; route only `/public/invoices/` to the internet) |
 | Data | `/data/finance.db` (SQLite, WAL), one persistent volume |
 | Config | `/etc/can-finance/finance.yaml`, optional: built-in defaults apply when it is absent (see `modules/finance/README.md`) |
-| Secrets (env) | `CAN_FINANCE_ADMIN_TOKEN` and `CAN_FINANCE_LINK_SECRET` (32+ characters each); `CAN_FINANCE_WEBHOOK_SECRET` when `webhook.url` is set |
+| Secrets (env) | `CAN_FINANCE_ADMIN_TOKEN` and `CAN_FINANCE_LINK_SECRET` (32+ characters each); `CAN_FINANCE_WEBHOOK_SECRET` when `webhook.url` is set; `CAN_FINANCE_SEAL_KEY` (64 hex characters) before adding a bank account (E15c) |
 | Idle RAM | 16.1 MiB RSS measured (24.8 MiB after 200 invoice creates and 400 reads); target 20 MB, limit 48 MB |
 | Root filesystem | read-only works: only `/data` is written |
 

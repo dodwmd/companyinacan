@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Chart of accounts - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/ledger/accounts" aria-current="page">Accounting</a></li>
+<li><a href="/bank/reconciliation">Bank</a></li>
+
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Chart of accounts</h1>
+<p class="actions"><a href="/ledger/accounts">Chart of accounts</a> <a href="/ledger/journals">Journal</a> <a href="/ledger/trial-balance">Trial balance</a></p>
+<p class="hint">Read-only. An account that carries a posting keeps its code and type; correct postings by reversal, never by editing.</p>
+<p class="actions"><a href="/ledger/accounts?all=1">Show inactive accounts</a></p>
+
+<div class="scroll">
+<table>
+<caption>Accounts</caption>
+<thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Tax code</th><th scope="col">In use</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><th scope="row">1000</th><td>Bank and cash</td><td>Asset</td><td></td><td>Yes</td><td>Active</td></tr>
+<tr><th scope="row">1100</th><td>Accounts receivable</td><td>Asset</td><td></td><td>Yes</td><td>Active</td></tr>
+<tr><th scope="row">2000</th><td>Accounts payable</td><td>Liability</td><td></td><td>No</td><td>Active</td></tr>
+<tr><th scope="row">2100</th><td>Sales tax payable</td><td>Liability</td><td></td><td>No</td><td>Active</td></tr>
+<tr><th scope="row">2200</th><td>Expense claims payable</td><td>Liability</td><td></td><td>No</td><td>Active</td></tr>
+<tr><th scope="row">3000</th><td>Owner&#39;s equity</td><td>Equity</td><td></td><td>No</td><td>Active</td></tr>
+<tr><th scope="row">4000</th><td>Sales</td><td>Income</td><td></td><td>Yes</td><td>Active</td></tr>
+<tr><th scope="row">5000</th><td>General expenses</td><td>Expense</td><td></td><td>Yes</td><td>Active</td></tr>
+
+</tbody>
+</table>
+</div>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

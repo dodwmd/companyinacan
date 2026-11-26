@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/bank.statement.imported.v1.json",
+  "title": "bank.statement.imported.v1",
+  "description": "Published when a bank statement file is imported (not for a file that was already imported). Counts and ids only: no account number, no transaction text, no amounts. Delivered at least once; consumers de-duplicate on `id`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "bank.statement.imported.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was produced (UTC)."
+    },
+    "source": {
+      "const": "finance"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement_id",
+        "bank_account_id",
+        "format",
+        "transaction_count",
+        "new_count",
+        "duplicate_count",
+        "imported_at"
+      ],
+      "properties": {
+        "statement_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bank_account_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "format": {
+          "enum": [
+            "csv",
+            "ofx",
+            "camt053"
+          ]
+        },
+        "transaction_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "new_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imported_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

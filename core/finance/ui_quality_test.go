@@ -46,7 +46,7 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 		for _, m := range goRe.FindAllStringSubmatch(string(b), -1) {
 			used[m[1]] = f
 		}
-		for _, m := range regexp.MustCompile(`"((?:err|login|flash|nav|party|invoice)\.[a-z_]+)"`).FindAllStringSubmatch(string(b), -1) {
+		for _, m := range regexp.MustCompile(`"((?:err|login|flash|nav|party|invoice|ledger|bank)\.[a-z_]+)"`).FindAllStringSubmatch(string(b), -1) {
 			if strings.HasSuffix(m[1], ".html") {
 				continue // a template file name, not a message
 			}
@@ -66,6 +66,7 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 		{"inv.", invoiceStatuses}, {"ts.", timesheetStatuses}, {"ex.", expenseStatuses}, {"ct.", contractStatuses}, {"po.", poStatuses},
 		{"rec.", []string{"active", "paused", "ended"}}, {"interval.", []string{"weekly", "monthly", "quarterly", "yearly"}},
 		{"kind.", []string{"customer", "vendor", "both", "invoice", "credit_note"}},
+		{"account.", accountTypes}, {"jsource.", journalSources}, {"bank.s.", []string{"open", "ready", "reconciled"}},
 	} {
 		for _, v := range fam.vals {
 			if _, ok := uiMessagesEN[fam.prefix+v]; !ok {
@@ -74,7 +75,7 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 		}
 	}
 	// every catalogue entry is used somewhere (no dead text), except the dynamic families
-	dyn := regexp.MustCompile(`^(inv|ts|ex|ct|po|rec|interval|kind)\.`)
+	dyn := regexp.MustCompile(`^(inv|ts|ex|ct|po|rec|interval|kind|account|jsource|bank\.s)\.`)
 	for k := range uiMessagesEN {
 		if _, ok := used[k]; !ok && !dyn.MatchString(k) && !strings.HasPrefix(k, "flash.") && !strings.HasPrefix(k, "err.") {
 			t.Errorf("catalogue entry %q is not used", k)

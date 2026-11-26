@@ -40,9 +40,11 @@ type Spec struct {
 }
 
 var table = map[string][]Spec{
-	"work":    {{Key: "CAN_WORK_ADMIN_TOKEN"}},
-	"forms":   {{Key: "CAN_FORMS_TOKEN_KEY"}, {Key: "CAN_FORMS_API_TOKEN"}, {Key: "CAN_FORMS_API_READ_TOKEN"}},
-	"finance": {{Key: "CAN_FINANCE_ADMIN_TOKEN"}, {Key: "CAN_FINANCE_LINK_SECRET"}},
+	"work":  {{Key: "CAN_WORK_ADMIN_TOKEN"}},
+	"forms": {{Key: "CAN_FORMS_TOKEN_KEY"}, {Key: "CAN_FORMS_API_TOKEN"}, {Key: "CAN_FORMS_API_READ_TOKEN"}},
+	// The seal key encrypts bank account numbers (E15c); a new one could not open what the old one sealed, so it is
+	// generated once and never rotated.
+	"finance": {{Key: "CAN_FINANCE_ADMIN_TOKEN"}, {Key: "CAN_FINANCE_LINK_SECRET"}, {Key: "CAN_FINANCE_SEAL_KEY", NoRotate: true}},
 	// The hash key makes candidate e-mail dedupe work; a new one would split every existing
 	// candidate from their duplicates without any error, so it is generated once and never rotated.
 	"jobs":   {{Key: "CAN_JOBS_ADMIN_TOKEN"}, {Key: "CAN_JOBS_HASH_KEY", NoRotate: true}, {Key: "CAN_JOBS_FORM_SECRET"}, {Key: KeyringKey, Kind: Keyring}},

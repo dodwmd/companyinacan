@@ -22,13 +22,19 @@ type Secrets struct {
 	WebhookSecret  string // HMAC secret for outgoing event signatures (CAN_FINANCE_WEBHOOK_SECRET)
 	LinkSecret     string // HMAC secret for public invoice links (CAN_FINANCE_LINK_SECRET, >= 32 characters)
 	ProviderSecret string // shared secret of the fake payment and e-sign providers (CAN_FINANCE_PROVIDER_SECRET)
+	SealKey        string // 64 hex characters sealing bank account numbers (CAN_FINANCE_SEAL_KEY); optional, bank accounts need it
 }
 
 // SecretsFromEnv loads and sanity-checks the secrets.
 func SecretsFromEnv(getenv func(string) string) (Secrets, error) {
 	s := Secrets{AdminToken: getenv("CAN_FINANCE_ADMIN_TOKEN"), WebhookSecret: getenv("CAN_FINANCE_WEBHOOK_SECRET"),
-		LinkSecret: getenv("CAN_FINANCE_LINK_SECRET"), ProviderSecret: getenv("CAN_FINANCE_PROVIDER_SECRET")}
+		LinkSecret: getenv("CAN_FINANCE_LINK_SECRET"), ProviderSecret: getenv("CAN_FINANCE_PROVIDER_SECRET"), SealKey: getenv("CAN_FINANCE_SEAL_KEY")}
 	var errs []error
+	if s.SealKey != "" {
+		if _, err := NewSealer(s.SealKey); err != nil {
+			errs = append(errs, errors.New("CAN_FINANCE_SEAL_KEY: "+err.Error()))
+		}
+	}
 	if len(s.AdminToken) < 32 || distinctBytes(s.AdminToken) < 10 {
 		errs = append(errs, errors.New("CAN_FINANCE_ADMIN_TOKEN is required, at least 32 characters with at least 10 different ones (for example `openssl rand -base64 32`)"))
 	}
@@ -106,6 +112,14 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		return nil, err
 	}
 	store.now = now
+	if sec.SealKey != "" {
+		sl, err := NewSealer(sec.SealKey)
+		if err != nil {
+			_ = store.Close()
+			return nil, err
+		}
+		store.sealer = sl
+	}
 	store.events = cfg.Webhook.URL != "" || opt.Can != nil
 	store.base = cfg.BaseCurrency
 	store.payInstr = cfg.PaymentInstructions

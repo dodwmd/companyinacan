@@ -12,7 +12,7 @@ scope gets 403 on every route, an own-only token on every route not marked `+own
 **Authorisation.** The UI has no authorisation logic of its own. The **Scope** column is the same scope
 the API's `guard` demands for the same operation (`read`, `write`, `approve`, `admin`; `session` means
 any signed-in token) and `+own` marks routes an own-only (employee) token may use; both are checked by
-one function (`allowedBy`) shared with the API's guard. The **Store methods** are the calls the route
+one function (`allowedBy`) shared with the API's guard. The accounting scopes (`ledger.read`, `ledger.write`, E15c) are only ever granted to an unscoped token that is not own-only: `allowedBy` refuses a party- or project-limited token on them even if it holds the permission. The **Store methods** are the calls the route
 makes; they scope every query to the token's parties and projects (a record outside the scope is the
 same `404` page as one that does not exist) and decide approvals in one place (`authorizeApproval`:
 scope, the configured `Approver`, and separation of duties). A page may hide or disable a button; the
@@ -103,5 +103,12 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `POST /purchase-orders/{id}/status` | yes | write | `SetPurchaseOrderStatus` | Receive or cancel |
 | `GET /approvals` | yes | approve | `ListInvoices`, `ListTimesheets`, `ListExpenses`, `ListPurchaseOrders` | The approver queue: what the caller could decide (own work left out) |
 | `GET /reports/aging` | yes | read | `Aging`, `PartyNames` | Receivables aging, per currency, at most 200 customers per currency |
+| `GET /ledger/accounts` | yes | ledger.read | `ListAccounts` | E15c: the chart of accounts, read-only (`?all=1` adds inactive accounts) |
+| `GET /ledger/journals` | yes | ledger.read | `ListJournals` | E15c: journal entries, newest first, filter `status` and `source`; read-only |
+| `GET /ledger/journals/{id}` | yes | ledger.read | `GetJournal` | E15c: one entry with its lines and the link to its reversal; read-only |
+| `GET /ledger/trial-balance` | yes | ledger.read | `TrialBalanceAsOf` | E15c: trial balance as of `as_of`, per currency, never converted |
+| `GET /bank/reconciliation` | yes | ledger.read | `ListBankAccounts`, `Reconciliation`, `ListBankTransactions`, `SuggestMatchesFor` | E15c: the months of one bank account and its oldest 25 unmatched transactions with suggestions; the read is audited before the page is rendered |
+| `POST /bank/transactions/{id}/confirm` | yes | ledger.write | `ConfirmMatch` | E15c: fields `invoice_id`, `account`, `idem`, optional `payment_id` (link a payment already recorded) and `record_new`; records the payment through the payment path. Money out is refused. No record `version` (a transaction is decided once: a second post is `409`) |
+| `POST /bank/transactions/{id}/ignore` | yes | ledger.write | `IgnoreTransaction` | E15c: fields `reason`, `account`; final, like confirm |
 | `GET /reports/statement` | yes | read | `ListParties`, `GetParty`, `ListInvoices`, `ListPayments` | One customer's documents and payments (newest 100) |
 | `GET /settings` | yes | read | `ListSeries`, `ListTaxRates`, `PeriodLock` | Read-only: series (unscoped tokens only: the counters are company-wide), tax rates, company settings |

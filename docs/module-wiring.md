@@ -44,7 +44,7 @@ never replaces them afterwards (enabling again, upgrading, disabling and enablin
 |---|---|
 | work | `CAN_WORK_ADMIN_TOKEN` |
 | forms | `CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN`, `CAN_FORMS_API_READ_TOKEN` |
-| finance | `CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET` |
+| finance | `CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET`, `CAN_FINANCE_SEAL_KEY` (E15c: seals bank account numbers; never rotated; an install that predates it needs the key added to its Secret once, otherwise adding a bank account answers 503) |
 | jobs | `CAN_JOBS_ADMIN_TOKEN`, `CAN_JOBS_HASH_KEY`, `CAN_JOBS_FORM_SECRET`, `keyring` |
 | people | `CAN_PEOPLE_API_TOKEN`, `keyring` |
 

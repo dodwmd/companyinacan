@@ -73,6 +73,13 @@ The session is re-checked with can-core on the same intervals as above. `ui.toke
 `+own` means an own-only (employee) token may use the page and sees only its own timesheets and expenses; it cannot reach
 anything else (every other route answers 403).
 
+## Accounting pages (E15c)
+
+For a token with a `finance.ledger.*` permission that is not limited to parties or projects: **Accounting** (chart of accounts, journal and
+entry detail, trial balance; all read-only) and **Bank** (reconciliation: the months of a bank account and the oldest 25 unmatched transactions with
+suggested invoices, a *Confirm match* form that records the payment, and an *Ignore* form with a reason). The forms need `finance.ledger.write` and `finance.write`.
+Everything else (chart edits, mappings, manual journals, period close, exports, statement upload) is API only. Details and limits: [`accounting.md`](accounting.md).
+
 ## Money
 
 Every amount is an integer count of the currency's minor unit; the page prints it with the currency's exponent

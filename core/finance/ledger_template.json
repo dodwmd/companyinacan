@@ -1,0 +1,15 @@
+{
+  "name": "minimal",
+  "description": "A minimal chart of accounts as data. It carries no jurisdiction rules, no tax treatment and no statutory account numbering: adapt it with your accountant.",
+  "accounts": [
+    { "code": "1000", "name": "Bank and cash", "type": "asset" },
+    { "code": "1100", "name": "Accounts receivable", "type": "asset" },
+    { "code": "2000", "name": "Accounts payable", "type": "liability" },
+    { "code": "2100", "name": "Sales tax payable", "type": "liability" },
+    { "code": "2200", "name": "Expense claims payable", "type": "liability" },
+    { "code": "3000", "name": "Owner's equity", "type": "equity" },
+    { "code": "4000", "name": "Sales", "type": "income" },
+    { "code": "5000", "name": "General expenses", "type": "expense" }
+  ],
+  "mappings": { "cash": "1000", "ar": "1100", "tax_payable": "2100", "expense_payable": "2200", "income": "4000", "expense": "5000", "opening_equity": "3000" }
+}

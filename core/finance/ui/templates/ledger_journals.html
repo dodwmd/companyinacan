@@ -1,0 +1,25 @@
+{{define "content"}}
+<h1>{{t "ledger.journals"}}</h1>
+<p class="actions"><a href="/ledger/accounts">{{t "ledger.accounts"}}</a> <a href="/ledger/journals">{{t "ledger.journals"}}</a> <a href="/ledger/trial-balance">{{t "ledger.trial"}}</a></p>
+<form method="get" action="/ledger/journals" class="inline filter">
+<label for="j-status">{{t "f.status"}}</label>
+<select id="j-status" name="status"><option value="">{{t "ledger.all_statuses"}}</option><option value="draft"{{if eq .Data.Status "draft"}} selected{{end}}>{{t "ledger.status_draft"}}</option><option value="posted"{{if eq .Data.Status "posted"}} selected{{end}}>{{t "ledger.status_posted"}}</option></select>
+<label for="j-source">{{t "ledger.source"}}</label>
+<input id="j-source" name="source" value="{{.Data.Source}}" maxlength="30">
+<button type="submit">{{t "common.filter"}}</button>
+</form>
+<p class="hint">{{t "ledger.journals_hint"}}</p>
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "ledger.journals_cap"}}</caption>
+<thead><tr><th scope="col">{{t "ledger.number"}}</th><th scope="col">{{t "ledger.date"}}</th><th scope="col">{{t "ledger.source"}}</th><th scope="col">{{t "ledger.memo"}}</th><th scope="col">{{t "f.total"}}</th></tr></thead>
+<tbody>
+{{range .Data.Items}}<tr><th scope="row"><a href="/ledger/journals/{{.ID}}">{{if .Number}}{{deref .Number}}{{else}}{{t "ledger.draft_n" .ID}}{{end}}</a></th><td>{{.EntryDate}}</td><td>{{st "jsource" .Source}}</td><td>{{.Memo}}</td><td class="num">{{amt .TotalMinor .Currency}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "ledger.journals_none"}}</p>{{end}}
+{{end}}
