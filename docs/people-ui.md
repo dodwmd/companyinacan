@@ -41,8 +41,8 @@ on). Behind TLS leave the cookie flags at their defaults. On a cluster, `modules
    Idle sessions end after 30 minutes, any session after 8 hours; **Log out** deletes it on the
    server. Every request re-checks that the person is still active staff (offboarding takes effect
    at once). The token is checked again every five minutes, **every minute for a session holding
-   the hr or admin role**. So revoking a token or demoting someone takes effect **up to five
-   minutes later (one minute for HR and admin sessions)**: a demoted HR user can keep revealing
+   the manager, hr or admin role**. So revoking a token or demoting someone takes effect **up to five
+   minutes later (one minute for manager, HR and admin sessions)**: a demoted HR user can keep revealing
    sensitive fields for that long. The check fails closed: if the token cannot be verified (for
    example the introspection endpoint is down) the session ends, and when the endpoint is down
    every session ends at its next check. Reveals of other people's sensitive data are further
@@ -56,7 +56,7 @@ With the module installed under can-core and its address configured
 ([`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c)), **Open** on the admin UI's **Apps** page
 signs a person in without a token (`/login/ticket`, valid only in the browser that clicked **Open**; check the account, then **Continue**). The same rule as above applies: an
 active person record with `sso_subject` set to `user:<username>` is needed. The session is re-checked with
-can-core every minute for hr and admin, every five minutes otherwise. `ui.token_login: false` (default `true`)
+can-core every minute for manager, hr and admin, every five minutes otherwise. `ui.token_login: false` (default `true`)
 removes the paste-a-token form. Not verified in a browser or on a cluster.
 
 ## What each page shows

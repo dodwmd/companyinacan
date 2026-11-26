@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 func stringsUpper(s string) string { return strings.ToUpper(s) }
@@ -609,7 +611,7 @@ type expenseForm struct {
 }
 
 func (u *UI) expenseNew(c *uiCtx) error {
-	u.render(c.w, c.r, c, http.StatusOK, "expense_form.html", "expense.new", expenseForm{Idem: newToken()[:32], Base: u.Cfg.BaseCurrency, Today: c.today(), Types: receiptTypes})
+	u.render(c.w, c.r, c, http.StatusOK, "expense_form.html", "expense.new", expenseForm{Idem: session.NewToken()[:32], Base: u.Cfg.BaseCurrency, Today: c.today(), Types: receiptTypes})
 	return nil
 }
 
@@ -781,7 +783,7 @@ func (u *UI) poNew(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	u.render(c.w, c.r, c, http.StatusOK, "po_form.html", "po.new", poForm{Idem: newToken()[:32], Vendors: vendors, More: more, PQ: pq, Rows: blankRows(4), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency})
+	u.render(c.w, c.r, c, http.StatusOK, "po_form.html", "po.new", poForm{Idem: session.NewToken()[:32], Vendors: vendors, More: more, PQ: pq, Rows: blankRows(4), Tax: activeRates(rates), Base: u.Cfg.BaseCurrency})
 	return nil
 }
 

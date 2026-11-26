@@ -9,12 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 var tlsStub = tls.ConnectionState{}
-
-func newTestClock() *clock { return &clock{t: time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)} }
 
 // The contract (specs/023-work-ui/contracts/ui-routes.md) lists every route with the session it
 // needs and the permission it checks. This test fails when code and contract drift apart.
