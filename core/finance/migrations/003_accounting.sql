@@ -184,6 +184,7 @@ CREATE TABLE bank_transactions (
     bank_account_id     INTEGER NOT NULL REFERENCES bank_accounts (id),
     statement_id        INTEGER NOT NULL REFERENCES bank_statements (id),
     txn_key             TEXT    NOT NULL,                  -- the bank's transaction id, else a hash of the row
+    key_group           TEXT    NOT NULL DEFAULT '',       -- rows that differ only in occurrence number; '' for a bank id
     booked_on           TEXT    NOT NULL,
     amount_minor        INTEGER NOT NULL CHECK (amount_minor <> 0),
     currency            TEXT    NOT NULL,
@@ -199,9 +200,10 @@ CREATE TABLE bank_transactions (
     UNIQUE (bank_account_id, txn_key)
 );
 CREATE INDEX bank_transactions_queue ON bank_transactions (bank_account_id, status, booked_on);
+CREATE INDEX bank_transactions_statement ON bank_transactions (statement_id, key_group);
 -- A payment is the money of at most one bank transaction.
 CREATE UNIQUE INDEX bank_transactions_payment ON bank_transactions (matched_payment_id) WHERE matched_payment_id IS NOT NULL;
-CREATE TRIGGER bank_transactions_keep_facts BEFORE UPDATE OF bank_account_id, statement_id, txn_key, booked_on, amount_minor, currency, reference, counterparty, description ON bank_transactions
+CREATE TRIGGER bank_transactions_keep_facts BEFORE UPDATE OF bank_account_id, statement_id, txn_key, key_group, booked_on, amount_minor, currency, reference, counterparty, description ON bank_transactions
 BEGIN
     SELECT RAISE(ABORT, 'a bank transaction keeps what the bank reported');
 END;

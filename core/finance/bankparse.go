@@ -75,8 +75,12 @@ func setOnce(dst *string, v, what string) error {
 
 // ParsedTxn is one transaction read from a statement.
 type ParsedTxn struct {
-	Key          string // the bank's transaction id; empty means "derive it from the row"
-	ServicerRef  string // CAMT AcctSvcrRef: part of the key, not an id on its own (servicerKeys)
+	Key         string // the bank's transaction id; empty means "derive it from the row"
+	ServicerRef string // CAMT AcctSvcrRef: part of the key, not an id on its own (servicerKeys)
+	// Group and base are set for a key made by this module (content or servicer reference): rows of one group
+	// differ only in their occurrence number, so more of them can be forced in. Empty for a bank's own id.
+	Group        string
+	base         string
 	Date         string // YYYY-MM-DD
 	AmountMinor  int64  // signed, money in positive
 	Currency     string
@@ -301,7 +305,7 @@ func deriveKeys(txns []ParsedTxn) {
 		}
 		base := contentOf(*t)
 		count[base]++
-		t.Key = contentKey(base, count[base])
+		t.setKey(derivedKeyPrefix, base, count[base])
 	}
 }
 
@@ -310,10 +314,20 @@ func contentOf(t ParsedTxn) string {
 	return strings.Join([]string{t.Date, fmt.Sprint(t.AmountMinor), t.Currency, t.Reference, t.Counterparty, t.Description}, "\x1f")
 }
 
-// contentKey is the key of the n-th (from 1) row with that content.
-func contentKey(content string, n int) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x1e%d", content, n)))
-	return derivedKeyPrefix + hex.EncodeToString(sum[:16])
+func keyHash(prefix, s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return prefix + hex.EncodeToString(sum[:16])
+}
+
+// setKey makes t the n-th (from 1) row of the group prefix and base.
+func (t *ParsedTxn) setKey(prefix, base string, n int) {
+	t.base, t.Group = base, keyHash(prefix, base)
+	t.Key = t.keyAt(n)
+}
+
+// keyAt is the key of the n-th row of t's group.
+func (t *ParsedTxn) keyAt(n int) string {
+	return keyHash(t.Group[:2], fmt.Sprintf("%s\x1e%d", t.base, n))
 }
 
 // ---- CSV ----------------------------------------------------------------------------------
@@ -828,7 +842,6 @@ func servicerKeys(txns []ParsedTxn) {
 		}
 		base := strings.Join([]string{t.ServicerRef, t.Date, fmt.Sprint(t.AmountMinor), t.Currency}, "\x1f")
 		count[base]++
-		sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x1e%d", base, count[base])))
-		t.Key = servicerKeyPrefix + hex.EncodeToString(sum[:16])
+		t.setKey(servicerKeyPrefix, base, count[base])
 	}
 }

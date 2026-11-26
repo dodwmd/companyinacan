@@ -699,3 +699,86 @@ func TestQA2RecentEmptyStatementSurvivesThePurge(t *testing.T) {
 		t.Errorf("%d statements after the retention period, want 1", n)
 	}
 }
+
+// QA round 3, 1: forcing reads the statement's rows once. With tens of thousands of rows on the account and a
+// full-size file, a per-row scan of the account takes minutes on the only writer connection.
+func TestQA3ForceIsNotQuadratic(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	e.importCSV(admin, b.ID, false, "2026-06-01,1.00,seed\n")
+	if _, err := e.app.store.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 30000)
+		INSERT INTO bank_transactions (bank_account_id, statement_id, txn_key, booked_on, amount_minor, currency, reference, created_at)
+		SELECT ?, 1, 'seed' || i, '2026-05-01', i, 'USD', 'old ' || i, 1 FROM n`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	var rows strings.Builder
+	for i := 0; i < maxStatementRows; i++ {
+		rows.WriteString("2026-06-02,2.00,row " + id(int64(i)) + "\n")
+	}
+	begin := time.Now()
+	e.importCSV(admin, b.ID, false, rows.String())
+	plain := time.Since(begin) // the yardstick: the same file imported without force, on this machine
+	// The same rows in another file are all duplicates; forcing them takes every one.
+	again := rows.String() + "\n" // other bytes, the same rows
+	start := time.Now()
+	r := e.importCSV(admin, b.ID, true, again)
+	r2 := e.importCSV(admin, b.ID, true, again)
+	if d := time.Since(start); d > 20*plain+5*time.Second {
+		t.Errorf("two forced imports took %s, a plain import of the file %s", d, plain)
+	}
+	if r.NewCount != maxStatementRows || r2.NewCount != 0 {
+		t.Errorf("forced %d then %d", r.NewCount, r2.NewCount)
+	}
+	// The row-visit bound: the one query over the statement uses its index and never scans the table.
+	plan, err := e.app.store.db.Query(`EXPLAIN QUERY PLAN `+ownedGroupsQuery, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = plan.Close() }()
+	var all []string
+	for plan.Next() {
+		var a, b, c int
+		var detail string
+		if err := plan.Scan(&a, &b, &c, &detail); err != nil {
+			t.Fatal(err)
+		}
+		all = append(all, detail)
+	}
+	got := strings.Join(all, "; ")
+	if !strings.Contains(got, "bank_transactions_statement") || strings.Contains(got, "SCAN") {
+		t.Errorf("query plan: %s", got)
+	}
+}
+
+// QA round 3, 3: a second genuine entry with the same reference, date and amount can be forced in, once, and a
+// cumulative statement then recognises both.
+func TestQA3SecondEqualCamtEntryIsForceable(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	entry := func(info string) string {
+		return `<Ntry><Amt Ccy="USD">2.00</Amt><CdtDtInd>DBIT</CdtDtInd><BookgDt><Dt>2026-06-01</Dt></BookgDt><AcctSvcrRef>OP9</AcctSvcrRef><AddtlNtryInf>` + info + `</AddtlNtryInf></Ntry>`
+	}
+	send := func(q string, entries ...string) StatementResult {
+		var r StatementResult
+		if code := e.do(admin, "POST", "/v1/bank/accounts/"+id(b.ID)+"/statements?format=camt053"+q, "<Document><BkToCstmrStmt><Stmt>"+strings.Join(entries, "")+"</Stmt></BkToCstmrStmt></Document>", &r); code != 201 && code != 200 {
+			t.Fatalf("import = %d", code)
+		}
+		return r
+	}
+	send("", entry("first"))
+	r := send("", entry("second"))
+	if r.NewCount != 0 || len(r.Skipped) != 1 || !r.Skipped[0].Forceable {
+		t.Fatalf("%+v", r)
+	}
+	if r := send("&force_duplicates=true", entry("second")); r.NewCount != 1 || e.bankRows() != 2 {
+		t.Fatalf("forced %+v, %d rows", r, e.bankRows())
+	}
+	if r := send("&force_duplicates=true", entry("second")); r.NewCount != 0 {
+		t.Errorf("forced twice %+v", r)
+	}
+	if r := send("", entry("first"), entry("second")); r.NewCount != 0 || e.bankRows() != 2 {
+		t.Errorf("cumulative %+v, %d rows", r, e.bankRows())
+	}
+}

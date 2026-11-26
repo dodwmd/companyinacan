@@ -279,9 +279,9 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 	}
 	out := &StatementResult{StatementID: sid, BankAccountID: accountID, Format: format, TransactionCnt: len(ps.Txns), AlreadyImported: known}
 	insert := func(t ParsedTxn, key string) (bool, error) {
-		r, err := tx.ExecContext(ctx, `INSERT INTO bank_transactions (bank_account_id, statement_id, txn_key, booked_on, amount_minor, currency, reference, counterparty, description, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (bank_account_id, txn_key) DO NOTHING`,
-			accountID, sid, key, t.Date, t.AmountMinor, t.Currency, t.Reference, t.Counterparty, t.Description, ts(s.now()))
+		r, err := tx.ExecContext(ctx, `INSERT INTO bank_transactions (bank_account_id, statement_id, txn_key, key_group, booked_on, amount_minor, currency, reference, counterparty, description, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (bank_account_id, txn_key) DO NOTHING`,
+			accountID, sid, key, t.Group, t.Date, t.AmountMinor, t.Currency, t.Reference, t.Counterparty, t.Description, ts(s.now()))
 		if err != nil {
 			return false, err
 		}
@@ -297,24 +297,24 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 			if err != nil {
 				return nil, err
 			}
-			derived := strings.HasPrefix(t.Key, derivedKeyPrefix)
-			if added || (force && derived) || len(out.Skipped) >= maxSkippedListed {
+			forceable := t.Group != ""
+			if added || (force && forceable) || len(out.Skipped) >= maxSkippedListed {
 				continue // forced rows are taken below
 			}
-			sk := SkippedRow{Row: i + 1, BookedOn: t.Date, AmountMinor: t.AmountMinor, Reason: "already_imported", Forceable: derived}
+			sk := SkippedRow{Row: i + 1, BookedOn: t.Date, AmountMinor: t.AmountMinor, Reason: "already_imported", Forceable: forceable}
 			var same int
 			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM bank_transactions WHERE bank_account_id = ? AND txn_key = ? AND booked_on = ? AND amount_minor = ? AND reference = ? AND counterparty = ? AND description = ?`,
 				accountID, t.Key, t.Date, t.AmountMinor, t.Reference, t.Counterparty, t.Description).Scan(&same); err != nil {
 				return nil, err
 			}
-			if same == 0 && !derived && !strings.HasPrefix(t.Key, servicerKeyPrefix) {
+			if same == 0 && !forceable {
 				sk.Reason = "id_reused"
 			}
 			out.Skipped = append(out.Skipped, sk)
 		}
 	}
 	if force {
-		if err := s.forceRowsTx(ctx, tx, accountID, sid, ps.Txns, insert); err != nil {
+		if err := forceRowsTx(ctx, tx, sid, ps.Txns, insert); err != nil {
 			return nil, err
 		}
 	}
@@ -337,32 +337,44 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 	return out, err
 }
 
-// forceRowsTx takes the rows without a bank id that this statement does not yet own: for each content, as many
-// as the file holds minus those already stored for this statement, so forcing the same file again adds nothing.
-// Each takes the smallest unused occurrence number of its content, which is the key a later, cumulative
-// statement computes for it, so it is not imported again.
-func (s *Store) forceRowsTx(ctx context.Context, tx dbq, accountID, sid int64, txns []ParsedTxn, insert func(ParsedTxn, string) (bool, error)) error {
-	var order []string
-	rows, count := map[string]ParsedTxn{}, map[string]int{}
-	for _, t := range txns {
-		if !strings.HasPrefix(t.Key, derivedKeyPrefix) {
-			continue
-		}
-		c := contentOf(t)
-		if count[c] == 0 {
-			order, rows[c] = append(order, c), t
-		}
-		count[c]++
+// forceRowsTx takes the rows without a bank id of their own that this statement does not yet hold: for each key
+// group, as many as the file has minus those already stored for this statement, so forcing the same file again
+// adds nothing. Each takes the smallest unused occurrence number of its group, which is the key a later,
+// cumulative statement computes for it, so it is not imported again. One query reads what the statement holds:
+// this runs on the only writer connection, so it must stay linear in the file.
+func forceRowsTx(ctx context.Context, tx dbq, sid int64, txns []ParsedTxn, insert func(ParsedTxn, string) (bool, error)) error {
+	owned := map[string]int{}
+	rows, err := tx.QueryContext(ctx, ownedGroupsQuery, sid)
+	if err != nil {
+		return err
 	}
-	for _, c := range order {
-		t := rows[c]
-		var owned int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM bank_transactions WHERE bank_account_id = ? AND statement_id = ? AND booked_on = ? AND amount_minor = ? AND reference = ? AND counterparty = ? AND description = ? AND substr(txn_key, 1, 2) = ?`,
-			accountID, sid, t.Date, t.AmountMinor, t.Reference, t.Counterparty, t.Description, derivedKeyPrefix).Scan(&owned); err != nil {
+	for rows.Next() {
+		var group string
+		var n int
+		if err := rows.Scan(&group, &n); err != nil {
+			_ = rows.Close()
 			return err
 		}
-		for n, missing := 1, count[c]-owned; missing > 0; n++ {
-			added, err := insert(t, contentKey(c, n))
+		owned[group] = n
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	var order []string
+	first, count := map[string]ParsedTxn{}, map[string]int{}
+	for _, t := range txns {
+		if t.Group == "" {
+			continue
+		}
+		if count[t.Group] == 0 {
+			order, first[t.Group] = append(order, t.Group), t
+		}
+		count[t.Group]++
+	}
+	for _, g := range order {
+		t := first[g]
+		for n, missing := 1, count[g]-owned[g]; missing > 0; n++ {
+			added, err := insert(t, t.keyAt(n))
 			if err != nil {
 				return err
 			}
@@ -373,6 +385,8 @@ func (s *Store) forceRowsTx(ctx context.Context, tx dbq, accountID, sid int64, t
 	}
 	return nil
 }
+
+const ownedGroupsQuery = `SELECT key_group, COUNT(*) FROM bank_transactions WHERE statement_id = ? AND key_group <> '' GROUP BY key_group`
 
 type bankImportedData struct {
 	StatementID      int64     `json:"statement_id"`

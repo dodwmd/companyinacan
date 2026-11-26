@@ -126,8 +126,8 @@ arrived with other details, and whether it is `forceable`). Without a bank id, t
 amount and text in two different files look identical: the second is skipped and listed, and `force_duplicates=true`
 imports the file's content-keyed rows anyway (check the list first: forcing an overlapping file imports its overlap
 again). Forcing also works on a file already imported: it adds the rows that import skipped, once. A forced row takes
-the next unused occurrence number of its content, so a later cumulative statement recognises it. Rows with a bank id are
-never forced. An id used twice in one file for different details rejects the file.
+the next unused occurrence number of its content, so a later cumulative statement recognises it. Rows with a bank's own id (OFX `FITID`, the CSV `id_col`) are never forced. CAMT rows keyed by `AcctSvcrRef` can be: a
+second genuine entry with the same reference, date and amount arriving in a later file is listed as skipped and forceable. An id used twice in one file for different details rejects the file.
 
 **Matching only suggests.** For an incoming transaction the engine proposes open invoices in the same currency
 whose balance equals the amount, or whose number appears in the reference (a partial payment). Nothing is recorded
