@@ -71,6 +71,16 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("POST /v1/invoices/{id}/link", a.guard(write, biz, a.issueLink))
 	mux.HandleFunc("POST /v1/invoices/{id}/link/revoke", a.guard(write, biz, a.revokeLinks))
 	mux.HandleFunc("POST /v1/invoices/{id}/checkout", a.guard(write, biz, a.checkout))
+	mux.HandleFunc("GET /v1/invoices/{id}/pdf", a.guard(read, biz, a.invoicePDF))
+	mux.HandleFunc("POST /v1/invoices/{id}/email", a.guard(write, biz, a.emailInvoice))
+	mux.HandleFunc("GET /v1/invoices/{id}/emails", a.guard(read, biz, a.invoiceEmails))
+	mux.HandleFunc("PUT /v1/invoices/{id}/reminders", a.guard(write, biz, a.invoiceReminders))
+	mux.HandleFunc("POST /v1/parties/{id}/statement/email", a.guard(write, biz, a.emailStatement))
+	mux.HandleFunc("GET /v1/parties/{id}/emails", a.guard(read, biz, a.partyEmails))
+	mux.HandleFunc("PUT /v1/parties/{id}/reminders", a.guard(write, biz, a.partyReminders))
+	mux.HandleFunc("GET /v1/dunning", a.guard(read, biz, a.getDunning))
+	mux.HandleFunc("PUT /v1/dunning", a.guard(admin, biz, a.putDunning))
+	mux.HandleFunc("POST /v1/dunning/run", a.guard(admin, biz, a.runDunning))
 	mux.HandleFunc("GET /v1/invoices/{id}/payments", a.guard(read, biz, a.listPayments))
 	mux.HandleFunc("POST /v1/invoices/{id}/payments", a.guard(write, biz, a.recordPayment))
 	mux.HandleFunc("POST /v1/payments/import", a.guard(write, biz, a.importPayments))
@@ -177,6 +187,7 @@ func (a *api) handler() http.Handler {
 
 	// Not bearer-authenticated: a signed link and provider webhooks (their own signatures).
 	mux.HandleFunc("GET /public/invoices/{token}", a.publicInvoice)
+	mux.HandleFunc("GET /public/invoices/{token}/pdf", a.publicInvoicePDF)
 	mux.HandleFunc("POST /v1/webhooks/payments", a.paymentWebhook)
 	mux.HandleFunc("POST /v1/webhooks/esign", a.esignWebhook)
 

@@ -154,16 +154,24 @@ func (u *UI) approvals(c *uiCtx) error {
 // ---- home ------------------------------------------------------------------------------------
 
 type homeData struct {
-	Stats     *DashboardStats
-	Queue     *approvalQueue
-	Business  bool // false for an own-only (employee) token: links to its own sheets and claims only
-	Today     string
-	CanReport bool
+	RemindersRestored string
+	Stats             *DashboardStats
+	Queue             *approvalQueue
+	Business          bool // false for an own-only (employee) token: links to its own sheets and claims only
+	Today             string
+	CanReport         bool
 }
 
 func (u *UI) home(c *uiCtx) error {
 	d := homeData{Today: c.today()}
 	cp := capsOf(c.p)
+	if cp.Admin {
+		p, err := u.Store.Dunning(c.ctx())
+		if err != nil {
+			return err
+		}
+		d.RemindersRestored = restoredOn(p)
+	}
 	d.Business = cp.Read && !cp.OwnOnly
 	if d.Business {
 		var err error
@@ -275,6 +283,10 @@ type partyData struct {
 	More     bool
 	CanEdit  bool
 	CanErase bool
+
+	CanRemind, CanStatement, MailReady bool
+	Mails                              []DocumentMail
+	Reminders                          *ReminderState
 }
 
 func (u *UI) party(c *uiCtx) error {
@@ -291,7 +303,17 @@ func (u *UI) party(c *uiCtx) error {
 		return err
 	}
 	cp := capsOf(c.p)
-	u.render(c.w, c.r, c, http.StatusOK, "party.html", "party.title", partyData{P: *p, Invoices: invs, More: next > 0, CanEdit: cp.Write && !p.Erased, CanErase: cp.Admin})
+	d := partyData{P: *p, Invoices: invs, More: next > 0, CanEdit: cp.Write && !p.Erased, CanErase: cp.Admin, MailReady: u.Store.MailReady()}
+	// A token limited to some projects sees only part of a party, so it gets none of this.
+	switch d.Mails, d.Reminders, err = u.Store.ListPartyMails(c.ctx(), c.p, id); {
+	case errors.Is(err, ErrForbidden):
+	case err != nil:
+		return err
+	default:
+		d.CanRemind = cp.Write && !p.Erased
+		d.CanStatement = d.CanRemind && p.Email != ""
+	}
+	u.render(c.w, c.r, c, http.StatusOK, "party.html", "party.title", d)
 	return nil
 }
 

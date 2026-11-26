@@ -495,7 +495,7 @@ paths:
         "429": { description: "Rate limited" }
   /v1/invoices/{id}/send:
     post:
-      summary: "Mark sent; emits invoice.sent.v1"
+      summary: "Record as sent by other means (mails nothing); emits invoice.sent.v1"
       operationId: POST_v1_invoices_id_send
       x-scope: finance.write
       parameters:
@@ -2939,6 +2939,230 @@ paths:
         "404": { description: "Not found, or outside the token's scope" }
         "409": { description: "State conflict (for example an issued invoice)" }
         "412": { description: "If-Match version is stale" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/pdf:
+    get:
+      summary: "PDF rendering (Windows-1252 text only; see specs/062-invoice-email)"
+      operationId: GET_v1_invoices_id_pdf
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/email:
+    post:
+      summary: "Email the public link of an issued invoice or credit note to the party"
+      operationId: POST_v1_invoices_id_email
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/emails:
+    get:
+      summary: "Messages about the document with delivery status, and reminder state"
+      operationId: GET_v1_invoices_id_emails
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } } }, reminders: { type: object, properties: { hold: { enum: ["on", stopped, disputed] }, party_stopped: { type: boolean }, enabled: { type: boolean }, off_since_restore: { type: boolean } } }, pdf_incomplete: { type: boolean } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/invoices/{id}/reminders:
+    put:
+      summary: "Allow, stop or dispute reminders for one invoice"
+      operationId: PUT_v1_invoices_id_reminders
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [state], properties: { state: { enum: ["on", stopped, disputed] } } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [state], properties: { state: { enum: ["on", stopped, disputed] } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/parties/{id}/statement/email:
+    post:
+      summary: "Email a statement of open invoices to the party"
+      operationId: POST_v1_parties_id_statement_email
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/parties/{id}/emails:
+    get:
+      summary: "Messages sent to the party"
+      operationId: GET_v1_parties_id_emails
+      x-scope: finance.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { id: { type: integer }, kind: { enum: [document, statement, reminder] }, invoice_id: { type: [integer, "null"] }, party_id: { type: integer }, step: { type: integer }, status: { enum: [pending, retry, queued, sent, failed, not_allowed, cancelled, unknown] }, created_by: { type: string }, created_at: { type: string }, updated_at: { type: string }, pdf_incomplete: { type: boolean } } } }, reminders: { type: object, properties: { hold: { enum: ["on", stopped, disputed] }, party_stopped: { type: boolean }, enabled: { type: boolean }, off_since_restore: { type: boolean } } }, pdf_incomplete: { type: boolean } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/parties/{id}/reminders:
+    put:
+      summary: "Stop or allow reminders for a party"
+      operationId: PUT_v1_parties_id_reminders
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [state], properties: { state: { enum: ["on", stopped] } } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [state], properties: { state: { enum: ["on", stopped] } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/dunning:
+    get:
+      summary: "The payment reminder schedule"
+      operationId: GET_v1_dunning
+      x-scope: finance.read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 }, restored_at: { type: string, description: "Set when a restore switched reminders off; ignored on input" } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+    put:
+      summary: "Replace the reminder schedule (unscoped tokens only)"
+      operationId: PUT_v1_dunning
+      x-scope: finance.admin
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 }, restored_at: { type: string, description: "Set when a restore switched reminders off; ignored on input" } } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: false, properties: { enabled: { type: boolean }, days_after_due: { type: array, minItems: 1, maxItems: 5, items: { type: integer, minimum: 1, maximum: 365 } }, max_overdue_days: { type: integer, maximum: 730 }, restored_at: { type: string, description: "Set when a restore switched reminders off; ignored on input" } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /v1/dunning/run:
+    post:
+      summary: "Send the reminders that are due now"
+      operationId: POST_v1_dunning_run
+      x-scope: finance.admin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { reminders: { type: integer } } }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
+        "422": { description: "Invalid fields" }
+        "429": { description: "Rate limited" }
+  /public/invoices/{token}/pdf:
+    get:
+      summary: "PDF of the publicly linked document; every failure is 404"
+      operationId: GET_public_invoices_token_pdf
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "State conflict (for example an issued invoice)" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
 components:

@@ -77,6 +77,7 @@
 </div>
 <p class="actions">
 <a href="/invoices/2/html">Printable view</a>
+<a href="/invoices/2/pdf" download>Download PDF</a>
 
 <a href="/invoices/2/credit-note">Credit note</a>
 </p>
@@ -85,6 +86,36 @@
 
 
 
+
+
+
+<section aria-labelledby="h-mail">
+<h2 id="h-mail">Email</h2>
+
+
+<p class="hint">Emailing is off: it needs can-core&#39;s email service and a published public invoice link (docs/finance.md).</p>
+
+
+</section>
+
+
+<section aria-labelledby="h-remind">
+<h2 id="h-remind">Payment reminders</h2>
+<p>Reminders allowed</p>
+
+<p class="hint">The company&#39;s reminder schedule is off.</p>
+<form method="post" action="/invoices/2/reminders" class="inline">
+<input type="hidden" name="csrf" value="CSRF">
+<label for="hold-state">Reminders for this invoice</label>
+<select id="hold-state" name="state">
+<option value="on" selected>Reminders allowed</option>
+<option value="stopped">Reminders stopped</option>
+<option value="disputed">Disputed: no reminders</option>
+</select>
+<button type="submit">Save</button>
+</form>
+<p><a href="/settings/reminders">Reminder schedule</a></p>
+</section>
 
 
 

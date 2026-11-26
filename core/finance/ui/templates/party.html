@@ -18,6 +18,28 @@
 <a href="/invoices?party={{.Data.P.ID}}">{{t "nav.invoices"}}</a>
 {{if .Data.CanErase}}<a href="/parties/{{.Data.P.ID}}/erase">{{t "erase.link"}}</a>{{end}}
 </p>
+{{if or .Data.CanRemind .Data.Mails}}
+<section aria-labelledby="h-mail">
+<h2 id="h-mail">{{t "mail.title"}}</h2>
+{{if .Data.CanStatement}}
+{{if .Data.MailReady}}
+<form method="post" action="/parties/{{.Data.P.ID}}/statement" class="inline">
+{{template "csrf" .}}
+<button type="submit">{{t "mail.statement"}}</button>
+</form>
+<p class="hint">{{t "mail.statement_hint"}}</p>
+{{else}}<p class="hint">{{t "mail.off"}}</p>{{end}}
+{{end}}
+{{if .Data.CanRemind}}
+<form method="post" action="/parties/{{.Data.P.ID}}/reminders" class="inline">
+{{template "csrf" .}}
+{{if .Data.Reminders.PartyStopped}}<input type="hidden" name="state" value="on"><button type="submit">{{t "remind.party_resume"}}</button>
+{{else}}<input type="hidden" name="state" value="stopped"><button type="submit">{{t "remind.party_stop"}}</button>{{end}}
+</form>
+{{end}}
+{{if .Data.Mails}}{{template "maillog" .Data.Mails}}{{end}}
+</section>
+{{end}}
 <section aria-labelledby="h-inv">
 <h2 id="h-inv">{{t "party.recent"}}</h2>
 {{if .Data.Invoices}}
