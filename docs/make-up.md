@@ -33,7 +33,9 @@ checkout has two ways to get them to the server:
 **The image check.** Before anything is provisioned or changed, `can up` makes sure that every image of every
 enabled module is in the images directory or can be pulled anonymously from its registry (it asks the registry,
 sending only the image name). `can apply` does the same against the cluster: the image must be on a node already,
-or pullable. A module that fails the check is named with its image. `--skip-image-check` turns the check off for a
+or pullable (an image the node does not list yet is waited for up to a minute, since the list follows a load with a
+delay). A node lists at most 50 images, so on a crowded server an image that nothing runs from may be missed:
+`--skip-image-check`. A module that fails the check is named with its image. `--skip-image-check` turns the check off for a
 server that gets images another way. To enable another module later on a server fed from `make images`, add it to
 `company.yaml` and run `make up IMAGES_FROM=build/images` again (it ships the new set); then `can apply` works too.
 Enabling a module in the **admin UI** does not run this check: its image must already be on the server. A first

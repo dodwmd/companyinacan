@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -20,6 +21,7 @@ import (
 
 // No test asks a real registry: unless a test says otherwise nothing is pullable.
 func init() {
+	imageListWait, imageListEvery = 3*time.Millisecond, time.Millisecond
 	imagePullable = func(context.Context, string) (bool, error) { return false, nil }
 }
 
@@ -151,10 +153,15 @@ func TestUpFromAReleaseManifestChecksModuleImagesArePublished(t *testing.T) {
 type nodeExec struct {
 	fileExec
 	images string
+	late   string // listed only from the second query on, as after a fresh import
+	asked  int
 }
 
 func (n *nodeExec) Run(ctx context.Context, c cluster.Cmd) (string, error) {
 	if line := strings.Join(c.Args, " "); strings.Contains(line, "get nodes") {
+		if n.asked++; n.asked > 1 {
+			return n.images + n.late, nil
+		}
 		return n.images, nil
 	} else if strings.Contains(line, "get pods") {
 		return "", nil
@@ -175,7 +182,8 @@ func TestApplyRefusesAModuleWhoseImageTheClusterCannotGet(t *testing.T) {
 	if len(f.written) != 0 {
 		t.Fatalf("applied %v", f.written)
 	}
-	f.images += modimages.Ref("can-work") + "\n"
+	// loaded just now: the node lists it a little later
+	f.asked, f.late = 0, modimages.Ref("can-work")+"\n"
 	if code, _, errs := run(t, "apply", dir, "--modules-dir", "../../modules"); code != ExitOK || len(f.written) == 0 {
 		t.Fatalf("loaded: code=%d err=%q", code, errs)
 	}

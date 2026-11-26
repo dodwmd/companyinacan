@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -104,6 +105,14 @@ func clusterImages(cmd *cobra.Command, kubeContext string) (map[string]bool, err
 	return have, nil
 }
 
+// A node lists an image some time after it was loaded: the kubelet refreshes its list every 30 s
+// and then posts the node status. So an image that is not listed is looked for again this long
+// (test seams).
+var (
+	imageListWait  = 60 * time.Second
+	imageListEvery = 5 * time.Second
+)
+
 // applyImageCheck is the preflight of `can apply` against the cluster it is about to change.
 func applyImageCheck(cmd *cobra.Command, modulesDir, kubeContext string, c *config.Company) error {
 	refs := requiredImages(cmd.ErrOrStderr(), modulesDir, enabledModules(c))
@@ -114,7 +123,37 @@ func applyImageCheck(cmd *cobra.Command, modulesDir, kubeContext string, c *conf
 	if err != nil {
 		return err
 	}
-	if err := checkImages(cmd.Context(), refs, func(r string) bool { return have[modimages.Normalize(r)] }, "on the cluster"); err != nil {
+	held := func(r string) bool { return have[modimages.Normalize(r)] }
+	missing := map[string][]string{}
+	for ref, mods := range refs {
+		if !held(ref) {
+			missing[ref] = mods
+		}
+	}
+	err = checkImages(cmd.Context(), missing, func(string) bool { return false }, "on the cluster")
+	if err == nil {
+		return nil
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "some images are not listed by the cluster yet and cannot be pulled: waiting up to %s for the node to list images loaded just now\n", imageListWait)
+	for waited := time.Duration(0); waited < imageListWait; waited += imageListEvery {
+		select {
+		case <-cmd.Context().Done():
+			return cmd.Context().Err()
+		case <-time.After(imageListEvery):
+		}
+		if have, err = clusterImages(cmd, kubeContext); err != nil {
+			return err
+		}
+		for ref := range missing {
+			if held(ref) {
+				delete(missing, ref)
+			}
+		}
+		if len(missing) == 0 {
+			return nil
+		}
+	}
+	if err := checkImages(cmd.Context(), missing, held, "on the cluster"); err != nil {
 		return fmt.Errorf("%w (nothing was changed)", err)
 	}
 	return nil
