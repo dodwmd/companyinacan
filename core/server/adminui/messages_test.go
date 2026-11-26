@@ -76,7 +76,8 @@ func TestEmbeddedAssetsStaySmall(t *testing.T) {
 		}
 		return nil
 	})
-	if total > 127<<10 || css > 16<<10 {
-		t.Fatalf("assets %d bytes, css %d bytes (budget 127 KiB / 16 KiB)", total, css)
+	// 127 KiB until the website editor (specs/064-site-editor), whose three pages add about 6 KiB.
+	if total > 140<<10 || css > 16<<10 {
+		t.Fatalf("assets %d bytes, css %d bytes (budget 140 KiB / 16 KiB)", total, css)
 	}
 }

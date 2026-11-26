@@ -120,7 +120,14 @@ func (s *Service) check(doc []byte, p Published) (*config.Company, *site.Output,
 		return nil, nil, []FieldError{{Message: "company.yaml cannot be read"}}
 	}
 	if sp := schema.Validate(schema.Company, d); problem.HasErrors(sp) {
-		return nil, nil, schemaErrors(sp)
+		out := schemaErrors(sp)
+		// What the renderer would say about page addresses, now rather than on the next try.
+		if c, err := config.DecodeCompany(d); err == nil {
+			for _, is := range config.CheckPages(c.Site.Pages) {
+				out = append(out, FieldError{Field: fmt.Sprintf("pages.%d.slug", is.Index), Message: is.Message})
+			}
+		}
+		return nil, nil, out
 	}
 	c, err := config.DecodeCompany(d)
 	if err != nil {

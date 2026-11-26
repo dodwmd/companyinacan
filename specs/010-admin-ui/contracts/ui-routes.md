@@ -85,6 +85,14 @@ Unauthenticated requests to a session route get `303 /login`. Routes marked step
 | `GET /runs/{id}` | yes (`platform.view`) | Apply progress and result. `<meta http-equiv="refresh" content="3">` while running; query `refresh=0` turns the reload off. Errors shown are sanitised |
 | `GET /status` | yes (`platform.view`) | Module readiness, last reconcile result, certificate/ingress status and disk usage (each marked unavailable when its source is not configured) |
 | `GET /company` | yes (`platform.operate`) | The stored company.yaml and its version |
+| `GET /site` | yes (`platform.operate`) | Website editor (`specs/064-site-editor/`): a form over company.yaml's `site:` section (sections, theme, extra pages) and whether the public site matches it. 503 without a site to publish to |
+| `POST /site` | yes (`platform.operate`) | Fields named by their path in `site:` (`hero.headline`, `features.0.title`, ...), `base` (hash of the section the form showed). 400 re-renders the form with per-field errors; 409, keeping what was typed, when the section changed since. 303 to `/site/drafts/{id}` (a preview, nothing published) |
+| `GET /site/drafts/{id}` | yes (`platform.operate`) | Preview page: the site in a sandboxed frame, the page list, warnings, the company.yaml diff and the publish button. This page alone has `frame-src 'self'` |
+| `GET /site/drafts/{id}/edit` | yes (`platform.operate`) | The editor filled from the draft |
+| `GET /site/drafts/{id}/frame` | yes (`platform.operate`) | One page of the draft (query `page`, a page slug) as a self-contained document for the frame: `Content-Security-Policy: sandbox; default-src 'none'; style-src '<hash>'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`, no script |
+| `POST /site/drafts/{id}/publish` | yes (`platform.operate`, step-up) | Saves the section to company.yaml and replaces the public site; audited. 303 to `/site`; 409 when the section changed since the draft was prepared or the draft expired; 502 when it was saved but the site could not be replaced; 503 when publishing cannot work |
+| `GET /site/history` | yes (`platform.operate`) | Earlier content of the site, newest first (at most 50) |
+| `POST /site/history/{rev}/restore` | yes (`platform.operate`) | Prepares a draft with that content, 303 to its preview; publishing it is the rollback |
 | `GET /setup` | yes (`platform.setup`) | 303 to `/setup/company` |
 | `GET /setup/{step}` | yes (`platform.setup`) | Wizard step: `company`, `template`, `modules`, `email`, `dns`, `account`, `review`. 404 otherwise |
 | `POST /setup/{step}` | yes (`platform.setup`) | Steps `company` (`name`, `domain`, `server_ram_mb`), `template` (`template`), `modules` (`enable`, `ack`), `email` (`host`, `port`, `username`, `password`, `from`: the password goes to a Secret and is never echoed), `account` (`kit`), plus `apply` (applies the saved answers; idempotent) and `dismiss`. 303 back to the step; 400 re-renders it |
@@ -116,3 +124,5 @@ delivery), 429, 502 (leads gateway), 500, 503.
 
 `GET /notifications` alone replaces the CSP with `default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
 because it loads `/static/push.js` (external, deferred, no inline script) to enable push on the current device; the page is fully usable without it. Every other page keeps `script-src 'none'`.
+
+`GET /site/drafts/{id}` adds `frame-src 'self'` for its preview frame, and `GET /site/drafts/{id}/frame` has the sandboxing policy described in its row instead.

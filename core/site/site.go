@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	text "text/template"
 	"unicode"
 
@@ -139,10 +140,13 @@ func isExternal(href string) bool {
 
 // cssTemplate fills the brand colours into the stylesheet. Colours are validated as #rrggbb
 // before they get here, so nothing else can reach the CSS.
-var cssTemplate = text.Must(text.ParseFS(templateFS, "templates/classic/site.css"))
+var cssTemplate = sync.OnceValue(func() *text.Template { return text.Must(text.ParseFS(templateFS, "templates/classic/site.css")) })
 
-var pageTemplates = template.Must(template.New("site").Funcs(template.FuncMap{"external": isExternal, "btn": btn}).
-	ParseFS(templateFS, "templates/classic/*.gohtml"))
+// Parsed on first use: can-core, which imports this package, renders only when someone edits the site.
+var pageTemplates = sync.OnceValue(func() *template.Template {
+	return template.Must(template.New("site").Funcs(template.FuncMap{"external": isExternal, "btn": btn}).
+		ParseFS(templateFS, "templates/classic/*.gohtml"))
+})
 
 // safeHref accepts only http(s) URLs, mailto: links, site-relative paths and fragments.
 func safeHref(h string) bool {
@@ -295,7 +299,7 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 	}
 
 	var css bytes.Buffer
-	if err := cssTemplate.Execute(&css, cssData{Accent: accent, AccentText: contrastText(accent), Accent2: accent2, Accent2Text: contrastText(accent2),
+	if err := cssTemplate().Execute(&css, cssData{Accent: accent, AccentText: contrastText(accent), Accent2: accent2, Accent2Text: contrastText(accent2),
 		Link: readable(accent, lightBG), LinkDark: readable(accent, darkBG), Pages: len(s.Pages) > 0}); err != nil {
 		return nil, err
 	}
@@ -441,7 +445,7 @@ func xmlEscape(s string) string {
 
 func execute(name string, data *page) ([]byte, error) {
 	var b bytes.Buffer
-	if err := pageTemplates.ExecuteTemplate(&b, name, data); err != nil {
+	if err := pageTemplates().ExecuteTemplate(&b, name, data); err != nil {
 		return nil, fmt.Errorf("render %s: %w", name, err)
 	}
 	return b.Bytes(), nil

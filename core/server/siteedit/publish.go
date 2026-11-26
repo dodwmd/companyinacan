@@ -16,6 +16,9 @@ import (
 	"github.com/dodwmd/companyinacan/core/site"
 )
 
+// ErrNotReady means publishing cannot work in this installation as it is.
+var ErrNotReady = errors.New("publishing is not possible")
+
 // ErrNoSite means there is no published site to replace.
 var ErrNoSite = errors.New("no site has been published to this installation yet: run `can up` first")
 
@@ -94,7 +97,7 @@ func (k KubePublisher) Current(ctx context.Context) (Published, error) {
 // Ready implements Publisher.
 func (k KubePublisher) Ready(ctx context.Context) error {
 	notReady := func(what string, err error) error {
-		return fmt.Errorf("publishing is not possible: %s (%w); run `can up` to update the server", what, err)
+		return fmt.Errorf("%w: %s (%w); run `can up` to update the server", ErrNotReady, what, err)
 	}
 	if _, err := k.API.Get(ctx, "ValidatingAdmissionPolicy", "", AdmissionPolicy); err != nil {
 		return notReady("the admission policy "+AdmissionPolicy+" is missing", err)
@@ -194,7 +197,7 @@ func (d DirPublisher) Current(context.Context) (Published, error) {
 // Ready implements Publisher.
 func (d DirPublisher) Ready(context.Context) error {
 	if _, err := os.Stat(filepath.Join(d.Dir, site.MarkerFile)); err != nil {
-		return fmt.Errorf("publishing is not possible: %s holds no built site: %w", d.Dir, err)
+		return fmt.Errorf("%w: %s holds no built site: %w", ErrNotReady, d.Dir, err)
 	}
 	return nil
 }
