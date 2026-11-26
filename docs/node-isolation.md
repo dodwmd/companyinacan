@@ -48,7 +48,7 @@ ssh root@SERVER nft list table inet can_isolation   # rules and drop counters
 rules or services stop. Run `can doctor --server` after changes to the server, or schedule it yourself.
 (The sync service does reload missing, changed or dormant rules within seconds, but says so only in its
 journal.) `can up` and `can status` print a warning, without failing, when the server has no rules or
-they are not as expected.
+they are not as expected (`can status` not while the server is still provisioning).
 
 The check fails unless: both chains list exactly the lines the installed script loads (compared with the
 same rules loaded into a throw-away network namespace by the same `nft`; counters ignored), the table is
@@ -60,7 +60,8 @@ not dormant, `cni0` exists, both units are enabled, the sync service is running,
 - **Your own workload needs the Kubernetes API** (an operator-installed controller): add its namespace,
   one per line, to `/etc/can/firewall/trusted-namespaces`. Namespaces starting `mod-` are ignored.
   Trust grants the API server and host DNS only. An address that a pod outside these namespaces also
-  reports (not counting `hostNetwork` pods) is not trusted until the records agree again; a terminating
+  reports (not counting `hostNetwork` pods) is not trusted until the records agree again (the check reports
+  it as a problem); a terminating
   trusted pod stays trusted only until its grace period ends.
 - **A pod needs another host service** (a Prometheus pod scraping `node_exporter` on the node, a mail
   relay on the server (so [`email.send`](email.md) needs a relay elsewhere), the kubelet): not supported. Run it as a pod, or elsewhere.
@@ -78,8 +79,12 @@ scp core/provider/hostfw/can-firewall.sh root@SERVER:/usr/local/sbin/can-firewal
 ssh root@SERVER 'apt-get install -y nftables && chmod 0755 /usr/local/sbin/can-firewall && can-firewall install'
 ```
 
-The same command pair upgrades the script. If a re-install fails, the previous rules, unit files and the
-units' enabled and running state are put back (the newly copied script stays). If the bootstrap itself stopped at the `node-firewall` step,
+The same command pair upgrades the script. If a re-install fails, the previous unit files and the units'
+enabled and running state are put back, and so are the previous rules, with one limit: the newly copied
+script stays, so **a unit that is restarted loads the new script's rules**. That happens at once when
+systemd refused the new units (units that were running are restarted), and otherwise at the next restart
+or reboot. To go back to the previous rules, copy the previous script and run `can-firewall install`
+again. If the bootstrap itself stopped at the `node-firewall` step,
 fix the cause and run `bash /usr/local/sbin/can-bootstrap.sh` on the server (running `can up` again would
 fail its preflight, because k3s already holds the ports).
 
@@ -87,11 +92,13 @@ fail its preflight, because k3s already holds the ports).
 
 | Event | Effect |
 |---|---|
-| The rules do not load, verification fails, or systemd refuses the units during install | previous rules, units and their enabled/running state restored, bootstrap fails |
+| The rules do not load or verification fails during install | previous rules and units kept, bootstrap fails |
+| systemd refuses the units during install | previous unit files and enabled/running state restored, bootstrap fails; restarted units load the new script's rules |
 | Reboot | rules loaded before k3s with an empty trusted set; system pods wait a few seconds for the API |
 | `can-firewall.service` fails at boot | k3s still starts, **without isolation** until the sync service loads the rules; `doctor --server` reports it |
 | Sync service stopped | restarted system pods lose the API; `doctor --server` reports it |
 | Another tool flushes the nftables ruleset, edits these chains or makes the table dormant | reloaded within seconds by the sync service |
+| `unshare --net` does not work | the chains cannot be compared: a missing or dormant table is still reloaded, edited chains are not; the check fails |
 | `ufw reload`, kube-proxy, flannel restarts | no effect: they do not own this table |
 
 ## What is unverified

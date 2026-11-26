@@ -75,13 +75,14 @@ does cover it); egress filtering to the internet.
   `can-system`, and of namespaces the operator lists in `/etc/can/firewall/trusted-namespaces`
   (never `mod-*`). A terminating one counts only until its deletion timestamp (the end of its grace
   period). An address also claimed by an unfinished, non-trusted, non-hostNetwork pod is not trusted.
-  A failed listing keeps the previous set.
+  A failed listing keeps the previous set. The check reports a contested system pod address as a problem.
 - **FR-3** Every chain accepts first whatever did not arrive on `cni0` or `flannel.1`. The chains'
   policy is accept. The tool changes no other nftables table and never flushes the ruleset.
 - **FR-4** Loading is atomic and idempotent. A ruleset that does not load changes nothing.
 - **FR-5** `install` refuses to start without the pod bridge and at least one trusted pod, verifies
   that the rules are loaded, the system pods are trusted and the API server is ready, and otherwise
   restores the previous state (rules, unit files, enabled and running state) and fails the bootstrap.
+  The previous script is not kept: a unit restarted by that rollback loads the installed script's rules.
 - **FR-6** The rules are loaded at boot before k3s; the trusted set starts empty and fills when the API
   answers.
 - **FR-7** DNS, ingress, can-core, kubelet probes, `kubectl logs`/`exec`, pod-to-pod traffic allowed by
@@ -90,7 +91,8 @@ does cover it); egress filtering to the internet.
   failing closed: both chains must list line for line (counters aside) as the script's rules do, the
   table must not be dormant, both units must be enabled, the sync unit running and
   `can-firewall.service` not failed. `can up` and `can status` warn, without failing, when a server has
-  no rules or different ones.
+  no rules or different ones; `can status` not while it is provisioning. The sync service reloads only a
+  missing, dormant or changed table, never one it cannot compare.
 - **FR-9** `make down` on the ssh provider removes the rules and units.
 - **FR-10** Not supported, and cut off by the rules: access to the node tunnelled through a pod (SSH
   included), and k3s ServiceLB in front of `hostNetwork` backends.
