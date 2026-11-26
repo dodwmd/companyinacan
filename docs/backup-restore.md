@@ -232,7 +232,8 @@ a module backup hook Job. The numbers are in
   image is not built or published, so while one of them is enabled the dump run fails (and no marker is written);
   disabled, it is skipped. The
   hook Job mechanism was run with a test module and a public curl image.
-- `can-hooks` Jobs against a database module (DB credentials come from the `can-database` Secret).
+- `can-hooks` Jobs against a database module (DB credentials come from the `can-db` Secret). The wrapped
+  database charts themselves still name a `can-database` Secret that can-core does not write.
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
   directory and a run holds the old and the new set at once. Hooks retry with `--retry` only, which does not cover
   a connection refused while a new pod's network rules are still being programmed.

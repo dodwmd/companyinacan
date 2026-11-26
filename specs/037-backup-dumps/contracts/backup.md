@@ -25,4 +25,4 @@ from the module whose hook is running (any recorded state); GET answers 409 unti
 | PersistentVolume `can-dumps` | hostPath `/var/lib/can/dumps`, `Retain`, `claimRef can-system/can-dumps` |
 | PersistentVolumeClaim `can-system/can-dumps` | `storageClassName: ""`, `volumeName: can-dumps` |
 | ConfigMap `mod-<id>/can-hook-backup` | the module's hook script |
-| Job `mod-<id>/can-hook-backup-<n>` | restricted, uid 1000, `backoffLimit 0`, deadline 15 min, deleted when finished; mounts `<id>-data` (or the only claim) at `/data`, `/storage`, `/app/data`, read-only unless SQLite; no volume for database-server modules; given up after 2 min if it cannot start |
+| Job `mod-<id>/can-hook-backup-<n>` | restricted, uid 1000, `backoffLimit 0`, deadline 15 min, deleted when finished; mounts `<id>-data` (or the only claim) at `/data`, `/storage`, `/app/data`, read-only unless SQLite; no volume for database-server modules, which get `envFrom` the `can-db` Secret can-core writes (missing: the hook fails; never "no data"); given up after 2 min if it cannot start |

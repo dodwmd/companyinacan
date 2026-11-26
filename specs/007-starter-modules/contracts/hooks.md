@@ -26,7 +26,7 @@ same restricted security context as the module's pods.
 | `CAN_API_URL` | `can-module` Secret key `api-url` | all |
 | `CAN_MODULE` | module id | all |
 | `CAN_TOKEN_FILE` | default `/var/run/secrets/can/token` (projected, audience `can`) | all |
-| `DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD` | `can-database` Secret | support, newsletter |
+| `DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD` | `can-db` Secret (written by can-core for `requires.database` postgres or mariadb) | support, newsletter, crm |
 | `GOATCOUNTER_DATA` | default `/data`; the module PVC must be mounted there | analytics |
 
 ## Transport

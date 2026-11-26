@@ -145,6 +145,9 @@ func TestKubeHooksVolumeFollowsTheDatabase(t *testing.T) {
 	} {
 		h, api, m := hookFixture(t)
 		m.Requires.Database = db
+		if err := api.Apply(context.Background(), kube.Object{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": "can-db", "namespace": "mod-wiki"}}); err != nil {
+			t.Fatal(err)
+		}
 		created := finishJob(api, "succeeded")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := h.RunBackup(ctx, "wiki"); err != nil {

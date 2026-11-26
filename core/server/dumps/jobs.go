@@ -12,6 +12,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/kube"
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
 
 const (
@@ -62,7 +63,8 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 		return err
 	}
 	ns := "mod-" + module
-	if ok, err := h.hasData(ctx, ns); err != nil {
+	database := !MountsVolume(m.Requires.Database) // the data is in a database server
+	if ok, err := h.hasData(ctx, ns, database); err != nil {
 		return err
 	} else if !ok {
 		return ErrNoData
@@ -80,7 +82,7 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 		}
 	}
 	name := fmt.Sprintf("%s%d", hookJobPrefix, time.Now().UnixNano())
-	if _, err := h.API.Create(ctx, h.job(ctx, name, ns, module, m.Hooks.Image, claim, m.Requires.Database != "sqlite", labels)); err != nil {
+	if _, err := h.API.Create(ctx, h.job(ctx, name, ns, module, m.Hooks.Image, claim, m.Requires.Database, labels)); err != nil {
 		return fmt.Errorf("create the hook Job: %w", err)
 	}
 	defer func() {
@@ -91,9 +93,17 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 	return h.wait(ctx, ns, name)
 }
 
-// hasData reports whether the module has anything to dump: a volume or a database. A module
-// that never installed, or whose namespace was removed, has neither.
-func (h *KubeHooks) hasData(ctx context.Context, ns string) (bool, error) {
+// hasData reports whether the module has anything to dump. A database module always has: its
+// data is in the database server, so a missing namespace or database Secret is an error, never
+// "nothing to dump". Otherwise a module without a volume (never installed, or removed by hand)
+// has nothing.
+func (h *KubeHooks) hasData(ctx context.Context, ns string, database bool) (bool, error) {
+	if database {
+		if _, err := h.API.Get(ctx, "Secret", ns, reconcile.DatabaseSecret); err != nil {
+			return false, fmt.Errorf("the database module's Secret %s/%s cannot be read: %w", ns, reconcile.DatabaseSecret, err)
+		}
+		return true, nil
+	}
 	if _, err := h.API.Get(ctx, "Namespace", "", ns); kube.IsNotFound(err) {
 		return false, nil
 	} else if err != nil {
@@ -103,15 +113,7 @@ func (h *KubeHooks) hasData(ctx context.Context, ns string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("list volumes: %w", err)
 	}
-	if len(claims) > 0 {
-		return true, nil
-	}
-	if _, err := h.API.Get(ctx, "Secret", ns, "can-database"); kube.IsNotFound(err) {
-		return false, nil
-	} else if err != nil {
-		return false, fmt.Errorf("read the database Secret: %w", err)
-	}
-	return true, nil
+	return len(claims) > 0, nil
 }
 
 // script reads the manifest's hook file, refusing anything outside the module's directory.
@@ -152,7 +154,12 @@ func (h *KubeHooks) dataClaim(ctx context.Context, ns, module string) (string, e
 	return "", nil
 }
 
-func (h *KubeHooks) job(ctx context.Context, name, ns, module, image, claim string, readOnly bool, labels obj) kube.Object {
+func (h *KubeHooks) job(ctx context.Context, name, ns, module, image, claim, database string, labels obj) kube.Object {
+	readOnly := database != "sqlite"
+	var envFrom []any
+	if !MountsVolume(database) {
+		envFrom = []any{obj{"secretRef": obj{"name": reconcile.DatabaseSecret}}}
+	}
 	deadline := int64(900)
 	if d, ok := ctx.Deadline(); ok {
 		if s := int64(time.Until(d).Seconds()); s > 0 && s < deadline {
@@ -195,7 +202,7 @@ func (h *KubeHooks) job(ctx context.Context, name, ns, module, image, claim stri
 							obj{"name": "CAN_API_URL", "value": h.PlatformURL},
 							obj{"name": "CAN_MODULE", "value": module},
 						},
-						"envFrom":   []any{obj{"secretRef": obj{"name": "can-database", "optional": true}}},
+						"envFrom":   envFrom,
 						"resources": obj{"requests": obj{"cpu": "10m", "memory": "16Mi"}, "limits": obj{"memory": "64Mi"}},
 						"securityContext": obj{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true,
 							"capabilities": obj{"drop": []any{"ALL"}}},
