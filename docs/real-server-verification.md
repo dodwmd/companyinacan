@@ -248,8 +248,8 @@ recorded the erasure, the ledger came back from the bucket and the forms module 
 the backup: new ones are issued. Any other module with data you enabled must have come
 back too.
 
-**What this does not test:** the replay of the other modules (people, equity, board, entity, files and jobs; their
-images are not built by `make images`). If you have release images, enable `people`, take a backup holding a former
+**What this does not test:** the replay of the other modules (people, equity, board, entity, files and jobs). To
+test it, enable `people` (`make images` builds its image; `make up` ships it), take a backup holding a former
 person, then erase them (`POST /v1/people/{id}/erasure`): do **not** add them with `ledger-add`, can-core records
 it. Wait a minute, run `systemctl start can-erasure-sync.service`, restore the snapshot made before the erasure, and
 check the person is still erased ([people.md](people.md)).
@@ -421,7 +421,7 @@ this runbook covers it.
 | SMTP relay, pod egress, deliverability, SPF/DKIM/DMARC, inbound mail | [email.md](email.md), epics E03d, E07b | 8, 11 (inbound mail: not built) |
 | Real identity provider, mounted Secret and reload, browser redirect flow | [sso.md](sso.md), specs/021, 036 | 2, 10 |
 | Modules never installed on a cluster (forms events, people, jobs, finance, equity, board, entity, files, provisioning, wrapped apps) | module READMEs and docs, epics E05, E13-E17 | 11 |
-| Purge replay of a tombstone on a restored server; erasing a single contact-form lead | [backup-restore.md](backup-restore.md), specs/042, specs/054 | 4 (forms; other modules only with release images) |
+| Purge replay of a tombstone on a restored server; erasing a single contact-form lead | [backup-restore.md](backup-restore.md), specs/042, specs/054 | 4 (forms; other modules only if you enable them) |
 | Real S3 and ClamAV for files; SCIM and SaaS connectors; e-sign, payment, accounting, bank and job board adapters | [files.md](files.md), [provisioning.md](provisioning.md), [finance.md](finance.md), [accounting.md](accounting.md), [recruiting.md](recruiting.md) | not covered: stubs or not wired on a cluster; test against each vendor separately |
 | Certificate, disk, DNS and installer probes behind the admin UI | [admin-ui.md](admin-ui.md) | 12 |
 | Browsers, screen readers, phones, PWA install, real push services, Lighthouse | [pwa.md](pwa.md), [security-model.md](security-model.md), specs/010, 023, 026, 027, 031, 044 | 12 |
