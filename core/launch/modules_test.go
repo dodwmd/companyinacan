@@ -33,3 +33,13 @@ func TestModuleWarningsShowFailedUpgrades(t *testing.T) {
 		t.Errorf("an unanswered question must be said: %q", w)
 	}
 }
+
+// A module waiting for approval is named with what it does not get, and the ways out.
+func TestModuleWarningsShowWhatAHeldModuleDoesNotGet(t *testing.T) {
+	got := strings.Join(ModuleWarnings(context.Background(), oneAnswer{out: `[{"id":"forms","state":"pending-approval","error":"new permission leads.erase","not_applied":"switching off the public routes (they stay public)"}]`}), "\n")
+	for _, want := range []string{"NO change reaches the module", "disable the module", "takes it offline", `NOT APPLIED: "switching off the public routes`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lacks %q: %s", want, got)
+		}
+	}
+}

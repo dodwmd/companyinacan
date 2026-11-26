@@ -89,6 +89,37 @@ disable what is kept (namespace, volumes, Secrets, database). Apply audits the i
 then reconciles; one apply runs at a time. The progress page reloads every three seconds (stop it with the
 link; there is no JavaScript) and shows each module's state and a sanitised last error.
 
+**Upgrades.** Installed modules are compared by content, not by version number: a change of the manifest,
+the chart, its image references or can-core's own module templates (a can-core upgrade brings all of these)
+upgrades the module. Comments in `module.yaml` and the chart's documentation do not count. Pods restart only
+when what is rendered for them changes. The first reconcile after upgrading can-core from a release without
+this applies every installed module once, to record what it has. `can up --images-from` replaces the
+running can-core (and site) pod whenever the image tarball differs, although the tag stays `can-core:dev`.
+A module image rebuilt under the same tag does not restart its module: change the tag in the chart.
+
+An upgrade of a running module that would let it **do more than before** waits for your approval: a new
+permission or role grant, an event it may publish or receives, a capability it serves or uses, a database, a
+public host or path, internet access (not for a module installed before manifests declared it: every module had
+it), a shorter approval chain, a new notification recipient, a new hook, hook command or hook image, signing
+users into its web UI, a changed data class, a new connection to another module, leaving equity's directory
+mode, or a new break-glass window. Until then the running release and its recorded manifest stay.
+**Limitation: a waiting module gets no change at all.** Switching exposure off, secret rotation, mail relay
+opt-out or new credentials, and settings do not reach it, because can-core does not rebuild the installed
+release without its chart. `can apply` names each requested change as NOT APPLIED and exits non-zero when
+exposure or access was to be taken away (or when it cannot tell, for a module installed before this was
+recorded); `can up` does the same once the stack is up, for the `company.yaml` it pushed; `can status`, `secrets rotate` and the admin UI's preview and result say the same. **Two ways out:**
+approve the upgrade, or disable the module in `company.yaml`, which takes it offline (enabling it again installs
+the new version without asking). Backups of a waiting module use the hooks of what is installed (a
+module installed before hook scripts were recorded uses the shipped script). Approve on the catalogue page, with
+the tick on a change's apply form, or with `can apply --approve <module>=<code>`, where the code is the one the
+plan shows; `can status` and `can up` name the modules that wait. The approval covers exactly the list shown. A
+restore applies without asking.
+`can apply` prints can-core's plan before it syncs `company.yaml`; `can apply --plan` prints it and changes
+nothing (`--dry-run` plans against the local state file, not the cluster).
+
+An upgrade that fails is rolled back and tried again after 1, 2, 4 ... minutes, at most hourly; a different
+target (a new release or settings) is tried at once, and so is everything after can-core restarts.
+
 **Opt-ins.** A source-available module and an experimental module each need their own tick. A
 not-deployable module cannot be ticked. A selection with an unmet or only-planned requirement, or two
 providers of an exclusive capability without a primary, is refused.
@@ -133,7 +164,7 @@ certificate/ingress reader (the status page says "not available"), pod readiness
 | Variable | Effect |
 |---|---|
 | `CAN_COMPANY_NAME`, `CAN_COMPANY_DOMAIN` | Shown on the dashboard |
-| `CAN_LEADS_TOKEN_FILE` | File with the bearer credential can-core uses to read the `leads` capability. Re-read on every request. Without it the leads page says leads are not available. With the forms module's `CAN_FORMS_API_TOKEN` the UI can also erase leads (users with `leads.erase`); with the read token it cannot |
+| `CAN_LEADS_TOKEN_FILE` | File with the bearer credential can-core uses to read the `leads` capability. Re-read on every request. Unset with `CAN_INSTALLER=kubernetes` (as `can up` installs it): can-core reads the forms module's generated `CAN_FORMS_API_TOKEN` from `mod-forms/can-module`, only while forms is the provider of `leads`. Otherwise, without it the leads page says leads are not available. With the forms module's `CAN_FORMS_API_TOKEN` the UI can also erase leads (users with `leads.erase`); with the read token it cannot |
 | `CAN_PUBLIC_IPS` | Comma-separated public addresses of the server, listed in the wizard's DNS step. Unset: the step says the address is not known |
 | `CAN_COOKIE_SECURE`, `CAN_TRUST_PROXY` | As for the API (see `specs/005-can-core-mvp/deployment.md`) |
 

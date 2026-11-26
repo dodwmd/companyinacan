@@ -69,6 +69,19 @@ Modules reach the internet only when their manifest sets `runtime.internet_egres
 `crm`, `status`, `provisioning`). Say so in the release notes of the first release that has this: a company's
 **own modules** that connect outside the cluster must add the flag, and `wiki` can no longer download plugins.
 
+## Upgrade note: module upgrades and the leads view
+
+Say this in the release notes of the first release that has it:
+
+- Modules are upgraded when their content changes. An upgrade that widens what a module may do waits for
+  approval (`can apply --plan`, then `--approve <module>=<code>`, or the admin UI catalogue). The forms module
+  0.2.0 is one: until it is approved there is no `leads.erase`.
+- **The admin UI's leads page now works without setup, so everyone with `platform.view`, the auditor role
+  included, can read the leads** (names, addresses, messages). Check who holds those roles.
+- **A module waiting for approval gets no change at all**, exposure removal, secret rotation and mail relay
+  opt-out included. To take something away at once, approve the upgrade or disable the module (offline).
+- can-core uses the forms module's read and write token for it; users with `leads.erase` can erase from the UI.
+
 ## Cutting a release
 
 ```sh

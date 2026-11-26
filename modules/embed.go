@@ -5,8 +5,9 @@ package modules
 
 import "embed"
 
-// Shipped is, for every module, <id>/module.yaml and what the image check of `can up` and
-// `can apply` reads of its chart: values.yaml and whether there are templates. Not enough to install.
+// Shipped is, for every module, <id>/module.yaml, its whole chart and its hook scripts: what `can`
+// validates and plans with, and everything can-core hashes to tell whether a module changed, so the
+// two agree. all: because chart helpers start with "_". Installing is can-core's alone.
 //
-//go:embed */module.yaml */chart/values.yaml */chart/templates
+//go:embed */module.yaml all:*/chart all:*/hooks
 var Shipped embed.FS

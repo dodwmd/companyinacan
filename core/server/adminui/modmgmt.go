@@ -31,6 +31,7 @@ func (s *Server) modRoutes() []route {
 		{"GET /catalogue/{id}/purge", s.authedPerm(rbac.PermPurge, s.mod(s.purgePage))},
 		{"POST /catalogue/{id}/purge", s.authedPerm(rbac.PermPurge, s.mod(s.purgePost))},
 		{"POST /changes", s.authedPerm(rbac.PermOperate, s.mod(s.changeCreate))},
+		{"POST /upgrades/{id}/approve", s.authedPerm(rbac.PermOperate, s.mod(s.upgradeApprove))},
 		{"GET /changes/{id}", s.authedPerm(rbac.PermOperate, s.mod(s.changePage))},
 		{"POST /changes/{id}/apply", s.authedPerm(rbac.PermOperate, s.mod(s.changeApply))},
 		{"GET /runs/{id}", s.authedPerm(rbac.PermView, s.mod(s.runPage))},
@@ -134,6 +135,8 @@ type catalogueData struct {
 	CanOperate bool
 	Truncated  bool
 	NoCompany  bool
+	// Pending are the upgrades that wait for approval.
+	Pending []modmgr.PendingUpgrade
 }
 
 var needLabels = map[string][2]string{
@@ -216,6 +219,10 @@ func (s *Server) catalogue(w http.ResponseWriter, r *http.Request, sc *sessionCt
 	}
 	d.CanOperate, _ = s.allowed(r, sc, rbac.PermOperate)
 	canPurge, _ := s.allowed(r, sc, rbac.PermPurge)
+	if d.Pending, err = s.Mod.PendingUpgrades(ctx); err != nil {
+		s.internal(w, r, sc, err)
+		return
+	}
 	base := cat.Analyse(enabled, company.Primary)
 	d.Conflicts = base.Conflicts
 	var mods []*config.Module
@@ -499,6 +506,7 @@ type changeData struct {
 	Diff               []diffRow
 	DiffTooLarge       bool
 	Actions            []actionView
+	Held               []heldView
 	Resources          []resourceView
 	Footprint          fpView
 	Issues             []string
@@ -541,7 +549,20 @@ func (s *Server) previewData(pv *modmgr.Preview) changeData {
 		}
 	}
 	for _, a := range pv.Actions {
-		d.Actions = append(d.Actions, actionView{Kind: string(a.Kind), KindLabel: s.msg(actionLabels[a.Kind]), Module: a.Module, Reason: modmgr.Sanitise(a.Reason)})
+		reason := modmgr.Sanitise(a.Reason)
+		if len(a.Widens) > 0 { // enabling again, or an approved upgrade: say what it brings
+			// Each item on its own: the length bound is not for the list as a whole.
+			reason += "; newly allowed: " + strings.Join(modmgr.HeldLines(a.Widens, nil), ", ")
+		}
+		d.Actions = append(d.Actions, actionView{Kind: string(a.Kind), KindLabel: s.msg(actionLabels[a.Kind]), Module: a.Module, Reason: reason})
+	}
+	for _, a := range pv.Held {
+		h := heldView{Module: a.Module, Reason: modmgr.Sanitise(a.Reason)}
+		if a.Held == reconcile.HeldApproval {
+			h.Ack = modmgr.UpgradeAck(a.Module, a.Approval)
+			h.Widens = modmgr.HeldLines(a.Widens, a.NotApplied)
+		}
+		d.Held = append(d.Held, h)
 	}
 	for _, r := range pv.Resources {
 		rv := resourceView{ResourcePlan: r, ActionLabel: s.msg(actionLabels[reconcile.Kind(r.Action)])}
@@ -587,6 +608,20 @@ func (s *Server) changeApply(w http.ResponseWriter, r *http.Request, sc *session
 		return
 	}
 	http.Redirect(w, r, "/runs/"+run.ID, http.StatusSeeOther)
+}
+
+// heldView is an upgrade the change would not run; Ack is set when ticking it approves it.
+type heldView struct {
+	Module, Reason, Ack string
+	Widens              []string
+}
+
+func (s *Server) upgradeApprove(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
+	if err := s.Mod.ApproveUpgrade(r.Context(), sc.User.Username, r.PathValue("id"), r.PostForm.Get("approval")); err != nil {
+		s.failMod(w, r, sc, err)
+		return
+	}
+	http.Redirect(w, r, "/catalogue", http.StatusSeeOther)
 }
 
 // --- run progress -------------------------------------------------------------------------------

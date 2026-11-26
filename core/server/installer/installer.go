@@ -1088,15 +1088,25 @@ func (in *Installer) loadRelease(ctx context.Context, s reconcile.Spec) ([]kube.
 	if err != nil {
 		return nil, err
 	}
-	want, err := releaseMAC(s, raw)
-	if err != nil {
-		return nil, err
-	}
 	have, herr := in.secretKey(ctx, s.Namespace, secretRelease, "hmac")
 	if herr != nil {
 		return nil, herr
 	}
-	if !hmac.Equal([]byte(have), []byte(want)) {
+	// While the signing secret is being rotated the record is still under the previous one.
+	ok := false
+	for _, secret := range []string{s.HMACSecret, s.RecordSecret} {
+		if secret == "" {
+			continue
+		}
+		as := s
+		as.HMACSecret = secret
+		want, err := releaseMAC(as, raw)
+		if err != nil {
+			return nil, err
+		}
+		ok = ok || hmac.Equal([]byte(have), []byte(want))
+	}
+	if !ok {
 		return nil, errors.New("HMAC does not match (the record was not written by this can-core for this module)")
 	}
 	var objs []kube.Object

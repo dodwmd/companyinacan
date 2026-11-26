@@ -37,7 +37,10 @@ type KubeHooks struct {
 	ModulesDir  string // module directories baked into the can-core image
 	PlatformURL string // module API URL as seen from module namespaces
 	Manifest    func(ctx context.Context, module string) (*config.Module, error)
-	Poll        time.Duration // default 2 s
+	// Installed, when set, gives the backup script recorded for a module whose installed release is
+	// older than the one this can-core ships; ok is false to use the shipped file.
+	Installed func(ctx context.Context, module, rel string) (script string, ok bool)
+	Poll      time.Duration // default 2 s
 	// PullTimeout bounds how long a hook pod may fail to start (image pull, configuration)
 	// before the hook is given up (default 2 minutes).
 	PullTimeout time.Duration
@@ -64,9 +67,15 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 	if m.Hooks.Image == "" {
 		return errors.New("the module has a backup hook but no hooks.image to run it in")
 	}
-	script, err := h.script(module, m.Hooks.Backup)
-	if err != nil {
-		return err
+	var script string
+	ok := false
+	if h.Installed != nil {
+		script, ok = h.Installed(ctx, module, m.Hooks.Backup)
+	}
+	if !ok {
+		if script, err = h.script(module, m.Hooks.Backup); err != nil {
+			return err
+		}
 	}
 	ns := "mod-" + module
 	database := !MountsVolume(m.Requires.Database) // the data is in a database server

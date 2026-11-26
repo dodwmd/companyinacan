@@ -126,7 +126,7 @@ const initContactForm = `modules:
   # forms: { settings: { notify_email: [hello@%[1]s] } }
 # email:
 #   relay: { host: smtp.example.com, from: no-reply@%[1]s }
-# SMTP credentials never go in this file: make up SMTP_CREDENTIALS=smtp.env (docs/email.md)
+# SMTP credentials never go in this file: can up --smtp-credentials-file smtp.env (docs/email.md)
 site:
   contact:
     title: Contact us
