@@ -41,6 +41,10 @@ On an installation with can-core (`CAN_API_URL`); standalone modules behave as b
   can-core is unreachable the submission is accepted, nothing can approve the record, and it is sent
   when can-core answers (every 15 s). A refusal (422: nobody but the requester could approve) is shown
   on the record and retried hourly. A purchase order request answers 503 or 422 to the caller.
+- **Lost decisions.** The decision is the signed event. When a request has been pending a day, the
+  module asks can-core for its status; if it is over (or unknown) and still so a day later, the record is
+  sent again as a new request. Nothing is applied from the status alone. A dead-lettered delivery can
+  also be requeued in the admin UI.
 - **Upgrade.** Records already submitted or pending are queued at the first pass after the upgrade,
   without another submission. Draft purchase orders are not requested for anyone.
 - **Batching.** can-core allows a module 120 new requests an hour and 600 a day. The queue sends at
@@ -67,8 +71,6 @@ upgrades wait for the operator's approval (new event received; default chains ne
 - Review releases (`review-release`), board resolutions, manual journals, voiding.
 - Manager steps for finance requesters (finance has no reporting lines), and amount thresholds per
   currency (a policy compares minor units whatever the currency).
-- Polling can-core for lost decisions: delivery relies on the signed event and can-core's retries; a
-  dead-lettered delivery is requeued in the admin UI.
 
 ## Verification
 

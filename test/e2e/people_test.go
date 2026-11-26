@@ -43,8 +43,8 @@ func ensurePerson(t *testing.T, svc harness.API, email string, in map[string]any
 
 // (d) People: the service token (hr + admin, no person record) creates the org; people then act
 // through four different identities: HR, a manager, and two employees. Covers a 1:1 series with
-// its private notes, a leave request that its owner cannot approve and a colleague cannot see, and
-// the masking of "on leave" for colleagues.
+// its private notes, a leave request that its owner cannot approve and a colleague cannot see, that
+// the manager approves in the admin UI's inbox, and the masking of "on leave" for colleagues.
 //
 // The identities come from the introstub service of dev/compose/e2e.yml, which stands in for can-core
 // token introspection (not available in compose).
@@ -137,10 +137,12 @@ func TestPeopleOneOnOneAndTimeOff(t *testing.T) {
 	ann.Post(t, "/v1/leave-requests/"+lid+"/submit", nil).Expect(t, "ann submits", 200)
 	ben.Get(t, "/v1/leave-requests/"+lid).Expect(t, "a colleague cannot see the request", 404)
 	ann.Post(t, "/v1/leave-requests/"+lid+"/decision", map[string]any{"approve": true}).Expect(t, "nobody approves their own leave", 403)
-	mgr.Post(t, "/v1/leave-requests/"+lid+"/decision", map[string]any{"approve": true}).Expect(t, "the manager approves", 200)
-	if got := ann.Get(t, "/v1/leave-requests/"+lid).Expect(t, "ann reads the decision", 200).Str("status"); got != "approved" {
-		t.Fatalf("leave request status = %q, want approved", got)
-	}
+	// The decision is taken in can-core's approvals inbox (specs/070-approvals-inbox), by the manager the
+	// directory names; people does not decide around it.
+	mgr.Post(t, "/v1/leave-requests/"+lid+"/decision", map[string]any{"approve": true}).Expect(t, "not around the approval engine", 409)
+	inbox := approverSession(t, "e2e-manager")
+	decideInInbox(t, inbox, inInbox(t, inbox, "Time off request "+lid), "approve")
+	reaches(t, ann, "/v1/leave-requests/"+lid, "approved")
 	ben.Get(t, "/v1/people/"+annID+"/leave-balances").Expect(t, "a colleague cannot read balances", 403, 404)
 
 	// Leave masking: while Ann is on leave a colleague still sees her as active.

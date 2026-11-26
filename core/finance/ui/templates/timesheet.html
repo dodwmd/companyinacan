@@ -48,7 +48,7 @@
 <p class="hint">{{t "ts.save_first"}}</p>
 {{end}}
 {{- if and .Data.Engine.On .Data.Engine.State}}
-<p class="notice" role="status">{{t (printf "engine.%s" .Data.Engine.State)}}{{with .Data.Engine.Note}} ({{.}}){{end}}</p>{{end}}
+<p class="notice" role="status">{{t (printf "engine.%s" .Data.Engine.State)}}{{if ne .Data.Engine.State "pending"}}{{with .Data.Engine.Note}} ({{.}}){{end}}{{end}}</p>{{end}}
 {{if and .Data.CanDecide (or .Data.Engine.MayApprove .Data.Engine.MaySendBack)}}
 <section aria-labelledby="h-dec">
 <h2 id="h-dec">{{t "ts.decide"}}</h2>

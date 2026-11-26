@@ -41,7 +41,11 @@ func submittedExpense(t *testing.T, e *env, tok string) Expense {
 	return x
 }
 
-func (e *env) today() string { e.mu.Lock(); defer e.mu.Unlock(); return e.now.UTC().Format(time.DateOnly) }
+func (e *env) today() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.now.UTC().Format(time.DateOnly)
+}
 
 func (e *env) expense(n int64) Expense {
 	e.t.Helper()
@@ -375,5 +379,28 @@ func TestEnginePagesRender(t *testing.T) {
 	v, err := e.app.store.engineView(context.Background(), apExpense, x.ID, true)
 	if err != nil || !v.On || v.State != modapproval.Queued || v.MayApprove() || !v.MaySendBack() {
 		t.Fatalf("%+v %v", v, err)
+	}
+}
+
+// A decision that never arrives does not strand the record: after a day of can-core saying the
+// request is over, and another, the record is asked about again.
+func TestALostDecisionIsAskedAgain(t *testing.T) {
+	e, core := queueEnv(t)
+	x := submittedExpense(t, e, writerPAT)
+	e.mustSync()
+	core.Decide(core.Requests()[0].ID, "approved") // never delivered
+	e.advance(25 * time.Hour)
+	e.mustSync()
+	if len(core.Requests()) != 1 {
+		t.Fatal("asked again at once: the delivery may still be on its way")
+	}
+	e.advance(25 * time.Hour)
+	e.mustSync()
+	e.mustSync()
+	if n := len(core.Requests()); n != 2 {
+		t.Fatalf("requests: %d", n)
+	}
+	if got := e.expense(x.ID); got.Status != ExSubmitted {
+		t.Fatalf("approved without a delivered decision: %+v", got)
 	}
 }

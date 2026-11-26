@@ -44,6 +44,7 @@ const (
 
 const (
 	retryRefused = time.Hour
+	recheck      = 24 * time.Hour // how long a pending request goes unanswered before can-core is asked
 	defaultPause = 5 * time.Minute
 	batch        = 50
 )
@@ -269,6 +270,43 @@ func (p *Pump) Sync(ctx context.Context) error {
 			return p.pause(err)
 		}
 	}
+	return p.pause(p.lost(ctx))
+}
+
+// lostNote marks a pending row whose request can-core says is over, with no decision delivered.
+const lostNote = "waiting for the decision to be delivered"
+
+// lost recovers requests whose decision never arrived (a delivery given up, a database restored from
+// before it, or after it on can-core's side). can-core's answer names no approvers, so nothing is
+// applied from it: a record whose request stays over or unknown for another day is asked again.
+func (p *Pump) lost(ctx context.Context) error {
+	rows, err := p.list(ctx, `SELECT `+cols+` FROM approval_queue WHERE status = 'pending' AND retry_at <= ? ORDER BY retry_at, ref LIMIT ?`, p.now().Unix(), batch)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		ap, err := p.Client.GetApproval(ctx, r.ApprovalID)
+		if errors.Is(err, modclient.ErrUnavailable) {
+			return err
+		}
+		over := err != nil || ap.Status != "pending"
+		if over && r.Note == lostNote {
+			if p.Log != nil {
+				p.Log.Warn("approvals: no decision arrived for a finished request; asking again", "ref", r.Ref, "approval", r.ApprovalID)
+			}
+			if _, err := Enqueue(ctx, p.DB, r.Kind, r.ItemID, r.Version, r.Requester, r.Manager, p.now()); err != nil {
+				return err
+			}
+			continue
+		}
+		note := ""
+		if over {
+			note = lostNote
+		}
+		if _, err := p.DB.ExecContext(ctx, `UPDATE approval_queue SET note = ?, retry_at = ? WHERE ref = ? AND status = 'pending'`, note, p.now().Add(recheck).Unix(), r.Ref); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -394,7 +432,7 @@ func (p *Pump) send(ctx context.Context, r Row) error {
 		return derr
 	}
 	p.sent = append(p.sent, p.now())
-	res, err := p.DB.ExecContext(ctx, `UPDATE approval_queue SET status = 'pending', approval_id = ?, note = '' WHERE ref = ? AND status IN ('queued', 'refused')`, ap.ID, r.Ref)
+	res, err := p.DB.ExecContext(ctx, `UPDATE approval_queue SET status = 'pending', approval_id = ?, note = '', retry_at = ? WHERE ref = ? AND status IN ('queued', 'refused')`, ap.ID, p.now().Add(recheck).Unix(), r.Ref)
 	if err != nil {
 		return err
 	}

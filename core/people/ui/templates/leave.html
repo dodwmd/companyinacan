@@ -10,7 +10,7 @@
 {{if .Data.R.Note}}<dt>{{t "to.note"}}</dt><dd class="prose">{{.Data.R.Note}}</dd>{{end}}
 </dl>
 {{- if .Data.EngineState}}
-<p class="notice" role="status">{{t (printf "engine.%s" .Data.EngineState)}}{{with .Data.EngineNote}} ({{.}}){{end}}</p>{{end}}
+<p class="notice" role="status">{{t (printf "engine.%s" .Data.EngineState)}}{{if ne .Data.EngineState "pending"}}{{with .Data.EngineNote}} ({{.}}){{end}}{{end}}</p>{{end}}
 <div class="actions">
 {{if .Data.CanSubmit}}
 <form method="post" action="/timeoff/{{.Data.R.ID}}/submit" class="inline">{{template "csrf" .}}<button type="submit">{{t "to.submit"}}</button></form>

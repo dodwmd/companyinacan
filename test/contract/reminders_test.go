@@ -14,13 +14,13 @@ import (
 // timesheet, expense and time off events have no rule since specs/070-approvals-inbox: can-core's
 // approval engine tells the approvers and the requester, and a rule would tell them twice.
 var reminderRules = map[string]string{
-	"finance invoice.overdue.v1":     "role:finance",
-	"finance contract.expiring.v1":   "role:finance",
-	"finance contract.signed.v1":     "role:finance",
-	"finance contract.declined.v1":   "role:finance",
-	"jobs application.received.v1":   "field:hiring_manager role:recruiter",
-	"work work.issue.p0.v1":          "field:assignee role:manager",
-	"entity entity.filing.due.v1":    "role:secretary",
+	"finance invoice.overdue.v1":   "role:finance",
+	"finance contract.expiring.v1": "role:finance",
+	"finance contract.signed.v1":   "role:finance",
+	"finance contract.declined.v1": "role:finance",
+	"jobs application.received.v1": "field:hiring_manager role:recruiter",
+	"work work.issue.p0.v1":        "field:assignee role:manager",
+	"entity entity.filing.due.v1":  "role:secretary",
 }
 
 // Every rule names an event its module publishes, a role it defines and a data field of that event,
