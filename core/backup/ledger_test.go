@@ -118,6 +118,32 @@ func TestMergeLedgers(t *testing.T) {
 	}
 }
 
+type countingStore struct {
+	*MemStore
+	puts int
+}
+
+func (s *countingStore) Put(ctx context.Context, k string, d []byte) error {
+	s.puts++
+	return s.MemStore.Put(ctx, k, d)
+}
+
+// An empty ledger is uploaded once, so that a restore finds one, and not again on every run.
+func TestSyncLedgerUploadsAnEmptyLedgerOnce(t *testing.T) {
+	ctx := context.Background()
+	store := &countingStore{MemStore: NewMemStore()}
+	const pw = "restic-password-1234567890"
+	l := &Ledger{Path: filepath.Join(t.TempDir(), "l.jsonl")}
+	for range 3 {
+		if n, err := SyncLedger(ctx, store, l, pw); err != nil || n != 0 {
+			t.Fatal(n, err)
+		}
+	}
+	if es, err := FetchLedger(ctx, store, pw); err != nil || len(es) != 0 || store.puts != 1 {
+		t.Fatalf("entries %v, err %v, puts %d", es, err, store.puts)
+	}
+}
+
 func TestSyncLedgerNeverShrinksRemote(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemStore()

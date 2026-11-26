@@ -492,7 +492,8 @@ func SyncLedger(ctx context.Context, st ObjectStore, l *Ledger, password string)
 		return 0, fmt.Errorf("remote ledger unreadable, not overwriting: %w", err)
 	}
 	merged := MergeLedgers(remote, local)
-	if len(merged) == len(remote) && len(remote) > 0 {
+	// Nothing to add to the object that is there (which may hold no entry at all): leave it alone.
+	if err == nil && len(merged) == len(remote) {
 		return len(merged), nil
 	}
 	sealed, err := SealLedger(merged, password)

@@ -205,6 +205,10 @@ Budget by phase, with what is known:
 | base + company + routing + core + admin + site + routes + ready | about 30 s deploy | see the k3d table | |
 | Instant URL | immediate | n/a | needs the server's real address |
 
+The whole command, from a machine without k3s, is measured by the `acceptance` workflow: 59 to 76 s on a CI
+runner VM used as the server, without VM creation and with local uploads
+([measurements/acceptance.md](measurements/acceptance.md)).
+
 ### Measured on k3d in CI (workflow `make-up-e2e`, advisory)
 
 Two runs of the `make-up-e2e` workflow on a GitHub-hosted `ubuntu-latest` runner (`launch.Run`, the same code
