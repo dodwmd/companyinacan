@@ -1,0 +1,83 @@
+name: acceptance
+
+# specs/058-acceptance-journey: the whole journey of the product promise on one throwaway runner VM,
+# which is both the operator's machine and, over the ssh provider, the server: init, make up, site,
+# contact form and its notification, admin TOTP, work and support, SSO launch, backup, destroy,
+# restore. k3d is not used: `can up` only drives a server over ssh.
+#
+# Advisory (not in branch protection). The test step has continue-on-error so that the report is
+# uploaded and summarised, and a final step fails the job when the journey failed. No real server,
+# domain, certificate authority, mail relay or bucket is involved (docs/measurements/acceptance.md).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+  pull_request:
+    paths:
+      - "cmd/**"
+      - "core/**"
+      - "deploy/**"
+      - "modules/**"
+      - "schemas/**"
+      - "scripts/build-images.sh"
+      - "dev/compose/smtpsink/**"
+      - "test/acceptance/**"
+      - ".github/workflows/acceptance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journey:
+    name: whole journey over ssh
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      CAN_ACCEPTANCE_DIR: /home/runner/acceptance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - name: Prepare the throwaway machine, build can and the images
+        env:
+          CAN_ACCEPTANCE_DESTROYS_THIS_MACHINE: "1"
+        run: |
+          # Room for the images the server pulls: the preflight wants 10 GB free.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          test/acceptance/setup-runner.sh "$CAN_ACCEPTANCE_DIR"
+      - name: The journey
+        id: journey
+        continue-on-error: true
+        env:
+          CAN_ACCEPTANCE: "1"
+          CAN_ACCEPTANCE_DESTROYS_THIS_MACHINE: "1"
+        run: go test -tags acceptance -count=1 -v -timeout 90m -run '^TestJourney$' ./test/acceptance/
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f "$CAN_ACCEPTANCE_DIR/out/report.md" ]; then
+            cat "$CAN_ACCEPTANCE_DIR/out/report.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report: the journey did not start." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload the report and the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: acceptance-report
+          # Only out/: the keys, kit and passwords of the run stay on the runner.
+          path: /home/runner/acceptance/out/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Fail the job when the journey failed
+        if: steps.journey.outcome == 'failure'
+        run: |
+          echo "::error title=acceptance::the journey failed or exceeded a budget; see the acceptance-report artifact"
+          exit 1

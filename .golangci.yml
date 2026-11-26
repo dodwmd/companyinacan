@@ -3,6 +3,7 @@ run:
   build-tags:
     - e2e
     - browser
+    - acceptance
 linters:
   default: none
   enable:
