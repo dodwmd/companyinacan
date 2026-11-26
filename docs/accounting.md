@@ -125,7 +125,8 @@ The response lists the skipped rows (`skipped`: row, date, amount, `already_impo
 arrived with other details, and whether it is `forceable`). Without a bank id, two different payments with the same date,
 amount and text in two different files look identical: the second is skipped and listed, and `force_duplicates=true`
 imports the file's content-keyed rows anyway (check the list first: forcing an overlapping file imports its overlap
-again). Forcing also works on a file already imported: it adds the rows that import skipped, once. A forced row takes
+again). Forcing also works on a file already imported: it adds the rows that import skipped, once. It must be read with the same
+format and column mapping as before (409 otherwise). A forced row takes
 the next unused occurrence number of its content, so a later cumulative statement recognises it. Rows with a bank's own id (OFX `FITID`, the CSV `id_col`) are never forced. CAMT rows keyed by `AcctSvcrRef` can be: a
 second genuine entry with the same reference, date and amount arriving in a later file is listed as skipped and forceable. An id used twice in one file for different details rejects the file.
 

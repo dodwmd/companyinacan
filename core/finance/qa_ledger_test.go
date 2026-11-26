@@ -782,3 +782,24 @@ func TestQA3SecondEqualCamtEntryIsForceable(t *testing.T) {
 		t.Errorf("cumulative %+v, %d rows", r, e.bankRows())
 	}
 }
+
+// QA round 3, 2: forcing a file with another mapping is refused instead of duplicating every row.
+func TestQA3ForceWithAnotherMappingIsRefused(t *testing.T) {
+	e := sealedEnv(t)
+	admin := e.token("ada", ledAdm, nil, nil, false)
+	b := e.bankAccount(admin)
+	base := "/v1/bank/accounts/" + id(b.ID) + "/statements?format=csv&delimiter=comma&date_col=1&amount_col=2"
+	file := "d,a,r,x\n2026-06-10,1.00,one,uno\n2026-06-11,2.00,two,dos\n"
+	e.must(201, admin, "POST", base+"&reference_col=3", file, nil)
+	for _, other := range []string{"&reference_col=4", "", "&reference_col=3&description_col=4"} {
+		if code := e.do(admin, "POST", base+other+"&force_duplicates=true", file, nil); code != 409 {
+			t.Errorf("force with mapping %q = %d, want 409", other, code)
+		}
+	}
+	// Naming a default is the same mapping.
+	var r StatementResult
+	e.must(200, admin, "POST", base+"&reference_col=3&decimal=dot&header=true&date_layout=2006-01-02&force_duplicates=true", file, &r)
+	if r.NewCount != 0 || e.bankRows() != 2 {
+		t.Errorf("%+v, %d rows", r, e.bankRows())
+	}
+}

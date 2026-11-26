@@ -169,6 +169,7 @@ CREATE TABLE bank_statements (
     bank_account_id INTEGER NOT NULL REFERENCES bank_accounts (id),
     format          TEXT    NOT NULL CHECK (format IN ('csv', 'ofx', 'camt053')),
     sha256          TEXT    NOT NULL,
+    config_sha256   TEXT    NOT NULL,                      -- how the file was read (format and CSV mapping)
     size_bytes      INTEGER NOT NULL,
     txn_count       INTEGER NOT NULL,
     new_count       INTEGER NOT NULL,

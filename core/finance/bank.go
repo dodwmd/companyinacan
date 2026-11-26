@@ -227,8 +227,10 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 		return nil, fmt.Errorf("%w: the bank account is inactive", ErrConflict)
 	}
 	var prev StatementResult
-	err = tx.QueryRowContext(ctx, `SELECT id, bank_account_id, format, txn_count, new_count, duplicate_count FROM bank_statements WHERE bank_account_id = ? AND sha256 = ?`, accountID, hash).
-		Scan(&prev.StatementID, &prev.BankAccountID, &prev.Format, &prev.TransactionCnt, &prev.NewCount, &prev.DuplicateCount)
+	var prevConfig string
+	config := readConfigHash(format, csvCfg)
+	err = tx.QueryRowContext(ctx, `SELECT config_sha256, id, bank_account_id, format, txn_count, new_count, duplicate_count FROM bank_statements WHERE bank_account_id = ? AND sha256 = ?`, accountID, hash).
+		Scan(&prevConfig, &prev.StatementID, &prev.BankAccountID, &prev.Format, &prev.TransactionCnt, &prev.NewCount, &prev.DuplicateCount)
 	known := err == nil
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -236,6 +238,11 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 	if known && !force {
 		prev.AlreadyImported = true
 		return &prev, nil
+	}
+	// Forcing compares the file's rows with those the earlier import stored. Read with another mapping they are
+	// different rows, and every one of them would be added a second time.
+	if known && prevConfig != config {
+		return nil, fmt.Errorf("%w: this file was imported with a different format or column mapping; force it with the same settings", ErrConflict)
 	}
 	var ps *ParsedStatement
 	switch format {
@@ -270,8 +277,8 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 	}
 	sid := prev.StatementID
 	if !known {
-		res, err := tx.ExecContext(ctx, `INSERT INTO bank_statements (bank_account_id, format, sha256, size_bytes, txn_count, new_count, duplicate_count, imported_by, imported_at) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`,
-			accountID, format, hash, len(data), len(ps.Txns), a.Subject, ts(s.now()))
+		res, err := tx.ExecContext(ctx, `INSERT INTO bank_statements (bank_account_id, format, sha256, config_sha256, size_bytes, txn_count, new_count, duplicate_count, imported_by, imported_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+			accountID, format, hash, config, len(data), len(ps.Txns), a.Subject, ts(s.now()))
 		if err != nil {
 			return nil, err
 		}
@@ -335,6 +342,18 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 	err = s.emit(ctx, tx, EventBankStatementImported, bankImportedData{StatementID: sid, BankAccountID: accountID, Format: format,
 		TransactionCount: len(ps.Txns), NewCount: out.NewCount, DuplicateCount: out.DuplicateCount, ImportedAt: s.now().UTC()})
 	return out, err
+}
+
+// readConfigHash identifies how a file is read: the format and, for CSV, the mapping with its defaults filled
+// in, so leaving a default out and naming it are the same reading.
+func readConfigHash(format string, cfg CSVConfig) string {
+	if format != "csv" {
+		cfg = CSVConfig{}
+	} else {
+		_ = cfg.check() // fills the defaults; an invalid mapping is refused by the parser
+	}
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%+v", format, cfg)))
+	return hex.EncodeToString(sum[:])
 }
 
 // forceRowsTx takes the rows without a bank id of their own that this statement does not yet hold: for each key
