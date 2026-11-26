@@ -54,6 +54,7 @@ func (r *rec) index(e string) int {
 	return -1
 }
 
+func (r *rec) Halt(context.Context) error                { return r.step("halt") }
 func (r *rec) Inspect(context.Context) ([]string, error) { return r.live, r.step("inspect") }
 func (r *rec) Start(_ context.Context, o StartOptions) error {
 	r.company, r.overwrite = o.CompanyYAML, o.Overwrite
@@ -231,7 +232,7 @@ func TestRestoreResumesEveryStep(t *testing.T) {
 			if n := e.r.count(step); n != 2 {
 				t.Errorf("%s ran %d times", step, n)
 			}
-			if e.r.count("inspect") != 1 {
+			if e.r.count("inspect") != 2 { // before fetching and before the first change
 				t.Error("the blank-server check must not run again on its own half-restored server")
 			}
 			for _, c := range e.realRestores() {
@@ -294,6 +295,9 @@ func TestRestoreRefusesNonBlankServer(t *testing.T) {
 			}
 			if !e.r.overwrite || e.read("var/lib/can/dumps/existing.db") != "" {
 				t.Errorf("overwrite=%v", e.r.overwrite)
+			}
+			if h := e.r.index("halt"); h < 0 || h > e.r.index("start") {
+				t.Errorf("the old can-core must be stopped before the restore touches its dumps: %v", e.r.events)
 			}
 		})
 	}
@@ -752,5 +756,20 @@ func TestFileStore(t *testing.T) {
 	}
 	if s.Put(ctx, "../x", nil) == nil {
 		t.Fatal("traversal")
+	}
+}
+
+// A restore that failed before changing anything does not leave the server claimed: if the
+// server is in use by the time it is run again, it is refused.
+func TestRestoreFailedBeforeAnyChangeChecksBlankAgain(t *testing.T) {
+	e := newRestoreEnv(t)
+	e.r.ledgErr = errors.New("bucket unreachable")
+	if e.run() == nil {
+		t.Fatal("expected failure")
+	}
+	e.r.ledgErr = nil
+	e.r.live = []string{"can-core is deployed"}
+	if err := e.run(); err == nil || !strings.Contains(err.Error(), "not blank") || e.r.count("start") != 0 {
+		t.Fatalf("err = %v", err)
 	}
 }

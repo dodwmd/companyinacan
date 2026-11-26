@@ -26,7 +26,7 @@ Before this feature `can restore` stopped at its first step: neither the cluster
 | D4 | The cluster half runs as `can-core restore ...` through `kubectl exec` | no new network API; can-core already has exactly the permissions to create module namespaces, Secrets and Jobs |
 | D5 | Modules are installed **quiesced** from the recorded module list: 0 replicas, CronJobs suspended, no Jobs, no Ingress/IngressRoute | disabled modules have data too; no seeding; no public route to un-purged data |
 | D6 | Order: volume files first, then restore hooks | SPEC 6.5 had hooks first; a hook is replace-all, so a later raw copy would put older files over it, and the copy refuses a volume with data |
-| D7 | Erasure replay fails **closed** | a tombstone no module can replay stops the restore until `--accept-unerased module:class` names it |
+| D7 | Erasure replay fails **closed** | a tombstone no module can replay, or whose purge fails, stops the restore until `--accept-unerased module:class` names it |
 | D8 | Go-live re-applies modules by clearing their recorded settings hash | the normal reconcile restores replicas and routes; no second copy of the desired state |
 
 ## Requirements
@@ -71,7 +71,7 @@ erasure promise.
 |---|---|---|
 | The Secrets export leaks | written 0600 into a directory only can-core (uid 65532) and root read; leaves the server only inside the encrypted repository; never printed (parse errors do not echo it) | root on the server, or a compromised can-core, reads it; both could already read every module Secret |
 | Someone with the kit reads everything | none added: the kit has always been the key to the repository | the kit is now also enough to reconstruct all module keys. Guard it as the company's master key |
-| Restore overwrites a working server | root required; blank check; confirmation by company name; refused restores leave no state | the check looks for what this platform creates; unrelated services on the host are not detected |
+| Restore overwrites a working server | root required; blank check before fetching and again before the first change; confirmation by company name; refused restores leave no state; the old timer and can-core are stopped first, and a volume is not written while a pod uses it | the check looks for what this platform creates; unrelated services on the host are not detected |
 | Erased data comes back | ledger read before changes and again at replay; union with the snapshot and local copies; fail closed; no routes or replicas before replay; purged modules' dumps removed | erasures never written to the ledger are unknown. **can-core does not write the ledger yet** (`can backup ledger-add` by hand). A consistent roll-back of the whole bucket is undetectable (specs/008 R12) |
 | Restore sends mail or webhooks again | workers not started in restore mode; module email and events refused; queued mail discarded at go-live | undelivered events to modules are delivered after go-live (consumers de-duplicate by event id). `files` and `jobs` run during their purge and may attempt outbound calls of their own |
 | Restore mode ends early | latched on disk; only `restore complete` removes it | an operator with cluster-admin can delete the latch |

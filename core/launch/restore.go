@@ -94,6 +94,46 @@ func (c *RestoreCluster) Inspect(ctx context.Context) ([]string, error) {
 	return found, nil
 }
 
+// Halt implements backup.Cluster.
+func (c *RestoreCluster) Halt(ctx context.Context) error {
+	r := c.runner()
+	out, err := r.kube(ctx, nil, "-n", SystemNS, "get", "deployment", "can-core", "--ignore-not-found", "-o", "name")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return err
+	}
+	if _, err := r.kube(ctx, nil, "-n", SystemNS, "scale", "deployment/can-core", "--replicas=0"); err != nil {
+		return err
+	}
+	return r.poll(ctx, r.o.Timeouts.Rollout, func() error {
+		out, err := r.kube(ctx, nil, "-n", SystemNS, "get", "pods", "-l", "app.kubernetes.io/name=can-core", "-o", "name")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(out) != "" {
+			return errors.New("can-core is still running")
+		}
+		return nil
+	})
+}
+
+// idle waits until no running pod uses the claim: on a server being overwritten the module's old
+// pods may still be terminating, and they must not write into what is being restored.
+func (c *RestoreCluster) idle(ctx context.Context, r *runner, ref backup.VolumeRef) error {
+	return r.poll(ctx, r.o.Timeouts.Rollout, func() error {
+		out, err := r.kube(ctx, nil, "-n", ref.Namespace, "get", "pods", "--field-selector=status.phase!=Succeeded,status.phase!=Failed",
+			"-o", `jsonpath={range .items[*]}{range .spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{end}{end}`)
+		if err != nil {
+			return err
+		}
+		for _, l := range lines(out) {
+			if l == ref.Claim {
+				return fmt.Errorf("claim %s is still used by a running pod", ref)
+			}
+		}
+		return nil
+	})
+}
+
 // restoreCompany are the company.yaml values can-core's manifests need.
 func restoreCompany(b []byte) (name, domain string, err error) {
 	var c struct {
@@ -252,6 +292,9 @@ func (c *RestoreCluster) Volumes(ctx context.Context, want []backup.VolumeRef) (
 		}
 		if strings.TrimSpace(have) == "" {
 			continue
+		}
+		if err := c.idle(ctx, r, ref); err != nil {
+			return nil, err
 		}
 		name := fmt.Sprintf("can-restore-bind-%d", i)
 		pod, err := bindPod(ref, c.image(), name)

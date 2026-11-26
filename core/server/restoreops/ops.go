@@ -382,7 +382,16 @@ func (o *Ops) Erase(ctx context.Context, es []backup.Entry, accept []string) (ba
 			err = o.httpPurge(ctx, p.module, method.tokenKey, s, c)
 		}
 		if err != nil {
-			return rep, fmt.Errorf("purge %s of %s in module %s: %w", c, s, id, err)
+			// A purge that can never succeed (a mistyped subject in the append-only ledger) must
+			// not make the company unrestorable: accepting it by name is the way out.
+			if u := id + ":" + c; slices.Contains(accept, u) {
+				if !unapplied[u] {
+					unapplied[u] = true
+					rep.Unapplied = append(rep.Unapplied, u)
+				}
+				continue
+			}
+			return rep, fmt.Errorf("purge %s of %s in module %s: %w (if it can never succeed and you will erase it by hand: --accept-unerased %s:%s)", c, s, id, err, id, c)
 		}
 		purged[id] = true
 		rep.Purged = append(rep.Purged, fmt.Sprintf("%s: %s %s", id, c, s))

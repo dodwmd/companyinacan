@@ -74,6 +74,9 @@ type CompleteReport struct {
 // Cluster is everything restore needs from k3s and can-core. Every method must be idempotent: a
 // failed restore is resumed by calling it again.
 type Cluster interface {
+	// Halt stops a can-core that already runs on a server being overwritten, so that it cannot
+	// dump over the dumps being restored; Start brings it back.
+	Halt(ctx context.Context) error
 	// Inspect lists what already runs on this server that a restore would overwrite; nothing for a
 	// freshly bootstrapped k3s.
 	Inspect(ctx context.Context) ([]string, error)
@@ -434,8 +437,11 @@ func (o *Restore) pin(ctx context.Context, st *restoreState) (string, error) {
 	return "", errors.New("repository has no usable snapshot (tagged can and not inconsistent)")
 }
 
-// claim refuses a server that is not blank unless the operator confirmed by naming the company.
-func (o *Restore) claim(ctx context.Context, st *restoreState) error {
+// checkBlank refuses a server that is not blank unless the operator confirmed by naming the
+// company. It is run before fetching and again just before the first change: only that change
+// makes the server this restore's (Claimed), so that a restore that never got that far does not
+// skip the check when it is run again, however much later.
+func (o *Restore) checkBlank(ctx context.Context, st *restoreState) error {
 	if st.Claimed {
 		return nil
 	}
@@ -462,6 +468,7 @@ func (o *Restore) claim(ctx context.Context, st *restoreState) error {
 		return fmt.Errorf("inspect the cluster: %w", err)
 	}
 	found = append(found, live...)
+	st.Overwrite = false
 	if len(found) > 0 {
 		if o.ConfirmOverwrite != o.Kit.Company.Name {
 			return fmt.Errorf("this server is not blank, and a restore would overwrite it: %s. Restore onto a freshly bootstrapped server, or confirm with --confirm-overwrite %q (existing data is lost)", strings.Join(found, "; "), o.Kit.Company.Name)
@@ -469,7 +476,6 @@ func (o *Restore) claim(ctx context.Context, st *restoreState) error {
 		o.say("WARNING: --confirm-overwrite: overwriting this server (%s)", strings.Join(found, "; "))
 		st.Overwrite = true
 	}
-	st.Claimed = true
 	return nil
 }
 
@@ -578,11 +584,8 @@ func (o *Restore) stepFetch(ctx context.Context, st *restoreState) error {
 	if _, err := o.pin(ctx, st); err != nil {
 		return err
 	}
-	// Claim only after the repository answered: a wrong kit leaves no trace.
-	if err := o.claim(ctx, st); err != nil {
-		return err
-	}
-	if err := o.save(st); err != nil {
+	// Only after the repository answered: a wrong kit leaves no trace.
+	if err := o.checkBlank(ctx, st); err != nil {
 		return err
 	}
 	if err := o.ensureStaged(ctx, st); err != nil {
@@ -622,9 +625,21 @@ func (o *Restore) stepDumps(ctx context.Context, st *restoreState) error {
 		return err
 	}
 	src, dst := o.staged(o.DumpsDir), o.hostPath(o.DumpsDir)
-	if st.Overwrite && o.StopTimer != nil {
-		if err := o.StopTimer(ctx); err != nil {
-			o.say("WARNING: could not stop the backup timer of this server (%v): stop it yourself, or it may back up a half-restored server", err)
+	if err := o.checkBlank(ctx, st); err != nil {
+		return err
+	}
+	st.Claimed = true
+	if err := o.save(st); err != nil {
+		return err
+	}
+	if st.Overwrite {
+		if o.StopTimer != nil {
+			if err := o.StopTimer(ctx); err != nil {
+				o.say("WARNING: could not stop the backup timer of this server (%v): stop it yourself, or it may back up a half-restored server", err)
+			}
+		}
+		if err := o.Cluster.Halt(ctx); err != nil {
+			return fmt.Errorf("stop the running can-core: %w", err)
 		}
 	}
 	if err := os.MkdirAll(dst, 0o700); err != nil {

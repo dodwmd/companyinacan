@@ -242,8 +242,13 @@ func TestEraseMethodsAndDumpRemoval(t *testing.T) {
 func TestEraseFailureIsReported(t *testing.T) {
 	o, h, _ := ops(t, module("people", "enabled", classes("directory-basic")))
 	h.fail["people"] = context.DeadlineExceeded
-	if _, err := o.Erase(context.Background(), []backup.Entry{entry("pers_1", "directory-basic")}, nil); err == nil {
-		t.Fatal("a failed purge must stop the restore")
+	es := []backup.Entry{entry("pers_1", "directory-basic")}
+	if _, err := o.Erase(context.Background(), es, nil); err == nil || !strings.Contains(err.Error(), "--accept-unerased people:directory-basic") {
+		t.Fatal("a failed purge must stop the restore", err)
+	}
+	rep, err := o.Erase(context.Background(), es, []string{"people:directory-basic"})
+	if err != nil || len(rep.Purged) != 0 || strings.Join(rep.Unapplied, ",") != "people:directory-basic" {
+		t.Fatal("accepted by name, and reported as not applied", rep, err)
 	}
 }
 

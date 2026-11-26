@@ -214,7 +214,7 @@ Overrides, each separate and each printed when used:
 | `--snapshot ID`, `--force-older` | choosing another snapshot; skipping a newer one that fails its consistency check |
 | `--without-secrets` | a snapshot made before the Secrets export: modules get new keys, sealed data is unreadable |
 | `--accept-unrestored <module or namespace/claim>` | a dump or volume that cannot be brought back (no restore hook, database not backed up, a database server's volume) |
-| `--accept-unerased <module:class>` | a tombstone no module can replay (`*:<class>` when no installed module holds the class). **You must erase that data by hand** |
+| `--accept-unerased <module:class>` | a tombstone no module can replay, or whose purge keeps failing (`*:<class>` when no installed module holds the class). **You must erase that data by hand** |
 | `--allow-no-ledger` | no ledger in the bucket: only if no erasure was ever requested |
 | `--accept-ledger-behind` | the bucket ledger lacks entries the snapshot's copy has: erasures may be lost |
 | `--repo /path/restic` | a local copy of the repository instead of the bucket (its ledger is read from `/path/ledger`) |
