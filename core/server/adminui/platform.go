@@ -17,6 +17,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
 // Pages of the shared platform services: approvals, notifications, access (roles).
@@ -116,6 +117,7 @@ func (s *Server) platformNav(r *http.Request, sc *sessionCtx, active string) []n
 	}
 	if s.RBAC != nil {
 		if ok, err := s.allowed(r, sc, rbac.PermManage); err == nil && ok {
+			out = append(out, navItem{Href: "/users", Label: s.msg("nav.users"), Current: active == "users"})
 			out = append(out, navItem{Href: "/access", Label: s.msg("nav.access"), Current: active == "access"})
 		}
 	}
@@ -705,12 +707,15 @@ type accessUser struct {
 	Assignments []accessAssignment
 }
 
-type roleRow struct{ Name, Permissions, Sources string }
+type roleRow struct{ Name, Permissions, Sources, Overrides string }
 
 type accessData struct {
 	Users []accessUser
 	Roles []roleRow
 	Names []string
+	// Editable are the roles an override can change; Permissions what it can name. Both are empty
+	// for anyone who is not an owner.
+	Editable, Permissions []string
 }
 
 func (s *Server) accessPage(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
@@ -738,12 +743,26 @@ func (s *Server) accessPage(w http.ResponseWriter, r *http.Request, sc *sessionC
 	}
 	for _, ro := range roles {
 		d.Names = append(d.Names, ro.Name)
-		d.Roles = append(d.Roles, roleRow{ro.Name, strings.Join(ro.Permissions, ", "), strings.Join(ro.Sources, ", ")})
+		d.Roles = append(d.Roles, roleRow{ro.Name, strings.Join(ro.Permissions, ", "), strings.Join(ro.Sources, ", "), strings.Join(ro.Overrides, ", ")})
+		if ro.Name != rbac.Owner {
+			d.Editable = append(d.Editable, ro.Name)
+		}
+	}
+	owner, err := s.RBAC.HasRole(r.Context(), subjectOf(sc), rbac.Owner)
+	if err != nil {
+		s.internal(w, r, sc, err)
+		return
+	}
+	if !owner {
+		d.Editable = nil
+	} else if d.Permissions, err = s.users().Permissions(r.Context(), actorOf(sc)); err != nil {
+		s.internal(w, r, sc, err)
+		return
 	}
 	s.render(w, r, http.StatusOK, "access.html", s.page(r, sc, "access", s.msg("ac.title"), d))
 }
 
-func (s *Server) accessChange(w http.ResponseWriter, r *http.Request, sc *sessionCtx, flash string, change func(actor, subject, role, scope string) error) {
+func (s *Server) accessChange(w http.ResponseWriter, r *http.Request, sc *sessionCtx, flash string, change func(a users.Actor, name, role, scope string) error) {
 	if s.RBAC == nil {
 		s.fail(w, r, sc, http.StatusServiceUnavailable, "err.unavailable", "err.unavailable_msg")
 		return
@@ -753,38 +772,25 @@ func (s *Server) accessChange(w http.ResponseWriter, r *http.Request, sc *sessio
 		s.fail(w, r, sc, http.StatusNotFound, "err.user_not_found", "err.user_not_found_msg")
 		return
 	}
-	if _, err := s.DB.AdminByUsername(r.Context(), name); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			s.fail(w, r, sc, http.StatusNotFound, "err.user_not_found", "err.user_not_found_msg")
-			return
-		}
-		s.internal(w, r, sc, err)
-		return
-	}
-	switch err := change(sc.User.Username, "user:"+name, strings.TrimSpace(r.PostFormValue("role")), strings.TrimSpace(r.PostFormValue("scope"))); {
-	case errors.Is(err, rbac.ErrUnknownRole), errors.Is(err, rbac.ErrInvalid):
-		s.fail(w, r, sc, http.StatusBadRequest, "err.bad_request", "err.bad_value")
-	case errors.Is(err, rbac.ErrForbidden):
-		s.fail(w, r, sc, http.StatusForbidden, "err.forbidden", "err.owner_only")
-	case errors.Is(err, rbac.ErrLastOwner):
-		s.fail(w, r, sc, http.StatusConflict, "err.conflict", "err.last_owner")
-	case errors.Is(err, store.ErrNotFound):
-		s.fail(w, r, sc, http.StatusNotFound, "err.not_found_title", "err.not_found")
-	case err != nil:
-		s.internal(w, r, sc, err)
-	default:
+	err := change(actorOf(sc), name, strings.TrimSpace(r.PostFormValue("role")), strings.TrimSpace(r.PostFormValue("scope")))
+	switch {
+	case err == nil:
 		s.redirect(w, r, "/access", flash)
+	case errors.Is(err, users.ErrForbidden):
+		s.fail(w, r, sc, http.StatusForbidden, "err.forbidden", "err.owner_only")
+	default:
+		s.usersFail(w, r, sc, err, "/access")
 	}
 }
 
 func (s *Server) accessGrant(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
-	s.accessChange(w, r, sc, "flash.role_granted", func(a, subj, role, scope string) error {
-		return s.RBAC.Grant(r.Context(), a, subj, role, scope)
+	s.accessChange(w, r, sc, "flash.role_granted", func(a users.Actor, name, role, scope string) error {
+		return s.users().Grant(r.Context(), a, name, role, scope)
 	})
 }
 
 func (s *Server) accessRevoke(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
-	s.accessChange(w, r, sc, "flash.role_revoked", func(a, subj, role, scope string) error {
-		return s.RBAC.Revoke(r.Context(), a, subj, role, scope)
+	s.accessChange(w, r, sc, "flash.role_revoked", func(a users.Actor, name, role, scope string) error {
+		return s.users().Revoke(r.Context(), a, name, role, scope)
 	})
 }

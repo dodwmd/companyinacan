@@ -64,7 +64,7 @@ func TestManifestRolesGrantPermissions(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.module("expenses", []string{"expenses.read", "expenses.approve"}, map[string][]string{"finance": {"expenses.read", "expenses.approve"}}, store.StateEnabled)
-	if err := e.s.Grant(ctx, "root", "user:fin", "expenses:finance", ""); err != nil {
+	if err := e.s.Grant(ctx, CLIActor, "user:fin", "expenses:finance", ""); err != nil {
 		t.Fatal(err)
 	}
 	if !e.check("user:fin", "expenses.approve", "") {
@@ -78,7 +78,7 @@ func TestManifestRolesGrantPermissions(t *testing.T) {
 func TestDisabledModuleRolesGiveNothing(t *testing.T) {
 	e := newEnv(t)
 	e.module("expenses", []string{"expenses.read"}, map[string][]string{"finance": {"expenses.read"}}, store.StateDisabled)
-	if err := e.s.Grant(context.Background(), "root", "user:fin", "expenses:finance", ""); !errors.Is(err, ErrUnknownRole) {
+	if err := e.s.Grant(context.Background(), CLIActor, "user:fin", "expenses:finance", ""); !errors.Is(err, ErrUnknownRole) {
 		t.Fatalf("grant of a role only a disabled module defines: err = %v, want ErrUnknownRole", err)
 	}
 }
@@ -97,7 +97,7 @@ func TestScopedAssignment(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.module("expenses", []string{"expenses.read"}, map[string][]string{"viewer": {"expenses.read"}}, store.StateEnabled)
-	if err := e.s.Grant(ctx, "root", "user:a", "expenses:viewer", "dept/sales/*"); err != nil {
+	if err := e.s.Grant(ctx, CLIActor, "user:a", "expenses:viewer", "dept/sales/*"); err != nil {
 		t.Fatal(err)
 	}
 	if !e.check("user:a", "expenses.read", "dept/sales/42") {
@@ -118,7 +118,7 @@ func TestOverridesRevokeAndGrant(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.module("expenses", []string{"expenses.read", "expenses.approve"}, map[string][]string{"finance": {"expenses.read", "expenses.approve"}}, store.StateEnabled)
-	_ = e.s.Grant(ctx, "root", "user:fin", "expenses:finance", "")
+	_ = e.s.Grant(ctx, CLIActor, "user:fin", "expenses:finance", "")
 	if err := e.s.Override(ctx, CLIActor, "expenses:finance", "expenses.approve", EffectRevoke); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestCacheExpiresAndInvalidates(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.module("expenses", []string{"expenses.read"}, map[string][]string{"viewer": {"expenses.read"}}, store.StateEnabled)
-	_ = e.s.Grant(ctx, "root", "user:a", "expenses:viewer", "")
+	_ = e.s.Grant(ctx, CLIActor, "user:a", "expenses:viewer", "")
 	if !e.check("user:a", "expenses.read", "") {
 		t.Fatal("setup")
 	}
@@ -178,7 +178,7 @@ func TestLastOwnerCannotBeRevoked(t *testing.T) {
 	if err := e.s.Revoke(ctx, "root", "user:root", Owner, ""); !errors.Is(err, ErrLastOwner) {
 		t.Fatalf("err = %v, want ErrLastOwner", err)
 	}
-	_ = e.s.Grant(ctx, "root", "user:two", Owner, "")
+	_ = e.s.Grant(ctx, CLIActor, "user:two", Owner, "")
 	if err := e.s.Revoke(ctx, "root", "user:root", Owner, ""); err != nil {
 		t.Fatalf("with a second owner the revoke must work: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestGrantAndRevokeAreAudited(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.module("expenses", []string{"expenses.read"}, map[string][]string{"viewer": {"expenses.read"}}, store.StateEnabled)
-	_ = e.s.Grant(ctx, "root", "user:a", "expenses:viewer", "")
+	_ = e.s.Grant(ctx, CLIActor, "user:a", "expenses:viewer", "")
 	_ = e.s.Revoke(ctx, "root", "user:a", "expenses:viewer", "")
 	recs, _ := audit.New(e.db).List(ctx, 0, 50)
 	var actions []string
@@ -214,7 +214,7 @@ func TestInputValidation(t *testing.T) {
 	for _, c := range []struct{ subject, role, scope string }{
 		{"", "owner", ""}, {"alice", "owner", ""}, {"user:a b", "owner", ""}, {"user:a", "", ""}, {"user:a", "owner", "bad scope with space"},
 	} {
-		if err := e.s.Grant(ctx, "root", c.subject, c.role, c.scope); err == nil {
+		if err := e.s.Grant(ctx, CLIActor, c.subject, c.role, c.scope); err == nil {
 			t.Errorf("Grant(%q,%q,%q) accepted", c.subject, c.role, c.scope)
 		}
 	}

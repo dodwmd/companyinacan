@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>{{t "us.link_for" .Data.Username}}</h1>
+{{if .Data.Emailed}}<p role="status">{{t "us.link_mailed" .Data.Email}}</p>
+{{else}}
+{{if .Data.MailProblem}}<p class="alert warn" role="alert">{{t "us.link_mail_fail"}}</p>{{end}}
+<p role="status">{{t "us.link_once"}}</p>
+<p><code>{{if .Data.URL}}{{.Data.URL}}{{else}}{{.Data.Path}}{{end}}</code></p>
+<p class="alert warn">{{t "us.link_warning"}}</p>
+{{end}}
+<p>{{t "us.link_expires"}} <time datetime="{{iso .Data.Expires}}">{{ts .Data.Expires}}</time></p>
+<p><a href="/users/{{.Data.Username}}">{{t "us.open_user"}}</a></p>
+{{end}}

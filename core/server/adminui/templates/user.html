@@ -1,0 +1,141 @@
+{{define "content"}}
+<h1>{{.Data.Username}}</h1>
+{{if .Data.Self}}<p class="hint">{{t "us.self"}}</p>{{end}}
+{{if not .Data.Manageable}}<p class="alert warn">{{t "us.owner_only"}}</p>{{end}}
+{{if not .Data.Recent}}<p class="alert warn">{{t "us.confirm_first"}} <a href="{{.Data.StepUpURL}}">{{t "us.confirm_link"}}</a></p>{{end}}
+<section aria-labelledby="h-summary">
+<h2 id="h-summary">{{t "us.summary"}}</h2>
+<dl>
+<dt>{{t "us.status"}}</dt><dd><span class="badge {{.Data.StatusClass}}">{{.Data.StatusLabel}}</span></dd>
+<dt>{{t "us.signin"}}</dt><dd>{{if eq .Data.Source "sso"}}{{t "us.src_sso"}}{{else}}{{t "us.src_local"}}{{end}}</dd>
+{{if .Data.Email}}<dt>{{t "us.email"}}</dt><dd>{{.Data.Email}}{{if .Data.EmailSetBy}} ({{t "us.email_set_by" .Data.EmailSetBy}}){{end}}</dd>{{end}}
+</dl>
+{{with .Data.PendingLink}}<p>{{t "us.pending_link" .Purpose .CreatedBy}} <time datetime="{{iso .ExpiresAt}}">{{ts .ExpiresAt}}</time></p>{{end}}
+</section>
+
+<section aria-labelledby="h-roles">
+<h2 id="h-roles">{{t "us.assigned"}}</h2>
+{{if .Data.Assigned}}<div class="table-wrap" role="region" aria-labelledby="cap-assigned" tabindex="0">
+<table>
+<caption id="cap-assigned" class="sr">{{t "us.assigned"}}</caption>
+<thead><tr><th scope="col">{{t "us.role"}}</th><th scope="col">{{t "us.module"}}</th><th scope="col">{{t "us.grants"}}</th><th scope="col">{{t "us.scope"}}</th><th scope="col">{{t "us.action"}}</th></tr></thead>
+<tbody>
+{{range .Data.Assigned}}<tr>
+<th scope="row">{{.Name}}</th><td>{{if .Module}}{{.Module}}{{else}}{{t "us.builtin"}}{{end}}</td>
+<td>{{template "perms" .Permissions}}</td><td>{{.Scope}}</td>
+<td>{{if and $.Data.Manageable (not $.Data.Self)}}<form method="post" action="{{$.Data.Base}}/roles/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="role" value="{{.Name}}"><input type="hidden" name="scope" value="{{.Scope}}"><button type="submit">{{t "us.remove"}}</button></form>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+<p class="hint">{{t "us.remove_hint"}}</p>
+{{else}}<p class="empty">{{t "us.no_roles"}}</p>{{end}}
+{{if and .Data.Manageable (not .Data.Self)}}<h3>{{t "us.assign"}}</h3>
+{{if .Data.Grantable}}<form method="post" action="{{.Data.Base}}/roles/grant" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="g-role">{{t "us.role"}}</label>
+<select id="g-role" name="role">
+{{range .Data.Grantable}}<option value="{{.Name}}">{{.Name}}</option>
+{{end}}</select></p>
+<p><label for="g-scope">{{t "us.scope"}}</label>
+<input id="g-scope" name="scope" type="text" maxlength="130" aria-describedby="g-scope-hint">
+<span id="g-scope-hint" class="hint">{{t "ac.scope_hint"}}</span></p>
+<p><button type="submit">{{t "us.assign_button"}}</button></p>
+</form>
+<div class="table-wrap" role="region" aria-labelledby="cap-grantable" tabindex="0">
+<table>
+<caption id="cap-grantable">{{t "us.what_roles"}}</caption>
+<thead><tr><th scope="col">{{t "us.role"}}</th><th scope="col">{{t "us.module"}}</th><th scope="col">{{t "us.grants"}}</th></tr></thead>
+<tbody>
+{{range .Data.Grantable}}<tr><th scope="row">{{.Name}}</th><td>{{if .Module}}{{.Module}}{{else}}{{t "us.builtin"}}{{end}}</td><td>{{template "perms" .Permissions}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "us.no_grantable"}}</p>{{end}}{{end}}
+</section>
+
+<section aria-labelledby="h-cred">
+<h2 id="h-cred">{{t "us.credentials"}}</h2>
+{{if eq .Data.Source "sso"}}<p class="hint">{{t "us.sso_credentials"}}</p>
+{{else if and .Data.Credentials (ne .Data.Status "disabled")}}
+<p class="hint">{{t "us.link_effect"}}</p>
+<form method="post" action="{{.Data.Base}}/link" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="l-email">{{t "us.new_email"}}</label>
+<input id="l-email" name="email" type="email" maxlength="254" autocomplete="off"></p>
+{{if .Data.CanMail}}<p><input id="l-send" name="send" type="checkbox" value="1" checked> <label for="l-send">{{if .Data.Email}}{{t "us.send_to" .Data.Email}}{{else}}{{t "us.send"}}{{end}}</label></p>
+{{else}}<p class="hint">{{t "us.no_mail"}}</p>{{end}}
+{{if eq .Data.Status "invited"}}<p><button type="submit" name="purpose" value="invite">{{t "us.link_invite"}}</button></p>
+{{else}}<p><button type="submit" name="purpose" value="mfa">{{t "us.link_mfa"}}</button><span class="hint">{{t "us.link_mfa_hint"}}</span></p>
+<p><button type="submit" name="purpose" value="reset">{{t "us.link_reset"}}</button><span class="hint">{{t "us.link_reset_hint"}}</span></p>{{end}}
+</form>
+{{end}}
+</section>
+
+<section aria-labelledby="h-sessions">
+<h2 id="h-sessions">{{t "us.sessions"}}</h2>
+{{if .Data.Sessions}}<div class="table-wrap" role="region" aria-labelledby="cap-sess" tabindex="0">
+<table>
+<caption id="cap-sess" class="sr">{{t "us.sessions"}}</caption>
+<thead><tr><th scope="col">{{t "us.started"}}</th><th scope="col">{{t "us.from"}}</th><th scope="col">{{t "us.expires"}}</th><th scope="col">{{t "us.action"}}</th></tr></thead>
+<tbody>
+{{range .Data.Sessions}}<tr>
+<th scope="row"><time datetime="{{iso .Created}}">{{ts .Created}}</time></th><td>{{.IP}}</td><td><time datetime="{{iso .Expires}}">{{ts .Expires}}</time></td>
+<td>{{if .Current}}<strong>{{t "us.current"}}</strong>{{else if $.Data.Manageable}}<form method="post" action="{{$.Data.Base}}/sessions/{{.ID}}/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">{{t "us.revoke"}}</button></form>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "us.no_sessions"}}</p>{{end}}
+{{if and .Data.Manageable (not .Data.Self)}}<form method="post" action="{{.Data.Base}}/sessions/revoke"><input type="hidden" name="csrf" value="{{.CSRF}}"><p><button type="submit">{{t "us.revoke_all"}}</button></p></form>{{end}}
+</section>
+
+<section aria-labelledby="h-tokens">
+<h2 id="h-tokens">{{t "us.tokens"}}</h2>
+{{if .Data.Tokens}}<div class="table-wrap" role="region" aria-labelledby="cap-tok" tabindex="0">
+<table>
+<caption id="cap-tok" class="sr">{{t "us.tokens"}}</caption>
+<thead><tr><th scope="col">{{t "us.token_name"}}</th><th scope="col">{{t "us.module"}}</th><th scope="col">{{t "us.grants"}}</th><th scope="col">{{t "us.expires"}}</th><th scope="col">{{t "us.action"}}</th></tr></thead>
+<tbody>
+{{range .Data.Tokens}}<tr>
+<th scope="row">{{.Name}}</th><td>{{.Module}}</td><td>{{template "perms" .Permissions}}</td><td><time datetime="{{iso .ExpiresAt}}">{{ts .ExpiresAt}}</time></td>
+<td>{{if $.Data.Manageable}}<form method="post" action="{{$.Data.Base}}/tokens/{{.ID}}/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">{{t "us.revoke"}}</button></form>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="empty">{{t "us.no_tokens"}}</p>{{end}}
+</section>
+
+<section aria-labelledby="h-sso">
+<h2 id="h-sso">{{t "us.identity"}}</h2>
+{{with .Data.Identity}}<p>{{if .Email}}{{t "us.identity_email" .Email}}{{else}}<code>{{.ExternalID}}</code>{{end}}</p>
+{{if $.Data.ActorOwner}}{{if not .Linked}}<p class="hint">{{t "us.unlink_deletes"}}</p>{{end}}
+<form method="post" action="{{$.Data.Base}}/sso/unlink"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="identity" value="{{.ID}}"><p><button type="submit">{{t "us.unlink"}}</button></p></form>{{end}}
+{{else}}<p class="empty">{{t "us.no_identity"}}</p>
+{{if .Data.Linkable}}<form method="post" action="{{.Data.Base}}/sso/link" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="s-identity">{{t "us.link_identity"}}</label>
+<select id="s-identity" name="identity" aria-describedby="s-hint">
+{{range .Data.Linkable}}<option value="{{.ID}}">{{if .Email}}{{.Email}}{{else}}{{.ExternalID}}{{end}} ({{.Username}})</option>
+{{end}}</select>
+<span id="s-hint" class="hint">{{t "us.link_hint"}}</span></p>
+<p><button type="submit">{{t "us.link_button"}}</button></p>
+</form>{{end}}{{end}}
+</section>
+
+{{if and .Data.Manageable (not .Data.Self)}}<section aria-labelledby="h-danger">
+<h2 id="h-danger">{{t "us.danger"}}</h2>
+{{if eq .Data.Status "disabled"}}{{if .Data.ActorOwner}}<form method="post" action="{{.Data.Base}}/enable"><input type="hidden" name="csrf" value="{{.CSRF}}"><p><button type="submit">{{t "us.enable"}}</button></p></form>{{else}}<p class="hint">{{t "us.enable_hint"}}</p>{{end}}
+{{else}}<form method="post" action="{{.Data.Base}}/disable"><input type="hidden" name="csrf" value="{{.CSRF}}"><p><button type="submit">{{t "us.disable"}}</button><span class="hint">{{t "us.disable_hint"}}</span></p></form>{{end}}
+<form method="post" action="{{.Data.Base}}/delete" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="d-confirm">{{t "us.delete_confirm" .Data.Username}}</label>
+<input id="d-confirm" name="confirm" type="text" maxlength="64" autocomplete="off" required aria-describedby="d-hint">
+<span id="d-hint" class="hint">{{t "us.delete_hint"}}</span></p>
+<p><button type="submit">{{t "us.delete"}}</button></p>
+</form>
+</section>{{end}}
+{{end}}
+
+{{define "perms"}}{{range $i, $p := .}}{{if $i}}, {{end}}{{if eq $p "*"}}{{t "us.everything"}}{{else}}<code>{{$p}}</code>{{end}}{{else}}{{t "us.nothing"}}{{end}}{{end}}

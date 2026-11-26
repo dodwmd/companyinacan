@@ -10,6 +10,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/sso"
+	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
 // Single sign-on pages and the two OIDC routes (epic E11b, specs/021-oidc-sso).
@@ -50,7 +51,7 @@ func (s *Server) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	loc, ck, err := s.SSO.Begin(r.Context(), r.URL.Query().Get("next"))
+	loc, ck, err := s.SSO.Begin(r.Context(), r.URL.Query().Get("next"), r.URL.Query().Get("stepup") == "1")
 	if err != nil {
 		s.Log.Error("sso: login could not start", "request_id", httpx.RequestID(r.Context()), "error", err)
 		s.renderLogin(w, r, http.StatusServiceUnavailable, randToken(), "", "login.sso_unavailable")
@@ -179,7 +180,7 @@ func (s *Server) ssoLink(w http.ResponseWriter, r *http.Request, sc *sessionCtx)
 		s.fail(w, r, sc, http.StatusNotFound, "err.not_found_title", "err.not_found")
 		return
 	}
-	s.ssoResult(w, r, sc, s.SSO.Link(r.Context(), sc.User.Username, id, r.PostFormValue("username")), "flash.sso_linked")
+	s.ssoResult(w, r, sc, s.users().LinkIdentity(r.Context(), actorOf(sc), id, r.PostFormValue("username")), "flash.sso_linked")
 }
 
 func (s *Server) ssoUnlink(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
@@ -188,20 +189,20 @@ func (s *Server) ssoUnlink(w http.ResponseWriter, r *http.Request, sc *sessionCt
 		s.fail(w, r, sc, http.StatusNotFound, "err.not_found_title", "err.not_found")
 		return
 	}
-	s.ssoResult(w, r, sc, s.SSO.Unlink(r.Context(), sc.User.Username, id), "flash.sso_unlinked")
+	s.ssoResult(w, r, sc, s.users().UnlinkIdentity(r.Context(), actorOf(sc), id), "flash.sso_unlinked")
 }
 
 func (s *Server) ssoResult(w http.ResponseWriter, r *http.Request, sc *sessionCtx, err error, flash string) {
 	switch {
 	case err == nil:
 		s.redirect(w, r, "/settings/sso", flash)
-	case errors.Is(err, sso.ErrLinkForbidden):
+	case errors.Is(err, users.ErrForbidden):
 		s.fail(w, r, sc, http.StatusForbidden, "err.no_permission", "sso.owner_only")
-	case errors.Is(err, sso.ErrLinkInvalid):
+	case errors.Is(err, users.ErrInvalid):
 		s.renderSSO(w, r, sc, http.StatusConflict, "sso.link_invalid", nil)
-	case errors.Is(err, rbac.ErrLastOwner):
+	case errors.Is(err, users.ErrLastOwner):
 		s.renderSSO(w, r, sc, http.StatusConflict, "sso.last_owner", nil)
 	default:
-		s.internal(w, r, sc, err)
+		s.usersFail(w, r, sc, err, "/settings/sso")
 	}
 }
