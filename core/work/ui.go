@@ -9,13 +9,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"html/template"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/lazytmpl"
 )
 
 // The web UI (specs/023-work-ui) is server-rendered HTML served by can-work itself under /ui/. It
@@ -51,7 +52,7 @@ type uiRoute struct {
 type webUI struct {
 	a        *api
 	sessions *uiSessions
-	pages    map[string]*template.Template
+	pages    *lazytmpl.Set // parsed on first use
 	static   map[string]uiAsset
 	now      func() time.Time
 }
@@ -107,23 +108,8 @@ func (u *webUI) routes() []uiRoute {
 }
 
 func newWebUI(a *api, now func() time.Time) (*webUI, error) {
-	u := &webUI{a: a, sessions: newUISessions(now), now: now, pages: map[string]*template.Template{}, static: map[string]uiAsset{}}
-	funcs := u.funcs()
-	entries, err := fs.ReadDir(uiAssets, "webui/templates")
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if name == "layout.html" || name == "partials.html" {
-			continue
-		}
-		t, err := template.New(name).Funcs(funcs).ParseFS(uiAssets, "webui/templates/layout.html", "webui/templates/partials.html", "webui/templates/"+name)
-		if err != nil {
-			return nil, fmt.Errorf("ui template %s: %w", name, err)
-		}
-		u.pages[strings.TrimSuffix(name, ".html")] = t
-	}
+	u := &webUI{a: a, sessions: newUISessions(now), now: now, static: map[string]uiAsset{}}
+	u.pages = &lazytmpl.Set{FS: uiAssets, Dir: "webui/templates", Funcs: u.funcs()}
 	files, err := fs.ReadDir(uiAssets, "webui/static")
 	if err != nil {
 		return nil, err
@@ -450,9 +436,9 @@ func (c *uiCtx) base(title, current string) *uiBase {
 var uiBufs = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 func (c *uiCtx) render(status int, page string, b *uiBase) {
-	t := c.u.pages[page]
-	if t == nil {
-		panic("work ui: no template " + page)
+	t, err := c.u.pages.Get(page + ".html")
+	if err != nil {
+		panic("work ui: template " + page + ": " + err.Error())
 	}
 	buf := uiBufs.Get().(*bytes.Buffer)
 	buf.Reset()

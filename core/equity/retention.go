@@ -140,6 +140,11 @@ func (s *Service) RequestErasure(ctx context.Context, a Actor, id string) (*Eras
 	if err != nil {
 		return nil, err
 	}
+	// Nobody erases their own record: it removes person_id, which the holder checks compare.
+	if !sodOK(a, st.PersonID) {
+		s.auditDeny(ctx, a, "erase", "stakeholder:"+id, nil)
+		return nil, ErrSeparation
+	}
 	if st.LegalHold {
 		s.auditDeny(ctx, a, "erase", "stakeholder:"+id, nil)
 		return nil, conflict("erasure is blocked by a legal hold")
