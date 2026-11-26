@@ -15,7 +15,8 @@
 Files on the host: `/usr/local/sbin/can-backup` (0700), `/etc/systemd/system/can-backup.{service,timer}`,
 `/etc/can/backup.d/restic.env` (0600), `/etc/can/backup.d/restic.password` (0600),
 `/etc/can/backup.d/webhook.url` (optional, 0600), `/var/lib/can/backup.lock`, `/var/lib/can/backup-status`,
-`/var/lib/can/erasure-ledger.jsonl` (written by can-core).
+`/var/lib/can/erasure-ledger.jsonl` (written on the host by `can backup ledger-import` from what can-core
+collects, by `ledger-add` and by a restore; specs/048-erasure-collection).
 
 Bucket layout: `restic/` (the restic repository, subject to forget/prune), `ledger/erasure-ledger.v1.enc`
 (outside the prefix; never pruned).

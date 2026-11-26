@@ -23,11 +23,19 @@ func (a *leadsAPI) channels() (out []string) {
 	return out
 }
 
-// erasureNotes are what an erasure does not do, said in every answer. Nothing records a forms
-// erasure in the backup's erasure ledger yet, so the command that does is part of it.
-func erasureNotes(id string) []string {
+// restoreNote says how the erasure reaches the backup's erasure ledger. Installed under can-core
+// (collected), can-core reads the tombstone itself; run on its own, only the operator can.
+func restoreNote(id string, collected bool) string {
+	if collected {
+		return "can-core records this erasure for restores by itself, normally within about 15 minutes, on a server with backups and the can binary at /usr/local/bin/can; until then, and while backups report the erasure ledger (exit 22), a restore of an older backup brings the lead back. Nothing needs to be run."
+	}
+	return "Not recorded for restores by itself: until the erasure ledger holds it, a restore of an older backup brings the lead back. On the server: sudo can backup ledger-add --subject " + id + " --class " + ClassLead
+}
+
+// erasureNotes are what an erasure does not do, said in every answer.
+func erasureNotes(id string, collected bool) []string {
 	return []string{
-		"Not recorded for restores by itself: until the erasure ledger holds it, a restore of an older backup brings the lead back. On the server: sudo can backup ledger-add --subject " + id + " --class " + ClassLead,
+		restoreNote(id, collected),
 		"A notification e-mail already handed over cannot be recalled: can-core keeps a queued one until it is sent (up to seven days if it cannot be), and mailboxes keep what arrived.",
 		"Copies outside forms (a webhook receiver, a CRM, a newsletter list, an export) get lead.erased.v1 with the id only, where they listen for it; otherwise erase them by hand.",
 		"Backups made before the erasure hold the lead until they expire.",
@@ -56,14 +64,14 @@ func (a *leadsAPI) eraseLead(w http.ResponseWriter, r *http.Request, id, actor s
 	}
 	if errors.Is(err, errScrub) {
 		a.log.Error("leads api", "error", err)
-		writeError(w, http.StatusInternalServerError, "scrub_failed", errScrub.Error()+". Record it for restores, on the server: sudo can backup ledger-add --subject "+id+" --class "+ClassLead)
+		writeError(w, http.StatusInternalServerError, "scrub_failed", errScrub.Error()+". "+restoreNote(id, a.notifier.can != nil))
 		return nil, false
 	}
 	if err != nil {
 		a.internal(w, err)
 		return nil, false
 	}
-	return &erasedAnswer{out, underWay, erasureNotes(id)}, true
+	return &erasedAnswer{out, underWay, erasureNotes(id, a.notifier.can != nil)}, true
 }
 
 // erase is DELETE /v1/leads/{id}.

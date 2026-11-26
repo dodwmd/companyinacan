@@ -7,15 +7,18 @@ package integration
 // for want of one does not stop backups. Called by TestMakeUpPhasesOnK3d.
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/modimages"
 )
 
@@ -80,6 +83,16 @@ func failedInstallOnK3d(t *testing.T, company []byte) {
 	if !strings.Contains(run, `"people" was NOT dumped`) || !strings.Contains(run, "first install never succeeded") {
 		t.Fatalf("the skipped module is not reported:\n%s", run)
 	}
+	// nor does it fail the erasure step of the backup: the module is "not asked", not a failure
+	eventually(t, 3*time.Minute, "the erasure collection to leave people out", func() (bool, string) {
+		out := onNode(t, "cat /var/lib/can/dumps/"+backup.CollectedDir+"/"+backup.CollectedStatusFile+" 2>/dev/null || true")
+		var st backup.CollectStatus
+		if err := json.Unmarshal([]byte(out), &st); err != nil {
+			return false, out
+		}
+		_, failed := st.Failed["people"]
+		return !failed && slices.Contains(st.NotAsked, "people"), out
+	})
 	if got := onNode(t, "cat /var/lib/can/dumps/DUMPED"); !strings.Contains(got, "work sqlite") || strings.Contains(got, "people") {
 		t.Errorf("DUMPED: %q", got)
 	}

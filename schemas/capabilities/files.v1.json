@@ -813,6 +813,7 @@
                   "file-metadata"
                 ]
               },
+              "at": { "type": "string", "format": "date-time" },
               "date": {
                 "type": "string",
                 "format": "date"

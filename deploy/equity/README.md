@@ -18,7 +18,7 @@ Both base images must be pinned by digest before a release build; the Dockerfile
 | API listener | `:8081` (`equity`, ClusterIP only, bearer token) |
 | Data | `/data/equity.db` (SQLite, WAL, `secure_delete`), one persistent volume |
 | Config | `/etc/can-equity/equity.yaml` (see `docs/equity.md`) |
-| Keyring | `/etc/can-equity/keys/keyring`, a mounted Secret, mode 0400 (the service refuses group/world-readable key files) |
+| Keyring | `/etc/can-equity/keys/keyring`, a mounted Secret, mode 0400, or 0440 with `fsGroup` as the chart mounts it (never world-readable) |
 | Secrets (env) | `CAN_EQUITY_API_TOKEN`; `CAN_EQUITY_WEBHOOK_SECRET` when a webhook is set; `CAN_EQUITY_INTROSPECT_TOKEN` |
 | Root filesystem | read-only works: only `/data` is written |
 

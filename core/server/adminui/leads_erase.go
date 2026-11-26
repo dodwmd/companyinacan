@@ -68,11 +68,6 @@ func (c *HTTPLeads) Erase(ctx context.Context, id string) error {
 	return patient.do(ctx, http.MethodDelete, "/v1/leads/"+id, nil, nil, nil)
 }
 
-// ledgerCommand records an erasure for restores. Nothing does it by itself yet.
-func ledgerCommand(id string) string {
-	return "sudo can backup ledger-add --subject " + id + " --class lead-submission"
-}
-
 func (s *Server) leadEraseRoutes() []route {
 	return []route{
 		{"GET /lead-erasure", s.authedPerm(PermLeadsErase, s.leadSearchPage)},
@@ -153,8 +148,8 @@ func (s *Server) leadSearch(w http.ResponseWriter, r *http.Request, sc *sessionC
 }
 
 type leadErasedData struct {
-	ID, Command string
-	Unscrubbed  bool
+	ID         string
+	Unscrubbed bool
 }
 
 // leadErasedPage says that the lead is gone and what still has to be done.
@@ -169,7 +164,7 @@ func (s *Server) leadErasedPage(w http.ResponseWriter, r *http.Request, sc *sess
 	case err == nil: // it is still there: this page must not say otherwise
 		s.redirect(w, r, "/leads/"+url.PathEscape(id), "")
 	case errors.Is(err, ErrLeadNotFound):
-		d := leadErasedData{ID: id, Command: ledgerCommand(id), Unscrubbed: r.URL.Query().Get("scrub") == "pending"}
+		d := leadErasedData{ID: id, Unscrubbed: r.URL.Query().Get("scrub") == "pending"}
 		s.render(w, r, http.StatusOK, "lead_erased.html", s.page(r, sc, "leads", s.msg("le.done_title", id), d))
 	default:
 		s.eraseFailed(w, r, sc, err)
@@ -177,7 +172,6 @@ func (s *Server) leadErasedPage(w http.ResponseWriter, r *http.Request, sc *sess
 }
 
 type leadEraseData struct {
-	Command   string
 	Lead      Lead
 	Error     string
 	Recent    bool
@@ -185,7 +179,7 @@ type leadEraseData struct {
 }
 
 func (s *Server) renderErase(w http.ResponseWriter, r *http.Request, sc *sessionCtx, status int, l Lead, errKey string) {
-	d := leadEraseData{Command: ledgerCommand(l.ID), Lead: l, Recent: s.users().Recent(actorOf(sc)), StepUpURL: "/reauth?next=" + url.QueryEscape("/leads/"+l.ID+"/erase")}
+	d := leadEraseData{Lead: l, Recent: s.users().Recent(actorOf(sc)), StepUpURL: "/reauth?next=" + url.QueryEscape("/leads/"+l.ID+"/erase")}
 	if errKey != "" {
 		d.Error = s.msg(errKey)
 	}

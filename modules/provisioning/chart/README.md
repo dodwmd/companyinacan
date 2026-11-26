@@ -16,9 +16,10 @@ renderer (not Helm) and applied by its installer. Same templates as the other in
 ## Known gaps (not covered by any test here)
 
 - **Credentials.** can-core generates `CAN_PROVISIONING_API_TOKEN` and `CAN_WEBHOOK_SECRET` into the
-  `can-module` Secret. The directory token (`CAN_PROVISIONING_DIRECTORY_TOKEN`) and the connector
-  credentials are not generated, and the installer refuses a reference to any other Secret, so there
-  is no supported way yet to provide them.
+  `can-module` Secret and copies the people module's directory token there as
+  `CAN_PROVISIONING_DIRECTORY_TOKEN`; without the people module the install is refused. Connector
+  credentials are not generated and the installer refuses a reference to any other Secret, so there is
+  no supported way yet to provide them.
 - **Egress.** The module namespace allows egress to DNS, can-core, Traefik, the databases and, because the
   manifest sets `runtime.internet_egress`, the internet (the connectors' hosts). It does not allow the people
   module's API, which this module also needs.

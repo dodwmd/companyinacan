@@ -60,3 +60,60 @@ func TestFailedModuleThatHadADumpStillFailsTheRun(t *testing.T) {
 		t.Fatal("the run succeeded without the dump of a module that had one")
 	}
 }
+
+// A restore reads the run record: a skipped module with an earlier dump is marked Kept (its dump's
+// age is not the run's), and a never installed one has nothing carried, partial upload included.
+func TestKeptIsRecordedOnlyForACarriedDump(t *testing.T) {
+	d, _ := newDumper(t, []string{"wiki", "work"}, &fakeHooks{})
+	d.Hooks = hookFunc(func(_ context.Context, m string) error {
+		if m == "work" {
+			return errors.New("ImagePullBackOff")
+		}
+		return upload(d, m, "a", "v")
+	})
+	d.NeverInstalled = func(_ context.Context, m string) bool { return m == "work" }
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	d.Disabled = func(_ context.Context, m string) bool { return m == "wiki" }
+	d.Hooks = hookFunc(func(_ context.Context, m string) error {
+		_ = upload(d, m, "partial", "half")
+		return errors.New("boom")
+	})
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r, err := backup.ReadDumpRun(d.Store.Dir)
+	if err != nil || len(r.Skipped) != 2 {
+		t.Fatalf("%+v %v", r, err)
+	}
+	kept := map[string]bool{}
+	for _, s := range r.Skipped {
+		kept[s.ID] = s.Kept
+	}
+	if !kept["wiki"] || kept["work"] {
+		t.Fatalf("kept: %v", kept)
+	}
+	if got := read(t, filepath.Join(d.Store.Dir, "modules", "wiki", "a")); got != "v" {
+		t.Errorf("the carried dump holds %q", got)
+	}
+	for _, p := range []string{"wiki/partial", "work"} {
+		if exists(filepath.Join(d.Store.Dir, "modules", p)) {
+			t.Errorf("%s was published", p)
+		}
+	}
+}
+
+// Tolerating a failed install does not tolerate a set without company.yaml: it cannot be restored.
+func TestNeverInstalledDoesNotExcuseAMissingCompanyFile(t *testing.T) {
+	d, _ := newDumper(t, []string{"work"}, &fakeHooks{})
+	d.Hooks = hookFunc(func(context.Context, string) error { return errors.New("ImagePullBackOff") })
+	d.NeverInstalled = func(context.Context, string) bool { return true }
+	d.CompanyFile = filepath.Join(t.TempDir(), "company.yaml")
+	if _, err := d.Run(context.Background()); err == nil {
+		t.Fatal("a run without company.yaml succeeded")
+	}
+	if exists(filepath.Join(d.Store.Dir, COMPLETE)) {
+		t.Fatal("completion marker without company.yaml")
+	}
+}

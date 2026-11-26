@@ -11,6 +11,5 @@
 - [ ] T009 A real Cloudflare zone
 - [ ] T010 A real certificate with the redirect in place, and a real browser
 - [ ] T011 Client addresses as ServiceLB delivers them on a real server
-- [ ] T012 jobs starts when installed by can-core (it requires `company.name` and
-  `company.base_url`; found by this epic's k3d run, predates it). Then check the careers headers on
-  a cluster
+- [x] T012a jobs starts when installed by can-core (specs/048-erasure-collection FR-1)
+- [ ] T012b Check the careers headers on a cluster

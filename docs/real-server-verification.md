@@ -149,28 +149,27 @@ backup ran, **not** that it restores. This section **destroys the first server**
 
 ### 4.1 Make a backup that holds something to check
 
-Put a `can` built from the same commit on the server (the erasure ledger upload needs it). Submit the contact
-form three times, with names and addresses you will recognise: `keep-me`, `erase-me` and `erase-now`. In the admin
-UI, Leads, open `erase-me` and note the id in its address (`/leads/<id>`). Leave `erase-me` in place: its tombstone
-is added by hand below, so that only the restore can erase it.
+Put a `can` built from the same commit on the server (the erasure ledger import and upload need it). Submit the
+contact form three times, with names and addresses you will recognise: `keep-me`, `erase-me` and `erase-now`. In the
+admin UI, Leads, open `erase-me` and note the id in its address (`/leads/<id>`). Leave `erase-me` in place for now:
+it is erased in 4.2, after the backup, so that only the restore can keep it erased.
 
 Erase `erase-now` as an operator would for a request
 ([erasure requests](../modules/forms/README.md#erasure-requests): `can leads find`, then `can leads erase`).
-Expected: it is gone from the admin UI.
+Expected: it is gone from the admin UI. Nothing needs to be recorded by hand: can-core collects the erasure.
 
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o can-linux ./cmd/can
 scp can-linux $S:/usr/local/bin/can
 ssh $S 'k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m'
-ssh $S 'can backup ledger-add --subject LEAD_ID --class lead-submission'
 ssh $S 'systemctl start can-backup.service; journalctl -u can-backup --no-pager | tail -20'
 ssh $S 'can backup status && can backup verify'
 bin/can verify --server --company-dir ../verify-co --probe-backup-repo
 ```
 
 Expected: `backup complete (run ...)` with no `FAILED(22)` (that is the ledger upload); `status` and `verify` exit
-0; `PASS backup.dump`, `backup.last-run` and `backup.repository`. The ledger is uploaded by the backup run, so it
-must be added **before** it. A real bucket, the systemd sandbox (`ProtectSystem=strict`) and the script reading
+0; `PASS backup.dump`, `backup.last-run` and `backup.repository`. The run also imports what can-core collected and
+uploads the ledger. A real bucket, the systemd sandbox (`ProtectSystem=strict`) and the script reading
 live k3s paths are all untried.
 
 Next morning, `ssh $S 'systemctl list-timers can-backup.timer; journalctl -u can-backup --since yesterday'`
@@ -182,6 +181,18 @@ Also in the bucket: turn on versioning or object lock on `ledger/`, and check wh
 your provider.
 
 ### 4.2 Before destroying anything
+
+First erase `erase-me`, **after the last dump run** (do this and 4.3 the same day, before the next 02:30 run: a
+later dump no longer holds `erase-me`, and the restore would have nothing to replay). Then, a minute or more later,
+take the erasure to the bucket:
+
+```sh
+bin/can leads erase LEAD_ID --yes                     # see the forms README for the address and token
+sleep 90
+ssh $S 'systemctl start can-erasure-sync.service; journalctl -u can-erasure-sync --no-pager | tail -20'
+```
+
+Expected: `erasure ledger synced` with at least 2 entries and no `FAILED(22)`.
 
 Do not go on until every line is true:
 
@@ -232,15 +243,16 @@ ssh $S 'rm /root/kit.txt'
 ```
 
 Expected: `can up` keeps the restored admin account (same password and TOTP) and installs the timer; **`keep-me`
-is there, `erase-me` and `erase-now` are not**. `erase-me` was in the backup, so its absence shows the ledger came
-back from the bucket and the forms module replayed it. Certificates are not in the backup: new ones are issued. Any other module with data you enabled must have come
+is there, `erase-me` and `erase-now` are not**. `erase-me` was in the backup, so its absence shows that can-core
+recorded the erasure, the ledger came back from the bucket and the forms module replayed it. Certificates are not in
+the backup: new ones are issued. Any other module with data you enabled must have come
 back too.
 
-**What this does not test:** the replay of the other modules (people, equity, board, files and jobs; their images
-are not built by `make images`), and that an erasure reaches the ledger without `ledger-add`. If you have release
-images, enable `people`, create
-and erase a former person (`POST /v1/people/{id}/erasure`), add each returned class with `ledger-add` before the
-backup, and check the person is still erased after the restore ([people.md](people.md)).
+**What this does not test:** the replay of the other modules (people, equity, board, entity, files and jobs; their
+images are not built by `make images`). If you have release images, enable `people`, take a backup holding a former
+person, then erase them (`POST /v1/people/{id}/erasure`): do **not** add them with `ledger-add`, can-core records
+it. Wait a minute, run `systemctl start can-erasure-sync.service`, restore the snapshot made before the erasure, and
+check the person is still erased ([people.md](people.md)).
 
 **From here on, "the server" is the restored one**: `$S` is the new address, the `sslip.io` names have changed,
 and `.can/state.json` points at it. Run `bin/can verify --server --company-dir ../verify-co --probe-public` now;

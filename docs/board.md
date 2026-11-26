@@ -12,7 +12,7 @@ what directors owe the company depend on the company's constitution and on local
 implemented. Each body carries its own rules as data and the operator is responsible for entering what applies.
 Compliance with company law and data-protection law is the operator's responsibility.
 
-**Status: experimental** (offline-tested; no cluster run, no Helm templates, no admin UI; see the gaps).
+**Status: experimental** (offline-tested; can-core installs the chart and CI waits for Ready on k3d; no admin UI; see the gaps).
 
 ## Why one binary, two modules
 
@@ -183,7 +183,7 @@ database administrator cannot write.
 
 ## Encryption and key rotation
 
-`keyring_file` (mode 0600 or 0400, owned by the service user or root, not a symlink) holds lines of
+`keyring_file` (mode 0600, 0400 or 0440, owned by the service user or root, not a symlink) holds lines of
 `<key-id> <64 hex>`; the first key seals, the others only open. `can-board rotate-keys` re-seals every value
 written with a retired key; each replacement is a compare-and-swap (it only applies if the stored ciphertext is
 still the one read), so a concurrent write is never overwritten with stale data; values that changed are
@@ -200,7 +200,7 @@ under legal hold.
 declared interests, and (entity module) addresses and dates of birth. It keeps what law requires: membership
 terms, votes, attendance, minutes, register entries including the name a register must show. The response lists
 what was retained and why. A legal hold (`PUT /v1/people/{person}/legal-hold`) or a current term blocks it.
-Tombstones are listed at `GET /v1/erasures` for the E08 erasure ledger, and `can-board purge -subject <person>
+Tombstones are listed at `GET /v1/erasures`, which can-core collects into the backup erasure ledger, and `can-board purge -subject <person>
 -class <class|all>` re-applies them (idempotent) after a restore. Backups keep older data until they expire.
 
 ## Events
@@ -263,8 +263,10 @@ the text.
   term ended loses access to old materials (their past votes stay in the record).
 - No attachments upload (document references only), no calendar invitations or e-mail, no PDF minutes, no admin
   UI or director portal, no investor portal.
-- Not verified on a cluster. can-core does not yet: inject the keyring Secret, route token introspection, wire
-  the equity approval adapter to `resolutions`, or deploy `board` and `entity` as one release.
+- Verified on a cluster only as far as "installs and becomes Ready" (k3d, CI). can-core generates the keyring and
+  tokens, but does not route token introspection, deliver the events, or wire the equity approval adapter to
+  `resolutions`. `board` and `entity` are installed as **two instances with separate databases**, so rules that
+  need both (a director's access to an entity through board membership) deny.
 - One writer: the database uses one connection; there is no horizontal scaling.
 
 ## Later review notes
