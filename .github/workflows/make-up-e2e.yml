@@ -10,8 +10,10 @@ name: make-up-e2e
 # site served through Traefik with the example content, a form POST creating a lead, the recovery
 # kit parsing, nothing secret in .can/state.json, and a re-run that changes nothing.
 #
-# The images are built by `scripts/build-images.sh`, the same script as `make images`, so that path
-# is exercised too. No real server, cloud account or registry is involved. Provisioning a real
+# The images are built by `scripts/build-images.sh`, the same script as `make images` (every in-house
+# image and can-hooks), so that path is exercised too. Epic E06d: the work module runs on its built image,
+# `can apply` refuses a module whose image the cluster lacks, and a failed first install does not stop
+# the dump run. No real server, cloud account or registry is involved. Provisioning a real
 # server and the five-minute budget on one remain human-gated (docs/make-up.md).
 on:
   workflow_dispatch:
@@ -30,6 +32,11 @@ on:
       - "cmd/can-static/**"
       - "deploy/**"
       - "scripts/build-images.sh"
+      - "core/modimages/**"
+      - "core/cli/images_check.go"
+      - "core/cli/apply*.go"
+      - "modules/**"
+      - "test/integration/module_images_k3d_test.go"
       - "test/integration/makeup_test.go"
       - ".github/workflows/make-up-e2e.yml"
 
@@ -40,7 +47,7 @@ jobs:
   e2e:
     name: make-up phases on k3d
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,7 +81,7 @@ jobs:
           CAN_IT_BACKUP: "1"
           CAN_IT_IMAGES: ${{ github.workspace }}/build/images
           CAN_IT_TIMINGS: ${{ runner.temp }}/phase-timings.md
-        run: go test -tags integration -count=1 -v -timeout 25m -run TestMakeUpPhasesOnK3d ./test/integration/...
+        run: go test -tags integration -count=1 -v -timeout 40m -run TestMakeUpPhasesOnK3d ./test/integration/...
       - name: Cluster state on failure
         if: always() && steps.e2e.outcome == 'failure'
         run: |

@@ -26,6 +26,7 @@ edit() { # file, then a command that writes the new content to stdout
 
 for values in "$root"/modules/*/chart/values.yaml; do
 	# The `tag:` that follows an in-house `repository:`.
+	# shellcheck disable=SC2016 # $2 and $0 are awk's
 	edit "$values" awk -v v="$v" -v names="$names" '
 		BEGIN { n = split(names, a, " "); for (i = 1; i <= n; i++) ours["ghcr.io/dodwmd/" a[i]] = 1 }
 		/^[ \t]*repository:/ { mine = ($2 in ours) }
@@ -33,7 +34,7 @@ for values in "$root"/modules/*/chart/values.yaml; do
 		{ print }'
 	chart="${values%values.yaml}Chart.yaml"
 	for n in $names; do
-		if grep -Eq "repository:[ \t]*ghcr\.io/dodwmd/$n[ \t]*$" "$values" && [ -f "$chart" ]; then
+		if grep -Eq "repository:[ \t]*ghcr\.io/dodwmd/${n}[ \t]*\$" "$values" && [ -f "$chart" ]; then
 			edit "$chart" sed -E "s/^appVersion:.*/appVersion: \"$v\"/"
 		fi
 	done
