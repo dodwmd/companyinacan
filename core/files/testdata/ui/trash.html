@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Trash - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Spaces</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Trash</h1>
+<p><a href="/spaces/spc_000000000000000000000001">Contracts &lt;b&gt;2026&lt;/b&gt;</a></p>
+<p class="hint">A file is destroyed some days after it is deleted, unless a legal hold or a retention date keeps it. Restoring does not bring share links back.</p>
+<div class="scroll">
+<table>
+<caption>Deleted files</caption>
+<thead><tr><th scope="col">Name</th><th scope="col">Size</th><th scope="col">Deleted</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/files/fil_000000000000000000000006">draft.pdf</a></th><td>22 B</td><td>2026-06-01 09:00 UTC</td><td><form method="post" action="/files/fil_000000000000000000000006/restore" class="inline"><input type="hidden" name="csrf" value="CSRF"><button type="submit" aria-label="Restore draft.pdf">Restore</button></form></td></tr>
+</tbody>
+</table>
+</div>
+
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>

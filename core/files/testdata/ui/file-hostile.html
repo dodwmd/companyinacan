@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>File - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Spaces</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+
+<h1>script&gt; &amp; co.pdf</h1>
+<p><a href="/spaces/spc_000000000000000000000001">Contracts &lt;b&gt;2026&lt;/b&gt;</a></p>
+<p class="actions"><a href="/files/fil_000000000000000000000005/content">Download</a></p>
+<dl class="facts">
+<dt>State</dt><dd>Active</dd>
+<dt>Type</dt><dd>application/pdf</dd>
+<dt>Size</dt><dd>22 B</dd>
+<dt>Version</dt><dd>1</dd>
+<dt>Created</dt><dd>2026-06-01 09:00 UTC</dd>
+<dt>Updated</dt><dd>2026-06-01 09:00 UTC</dd>
+<dt>Your role</dt><dd>Manager</dd>
+<dt>Virus scan</dt><dd><strong>Clean</strong></dd>
+<dt>Uploaded by</dt><dd>user:alice</dd>
+<dt>SHA-256</dt><dd><code>0481939bce4801994c0c23b7cd04326ed9d7fa50b4d98245fe04833798d0d766</code></dd>
+<dt>Legal hold</dt><dd>No</dd>
+</dl>
+
+<h2>Versions</h2>
+<div class="scroll">
+<table>
+<caption>Every version of this file</caption>
+<thead><tr><th scope="col">Version</th><th scope="col">Size</th><th scope="col">Created</th><th scope="col">Virus scan</th><th scope="col">Uploaded by</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr><th scope="row">Version 1</th><td>22 B</td><td>2026-06-01 09:00 UTC</td><td>Clean</td><td>user:alice</td><td><a href="/files/fil_000000000000000000000005/content?version=1" aria-label="Download version 1">Download</a></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Share links</h2>
+<p class="muted">There are no share links.</p>
+
+
+<h2>Create a share link</h2>
+<form method="post" action="/files/fil_000000000000000000000005/shares" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p class="hint">Anyone who has the link can download that version, without an account, until it expires or you revoke it.</p>
+<p><label for="label">Label (optional, only you see it)</label>
+<input id="label" name="label" maxlength="100"></p>
+<p><label for="hours">Valid for (hours)</label>
+<input id="hours" name="hours" type="number" min="1" max="720" value="24" required aria-describedby="hours-hint"></p>
+<p id="hours-hint" class="hint">1 to 720 hours.</p>
+<p><label for="share-version">Version</label>
+<select id="share-version" name="version"><option value="">Current version</option><option value="1">Version 1</option></select></p>
+<p><input id="one_time" name="one_time" type="checkbox" value="1" aria-describedby="once-hint"> <label for="one_time" class="check">Stop working after one download</label></p>
+<p id="once-hint" class="hint">A mail or chat preview can use up a one-time link before the recipient does.</p>
+<p><button type="submit">Create link</button></p>
+</form>
+<h2>Add a new version</h2>
+<form method="post" action="/files/fil_000000000000000000000005/versions" enctype="multipart/form-data" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="file">File</label>
+<input id="file" name="file" type="file" required accept=".pdf"></p>
+<p><button type="submit">Upload new version</button></p>
+</form>
+<h2>Rename, describe or move</h2>
+<form method="post" action="/files/fil_000000000000000000000005/update" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<input type="hidden" name="rev" value="1">
+<p><label for="name">Name</label>
+<input id="name" name="name" value="script&gt; &amp; co.pdf" required maxlength="255" aria-describedby="name-hint"></p>
+<p id="name-hint" class="hint">The extension cannot change.</p>
+<p><label for="description">Description</label>
+<textarea id="description" name="description" rows="3" maxlength="1000"></textarea></p>
+<p><label for="folder">Folder</label>
+<select id="folder" name="folder"><option value="">No folder</option><option value="fld_000000000000000000000002">Leases</option><option value="fld_000000000000000000000003">Leases / Old</option></select></p>
+<p><button type="submit">Save</button></p>
+</form>
+<h2>Delete</h2>
+<form method="post" action="/files/fil_000000000000000000000005/delete" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p class="hint">The file moves to the trash and its share links stop working for good.</p>
+<p><button type="submit">Move to the trash</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>
