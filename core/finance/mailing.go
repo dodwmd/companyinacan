@@ -53,7 +53,8 @@ const (
 	mailPerDay         = 10                  // manual sends of one document in 24 hours
 	statementLines     = 50                  // open invoices listed in one statement
 	coreMessageTTL     = 30 * 24 * time.Hour // can-core forgets a finished message after this
-	statusRefreshLimit = 20
+	statusRefreshLimit = 20                  // messages asked about when a page is shown
+	statusSweepLimit   = 200                 // and by the hourly loop
 )
 
 // docMailing is the Store's configuration for mailing documents.
@@ -529,18 +530,34 @@ func (s *Store) markSent(ctx context.Context, tx dbq, m *DocumentMail) error {
 }
 
 // RefreshMails asks the mail service what became of queued messages: all of them, or those of one
-// invoice or party.
+// invoice or party. It also gives up on a manual send that was interrupted: nobody retries those,
+// and whether the message left cannot be known.
 func (s *Store) RefreshMails(ctx context.Context, invoiceID, partyID int64) error {
+	stuck, err := queryMails(ctx, s.db, `status = 'pending' AND kind <> 'reminder' AND updated_at < ? LIMIT ?`, ts(s.now().Add(-time.Hour)), statusRefreshLimit)
+	if err != nil {
+		return err
+	}
+	for _, m := range stuck {
+		if err := s.inTx(ctx, func(tx *sql.Tx) error { return s.setMailStatus(ctx, tx, "can-finance", &m, DMUnknown, "") }); err != nil {
+			return err
+		}
+	}
 	q, ok := s.sign.mailer.(queueMailer)
 	if !ok {
 		return nil
 	}
-	list, err := queryMails(ctx, s.db, `status = 'queued' AND (? = 0 OR invoice_id = ?) AND (? = 0 OR party_id = ?) ORDER BY updated_at, id LIMIT ?`,
-		invoiceID, invoiceID, partyID, partyID, statusRefreshLimit)
+	limit := statusRefreshLimit
+	if invoiceID == 0 && partyID == 0 {
+		limit = statusSweepLimit
+	}
+	// A row without a can-core id (a repeated request) cannot be asked about; it only ages out, and
+	// must not keep the others from being looked at.
+	list, err := queryMails(ctx, s.db, `status = 'queued' AND (core_id <> '' OR created_at < ?) AND (? = 0 OR invoice_id = ?) AND (? = 0 OR party_id = ?) ORDER BY id LIMIT ?`,
+		ts(s.now().Add(-coreMessageTTL)), invoiceID, invoiceID, partyID, partyID, limit)
 	if err != nil {
 		return err
 	}
-	sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for _, m := range list {
 		status := DMQueued

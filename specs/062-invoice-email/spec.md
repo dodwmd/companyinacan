@@ -103,6 +103,8 @@ No font or font metrics file is shipped, so `THIRD_PARTY_LICENSES` does not chan
   the address and text until then (docs/email.md, "Data kept").
 - A payment finance does not know about yet (an unrecorded or unmatched bank payment) does not stop
   a reminder.
+- A reminder refused by the allow-list (or the mail service switched off for finance) still uses up its
+  step: after fixing the setting, the next step is the next one sent.
 - Anyone holding a mailed link can read the invoice until it expires or is revoked.
 - Restoring a backup from before a reminder was sent loses its record; if the step is still due it is
   sent again (can-core's idempotency keys only protect if can-core was not restored with it).

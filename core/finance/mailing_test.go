@@ -631,3 +631,18 @@ func (e *mailEnv) countEvents(typ string) (n int) {
 	}
 	return n
 }
+
+func TestInterruptedManualSendIsNotRetried(t *testing.T) {
+	e := newMailEnv(t)
+	n := e.sentInvoice(14)
+	if err := e.app.store.inTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := e.app.store.claimMail(context.Background(), tx, "maker", DocDocument, "x", &n, e.cust, 0)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.days(1)
+	if got := e.mails(n).Items; len(got) != 1 || got[0].Status != DMUnknown || len(e.mail.all()) != 0 {
+		t.Fatalf("%+v", got)
+	}
+}
