@@ -27,6 +27,9 @@ The binary grew from 12.2 MiB to 14.8 MiB: `html/template` calls methods by name
 from dropping unused ones (the other UI modules are 16 to 17.5 MiB). The size budget in
 `dev/footprint/budgets.json` is raised from 13.5 to 16 MiB.
 
+The compose container measured 9.0 MiB anonymous after the files e2e scenarios, on the former loaded budget of
+9 MiB, so the `files` footprint budgets are now 12 MiB loaded anonymous and 36 MiB peak RSS (idle unchanged).
+
 ## R3. Reading an upload form
 
 `mime/multipart` accepts up to 10 MiB of headers per part and buffers them. Six concurrent requests of that
