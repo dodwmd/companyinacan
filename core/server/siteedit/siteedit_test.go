@@ -76,6 +76,17 @@ func TestMergeKeepsWhatDidNotChange(t *testing.T) {
 		t.Errorf("round trip: %#v, want %#v", got, s)
 	}
 
+	// Lines outside the section are untouched, their formatting included.
+	spaced := "schema: 1\nname: Acme\nprovider: { type: local }\nsite:\n  tagline: Old\n\n# the relay\nemail:\n  relay: { host: a.example,   from: a@a.example }\n"
+	changed, err := Merge([]byte(spaced), config.Site{Tagline: "New"})
+	if want := strings.Replace(spaced, "tagline: Old", "tagline: New", 1); err != nil || string(changed) != want {
+		t.Errorf("%v\n%q\nwant\n%q", err, changed, want)
+	}
+	last := "schema: 1\nname: A\nsite: {tagline: Old}"
+	if got, err := Merge([]byte(last), config.Site{Tagline: "New"}); err != nil || !strings.HasPrefix(string(got), "schema: 1\nname: A\nsite:") || parse(t, got).Site.Tagline != "New" {
+		t.Errorf("%v %q", err, got)
+	}
+
 	// A document without the section gets one; an empty section adds nothing.
 	bare := []byte("schema: 1\nname: A\nprovider: {type: local}\n")
 	if out, err := Merge(bare, config.Site{}); err != nil || string(out) != string(bare) {

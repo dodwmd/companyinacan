@@ -17,8 +17,8 @@ import (
 // ErrDocument means company.yaml cannot be edited here.
 var ErrDocument = errors.New("company.yaml cannot be edited in the admin UI: it is not a mapping, or uses YAML anchors or aliases; edit it in the repository")
 
-// Merge returns doc with its `site:` section replaced by s. Comments, ordering and formatting of
-// everything the change does not touch are kept.
+// Merge returns doc with its `site:` section replaced by s. Everything outside that section is kept
+// byte for byte; inside it, comments and ordering are kept.
 func Merge(doc []byte, s config.Site) ([]byte, error) {
 	// Nothing changed: the document stays byte for byte.
 	var have struct {
@@ -36,29 +36,83 @@ func Merge(doc []byte, s config.Site) ([]byte, error) {
 		return nil, err
 	}
 	top := root.Content[0]
-	found := false
+	at := -1
 	for i := 0; i+1 < len(top.Content); i += 2 {
 		if top.Content[i].Value == "site" {
 			top.Content[i+1] = mergeNode(top.Content[i+1], next)
-			found = true
+			at = i
 		}
 	}
-	if !found {
+	if at < 0 {
 		if len(next.Content) == 0 {
 			return doc, nil
 		}
 		top.Content = append(top.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "site"}, next)
+		at = len(top.Content) - 2
 	}
+	whole, err := encode(&root)
+	if err != nil {
+		return nil, err
+	}
+	if spliced, err := splice(doc, top, at); err == nil && sameDocument(spliced, whole) {
+		return spliced, nil
+	}
+	return whole, nil
+}
+
+func encode(n *yaml.Node) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
-	if err := enc.Encode(&root); err != nil {
+	if err := enc.Encode(n); err != nil {
 		return nil, err
 	}
 	if err := enc.Close(); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// splice writes only the entry at top.Content[at] anew, between the lines of doc around it. The
+// caller checks that the result says what a whole re-encoding would.
+func splice(doc []byte, top *yaml.Node, at int) ([]byte, error) {
+	key := *top.Content[at]
+	key.HeadComment, key.FootComment = "", "" // those lines stay where they are
+	entry, err := encode(&yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{&key, top.Content[at+1]}})
+	if err != nil {
+		return nil, err
+	}
+	lines := bytes.SplitAfter(doc, []byte("\n"))
+	// The block of the entry: from its key to the next top-level key, less the blank lines and
+	// comments that lead up to that one.
+	start, end := len(lines), len(lines)
+	if key.Line > 0 {
+		start = key.Line - 1
+		if at+2 < len(top.Content) {
+			end = top.Content[at+2].Line - 1
+		}
+		for end > start+1 {
+			l := bytes.TrimRight(lines[end-1], "\r\n")
+			if len(bytes.TrimSpace(l)) > 0 && l[0] != '#' {
+				break
+			}
+			end--
+		}
+	}
+	if start > len(lines) || end > len(lines) || end < start {
+		return nil, errors.New("unexpected layout")
+	}
+	out := bytes.Join(lines[:start], nil)
+	if len(out) > 0 && out[len(out)-1] != '\n' {
+		out = append(out, '\n')
+	}
+	out = append(out, entry...)
+	return append(out, bytes.Join(lines[end:], nil)...), nil
+}
+
+func sameDocument(a, b []byte) bool {
+	var x, y any
+	return yaml.Unmarshal(a, &x) == nil && yaml.Unmarshal(b, &y) == nil && reflect.DeepEqual(x, y)
 }
 
 func hasAlias(n *yaml.Node) bool {
