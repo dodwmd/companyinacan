@@ -69,10 +69,10 @@ func TestSampleWalksUpToTheMemoryCgroup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(proc, "7", "status"), "Name:\tx\nVmHWM:\t  2048 kB\nVmRSS:\t  1024 kB\n")
+	write(filepath.Join(proc, "7", "status"), "Name:\tx\nVmHWM:\t  2048 kB\nVmRSS:\t  1024 kB\nRssAnon:\t  512 kB\n")
 	write(filepath.Join(proc, "7", "cgroup"), "0::/a/b/container\n")
 	write(filepath.Join(cg, "a", "b", "memory.current"), "5000\n")
-	write(filepath.Join(cg, "a", "b", "memory.stat"), "anon 3000\nfile 100\n")
+	write(filepath.Join(cg, "a", "b", "memory.stat"), "anon 9999\nfile 100\n")
 	if err := os.MkdirAll(filepath.Join(cg, "a", "b", "container"), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestSampleWalksUpToTheMemoryCgroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s != (Sample{Service: "x", Current: 5000, Anon: 3000, File: 100, RSS: 1 << 20, HWM: 2 << 20}) {
+	if s != (Sample{Service: "x", Current: 5000, Anon: 512 << 10, File: 100, RSS: 1 << 20, HWM: 2 << 20}) {
 		t.Fatalf("sample = %+v", s)
 	}
 }

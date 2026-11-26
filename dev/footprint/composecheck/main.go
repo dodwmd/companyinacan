@@ -7,8 +7,10 @@
 // It exits 1 when something is over budget or missing, naming each offender. Linux with cgroup v2
 // only; it reads /proc/<pid> and the container's cgroup, which need no root.
 //
-// The budgeted figure is anonymous memory (memory.stat "anon": heap, stacks, runtime), not
-// memory.current: page cache depends on the host and on what ran before, and is reclaimable.
+// The budgeted figure is the anonymous resident memory of the container's main process (RssAnon:
+// heap, stacks, runtime), not the cgroup: memory.current includes page cache, which depends on the
+// host and is reclaimable, and the cgroup also holds whatever healthcheck process is running at that
+// moment (2 to 3 MiB, at random).
 package main
 
 import (
@@ -48,7 +50,7 @@ type Budgets struct {
 // Sample is one container's memory, in bytes.
 type Sample struct {
 	Service                       string
-	Current, Anon, File, RSS, HWM int64
+	Current, Anon, File, RSS, HWM int64 // Anon: RssAnon of the main process
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -250,6 +252,10 @@ func sample(procRoot, cgRoot, service string, pid int) (Sample, error) {
 	}
 	kb := fields(string(status), ":")
 	s.RSS, s.HWM = kb["VmRSS"]*1024, kb["VmHWM"]*1024
+	if _, ok := kb["RssAnon"]; !ok {
+		return s, errors.New("status has no RssAnon line (not running?)")
+	}
+	s.Anon = kb["RssAnon"] * 1024
 	cg, err := os.ReadFile(filepath.Join(dir, "cgroup")) //nolint:gosec // /proc
 	if err != nil {
 		return s, err
@@ -280,10 +286,7 @@ func sample(procRoot, cgRoot, service string, pid int) (Sample, error) {
 		return s, err
 	}
 	m := fields(string(stat), " ")
-	if _, ok := m["anon"]; !ok {
-		return s, errors.New("memory.stat has no anon line")
-	}
-	s.Anon, s.File = m["anon"], m["file"]
+	s.File = m["file"]
 	return s, nil
 }
 
