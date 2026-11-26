@@ -10,9 +10,9 @@
 <p><label for="ex-pass2">{{t "ex.passphrase2"}}</label>
 <input id="ex-pass2" name="passphrase2" type="password" autocomplete="new-password"></p>
 <p id="ex-pass-help">{{t "ex.pass_help" .Data.MinPassword}}</p>
-<p><label><input type="checkbox" name="sealed" value="yes"{{if .Data.Sealed}} checked{{end}}> {{t "ex.sealed"}}</label></p>
+<p><label for="ex-sealed"><input id="ex-sealed" type="checkbox" name="sealed" value="yes"{{if .Data.Sealed}} checked{{end}}> {{t "ex.sealed"}}</label></p>
 <p class="alert warn">{{t "ex.sealed_warn"}}</p>
-<p><label><input type="checkbox" name="understood" value="yes"> {{t "ex.understood"}}</label></p>
+<p><label for="ex-understood"><input id="ex-understood" type="checkbox" name="understood" value="yes"> {{t "ex.understood"}}</label></p>
 <p><button type="submit">{{t "ex.submit"}}</button></p>
 </form>
 {{else}}<p class="alert warn">{{t "us.confirm_first"}} <a href="{{.Data.StepUpURL}}">{{t "us.confirm_link"}}</a></p>{{end}}
