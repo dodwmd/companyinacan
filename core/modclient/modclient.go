@@ -29,6 +29,54 @@ import (
 // this module's own credential). Callers must treat it as "no", and may retry later.
 var ErrUnavailable = errors.New("can-core is unavailable")
 
+// StatusError is an HTTP refusal or failure of a platform service. 401, 429 and 5xx also match
+// ErrUnavailable.
+type StatusError struct {
+	Status     int
+	Detail     string
+	RetryAfter time.Duration
+}
+
+func (e *StatusError) Error() string {
+	msg := fmt.Sprintf("HTTP %d", e.Status)
+	if e.Detail != "" {
+		msg += " " + e.Detail
+	}
+	if e.Unwrap() != nil {
+		return ErrUnavailable.Error() + ": " + msg
+	}
+	return msg
+}
+
+// Unwrap lets errors.Is(err, ErrUnavailable) mean "try again later".
+func (e *StatusError) Unwrap() error {
+	if e.Status == http.StatusUnauthorized || e.Status == http.StatusTooManyRequests || e.Status >= 500 {
+		return ErrUnavailable
+	}
+	return nil
+}
+
+// maxRetryAfter bounds what a server can ask a caller to wait.
+const maxRetryAfter = 6 * time.Hour
+
+// NewStatusError builds a StatusError from a response's status and headers (Retry-After in seconds).
+func NewStatusError(status int, h http.Header, detail string) *StatusError {
+	e := &StatusError{Status: status, Detail: detail}
+	if n, err := strconv.Atoi(h.Get("Retry-After")); err == nil && n > 0 {
+		e.RetryAfter = min(time.Duration(min(n, int(maxRetryAfter/time.Second)))*time.Second, maxRetryAfter)
+	}
+	return e
+}
+
+// RetryAfter returns how long the service asked to be left alone (0: it did not say).
+func RetryAfter(err error) time.Duration {
+	var e *StatusError
+	if errors.As(err, &e) {
+		return e.RetryAfter
+	}
+	return 0
+}
+
 const maxResponse = 64 << 10
 
 // Client talks to the can-core module API with the module's projected ServiceAccount token.
@@ -96,7 +144,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, header m
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode >= 500:
-		return resp.StatusCode, b, fmt.Errorf("%w: HTTP %d", ErrUnavailable, resp.StatusCode)
+		return resp.StatusCode, b, NewStatusError(resp.StatusCode, resp.Header, "")
 	}
 	return resp.StatusCode, b, nil
 }
@@ -148,6 +196,29 @@ func (c *Client) PublishEnvelope(ctx context.Context, envelope []byte) error {
 	}
 	if status != http.StatusAccepted {
 		return fmt.Errorf("can-core refused the event: HTTP %d %s", status, problemDetail(b))
+	}
+	return nil
+}
+
+// Email is a request to the platform's email.send capability. The sender address is can-core's.
+type Email struct {
+	To      []string `json:"to"`
+	ReplyTo string   `json:"reply_to,omitempty"`
+	Subject string   `json:"subject"`
+	Text    string   `json:"text"`
+	// SourceID makes the request idempotent: repeating it queues nothing new.
+	SourceID string `json:"source_id,omitempty"`
+}
+
+// SendEmail queues mail through can-core. ErrUnavailable (retry later) covers network errors, 5xx
+// and quota refusals; a refusal is a *StatusError.
+func (c *Client) SendEmail(ctx context.Context, e Email) error {
+	status, b, err := c.do(ctx, http.MethodPost, "/v1/email", e, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusAccepted && status != http.StatusOK {
+		return fmt.Errorf("can-core refused the email: %w", &StatusError{Status: status, Detail: problemDetail(b)})
 	}
 	return nil
 }

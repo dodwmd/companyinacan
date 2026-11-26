@@ -94,12 +94,23 @@ spec:
     # the node IP (unknown when this file is written, differs in k3d and production) and can-core
     # also calls out over 443 (ACME, chart sources, webhooks). Residual risk: a compromised
     # can-core can reach any HTTPS endpoint. E06 should narrow this to the node IP for 6443 once
-    # the bootstrap can template it; SMTP egress for email.send is added with E03.
+    # the bootstrap can template it.
     - to:
         - ipBlock: {cidr: 0.0.0.0/0}
       ports:
         - {protocol: TCP, port: 6443}
         - {protocol: TCP, port: 443}
+    # The outbound SMTP relay of email.send (docs/email.md): public addresses only, on the usual
+    # submission ports. IPv4 only; a relay on a private network or another port needs its own rule.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 127.0.0.0/8]
+      ports:
+        - {protocol: TCP, port: 25}
+        - {protocol: TCP, port: 465}
+        - {protocol: TCP, port: 587}
+        - {protocol: TCP, port: 2525}
 ---
 # ---- can-data ---------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1

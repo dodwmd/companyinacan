@@ -56,6 +56,11 @@ type Lead struct {
 	CreatedAt      time.Time         `json:"created_at"`
 	UpdatedAt      time.Time         `json:"updated_at"`
 	RetentionUntil time.Time         `json:"retention_until"`
+	// Notification is "retrying" or "failed" while the notification email has not got through.
+	Notification string `json:"notification_status,omitempty"`
+
+	// emailDue, when set on Insert, queues the notification email in the same transaction.
+	emailDue time.Time
 }
 
 // Delivery is the recorded outcome of one notification channel for a lead.
@@ -199,7 +204,12 @@ func (s *Store) Insert(ctx context.Context, l *Lead) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
 		`INSERT INTO leads (id, form_id, status, email, name, fields, note, created_at, updated_at, retention_until)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		l.ID, l.FormID, l.Status, l.Email, l.Name, string(fields), l.Note,
@@ -207,7 +217,15 @@ func (s *Store) Insert(ctx context.Context, l *Lead) error {
 	if err != nil {
 		return err
 	}
-	l.Seq, err = res.LastInsertId()
+	if !l.emailDue.IsZero() {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO lead_email (lead_id, next_attempt_at, created_at) VALUES (?, ?, ?)`, l.ID, l.emailDue.Unix(), l.CreatedAt.Unix()); err != nil {
+			return err
+		}
+	}
+	if l.Seq, err = res.LastInsertId(); err != nil {
+		return err
+	}
+	err = tx.Commit()
 	if err == nil {
 		leadsCreated.With().Inc()
 	}
@@ -218,7 +236,8 @@ func (s *Store) Insert(ctx context.Context, l *Lead) error {
 // lead's content is personal data and never reaches a metric.
 var leadsCreated = obs.Default.Counter("can_forms_leads_created_total", "Leads stored.")
 
-const leadCols = `seq, id, form_id, status, email, name, fields, note, created_at, updated_at, retention_until`
+const leadCols = `seq, id, form_id, status, email, name, fields, note, created_at, updated_at, retention_until,
+	(SELECT CASE WHEN e.status = 'failed' THEN 'failed' WHEN e.status = 'pending' AND e.attempts > 0 THEN 'retrying' ELSE '' END FROM lead_email e WHERE e.lead_id = leads.id)`
 
 type scanner interface{ Scan(...any) error }
 
@@ -226,9 +245,11 @@ func scanLead(r scanner) (*Lead, error) {
 	var l Lead
 	var fields string
 	var c, u, ret int64
-	if err := r.Scan(&l.Seq, &l.ID, &l.FormID, &l.Status, &l.Email, &l.Name, &fields, &l.Note, &c, &u, &ret); err != nil {
+	var notification sql.NullString
+	if err := r.Scan(&l.Seq, &l.ID, &l.FormID, &l.Status, &l.Email, &l.Name, &fields, &l.Note, &c, &u, &ret, &notification); err != nil {
 		return nil, err
 	}
+	l.Notification = notification.String
 	if err := json.Unmarshal([]byte(fields), &l.Fields); err != nil {
 		return nil, fmt.Errorf("lead %s: corrupt fields: %w", l.ID, err)
 	}

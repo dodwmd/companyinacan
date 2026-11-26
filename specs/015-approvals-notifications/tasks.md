@@ -14,6 +14,6 @@ Test-first: each task's tests were written and seen failing before its code.
 - [x] T10 schemas, fixtures, OpenAPI, ui-routes, contract tests
 - [x] T11 runtime wiring, timers, `can apply` sync, `can-core admin roles`
 - [x] T12 docs/approvals.md, docs/notifications.md, RAM measurement
-- [ ] T13 real `email.send` provider (needs the provider module)
+- [x] T13 real `email.send` provider (E03d, `specs/039-email-send/`; no real relay verified)
 - [ ] T14 SSO group claims for roles; role override UI; module-facing "who may approve" query
 - [ ] T15 cluster verification (no cluster available offline)

@@ -397,7 +397,7 @@ func (e *Engine) notifyApprovers(ctx context.Context, r Request, step int, set a
 	delete(subjects, r.Requester)
 	for s := range subjects {
 		_, _, err := e.d.Notifier.Notify(ctx, notify.Notice{Subject: s, Type: typ, DedupeKey: fmt.Sprintf("%s:%s:%d", r.ID, typ, step),
-			Data: map[string]string{"request_id": r.ID, "approval_type": r.Type}, Link: "/approvals/" + r.ID})
+			Data: map[string]string{"request_id": r.ID, "approval_type": r.Type}, Link: "/approvals/" + r.ID, Module: r.ModuleID})
 		if err != nil {
 			e.d.Log.Error("approval notification failed", "request", r.ID, "error", err)
 		}
@@ -409,7 +409,7 @@ func (e *Engine) notifyRequester(ctx context.Context, r Request, outcome string)
 		return
 	}
 	_, _, err := e.d.Notifier.Notify(ctx, notify.Notice{Subject: r.Requester, Type: "approval.decided", DedupeKey: r.ID + ":decided",
-		Data: map[string]string{"request_id": r.ID, "approval_type": r.Type, "outcome": outcome}, Link: "/approvals/" + r.ID})
+		Data: map[string]string{"request_id": r.ID, "approval_type": r.Type, "outcome": outcome}, Link: "/approvals/" + r.ID, Module: r.ModuleID})
 	if err != nil {
 		e.d.Log.Error("approval notification failed", "request", r.ID, "error", err)
 	}

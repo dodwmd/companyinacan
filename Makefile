@@ -56,8 +56,8 @@ IMAGES_FROM ?=
 images: ## build the can-core, can-static and can-forms images locally (podman or docker) into build/images
 	sh scripts/build-images.sh $(IMAGES_DIR)
 
-up: ## make a live company: provision, k3s, can-core, site, forms, backup, DNS (IMAGES_FROM=build/images, ARGS=--plan to preview)
-	@$(GO) run ./cmd/can up $(if $(IMAGES_FROM),--images-from $(IMAGES_FROM)) $(ARGS)
+up: ## make a live company: provision, k3s, can-core, site, forms, backup, DNS (IMAGES_FROM=build/images, SMTP_CREDENTIALS=file, ARGS=--plan to preview)
+	@$(GO) run ./cmd/can up $(if $(IMAGES_FROM),--images-from $(IMAGES_FROM)) $(if $(SMTP_CREDENTIALS),--smtp-credentials-file $(SMTP_CREDENTIALS)) $(ARGS)
 
 server-down: down ## alias of down, kept for scripts that used the E06 name
 

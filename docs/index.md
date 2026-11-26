@@ -36,6 +36,7 @@ and the code is the truth.
 | [sso.md](sso.md) | OpenID Connect sign-in for the admin UI, and one-click sign-in into module web pages (Apps, launch tickets) |
 | [approvals.md](approvals.md), [notifications.md](notifications.md) | The approval engine, RBAC names, inbox, email and Web Push |
 | [pwa.md](pwa.md) | Installing the admin UI on a phone, Web Push, limits |
+| [email.md](email.md) | Outbound email: the relay, who may be written to, quotas, delivery status |
 | [email-policy.md](email-policy.md) | How outbound and inbound email are meant to work |
 
 ## Modules

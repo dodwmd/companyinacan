@@ -44,6 +44,7 @@ type stackFlags struct {
 	kitOut            string
 	kitPassFile       string
 	modulesDir        string
+	smtpCreds         string
 }
 
 func (f *stackFlags) register(cmd *cobra.Command) {
@@ -64,6 +65,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.backupCreds, "backup-credentials-file", "", "KEY=VALUE file with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
 	fl.StringVar(&f.kitOut, "kit-out", "", "write the recovery kit encrypted to this new file (outside any git tree) instead of showing it")
 	fl.StringVar(&f.kitPassFile, "kit-passphrase-file", "", "passphrase file for --kit-out (default: prompt)")
+	fl.StringVar(&f.smtpCreds, "smtp-credentials-file", "", "KEY=VALUE file with SMTP_USERNAME and SMTP_PASSWORD for company.yaml's email.relay (stored in a Kubernetes Secret)")
 }
 
 func (f *stackFlags) backupWanted() bool {
@@ -75,6 +77,7 @@ type stackPrep struct {
 	images      launch.ImageSet
 	backup      *launch.BackupInstall
 	companyYAML []byte
+	smtp        *launch.SMTPRelay
 }
 
 // stackPlanActions lists the phases after the server exists, for --plan.
@@ -87,6 +90,9 @@ func stackPlanActions(f *stackFlags) []provider.Action {
 		{ID: "stack.admin", Description: "create the admin account inside can-core with a generated password and TOTP secret (password on stdin, never in argv)"},
 		{ID: "stack.site", Description: "build the site and publish it to the site pod (ConfigMap site-content, unpacked by an init container)"},
 		{ID: "stack.routes", Description: "route the site, the admin UI and the same-origin /_forms path through Traefik"},
+	}
+	if f.smtpCreds != "" {
+		a = append(a, provider.Action{ID: "stack.email", Description: "store the SMTP relay credentials in Secret can-system/can-smtp-relay"})
 	}
 	if f.backupWanted() {
 		a = append(a, provider.Action{ID: "stack.backup", Description: "install the restic backup timer on the host and prepare the recovery kit"})
@@ -110,6 +116,9 @@ func (t *target) stackPreflight(f *stackFlags) (*stackPrep, error) {
 		return nil, err
 	}
 	p := &stackPrep{images: set, companyYAML: raw}
+	if p.smtp, err = t.smtpRelay(f.smtpCreds); err != nil {
+		return nil, err
+	}
 	if !f.backupWanted() {
 		return p, nil
 	}
@@ -238,7 +247,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	o := launch.Options{
 		Dir: t.dir, Company: t.company, CompanyYAML: prep.companyYAML, Images: prep.images, Routes: routes,
-		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, Backup: prep.backup,
+		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, Backup: prep.backup, SMTP: prep.smtp,
 	}
 	d := launch.Deps{
 		Kube: lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)), Loader: launch.SSHImageLoader{Host: host}, Host: host,

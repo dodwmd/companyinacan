@@ -19,7 +19,7 @@ WORK_TOKEN="${WORK_TOKEN:-$(secret work CAN_WORK_ADMIN_TOKEN)}"
 FORMS_TOKEN="${FORMS_TOKEN:-$(secret forms CAN_FORMS_API_TOKEN)}"
 
 resolve=()
-for h in localhost admin.localhost work.localhost people.localhost jobs.localhost finance.localhost forms.localhost equity.localhost files.localhost; do
+for h in localhost admin.localhost work.localhost people.localhost jobs.localhost finance.localhost forms.localhost equity.localhost files.localhost mail.localhost; do
   resolve+=(--resolve "$h:$port:127.0.0.1")
 done
 curlx() { curl -sS --max-time 15 "${resolve[@]}" "$@"; }
@@ -67,6 +67,15 @@ code="$(curlx -o /dev/null -w '%{http_code}' -X POST "http://localhost:$port/_fo
 case "$code" in 200 | 201 | 303) ok "forms POST /_forms/contact (HTTP $code)" ;; *) die "forms POST: expected 201/303, got $code" ;; esac
 leads="$(curlx -H "Authorization: Bearer $FORMS_TOKEN" "http://forms.localhost:$port/v1/leads?form=contact")" || die "leads API: curl failed"
 case "$leads" in *"$email"*) ok "lead $email visible in the leads API" ;; *) die "lead for $email not found in the leads API" "$leads" ;; esac
+
+# 2b. the lead notification reaches the SMTP sink through email.send (can-core's outbox)
+found=""
+for _ in $(seq 1 30); do
+  case "$(curlx "http://mail.localhost:$port/messages")" in *"$email"*) found=1; break ;; esac
+  sleep 1
+done
+[ -n "$found" ] || die "no notification email for $email in the SMTP sink (see the logs of core and forms)"
+ok "lead notification email delivered to the SMTP sink"
 
 # 3. admin UI
 expect_status "admin login page" 200 "http://admin.localhost:$port/login"

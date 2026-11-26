@@ -108,7 +108,7 @@ func init() {
 		"nt.older":                   "Older notifications",
 		"nt.settings":                "Delivery settings",
 		"nt.email":                   "Email address",
-		"nt.email_hint":              "Leave empty to receive notifications in this inbox only.",
+		"nt.email_hint":              "Leave empty to receive notifications in this inbox only. Mail is only sent to addresses at the company domain (or one the operator allows) and to your verified single sign-on address.",
 		"nt.quiet_start":             "Quiet hours start",
 		"nt.quiet_end":               "Quiet hours end",
 		"nt.quiet_hint":              "Email is held back during quiet hours (urgent notices still arrive). Leave both empty for none.",

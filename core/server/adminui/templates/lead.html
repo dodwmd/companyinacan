@@ -6,7 +6,9 @@
 <dt>{{t "lead.email"}}</dt><dd>{{.Data.Lead.Email}}</dd>
 <dt>{{t "lead.form"}}</dt><dd>{{.Data.Lead.FormID}}</dd>
 <dt>{{t "lead.status"}}</dt><dd><span class="badge neutral">{{.Data.StatusLabel}}</span></dd>
-<dt>{{t "lead.received"}}</dt><dd><time datetime="{{iso .Data.Lead.CreatedAt}}">{{ts .Data.Lead.CreatedAt}}</time></dd>
+{{if eq .Data.Lead.Notification "failed"}}<dt>{{t "lead.mail"}}</dt><dd><span class="badge err">{{t "lead.mail_failed"}}</span></dd>
+{{else if eq .Data.Lead.Notification "retrying"}}<dt>{{t "lead.mail"}}</dt><dd><span class="badge warn">{{t "lead.mail_retrying"}}</span></dd>
+{{end}}<dt>{{t "lead.received"}}</dt><dd><time datetime="{{iso .Data.Lead.CreatedAt}}">{{ts .Data.Lead.CreatedAt}}</time></dd>
 <dt>{{t "lead.updated"}}</dt><dd><time datetime="{{iso .Data.Lead.UpdatedAt}}">{{ts .Data.Lead.UpdatedAt}}</time></dd>
 {{if .Data.Lead.Note}}<dt>{{t "lead.note"}}</dt><dd>{{.Data.Lead.Note}}</dd>{{end}}
 </dl>
