@@ -110,6 +110,24 @@ Say this in the release notes of the first release that has it (what is announce
 - After approval the first sweep announces what is already overdue or due, as one summary per kind when
   there are more than five. Contract renewal reminders raised before the upgrade are not raised again.
 
+## Upgrade note: approvals inbox
+
+Say this in the release notes of the first release that has it (specs/070-approvals-inbox):
+
+- `finance` and `people` **wait for approval** (they need different approvers, and `people` receives a new
+  event). Until approved, the running release keeps deciding timesheets, expenses, purchase orders and
+  time off in the module, and gets no other change. Upgrade can-core first (`can apply` does).
+- After approval these are decided in the admin UI under **Approvals**. Give someone the
+  `finance:approver` role before approving the upgrade, else the owners are asked. `finance.approve` in a
+  token no longer approves them. HR no longer decides time off of someone whose manager has an account
+  (use delegation, escalation or a `timeoff` policy).
+- An `approvals:` policy already in `company.yaml` for `timesheet`, `expense`, `purchase-order` or
+  `timeoff` takes effect now: check it can be staffed. `manager_of_requester` finds nobody for finance
+  requests, so such a step needs a `fallback`.
+- Records already waiting are sent to the inbox by themselves, at most 90 an hour for each module, and the
+  approvers are notified of each. Draft purchase orders need **Request approval**.
+- Integrations calling `/approve` or `/reject` get 409 while the engine has the record.
+
 ## Cutting a release
 
 ```sh

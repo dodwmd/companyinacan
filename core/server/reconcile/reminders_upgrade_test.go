@@ -71,7 +71,7 @@ func TestTheRemindersUpgradeIsHeldAndApprovable(t *testing.T) {
 		}
 		rules = append(rules, rec.Manifest.Notifications...)
 	}
-	if len(rules) != 13 {
+	if len(rules) != 7 { // the approval events lost theirs (specs/070-approvals-inbox)
 		t.Fatalf("%d rules recorded", len(rules))
 	}
 

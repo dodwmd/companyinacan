@@ -2,8 +2,10 @@ package adminui
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -288,5 +290,34 @@ func TestAccessPageAndLeastPrivilege(t *testing.T) {
 	}
 	if r := p.do("POST", "/access/ghost/grant", url.Values{"csrf": {root.csrf}, "role": {"operator"}}, root.with()...); r.StatusCode != 404 {
 		t.Fatalf("unknown user = %d", r.StatusCode)
+	}
+}
+
+// The approval page offers the record in the module that asked (module_path), only to someone who may
+// open that module, and never as a detail or an address of the module's choosing.
+func TestApprovalLinksToTheModuleRecord(t *testing.T) {
+	p := newAppsUI(t)
+	create := func(key, path string) string {
+		r, _, err := p.eng.Create(context.Background(), approvals.CreateRequest{ModuleID: "expenses", Type: "expense", Requester: "user:emp", Title: "Expense 7", Amount: 100,
+			IdempotencyKey: key, DefaultChain: []string{"finance|owner"}, Payload: json.RawMessage(`{"module_path":` + strconv.Quote(path) + `}`)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.ID
+	}
+	root := p.loginAs("root")
+	good := create("l1", "/expenses/7")
+	r := p.do("GET", "/approvals/"+good, nil, root.with()...)
+	if r.StatusCode != 200 || !strings.Contains(r.body, `action="/apps/expenses/launch"`) || !strings.Contains(r.body, `name="return" value="/expenses/7"`) {
+		t.Fatalf("no link: %d %s", r.StatusCode, r.body)
+	}
+	if strings.Contains(r.body, "<dt>module_path</dt>") {
+		t.Fatal("the path is shown as a detail")
+	}
+	for i, bad := range []string{"https://evil.example/", "//evil.example/", "expenses/7"} {
+		id := create("bad"+strconv.Itoa(i), bad)
+		if r := p.do("GET", "/approvals/"+id, nil, root.with()...); r.StatusCode != 200 || strings.Contains(r.body, "/apps/expenses/launch") {
+			t.Fatalf("%q: %d", bad, r.StatusCode)
+		}
 	}
 }

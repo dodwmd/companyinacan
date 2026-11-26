@@ -10,20 +10,16 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/notify"
 )
 
-// The reminders of specs/060-reminders: who each event reaches, as the shipped manifests say it.
+// The reminders of specs/060-reminders: who each event reaches, as the shipped manifests say it. The
+// timesheet, expense and time off events have no rule since specs/070-approvals-inbox: can-core's
+// approval engine tells the approvers and the requester, and a rule would tell them twice.
 var reminderRules = map[string]string{
 	"finance invoice.overdue.v1":     "role:finance",
 	"finance contract.expiring.v1":   "role:finance",
 	"finance contract.signed.v1":     "role:finance",
 	"finance contract.declined.v1":   "role:finance",
-	"finance expense.submitted.v1":   "role:approver",
-	"finance expense.decided.v1":     "field:owner",
-	"finance timesheet.submitted.v1": "role:approver",
-	"finance timesheet.decided.v1":   "field:owner",
 	"jobs application.received.v1":   "field:hiring_manager role:recruiter",
 	"work work.issue.p0.v1":          "field:assignee role:manager",
-	"people timeoff.requested.v1":    "field:approver role:hr",
-	"people timeoff.decided.v1":      "field:requester",
 	"entity entity.filing.due.v1":    "role:secretary",
 }
 

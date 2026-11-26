@@ -17,6 +17,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/notify"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/ticket"
 	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
@@ -244,6 +245,36 @@ type approvalData struct {
 	History                               []decisionRow
 	Details                               []detailKV
 	CanDecide, CanCancel, CanComment, Own bool
+	// Open is the record in the module that asked, when the viewer can sign in there.
+	Open *moduleRecord
+}
+
+type moduleRecord struct{ App, Return, Name string }
+
+// modulePathKey is the payload member naming the page of the record in the requesting module. It is
+// a link, not a detail: payloadDetails leaves it out.
+const modulePathKey = "module_path"
+
+// moduleLink offers the record's page through the Apps launcher: only a local path of the module
+// that asked, and only to someone who may open that module. Anything else gives no link.
+func (s *Server) moduleLink(r *http.Request, sc *sessionCtx, req approvals.Request) *moduleRecord {
+	var p struct {
+		Path string `json:"module_path"`
+	}
+	if s.Tickets == nil || json.Unmarshal(req.Payload, &p) != nil || p.Path == "" || p.Path[0] != '/' || !ticket.ValidReturnPath(p.Path) {
+		return nil
+	}
+	apps, err := s.Tickets.Apps(r.Context(), subjectOf(sc))
+	if err != nil {
+		s.Log.Warn("approvals: cannot list the viewer's apps", "request_id", httpx.RequestID(r.Context()), "error", err)
+		return nil
+	}
+	for _, a := range apps {
+		if a.ID == req.ModuleID {
+			return &moduleRecord{App: a.ID, Return: p.Path, Name: a.Name}
+		}
+	}
+	return nil
 }
 
 func (s *Server) notFoundApproval(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
@@ -288,7 +319,7 @@ func payloadDetails(raw json.RawMessage) []detailKV {
 	sort.Strings(keys)
 	var out []detailKV
 	for _, k := range keys {
-		if !payloadKey.MatchString(k) || len(out) >= 30 {
+		if k == modulePathKey || !payloadKey.MatchString(k) || len(out) >= 30 {
 			continue
 		}
 		var v string
@@ -323,6 +354,7 @@ func (s *Server) approvalPage(w http.ResponseWriter, r *http.Request, sc *sessio
 	if ad.Req.Title == "" {
 		ad.Req.Title = s.msg("ap.untitled")
 	}
+	ad.Open = s.moduleLink(r, sc, d.Request)
 	ad.Req.Payload = nil
 	for _, st := range d.Steps {
 		who := append(append([]string{}, st.Users...), st.Roles...)

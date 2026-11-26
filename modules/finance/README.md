@@ -13,7 +13,8 @@ installer in unit tests; not yet run on a cluster.
   engine:** a person with `finance.write` asks (`POST /v1/invoices/{id}/request-approval`), approvers
   decide in can-core, and `POST /v1/invoices/{id}/approve` then needs an approved request for the
   invoice's current version from someone other than the requester (editing the invoice invalidates it).
-  Timesheets, expenses, purchase orders and voiding still use the `finance.approve` rule.
+  Timesheets, expenses and purchase orders are decided in can-core's approvals inbox
+  (`docs/finance.md#approvals-with-can-core`); voiding and journals use the module's own permissions.
 
 * User documentation: `docs/finance.md` (money and rounding rules, immutability, retention and
   erasure, access model, events).

@@ -43,6 +43,28 @@ POST /v1/approvals            Idempotency-Key: <your key>
   process (the cache is dropped when the database changes), except changes of a module manifest that
   bypass the registry, which are seen within 30 seconds.
 
+## What the shipped modules ask for
+
+| Type | Module | Default chain | Asked when | Decision |
+|---|---|---|---|---|
+| `invoice` | finance | `finance` | "request approval" on a draft | then approved in finance |
+| `timesheet`, `expense` | finance | `approver\|owner` | on submit | applied in finance |
+| `purchase-order` | finance | `approver\|owner` | "request approval" on a draft | applied in finance |
+| `timeoff` | people | `manager\|hr\|owner` | on submit | applied in people |
+| `requisition` | jobs | `admin` | "request approval" | applied in jobs |
+
+A default chain entry `a|b|c` is a step for `a`; `b` and `c` are its fallback, used when nobody but the
+requester could act for `a`. `owner` names the built-in role. The provider of `directory` (and nobody
+else) may send `"manager": "user:<name>"` with a request; it stands for `manager_of_requester` there.
+`review-release`, equity's `grant` and `exercise` and board resolutions are declared but not wired.
+
+A request whose payload has `module_path` (a path of the requesting module's web UI) shows an "Open"
+button to people who may sign in to that module.
+
+**Modules that wait for decisions** use `core/modapproval`: the record is queued in the module's database
+with the submission, sent when can-core answers (at most 90 an hour and 500 a day, below can-core's
+limit), and nothing can approve it meanwhile. See [specs/070-approvals-inbox](../specs/070-approvals-inbox/spec.md).
+
 ## Names modules may not use
 
 Manifests (`can validate` and the registry both enforce it) may not declare permissions starting with
