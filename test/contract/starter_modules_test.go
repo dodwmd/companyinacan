@@ -259,7 +259,7 @@ func TestNewsletterWiring(t *testing.T) {
 		t.Error("newsletter must consume leads")
 	}
 	subs := asList(m["subscribes"])
-	if len(subs) != 1 {
+	if len(subs) != 2 || asMap(subs[1])["event"] != "lead.erased.v1" {
 		t.Fatalf("subscribes = %v", subs)
 	}
 	sub := asMap(subs[0])

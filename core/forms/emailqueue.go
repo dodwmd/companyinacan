@@ -107,7 +107,15 @@ func (d *Dispatcher) deliverEmail(ctx context.Context, l *Lead, f *Form) (unavai
 	case queued && status != "pending":
 		return false, 0
 	}
+	ctx, done, ok := d.hold(ctx, l.ID)
+	defer done()
+	if !ok {
+		return false, 0
+	}
 	n, sendErr := d.sendEmail(ctx, BuildNotification(f, l))
+	if errors.Is(context.Cause(ctx), errErased) {
+		return false, 0 // the lead and its queue row are gone
+	}
 	if sendErr != nil && ctx.Err() != nil {
 		return true, 0 // shutting down: the row stays as it is and is retried
 	}
@@ -207,10 +215,14 @@ func (d *Dispatcher) retryLoop(ctx context.Context) {
 		if err := d.RetryEmails(ctx); err != nil && ctx.Err() == nil {
 			d.log.Error("notification retry", "error", err)
 		}
+		if err := d.AnnounceErasures(ctx); err != nil && ctx.Err() == nil {
+			d.log.Error("announcing erasures", "error", err)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		case <-d.wake:
 		}
 	}
 }

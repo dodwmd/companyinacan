@@ -266,8 +266,9 @@ one not tagged `can` is ignored, a newer `can` snapshot that fails its marker ch
 restic error while checking also stops it. The chosen snapshot is pinned for resumes.
 
 Which modules lose what, today: every shipped in-house module is restored from its own consistent dump, by
-`<binary> restore -replace`; `forms`, `finance`, `work`, `provisioning` and `entity` have no purge by subject and class,
-so tombstones of their classes need `--accept-unerased`. If `files` or `jobs` refuse to restore because files their
+`<binary> restore -replace`; `forms` replays lead erasures over `/v1/purge` ([erasure requests](../modules/forms/README.md#erasure-requests));
+`finance`, `work`, `provisioning` and `entity` have no purge by subject and class, so tombstones of their classes need
+`--accept-unerased`. If `files` or `jobs` refuse to restore because files their
 database names are missing, and those files were destroyed after the backup's dump was taken,
 `--allow-missing-blobs <module>` goes on without them; otherwise it means the volume was not restored.
 

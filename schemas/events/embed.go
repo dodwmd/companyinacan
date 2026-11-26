@@ -227,3 +227,8 @@ var JournalPostedV1 []byte
 //
 //go:embed bank.statement.imported.v1.json
 var BankStatementImportedV1 []byte
+
+// LeadErasedV1 is the JSON Schema of the lead.erased.v1 event.
+//
+//go:embed lead.erased.v1.json
+var LeadErasedV1 []byte

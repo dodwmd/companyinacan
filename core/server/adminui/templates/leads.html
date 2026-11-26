@@ -1,7 +1,8 @@
 {{define "content"}}
 <h1>{{t "lead.title"}}</h1>
 {{if .Data.Unavailable}}<p class="empty">{{t "lead.unavailable"}}</p>
-{{else}}
+{{else}}{{if .Data.CanErase}}<p><a href="/lead-erasure">{{t "le.link"}}</a></p>
+{{end}}
 <form method="get" action="/leads" class="filters">
 <p><label for="f-status">{{t "lead.status"}}</label>
 <select id="f-status" name="status">

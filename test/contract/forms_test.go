@@ -192,3 +192,38 @@ func containsStr(xs []string, s string) bool {
 	}
 	return false
 }
+
+// lead.erased.v1 carries ids and a time, nothing else, and the module ships and publishes it.
+func TestLeadErasedSchema(t *testing.T) {
+	doc, err := jsch.UnmarshalJSON(bytes.NewReader(events.LeadErasedV1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := jsch.NewCompiler()
+	c.DefaultDraft(jsch.Draft2020)
+	c.AssertFormat()
+	if err := c.AddResource("lead.erased.v1.json", doc); err != nil {
+		t.Fatal(err)
+	}
+	s, err := c.Compile("lead.erased.v1.json")
+	if err != nil {
+		t.Fatalf("schema does not compile: %v", err)
+	}
+	valid := `{"id":"evt_0123456789abcdef01234567","type":"lead.erased.v1","time":"2026-11-26T10:00:00Z","source":"forms","data":{"lead_id":"ld_0123456789abcdef01234567","form_id":"contact","erased_at":"2026-11-26T10:00:00Z"}}`
+	if err := validateJSON(t, s, []byte(valid)); err != nil {
+		t.Errorf("valid event rejected: %v", err)
+	}
+	if err := validateJSON(t, s, []byte(strings.Replace(valid, `"form_id"`, `"email":"a@b.example","form_id"`, 1))); err == nil {
+		t.Error("personal data must not fit the schema")
+	}
+	shipped, err := os.ReadFile(filepath.Join(root, "modules", "forms", "events", "lead.erased.v1.json"))
+	if err != nil || !bytes.Equal(shipped, events.LeadErasedV1) {
+		t.Errorf("modules/forms/events/lead.erased.v1.json differs from schemas/events: %v", err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(root, "modules", "forms", "module.yaml"))
+	for _, want := range []string{"event: lead.erased.v1", "leads.erase"} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("modules/forms/module.yaml does not declare %s", want)
+		}
+	}
+}
