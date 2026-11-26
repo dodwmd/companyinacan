@@ -255,11 +255,11 @@ func TestUIOwnDataOnly(t *testing.T) {
 	u := newUIEnv(t)
 	u.base()
 	eveGrant := u.active(u.eveStk.ID, q(4800))
-	other := u.active(u.founder.ID, q(777))
+	other := u.active(u.founder.ID, q(7771)) // grouped, so no random id can contain the figure
 
 	eve := u.login(t, u.eve)
 	has(t, eve.get("/me", 200), "4,800")
-	lacks(t, eve.get("/me", 200), "777")
+	lacks(t, eve.get("/me", 200), "7,771")
 	eve.get("/me/grants/"+eveGrant, 200)
 	for _, p := range []string{"/me/grants/" + other, "/me/grants/" + other + "/statement", "/me/grants/grt_000000000000000000000000", "/me/grants/nonsense"} {
 		eve.get(p, 404)
@@ -272,7 +272,7 @@ func TestUIOwnDataOnly(t *testing.T) {
 		if w := eve.do("GET", p, nil); w.Code != 403 && w.Code != 404 {
 			t.Errorf("employee GET %s = %d", p, w.Code)
 		}
-		lacks(t, eve.do("GET", p, nil).Body.String(), "Fran Founder", "777")
+		lacks(t, eve.do("GET", p, nil).Body.String(), "Fran Founder", "7,771")
 	}
 	// somebody else's exercise request
 	u.advance("2027-02-01")
