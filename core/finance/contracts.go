@@ -690,12 +690,18 @@ type VerifyReport struct {
 func (s *Store) VerifyContract(ctx context.Context, a *Principal, id int64) (*VerifyReport, error) {
 	cancel, rctx := readCtx(ctx)
 	defer cancel()
-	c, err := s.loadContract(rctx, s.rdb, a, id)
+	// One read transaction: a signature committed while this runs must not look like tampering.
+	tx, err := s.rdb.BeginTx(rctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	c, err := s.loadContract(rctx, tx, a, id)
 	if err != nil {
 		return nil, err
 	}
 	rep := &VerifyReport{ContractID: id, OK: true, Problems: []string{}}
-	rows, err := s.rdb.QueryContext(rctx, `SELECT version, body, sha256 FROM contract_versions WHERE contract_id = ? ORDER BY version`, id)
+	rows, err := tx.QueryContext(rctx, `SELECT version, body, sha256 FROM contract_versions WHERE contract_id = ? ORDER BY version`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -715,7 +721,7 @@ func (s *Store) VerifyContract(ctx context.Context, a *Principal, id int64) (*Ve
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	signing, err := s.verifySigning(rctx, s.rdb, c)
+	signing, err := s.verifySigning(rctx, tx, c)
 	if err != nil {
 		return nil, err
 	}

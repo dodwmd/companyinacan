@@ -76,7 +76,7 @@ func (u *UI) signingResend(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	if _, err := u.Store.ResendInvitation(c.ctx(), c.p, id, signer); err != nil {
+	if _, err := u.Store.Resend(c.ctx(), c.p, id, signer); err != nil {
 		return err
 	}
 	return c.redirect("/contracts/"+itoa(id), "flash.invited")

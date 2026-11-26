@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -310,7 +311,6 @@ func TestSigningHappyPathWithCountersign(t *testing.T) {
 	e.must(409, adminTok, "POST", e.path("/versions"), obj{"body": "other"}, nil)
 	e.must(409, adminTok, "POST", e.path("/signing/revoke"), nil, nil)
 	e.must(409, adminTok, "POST", e.path("/signing"), obj{"signers": signers(ann)}, nil)
-	e.must(409, adminTok, "POST", e.path("/signing/signers/"+id(env.Signers[0].ID)+"/resend"), nil, nil)
 	for _, q := range []string{
 		`UPDATE contracts SET title = 'x'`, `UPDATE contracts SET signed_sha256 = 'x'`, `UPDATE contracts SET status = 'draft'`,
 		`UPDATE contract_versions SET body = 'x'`,
@@ -341,6 +341,10 @@ func TestSigningTamperingIsDetected(t *testing.T) {
 		"title":         `UPDATE signing_envelopes SET title = 'Another agreement'`,
 		"text":          `UPDATE contract_versions SET body = 'x', sha256 = '2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881'`,
 		"no envelope":   `DELETE FROM signing_events; DELETE FROM signing_signers; DELETE FROM signing_envelopes`,
+		// The erasure flag must not switch the checks off on a completed request.
+		"scrubbed":            `UPDATE signing_envelopes SET scrubbed = 1`,
+		"scrubbed, rewritten": `UPDATE signing_envelopes SET scrubbed = 1; UPDATE signing_signers SET name = 'Mallory', email = 'm@x.example', typed_name = 'Mallory'`,
+		"scrubbed, blanked":   `UPDATE signing_envelopes SET scrubbed = 1; UPDATE signing_signers SET name = '', email = '', typed_name = '', consent_text = '', ip = ''`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newSignEnv(t)
@@ -687,5 +691,136 @@ func TestUISigning(t *testing.T) {
 	}
 	if w := c.post(page+"/signing/revoke", url.Values{}); w.Code != 409 {
 		t.Fatalf("revoking a completed request: %d", w.Code)
+	}
+}
+
+// A request that was legitimately erased must be blank: data put back under the flag is caught.
+func TestSigningErasedRequestMustStayBlank(t *testing.T) {
+	e := newSignEnv(t)
+	e.send(false, ann)
+	e.must(200, adminTok, "POST", "/v1/parties/"+id(e.ct.PartyID)+"/erase", nil, nil)
+	if v := e.verify(); !v.OK {
+		t.Fatalf("%v", v.Problems)
+	}
+	if _, err := e.app.store.db.Exec(`DROP TRIGGER signing_envelopes_closed; DROP TRIGGER signing_signers_identity; UPDATE signing_signers SET name = 'Mallory'`); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.verify(); v.OK || !strings.Contains(strings.Join(v.Problems, " "), "still holds data") {
+		t.Fatalf("%v", v.Problems)
+	}
+}
+
+// A certificate the mail service refuses is visible to staff, audited, can be sent again, and the
+// signer is not told that one is coming.
+func TestSigningLostCertificate(t *testing.T) {
+	e := newSignEnv(t)
+	env := e.send(false, ann)
+	link := e.link(ann[1])
+	e.mail.err = &modclient.StatusError{Status: http.StatusForbidden}
+	w := e.public("POST", link, e.signForm("Ann"))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "could not be emailed") || strings.Contains(w.Body.String(), "handed to the mail service") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var cur Envelope
+	e.must(200, adminTok, "GET", e.path("/signing"), nil, &cur)
+	if cur.Status != EnvCompleted || cur.Signers[0].CertificateStatus != MailNotAllowed {
+		t.Fatalf("%+v", cur.Signers[0])
+	}
+	var n int
+	if err := e.app.store.db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action = 'contract.signing.certificate_mail' AND detail LIKE '%not_allowed%'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("audit: %d %v", n, err)
+	}
+	e.mail.err = nil
+	resend := e.path("/signing/signers/" + id(env.Signers[0].ID) + "/resend")
+	e.must(200, adminTok, "POST", resend, nil, &cur)
+	all := e.mail.all()
+	last := all[len(all)-1]
+	if cur.Signers[0].CertificateStatus != MailQueued || last.To[0] != ann[1] || !strings.HasPrefix(last.Subject, "Signed: ") || linkRE.MatchString(last.Text) {
+		t.Fatalf("%+v %+v", cur.Signers[0], last)
+	}
+	if v := e.verify(); !v.OK {
+		t.Fatalf("%v", v.Problems)
+	}
+	// Still possible when the public path has been switched off since; bounded; stopped by erasure.
+	e.app.store.sign.baseURL = ""
+	for i := 2; i < maxSends; i++ {
+		e.must(200, adminTok, "POST", resend, nil, nil)
+	}
+	e.must(409, adminTok, "POST", resend, nil, nil)
+	if _, err := e.app.store.db.Exec(`UPDATE signing_signers SET cert_sends = 1`); err != nil {
+		t.Fatal(err)
+	}
+	e.must(200, adminTok, "POST", "/v1/parties/"+id(e.ct.PartyID)+"/erase", nil, nil)
+	e.must(409, adminTok, "POST", resend, nil, nil)
+}
+
+func TestSigningDeceptiveCharacters(t *testing.T) {
+	for _, r := range []rune{0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x061C, 0x2060, 0x2064, 0x202E, 0x2067, 0xFEFF, 0xE0001, 0xE0041, 0xE007F, 0x07} {
+		if !deceptive("a" + string(r) + "b") {
+			t.Errorf("U+%04X accepted", r)
+		}
+	}
+	if deceptive("Zoë O'Brien\n\t张伟 — 100 €") {
+		t.Error("ordinary text refused")
+	}
+	e := newSignEnv(t)
+	for _, name := range []string{"Ann\u2028Payment: none", "Ann\u2029x", "Ann\u200bx", "Ann\U000E0041"} {
+		e.must(422, adminTok, "POST", e.path("/signing"), obj{"signers": signers([3]string{name, "a@b.example", ""})}, nil)
+	}
+	e.send(false, ann)
+	link := e.link(ann[1])
+	for _, name := range []string{"Ann\u2028Signed: Bob", "Ann\u2029", "A\u200fnn", "Ann\u061c"} {
+		if w := e.public("POST", link, e.signForm(name+" x")); w.Code != 422 {
+			t.Errorf("typed name %q: %d", name, w.Code)
+		}
+	}
+}
+
+// Verify reads one snapshot: signatures committing beside it are never reported as tampering.
+func TestSigningVerifyWhileSigning(t *testing.T) {
+	e := newSignEnv(t)
+	var list [][3]string
+	for i := range maxSigners {
+		list = append(list, [3]string{"Signer " + strconv.Itoa(i), "s" + strconv.Itoa(i) + "@customer.example", ""})
+	}
+	e.send(false, list...)
+	links := make([]string, len(list))
+	for i, s := range list {
+		links[i] = e.link(s[1])
+	}
+	stop, bad := make(chan struct{}), make(chan []string, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			rep, err := e.app.store.VerifyContract(context.Background(), &Principal{Permissions: []string{PermAdmin}}, e.ct.ID)
+			if err != nil || !rep.OK {
+				var p []string
+				if rep != nil {
+					p = rep.Problems
+				}
+				bad <- append(p, fmt.Sprint(err))
+				return
+			}
+			select {
+			case <-stop:
+				return
+			default:
+			}
+		}
+	}()
+	for _, l := range links {
+		if w := e.public("POST", l, e.signForm("S")); w.Code != 200 {
+			t.Fatalf("%d", w.Code)
+		}
+	}
+	close(stop)
+	wg.Wait()
+	e.app.store.sign.wg.Wait()
+	select {
+	case p := <-bad:
+		t.Fatalf("verify during signing: %v", p)
+	default:
 	}
 }

@@ -1313,7 +1313,7 @@ paths:
         "429": { description: "Rate limited" }
   /v1/contracts/{id}/signing/signers/{signer}/resend:
     post:
-      summary: "Mail a signer whose turn it is a new link"
+      summary: "Mail a signer whose turn it is a new link, or the certificate once completed"
       operationId: POST_v1_contracts_id_signing_signers_signer_resend
       x-scope: finance.write
       parameters:

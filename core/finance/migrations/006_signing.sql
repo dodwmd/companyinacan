@@ -33,6 +33,8 @@ CREATE TABLE signing_signers (
     expires_at     INTEGER,
     sends          INTEGER NOT NULL DEFAULT 0,
     mail_status    TEXT    NOT NULL DEFAULT '',       -- '', pending, queued, not_allowed, failed
+    cert_status    TEXT    NOT NULL DEFAULT '',       -- the same, for the completion certificate
+    cert_sends     INTEGER NOT NULL DEFAULT 0,
     typed_name     TEXT    NOT NULL DEFAULT '',
     consent_text   TEXT    NOT NULL DEFAULT '',
     ip             TEXT    NOT NULL DEFAULT '',       -- per the IP policy (full, truncated or empty)

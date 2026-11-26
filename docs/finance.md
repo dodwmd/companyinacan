@@ -172,7 +172,8 @@ Then, on a draft contract's page (or `POST /v1/contracts/{id}/signing` with
 * **send a new link** replaces a lost or expired one; **withdraw** kills them all and returns the
   contract to draft, as does a new version of the text or a refusal by any signer;
 * when all have signed, the contract is signed or active, `contract.signed.v1` is published, each
-  signer is mailed a certificate, and you can read the full one (with addresses, shortened client
+  signer is mailed a certificate (the contract page shows whether each was accepted by the mail
+  service and can send it again), and you can read the full one (with addresses, shortened client
   addresses and the evidence chain). Nothing about the signed text can change afterwards;
 * `GET /v1/contracts/{id}/verify` checks the records against their hash chain. Keep the certificates:
   they are the copy of the chain's end held outside the database.

@@ -239,7 +239,7 @@ var uiMessagesEN = map[string]string{
 	"signing.title": "Signature by link", "signing.status": "Request", "signing.caption": "Signers", "signing.signer": "Signer", "signing.role": "Role",
 	"signing.state": "Status", "signing.mail": "Invitation email", "signing.expires": "Link expires", "signing.expired": "(expired)",
 	"signing.signed_as": "Signed as", "signing.reason": "Reason given", "signing.resend": "Send a new link", "signing.revoke": "Withdraw the request",
-	"signing.certificate": "Completion certificate", "signing.hash": "Document sent (SHA-256)",
+	"signing.certificate": "Completion certificate", "signing.cert_mail": "Certificate email", "signing.cert_resend": "Email the certificate again", "signing.hash": "Document sent (SHA-256)",
 	"env.pending": "Waiting for signatures", "env.completed": "Completed", "env.declined": "Declined", "env.revoked": "Withdrawn",
 	"role.counterparty": "Other side", "role.company": "Company",
 	"signer.waiting": "Not invited yet", "signer.invited": "Invited", "signer.signed": "Signed", "signer.declined": "Declined",

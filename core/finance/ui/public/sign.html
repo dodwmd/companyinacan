@@ -52,8 +52,9 @@
 <dt>SHA-256 of the text</dt><dd><code>{{.Receipt.View.SHA256}}</code></dd>
 <dt>Evidence reference</dt><dd><code>{{.Receipt.ChainHead}}</code></dd>
 </dl>
-{{if .Receipt.Completed}}<p>Everyone has signed. A certificate is being emailed to each signer.</p>
-{{else}}<p>Others still have to sign. You will be emailed a certificate when everyone has.</p>{{end}}
+{{if not .Receipt.Completed}}<p>Others still have to sign. A certificate is emailed to each signer when everyone has; if none arrives, ask the sender.</p>
+{{else if .Receipt.Certificate}}<p>Everyone has signed. Your certificate has been handed to the mail service; if it does not arrive, ask the sender.</p>
+{{else}}<p><strong>Everyone has signed, but your certificate could not be emailed.</strong> Save this page and ask the sender for a copy.</p>{{end}}
 <p><strong>Save or print this page now.</strong> It cannot be opened again.</p>
 <div class="prose box">{{.Receipt.View.Body}}</div>
 {{else if eq .Kind "declined"}}

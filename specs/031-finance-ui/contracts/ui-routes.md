@@ -82,7 +82,7 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `POST /contracts/{id}/dates` | yes | write | `UpdateContractDates` | Start, end, renewal, reminder |
 | `POST /contracts/{id}/signing` | yes | write | `SendForSigning` | Send for signature by emailed link (specs/049-contract-esign) |
 | `POST /contracts/{id}/signing/revoke` | yes | write | `RevokeSigning` | Withdraw the open signing request |
-| `POST /contracts/{id}/signing/signers/{signer}/resend` | yes | write | `ResendInvitation` | Mail a signer a new link |
+| `POST /contracts/{id}/signing/signers/{signer}/resend` | yes | write | `Resend` | Mail a signer a new link, or the certificate once completed |
 | `GET /contracts/{id}/signing/certificate` | yes | read | `Certificate` | Completion certificate (plain text, audited) |
 | `GET /timesheets` | yes | read+own | `ListTimesheets` | My timesheets (an own-only token sees only its own) |
 | `POST /timesheets` | yes | write+own | `CreateTimesheet` | Open a week (a Monday) |

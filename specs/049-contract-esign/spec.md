@@ -62,8 +62,10 @@ This is a **simple electronic signature**. It is not an advanced or qualified el
 ## Functional requirements
 
 - **FR-001** Only a draft contract can be sent. Sending freezes the current version: its SHA-256 and
-  title are stored with the request. Text with control or bidirectional override characters is
-  refused.
+  title are stored with the request. Text and titles with control, bidirectional, zero-width,
+  other invisible format or tag characters are refused, and so are such characters or line
+  separators in signer names and typed names. (This also refuses a byte-order mark and the zero-width
+  joiners some scripts and emoji use: retype or remove them.)
 - **FR-002** Links are 256 random bits, stored only as SHA-256, expire (default 7 days, 1 to 30) and
   work once. No staff page, API response, log, audit entry or event ever contains a link.
 - **FR-003** Mail goes through can-core's `email.send`, one recipient per message, only to the
@@ -82,7 +84,9 @@ This is a **simple electronic signature**. It is not an advanced or qualified el
   only. Events carry no personal data.
 - **FR-010** Each request has a hash chain over `sent`, `invited`, `signed`, `declined`, `revoked`
   and `completed`, with digests (not copies) of the personal data. `GET /v1/contracts/{id}/verify`
-  checks the chain, the records against it, and the text against the hash.
+  checks the chain, the records against it, and the text against the hash, in one read transaction.
+  The "erased" mark is accepted only on a declined or revoked request whose personal fields are all
+  empty; it never switches a check off elsewhere.
 - **FR-011** IP policy: `signing_record_ip` is `truncated` (default, /24 or /48), `full` or `none`.
   The user agent is not recorded.
 - **FR-012** The public path is off unless `modules.finance.expose.signing: true`. can-core then
@@ -90,6 +94,10 @@ This is a **simple electronic signature**. It is not an advanced or qualified el
   headers and the anonymous edge limit, and gives the module `sign_base_url`. Without that
   setting finance refuses to send and answers 404 to every link.
 - **FR-013** Reading a signing request or a certificate is audited.
+- **FR-014** The outcome of mailing each signer's certificate is stored, audited and shown to staff,
+  who can send it again (at most 10 times, never after the party is erased). The last signer's own
+  certificate is handed to the mail service before the page answers, so the page does not announce
+  one that was refused. There is no automatic retry beyond can-core's own delivery retries.
 
 ## Interfaces
 
@@ -122,7 +130,7 @@ default. Without either, the invitation is shown to staff as refused and nobody 
 | T5 | Staff sign for the other side | Staff never see links; certificate and audit name the sender and the address used | The sender chooses the address (see legal limits). No second person is required to send |
 | T6 | Mail scanner or prefetch signs or consumes the link | Only a POST with consent and a typed name changes anything | A scanner that submits forms |
 | T7 | Cross-site request forgery | The token in the path is itself needed; `Sec-Fetch-Site` is checked; no cookies exist | None practical |
-| T8 | The signer is shown something other than what is recorded | The page renders the stored version after re-checking its hash; the download is the exact bytes; escaped output; strict CSP, no script; control and bidirectional override characters refused | Look-alike characters and invisible characters in the text are not detected |
+| T8 | The signer is shown something other than what is recorded | The page renders the stored version after re-checking its hash; the download is the exact bytes; escaped output; strict CSP, no script; control, bidirectional, zero-width and tag characters refused | Look-alike characters, unusual spaces and other characters not on the list are not detected |
 | T9 | Records altered by someone with the database | Triggers; hash chain; `verify`; the chain head is in the certificate mailed to every signer and the signed hash in the `contract.signed.v1` event held by can-core | Someone who can write the database can drop the triggers and rebuild a consistent chain. Only copies **outside** the database (signers' mail, can-core's events, backups) then show it, and comparing them is manual. The chain is not signed with a key |
 | T10 | Replay or double submission | The signature, status change and token removal are one transaction on one writer; the second request gets the 404 page | A double click may show the 404 page after a successful signature; the page says so |
 | T11 | A compromised finance module sends mail | One recipient per message, can-core's headers, plain text, per-module quota, off switch | With `external_recipients` it can send any text to any address, 60 an hour and 500 a day by default |
@@ -139,6 +147,8 @@ default. Without either, the invitation is shown to staff as refused and nobody 
   download it before answering, and shows it once more after signing.
 - Staff are not notified of a signature or a refusal; they look at the contract (or consume
   `contract.signed.v1`).
+- A certificate can be accepted by the mail service and still never arrive; that shows only in
+  can-core's delivery list.
 - An invitation interrupted by a crash stays "not confirmed" until someone sends a new link. Expired
   requests are not closed automatically.
 - Installed under can-core, `company.yaml` settings do not yet reach finance's configuration, so the

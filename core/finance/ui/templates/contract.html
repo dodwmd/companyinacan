@@ -72,7 +72,11 @@
 <td>{{.Name}}<br>{{.Email}}{{with .TypedName}}<br>{{t "signing.signed_as"}}: {{.}}{{end}}{{with .DeclineReason}}<br>{{t "signing.reason"}}: {{.}}{{end}}</td>
 <td>{{st "role" .Role}}</td>
 <td>{{st "signer" .Status}}{{if .SignedAt}} {{whenp .SignedAt}}{{end}}{{if .DeclinedAt}} {{whenp .DeclinedAt}}{{end}}</td>
-<td>{{if .MailStatus}}{{st "mailst" .MailStatus}}{{end}}</td>
+<td>{{if .MailStatus}}{{st "mailst" .MailStatus}}{{end}}{{if .CertificateStatus}}<br>{{t "signing.cert_mail"}}: {{st "mailst" .CertificateStatus}}
+{{if $.Data.Write}}<form method="post" action="/contracts/{{$.Data.C.ID}}/signing/signers/{{.ID}}/resend" class="inline">
+{{template "csrf" $}}
+<button type="submit">{{t "signing.cert_resend"}}</button>
+</form>{{end}}{{end}}</td>
 <td>{{if and (eq $env.Status "pending") (eq .Status "invited")}}{{whenp .ExpiresAt}} {{if .Expired}}{{t "signing.expired"}}{{end}}
 {{if and $.Data.Write $.Data.CanLink}}<form method="post" action="/contracts/{{$.Data.C.ID}}/signing/signers/{{.ID}}/resend" class="inline">
 {{template "csrf" $}}

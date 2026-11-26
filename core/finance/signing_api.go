@@ -55,7 +55,7 @@ func (a *api) resendSigning(w http.ResponseWriter, r *http.Request, p *Principal
 	if !ok {
 		return
 	}
-	e, err := a.store.ResendInvitation(r.Context(), p, id, signer)
+	e, err := a.store.Resend(r.Context(), p, id, signer)
 	a.respondEnvelope(w, http.StatusOK, e, err)
 }
 
