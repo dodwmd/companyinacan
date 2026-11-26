@@ -236,7 +236,7 @@ footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
   header nav a { min-height: 2.75rem; }
 }
 
-input[type="email"], input[type="time"] {
+input[type="email"], input[type="time"], input[type="date"], textarea {
   width: 100%; max-width: 28rem; min-height: 2.75rem; padding: 0.5rem 0.625rem; font: inherit;
   color: var(--text); background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius);
 }
@@ -260,3 +260,10 @@ input[type="email"], input[type="time"] {
   table.rows td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 600; }
   table.rows td form button { width: 100%; }
 }
+
+/* Phones (specs/054-browser-e2e). A screen-reader-only text inside a scrolling table is positioned
+   against the scroller, not the page, or it widens the page; a fieldset must be allowed to shrink. */
+.table-wrap { position: relative; }
+fieldset { min-width: 0; }
+/* A new token is one long word. */
+p > code { overflow-wrap: anywhere; }

@@ -112,7 +112,9 @@ variant are one person.
   former holder is not recognised on it. Like the rest, this needs a caller with a `person_id`.
 - Facts that change what has vested (milestones, acceleration triggers, termination) need a second
   actor: not the person who created, edited, submitted or approved the grant. They are refused if dated
-  before the grant's approval date, in the future, or more than 90 days back.
+  before the grant's approval date, in the future, or more than 90 days back. In directory mode a company of
+  two founders, where one drafted and the other approved, therefore needs break-glass for these, employee
+  grants included.
 - A grant cannot leave draft, an exercise cannot be approved, paid or issued, and no manual ledger entry is
   accepted, for a holder that is not **established**: confirmed as a directory person or attested as external
   by a second actor. A grant is approved by someone who is neither its holder nor a creator, editor or
@@ -141,14 +143,20 @@ Specification and threat model: [`specs/051-holder-identity`](../specs/051-holde
 - **After upgrading, every existing record is unestablished**, earlier attestations included (the audit log
   keeps them). No record is lost and reads are unchanged, but
   grants leaving draft, exercises and ledger entries wait until each holder is confirmed or attested.
-- **Break-glass** for a single-administrator company or recovery:
+- **Break-glass** for a single-administrator company in directory mode, or recovery:
   `CAN_EQUITY_BREAK_GLASS_UNTIL` (a date or time ending within 7 days from now) on the process, restart, use
   the service account token, remove it. Each use is audited as `break_glass:<action>`.
 - **can-core does not wire directory mode yet** (no NetworkPolicy from equity to people, no generated
   directory token): configure it by hand where equity can reach people, or run in attestation mode.
 
-A grant to a founder in a company of two, and some single-administrator tasks, need break-glass: see the
+In directory mode, a grant to a founder in a company of two, ending or changing the vesting of an employee's
+grant there, and single-administrator tasks need break-glass: see the
 [table in the spec](../specs/051-holder-identity/spec.md#who-can-do-what-in-a-company-of-one-or-two).
+
+**In attestation mode (the default, and what `can` installs) one person is enough.** An administrator with the
+board role and the service account token can give themself a grant without break-glass: the service account
+creates the record and drafts the grant, the administrator attests and approves. The audit log shows it;
+nothing refuses it.
 
 ## Grant lifecycle and immutability
 
@@ -260,7 +268,7 @@ Sensitive columns are sealed with XChaCha20-Poly1305: stakeholder name, email an
 exercise payment references; convertible terms; valuation price and notes. The additional data binds
 each ciphertext to its row and field (for example `stk_...:name`), so a value copied to another row or
 field fails to open. The keyring is a mounted file of lines `<key-id> <64 hex chars>`, newest first,
-mode 0400 or 0600, a regular file (not a symlink), owned by the service user or root; the service
+mode 0400, 0440 or 0600, a regular file (not a symlink), owned by the service user or root; the service
 refuses to start otherwise and the Secret must be mounted with `subPath`.
 
 Rotation: add a new key at the top of the keyring, restart, run `can-equity rotate-keys`. Every value is
@@ -300,7 +308,7 @@ cancelled. The response lists what was retained and why. Erasure is refused to t
 separation of duties), while a legal hold is set
 (admin sets and lifts holds) and while the stakeholder has pending, approved or active grants (cancel or
 end them first). It writes tombstones (`stk_` subject, classes `equity-stakeholder` and `equity-grants`)
-that can-core pulls into the E08 erasure ledger so a restore re-applies the erasure, then checkpoints and
+that can-core collects into the backup erasure ledger (within minutes; [backup-restore.md](backup-restore.md#erasure-tombstone-ledger)) so a restore re-applies the erasure, then checkpoints and
 truncates the WAL and runs VACUUM (secure delete is on). Earlier backups keep the data until they expire.
 `can-equity purge -subject stk_... -class all` is the replay hook; it is idempotent and refuses the legal
 classes.
@@ -370,7 +378,8 @@ The table stores resource ids only, so a replay re-reads the record under the ca
 
 ## Residual separation-of-duties limits
 
-- **Two people are enough.** Collusion, or a confirmer who does not read what they confirm, passes every check.
+- **Two people are enough** in directory mode (one in attestation mode, with the service account token and the
+  board role). Collusion, or a confirmer who does not read what they confirm, passes every check.
 - **One confirmation covers all later ledger entries** to that record.
 - **The directory is trusted.** Whoever can edit it (or holds the people service token, or equity's own
   directory token) can invent persons and link accounts; with the power to create accounts that is two actors.
@@ -405,8 +414,8 @@ The table stores resource ids only, so a replay re-reads the record under the ca
 - Strikes are integer minor units: sub-minor-unit strikes (for example USD 0.0001) cannot be represented.
 - No per-subject crypto-shredding: erasure pseudonymises and clears; backups keep older data until they expire.
 - Partial can-core wiring: personal access tokens are introspected when the `CAN_API_URL` variables are set
-  (so far only exercised in the compose development stack); the keyring Secret and the approval engine
-  adapter are not injected or implemented, events do not go through can-core, the Helm templates do not exist yet (values only).
+  (so far only exercised in the compose development stack); can-core generates the keyring and installs the
+  chart, but the approval engine adapter is not implemented and events do not go through can-core.
 - The vesting event only announces increases seen by a sweep and carries no amounts.
 - Fully diluted figures count approved grants from their approval date; convertibles are shown by the
   what-if model only, not in the cap table; the model is illustrative.

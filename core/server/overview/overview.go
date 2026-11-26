@@ -37,14 +37,20 @@ const (
 	maxCount       = int64(1e12)
 	maxMinor       = int64(1) << 53
 	maxCached      = 512
-	maxInFlight    = 8
+	// maxPerModule bounds the calls in flight to one module. The limit is per module, so one that
+	// hangs holds only its own calls up.
+	maxPerModule = 4
 )
+
+// errBusy is a call that never got one of its module's slots, or got one too late to be answered:
+// it says nothing about the module and is not cached.
+var errBusy = errors.New("too many calls to the module are in flight")
 
 var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // Grants is the part of the ticket service the overview uses (summary grants).
 type Grants interface {
-	Standing(ctx context.Context, module, subject string) ([]string, bool)
+	Standing(ctx context.Context, module, subject string) ([]string, bool, error)
 	MintSummary(ctx context.Context, subject, module string) (string, error)
 	DropSummary(token string)
 }
@@ -91,7 +97,15 @@ type Service struct {
 	mu     sync.Mutex
 	cache  map[string]entry
 	client *http.Client
-	slots  chan struct{}
+	slots  map[string]chan struct{} // by module
+	calls  map[string]*call         // in flight, by cache key
+}
+
+// call is one fetch that every concurrent page load for the same person, module and permissions
+// waits for.
+type call struct {
+	done chan struct{}
+	m    Module
 }
 
 type entry struct {
@@ -113,7 +127,7 @@ func (s *Service) timeout() time.Duration {
 	return DefaultTimeout
 }
 
-func (s *Service) setup() (*http.Client, chan struct{}) {
+func (s *Service) setup() *http.Client {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.client == nil {
@@ -126,15 +140,17 @@ func (s *Service) setup() (*http.Client, chan struct{}) {
 		c := *s.client
 		c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		s.client = &c
-		s.slots = make(chan struct{}, maxInFlight)
+		s.slots = map[string]chan struct{}{}
+		s.calls = map[string]*call{}
 		s.cache = map[string]entry{}
 	}
-	return s.client, s.slots
+	return s.client
 }
 
 // Collect returns the figures of every module that offers a summary and in which subject holds a
-// permission, in the order of Figures. A module that cannot answer is listed as unavailable; a
-// module with nothing to show this person is not listed.
+// permission, in the order of Figures. A module that cannot answer is listed as unavailable, and so
+// is one whose record or the person's rights in it cannot be read; a module with nothing to show
+// this person is not listed.
 func (s *Service) Collect(ctx context.Context, subject string) ([]Module, error) {
 	res, err := s.Registry.Resolve(ctx, modclient.SummaryCapability)
 	if errors.Is(err, registry.ErrNoProvider) {
@@ -143,39 +159,43 @@ func (s *Service) Collect(ctx context.Context, subject string) ([]Module, error)
 	if err != nil {
 		return nil, fmt.Errorf("resolving summary providers: %w", err)
 	}
-	client, slots := s.setup()
+	client := s.setup()
 	out := make([]Module, len(res.Providers))
 	var wg sync.WaitGroup
 	for i, p := range res.Providers {
 		m, err := s.DB.GetModule(ctx, p.ModuleID)
-		if err != nil || m.State != store.StateEnabled {
+		if errors.Is(err, store.ErrNotFound) || (err == nil && m.State != store.StateEnabled) {
 			continue
-		}
-		perms, ok := s.Grants.Standing(ctx, m.ID, subject)
-		if !ok {
-			continue // no right in this module: it is not asked and not mentioned
 		}
 		name := m.Manifest.Name
 		if name == "" {
-			name = m.ID
+			name = p.ModuleID
+		}
+		var perms []string
+		ok := false
+		if err == nil {
+			perms, ok, err = s.Grants.Standing(ctx, p.ModuleID, subject)
+		}
+		if err != nil {
+			// Whether this person has a right in the module cannot be told: nothing is asked, and
+			// the page says the area is missing rather than leaving it out.
+			s.warn(p.ModuleID, err)
+			out[i] = Module{ID: p.ModuleID, Name: name, Unavailable: true, At: s.now()}
+			continue
+		}
+		if !ok {
+			continue // no right in this module: it is not asked and not mentioned
 		}
 		// The permissions are part of the key, so a role removed or added takes effect at once
 		// rather than when the cached figures expire.
 		slices.Sort(perms)
-		key := m.ID + "\x00" + subject + "\x00" + strings.Join(perms, ",")
-		now := s.now()
-		s.mu.Lock()
-		e, hit := s.cache[key]
-		s.mu.Unlock()
-		if hit && now.Before(e.expires) {
-			out[i] = e.m
-			continue
-		}
+		key := p.ModuleID + "\x00" + subject + "\x00" + strings.Join(perms, ",")
+		url := strings.TrimRight(p.URL, "/") + modclient.SummaryPath
 		wg.Add(1)
-		go func(i int, id, name, url string) {
+		go func(i int, id, name string) {
 			defer wg.Done()
-			out[i] = s.fetch(ctx, client, slots, subject, id, name, url, key)
-		}(i, m.ID, name, strings.TrimRight(p.URL, "/")+modclient.SummaryPath)
+			out[i] = s.shared(ctx, client, subject, id, name, url, key)
+		}(i, p.ModuleID, name)
 	}
 	wg.Wait()
 	var list []Module
@@ -201,29 +221,63 @@ func (s *Service) Collect(ctx context.Context, subject string) ([]Module, error)
 	return list, nil
 }
 
-func (s *Service) fetch(ctx context.Context, client *http.Client, slots chan struct{}, subject, id, name, url, key string) Module {
+func (s *Service) warn(module string, err error) {
+	if s.Log != nil {
+		s.Log.Warn("overview: no summary", "module", module, "error", err)
+	}
+}
+
+// shared answers from the cache, or joins the call in flight for the key, or starts one. The call
+// does not end with the page load that started it (others may be waiting for it), only with its own
+// time limit.
+func (s *Service) shared(ctx context.Context, client *http.Client, subject, id, name, url, key string) Module {
+	s.mu.Lock()
+	if e, ok := s.cache[key]; ok && s.now().Before(e.expires) {
+		s.mu.Unlock()
+		return e.m
+	}
+	c, running := s.calls[key]
+	if !running {
+		c = &call{done: make(chan struct{})}
+		s.calls[key] = c
+		slot := s.slots[id]
+		if slot == nil {
+			slot = make(chan struct{}, maxPerModule)
+			s.slots[id] = slot
+		}
+		go s.fetch(context.WithoutCancel(ctx), client, slot, c, subject, id, name, url, key)
+	}
+	s.mu.Unlock()
+	select {
+	case <-c.done:
+		return c.m
+	case <-ctx.Done(): // the browser gave up
+		return Module{ID: id, Name: name, Unavailable: true, At: s.now()}
+	}
+}
+
+func (s *Service) fetch(ctx context.Context, client *http.Client, slot chan struct{}, c *call, subject, id, name, url, key string) {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout())
 	defer cancel()
 	m := Module{ID: id, Name: name}
-	values, err := s.ask(ctx, client, slots, subject, id, url)
-	m.At = s.now()
+	values, err := s.ask(ctx, client, slot, subject, id, url)
+	m.At, m.Values = s.now(), values
 	ttl := s.TTL
 	if ttl <= 0 {
 		ttl = DefaultTTL
 	}
 	if err != nil {
 		m.Unavailable, ttl = true, min(ttl, failureTTL)
-		if s.Log != nil {
-			s.Log.Warn("overview: no summary", "module", id, "error", err)
-		}
-	}
-	m.Values = values
-	// A request the browser abandoned says nothing about the module.
-	if errors.Is(err, context.Canceled) {
-		return m
+		s.warn(id, err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	c.m = m
+	delete(s.calls, key)
+	close(c.done)
+	if errors.Is(err, errBusy) {
+		return
+	}
 	if len(s.cache) >= maxCached {
 		for k, e := range s.cache {
 			if !m.At.Before(e.expires) {
@@ -235,16 +289,29 @@ func (s *Service) fetch(ctx context.Context, client *http.Client, slots chan str
 		}
 	}
 	s.cache[key] = entry{m: m, expires: m.At.Add(ttl)}
-	return m
 }
 
-func (s *Service) ask(ctx context.Context, client *http.Client, slots chan struct{}, subject, id, url string) ([]Value, error) {
+func (s *Service) ask(ctx context.Context, client *http.Client, slot chan struct{}, subject, id, url string) (values []Value, err error) {
 	select {
-	case slots <- struct{}{}:
-		defer func() { <-slots }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case slot <- struct{}{}:
+	default:
+		select {
+		case slot <- struct{}{}:
+		case <-ctx.Done():
+			return nil, errBusy
+		}
+		if ctx.Err() != nil { // the slot came too late to be of use
+			<-slot
+			return nil, errBusy
+		}
+		// Having queued, running out of time is the queue's doing, not proof the module is down.
+		defer func() {
+			if err != nil && ctx.Err() != nil {
+				err = fmt.Errorf("%w: %w", errBusy, err)
+			}
+		}()
 	}
+	defer func() { <-slot }()
 	tok, err := s.Grants.MintSummary(ctx, subject, id)
 	if err != nil {
 		return nil, err

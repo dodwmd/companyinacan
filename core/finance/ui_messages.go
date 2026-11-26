@@ -65,11 +65,13 @@ var uiMessagesEN = map[string]string{
 	"flash.approved":  "Approved.",
 	"flash.rejected":  "Rejected.",
 	"flash.withdrawn": "The signing request was withdrawn: its links no longer work.", "flash.invited": "Request saved. Check the invitation status below.", "flash.sent": "Marked as sent.",
-	"flash.paid":      "Payment recorded.",
-	"flash.voided":    "The invoice was voided. Its number stays used.",
-	"flash.revoked":   "Every public link of this invoice was revoked.",
-	"flash.requested": "Approval requested.",
-	"flash.submitted": "Submitted for approval.",
+	"flash.link_resent": "A new link was made; the earlier one no longer works. Check the invitation status below.",
+	"flash.cert_resent": "The certificate was handed on again. Check the certificate email status below.",
+	"flash.paid":        "Payment recorded.",
+	"flash.voided":      "The invoice was voided. Its number stays used.",
+	"flash.revoked":     "Every public link of this invoice was revoked.",
+	"flash.requested":   "Approval requested.",
+	"flash.submitted":   "Submitted for approval.",
 
 	"err.request_id":        "Request id:",
 	"err.home":              "Back to home",
@@ -303,7 +305,7 @@ func (u *UI) msgOr(key, fallback string) string {
 
 // flashKeys are the only flash messages the "ok" query parameter can select, so a crafted link
 // cannot put text of its choosing on the page.
-var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn"}
+var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn", "flash.link_resent", "flash.cert_resent"}
 
 func flashMsg(u *UI, key string) string {
 	for _, k := range flashKeys {

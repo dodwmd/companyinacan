@@ -343,11 +343,21 @@ func deref(p *string) string {
 
 // PurgeExpired deletes leads whose retention has passed and returns how many.
 func (s *Store) PurgeExpired(ctx context.Context, now time.Time) (int64, error) {
+	// Retention needs no tombstone: a restored lead keeps its retention_until and is purged again.
 	res, err := s.db.ExecContext(ctx, `DELETE FROM leads WHERE retention_until <= ?`, now.Unix())
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return n, err
+	}
+	// Also when nothing expired: an earlier run may have stopped before it got here. A blocked
+	// checkpoint then is not worth a report.
+	if err := s.checkpoint(ctx); err != nil && n > 0 {
+		return n, err
+	}
+	return n, nil
 }
 
 // RecordDelivery stores the outcome of a notification channel for a lead.

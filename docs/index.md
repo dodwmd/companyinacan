@@ -25,6 +25,7 @@ and the code is the truth.
 | [node-isolation.md](node-isolation.md) | Keeping pods away from the server: the host firewall rules, checking them, what is unverified |
 | [make-up.md](make-up.md), [providers.md](providers.md) | `make up` on a server; the ssh, Hetzner and DigitalOcean providers; Cloudflare DNS |
 | [backup-restore.md](backup-restore.md) | Backups, the recovery kit, `can restore` |
+| [real-server-verification.md](real-server-verification.md) | `can verify --server`, and the ordered runbook for what has never run on a real server |
 | [observability.md](observability.md) | Metrics, `/readyz`, request ids, log redaction, alert rules, `can diagnose` support bundles, measured cost |
 | [releasing.md](releasing.md), [maintainers.md](maintainers.md) | Cutting a release, required checks, branch protection, advisories |
 | [module-routing.md](module-routing.md) | Which module pages are reachable from the internet and how to switch them on |
@@ -54,7 +55,7 @@ and the code is the truth.
 | [accounting.md](accounting.md) | Chart of accounts, journal, bank statement import and matching, accounting and payroll adapters (a tool, not accounting advice) |
 | [files.md](files.md) | Document and file storage: spaces, versions, share links, scan hook, retention, erasure |
 | [equity.md](equity.md) | Cap table and option grants (a tool, not legal or tax advice) |
-| [board.md](board.md) | Board meetings, quorum, resolutions, minutes (a tool, not legal advice; experimental, not in the compose stack, no Helm templates) |
+| [board.md](board.md) | Board meetings, quorum, resolutions, minutes (a tool, not legal advice; experimental, not in the compose stack) |
 | [entity.md](entity.md) | Legal entities, statutory registers, filings calendar (a tool, not legal advice; experimental, not in the compose stack) |
 | [../modules/README.md](../modules/README.md) | One directory per module, licences and network copyleft |
 

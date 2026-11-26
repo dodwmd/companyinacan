@@ -1,48 +1,68 @@
-# Values for the entity module chart. `entity` is served by the same binary as `board` (cmd/can-board): when both modules are
-# enabled they are ONE release with one pod, one database and one keyring, so the values below must equal the board module's
-# (modules/board/chart/values.yaml). Enabling `entity` alone runs the same binary; the board routes then have no operator and
-# nobody holds the board roles. can-core does not yet merge two manifests into one release (gap, docs/entity.md).
-sharedRelease: board
+# Values for the entity module chart (in-house can-board, SQLite). Rendered by can-core's installer.
+# Secrets are not values: can-core puts the tokens named below and the sealed-field `keyring` (all
+# generated once) and the can-core API settings into the can-module Secret, which every container
+# receives as environment. No public listener and no ingress.
 image:
   repository: ghcr.io/dodwmd/can-board
+  tag: 0.1.0
+  # Set to a sha256 digest at release time; empty = the tag.
   digest: ""
-service:
-  api: { name: board-api, port: 8082 }
+  pullPolicy: IfNotPresent
+ports:
+  - { name: api, port: 8082 }
+services:                  # ClusterIP only; the `entity` capability
+  - { name: board-api, portName: api, port: 8082 }
+ingress:                   # never routed
+  enabled: false
+  host: ""
+  tls: true
+  certResolver: letsencrypt
+  service: board-api
+  port: 8082
+  pathPrefixes: []
+  paths: []
 persistence:
+  enabled: true
   size: 200Mi
+  storageClass: ""
   mountPath: /data
+configMountPath: /etc/can-board-config
+# Written verbatim to entity.yaml; only keys the can-board config accepts. webhook.url stays unset: this
+# service has no can-core client yet, so its events stay in its outbox.
+config:
+  keyring_file: /etc/can-board/keys/keyring
+  retention: {}            # see modules/entity/settings.schema.json (the legal record stays `legal`)
+keyring:
+  enabled: true            # can-core generates it once into the can-module Secret (key `keyring`)
+  mountPath: /etc/can-board/keys/keyring
+  # 0440 with fsGroup: kubelet makes the file root:65532 group-readable.
+  mode: 288
+secrets:
+  # Names only; the values are created by can-core and never appear in values or git.
+  env:
+    - CAN_BOARD_API_TOKEN          # integration role only (request a resolution, read its outcome)
+    - CAN_BOARD_ADMIN_TOKEN        # admin role: erasure, legal hold, tombstones (can-core reads the erasure feed with it)
+  keyring:
+    secretName: can-module
+    key: keyring
+    mountPath: /etc/can-board/keys
+    subPath: keyring       # a single key mounted with subPath: the loader refuses symlinks
 resources:
   requests: { memory: 20Mi, cpu: 5m }
   limits: { memory: 64Mi }
-config:
-  keyring_file: /etc/can-board/keys/keyring
-  retention: {}   # see modules/entity/settings.schema.json (registers, filings and the audit trail stay `legal`)
-  introspect:
-    url: ""
-    allow_insecure_http: false
-  webhook:
-    url: ""
-secrets:
-  env:
-    - CAN_BOARD_API_TOKEN
-    - CAN_BOARD_ADMIN_TOKEN
-    - CAN_BOARD_WEBHOOK_SECRET
-    - CAN_BOARD_INTROSPECT_TOKEN
-  keyring:
-    secretName: can-board-keys
-    key: keyring
-    mountPath: /etc/can-board/keys
-    subPath: keyring
-probes:
-  readiness: { path: /healthz, port: 8082 }
-  liveness: { exec: [/can-board, healthcheck, -addr, "127.0.0.1:8082"] }
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
   seccompProfile: { type: RuntimeDefault }
 securityContext:
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /readyz, port: api }
+  liveness: { exec: [/can-board, healthcheck, -addr, "127.0.0.1:8082"] }
 networkPolicy:
-  ingressFromCapabilityConsumers: true
+  intraNamespace: false

@@ -90,3 +90,27 @@ func TestSummaryGrantsAreBounded(t *testing.T) {
 		t.Fatalf("expired grants must make room: %v", err)
 	}
 }
+
+// Standing tells "no right" apart from "cannot tell".
+func TestStandingReportsWhatItCannotRead(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if _, ok, err := e.s.Standing(ctx, "work", "user:bob"); ok || err != nil {
+		t.Errorf("no right: %v %v", ok, err)
+	}
+	for _, c := range [][2]string{{"ghost", "user:alice"}, {"work", "user:nobody"}, {"work", "service"}} {
+		if _, ok, err := e.s.Standing(ctx, c[0], c[1]); ok || err != nil {
+			t.Errorf("%v: %v %v", c, ok, err)
+		}
+	}
+	e.s.Holds = func(context.Context, string, string) (bool, error) { return false, errors.New("database is locked") }
+	if _, ok, err := e.s.Standing(ctx, "work", "user:alice"); ok || err == nil {
+		t.Errorf("rbac failure: %v %v", ok, err)
+	}
+	if err := e.s.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := e.s.Standing(ctx, "work", "user:alice"); ok || err == nil {
+		t.Errorf("database failure: %v %v", ok, err)
+	}
+}

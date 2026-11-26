@@ -52,6 +52,8 @@ func TestUnitGolden(t *testing.T) {
 	golden(t, "can-backup.service.golden", GenerateService(s))
 	golden(t, "can-backup.timer.golden", GenerateTimer(s))
 	golden(t, "can-backup-failure.service.golden", GenerateFailureService())
+	golden(t, "can-erasure-sync.service.golden", GenerateErasureService(s))
+	golden(t, "can-erasure-sync.timer.golden", GenerateErasureTimer())
 }
 
 func TestScriptDeterministic(t *testing.T) {

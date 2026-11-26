@@ -13,7 +13,9 @@ that is implemented. An obligation is a name, an authority label, a first due da
 points that the operator enters. Compliance with company law and data-protection law is the operator's
 responsibility.
 
-**Status: experimental** (offline-tested; no cluster run, no Helm templates, no admin UI).
+**Status: experimental** (offline-tested; can-core installs the chart and CI waits for Ready on k3d; no admin
+UI). can-core runs `entity` as its own instance of the binary, with its own database and keyring: rules that
+need board membership (a director or officer of a body tied to the entity) find no bodies there and deny.
 
 ## What it holds
 

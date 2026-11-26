@@ -26,7 +26,7 @@ import (
 // Catalogue is the initial event catalogue (SPEC §4.3). It grows as modules are written; unknown
 // but well-formed names are accepted, the catalogue is used for documentation and warnings.
 var Catalogue = []string{
-	"lead.created.v1",
+	"lead.created.v1", "lead.erased.v1",
 	"deal.won.v1",
 	"invoice.issued.v1", "invoice.sent.v1", "invoice.paid.v1", "bill.received.v1", "bill.approved.v1", "bill.paid.v1",
 	"vendor.created.v1", "po.approved.v1",

@@ -8,9 +8,8 @@ What can-core routes through Traefik, and how to switch it on. Specifications an
 > exercises it** (work, forms and finance's link path; Traefik's self-signed certificate, no
 > browser, no ACME, no real DNS).
 >
-> **jobs does not yet start when can-core installs it** (it requires `company.name` and
-> `company.base_url`, which nothing sets), so the careers pages are not live on a cluster; their
-> routing and headers are unit tested only.
+> can-core now sets jobs' `company.name` and `company.base_url`, and CI (`modules-k3d`) waits for it to be
+> Ready; the careers pages' routing and headers are still unit tested only.
 
 ## The setting
 
@@ -72,7 +71,8 @@ not change its exit code).
 With `dns.provider: cloudflare`, `can up` creates them. For module hosts:
 
 * a name that already has an A, AAAA or CNAME record without the `managed-by=can` comment is
-  **skipped** and reported, never changed, even with `dns.adopt_existing: true`;
+  **skipped** and reported, never changed, even with `dns.adopt_existing: true`; so is a name with a
+  record of the wanted type that `can` did not create, even beside a record of another type it did;
 * a record `can` created follows the server to a new address, unless someone has since pointed it
   elsewhere;
 * switching exposure off leaves the record (it points at your own server); `can down` deletes the
@@ -122,8 +122,10 @@ from the entry Traefik writes (Traefik discards what the client sent).
 
 **Behind your own proxy or CDN** every visitor shares the proxy's addresses. Switch the limits off:
 `can up --no-edge-limits` (implied by `dns.proxied: true`) for the site, admin and, through
-`can-routing`, all module routes; or `expose.edge_limit: false` for one module. The flag has to be
-given on every `can up`, like `--domain-live`.
+`can-routing`, all module routes; or `expose.edge_limit: false` for one module. The flag is remembered
+(`.can/state.json`, and `can-routing` for `can apply`); `--no-edge-limits=false` turns the limits on
+again. An installation that used the flag before it was remembered has to pass it once more. `can apply`
+follows `dns.proxied` for module routes only; the site and admin routes change on the next `can up`.
 
 ## What bounds it
 

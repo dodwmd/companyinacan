@@ -163,6 +163,9 @@ func (db *DB) LinkSSOIdentity(ctx context.Context, identityID, targetUserID int6
 			if _, err := tx.ExecContext(ctx, `DELETE FROM rbac_assignments WHERE subject=?`, "user:"+from.Username); err != nil {
 				return err
 			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE key=?`, LoginFailedKey+strings.ToLower(from.Username)); err != nil {
+				return err
+			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM admin_users WHERE id=? AND auth_source='sso'`, from.UserID); err != nil {
 				return err
 			}
@@ -210,6 +213,9 @@ func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit fun
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM rbac_assignments WHERE subject=?`, "user:"+id.Username); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE key=?`, LoginFailedKey+strings.ToLower(id.Username)); err != nil {
 				return err
 			}
 			_, err = tx.ExecContext(ctx, `DELETE FROM admin_users WHERE id=? AND auth_source='sso'`, id.UserID)

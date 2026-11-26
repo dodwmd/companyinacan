@@ -6,6 +6,8 @@ base_currency: USD
 payment_provider: fake
 esign_provider: fake
 public_base_url: http://finance.localhost:8080
+# Signing contracts by emailed link (specs/049-contract-esign): the origin the links point at.
+sign_base_url: http://finance.localhost:8080
 seller:
   name: Acme Co
   address: 1 Anvil Road, Fakeville

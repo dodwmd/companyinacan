@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dodwmd/companyinacan/core/problem"
+	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/registry"
@@ -47,7 +48,11 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 			if !dryRun && !recordOnly {
 				// The routing facts first: can-core reads them when it sees the new company.yaml.
 				proxied, _ := desired.Company.DNS["proxied"].(bool)
-				note, err := syncRouting(cmd, desired.Company.Domain, kubeContext, proxied)
+				state, err := provider.NewStore(dir).Load() // what `can up` remembered here, if it ran here
+				if err != nil {
+					return failure("%v", err)
+				}
+				note, err := syncRouting(cmd, desired.Company.Domain, kubeContext, proxied, state.NoEdgeLimits)
 				if err != nil {
 					return failure("%v", err)
 				}

@@ -238,19 +238,29 @@ func (h *KubeHooks) wait(ctx context.Context, ns, name string) error {
 		pull = 2 * time.Minute
 	}
 	var stuckSince time.Time
+	// lost is why the pod was last seen evicted or not scheduled. It is remembered: a Job that
+	// runs into its deadline has no pod left to ask.
+	lost := ""
 	for {
 		j, err := h.API.Get(ctx, "Job", ns, name)
 		if err != nil && ctx.Err() == nil {
 			return fmt.Errorf("read the hook Job: %w", err)
+		}
+		pods, perr := h.API.List(ctx, "Pod", ns, "job-name="+name)
+		if perr == nil && len(pods) > 0 {
+			lost = ""
+			if why := podLost(pods); why != "" {
+				lost = ": " + why
+			}
 		}
 		st, _ := j["status"].(obj)
 		if count(st["succeeded"]) > 0 {
 			return nil
 		}
 		if count(st["failed"]) > 0 {
-			return fmt.Errorf("hook Job %s/%s failed (kubectl -n %s logs job/%s)", ns, name, ns, name)
+			return fmt.Errorf("hook Job %s/%s failed%s (kubectl -n %s logs job/%s)", ns, name, lost, ns, name)
 		}
-		switch reason := h.stuck(ctx, ns, name); {
+		switch reason := stuck(pods); {
 		case reason == "":
 			stuckSince = time.Time{}
 		case stuckSince.IsZero():
@@ -260,18 +270,14 @@ func (h *KubeHooks) wait(ctx context.Context, ns, name string) error {
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("hook Job %s/%s did not finish: %w", ns, name, ctx.Err())
+			return fmt.Errorf("hook Job %s/%s did not finish%s: %w", ns, name, lost, ctx.Err())
 		case <-t.C:
 		}
 	}
 }
 
 // stuck returns why the Job's pod cannot start, or "" when it is not in such a state.
-func (h *KubeHooks) stuck(ctx context.Context, ns, job string) string {
-	pods, err := h.API.List(ctx, "Pod", ns, "job-name="+job)
-	if err != nil {
-		return ""
-	}
+func stuck(pods []kube.Object) string {
 	for _, p := range pods {
 		st, _ := p["status"].(obj)
 		for _, c := range containerStatuses(st) {
@@ -285,6 +291,45 @@ func (h *KubeHooks) stuck(ctx context.Context, ns, job string) string {
 		}
 	}
 	return ""
+}
+
+// podLost says why the node or the scheduler stopped a Job's pod from running: an eviction (disk
+// pressure, a work volume over its limit), a deletion by the cluster, or no node to put it on.
+// "" when none of these is the case.
+func podLost(pods []kube.Object) string {
+	for _, p := range pods {
+		st, _ := p["status"].(obj)
+		if phase, _ := st["phase"].(string); phase == "Failed" {
+			if reason, _ := st["reason"].(string); reason != "" {
+				msg, _ := st["message"].(string)
+				return "the node stopped the pod (" + reason + "): " + oneLine(msg)
+			}
+		}
+		conditions, _ := st["conditions"].([]any)
+		for _, c := range conditions {
+			m, _ := c.(obj)
+			kind, _ := m["type"].(string)
+			status, _ := m["status"].(string)
+			reason, _ := m["reason"].(string)
+			msg, _ := m["message"].(string)
+			switch {
+			case kind == "DisruptionTarget" && status == "True":
+				return "the cluster removed the pod (" + reason + "): " + oneLine(msg)
+			case kind == "PodScheduled" && status == "False" && reason == "Unschedulable":
+				return "the pod could not be scheduled (Unschedulable): " + oneLine(msg)
+			}
+		}
+	}
+	return ""
+}
+
+// oneLine folds a cluster message onto one bounded line.
+func oneLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 400 {
+		s = s[:400]
+	}
+	return s
 }
 
 // containerStatuses are the statuses of a pod's init containers and containers.

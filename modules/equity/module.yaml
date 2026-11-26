@@ -11,9 +11,9 @@ name: Equity and cap table
 description: Cap table and employee stock options. Entities, share classes, plans and pools, stakeholders, option grants with a vesting calculator, board approval with separation of duties, exercises, an append-only share ledger, cap-table views as of any date (basic and fully diluted), valuation records and illustrative round modelling. Per-field access, audited reads, sealed sensitive fields, retention, legal hold and erasure. Record-keeping and reporting only.
 category: finance
 version: 0.1.0
-# experimental: unit-, contract- and race-tested offline, but not yet run on a cluster; there are no Helm templates yet
-# (values only), no admin UI or portal, and can-core does not yet inject the keyring Secret or drive the approval
-# engine for this module. See modules/equity/README.md.
+# experimental: unit-, contract- and race-tested offline. The chart installs through can-core, which
+# generates the keyring and tokens (CI only waits for Ready on k3d). No admin UI or portal; token
+# introspection, the approval engine and events are not wired. See modules/equity/README.md.
 status: experimental
 provider:
   type: inhouse
@@ -31,6 +31,7 @@ resources:
   disk_mb: 200
 provides:
   - { capability: equity, schema: equity.v1, service: equity-api, port: 8081 }
+  - { capability: summary, schema: summary.v1, service: equity-api, port: 8081 }   # aggregates for the business overview
 publishes:
   # ids and dates only: never names, quantities or prices
   - { event: equity.grant.approved.v1, schema: ./events/equity.grant.approved.v1.json }

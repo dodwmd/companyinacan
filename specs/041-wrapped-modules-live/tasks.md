@@ -22,4 +22,4 @@
 - [ ] T027 support on arm64 (own image build, or another publisher)
 - [ ] T028 `analytics` settings `site_domain` and `retention_days` are accepted but not applied
 - [ ] T029 Watch the pinned images for security releases (no automation today)
-- [ ] T030 Put `support` back into the starter template once its backup hook runs
+- [ ] T030 Put `support` back into the starter template once it is verified on a real server (its backups run since specs/046)

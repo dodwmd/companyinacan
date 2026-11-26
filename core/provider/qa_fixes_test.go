@@ -263,10 +263,10 @@ func TestCloudflareWarnsAboutRoundRobinRecords(t *testing.T) {
 	}
 }
 
-func TestCloudflareApplyResetsProxyToConfiguredValue(t *testing.T) {
+func TestCloudflareApplyResetsProxyToConfiguredValue(t *testing.T) { // only when dns.proxied is written
 	f := newFakeCF(t)
 	f.records = []*cfRecord{{ID: "o", Type: "A", Name: "acme.example", Content: "203.0.113.7", TTL: 1, Proxied: true, Comment: "managed-by=can"}}
-	x := cfFixture(t, f, DNSConfig{Provider: "cloudflare"})
+	x := cfFixture(t, f, DNSConfig{Provider: "cloudflare", ProxiedSet: true})
 	recs, _ := Records("acme.example", "203.0.113.7", nil)
 	if err := x.p.Apply(context.Background(), "acme.example", recs, io.Discard); err != nil {
 		t.Fatal(err)

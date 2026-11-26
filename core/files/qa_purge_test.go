@@ -115,7 +115,7 @@ func TestAnInterruptedPurgeIsResumed(t *testing.T) {
 	if _, err := e.s.GetFile(ctx, e.alice, f.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("a file being purged is visible: %v", err)
 	}
-	if es, _ := e.s.ListErasures(ctx, e.root, 0); len(es) != 2 || es[0].Subject != subject {
+	if es, _ := e.s.ListErasures(ctx, e.root, 0); len(es) != 2 || es[0].Subject != f.ID {
 		t.Errorf("tombstones after the claim: %+v", es)
 	}
 	h.onDelete = nil
@@ -161,5 +161,40 @@ func TestRetentionTombstonesTheFileNotTheSubject(t *testing.T) {
 	}
 	if _, err := e.s.GetFile(ctx, e.alice, kept.ID); err != nil {
 		t.Errorf("the subject's other file was destroyed by the replay: %v", err)
+	}
+}
+
+// A replay of an erasure takes the files that were erased and nothing uploaded for the same
+// subject afterwards.
+func TestReplayingAnErasureKeepsFilesUploadedAfterIt(t *testing.T) {
+	e := newEnv(t)
+	sp := e.space(e.alice, "Docs")
+	const subject = "cand_0123456789abcdef"
+	up := func(n string) *FileView {
+		f, err := e.s.Upload(ctx, e.alice, UploadRequest{SpaceID: sp.ID, Name: n, Subject: subject, Body: bytes.NewReader(pdf(n))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	old := up("old.pdf")
+	if _, err := e.s.EraseSubject(ctx, e.root, subject); err != nil {
+		t.Fatal(err)
+	}
+	kept := up("new.pdf")
+	es, err := e.s.ListErasures(ctx, e.root, 0)
+	if err != nil || len(es) != 2 {
+		t.Fatalf("%v %+v", err, es)
+	}
+	for _, x := range es {
+		if x.Subject != old.ID || x.At == "" {
+			t.Errorf("tombstone %+v: want the erased file and its time", x)
+		}
+		if err := e.s.PurgeSubject(ctx, &Principal{Subject: "svc:restore", Restore: true}, x.Subject, x.Class); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.s.GetFile(ctx, e.alice, kept.ID); err != nil {
+		t.Errorf("the file uploaded after the erasure is gone: %v", err)
 	}
 }

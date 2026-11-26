@@ -68,10 +68,15 @@ flowchart TB
 | Webhook signature | can-core to modules | HMAC secret per module | 5-minute replay window; at-least-once, so receivers de-duplicate |
 | People and jobs UI sessions | browser | server memory only, SHA-256 of a 256-bit id | the people UI keeps the token in memory to re-check it every few minutes (revocation); a restart ends every session |
 
-Bad tokens are refused cheaply and counted per address; **valid credentials are never throttled by other
-callers' failures**. Failed-login and failed-token budgets exist in every service.
+Bad tokens are refused cheaply and counted per address (the address the service sees: behind a proxy it is not
+told to trust, that is the proxy's, shared by everyone); **valid credentials are never throttled by other
+callers' failures**. Failed-login and failed-token budgets exist in every service. A form posted to a module
+web UI without a session is limited to 4 KiB and 16 fields: without that, a few hundred posts side by side ran the
+pod out of its 64 MiB. Measured on one machine with 300 connections; larger floods and large headers were not.
 
-can-core's admin sign-in has no limit per account, only per address: see the residual risks below.
+can-core's admin sign-in has no limit per account. With `CAN_TRUST_PROXY=true` (as shipped) it limits per client
+address; with it off (the binary's default) it limits nothing, per address or otherwise, and failures only add a
+delay: see the residual risks below.
 
 ## Sealed data, audit and erasure
 
@@ -85,8 +90,11 @@ can-core's admin sign-in has no limit per account, only per address: see the res
   closed. can-core's log is hash-chained and append-only (database triggers refuse updates and deletes); the
   modules' logs are append-only by trigger, and finance's only purged by the retention job after a year.
 - **No personal data in events.** Events carry ids and amounts only; the lead event has no name or email.
-- **Retention, legal hold and erasure** exist per module (erasure pseudonymises and clears; a tombstone ledger is
-  replayed after a restore so erased people do not return). Legal retention overrides erasure for issued invoices.
+- **Retention, legal hold and erasure** exist per module in `people`, `equity`, `board`, `entity`, `files`,
+  `jobs` and `forms` (lead erasure) (erasure pseudonymises and clears). can-core collects their erasure tombstones into a ledger that goes
+  to the backup bucket, and a restore replays it ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger)
+  lists the limits). **Other modules (finance, work, provisioning and the wrapped apps) record nothing
+  there**: what is erased in them comes back with a restore of an older backup. Legal retention overrides erasure for issued invoices.
 - **Separation of duties** is enforced in one function per module and repeated as database triggers where it
   matters: the author of an invoice, timesheet, grant or review release cannot approve it; subjects are compared
   after Unicode normalisation and case folding.
@@ -111,8 +119,8 @@ creates; the admin UI, the site and the compose edge do not send it.
 | **Policy lag.** In a new default-deny namespace a pod could reach others for up to 20 s while kube-router programmed the policy | observed on k3d | [measurements](measurements/phase0-ci.md) |
 | **NodePort exposure.** The bootstrap sets `ufw default allow routed`; a NodePort or LoadBalancer Service created later on a bring-your-own host may be internet-reachable despite ufw listing 22, 80, 443 | open on `ssh`; not on `hetzner`'s cloud firewall | [providers.md](providers.md) |
 | **Equity quantities in plaintext.** Grant quantity, strike, schedule and ledger quantities are plain columns in SQLite (pool and dilution maths and the immutability triggers need them); only identity, notes, payment references, valuations and convertibles are sealed. Run on an encrypted volume with encrypted backups | by design, documented | [equity.md](equity.md) |
-| **Equity holder identity.** Verified against the people directory only where `directory.url` is set, which can-core does not wire yet; otherwise a second actor's attestation is the control and accounts are not connected to holders. Collusion, directory or account administrators and one confirmation covering later ledger entries remain. The service-account token never carries the board role, so grants can only be approved by an identity provider that issues it | open | [equity.md](equity.md#holder-identity) |
-| **Single sign-on is partial.** OIDC signs in to the admin UI; module web UIs are reached from it with single-use launch tickets (never browser-verified) and module APIs use tokens; OIDC administrators cannot issue personal access tokens; no real identity provider has ever been tested | open | [sso.md](sso.md), [module-wiring.md](module-wiring.md) |
+| **Equity holder identity.** Verified against the people directory only where `directory.url` is set, which can-core does not wire yet; otherwise a second actor's attestation is the control and accounts are not connected to holders, so one administrator with the board role and the service-account token can give themself a grant without break-glass. Collusion, directory or account administrators and one confirmation covering later ledger entries remain. The service-account token never carries the board role, so grants can only be approved by an identity provider that issues it | open | [equity.md](equity.md#holder-identity) |
+| **Single sign-on is partial.** OIDC signs in to the admin UI; module web UIs are reached from it with single-use launch tickets (checked in headless Chrome over plain http only) and module APIs use tokens; OIDC administrators cannot issue personal access tokens; no real identity provider has ever been tested | open | [sso.md](sso.md), [module-wiring.md](module-wiring.md) |
 | **Kubernetes Secrets are not encrypted by can-core.** Encrypting Secrets at rest is a cluster setting that can-core does not assert, and anyone with `kubectl` on `mod-*` namespaces can read module secrets and keyrings | open | [module-wiring.md](module-wiring.md) |
 | **The authentication code can be guessed by someone who has the password.** With `CAN_TRUST_PROXY=false` (the binary's default) nothing locks or limits sign-in: back-off only delays, about 128 guesses a second still get through, and the second factor can be expected to fall within about an hour. With it on (as shipped) the locks are per address, so many addresses mean many allowances. can-core does not prevent this; it records `admin.login.many_failures` and logs a warning after 20 failures on an account in a day | open; keep `CAN_TRUST_PROXY=true` behind Traefik, add the IP allowlist, act on the alert by changing the password | [deployment.md](../specs/005-can-core-mvp/deployment.md) |
 | **can-core is privileged and internet-facing.** Mandatory TOTP, narrow ClusterRole and a minimal image, but it is the first target of any review that has not happened | open | [SPEC.md](../SPEC.md) section 11 |
@@ -122,9 +130,9 @@ creates; the admin UI, the site and the compose edge do not send it.
 | **Approvals partly wired.** Only jobs requisitions and finance invoices use can-core's engine; others use each module's own rule; people (time off, review release) and equity have the seam but no adapter | open | [module-wiring.md](module-wiring.md) |
 | **Contract signatures are simple electronic signatures.** A signer is whoever can read the mailbox the sender typed; the evidence chain is not signed with a key, so a database writer can rebuild it (only copies held outside show that); queued invitation mail holds live links | by design, documented | [spec](../specs/049-contract-esign/spec.md) |
 | **Fake providers.** The finance payment provider and the external e-sign adapter are fakes, no virus scanner ships for files or jobs uploads, job-board connectors and CAPTCHA are fakes or absent; outbound email has never been run against a real relay; no applicant email verification | open | [finance.md](finance.md), [recruiting.md](recruiting.md), [email.md](email.md) |
-| **Erasures can come back after a restore.** The restore replays an erasure ledger that nothing writes by itself (`can backup ledger-add`, by hand); `forms`, `work`, `finance`, `provisioning`, `entity` and the wrapped apps have no replayable purge at all | open | [backup-restore.md](backup-restore.md#erasure-tombstone-ledger), [status.md](status.md#modules) |
+| **Some erasures can come back after a restore.** can-core records the erasures of `people`, `equity`, `board`, `entity`, `files`, `forms` and `jobs` by itself. `finance`, `work`, `provisioning` and the wrapped apps record nothing. The ledger reaches the bucket only if the `can` binary is on the server (`can up` does not copy it), and an erasure made shortly before the server is lost may be missing | open | [backup-restore.md](backup-restore.md#erasure-tombstone-ledger), [status.md](status.md#modules) |
 | **The repository is not locked down.** On 2026-11-26 `main` had no branch protection and there was no release environment; private vulnerability reporting and secret scanning were off | open (maintainer) | [status.md](status.md#decisions-waiting-on-the-maintainer) |
-| **No browser, screen-reader or phone verification** of any web UI; Web Push never run against a real push service | open | [pwa.md](pwa.md), [admin-ui.md](admin-ui.md) |
+| **Limited browser verification.** Headless Chrome against the compose stack only (plain http, one host): no https cookies, separate host names, other browser engines, screen reader or real phone; Web Push never run against a real push service | open | [specs/054-browser-e2e](../specs/054-browser-e2e/spec.md), [pwa.md](pwa.md) |
 | **Unpinned or placeholder images.** Release Dockerfiles and charts carry digest placeholders (`make release-check` fails until a release resolves them); the compose and CI images use unpinned tags | open until the first release | [releasing.md](releasing.md) |
 | **Backups and restore never exercised on a real host.** Backup and `can restore` have passed on k3d with a local restic repository only | open | [backup-restore.md](backup-restore.md) |
 

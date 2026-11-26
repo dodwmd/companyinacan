@@ -163,7 +163,7 @@ func (s *Store) RequestErasure(ctx context.Context, p *Principal, id string) (*E
 			if err := s.purgeClass(ctx, tx, id, c); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?)`, id, c, date, ts(s.now())); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?) ON CONFLICT (subject, class) DO UPDATE SET date = excluded.date, created_at = excluded.created_at`, id, c, date, ts(s.now())); err != nil {
 				return err
 			}
 		}
@@ -214,6 +214,8 @@ type ErasureEntry struct {
 	Subject string `json:"subject"`
 	Class   string `json:"class"`
 	Date    string `json:"date"`
+	// At is when the data was erased: a restore leaves alone a backup made after it.
+	At string `json:"at,omitempty"`
 }
 
 // ListErasures returns tombstones after a cursor. Admin only (the can-core service account).
@@ -221,7 +223,7 @@ func (s *Store) ListErasures(ctx context.Context, p *Principal, after int64) ([]
 	if !p.Can(ActAdmin) {
 		return nil, ErrForbidden
 	}
-	rows, err := s.rdb.QueryContext(ctx, `SELECT seq, subject, class, date FROM erasures WHERE seq > ? ORDER BY seq LIMIT 1000`, after)
+	rows, err := s.rdb.QueryContext(ctx, `SELECT seq, subject, class, date, created_at FROM erasures WHERE seq > ? ORDER BY seq LIMIT 1000`, after)
 	if err != nil {
 		return nil, err
 	}
@@ -229,9 +231,11 @@ func (s *Store) ListErasures(ctx context.Context, p *Principal, after int64) ([]
 	out := []ErasureEntry{}
 	for rows.Next() {
 		var e ErasureEntry
-		if err := rows.Scan(&e.Seq, &e.Subject, &e.Class, &e.Date); err != nil {
+		var created int64
+		if err := rows.Scan(&e.Seq, &e.Subject, &e.Class, &e.Date, &created); err != nil {
 			return nil, err
 		}
+		e.At = time.Unix(created, 0).UTC().Format(time.RFC3339)
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -336,7 +340,7 @@ func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 				}
 				// A tombstone for retention purges too, so a restore from an older backup
 				// cannot resurrect candidates whose retention period has ended.
-				if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?)`, d.id, c, s.today(), ts(s.now())); err != nil {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?) ON CONFLICT (subject, class) DO UPDATE SET date = excluded.date, created_at = excluded.created_at`, d.id, c, s.today(), ts(s.now())); err != nil {
 					return err
 				}
 			}

@@ -25,7 +25,7 @@ Per module:
 |---|---|---|---|
 | work | `work` 8080 | none; `work.<domain>` with `expose.ui` | |
 | people | `people-api` 8081 | none; `people.<domain>` with `expose.ui` | keyring |
-| jobs | `jobs` 8080 | `careers.<domain>`: only `/careers`, `/feeds`, `/robots.txt`; `jobs.<domain>` with `expose.ui` | keyring, `company.name`, `company.base_url` in the chart `config:` |
+| jobs | `jobs` 8080 | `careers.<domain>`: only `/careers`, `/feeds`, `/robots.txt`; `jobs.<domain>` with `expose.ui` | keyring; can-core sets `company.name` and `company.base_url` from `company.yaml` |
 | finance | `finance` 8080 | none; `finance.<domain>` with `expose.ui` | |
 | forms | `forms` 8080 public, `forms-api` 8081 | `/_forms` on the site hosts | at least one form in the chart `config:` |
 
@@ -45,7 +45,7 @@ never replaces them afterwards (enabling again, upgrading, disabling and enablin
 | Module | Keys |
 |---|---|
 | work | `CAN_WORK_ADMIN_TOKEN` |
-| forms | `CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN`, `CAN_FORMS_API_READ_TOKEN` |
+| forms | `CAN_FORMS_TOKEN_KEY`, `CAN_FORMS_API_TOKEN` (reads, changes and **erases** leads), `CAN_FORMS_API_READ_TOKEN` |
 | finance | `CAN_FINANCE_ADMIN_TOKEN`, `CAN_FINANCE_LINK_SECRET`, `CAN_FINANCE_SEAL_KEY` (E15c: seals bank account numbers; never rotated; an install that predates it needs the key added to its Secret once, otherwise adding a bank account answers 503) |
 | jobs | `CAN_JOBS_ADMIN_TOKEN`, `CAN_JOBS_HASH_KEY`, `CAN_JOBS_FORM_SECRET`, `keyring` |
 | people | `CAN_PEOPLE_API_TOKEN`, `keyring` |
@@ -224,7 +224,7 @@ module (`core/server/modsecrets`). Personal access tokens are introspected like 
 become the coarse gate; the role in the space decides the rest. The module publishes `file.uploaded.v1`,
 `file.shared.v1`, `file.deleted.v1` and `file.infected.v1` through can-core and subscribes to nothing.
 Its tombstones (`GET /v1/erasures`) and purge hook (`POST /v1/purge`) follow the erasure-ledger contract of
-the other in-house modules. The S3 credentials are not generated: see [`files.md`](files.md).
+the other in-house modules: can-core collects the tombstones (`core/server/erasure`). The S3 credentials are not generated: see [`files.md`](files.md).
 
 ## What ran where
 

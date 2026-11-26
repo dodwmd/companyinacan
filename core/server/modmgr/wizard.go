@@ -40,8 +40,8 @@ type Bundle struct {
 
 // DefaultBundles are the templates offered by the wizard.
 var DefaultBundles = []Bundle{
-	// support is left out while its backup hook cannot run: enabling it would stop all backups,
-	// forms' included (specs/041-wrapped-modules-live).
+	// support is left out although SPEC.md section 1 aims for it: it is experimental, runs a third
+	// party image and has never run on a real server (SPEC.md section 10). Enable it yourself.
 	{ID: "starter", Modules: []string{"forms"}},
 	{ID: "blank"},
 }

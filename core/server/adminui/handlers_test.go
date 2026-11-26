@@ -192,7 +192,7 @@ func TestLoginSessionIsSharedWithAPIAndLogoutEndsIt(t *testing.T) {
 	if c := s.cookie; c.Value == "" {
 		t.Fatal("no cookie")
 	}
-	r := h.do("GET", "/", nil, s.with()...)
+	r := h.do("GET", "/dashboard", nil, s.with()...)
 	if r.StatusCode != 200 || !strings.Contains(r.body, "root") {
 		t.Fatalf("%d", r.StatusCode)
 	}
@@ -209,7 +209,7 @@ func TestSecurityHeadersAndNoScriptsOrInlineStyles(t *testing.T) {
 	h := newHarness(t)
 	h.seed()
 	s := h.login()
-	for _, p := range []string{"/", "/modules", "/modules/forms", "/audit", "/events", "/leads", "/settings", "/nope"} {
+	for _, p := range []string{"/dashboard", "/modules", "/modules/forms", "/audit", "/events", "/leads", "/settings", "/nope"} {
 		r := h.do("GET", p, nil, s.with()...)
 		csp := r.Header.Get("Content-Security-Policy")
 		for _, want := range []string{"script-src 'none'", "frame-ancestors 'none'", "form-action 'self'", "base-uri 'none'", "default-src 'none'"} {
@@ -260,7 +260,7 @@ func TestNotFoundPage(t *testing.T) {
 func TestDashboard(t *testing.T) {
 	h := newHarness(t)
 	s := h.login()
-	r := h.do("GET", "/", nil, s.with()...)
+	r := h.do("GET", "/dashboard", nil, s.with()...)
 	for _, want := range []string{"Acme Pty Ltd", "acme.example", "No modules are installed yet", "make enable"} {
 		if !strings.Contains(r.body, want) {
 			t.Errorf("empty dashboard lacks %q", want)
@@ -268,7 +268,7 @@ func TestDashboard(t *testing.T) {
 	}
 	h.seed()
 	dead := h.killDelivery()
-	r = h.do("GET", "/", nil, s.with()...)
+	r = h.do("GET", "/dashboard", nil, s.with()...)
 	for _, want := range []string{"Forms gateway", "Wiki", "Failed", "helm install failed: timeout", "leads", "module.enable", "/events/" + itoa(dead) + "/requeue", "admin.login"} {
 		if !strings.Contains(r.body, want) {
 			t.Errorf("dashboard lacks %q", want)
@@ -294,7 +294,7 @@ func TestHostileDataIsEscapedEverywhere(t *testing.T) {
 	must(t, err)
 	h.leads.leads = []Lead{{ID: "1", FormID: evil, Status: "new", Email: evil, Name: evil, Note: evil, Fields: map[string]any{evil: evil, "n": 5}, CreatedAt: fixedNow, UpdatedAt: fixedNow}}
 	s := h.login()
-	for _, p := range []string{"/", "/modules", "/modules/evil", "/audit", "/audit?actor=" + url.QueryEscape(evil), "/leads", "/leads/1", "/events", "/leads?status=" + url.QueryEscape(evil)} {
+	for _, p := range []string{"/dashboard", "/modules", "/modules/evil", "/audit", "/audit?actor=" + url.QueryEscape(evil), "/leads", "/leads/1", "/events", "/leads?status=" + url.QueryEscape(evil)} {
 		r := h.do("GET", p, nil, s.with()...)
 		if strings.Contains(r.body, "<script>alert") || strings.Contains(r.body, "<img src=x") || strings.Contains(r.body, `onerror=alert(2)>`) {
 			t.Errorf("%s: raw hostile markup reached the page", p)
@@ -368,8 +368,8 @@ func TestRequeueFlow(t *testing.T) {
 	}
 	// the redirect target for the dashboard form
 	h.killDelivery()
-	r = h.do("POST", path, url.Values{"csrf": {s.csrf}, "next": {"/"}}, s.with()...)
-	if !strings.HasPrefix(r.Header.Get("Location"), "/?flash=") {
+	r = h.do("POST", path, url.Values{"csrf": {s.csrf}, "next": {"/dashboard"}}, s.with()...)
+	if !strings.HasPrefix(r.Header.Get("Location"), "/dashboard?flash=") {
 		t.Fatalf("%s", r.Header.Get("Location"))
 	}
 }
@@ -625,7 +625,7 @@ func TestSettingsSessions(t *testing.T) {
 	if r := h.do("GET", "/", nil, b.with()...); r.StatusCode != http.StatusSeeOther {
 		t.Fatal("revoked session still works")
 	}
-	if r := h.do("GET", "/", nil, a.with()...); r.StatusCode != 200 {
+	if r := h.do("GET", "/dashboard", nil, a.with()...); r.StatusCode != 200 {
 		t.Fatal("current session was revoked")
 	}
 }

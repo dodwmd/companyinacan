@@ -77,3 +77,21 @@ func TestDumpRequestWaitPrintsSkippedModules(t *testing.T) {
 		t.Fatalf("%d %q %q", code, out, errb)
 	}
 }
+
+// A run that fails writes no marker: the operator is told why at once.
+func TestDumpRequestWaitReportsAFailedRun(t *testing.T) {
+	dir := t.TempDir()
+	dumpsDir := filepath.Join(dir, "dumps")
+	if err := os.MkdirAll(dumpsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"CAN_DB_PATH": filepath.Join(dir, "state.db"), "CAN_DUMPS_DIR": dumpsDir}
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		_ = backup.WriteDumpRun(dumpsDir, backup.DumpRun{RunID: "new", Error: "company.yaml: not there yet"})
+	}()
+	code, _, errb := dumpCLI(env, "dump-request", "--wait", "30s")
+	if code == 0 || !strings.Contains(errb, "company.yaml: not there yet") {
+		t.Fatalf("%d %q", code, errb)
+	}
+}

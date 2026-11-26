@@ -45,7 +45,9 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 			"project you name, and a metrics snapshot from --metrics-url (the bearer token is read from CAN_METRICS_TOKEN,\n" +
 			"never a flag). Only an allowlist of file names can be in the bundle, sizes are capped, every text is scrubbed\n" +
 			"for secrets and email addresses (names and phone numbers in free text can survive), and an existing file is\n" +
-			"never overwritten. Review it before sharing.",
+			"never overwritten. The company name, domain, server address, SSH user and key paths, identity provider and\n" +
+			"relay named by company.yaml and .can/ are replaced too, as are common spellings of the company name and public\n" +
+			"IPv4 and IPv6 addresses (also inside sslip.io names). Review it, and send it privately.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if out == "" {
@@ -87,7 +89,17 @@ func newDiagnoseCmd(g *globalOpts) *cobra.Command {
 			note("versions", b.AddJSON("versions.json", map[string]string{
 				"can": version, "commit": commit, "date": date, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH,
 			}))
-			if raw, err := readCapped(filepath.Join(companyDir, "company.yaml"), maxCompanyFile); err == nil {
+			// What identifies the installation goes out of every file, by value.
+			raw, rawErr := readCapped(filepath.Join(companyDir, "company.yaml"), maxCompanyFile)
+			if rawErr != nil {
+				raw = ""
+			}
+			id, parsed := identityFrom(companyDir, raw)
+			b.AddRedactor(id.redact)
+			switch {
+			case !parsed:
+				problems = append(problems, "config: company.yaml is not valid YAML, so it was left out (its identifying values cannot be found)")
+			case rawErr == nil:
 				note("config", b.AddText("config.yaml", raw))
 			}
 			res := append(doctor.Check(lookPath), doctor.Reach(ctx, lookPath, reachRunner)...)

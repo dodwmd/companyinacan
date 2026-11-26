@@ -18,6 +18,9 @@ make e2e           # the end-to-end suite, about 2 minutes (needs the Go toolcha
 make e2e-down      # remove the containers and their volumes
 ```
 
+`make e2e-browser` runs a second suite against the same stack with a headless Chrome or Chromium that you have
+installed (`E2E_CHROME=/path/to/chrome`).
+
 The first build compiles all the Go binaries and takes a few minutes (it needs the network for the Go image,
 distroless and Caddy). `make compose-up` starts the same services as project `companyinacan` without the test
 overlay, and `make compose-test` runs the older shell smoke test. Details, URLs, the dev credentials and
@@ -89,12 +92,17 @@ Read these caveats first; they are the honest state of this path:
 
 - **It has never been run against a real server.** The providers are tested against fakes; the deploy phases after
   k3s are exercised on k3d in CI. Server creation, the bootstrap script on a fresh OS, ACME and the five-minute
-  target are unverified.
+  target are unverified. If you try it, follow [real-server-verification.md](real-server-verification.md):
+  `bin/can verify --server --company-dir my-company` runs the read-only checks.
 - **You get the site, the contact form and the admin UI, not the business modules.** Their images are not published
-  until a release, and some modules do not start when can-core installs them ([status.md](status.md#modules)).
+  until a release. **Do not enable them yet**: a module whose image cannot be pulled stops every backup until you
+  disable it ([status.md](status.md#known-defects-an-operator-would-hit)).
+- **The contact form is not on the generated pages.** It is at `https://<your site>/_forms/contact/form`; link to it
+  yourself. The admin UI's Leads page has no credential on an install, so read messages through the notification
+  email (needs a relay, [email.md](email.md)) or the forms API.
 - Backups are optional (`--backup-endpoint`, `--backup-bucket`, `--backup-credentials-file`, passed in `ARGS`) and
   print a recovery kit once. `can restore` runs on a new server and has been exercised on k3d only. `make up` does
-  not copy the `can` binary to the server, which restore and the erasure ledger upload need
+  not copy the `can` binary to the server: put it at `/usr/local/bin/can`, or erasures never reach the bucket
   ([backup-restore.md](backup-restore.md)).
 - The 2 GB target is unmeasured; use 4 GB. See the footprint table in the [README](../README.md#footprint-measured-against-claimed).
 - SPEC.md section 6.1 sketches `make init`, `make enable <module>`, `make backup` and `make email`; those do not

@@ -9,9 +9,13 @@ package ticket
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
 const (
@@ -26,10 +30,39 @@ type grant struct {
 }
 
 // Standing is the module permissions subject holds right now; ok is false when the module is not
-// enabled, the account is gone or disabled, or the person holds none of them. Errors deny.
-func (s *Service) Standing(ctx context.Context, module, subject string) (permissions []string, ok bool) {
-	_, perms, ok := s.standing(ctx, module, subject)
-	return perms, ok
+// enabled, the account is gone or disabled, or the person holds none of them. An error means it
+// cannot be told (database or RBAC failure): nothing is allowed, and the overview says so instead of
+// leaving the module out.
+func (s *Service) Standing(ctx context.Context, module, subject string) (permissions []string, ok bool, err error) {
+	if !moduleRe.MatchString(module) || !subjectRe.MatchString(subject) {
+		return nil, false, nil
+	}
+	m, err := s.DB.GetModule(ctx, module)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && m.State != store.StateEnabled) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("reading the module: %w", err)
+	}
+	u, err := s.DB.AdminByUsername(ctx, strings.TrimPrefix(subject, "user:"))
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("reading the account: %w", err)
+	}
+	disabled, err := s.DB.AdminDisabledState(ctx, u.ID)
+	if err != nil {
+		return nil, false, fmt.Errorf("reading the account: %w", err)
+	}
+	if disabled {
+		return nil, false, nil
+	}
+	perms, err := s.permissions(ctx, subject, m)
+	if err != nil {
+		return nil, false, fmt.Errorf("reading the person's permissions: %w", err)
+	}
+	return perms, len(perms) > 0, nil
 }
 
 // MintSummary returns a grant for module to compute subject's figures. It is ErrNotAllowed when the

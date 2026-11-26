@@ -56,6 +56,7 @@ type DNSConfig struct {
 	Zone          string // Cloudflare zone name; default: found from the domain
 	TTL           int    // 0 = DefaultTTL; Cloudflare: 1 (automatic) or 60..86400
 	Proxied       bool   // Cloudflare proxy; default false so ACME HTTP-01 reaches the origin
+	ProxiedSet    bool   // dns.proxied is written in company.yaml, so existing records follow it
 	AdoptExisting bool   // take over an existing unproxied record of the same name and type
 	TokenRef      string // env:NAME or file:PATH; default env:CLOUDFLARE_API_TOKEN
 }
@@ -89,6 +90,7 @@ func DNSConfigFrom(m map[string]any) (DNSConfig, error) {
 				return c, fmt.Errorf("dns.%s must be true or false, got %v", f.key, v)
 			}
 			*f.dst = b
+			c.ProxiedSet = c.ProxiedSet || f.key == "proxied"
 		}
 	}
 	return c, nil

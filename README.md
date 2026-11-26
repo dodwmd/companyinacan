@@ -5,8 +5,8 @@ one admin login, a company site with lead capture, and modules for the rest of t
 cycle (support, work tracking, people, hiring, invoices, equity, ...) that you switch on and off.
 
 > **Status: pre-release. Nothing has been run on a real server yet, and no release has been cut.**
-> No real server, DNS, certificate, email relay, identity provider, payment provider or browser has been used.
-> The Docker Compose stack runs end to end on one machine and that run is tested in CI, but it is
+> No real server, DNS, certificate, email relay, identity provider, payment provider or phone has been used.
+> The Docker Compose stack runs end to end on one machine, tested in CI over HTTP and with headless Chrome, but it is
 > [insecure on purpose](docs/local-compose.md). Treat this as a working prototype, not as somewhere to put real
 > company data. **[What works today, what is experimental, what is unverified](docs/status.md)** is the
 > module-by-module table, and [the security model](docs/security-model.md) lists the known weaknesses.
@@ -31,15 +31,15 @@ k3d cluster, a real server) are in [docs/getting-started.md](docs/getting-starte
 | Module | What it is | Status | Declared RAM | Notes |
 |---|---|---|---|---|
 | can-core | Control plane: admin UI (password + TOTP, optional OIDC SSO), users and roles, module catalogue, approvals, notifications, events, audit log, personal access tokens, business overview | experimental | 48 MB (soft limit 64) | Installed on k3d in CI; in compose it records modules but does not install them |
-| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: no status marker (treated as ready); the site is rendered by `can` | 15 MB (forms) | What `make up` deploys; run on k3d in CI and in compose |
+| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: no status marker (treated as ready); the site is rendered by `can` | 15 MB (forms) | What `make up` deploys; run on k3d in CI and in compose. The form is at `/_forms/contact/form`; the generated site does not link to it by itself |
 | `work` | Jira-like tracker with API, CLI and web UI | experimental | 28 MB | Installed through can-core on k3d in CI |
 | `people` | Directory, org, 1:1s, goals, reviews, time off, web UI | experimental | 30 MB | Sensitive fields sealed; backup and restore run on k3d |
-| `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | **Does not start when can-core installs it**; works in compose. Board connectors are stubs |
+| `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | Installs on k3d in CI. Resume uploads need a virus scanner. Board connectors are stubs |
 | `finance` | Parties, invoices, payments, contracts and emailed-link signing, accounting, timesheets, expenses, purchase orders, web UI | experimental | 28 MB | Fake payment provider; the signature is a *simple* electronic signature |
-| `provisioning` | Joiner, mover and leaver account provisioning (SCIM) driven by people events | experimental | 20 MB | **Does not start when can-core installs it**; tested against fakes only; not in compose ([docs/provisioning.md](docs/provisioning.md)) |
+| `provisioning` | Joiner, mover and leaver account provisioning (SCIM) driven by people events | experimental | 20 MB | Installs, but cannot yet reach `people` on a cluster; tested against fakes only; not in compose ([docs/provisioning.md](docs/provisioning.md)) |
 | `files` | Spaces with access lists, versions, share links, scan hook, retention, legal hold, erasure, web UI; local or S3 storage | experimental | 28 MB | No virus scanner ships, so uploads are closed by default (compose switches the requirement off) ([docs/files.md](docs/files.md)) |
-| `equity` | Cap table, option grants with vesting, exercises, ledger, holder identity checks | experimental | 16 MB | API only; no Helm templates, so can-core cannot install it. Not legal or tax advice; quantities stored in plaintext |
-| `board` | Boards and committees, meetings, quorum, resolutions, minutes | experimental | 20 MB | API only; no Helm templates; not in compose. Not legal advice; secret ballots are unlinkable only after the vote closes |
+| `equity` | Cap table, option grants with vesting, exercises, ledger, holder identity checks | experimental | 16 MB | API only; installs on k3d in CI. Not legal or tax advice; quantities stored in plaintext |
+| `board` | Boards and committees, meetings, quorum, resolutions, minutes | experimental | 20 MB | API only; installs on k3d in CI; not in compose. Not legal advice; secret ballots are unlinkable only after the vote closes |
 | `entity` | Legal entities, officers and directors, statutory registers, filings calendar | experimental | 20 MB | Same binary and limits as `board`. Not legal advice; register share counts stored in plaintext |
 | `support`, `newsletter`, `analytics` | Wrapped FreeScout, Listmonk, GoatCounter | experimental | 192, 50, 64 MB | Installed, backed up and restored on k3d in CI; no real domain or mail relay |
 | `crm` | Wrapped EspoCRM | **not-deployable** | 350 MB | Image needs root, tags unresolved |
@@ -83,8 +83,9 @@ The module-by-module table and what each CI workflow proves are in [docs/status.
 |---|---|---|
 | Unit, race and contract tests, licence check, lint | `make test`; CI checks `lint`, `unit`, `contract`, `licences`, `dco` | |
 | The stack on Docker Compose, through its edge: site and lead capture, admin login with TOTP, work, people, jobs, finance, equity and files flows, personal access tokens, Apps sign-in, business overview, restart persistence | `make e2e`, [e2e workflow](.github/workflows/e2e.yml) | Kubernetes (TokenReview, NetworkPolicy), TLS, backups |
-| On k3d: `make up` phases, module install through can-core, routing, backup and restore | `make-up-e2e`, `dev-cluster`, `module-routing`, `module-backup`, `restore-e2e`, `wrapped-modules`, `wrapped-backup` workflows | not every module ([status](docs/status.md#modules)) |
-| A real server, DNS, ACME certificates, backups to object storage, restore on new hardware | built offline against fakes | **all of it**: needs a provider account |
+| The web pages in a real browser engine, at desktop and phone size | `make e2e-browser` (headless Chrome), advisory `browser-e2e` job | https, other browsers, screen readers, real devices |
+| On k3d: `make up` phases, module install through can-core, routing, backup and restore | `make-up-e2e`, `dev-cluster`, `modules-k3d`, `module-routing`, `module-backup`, `restore-e2e`, `wrapped-modules`, `wrapped-backup` workflows | using each module there ([status](docs/status.md#modules)) |
+| A real server, DNS, ACME certificates, backups to object storage, restore on new hardware | built offline against fakes | **all of it**: needs a provider account; [the runbook](docs/real-server-verification.md) and `can verify --server` are ready for it |
 
 ## Footprint: measured against claimed
 
@@ -102,8 +103,8 @@ Deny by default, hashed or sealed secrets, hash-chained audit log, TOTP on the a
 duties on approvals, and one policy layer per sensitive module. Known open issues, stated plainly, are in
 [docs/security-model.md](docs/security-model.md): the host rules that keep pods off the server (NetworkPolicy
 cannot on k3s, [node-isolation.md](docs/node-isolation.md)) have never run on a real server; someone who has the
-admin password can keep guessing authentication codes; equity quantities are stored in plaintext; erasures must be
-recorded by hand or a restore brings the data back; and the compose stack is not safe to expose. Report
+admin password can keep guessing authentication codes; equity quantities are stored in plaintext; what is erased in
+`finance`, `work`, `provisioning` or a wrapped app comes back with a restore of an older backup; and the compose stack is not safe to expose. Report
 vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## Observability

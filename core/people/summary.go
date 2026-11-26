@@ -111,9 +111,17 @@ func summaryBuilder(s *Service) modclient.SummaryBuilder {
 }
 
 // withSummary adds GET /v1/summary to the handler of an installed module.
-func withSummary(next http.Handler, can *modclient.Client, s *Service, log *slog.Logger) http.Handler {
+func withSummary(next http.Handler, can *modclient.Client, s *Service, log *slog.Logger, limit modclient.SummaryLimit) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle(modclient.SummaryPath, modclient.SummaryHandler(can, log, summaryBuilder(s)))
+	mux.Handle(modclient.SummaryPath, modclient.SummaryHandler(can, log, limit, summaryBuilder(s)))
 	mux.Handle("/", next)
 	return mux
+}
+
+// summaryLimit counts failures on /v1/summary like every other failed authentication.
+func (a *API) summaryLimit() modclient.SummaryLimit {
+	return modclient.SummaryLimit{
+		Client: func(r *http.Request) string { return clientIP(r, a.TrustProxy) },
+		Failed: func(ip string) bool { a.limiters(); return a.failIP.allow(ip) },
+	}
 }

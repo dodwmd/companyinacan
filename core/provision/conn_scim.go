@@ -54,10 +54,22 @@ func scimQuote(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
 }
 
-type scimList struct {
-	Resources []struct {
-		ID string `json:"id"`
-	} `json:"Resources"`
+// scimList decodes a ListResponse. A 200 that is not one (another API's JSON, a proxy's page)
+// must never read as "no such account": totalResults is required (RFC 7644 section 3.4.2), and
+// Resources whenever it is not zero.
+func scimList[T any](b []byte) ([]T, error) {
+	var l struct {
+		TotalResults *int `json:"totalResults"`
+		Resources    []T  `json:"Resources"`
+	}
+	if json.Unmarshal(b, &l) != nil || l.TotalResults == nil || *l.TotalResults < 0 || (*l.TotalResults > 0 && len(l.Resources) == 0) {
+		return nil, permanent("bad_response")
+	}
+	return l.Resources, nil
+}
+
+type scimRef struct {
+	ID string `json:"id"`
 }
 
 func (c *SCIMClient) find(ctx context.Context, resource, attr, value string) (string, error) {
@@ -68,18 +80,18 @@ func (c *SCIMClient) find(ctx context.Context, resource, attr, value string) (st
 	if err := classify(st); err != nil {
 		return "", err
 	}
-	var l scimList
-	if json.Unmarshal(b, &l) != nil {
-		return "", permanent("bad_response")
+	found, err := scimList[scimRef](b)
+	if err != nil {
+		return "", err
 	}
-	switch len(l.Resources) {
+	switch len(found) {
 	case 0:
 		return "", nil
 	case 1:
-		if !extIDRe.MatchString(l.Resources[0].ID) {
+		if !extIDRe.MatchString(found[0].ID) {
 			return "", permanent("bad_response")
 		}
-		return l.Resources[0].ID, nil
+		return found[0].ID, nil
 	}
 	return "", permanent("ambiguous") // two accounts for one login: a human must look
 }
@@ -105,13 +117,7 @@ func (c *SCIMClient) users(ctx context.Context, attr, value string) ([]scimUser,
 	if err := classify(st); err != nil {
 		return nil, err
 	}
-	var l struct {
-		Resources []scimUser `json:"Resources"`
-	}
-	if json.Unmarshal(b, &l) != nil {
-		return nil, permanent("bad_response")
-	}
-	return l.Resources, nil
+	return scimList[scimUser](b)
 }
 
 type scimUser struct {

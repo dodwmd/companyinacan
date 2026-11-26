@@ -7,6 +7,8 @@
 
 A self-hosted "business control panel" — think Webmin, but for business people instead of sysadmins. Given a company idea, you run **`make up`** and about **five minutes later** have a live HTTPS landing page, working contact forms and a support inbox (UI live; mail flow needs a relay, see §3.4), on a single small server at the hosting provider of your choice. Everything else (CRM, wiki, newsletter, analytics, …) is one `make enable <module>` away.
 
+**Today the support inbox is not part of that:** `make up` and the setup wizard's starter template deploy the site and forms only. `support` is opt-in and stays so while it is experimental (see §10).
+
 Development happens locally on a k3s cluster (`make dev`), using exactly the same manifests that production uses.
 
 **This is an open-source project**, built first for the author's own use. Commercial offerings (hosted/managed tiers, support) may come later *if the project proves useful*; nothing in v1 is designed around monetisation, tiers or pricing.
@@ -15,7 +17,7 @@ Every capability is a **module**. Modules are switched on and off individually. 
 
 ### Goals
 
-1. **Five-minute launch.** `make up` → live site, forms and support inbox UI in ≤ 5 minutes on a fresh server (budget in §3.4). Connecting real email is a separate, documented step.
+1. **Five-minute launch.** `make up` → live site, forms and support inbox UI (the inbox is not met today, §10) in ≤ 5 minutes on a fresh server (budget in §3.4). Connecting real email is a separate, documented step.
 2. **Small footprint.** Footprint is a first-class constraint: the platform has an explicit RAM budget (§3.2), every module declares and is tested against its own, and the starter stack targets a 2 GB server (tight; 4 GB is the recommended default until Phase 0 proves otherwise).
 3. **Provider-portable.** Any provider that can give us a Linux VM with SSH works; a few (Hetzner, DigitalOcean, …) get fully automated provisioning (§3.5).
 4. **Local = production.** `make dev` runs the same charts on a local k3s (k3d) cluster.
@@ -148,7 +150,7 @@ my-company/
 | **Instant URL** | immediate | the site is first served on `<ip-dashed>.sslip.io` (and `admin.<ip-dashed>.sslip.io`, `help.…`, one certificate per host) with real TLS, so it works before DNS exists. sslip.io is a volunteer-run external service and Let's Encrypt rate limits apply to it; if unavailable the fallback serves only the public site over plain HTTP on the IP, and the admin UI is reachable only through an SSH tunnel until DNS/TLS is set (verify in Phase 0) |
 | Custom domain | ~1 min with Cloudflare API; manual otherwise | records created automatically when a DNS provider token is configured; propagation time is excluded from the budget |
 
-**Email is not in the budget.** The support inbox UI and forms are live after `make up`, but real mail needs an outbound relay and an inbound path on the real domain (§5 email policy), which can't work on an sslip.io hostname. `make up` takes optional relay credentials from `company.yaml`/`.can/`; without them forms submissions are stored and shown in the admin UI, and `make email` walks through connecting the relay and inbound mail afterwards (excluded from the budget like DNS propagation). Heavier modules are enabled afterwards (`make enable crm`, ~1–2 min, dominated by image pull). Phase 0 validates this budget end to end and adjusts the table.
+**Email is not in the budget.** The support inbox UI (the target; not deployed by `make up` today, §10) and forms are live after `make up`, but real mail needs an outbound relay and an inbound path on the real domain (§5 email policy), which can't work on an sslip.io hostname. `make up` takes optional relay credentials from `company.yaml`/`.can/`; without them forms submissions are stored and shown in the admin UI, and `make email` walks through connecting the relay and inbound mail afterwards (excluded from the budget like DNS propagation). Heavier modules are enabled afterwards (`make enable crm`, ~1–2 min, dominated by image pull). Phase 0 validates this budget end to end and adjusts the table.
 
 ### 3.5 Providers
 
@@ -643,6 +645,8 @@ companyinacan/
 - Swapping a module's provider (e.g. FreeScout → in-house) preserves data via export/import and keeps integrations working.
 - A new provider plugin can be written against the `Provider` interface in under a day.
 
+**Where the support inbox stands.** The two criteria above that name it are targets, not met: `make up` deploys the site and forms, and the starter template selects forms. `support` can be enabled (and can-core backs it up), but it is experimental, runs a third party's amd64 image of FreeScout, has been installed only on k3d, and with an external Postgres needs major 17 or it has no backup. It joins the default when it has been verified on a real server.
+
 ## 11. Risks & open questions
 
 | Risk / question | Mitigation / decision needed |
@@ -684,14 +688,14 @@ companyinacan/
 - **Repo hygiene from day one:** `README`, `LICENSE`, `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY.md`, issue/PR templates, CI (lint, schema validation, module smoke tests and footprint checks on k3d), no secrets or personal company data in git (use `examples/` with fake data).
 - **Later (only if it proves good):** managed hosting, paid support, premium/enterprise modules, a hosted module registry. These must live outside the open core and never degrade the self-hosted experience.
 
-## 13. Implementation status (2026-11-26)
+## 13. Implementation status (2026-11-27)
 
 Status of the promises above, section by section. It changes no intent. Nothing has run on a real server, so none
 of the success criteria in §10 is met yet. Detail: [docs/status.md](docs/status.md).
 
 | Section | Promise | Today |
 |---|---|---|
-| §1, §3.4, §10 | `make up` gives a live site, forms and a support inbox in five minutes | `make up` deploys can-core, the site and forms; `support` is enabled separately. Timed only on k3d, without server creation |
+| §1, §3.4, §10 | `make up` gives a live site, forms and a support inbox in five minutes | `make up` deploys can-core, the site and forms (the generated site does not link to the form page); `support` is enabled separately. Timed only on k3d, without server creation |
 | §1, §6.1 | `make init`, `make enable`, `make backup`, `make restore`, `make email` | Not implemented as make targets. `can init`, `can apply`, `can backup`, `can restore` exist |
 | §2, §3.2 | Starter stack on a 2 GB server | Not measured on one |
 | §3.1 | SSO with Authelia, forward-auth for apps | Not built. can-core has its own OIDC sign-in for the admin UI and launch tickets into module web UIs |
@@ -700,11 +704,11 @@ of the success criteria in §10 is met yet. Detail: [docs/status.md](docs/status
 | §3.7 | Approvals, notifications, RBAC, audit | Built. Only jobs requisitions and finance invoices use the approval engine |
 | §3.7 | Portals, unified search, outbound webhooks, workflow module, central retention engine | Not built. Retention and erasure are per module |
 | §3.7 | Reporting and import | Business overview (totals only) and CSV import of people, parties and issues |
-| §3.7, §6.5 | Erasure ledger written by can-core | Not implemented: `can backup ledger-add` by hand |
+| §3.7, §6.5 | Erasure ledger written by can-core | Built for people, equity, board, entity, files, forms and jobs; not for finance, work, provisioning or wrapped apps |
 | §5 | Catalogue | In `modules/`: forms, work, people, jobs, finance, files, equity, board, entity, provisioning, and wrapped analytics, newsletter, support, wiki, status, crm. Contracts, invoices, time and expenses live inside `finance`. Not built: booking, wrapped e-sign (`documents`), vendors module, assets, policies, simple tasks, password manager |
 | §6.1, §6.4 | `can module`, `can pull`, `can upgrade`, `can export`, `can email` | Not implemented. `can import` takes CSV for three record types, not a company export |
 | §6.3 | Dashboard with open tickets, expiring certificates and domains, a restore button | Not built. The overview and status pages show approvals, module totals and the last database dump |
 | §6.5 | Restore from the recovery kit | Built, verified on k3d with a local restic repository only; the new server is made first with `can up --provision-only` |
 | §6.5 | Updates with snapshot and rollback (`can upgrade`) | Not implemented; no release exists |
-| §6.6 | Android | Installable web app with Web Push; never tried on a phone |
+| §6.6 | Android | Installable web app with Web Push; checked at phone size in headless Chrome, never tried on a phone |
 | §12 | Contributions once the repository is public | The repository is public; whether to accept contributions is undecided |

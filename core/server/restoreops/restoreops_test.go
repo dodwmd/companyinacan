@@ -206,16 +206,16 @@ func TestOperationsRefuseALiveServer(t *testing.T) {
 func TestEraseFailsClosed(t *testing.T) {
 	o, h, _ := ops(t,
 		module("people", "enabled", classes("directory-basic")),
-		module("forms", "enabled", classes("lead-submission")))
+		module("analytics", "enabled", classes("lead-submission")))
 	es := []backup.Entry{entry("pers_1", "directory-basic"), entry("l1", "lead-submission"), entry("x", "no-such-class")}
-	rep, err := o.Erase(context.Background(), es, []string{"forms:lead-submission"})
+	rep, err := o.Erase(context.Background(), es, []string{"analytics:lead-submission"})
 	if err == nil || !strings.Contains(err.Error(), "*:no-such-class") || len(h.calls) != 0 {
 		t.Fatalf("err=%v calls=%v", err, h.calls)
 	}
-	if strings.Join(rep.Unapplied, ",") != "*:no-such-class,forms:lead-submission" {
+	if strings.Join(rep.Unapplied, ",") != "*:no-such-class,analytics:lead-submission" {
 		t.Error(rep.Unapplied)
 	}
-	rep, err = o.Erase(context.Background(), es, []string{"forms:lead-submission", "*:no-such-class"})
+	rep, err = o.Erase(context.Background(), es, []string{"analytics:lead-submission", "*:no-such-class"})
 	if err != nil || strings.Join(h.calls, ",") != "cli people pers_1 directory-basic" || len(rep.Purged) != 1 {
 		t.Fatalf("err=%v calls=%v rep=%+v", err, h.calls, rep)
 	}

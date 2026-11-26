@@ -17,7 +17,7 @@ import (
 // Secrets are read from the environment, never from the config file.
 type Secrets struct {
 	TokenKey      []byte // HMAC key for timing tokens (CAN_FORMS_TOKEN_KEY, >= 32 bytes)
-	APIToken      string // bearer token with leads.read + leads.write (CAN_FORMS_API_TOKEN)
+	APIToken      string // bearer token with leads.read, leads.write and leads.erase (CAN_FORMS_API_TOKEN)
 	APIReadToken  string // optional read-only token (CAN_FORMS_API_READ_TOKEN)
 	WebhookSecret string // HMAC secret for webhook signatures (CAN_FORMS_WEBHOOK_SECRET)
 	CaptchaSecret string // Turnstile/hCaptcha secret (CAN_FORMS_CAPTCHA_SECRET)
@@ -129,7 +129,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	auth := opt.Auth
 	if auth == nil {
 		st := &StaticTokens{}
-		st.Add(sec.APIToken, Principal{Subject: "static-admin", Permissions: []string{PermLeadsRead, PermLeadsWrite}})
+		st.Add(sec.APIToken, Principal{Subject: "static-admin", Permissions: []string{PermLeadsRead, PermLeadsWrite, PermLeadsErase}})
 		st.Add(sec.APIReadToken, Principal{Subject: "static-reader", Permissions: []string{PermLeadsRead}})
 		auth = st
 		if opt.Can != nil {
@@ -159,10 +159,15 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		log:      log,
 		now:      now,
 	}
-	api := &leadsAPI{store: store, auth: auth, log: log}
+	api := &leadsAPI{store: store, auth: auth, log: log, notifier: d}
 	h := api.handler()
 	if opt.Can != nil {
-		h = withSummary(h, opt.Can, store, log) // the business overview (specs/053-business-overview)
+		// The business overview (specs/053-business-overview).
+		fails := NewRateLimiter(summaryFailuresPerMin, cfg.RateLimit.MaxTrackedIPs, now)
+		h = withSummary(h, opt.Can, store, log, modclient.SummaryLimit{
+			Client: func(r *http.Request) string { return clientIP(r, cfg.TrustProxy) },
+			Failed: func(ip string) bool { ok, _ := fails.Allow(ip); return ok },
+		})
 	}
 	return &App{
 		cfg: cfg, store: store, dispatcher: d, log: log, now: now,

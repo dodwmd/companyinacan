@@ -134,8 +134,28 @@ func (s *StaticTokens) Authenticate(r *http.Request) (*Principal, error) {
 	return found, nil
 }
 
+// freshAuthenticator is an Authenticator whose answers may be cached and that can also ask now,
+// for the step-up before an irreversible action.
+type freshAuthenticator interface {
+	AuthenticateFresh(r *http.Request) (*Principal, error)
+}
+
 // Chain tries each authenticator in order and returns the first success.
 type Chain []Authenticator
+
+// AuthenticateFresh implements freshAuthenticator.
+func (c Chain) AuthenticateFresh(r *http.Request) (*Principal, error) {
+	for _, a := range c {
+		check := a.Authenticate
+		if f, ok := a.(freshAuthenticator); ok {
+			check = f.AuthenticateFresh
+		}
+		if p, err := check(r); err == nil {
+			return p, nil
+		}
+	}
+	return nil, ErrUnauthenticated
+}
 
 // Authenticate implements Authenticator.
 func (c Chain) Authenticate(r *http.Request) (*Principal, error) {

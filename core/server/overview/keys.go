@@ -10,6 +10,8 @@ type Figure struct {
 	Attention bool
 	// Money figures carry amounts by currency.
 	Money bool
+	// Unit is written after the number ("" for a plain count).
+	Unit string
 	// Path is the page of the module's own UI that shows the records ("" when it has none).
 	Path string
 }
@@ -26,6 +28,14 @@ var Figures = []Figure{
 	{Key: "work.urgent_open", Module: "work", Path: "/"},
 	{Key: "people.headcount", Module: "people", Path: "/people"},
 	{Key: "people.off_today", Module: "people", Path: "/timeoff/calendar"},
+	{Key: "requisitions.open", Module: "jobs", Path: "/jobs"},
+	{Key: "applications.new", Module: "jobs", Attention: true, Path: "/jobs"},
+	{Key: "interviews.due", Module: "jobs", Attention: true, Path: "/interviews"},
+	{Key: "grants.pending_approval", Module: "equity", Attention: true},
+	{Key: "vesting.upcoming", Module: "equity"},
+	{Key: "storage.company", Module: "files", Unit: "MiB", Path: "/admin/files"},
+	{Key: "storage.managed", Module: "files", Unit: "MiB", Path: "/"},
+	{Key: "files.retention_ending", Module: "files", Attention: true, Path: "/"},
 	{Key: "filings.overdue", Module: "entity", Attention: true},
 	{Key: "filings.upcoming", Module: "entity", Attention: true},
 }

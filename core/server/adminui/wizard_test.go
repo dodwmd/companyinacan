@@ -29,7 +29,7 @@ func TestFirstLoginRedirectsOnlyTheOwnerToTheWizard(t *testing.T) {
 	if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != "/setup" {
 		t.Fatalf("owner: %d %s", r.StatusCode, r.Header.Get("Location"))
 	}
-	if r := m.do("GET", "/", nil, ops.with()...); r.StatusCode != 200 {
+	if r := m.do("GET", "/dashboard", nil, ops.with()...); r.StatusCode != 200 {
 		t.Fatalf("operator is redirected: %d", r.StatusCode)
 	}
 	if r := m.do("GET", "/setup", nil, ops.with()...); r.StatusCode != http.StatusForbidden {
@@ -38,7 +38,7 @@ func TestFirstLoginRedirectsOnlyTheOwnerToTheWizard(t *testing.T) {
 	if d := m.do("POST", "/setup/dismiss", url.Values{"csrf": {root.csrf}}, root.with()...); d.StatusCode != http.StatusSeeOther || d.Header.Get("Location") != "/?flash=flash.wizard_dismissed" {
 		t.Fatalf("dismiss: %d %s", d.StatusCode, d.Header.Get("Location"))
 	}
-	dash := m.do("GET", "/", nil, root.with()...)
+	dash := m.do("GET", "/dashboard", nil, root.with()...)
 	if dash.StatusCode != 200 || strings.Contains(dash.body, `href="/setup"`) {
 		t.Fatalf("after dismissal: %d", dash.StatusCode)
 	}
@@ -229,7 +229,7 @@ func TestWizardReviewAndApplyIsIdempotent(t *testing.T) {
 	if ws, _ := m.svc.WizardState(context.Background()); ws.Status != modmgr.WizardCompleted {
 		t.Fatalf("%+v", ws)
 	}
-	if d := m.do("GET", "/", nil, root.with()...); d.StatusCode != 200 {
+	if d := m.do("GET", "/dashboard", nil, root.with()...); d.StatusCode != 200 {
 		t.Fatalf("dashboard still redirects after completion: %d", d.StatusCode)
 	}
 	if r := m.post(root, "/setup/company", url.Values{"name": {"X"}, "domain": {"x.example"}}); r.StatusCode != http.StatusBadRequest {

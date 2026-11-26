@@ -71,6 +71,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newValidateCmd(g),
 		newSiteCmd(g),
 		newDoctorCmd(g),
+		newVerifyCmd(g),
 		newDiagnoseCmd(g),
 		newApplyCmd(g),
 		newDevCmd(g),
@@ -83,6 +84,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newFootprintCmd(g),
 		newWorkCmd(g),
 		newImportCmd(g),
+		newLeadsCmd(g),
 	)
 	err := root.Execute()
 	if err == nil {

@@ -35,7 +35,8 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 
 | URL | What |
 |---|---|
-| <http://localhost:8080> | the example site (`examples/acme-co`, built with `can site build`); `/contact/` is a dev-only page with a working form |
+| <http://localhost:8080> | the example site (`examples/acme-co`, built with `can site build`); `/contact/` is a dev-only page linking to the contact form |
+| <http://localhost:8080/_forms/contact/form> | the contact form, served by can-forms |
 | <http://localhost:8080/_forms/contact/token> | forms gateway, same origin as the site (prefix stripped by the edge) |
 | <http://admin.localhost:8080> | can-core admin UI (and `/api/v1/...` admin API) |
 | <http://work.localhost:8080> | work tracker API (`/v1/...`, bearer token) |
@@ -216,6 +217,18 @@ with `bootstrap-admin.sh` if you were using an authenticator. The CI job is advi
 (`.github/workflows/e2e.yml`: pull requests touching the stack, nightly, manual); it uploads the service logs when
 it fails. The harness (`test/e2e/harness`) has its own unit tests (RFC 6238 vectors).
 
+## The browser suite
+
+```sh
+make e2e-up
+make e2e-browser   # E2E_CHROME=/path/to/chrome if none is found
+make e2e-down
+```
+
+`test/browser` drives headless Chrome or Chromium through the same stack at desktop and Android phone
+sizes and fails on console and Content-Security-Policy messages, horizontal overflow and basic accessibility
+problems ([specs/054-browser-e2e](../specs/054-browser-e2e/spec.md), advisory CI job `browser-e2e`).
+
 ## Metrics and the optional monitoring profile
 
 Every service starts a token-protected metrics listener on port 9190 of the private compose network
@@ -244,10 +257,10 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
   starts the containers. So:
   - purge, Secret rotation and the wizard's email relay credentials are not available;
   - `board` and `entity` are not wired to can-core; the admin UI's leads view says leads are
-    not available (no `leads` provider is registered, no leads token file is configured);
-  - forms sends its lead notification through can-core's `email.send` with a fixed development identity, to an SMTP
-    sink that keeps the mail (http://mail.localhost:8080/messages, [email.md](email.md)); it is not otherwise wired
-    to can-core and posts no webhook;
+    not available (no leads token file is configured; the overview's count of new leads does not need one);
+  - forms sends its lead notification through can-core's `email.send` to an SMTP sink that keeps the mail
+    (http://mail.localhost:8080/messages, [email.md](email.md)). A stack whose volumes predate E17f keeps its old
+    `company.yaml` without forms: recreate it (`down -v`);
   - `equity` is introspected only: it publishes no events through can-core and takes no board decisions from it;
   - no reporting-line (`directory`) credential is configured, so approval chains that need a manager use their
     fallback;

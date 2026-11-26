@@ -32,4 +32,5 @@
 <p><button type="submit">{{t "lead.save"}}</button></p>
 </form>
 </section>
-{{end}}
+{{if .Data.CanErase}}<p><a href="/leads/{{.Data.Lead.ID}}/erase">{{t "le.erase_link"}}</a></p>
+{{end}}{{end}}

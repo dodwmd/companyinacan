@@ -1,43 +1,44 @@
 # What works today, what is experimental, what is unverified
 
-As of 2026-11-26. Derived from the code, the module manifests and charts, and the CI workflows, not from other
-documents. **No part of this project has run on a real server, no release has been published, and no web page has
-been checked in a real browser.** Do not put real company data in it yet.
+As of 2026-11-27. Derived from the code, the module manifests and charts, and the CI workflows, not from other
+documents. **No part of this project has run on a real server, no release has been published, and no real phone or
+https site has been tried in a browser.** Do not put real company data in it yet.
 
 ## In short
 
 | If you want to | Today |
 |---|---|
 | Try it on your own computer | Works: the Docker Compose stack ([getting-started.md](getting-started.md)). Insecure on purpose |
-| Put a company website with a contact form on a server | Built (`make up`) and exercised on a local test cluster; never run on a real server or provider account |
-| Run the business modules (tracker, people, finance, ...) on a server | Not yet. Their container images are not published, `make up` ships only can-core, the site and forms, and some modules do not start when can-core installs them (below) |
+| Put a company website and a contact form on a server | Built (`make up`) and exercised on a local test cluster; never run on a real server or provider account. The form has its own page that the generated site does not link to by itself |
+| Run the business modules (tracker, people, finance, ...) on a server | Not yet. They install on a test cluster from images CI builds, but those images are not published and `make up` ships only can-core, the site and forms |
 | Rely on backups | No. Backup and restore have passed on a local test cluster only, never against a real server or bucket |
 
 ## Modules
 
 Columns:
 
-- **Installs**: can-core installs it on Kubernetes and it starts. "CI" means a workflow did this on a throwaway
-  k3d cluster with images it built or pulled itself.
-- **Web UI**: its own pages. "Upstream" is the wrapped application's own interface.
+- **Installs**: can-core installs it on Kubernetes and it becomes Ready, in a CI workflow, on a throwaway k3d
+  cluster with images the workflow built or pulled. Ready does not mean the module was used there.
+- **Web UI**: its own pages. "Browser" means the headless Chrome suite opens it on the compose stack.
 - **Backup / restore**: what has been exercised on k3d. "Unit" means Go tests only.
-- **Erasure survives restore**: whether `can restore` re-applies a recorded erasure by itself. Every "yes" also
-  needs the operator to record each erasure with `can backup ledger-add`: nothing records it automatically.
+- **Erasure survives restore**: whether an erasure made in the module is recorded by itself and re-applied by
+  `can restore`. "CI" means a restore on k3d showed it; "unit" means collection and replay are built, and only
+  Go tests show the replay (CI reads the feed on k3d).
 
 | Module | Marker | Installs | Web UI | Backup | Restore | Erasure survives restore |
 |---|---|---|---|---|---|---|
-| site | - | CI (published by `make up`) | the public site | rebuilt from your company repository, not backed up | same | no personal data |
-| can-core | - | CI | admin UI | CI | CI | its own copies are cleared at restore (unit) |
-| `forms` | ready | CI | public form; leads in the admin UI | CI | CI | **no**: no purge by subject |
-| `work` | experimental | CI | yes | CI | CI | **no** |
-| `people` | experimental | CI | yes | CI (restore test) | CI | CI |
-| `files` | experimental | CI; **uploads are refused** (no virus scanner, and no supported way to configure one or switch the requirement off) | yes | CI | CI (into a fresh instance, not through `can restore`) | unit only |
-| `finance` | experimental | CI (routing test) | yes | unit | unit | **no** |
-| `jobs` | experimental | **No: it exits at start** (`company.name` and `company.base_url` are required and nothing sets them) | yes | unit | unit | unit only |
-| `provisioning` | experimental | **No: it exits at start** (`CAN_PROVISIONING_DIRECTORY_TOKEN` is required and nothing sets it) | none | unit | unit | **no** |
-| `equity` | experimental | **No: no Helm templates** | none | its own `backup` command, unit | unit | unit only (command exists) |
-| `board` | experimental | **No: no Helm templates** | none | unit | unit | unit only |
-| `entity` | experimental | **No: no Helm templates** | none | unit | unit | **no** |
+| site | - | CI (published by `make up`) | the public site; browser | rebuilt from your company repository, not backed up | same | no personal data |
+| can-core | - | CI | admin UI; browser | CI | CI | its own copies are cleared at restore (unit) |
+| `forms` | ready | CI | a hosted form page (browser). The admin Leads page works in no shipped setup (no credential is wired) | CI | CI | CI |
+| `work` | experimental | CI | yes; browser | CI | CI | **no**: no erasure feed |
+| `people` | experimental | CI | yes; browser | CI (restore test) | CI | CI |
+| `files` | experimental | CI; **uploads are refused** (no virus scanner, and no supported way to configure one or switch the requirement off) | yes; browser | CI | CI (into a fresh instance, not through `can restore`) | unit |
+| `finance` | experimental | CI | yes; browser, with contract signing | unit | unit | **no** |
+| `jobs` | experimental | CI; resume uploads are refused (same scanner requirement) | yes; browser, with a careers application | unit | unit | unit |
+| `provisioning` | experimental | CI, **but cannot do its job**: the network rules do not let it reach `people`, and connector credentials cannot be supplied | none | unit | unit | **no** |
+| `equity` | experimental | CI | none | unit | unit | unit |
+| `board` | experimental | CI | none | unit | unit | unit |
+| `entity` | experimental | CI (its own instance and database) | none | unit | unit | unit |
 | `analytics` (GoatCounter) | experimental | CI | upstream | CI | CI (can-core's restore operations, not through restic) | **no** |
 | `newsletter` (Listmonk) | experimental | CI | upstream | CI | CI (same) | **no** |
 | `support` (FreeScout, third-party image) | experimental | CI | upstream | CI | CI (same) | **no** |
@@ -45,13 +46,17 @@ Columns:
 | `status` (Uptime Kuma) | experimental | **never started** (same) | upstream | **blocks all backups** while enabled | never run | **no** |
 | `crm` (EspoCRM) | not-deployable | refused by `can validate` and can-core | upstream | **blocks all backups** if recorded and enabled | never run | **no** |
 
-Where a restore meets a recorded erasure it cannot replay, it stops until you pass `--accept-unerased` and erase
-the data by hand ([backup-restore.md](backup-restore.md#restore-can-restore---kit)).
+Limits of the erasure column ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger) has all of them):
+
+- The ledger reaches the backup bucket only if the `can` binary is at `/usr/local/bin/can` on the server.
+  `can up` does not copy it.
+- An erasure made in about the last quarter hour before a server is lost may be missing.
+- Where a module is marked **no**, what was erased there comes back with a restore of an older backup. Erase it
+  again afterwards, by hand.
 
 **No row is verified on a real server.** On a real cluster today, only the can-core, site and forms images can be
 delivered (`make images`, shipped over SSH). The other in-house charts name images in `ghcr.io/dodwmd/` that do not
-exist until a release. In CI they work because the workflow builds them and imports them into k3d. The module charts
-ask for tag `0.1.0`, so a first release with another version number would not satisfy them.
+exist until a release.
 
 The Docker Compose stack runs site, forms, can-core, `work`, `people`, `jobs`, `finance`, `equity` and `files`. It
 does not install anything: Compose starts the containers. `board`, `entity`, `provisioning` and the wrapped
@@ -61,18 +66,23 @@ applications are not in it.
 
 | Feature | Evidence | Not verified |
 |---|---|---|
-| Admin login (password and TOTP), audit log, approvals, personal access tokens, Apps sign-in, business overview, forms notification email | compose end-to-end suite (`test/e2e`); unit tests | a real browser; real TokenReview in that suite (k3d tests cover it) |
-| Users and roles, onboarding wizard, module catalogue | unit tests; the catalogue's enable and disable in compose records state only | enabling a module from the admin UI on a cluster |
-| OIDC single sign-on, Web Push, SCIM, CSV import, signing contracts by emailed link, accounting | unit tests against fakes; the invoice flow runs in compose | any real identity provider, push service, SCIM client, accounting system, legal review |
+| Admin login (password and TOTP), audit log, approvals, personal access tokens, Apps sign-in, business overview, forms notification email | compose end-to-end suite (`test/e2e`) and, for most, the browser suite; unit tests | real TokenReview in those suites (k3d tests use real tokens) |
+| Web pages in a browser | `test/browser`: headless Chrome, desktop and 360 px phone size, with basic accessibility checks | https cookies, separate host names, Firefox, WebKit, screen readers, keyboard-only use, a real phone ([spec](../specs/054-browser-e2e/spec.md)) |
+| Users and roles, onboarding wizard, module catalogue | unit tests; the catalogue in compose records state only | enabling a module from the admin UI on a cluster |
+| OIDC single sign-on, Web Push, SCIM, CSV import, accounting | unit tests against fakes | any real identity provider, push service, SCIM client or accounting system |
+| Contracts signed by emailed link | unit tests; signed in a browser through the compose SMTP sink | a real relay, legal review |
 | Outbound email | fake relays and the compose sink | a real relay, deliverability |
-| `make up` phases, backup script | `make-up-e2e` on k3d with a fake host and a local restic repository | creating a server, cloud-init, k3s install on a fresh OS, ACME certificates, the five-minute target |
+| `make up` phases, backup script, `can verify --server` | `make-up-e2e` on k3d with a fake host and a local restic repository | creating a server, cloud-init, k3s install on a fresh OS, ACME certificates, the five-minute target, `can verify` against a real server |
 | Hetzner, DigitalOcean, Cloudflare DNS | fake HTTP APIs | any real account |
-| Restore onto a new cluster | `restore-e2e` (forms, work, people) | a real server or bucket, systemd, restore time, large data |
+| Restore onto a new cluster | `restore-e2e` (forms, work, people, with erasures) | a real server or bucket, systemd, restore time, large data |
 | Module routing, TLS redirect, edge rate limits | `module-routing` on k3d with Traefik's self-signed certificate | real DNS and certificates, client addresses through ServiceLB |
 | Pod-to-node isolation | `node-isolation`: network namespaces, a runner's systemd, k3d | `ufw` on a real server, a reboot, a cloud metadata service |
 | Release pipeline | shell self-tests, local reproducible build | it has never run |
 | Memory footprint | [measurements](measurements/footprint.md) | a 2 GB or 4 GB server, the full starter bundle together |
 | Android | installable web app (PWA) only | any phone |
+
+[real-server-verification.md](real-server-verification.md) is the ordered runbook for closing the real-server
+gaps, with `can verify --server` for the automatic checks.
 
 ## What CI proves, and when it runs
 
@@ -80,23 +90,30 @@ applications are not in it.
 |---|---|---|
 | `ci` (`lint`, `unit`, `contract`, `licences`, `dco`) | every pull request and `main` | red; intended to be required, but `main` has no branch protection yet |
 | `security` | pull requests, `main`, weekly | red (not required); `dependency-review` is informational |
-| `module-backup`, `restore-e2e`, `wrapped-backup`, `node-isolation`, `make-up-e2e` | pull requests touching their paths, on demand | red (not required) |
-| `e2e` | the same, and nightly | job marked `continue-on-error`: the run can look green while the job failed |
-| `dev-cluster`, `module-routing`, `wrapped-modules`, `footprint`, `footprint-budgets` | pull requests touching their paths, on demand (some scheduled) | the same `continue-on-error` caveat |
+| `modules-k3d`, `module-backup`, `restore-e2e`, `wrapped-backup`, `node-isolation`, `make-up-e2e` | pull requests touching their paths, on demand. **Not scheduled** | red (not required) |
+| `dev-cluster`, `module-routing`, `wrapped-modules` | pull requests touching their paths, on demand. **Not scheduled** | job marked `continue-on-error`: the run can look green while the job failed |
+| `e2e` (jobs `e2e` and `browser-e2e`) | pull requests touching their paths, on demand, nightly | same `continue-on-error` caveat |
+| `footprint`, `footprint-budgets` | pull requests touching their paths, on demand. Not scheduled | same `continue-on-error` caveat |
+| `flaky-hunt` | nightly and on demand, never on pull requests | red (not required): the unit suite repeated under load to find unreliable tests |
 
-Path-filtered workflows do not run again on `main` after a merge. "CI" above means the latest runs seen on
-2026-11-26 passed, not that every future change is gated on them.
+Apart from `ci`, `security`, `e2e` and `flaky-hunt`, nothing runs again after a merge, on `main` or on a timer. So
+"CI" above means a run on a pull request passed (the latest seen on 2026-11-27), not that `main` is re-checked.
 
 ## Known defects an operator would hit
 
-- `jobs` and `provisioning` do not start when installed by can-core (table above).
-- A dump run made before the kubelet has mounted a newly created `company` ConfigMap leaves out `company.yaml`
-  and still completes; `can restore` cannot use that set.
-- Erasures are not recorded in the restore ledger automatically.
-- `make up` does not copy the `can` binary to the server; the backup script's erasure-ledger upload needs it at
-  `/usr/local/bin/can` ([backup-restore.md](backup-restore.md#commands)).
-- `company.yaml` module `settings` are not mapped onto module configuration
-  ([module-wiring.md](module-wiring.md)), so for example finance shows the company as its web address.
+- **A module whose image cannot be pulled stops every backup.** Enabling one that has no published image (today
+  every in-house module except forms) leaves a failed install; its backup job cannot start, so no dump run
+  completes until you disable the module.
+- A first release cannot serve all the charts as they are: forms asks for image tag `0.2.0`, the other in-house
+  charts for `0.1.0`, and the release workflow publishes one version. It also does not generate
+  `deploy/release-images.json`, although [make-up.md](make-up.md) says it does.
+- The admin UI's Leads page has no credential on an install. Messages arrive by notification email (needs a relay)
+  or are read through the forms API.
+- The generated website has no link to the contact form (`/_forms/contact/form`).
+- `make up` does not copy the `can` binary to the server; without it erasures never reach the backup bucket
+  ([backup-restore.md](backup-restore.md#commands)).
+- `company.yaml` module `settings` are generally not mapped onto module configuration
+  ([module-wiring.md](module-wiring.md)).
 - Security weaknesses are listed in [security-model.md](security-model.md#known-residual-risks).
 
 ## Decisions waiting on the maintainer
@@ -104,9 +121,9 @@ Path-filtered workflows do not run again on `main` after a merge. "CI" above mea
 | Decision | Why it matters | Where |
 |---|---|---|
 | **Protect the repository.** Apply branch protection, the `release-tags` ruleset and the `release` environment (`scripts/gh-protect-main.sh` prints the calls; `--apply` runs them) | On 2026-11-26 `main` was unprotected, with no ruleset and no environment: the five "required" checks are not enforced | [maintainers.md](maintainers.md) |
-| **Enable repository security settings**: private vulnerability reporting, secret scanning with push protection, Dependabot alerts and updates, dependency graph, approval for outside contributors' workflow runs | Private reporting, secret scanning and Dependabot security updates were off; [SECURITY.md](../SECURITY.md) sends reporters to a button that is not there | [maintainers.md](maintainers.md) |
-| **Publish a first release**, including the `can-hooks` image, and choose its version | Without it module images cannot be pulled, and `wiki`, `status` and `crm` block backups. Charts expect `0.1.0`. Check the new packages are public | [releasing.md](releasing.md) |
-| **Provide a real server** (and a test bucket, domain and mail relay) for one verification run | Nearly every "not verified" line above depends on it; it costs money and needs accounts | [make-up.md](make-up.md#timing-a-real-server-human-gated-epic-e00), [backup-restore.md](backup-restore.md#measuring-restore-time-human-gated) |
+| **Enable repository security settings**: private vulnerability reporting, secret scanning with push protection, Dependabot alerts and updates, dependency graph, approval for outside contributors' workflow runs | On 2026-11-26 private reporting, secret scanning and Dependabot security updates were off; [SECURITY.md](../SECURITY.md) sends reporters to a button that is not there | [maintainers.md](maintainers.md) |
+| **Publish a first release**, including the `can-hooks` image | Without it module images cannot be pulled, and `wiki`, `status` and `crm` block backups. Check the new packages are public | [releasing.md](releasing.md) |
+| **Provide a real server** (and a test bucket, domain and mail relay) for one verification run | Nearly every "not verified" line above depends on it; it costs money (the runbook estimates about US$5 plus a domain) and needs accounts | [real-server-verification.md](real-server-verification.md) |
 | **Keep, replace or drop the third-party FreeScout image** (PikaPods) | It is a supply-chain dependency on another party's build, amd64 only, with their patch delay; nothing updates pinned digests automatically | [specs/041](../specs/041-wrapped-modules-live/spec.md) |
 | **In-house e-signature or Documenso** | SPEC planned Documenso; finance has its own *simple* signature instead. No legal review; Documenso's licence terms were not checked | [specs/049](../specs/049-contract-esign/spec.md) |
 | **Accept or change the sign-in guessing risk** | Someone who has the password can keep guessing authentication codes (per-address limits only). A per-account limit was tried and rejected because it caused other problems | [security-model.md](security-model.md#known-residual-risks), [specs/005](../specs/005-can-core-mvp/deployment.md) |

@@ -1,0 +1,20 @@
+{{- range $i, $svc := .Values.services }}
+{{- if $i }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "mod.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mod.selector" $ | nindent 4 }}
+  ports:
+    - name: {{ $svc.portName }}
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.portName }}
+{{- end }}

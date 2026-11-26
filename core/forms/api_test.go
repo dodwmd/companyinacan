@@ -132,8 +132,8 @@ func TestAPIGetAndPatch(t *testing.T) {
 	if rec := h.apiDo("PATCH", "/v1/leads/ld_missing", adminToken, `{"status":"closed"}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("patch missing: %d", rec.Code)
 	}
-	if rec := h.apiDo("DELETE", "/v1/leads/"+l.ID, adminToken, ""); rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("delete: %d", rec.Code)
+	if rec := h.apiDo("PUT", "/v1/leads/"+l.ID, adminToken, ""); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("put: %d", rec.Code)
 	}
 }
 

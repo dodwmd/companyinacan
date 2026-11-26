@@ -958,7 +958,7 @@ func TestEraseSubjectRemovesBlobsAndScrubsTheDatabaseFiles(t *testing.T) {
 	es, _ := e.s.ListErasures(ctx, e.root, 0)
 	classes := map[string]bool{}
 	for _, x := range es {
-		if x.Subject == subject {
+		if x.Subject != subject { // the erased files, by id
 			classes[x.Class] = true
 		}
 	}

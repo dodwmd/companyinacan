@@ -32,8 +32,8 @@ NetworkPolicy, each with its own SQLite file, bearer-token store and manifest (`
 permissions, approval types, published and subscribed events, provided capabilities, resource budget).
 The in-house modules are Go services in `core/<module>` with a `cmd/can-<module>` binary: `forms`, `work`,
 `people`, `jobs`, `finance`, `files`, `equity`, `provisioning` (`cmd/can-provision`), and `board` and `entity` (one
-binary, `cmd/can-board`). `equity`, `board` and `entity` have no Helm templates yet, so can-core cannot install
-them ([status.md](status.md)). Wrapped open-source modules (support, newsletter, analytics, wiki, CRM,
+binary, `cmd/can-board`, installed as two instances). What each can do once installed is in
+[status.md](status.md). Wrapped open-source modules (support, newsletter, analytics, wiki, CRM,
 status) are charts around upstream images. Analytics, support and newsletter are installed on k3d by an
 advisory CI job, with a Postgres can-core runs in `can-data` for the last two (`specs/041-wrapped-modules-live`);
 the others have never been started. Modules publish events and call can-core, which delivers to subscribers. The
@@ -59,6 +59,9 @@ chain of approvers from policy, records every step, and sends `approval.decided.
 
 **Business overview.** The admin UI asks each module that serves `summary` for its totals on behalf of the
 signed-in person, with a single-use grant ([spec](../specs/053-business-overview/spec.md)).
+
+**Erasures.** can-core reads the erasure feed of the modules that have one and keeps a ledger, which the host takes
+to the backup bucket and a restore replays ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger)).
 
 **Backup** is a host-level restic timer over the dumps that can-core asks each module to write, plus the k3s
 datastore and secrets key, with a recovery kit printed at install time ([backup-restore.md](backup-restore.md)).
@@ -123,8 +126,7 @@ sequenceDiagram
 ```
 
 people does not yet fetch the hire's name from the `ats` capability, so HR completes the placeholder record. The
-handoff is tested in `test/wiring` with the real can-core and modules; it has not run on a cluster, where `jobs` does
-not currently start ([status.md](status.md)).
+handoff is tested in `test/wiring` with the real can-core and modules; it has not run on a cluster.
 
 ## Approval flow (a requisition)
 

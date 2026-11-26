@@ -75,27 +75,47 @@ least that sees `sso_subject`).
 
 ## Who can do what in a company of one or two
 
-A grant has three roles that must be different people: the holder, whoever drafts and submits it, and the
-board member who approves it. Exercises likewise: the holder, the approver and payer, and the issuer. The
-tests (`identity_paths_test.go`) try every assignment.
+A grant has three roles that must be different actors: the holder, whoever drafts and submits it, and the
+board member who approves it. Exercises likewise: the holder, the approver and payer, and the issuer. Only
+directory mode ties those actors to different people (the service account counts as an actor and is not a
+person). The tests (`identity_paths_test.go`, `identity_claims_test.go`) try the assignments.
 
 | Two founders, both administrators and board members | Directory mode | Attestation mode |
 |---|---|---|
 | Establish each founder's record | each creates the other's; each confirms their own | one creates, the other attests |
-| Founder shares (ledger) | each issues the other's | each issues the other's |
+| Founder shares (ledger) | each issues the other's | each issues the other's (nothing stops a founder using a token from issuing their own) |
 | Grant to an employee | one drafts, the other approves | service account (or an introspected user with a `person_id`) drafts, a founder approves: tokens carry no person and cannot draft, as before |
 | Exercise by an employee | one approves and records payment, the other issues | same |
 | Grant to a founder | **break-glass**: the service account drafts, the other founder approves | service account drafts, the other founder approves |
 | Exercise by a founder | the other founder approves and records payment, **break-glass** service account issues | the other founder, then the service account issues |
 
-A single administrator: establishing a record and a grant to an employee take break-glass (the service account
-is the second actor; the administrator, holding the board role, approves). A grant to **themself** cannot be
-approved by them in any way: it takes another board member, as before this feature. Their founder shares are
-recorded with break-glass.
+**Two founders, directory mode, after approval.** Terminating a grant and recording a milestone or an
+acceleration trigger need an actor who did not create, edit, submit or approve it. With one founder drafting an
+employee's grant and the other approving it, nobody is left: **break-glass**, and the service account records
+it. Activating and cancelling have no such rule.
+
+**A single administrator, directory mode:** establishing a record and a grant to an employee take break-glass
+(the service account is the second actor; the administrator, holding the board role, approves). A grant to
+**themself** cannot be approved by them in any way: it takes another board member, as before this feature.
+Their founder shares are recorded with break-glass.
+
+**A single administrator, attestation mode** (the default, and the only mode `can` installs): none of that
+holds. An administrator who also holds the board role and has the service account token **can give themself a
+grant, without break-glass**:
+
+1. the service account creates a holder record for them (creator);
+2. the administrator attests it (confirmer);
+3. the service account drafts and submits the grant (drafter);
+4. the administrator approves it with the board role (approver).
+
+The same steps give an employee a grant, and the administrator can then write ledger entries, their own shares
+included. Every step is audited, but nothing refuses it. What stands in the way is only who holds the board
+role and who can read the service account token (whoever controls the deployment can).
 
 ## Break-glass (single-administrator companies, and recovery)
 
-One person cannot be two actors. Set `CAN_EQUITY_BREAK_GLASS_UNTIL=YYYY-MM-DD` (inclusive, UTC) on the
+A personal account cannot be two actors (in attestation mode one person with the service account token already
+is two: see above). Set `CAN_EQUITY_BREAK_GLASS_UNTIL=YYYY-MM-DD` (inclusive, UTC) on the
 can-equity process, restart, do the task with the **service account** token, then remove the variable. Inside
 the window the service account needs no person, may confirm or attest records it did not create, and may write
 the ledger and run the grant and exercise chain for unestablished holders. It still cannot approve a grant
@@ -134,7 +154,8 @@ links one account per person); linking or unlinking one's own account; acting wh
    elsewhere.
 6. **Attestation mode is much weaker.** There is no link between an account and a holder, so a holder can be
    the attester of their own record entered by someone else, or write their own ledger entries once someone
-   else attested the record. Two accounts or credentials of one human are two actors. The service account can
+   else attested the record. One administrator with the board role and the service account token can give
+   themself a grant without break-glass. Two accounts or credentials of one human are two actors. The service account can
    create records and run grants and ledger writes on established holders, as before (it cannot attest).
 7. **Reads, structure, convertibles and valuations** have no holder identity check.
 8. **Approving one's own shell record.** Someone who entered a record for themself under another name, and got

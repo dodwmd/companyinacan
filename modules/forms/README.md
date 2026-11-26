@@ -14,13 +14,20 @@ browser --POST /_forms/contact--> Traefik (prefix stripped) --> :8080 can-forms
    -> async: email.send notification, signed webhook (retries), delivery outcome recorded
 ```
 
-The site fetches a signed timestamp with `GET /_forms/<id>/token` when the page loads and
+There are two ways to put a form on a site. The simple one is to link to `/_forms/<id>/form`, a page
+the gateway renders itself with the timing token in it; it needs no script. It is not offered for a form
+with a CAPTCHA.
+
+A page of your own instead fetches a signed timestamp with `GET /_forms/<id>/token` when the page loads and
 submits it as the hidden field `_t`. A submission that arrives sooner than `min_fill_seconds`
 after that, or with a missing, forged, other-form or expired (24 h) token, is rejected.
 The honeypot field (default `website`) must stay empty; bots that fill it get a normal-looking
 success and nothing is stored.
 
 ### Embedding
+
+This needs a page that is allowed to run the script. The site served by `can-static` is not: its
+Content-Security-Policy blocks every script, so link to `/_forms/<id>/form` there.
 
 ```html
 <form method="post" action="/_forms/contact">
@@ -94,11 +101,68 @@ per page load". Volume is bounded by the per-IP rate limit, not by the token.
 | `GET /v1/leads/{id}` | `leads.read` | includes notification `deliveries` |
 | `PATCH /v1/leads/{id}` `{"status":..,"note":..}` | `leads.write` | status: new, contacted, qualified, closed, spam |
 | `GET /v1/leads/export.csv` | `leads.read` | formula-injection safe (`=+-@` cells get a leading `'`); capped at 10,000 rows |
+| `POST /v1/leads/find` `{"email":..}` | `leads.erase` | ids of the leads that name the address (`address`: a field is it; `mention`: only in a text) |
+| `DELETE /v1/leads/{id}` | `leads.erase` | erases one lead; safe to repeat |
+| `GET /v1/erasures?after=N` | `leads.erase` | tombstones (lead id, `lead-submission`, date, time) for the backup's erasure ledger |
+| `POST /v1/purge` `{"subject":..,"class":"lead-submission"}` | `leads.erase` | what `can restore` replays; an unknown lead is a no-op |
 
 Authentication goes through the `Authenticator` interface: static bearer tokens
-(`CAN_FORMS_API_TOKEN` read+write, `CAN_FORMS_API_READ_TOKEN` read-only; can-core generates both when
+(`CAN_FORMS_API_TOKEN` read, write and erase, `CAN_FORMS_API_READ_TOKEN` read-only; can-core generates both when
 the module is installed) and, installed under can-core, personal access tokens issued in the admin UI
-and introspected through can-core (`leads.read`, `leads.write`). See [`docs/module-wiring.md`](../../docs/module-wiring.md).
+and introspected through can-core (`leads.read`, `leads.write`, `leads.erase`). See [`docs/module-wiring.md`](../../docs/module-wiring.md).
+
+## Erasure requests
+
+When somebody asks for their data to be deleted:
+
+1. **Find** the submissions. Admin UI: Leads, "Erasure request: find by email". Command line:
+
+   ```sh
+   kubectl -n mod-forms port-forward svc/forms-api 8081 &
+   export CAN_FORMS_TOKEN="$(kubectl -n mod-forms get secret can-module -o jsonpath='{.data.CAN_FORMS_API_TOKEN}' | base64 -d)"
+   can leads find            # asks for the address: not an argument, so it stays out of shell history
+   can leads erase ld_... ld_... --yes
+   ```
+
+   The search compares each field and the staff note with the address, ignoring case. It does **not** find
+   other ways of writing it: a `+tag` or dotted alias, the domain as punycode instead of Unicode (or the
+   reverse), `bob at example dot com`, `%40`, or a submission that only gives a name or phone number. Search
+   for each spelling you know of, and look through the leads view for the rest. An ASCII letter or digit right
+   next to it makes it another address; anything else (a dash, an underscore, other scripts) does not, so
+   expect some `mention` results that are somebody else's.
+2. **Read** every `mention` first: the address is only inside a text, which may be about somebody else.
+3. **Erase** each one. There is no "erase all for this address": a person decides per submission.
+
+The admin UI needs `leads.erase` (owners; or the role `forms:admin`), a recent sign-in, and a
+`CAN_LEADS_TOKEN_FILE` credential that may erase: **`CAN_FORMS_API_TOKEN` can erase since 0.2.0** (the read token
+cannot), so anything already holding it now can. A forms module installed earlier is upgraded to 0.2.0 by the
+next apply of a can-core that ships it; that records the new permission, role and event. Personal access
+tokens issued before need to be issued again to carry `leads.erase`.
+
+**What an erasure does:** deletes the lead and its delivery records; cancels its waiting notification email
+and stops one that is being retried; records a tombstone with the lead id only; rewrites the database
+(`VACUUM`) and truncates the write-ahead log (finished later if it fails or the process stops); publishes [`lead.erased.v1`](events/lead.erased.v1.json) (ids only)
+to can-core and the signed webhook, retried until accepted. Who searched or erased is recorded in the
+`lead_audit` table and the log, and for the admin UI in can-core's audit log. None of these holds the address
+or anything that was submitted.
+
+**What it does not reach. Check each by hand:**
+
+- **Notification email.** Mail already sent is in the mailboxes. can-core's e-mail outbox holds its own copy
+  (recipient, reply-to, subject, body) until it is sent, and for seven days if it cannot be sent
+  ([docs/email.md](../../docs/email.md#data-kept)); forms cannot cancel that copy. A restore replay does remove it.
+  An answer with `notification_was_under_way` means a send was in progress and may have arrived.
+- **Consumers.** A webhook receiver, CRM or newsletter list got the whole submission from the webhook or typed
+  in by hand. They are told the lead id; the CRM and newsletter adapters are not built, so erase there by hand.
+- **Exports** (`export.csv`) and anything copied from the admin UI.
+- **Backups.** Module dumps and snapshots made before the erasure hold the lead until they expire. A restore
+  applies the erasure again if the tombstone is in the erasure ledger. Installed under can-core, can-core puts it
+  there by itself, normally within about 15 minutes, on a server with backups and the `can` binary at
+  `/usr/local/bin/can` ([backup-restore.md](../../docs/backup-restore.md#erasure-tombstone-ledger)). Run on its own,
+  record it with `sudo can backup ledger-add --subject <lead id> --class lead-submission`.
+
+**Retention** is separate: the hourly purge deletes expired leads and truncates the write-ahead log. It makes no
+tombstone and sends no event, because a restored lead keeps its `retention_until` and is purged again.
 
 ## Webhook
 
@@ -122,6 +186,7 @@ Retries live in memory: if the process stops mid-retry the event is not resent (
 
 Stored: submitted field values, status, note, timestamps. Not stored: client IP, user agent,
 spam tokens. The access log omits query strings, client addresses and submitted data.
+One lead can be erased on request ([above](#erasure-requests)).
 Every lead gets `retention_until` at insert time (`retention_days`, default 2 years, matching
 `data_classes` in `module.yaml`) and an hourly job deletes expired rows. Backups are a
 `VACUUM INTO` copy made by `can-forms backup` ([backup and restore](../../docs/backup-restore.md#in-house-modules)).

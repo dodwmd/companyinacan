@@ -5341,6 +5341,9 @@
           "pattern": "^stk_[0-9a-f]{24}$"
         "class":
           "type": "string"
+        "at":
+          "type": "string"
+          "format": "date-time"
         "date":
           "type": "string"
           "format": "date"

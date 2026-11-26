@@ -108,11 +108,12 @@ func (s *Server) routes() []route {
 }
 
 func (s *Server) coreRoutes() []route {
-	return []route{
+	return append(s.leadEraseRoutes(), []route{
 		{"GET /login", s.loginPage},
 		{"POST /login", s.loginPost},
 		{"POST /logout", s.authed(s.logout)},
-		{"GET /{$}", s.authed(s.homeGate(s.wizardGate(s.dashboard)))},
+		{"GET /{$}", s.authed(s.wizardGate(s.home))},
+		{"GET /dashboard", s.authed(s.homeGate(s.dashboard))},
 		{"GET /modules", s.authedPerm(rbac.PermView, s.modules)},
 		{"GET /modules/{id}", s.authedPerm(rbac.PermView, s.module)},
 		{"GET /audit", s.authedPerm(rbac.PermAudit, s.auditPage)},
@@ -132,7 +133,7 @@ func (s *Server) coreRoutes() []route {
 		{"GET /static/{file}", s.static},
 		{"GET /manifest.webmanifest", s.manifest},
 		{"GET /sw.js", s.serviceWorker},
-	}
+	}...)
 }
 
 // Routes lists the "METHOD /path" patterns served; a contract test compares them with
@@ -235,7 +236,7 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 	if sc != nil {
 		p.User, p.CSRF = sc.User.Username, sc.Session.CSRF
 		for _, n := range []struct{ key, label, href string }{
-			{"overview", "nav.overview", "/overview"}, {"dashboard", "nav.dashboard", "/"}, {"modules", "nav.modules", "/modules"}, {"audit", "nav.audit", "/audit"},
+			{"overview", "nav.overview", "/overview"}, {"dashboard", "nav.dashboard", "/dashboard"}, {"modules", "nav.modules", "/modules"}, {"audit", "nav.audit", "/audit"},
 			{"events", "nav.events", "/events"}, {"leads", "nav.leads", "/leads"}, {"settings", "nav.settings", "/settings"},
 		} {
 			p.Nav = append(p.Nav, navItem{Href: n.href, Label: s.msg(n.label), Current: n.key == active})

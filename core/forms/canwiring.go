@@ -40,7 +40,7 @@ func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
 	}
 	var perms []string
 	for _, p := range id.Permissions {
-		if (p == PermLeadsRead || p == PermLeadsWrite) && !slices.Contains(perms, p) {
+		if (p == PermLeadsRead || p == PermLeadsWrite || p == PermLeadsErase) && !slices.Contains(perms, p) {
 			perms = append(perms, p)
 		}
 	}
