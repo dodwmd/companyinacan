@@ -51,13 +51,26 @@ Disabling scales the module to zero and keeps its volume, Secrets and database.
   Module routing is the subject of `epic/E03e-module-routing` and is not changed here.
 - **FR-006** Probes MUST not report an app ready before its first-boot migrations are done.
 - **FR-007** A module in the SMTP list (`support`) that declares `email.send` MUST receive the relay of
-  [docs/email.md](../../docs/email.md) in the Secret `can-smtp`; the Secret is emptied when there is no
-  usable relay or the company disables that module's mail. A relay without TLS is never handed out.
+  [docs/email.md](../../docs/email.md) in the Secret `can-smtp` only when `company.yaml` says
+  `email.modules.<id>.enabled: true` (default: not). Otherwise, and without a usable relay, the Secret is
+  empty; opting out MUST be an upgrade that empties it. A relay without TLS is never handed out.
 - **FR-008** An advisory CI job MUST install each module through can-core on k3d, load a page through
   Traefik, sign in with the generated password, make the app write to its database and read it back,
   record idle memory, disable it and delete its namespace.
 - **FR-009** Memory figures in manifests MUST be based on a measurement, recorded in
   [research.md](research.md) with how it was taken.
+
+- **FR-010** Each module role MUST have a connection limit (20); on the managed server a module role MUST
+  NOT be able to connect to `postgres` or `template1`; the database ports in `can-data` MUST be open only
+  to can-core and to the namespaces of modules that require a database.
+- **FR-011** An installation that used `CAN_POSTGRES_ADMIN_URL` MUST NOT get a managed server when the
+  setting is lost: can-core refuses (marker Secret `can-data/can-postgres-external`, a `postgres`
+  Service it did not make, or a module database recorded on another host).
+- **FR-012** The starter template MUST NOT contain a module whose backup hook cannot run, and applying a
+  change that enables one MUST need an explicit confirmation naming it (wizard review and change page).
+- **FR-013** The managed Postgres's data directory MUST be left out of the file backup, and the
+  documents and the enable screens MUST say that Postgres is not backed up.
+- **FR-014** Third-party packaged and infrastructure images MUST be listed in `THIRD_PARTY_LICENSES`.
 
 ## Success Criteria
 
@@ -81,13 +94,20 @@ charts; upgrades between app versions; the tracking snippet in the site renderer
   `kubectl -n mod-<id> get secret can-module -o jsonpath='{.data.CAN_<ID>_ADMIN_PASSWORD}' | base64 -d`.
   It is also in the app container's environment. Changing it in the app does not update the Secret.
 - Mail that FreeScout sends itself bypasses `email.send`: no recipient allow-list, quota or delivery
-  log. `email.modules.support.enabled: false` withholds the relay.
-- A relay added or changed after the module was enabled reaches it only at the next install or upgrade
-  of the module (change a setting, or disable and enable). can-core reads `company.yaml` from its
-  mounted ConfigMap here, which can lag a change by about a minute.
-- A removed relay empties `can-smtp` at the next apply but does not clear what FreeScout already stored.
-- With a relay configured, FreeScout's system mail settings are overwritten at every pod start.
+  log. Hence the opt-in.
+- A new password in the relay Secret reaches the module only at its next install or upgrade.
+- Opting out empties `can-smtp` but does not clear what FreeScout stored in its database: clear its mail
+  and mailbox settings by hand and rotate the relay password.
+- While opted in with a relay, FreeScout's system mail settings are overwritten at every pod start.
+- **Starter template.** SPEC.md section 1 promises a support inbox right after `make up`. The wizard's
+  starter template no longer selects `support`: enabling it would stop every backup, forms' included. It
+  returns when the hooks image is published.
+- **Image patch lag.** Every image here is pinned by digest and nothing updates them: no bot reads chart
+  values or `deploy/templates`. A security fix needs a maintainer to bump tag and digest (and the module's
+  `version`, or installed modules are not upgraded), a can-core release and an upgrade by the operator.
+  The Postgres image is re-applied at the next install or upgrade of a module that uses it. The PikaPods
+  build adds a third party's delay. A Postgres major upgrade is not handled.
 - The shared Postgres stays running after the last module using it is disabled. If the Secret
   `can-data/can-postgres` is lost while the volume remains, the password must be reset by hand.
-- Any module namespace can open a connection to the Postgres port (existing NetworkPolicy); database
-  credentials are the barrier.
+- Database modules can reach each other's server port (it is one server); credentials and the per-database
+  `CONNECT` grants are the barrier. Modules without a database cannot reach it.

@@ -18,6 +18,10 @@ remains the fallback if the PikaPods image stops being maintained. Trusting it i
 decision for the maintainer: the digest pins exactly what was tested, and nothing updates it
 automatically.
 
+**Patch lag.** The digests above are what runs until someone changes them. No automation watches them
+(Dependabot covers Dockerfiles, not chart values or templates). A bump needs the module's `version` bumped
+too, a can-core release and an upgrade.
+
 All three are multi-arch indexes with amd64 and arm64 except the PikaPods image, which is a
 **single amd64 image**: support does not run on an arm64 server.
 

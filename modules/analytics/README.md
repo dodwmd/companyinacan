@@ -38,6 +38,11 @@ Change it in GoatCounter afterwards; the Secret is not used again. GoatCounter t
 on its command line, so it is visible in the init container's process list while the site is created.
 It sends no mail (password reset by email is not configured).
 
+## Updates and security patches
+
+The image is pinned by digest and nothing updates it automatically: a patch arrives only with a can-core
+release that bumps the digest and the module's `version`.
+
 ## Open items
 
 - **Snippet.** The site renderer does not inject the tracking snippet; add

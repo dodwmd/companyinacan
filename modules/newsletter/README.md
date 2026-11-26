@@ -44,6 +44,11 @@ kubectl -n mod-newsletter get secret can-module -o jsonpath='{.data.CAN_NEWSLETT
 
 Change it in Listmonk afterwards; the Secret is not used again.
 
+## Updates and security patches
+
+The image is pinned by digest and nothing updates it automatically: a patch arrives only with a can-core
+release that bumps the digest and the module's `version`.
+
 ## Open items
 
 - A new installation has Listmonk's example SMTP server: set a real one before sending.

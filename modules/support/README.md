@@ -19,7 +19,7 @@ provides the `tickets` capability and publishes `ticket.created.v1`.
 | Database | Postgres (can-core's shared server in `can-data`, own database and role) |
 | Public host | `support.<domain>` (the whole app, including its sign-in page) |
 | Sign in | `admin@<domain>` (setting `admin_email`, used on the first start only); password below |
-| Email | the company relay is written into FreeScout's **system** mail settings; mailboxes are configured by hand: [docs/email-policy.md](../../docs/email-policy.md) |
+| Email | opt-in: the company relay is written into FreeScout's **system** mail settings; mailboxes are configured by hand: [docs/email-policy.md](../../docs/email-policy.md) |
 | Capability | `tickets` (`schemas/capabilities/tickets.v1.json`), served by `support-adapter` (:8081, off until the adapter image exists) |
 | Backup | `hooks/backup.sh` (`pg_dump`) and `hooks/restore.sh`; **not run yet** (the hooks image is not published). Attachments live on the PVC |
 | Data classes | `support-conversation`, `support-attachment`: 3 years, standard sensitivity |
@@ -35,14 +35,27 @@ Change it in FreeScout after the first sign-in; the Secret is not updated and no
 FreeScout's knowledge base is a paid add-on; the public help centre comes from the wiki module.
 SSO is `none`: FreeScout has no OIDC in its free core.
 
+## Updates and security patches
+
+The image is pinned by digest and nothing updates it: no bot watches chart values, and a patched
+FreeScout, PHP or nginx reaches an installation only after a maintainer bumps the tag, digest **and the
+module's `version`** (can-core upgrades a module only when its version or settings change), releases
+can-core (the charts are baked into its image) and the operator upgrades. A third party builds this
+image, which adds its own delay. Watch FreeScout's security releases yourself if this matters.
+
 ## Email
 
-- With a relay configured ([docs/email.md](../../docs/email.md)) and `email.modules.support.enabled`
-  not `false`, invitations, password resets and agent notifications use it. The settings are written
+- **Off by default.** Only with `email.modules.support.enabled: true` in `company.yaml` is the company
+  relay ([docs/email.md](../../docs/email.md)) given to FreeScout, for invitations, password resets and
+  agent notifications. This hands the relay password to a third party's image. The settings are written
   again at every pod start. This mail does not pass `email.send`: no allow-list, quota or delivery log.
+- **Turning it off** (`enabled: false`, or removing the line) is applied like any change: can-core empties
+  `can-smtp` and restarts the pod. It does **not** remove what FreeScout already stored in its database.
+  Clear Manage, Settings, Mail Settings and every mailbox's connection settings by hand, and **rotate the
+  relay password** at the provider: assume the application and its image have seen it.
 - Replies to customers and fetching mail are per mailbox: open the mailbox's connection settings and
   enter the SMTP and IMAP details. The relay is not copied there.
-- A relay configured after the module was enabled arrives at the next install or upgrade of the module.
+- A new password in the relay Secret arrives at the next install or upgrade of the module.
 - Delivery through a real relay has not been tried.
 
 ## Open items

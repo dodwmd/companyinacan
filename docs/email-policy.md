@@ -19,15 +19,30 @@ gets the relay credentials injected; the mechanism depends on who sends:
 | In-house Go modules (forms) | REST call to can-core's `email.send` | none; the projected audience-`can` token |
 | SMTP-speaking OSS apps (FreeScout, Listmonk) | SMTP straight to the relay | injected from a Secret |
 
-For the second kind, can-core creates a Secret named **`can-smtp`** in the module namespace of the
-apps it lists as SMTP senders (today `support` only), from the same relay settings as `email.send`
-(`company.yaml` `email.relay` and the Secret `can-system/can-smtp-relay`). Keys: `host`, `port`,
-`user`, `password`, `from`, `encryption` (`tls` for STARTTLS, `ssl` for implicit TLS).
+For the second kind, can-core hands over the relay **only when the company opts the module in**. It is
+off by default, because the password leaves can-core for a third-party application (for `support`, a
+third party's build of it):
 
-- Such mail does **not** pass `email.send`: no recipient allow-list, quota or delivery log. Setting
-  `email.modules.support.enabled: false` withholds the relay. A relay with `tls: none` is never handed out.
-- The Secret is empty without a usable relay, and the module starts without one. A relay added or
-  changed later arrives at the next install or upgrade of the module.
+```yaml
+email:
+  modules:
+    support: { enabled: true }   # required; absent or false: no credentials
+```
+
+can-core then fills a Secret named **`can-smtp`** in the module namespace of the apps it lists as SMTP
+senders (today `support` only), from the same relay settings as `email.send` (`company.yaml`
+`email.relay` and the Secret `can-system/can-smtp-relay`). Keys: `host`, `port`, `user`, `password`,
+`from`, `encryption` (`tls` for STARTTLS, `ssl` for implicit TLS).
+
+- Such mail does **not** pass `email.send`: no recipient allow-list, quota or delivery log. A relay with
+  `tls: none` is never handed out.
+- The Secret is empty without the opt-in or a usable relay, and the module starts without one. Opting in
+  or out, and a change of `email.relay` while opted in, upgrade the module. A change of only the relay
+  Secret (a new password) arrives at the module's next install or upgrade.
+- **Turning it off** (`enabled: false`, or removing the line) is applied like any change: can-core empties
+  `can-smtp` and restarts the pod. It does **not** remove what FreeScout already stored in its database.
+  Clear Manage, Settings, Mail Settings and every mailbox's connection settings by hand, and **rotate the
+  relay password** at the provider: assume the application and its image have seen it.
 - Passwords never enter `module.yaml`, values files, ConfigMaps, logs or settings schemas.
 - The base namespace policy lets module pods reach the internet but not the node or cluster
   ranges (`deploy/templates/module-namespace.yaml`), which is enough for SMTP on 587 to a hosted
