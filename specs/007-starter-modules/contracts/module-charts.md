@@ -7,8 +7,10 @@ What the starter charts assume of can-core (E03) and promise to the namespace.
 - Release name any; release namespace `mod-<id>` created from `deploy/templates/module-namespace.yaml`
   (pod security `restricted`, default-deny, `module-egress`, LimitRange, quota).
 - `--set ingress.host=<subdomain>.<domain>` (required); `ingress.tls=false` on local dev.
-- Secrets `can-database`, `can-smtp`, `can-module` exist before install (keys in
-  [data-model.md](../data-model.md)). `can-smtp` may be absent: its references are optional.
+- Secrets: `can-module` (`CAN_API_URL`, `CAN_WEBHOOK_SECRET`, generated passwords), `can-db` for a Postgres
+  module (`DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD`) and `can-smtp` for apps given the relay
+  (specs/041; `core/server/installer/secretrefs_test.go` checks every reference). The older names in
+  [data-model.md](../data-model.md) are superseded. `can-smtp` references are optional.
 - A projected-token audience `can` is minted by the kubelet for the adapter only; the API token of
   the default ServiceAccount is never mounted (`automountServiceAccountToken: false`).
 
