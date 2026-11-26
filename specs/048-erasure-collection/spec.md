@@ -44,6 +44,7 @@ wrote the erasure tombstone ledger that a restore replays.
 |---|---|---|
 | people, equity, board, entity | everything of the class for the subject | the dump's time (D6) |
 | jobs | everything of the class for the candidate | the dump's time |
+| forms | one lead (ids are never reused) | the dump's time |
 | files | a file id (the feed), or a data subject (by hand, or an earlier release) | the file ids, and the dump's time |
 
 can-core's derived copies (events, notifications, queued mail) are removed on restore whatever the erasure's time:
@@ -54,5 +55,5 @@ replayed into a dump made between the two. Retention sweeps of people, equity an
 
 ## Out of scope
 
-Erasure feeds for `finance`, `work`, `forms`, `provisioning` and the wrapped apps; module-to-module network
+Erasure feeds for `finance`, `work`, `provisioning` and the wrapped apps; module-to-module network
 policies (provisioning still cannot reach the people module); serving `board` and `entity` from one instance.

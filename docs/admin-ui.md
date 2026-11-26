@@ -133,7 +133,7 @@ certificate/ingress reader (the status page says "not available"), pod readiness
 | Variable | Effect |
 |---|---|
 | `CAN_COMPANY_NAME`, `CAN_COMPANY_DOMAIN` | Shown on the dashboard |
-| `CAN_LEADS_TOKEN_FILE` | File with the bearer credential can-core uses to read the `leads` capability. Re-read on every request. Without it the leads page says leads are not available |
+| `CAN_LEADS_TOKEN_FILE` | File with the bearer credential can-core uses to read the `leads` capability. Re-read on every request. Without it the leads page says leads are not available. With the forms module's `CAN_FORMS_API_TOKEN` the UI can also erase leads (users with `leads.erase`); with the read token it cannot |
 | `CAN_PUBLIC_IPS` | Comma-separated public addresses of the server, listed in the wizard's DNS step. Unset: the step says the address is not known |
 | `CAN_COOKIE_SECURE`, `CAN_TRUST_PROXY` | As for the API (see `specs/005-can-core-mvp/deployment.md`) |
 

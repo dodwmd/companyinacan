@@ -42,6 +42,8 @@ consumes: [leads]
 subscribes:
   # lead.created.v1 -> contact (specs/019-wiki-crm-status/contracts/lead-to-crm-adapter.md).
   - { event: lead.created.v1, service: crm-adapter, port: 8081, webhook: /hooks/lead, optional: true, status: planned }
+  # a lead erased on request, by id only: the adapter removes what that lead created
+  - { event: lead.erased.v1, service: crm-adapter, port: 8081, webhook: /hooks/lead-erased, optional: true, status: planned }
 permissions: [crm.read, crm.write, crm.admin]
 roles:
   sales: [crm.read, crm.write]

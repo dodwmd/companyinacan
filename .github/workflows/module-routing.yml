@@ -56,13 +56,15 @@ jobs:
           GO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' golang:1.27 | cut -d@ -f2)
           DL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' gcr.io/distroless/static-debian12:nonroot | cut -d@ -f2)
           for m in work forms finance; do
+            # the tag the chart asks for (modules/$m/chart/values.yaml)
+            tag="$(awk '/^  tag:/ {print $2; exit}' "modules/$m/chart/values.yaml")"
             docker build -f deploy/$m/Dockerfile \
               --build-arg GO_IMAGE_DIGEST="$GO_DIGEST" \
               --build-arg DISTROLESS_DIGEST="$DL_DIGEST" \
               --build-arg VERSION=ci \
-              -t ghcr.io/dodwmd/can-$m:0.1.0 .
+              -t "ghcr.io/dodwmd/can-$m:$tag" .
           done
-          k3d image import can-core:dev ghcr.io/dodwmd/can-work:0.1.0 ghcr.io/dodwmd/can-forms:0.1.0 \
+          k3d image import can-core:dev ghcr.io/dodwmd/can-work:0.1.0 ghcr.io/dodwmd/can-forms:0.2.0 \
             ghcr.io/dodwmd/can-finance:0.1.0 -c companyinacan-dev
       - name: Deploy can-core
         run: |

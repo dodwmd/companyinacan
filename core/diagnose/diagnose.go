@@ -160,7 +160,9 @@ var (
 	reKeyPfx = regexp.MustCompile(`\b(?:gh[pousr]_|github_pat_|sk_live_|sk_test_|pk_live_|xox[abprs]-|glpat-|AKIA|ASIA)[A-Za-z0-9_-]{8,}`)
 	reLong   = regexp.MustCompile(`[A-Za-z0-9_+=-]{32,}`)
 	reANSI   = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)")
-	reEmail  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
+	// Letters of any script (internationalised addresses), punycode labels, an apostrophe in the
+	// local part and the URL-encoded "@".
+	reEmail = regexp.MustCompile(`[\p{L}\p{M}\p{N}._%+'-]+(?:@|%40)[\p{L}\p{M}\p{N}-]+(?:\.[\p{L}\p{M}\p{N}-]+)*\.(?:[Xx][Nn]--[A-Za-z0-9-]{2,}|[\p{L}\p{M}]{2,})`)
 )
 
 // Scrub removes secrets and personal identifiers from free text.

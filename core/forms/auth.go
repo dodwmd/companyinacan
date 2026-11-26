@@ -13,6 +13,8 @@ import (
 const (
 	PermLeadsRead  = "leads.read"
 	PermLeadsWrite = "leads.write"
+	// PermLeadsErase finds leads by address and erases them for good (erase.go).
+	PermLeadsErase = "leads.erase"
 )
 
 // ErrUnauthenticated means no valid credentials were presented.

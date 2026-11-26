@@ -188,7 +188,7 @@ THIS SERVER IS NOT BEING BACKED UP YET.
 Next, from a machine that reaches this server: run `+"`can up`"+` in %s (site, admin and module routes, DNS),
 with the --backup-* flags to install the backup timer again (the password is already on this server).
 Check that the old server is really gone: two servers backing up to one repository, or sending mail, is not supported.
-Erasures: only those in the erasure ledger were replayed (people, equity, board, entity, files and jobs record theirs;
+Erasures: only those in the erasure ledger were replayed (people, equity, board, entity, files, forms and jobs record theirs;
 other modules do not). See the warning above and repeat any erasure it may have missed.
 `, f.dir)
 	if len(f.acceptUnrestored) > 0 {

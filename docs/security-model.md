@@ -90,10 +90,10 @@ delay: see the residual risks below.
   closed. can-core's log is hash-chained and append-only (database triggers refuse updates and deletes); the
   modules' logs are append-only by trigger, and finance's only purged by the retention job after a year.
 - **No personal data in events.** Events carry ids and amounts only; the lead event has no name or email.
-- **Retention, legal hold and erasure** exist per module in `people`, `equity`, `board`, `entity`, `files` and
-  `jobs` (erasure pseudonymises and clears). can-core collects their erasure tombstones into a ledger that goes
+- **Retention, legal hold and erasure** exist per module in `people`, `equity`, `board`, `entity`, `files`,
+  `jobs` and `forms` (lead erasure) (erasure pseudonymises and clears). can-core collects their erasure tombstones into a ledger that goes
   to the backup bucket, and a restore replays it ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger)
-  lists the limits). **Other modules (finance, work, forms, provisioning and the wrapped apps) record nothing
+  lists the limits). **Other modules (finance, work, provisioning and the wrapped apps) record nothing
   there**: what is erased in them comes back with a restore of an older backup. Legal retention overrides erasure for issued invoices.
 - **Separation of duties** is enforced in one function per module and repeated as database triggers where it
   matters: the author of an invoice, timesheet, grant or review release cannot approve it; subjects are compared

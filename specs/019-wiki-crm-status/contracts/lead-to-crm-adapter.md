@@ -41,8 +41,11 @@ Minimisation: nothing outside the table is copied. The note is the only free tex
   4.3 delivery); a 4xx validation error returns 422 and is dead-lettered, not retried.
 - **Consent:** the adapter does not subscribe the person to marketing; newsletter has its own
   optional `lead.created.v1` subscription keyed on its opt-in field.
-- **Erasure:** a `person.erased.v1` subscription (to add with the adapter) calls `erase_contact`;
-  until then erasure is manual (modules/crm/README.md).
+- **Erasure:** `lead.erased.v1` to `/hooks/lead-erased` (`{lead_id, form_id, erased_at}`, ids only) removes
+  what that lead created: its note, and the contact with `external_key = lead_id` when nothing else hangs on
+  it (`erase_contact`). An unknown lead id is a 204; an erasure may arrive before the creation it undoes, so
+  the id is remembered and a later `lead.created.v1` for it is dropped. A `person.erased.v1` subscription (to
+  add with the adapter) covers people. Until then erasure is manual (modules/crm/README.md).
 
 ## Tests to write with the adapter
 

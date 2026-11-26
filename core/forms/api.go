@@ -22,6 +22,8 @@ type leadsAPI struct {
 	store *Store
 	auth  Authenticator
 	log   *slog.Logger
+	// notifier is told about erasures: it stops what is being sent and announces them.
+	notifier *Dispatcher
 }
 
 func (a *leadsAPI) handler() http.Handler {
@@ -37,6 +39,10 @@ func (a *leadsAPI) handler() http.Handler {
 	mux.HandleFunc("GET /v1/leads/export.csv", a.guard(PermLeadsRead, a.export))
 	mux.HandleFunc("GET /v1/leads/{id}", a.guard(PermLeadsRead, a.get))
 	mux.HandleFunc("PATCH /v1/leads/{id}", a.guard(PermLeadsWrite, a.patch))
+	mux.HandleFunc("POST /v1/leads/find", a.guardAs(PermLeadsErase, a.find))
+	mux.HandleFunc("DELETE /v1/leads/{id}", a.guardAs(PermLeadsErase, a.erase))
+	mux.HandleFunc("GET /v1/erasures", a.guardAs(PermLeadsErase, a.erasures))
+	mux.HandleFunc("POST /v1/purge", a.guardAs(PermLeadsErase, a.purge))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setSecurityHeaders(w)
 		mux.ServeHTTP(w, r)
@@ -44,6 +50,11 @@ func (a *leadsAPI) handler() http.Handler {
 }
 
 func (a *leadsAPI) guard(perm string, next http.HandlerFunc) http.HandlerFunc {
+	return a.guardAs(perm, func(w http.ResponseWriter, r *http.Request, _ *Principal) { next(w, r) })
+}
+
+// guardAs is guard for handlers that record who acted.
+func (a *leadsAPI) guardAs(perm string, next func(http.ResponseWriter, *http.Request, *Principal)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, err := a.auth.Authenticate(r)
 		if err != nil {
@@ -52,10 +63,13 @@ func (a *leadsAPI) guard(perm string, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if !p.Can(perm) {
+			if perm == PermLeadsErase {
+				a.log.Warn("audit", "action", "lead.erase_denied", "actor", p.Subject)
+			}
 			writeError(w, http.StatusForbidden, "forbidden", "missing permission "+perm)
 			return
 		}
-		next(w, r)
+		next(w, r, p)
 	}
 }
 

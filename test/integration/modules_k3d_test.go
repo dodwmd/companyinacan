@@ -97,7 +97,7 @@ func TestEveryInHouseModuleOnK3d(t *testing.T) {
 
 	// can-core reads every erasure feed with the credential it generated, through the network rules.
 	status := backup.DefaultSettings().DumpsDir + "/" + backup.CollectedDir + "/" + backup.CollectedStatusFile
-	feeds := []string{"board", "entity", "equity", "files", "jobs", "people"}
+	feeds := []string{"board", "entity", "equity", "files", "forms", "jobs", "people"}
 	eventually(t, 4*time.Minute, "every erasure feed to be read", func() (bool, string) {
 		out := onNode(t, "cat "+status+" 2>/dev/null || true")
 		var st backup.CollectStatus

@@ -97,11 +97,11 @@ func newBackupCmd(g *globalOpts) *cobra.Command {
 		Short: "Back up, verify and manage the recovery kit (run on the host)",
 		Args:  cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return usage("backup needs a subcommand: run, status, verify, kit, install, ledger-add, ledger-import, ledger-sync")
+			return usage("backup needs a subcommand: run, status, verify, kit, snapshots, install, ledger-add, ledger-import, ledger-sync")
 		},
 	}
 	cmd.AddCommand(newBackupRunCmd(), newBackupStatusCmd(g), newBackupVerifyCmd(g), newBackupKitCmd(),
-		newBackupInstallCmd(g), newLedgerAddCmd(), newLedgerImportCmd(), newLedgerSyncCmd())
+		newBackupInstallCmd(g), newLedgerAddCmd(), newLedgerImportCmd(), newLedgerSyncCmd(), newBackupSnapshotsCmd(g))
 	return cmd
 }
 

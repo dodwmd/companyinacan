@@ -31,6 +31,7 @@ var feeds = map[string]string{
 	"board":  "CAN_BOARD_ADMIN_TOKEN",
 	"entity": "CAN_BOARD_ADMIN_TOKEN",
 	"files":  "CAN_FILES_API_TOKEN",
+	"forms":  "CAN_FORMS_API_TOKEN",
 	"jobs":   "CAN_JOBS_ADMIN_TOKEN",
 }
 

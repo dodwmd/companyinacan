@@ -189,6 +189,7 @@ Linux release binary at `/usr/local/bin/can` there first (the erasure ledger upl
 | `can backup run` | run the script now |
 | `can backup verify` | `restic check`, restore a sample of dump files into a temp dir, compare SHA-256 with the manifest, then the checks a restore makes of the snapshot (marker, state database, company.yaml, Secrets export, every dump loadable) |
 | `can backup kit` | generate the recovery kit (see below) |
+| `can backup snapshots --kit <file>` | list the snapshots, and read the erasure ledger, with the kit alone (not the installed credential files or the shell's variables); no lock, nothing written. Run it before destroying a server |
 | `can restore --kit <file or -> [--plan]` | restore onto a blank server, run on that server as root |
 
 ## Recovery kit
@@ -277,15 +278,16 @@ one not tagged `can` is ignored, a newer `can` snapshot that fails its marker ch
 restic error while checking also stops it. The chosen snapshot is pinned for resumes.
 
 Which modules lose what, today: every shipped in-house module is restored from its own consistent dump, by
-`<binary> restore -replace`; `forms`, `finance`, `work` and `provisioning` have no purge by subject and class,
-so tombstones of their classes need `--accept-unerased`. If `files` or `jobs` refuse to restore because files their
+`<binary> restore -replace`; `forms` replays lead erasures over `/v1/purge` ([erasure requests](../modules/forms/README.md#erasure-requests));
+`finance`, `work` and `provisioning` have no purge by subject and class, so tombstones of their classes need
+`--accept-unerased`. If `files` or `jobs` refuse to restore because files their
 database names are missing, and those files were destroyed after the backup's dump was taken,
 `--allow-missing-blobs <module>` goes on without them; otherwise it means the volume was not restored.
 
 ## Erasure tombstone ledger
 
 can-core collects the erasures of the modules into the ledger. Once a minute it reads `GET /v1/erasures` of
-`people`, `equity`, `board`, `entity`, `files` and `jobs` (from the start each time, so a restored module is read
+`people`, `equity`, `board`, `entity`, `files`, `forms` and `jobs` (from the start each time, so a restored module is read
 correctly), and appends what is new to a ledger in the dumps directory (`.erasure-ledger/`, never part of the dumps
 or a snapshot). On the host, `can backup ledger-import` adds it to `/var/lib/can/erasure-ledger.jsonl`; the backup
 script does this nightly and `can-erasure-sync.timer` every quarter of an hour (`can-backup --ledger-only`). An entry
@@ -324,7 +326,7 @@ run fails with exit 22.
 
 **What is not covered:**
 
-- **Modules without an erasure feed record nothing**: `finance`, `work`, `forms`, `provisioning` and the wrapped apps
+- **Modules without an erasure feed record nothing**: `finance`, `work`, `provisioning` and the wrapped apps
   (`crm`, `wiki`, `support`, `newsletter`, `status`, `analytics`). Each run of `ledger-import` names the installed ones
   that hold data classes. Something erased in them is **back** after a restore of an older backup. If a purge hook can
   replay it, erase there and record it: `can backup ledger-add --subject <id> --class <data class>`.

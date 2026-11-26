@@ -351,6 +351,7 @@ var inHouse = map[string]purgeMethod{
 	"board":  {cli: true},
 	"entity": {cli: true},
 	"files":  {tokenKey: "CAN_FILES_RESTORE_TOKEN"},
+	"forms":  {tokenKey: "CAN_FORMS_API_TOKEN"},
 	"jobs":   {tokenKey: "CAN_JOBS_ADMIN_TOKEN"},
 }
 
