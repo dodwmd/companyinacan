@@ -1,7 +1,6 @@
 package work
 
 import (
-	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,8 +22,7 @@ func (u *webUI) loginPage(c *uiCtx) {
 }
 
 func (u *webUI) renderLogin(c *uiCtx, status int, errKey, next string) {
-	tok := randToken(24)
-	u.setCookie(c.w, c.r, u.loginCookieName(c.r), tok, 3600)
+	tok := u.sessions.LoginCSRF(c.w, c.r)
 	b := c.base(msg("login.title"), "")
 	b.CSRF = tok
 	v := &uiLoginView{Next: next, TokenLogin: u.a.tokenLogin}
@@ -45,14 +43,14 @@ func (u *webUI) loginPost(c *uiCtx) {
 		u.renderLogin(c, http.StatusForbidden, "login.token_off", "")
 		return
 	}
-	ck, err := r.Cookie(u.loginCookieName(r))
-	if err != nil || ck.Value == "" || subtle.ConstantTimeCompare([]byte(ck.Value), []byte(r.PostFormValue("csrf"))) != 1 {
+	if !u.sessions.CheckLoginCSRF(r) {
 		u.renderLogin(c, http.StatusForbidden, "login.csrf", "")
 		return
 	}
 	next, _ := safeNext(r.PostFormValue("next"))
 	tok := strings.TrimSpace(r.PostFormValue("token"))
 	var p *Principal
+	var err error
 	if tok != "" && len(tok) <= 512 {
 		p, err = u.principalFor(r, tok)
 	}
@@ -69,12 +67,7 @@ func (u *webUI) loginPost(c *uiCtx) {
 		u.renderLogin(c, http.StatusUnauthorized, "login.invalid", next)
 		return
 	}
-	if old, err := r.Cookie(u.sessionCookieName(r)); err == nil {
-		u.sessions.delete(old.Value)
-	}
-	id, _ := u.sessions.create(tok, p.Subject)
-	u.setCookie(c.w, r, u.sessionCookieName(r), id, int(u.sessions.abs.Seconds()))
-	u.setCookie(c.w, r, u.loginCookieName(r), "", -1)
+	u.sessions.Start(c.w, r, *p, tok)
 	if next == "" {
 		next = "/ui/"
 	}
@@ -82,7 +75,6 @@ func (u *webUI) loginPost(c *uiCtx) {
 }
 
 func (u *webUI) logout(c *uiCtx) {
-	u.sessions.delete(c.id)
-	u.setCookie(c.w, c.r, u.sessionCookieName(c.r), "", -1)
+	u.sessions.End(c.w, c.r)
 	http.Redirect(c.w, c.r, "/ui/login?ok=logged_out", http.StatusSeeOther)
 }

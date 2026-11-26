@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 // Every handler here parses a form, calls Store methods (the same ones the JSON API calls, in api.go)
@@ -698,7 +700,7 @@ func (u *UI) eraseForm(c *uiCtx) error {
 		}
 		d.IsFileID = validID("fil", subject)
 	}
-	d.SSO = c.ss.ssoHandle != ""
+	d.SSO = c.ss.SSO()
 	u.render(c.w, c.r, c, http.StatusOK, "erase.html", "erase.title", d)
 	return nil
 }
@@ -719,23 +721,22 @@ func (u *UI) erasePost(c *uiCtx) error {
 	// Step-up: erasing is irreversible, so a session left open on an unlocked screen is not enough.
 	// A token session is asked for its sign-in token again, which must still authenticate now; a
 	// launch-ticket session needs a recent admin sign-in, confirmed by can-core (stepUpSSO).
-	if c.ss.ssoHandle != "" {
+	if c.ss.SSO() {
 		if err := u.stepUpSSO(c); err != nil {
 			return err
 		}
 	} else {
-		if !constEq(c.form("token"), c.ss.token) {
+		p, err := u.sessions.StepUp(c.r, c.ss, c.form("token"), nil) // never the introspection cache
+		switch {
+		case errors.Is(err, session.ErrStepUpReenter):
 			return formError{"erase.reenter"}
-		}
-		p, err := u.authenticateNow(c.ctx(), c.ss.token) // never the introspection cache
-		if errors.Is(err, ErrUnavailable) {
+		case errors.Is(err, ErrUnavailable):
 			return err
-		}
-		if err != nil || p == nil || p.Subject != c.ss.subject {
+		case err != nil:
 			return ErrForbidden
 		}
 		p.Groups = c.p.Groups
-		c.p = p // EraseSubject checks the permissions the token has now
+		c.p = &p // EraseSubject checks the permissions the token has now
 	}
 	longOperation(c.w)
 	rep, err := u.Store.EraseSubject(c.ctx(), c.p, subject)

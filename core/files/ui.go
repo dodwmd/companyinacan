@@ -28,6 +28,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/lazytmpl"
 	"github.com/dodwmd/companyinacan/core/modclient"
+	"github.com/dodwmd/companyinacan/core/uikit/session"
 )
 
 //go:embed ui/templates ui/static
@@ -69,7 +70,7 @@ type UI struct {
 	RecheckEvery    time.Duration
 
 	once     sync.Once
-	sessions sessionStore
+	sessions *session.Manager[Principal]
 	tpl      *lazytmpl.Set // pages parse on first use: parsing all of them costs RAM at idle
 	failIP   *failLimiter
 	perUser  *failLimiter
@@ -170,6 +171,7 @@ func (u *UI) init() {
 	if u.RecheckEvery <= 0 {
 		u.RecheckEvery = uiRecheckDefault
 	}
+	u.sessions = u.newSessions()
 	u.failIP = newFailLimiter(uiFailedLogins, u.Now)
 	u.perUser = newFailLimiter(uiPerSubjectPerMin, u.Now)
 	u.tpl = &lazytmpl.Set{FS: uiAssets, Dir: "ui/templates", Funcs: template.FuncMap{
@@ -216,14 +218,14 @@ func (u *UI) Handler() http.Handler {
 		mux.HandleFunc(r.pattern, u.authed(r))
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if ss, p, ok := u.current(w, r); ok {
+		if ss, p, ok := u.sessions.Current(w, r); ok {
 			u.renderError(w, r, &uiCtx{u: u, ss: ss, p: &p, r: r, w: w}, http.StatusNotFound, "err.not_found_title", "err.not_found")
 			return
 		}
 		u.renderError(w, r, nil, http.StatusNotFound, "err.not_found_title", "err.not_found")
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		setUIHeaders(w)
+		session.SetHeaders(w.Header())
 		rec := &uiRecorder{ResponseWriter: w}
 		start := time.Now()
 		defer func() {
@@ -241,11 +243,9 @@ func (u *UI) Handler() http.Handler {
 				u.renderError(rec, r, nil, http.StatusInternalServerError, "err.internal_title", "err.internal")
 			}
 		}()
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-				u.renderError(rec, r, nil, http.StatusForbidden, "err.csrf_title", "err.csrf")
-				return
-			}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !session.SameOrigin(r) {
+			u.renderError(rec, r, nil, http.StatusForbidden, "err.csrf_title", "err.csrf")
+			return
 		}
 		mux.ServeHTTP(rec, r)
 	})
@@ -272,20 +272,6 @@ func (r *uiRecorder) Write(b []byte) (int, error) {
 
 // Unwrap lets http.ResponseController reach the connection (upload and download deadlines).
 func (r *uiRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
-
-// setUIHeaders are the headers of every response. There is no script of any kind, so scripts are
-// forbidden outright. No ETag or Last-Modified is ever set: authenticated pages are never cached.
-// A download replaces the policy with the API's own (serveContent).
-func setUIHeaders(w http.ResponseWriter) {
-	h := w.Header()
-	h.Set("Content-Security-Policy", "default-src 'none'; script-src 'none'; style-src 'self'; img-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
-	h.Set("Referrer-Policy", "no-referrer")
-	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("X-Frame-Options", "DENY")
-	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-	h.Set("Cross-Origin-Resource-Policy", "same-origin")
-	h.Set("Cache-Control", "no-store")
-}
 
 // uiCtx is what a handler gets: the session, the resolved caller and the request. On upload routes
 // parts is the rest of the multipart body after the CSRF field, head the limit on what is read of it
@@ -351,22 +337,22 @@ func (c *uiCtx) redirect(path, okKey string) error {
 // is checked before a byte of the file is read.
 func (u *UI) authed(rt uiRoute) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ss, p, ok := u.current(w, r)
+		ss, p, ok := u.sessions.Current(w, r)
 		if !ok {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
 		c := &uiCtx{u: u, ss: ss, p: &p, r: r, w: w}
-		if u.perUser.blocked(ss.subject) {
+		if u.perUser.blocked(ss.Subject) {
 			w.Header().Set("Retry-After", "60")
 			u.renderError(w, r, c, http.StatusTooManyRequests, "err.busy_title", "err.busy")
 			return
 		}
-		u.perUser.fail(ss.subject) // counts every request of the subject
+		u.perUser.fail(ss.Subject) // counts every request of the subject
 		upload := rt.reserve != nil
 		if unsafe := r.Method != http.MethodGet && r.Method != http.MethodHead; unsafe && !upload {
 			r.Body = http.MaxBytesReader(w, r.Body, uiMaxFormBytes)
-			if err := r.ParseForm(); err != nil || !constEq(r.PostForm.Get("csrf"), ss.csrf) {
+			if err := r.ParseForm(); err != nil || !session.Equal(r.PostForm.Get("csrf"), ss.CSRF) {
 				u.renderError(w, r, c, http.StatusForbidden, "err.csrf_title", "err.csrf")
 				return
 			}
@@ -425,7 +411,7 @@ func (u *UI) receive(c *uiCtx, rt uiRoute) {
 	c.head = &headLimit{ReadCloser: body, left: uiMaxHeadBytes}
 	r.Body = c.head
 	mr, err := r.MultipartReader()
-	if err != nil || !csrfPart(mr, c.ss.csrf) {
+	if err != nil || !csrfPart(mr, c.ss.CSRF) {
 		if c.head.exceeded {
 			u.fail(c, errHeadTooLong)
 			return
@@ -447,7 +433,7 @@ func csrfPart(mr *multipart.Reader, want string) bool {
 		return false
 	}
 	b, err := io.ReadAll(io.LimitReader(part, 128))
-	return err == nil && constEq(string(b), want)
+	return err == nil && session.Equal(string(b), want)
 }
 
 // formError is a problem with what the person typed that never reached the Store.
@@ -562,7 +548,7 @@ func (u *UI) nav(path string, admin bool) []navItem {
 func (u *UI) render(w http.ResponseWriter, r *http.Request, c *uiCtx, status int, name, titleKey string, data any) {
 	pg := page{Lang: "en", Title: u.msg(titleKey), Data: data}
 	if c != nil {
-		pg.Authed, pg.CSRF, pg.Subject = true, c.ss.csrf, c.p.Subject
+		pg.Authed, pg.CSRF, pg.Subject = true, c.ss.CSRF, c.p.Subject
 		pg.Write, pg.Admin = c.p.canWrite(), c.p.Has(PermAdmin)
 		current := r.URL.Path
 		if status >= 400 {
@@ -614,26 +600,12 @@ type loginData struct {
 	TokenLogin bool // the paste-a-token form is offered
 }
 
-// loginCSRF returns the double-submit token of the login forms and sets its cookie. It is kept while
-// it is valid, so a failed attempt does not invalidate the form the user is looking at.
-func (u *UI) loginCSRF(w http.ResponseWriter, r *http.Request) string {
-	tok := ""
-	if ck, err := r.Cookie(u.loginCSRFName()); err == nil && len(ck.Value) == 43 {
-		tok = ck.Value
-	}
-	if tok == "" {
-		tok = newToken()
-	}
-	u.setCookie(w, u.loginCSRFName(), tok, uiLoginCSRFMaxAge)
-	return tok
-}
-
 func (u *UI) loginForm(w http.ResponseWriter, r *http.Request, status int, errMsg string) {
-	u.render(w, r, nil, status, "login.html", "login.title", loginData{Error: errMsg, CSRF: u.loginCSRF(w, r), TokenLogin: !u.NoTokenLogin})
+	u.render(w, r, nil, status, "login.html", "login.title", loginData{Error: errMsg, CSRF: u.sessions.LoginCSRF(w, r), TokenLogin: !u.NoTokenLogin})
 }
 
 func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := u.current(w, r); ok {
+	if _, _, ok := u.sessions.Current(w, r); ok {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -649,8 +621,7 @@ func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
 		u.renderError(w, r, nil, http.StatusBadRequest, "err.invalid_title", "err.bad_form")
 		return
 	}
-	ck, err := r.Cookie(u.loginCSRFName())
-	if err != nil || !constEq(ck.Value, r.PostForm.Get("csrf")) {
+	if !u.sessions.CheckLoginCSRF(r) {
 		u.loginForm(w, r, http.StatusForbidden, u.msg("login.csrf"))
 		return
 	}
@@ -673,21 +644,12 @@ func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
 		u.loginForm(w, r, http.StatusUnauthorized, u.msg("login.invalid"))
 		return
 	}
-	// A presented session id is never adopted (session fixation); the old one, if any, is dropped.
-	if old, err := r.Cookie(u.sessionCookieName()); err == nil {
-		u.sessions.drop(old.Value)
-	}
-	id := u.sessions.add(&uiSession{subject: p.Subject, princ: *p, token: token}, u.Now())
-	u.setCookie(w, u.sessionCookieName(), id, 0)
-	u.setCookie(w, u.loginCSRFName(), "", -1)
+	u.sessions.Start(w, r, *p, token)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (u *UI) logout(c *uiCtx) error {
-	if ck, err := c.r.Cookie(u.sessionCookieName()); err == nil {
-		u.sessions.drop(ck.Value)
-	}
-	u.setCookie(c.w, u.sessionCookieName(), "", -1)
+	u.sessions.End(c.w, c.r)
 	http.Redirect(c.w, c.r, "/login", http.StatusSeeOther)
 	return nil
 }
