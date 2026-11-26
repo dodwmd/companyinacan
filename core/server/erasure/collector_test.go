@@ -75,7 +75,7 @@ func TestCollect(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mods := []store.Module{module(t, "finance", store.StateEnabled), module(t, "files", store.StateDisabled), module(t, "jobs", store.StateEnabled), module(t, "people", store.StateEnabled)}
+	mods := []store.Module{module(t, "provisioning", store.StateEnabled), module(t, "files", store.StateDisabled), module(t, "jobs", store.StateEnabled), module(t, "people", store.StateEnabled)}
 	dir := t.TempDir()
 	c := &Collector{API: api, Dir: dir, Modules: func(context.Context) ([]store.Module, error) { return mods, nil },
 		ServiceURL: func(ns, _ string, _ int) string { return srv[strings.TrimPrefix(ns, "mod-")].URL }}
@@ -83,7 +83,7 @@ func TestCollect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(st.Collected, []string{"people"}) || !slices.Equal(st.NoFeed, []string{"finance"}) || !slices.Equal(st.NotAsked, []string{"files"}) ||
+	if !slices.Equal(st.Collected, []string{"people"}) || !slices.Equal(st.NoFeed, []string{"provisioning"}) || !slices.Equal(st.NotAsked, []string{"files"}) ||
 		st.Failed["jobs"] == "" || st.Rejected != 1 {
 		t.Fatalf("status %+v", st)
 	}
@@ -114,7 +114,7 @@ func TestCollect(t *testing.T) {
 	// The host reports the failed feed after importing what there is.
 	host := &backup.Ledger{Path: filepath.Join(t.TempDir(), "ledger.jsonl")}
 	rep, err := backup.ImportCollected(filepath.Join(dir, backup.CollectedDir), host, time.Now())
-	if err != nil || rep.Added != 4 || !strings.Contains(strings.Join(rep.Problems, " "), "jobs") || !strings.Contains(strings.Join(rep.Notes, " "), "finance") {
+	if err != nil || rep.Added != 4 || !strings.Contains(strings.Join(rep.Problems, " "), "jobs") || !strings.Contains(strings.Join(rep.Notes, " "), "provisioning") {
 		t.Fatalf("import: %v %+v", err, rep)
 	}
 }

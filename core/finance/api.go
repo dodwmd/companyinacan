@@ -47,6 +47,7 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("GET /v1/parties/{id}", a.guard(read, biz, a.getParty))
 	mux.HandleFunc("PATCH /v1/parties/{id}", a.guard(write, biz, a.patchParty))
 	mux.HandleFunc("POST /v1/parties/{id}/erase", a.guard(admin, biz, a.eraseParty))
+	mux.HandleFunc("GET /v1/erasures", a.guard(admin, biz, a.erasures))
 
 	mux.HandleFunc("GET /v1/tax-rates", a.guard(read, biz, a.listTaxRates))
 	mux.HandleFunc("POST /v1/tax-rates", a.guard(admin, biz, a.createTaxRate))

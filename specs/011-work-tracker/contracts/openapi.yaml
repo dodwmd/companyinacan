@@ -480,6 +480,32 @@ paths:
       summary: Revoke a token; effective immediately
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses: { "204": { description: Revoked }, "403": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
+  /v1/people/erase:
+    post:
+      tags: [admin]
+      operationId: erasePerson
+      x-required-scope: work.admin
+      summary: Replace a person's identifier with a pseudonym everywhere (work.admin, unscoped token)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [subject], additionalProperties: false, properties: { subject: { type: string, maxLength: 254 } } } } }
+      responses:
+        "200": { description: "Erased (or already): subject (the erasure's ledger name), pseudonym, already_erased, changed counts, notes", content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /v1/erasures:
+    get:
+      tags: [admin]
+      operationId: listErasures
+      x-required-scope: work.admin
+      summary: Erasure tombstones after a cursor, for the erasure ledger (work.admin, unscoped token)
+      parameters: [{ name: after, in: query, required: false, schema: { type: integer, minimum: 0 } }]
+      responses:
+        "200": { description: "items: seq, subject, class, date, at", content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /v1/audit:
     get:
       tags: [admin]

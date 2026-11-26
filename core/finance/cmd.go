@@ -2,6 +2,7 @@ package finance
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -32,13 +33,19 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	cfgPath := fs.String("config", "", "path to the finance config file (default "+defaultConfigPath+" when present, else built-in defaults)")
 	addr := fs.String("addr", "127.0.0.1:8080", "healthcheck: address of the API listener")
 
+	var subject, class string
+	if cmd == "purge" {
+		fs.StringVar(&subject, "subject", "", "purge: the subject of the erasure (party-<id>-<creation time>)")
+		fs.StringVar(&class, "class", "", "purge: the data class ("+ClassPartyContact+")")
+	}
+
 	switch cmd {
 	case "version":
 		fmt.Fprintf(stdout, "can-finance %s\n", Version)
 		return 0
-	case "serve", "check-config", "healthcheck":
+	case "serve", "check-config", "healthcheck", "purge":
 	default:
-		fmt.Fprintf(stderr, "unknown command %q (serve, check-config, healthcheck, version)\n", cmd)
+		fmt.Fprintf(stderr, "unknown command %q (serve, check-config, healthcheck, purge, version)\n", cmd)
 		return 2
 	}
 	if err := fs.Parse(args); err != nil {
@@ -69,6 +76,9 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stdout, "config ok")
 		return 0
 	}
+	if cmd == "purge" { // the replay of one erasure, run by `can restore` (specs/056-erasure-finance-work)
+		return runPurge(cfg, subject, class, stdout, stderr)
+	}
 	log := obslog.New(stderr, obslog.Options{Service: "can-finance", Version: Version, Level: getenv("CAN_LOG_LEVEL"), Format: getenv("CAN_LOG_FORMAT")})
 	can, err := modclient.FromEnv(getenv)
 	if err != nil {
@@ -96,6 +106,33 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		log.Error("exit", "error", err)
 		return 1
 	}
+	return 0
+}
+
+func runPurge(cfg *Config, subject, class string, stdout, stderr io.Writer) int {
+	if subject == "" || class == "" {
+		fmt.Fprintln(stderr, "purge needs -subject and -class")
+		return 2
+	}
+	st, err := OpenStore(cfg.DBPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "purge: %v\n", err)
+		return 1
+	}
+	rep, err := st.PurgeSubject(context.Background(), subject, class, cfg.RetentionYears)
+	if err = errors.Join(err, st.Close()); err != nil {
+		fmt.Fprintf(stderr, "purge: %v\n", err)
+		return 1
+	}
+	if rep == nil {
+		fmt.Fprintf(stdout, "nothing to purge for %s\n", subject)
+		return 0
+	}
+	kept := 0
+	for _, r := range rep.Retained {
+		kept += r.Count
+	}
+	fmt.Fprintf(stdout, "purged %s for %s (%d drafts deleted, %d records kept by legal retention)\n", class, subject, rep.DeletedDrafts, kept)
 	return 0
 }
 

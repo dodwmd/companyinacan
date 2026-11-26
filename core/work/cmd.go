@@ -2,6 +2,7 @@ package work
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -33,13 +34,19 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	cfgPath := fs.String("config", "", "path to the work config file (default "+defaultConfigPath+" when present, else built-in defaults)")
 	addr := fs.String("addr", "127.0.0.1:8080", "healthcheck: address of the API listener")
 
+	var subject, class string
+	if cmd == "purge" {
+		fs.StringVar(&subject, "subject", "", "purge: the subject of the erasure (person-<hash>)")
+		fs.StringVar(&class, "class", "", "purge: the data class ("+ClassPerson+")")
+	}
+
 	switch cmd {
 	case "version":
 		fmt.Fprintf(stdout, "can-work %s\n", Version)
 		return 0
-	case "serve", "check-config", "healthcheck":
+	case "serve", "check-config", "healthcheck", "purge":
 	default:
-		fmt.Fprintf(stderr, "unknown command %q (serve, check-config, healthcheck, version)\n", cmd)
+		fmt.Fprintf(stderr, "unknown command %q (serve, check-config, healthcheck, purge, version)\n", cmd)
 		return 2
 	}
 	if err := fs.Parse(args); err != nil {
@@ -69,6 +76,9 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	if cmd == "check-config" {
 		fmt.Fprintln(stdout, "config ok")
 		return 0
+	}
+	if cmd == "purge" { // the replay of one erasure, run by `can restore` (specs/056-erasure-finance-work)
+		return runPurge(cfg, subject, class, stdout, stderr)
 	}
 	log := obslog.New(stderr, obslog.Options{Service: "can-work", Version: Version, Level: getenv("CAN_LOG_LEVEL"), Format: getenv("CAN_LOG_FORMAT")})
 	can, err := modclient.FromEnv(getenv)
@@ -102,6 +112,29 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		log.Error("exit", "error", err)
 		return 1
 	}
+	return 0
+}
+
+func runPurge(cfg *Config, subject, class string, stdout, stderr io.Writer) int {
+	if subject == "" || class == "" {
+		fmt.Fprintln(stderr, "purge needs -subject and -class")
+		return 2
+	}
+	st, err := OpenStore(cfg.DBPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "purge: %v\n", err)
+		return 1
+	}
+	res, err := st.PurgeSubject(context.Background(), subject, class)
+	if err = errors.Join(err, st.Close()); err != nil {
+		fmt.Fprintf(stderr, "purge: %v\n", err)
+		return 1
+	}
+	if res == nil {
+		fmt.Fprintf(stdout, "nothing to purge for %s\n", subject)
+		return 0
+	}
+	fmt.Fprintf(stdout, "purged %s for %s\n", class, subject)
 	return 0
 }
 
