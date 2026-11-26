@@ -29,6 +29,11 @@ reminders reached nobody.
 - **Backlog.** A sweep with more than five new items queues one event with `count`. The can-board
   migration `005_reminders.sql` retires events that were never attempted and re-arms pending filings
   that nobody heard of, so the first sweep announces them (summarised) once.
+- **Isolation.** In-app, e-mail and push limits are per recipient and origin; approval notices have
+  their own allowance and are not counted against a module's e-mail quota (its switch still applies).
+  `application.received` and `lead.created` are digested beyond five an hour. A rule on an event its
+  module publishes ignores other publishers. A P0 is repeated to a person at most hourly.
+- **Standalone entity.** Migration 005 also runs there: see docs/entity.md.
 - **Manifests.** Module versions and images are bumped (`core/modimages/images.txt`): finance, jobs,
   work 0.2.0; entity and board 0.2.0; people module 0.4.0 (image 0.2.0). New `publishes` entries and
   rules widen the manifests: where such upgrades are held for approval (PR #77), they need it.
@@ -36,8 +41,8 @@ reminders reached nobody.
 ## Not in scope
 
 Purchase order drafts, review releases, equity and board approvals; re-announcing contract reminders
-raised before the upgrade; a per-module digest of event-driven notices (the engine's per-person hourly
-limit, in-app cap and module e-mail quota apply).
+raised before the upgrade; digests for types other than the publicly triggered ones. There are no
+security notices in the engine today; one added later needs its prefix in `IsPlatformType`.
 
 ## Verification
 

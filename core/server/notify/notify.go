@@ -39,12 +39,15 @@ const (
 const (
 	MaxUnreadCount       = 100 // the badge shows "99+" beyond this
 	MaxRecipientsPerRule = 50
-	MaxInAppPerHour      = 200 // per recipient; further notices in the hour are dropped
-	maxDataKeys          = 20
-	maxDataValue         = 200
-	digestBatch          = 50
-	defaultRateLimit     = 30
-	sendTimeout          = 10 * time.Second
+	MaxInAppPerHour      = 200 // per recipient and origin; further notices in the hour are dropped
+	// PublicBurst is how many notices of one publicly triggered type a recipient gets one by one in an
+	// hour; further ones wait for one digest e-mail and are not pushed.
+	PublicBurst      = 5
+	maxDataKeys      = 20
+	maxDataValue     = 200
+	digestBatch      = 50
+	defaultRateLimit = 30
+	sendTimeout      = 10 * time.Second
 )
 
 var (
@@ -152,6 +155,36 @@ type Notice struct {
 
 var errInvalid = errors.New("invalid notification")
 
+// IsPlatformType reports whether typ is an approval notice of can-core's engine. Modules cannot name
+// one: their types carry their id, "approval" is no module's id and approval events are reserved.
+func IsPlatformType(typ string) bool { return strings.HasPrefix(typ, "approval.") }
+
+// publicTypes are raised by anyone on the internet: a website form, a job application.
+var publicTypes = map[string]bool{"lead" + ".created": true, "application" + ".received": true}
+
+// bucket restricts a count of notifications n to those that share limits with a notice of this origin
+// and type: can-core's own notices on one side, each origin on its own on the other, so that no module
+// (or the public, through one) can use up the allowance of an approval.
+func bucket(origin, typ string) (string, []any) {
+	const platform = `n.type LIKE 'approval.%'`
+	if IsPlatformType(typ) {
+		return platform, nil
+	}
+	return `n.origin=? AND NOT ` + platform, []any{origin}
+}
+
+// burst reports whether the recipient has had more than PublicBurst notices of this public type in
+// the last hour, this one included.
+func (s *Service) burst(ctx context.Context, subject, typ string) (bool, error) {
+	if !publicTypes[typ] {
+		return false, nil
+	}
+	var c int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM notifications WHERE subject=? AND type=? AND created_at>? LIMIT ?)`,
+		subject, typ, s.opt.Now().Add(-time.Hour).Unix(), PublicBurst+1).Scan(&c)
+	return c > PublicBurst, err
+}
+
 func cleanData(in map[string]string) (map[string]string, error) {
 	if len(in) > maxDataKeys {
 		return nil, fmt.Errorf("%w: more than %d data keys", errInvalid, maxDataKeys)
@@ -231,8 +264,10 @@ func (s *Service) Notify(ctx context.Context, n Notice) (id int64, created bool,
 		}
 	}
 	var recent int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM notifications WHERE subject=? AND created_at>? LIMIT ?)`,
-		n.Subject, s.opt.Now().Add(-time.Hour).Unix(), MaxInAppPerHour).Scan(&recent); err != nil {
+	where, args := bucket(n.Module, n.Type)
+	args = append(append([]any{n.Subject, s.opt.Now().Add(-time.Hour).Unix()}, args...), MaxInAppPerHour)
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM notifications n WHERE n.subject=? AND n.created_at>? AND `+where+` LIMIT ?)`,
+		args...).Scan(&recent); err != nil {
 		return 0, false, err
 	}
 	if recent >= MaxInAppPerHour {
@@ -286,10 +321,11 @@ func (s *Service) emitSent(ctx context.Context, id int64, subject, typ, channel 
 	}
 }
 
-func (s *Service) externalCount(ctx context.Context, subject, channel string, since time.Time) (int, error) {
+func (s *Service) externalCount(ctx context.Context, subject, channel, origin, typ string, since time.Time) (int, error) {
 	var c int
+	where, args := bucket(origin, typ)
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM notify_deliveries d JOIN notifications n ON n.id=d.notification_id
-		WHERE n.subject=? AND d.channel=? AND d.status='sent' AND d.at>?`, subject, channel, since.Unix()).Scan(&c)
+		WHERE n.subject=? AND d.channel=? AND d.status='sent' AND d.detail<>? AND d.at>? AND `+where, append([]any{subject, channel, burstSent, since.Unix()}, args...)...).Scan(&c)
 	return c, err
 }
 
@@ -316,7 +352,18 @@ func (s *Service) deliverEmail(ctx context.Context, id int64, n Notice, data map
 		s.logDelivery(ctx, id, ChannelEmail, "queued", "digest or quiet hours")
 		return
 	}
-	cnt, err := s.externalCount(ctx, n.Subject, ChannelEmail, now.Add(-time.Hour))
+	if !n.Urgent {
+		many, err := s.burst(ctx, n.Subject, n.Type)
+		if err != nil {
+			s.opt.Log.Error("burst lookup failed", "error", err)
+			return
+		}
+		if many {
+			s.logDelivery(ctx, id, ChannelEmail, "queued", burstDetail)
+			return
+		}
+	}
+	cnt, err := s.externalCount(ctx, n.Subject, ChannelEmail, n.Module, n.Type, now.Add(-time.Hour))
 	if err != nil {
 		s.opt.Log.Error("rate limit lookup failed", "error", err)
 		return
@@ -357,7 +404,7 @@ func (s *Service) NotifyChannel(ctx context.Context, name string, n Notice) erro
 	if err != nil || !created {
 		return err
 	}
-	cnt, err := s.externalCount(ctx, n.Subject, "webhook", s.opt.Now().Add(-time.Hour))
+	cnt, err := s.externalCount(ctx, n.Subject, "webhook", n.Module, n.Type, s.opt.Now().Add(-time.Hour))
 	if err != nil {
 		return err
 	}
@@ -665,11 +712,19 @@ func inQuiet(now time.Time, start, end int, tz string) bool {
 
 // --- digests ----------------------------------------------------------------------------------
 
+// burstDetail marks an e-mail held back because a public type arrived in numbers; it goes out in one
+// digest an hour after the first of them.
+const burstDetail = "burst"
+
+// burstSent marks what a burst digest carried. It was one message however many notices it stands
+// for, and does not count against the hourly limit.
+const burstSent = "burst digest"
+
 type queued struct {
 	deliveryID, notificationID int64
 	subject, typ, dataJSON     string
 	module                     string
-	authored                   bool
+	authored, burst            bool
 	at                         time.Time
 }
 
@@ -677,8 +732,11 @@ type queued struct {
 // over, and digest subscribers' batches once an hour or day has passed since the oldest queued
 // item. It returns how many digest emails were sent. Work per call is bounded.
 func (s *Service) FlushDigests(ctx context.Context) (int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.notification_id, n.subject, n.type, n.data_json, n.origin, n.authored, d.at FROM notify_deliveries d
-		JOIN notifications n ON n.id=d.notification_id WHERE d.channel='email' AND d.status='queued' ORDER BY n.subject, d.id LIMIT 500`)
+	rows, err := s.db.QueryContext(ctx, `SELECT d.id, d.notification_id, n.subject, n.type, n.data_json, n.origin, n.authored, d.detail=?, d.at FROM notify_deliveries d
+		JOIN notifications n ON n.id=d.notification_id WHERE d.channel='email' AND d.status='queued'
+		AND (d.detail<>? OR n.subject IN (SELECT m.subject FROM notify_deliveries b JOIN notifications m ON m.id=b.notification_id
+			WHERE b.status='queued' AND b.channel='email' AND b.detail=? AND b.at<=?))
+		ORDER BY n.subject, d.id LIMIT 500`, burstDetail, burstDetail, burstDetail, s.opt.Now().Add(-time.Hour).Unix())
 	if err != nil {
 		return 0, err
 	}
@@ -687,18 +745,19 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 	type group struct {
 		subject, module string
 		authored        bool
+		platform, burst bool
 	}
 	groups := map[group][]queued{}
 	var order []group
 	for rows.Next() {
 		var q queued
 		var at int64
-		if err := rows.Scan(&q.deliveryID, &q.notificationID, &q.subject, &q.typ, &q.dataJSON, &q.module, &q.authored, &at); err != nil {
+		if err := rows.Scan(&q.deliveryID, &q.notificationID, &q.subject, &q.typ, &q.dataJSON, &q.module, &q.authored, &q.burst, &at); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
 		q.at = time.Unix(at, 0)
-		g := group{q.subject, q.module, q.authored}
+		g := group{q.subject, q.module, q.authored, IsPlatformType(q.typ), q.burst}
 		if _, ok := groups[g]; !ok {
 			order = append(order, g)
 		}
@@ -729,12 +788,13 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 				continue
 			}
 		}
-		if len(items) > digestBatch {
+		// A burst is one message however long it is; the rest wait for the next round.
+		if len(items) > digestBatch && !g.burst {
 			items = items[:digestBatch]
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "You have %d notifications.\n\n", len(items))
-		for _, it := range items {
+		for _, it := range items[:min(len(items), digestBatch)] {
 			var data map[string]string
 			_ = json.Unmarshal([]byte(it.dataJSON), &data)
 			b.WriteString("- " + renderMail(it.typ, data).Subject + "\n")
@@ -744,6 +804,9 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 			ForUser: subj, Module: g.module, Authored: g.authored, Type: items[0].typ, Count: len(items)})
 		cancel()
 		status, detail := "sent", "digest"
+		if g.burst {
+			detail = burstSent
+		}
 		if err != nil {
 			status, detail = "failed", "digest: "+err.Error()
 		} else {

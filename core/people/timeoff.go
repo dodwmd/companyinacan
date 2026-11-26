@@ -1021,7 +1021,7 @@ func (s *Service) SubmitLeaveRequest(ctx context.Context, a Actor, id string) (*
 				return err
 			}
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE leave_requests SET status='pending', halves=?, approval_ref=?, submitted_by=?, updated_at=? WHERE id=?`, halves, ref, canonSubject(a.Subject), s.now().Unix(), id); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE leave_requests SET status='pending', halves=?, approval_ref=?, submitted_by=?, submitted_account=?, updated_at=? WHERE id=?`, halves, ref, canonSubject(a.Subject), a.Subject, s.now().Unix(), id); err != nil {
 			return err
 		}
 		// The request id and, when the directory links one, the manager's account: no dates, type or person.
@@ -1065,8 +1065,13 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 		}
 		now := s.now().Unix()
 		decided := map[string]any{"request_id": id}
-		if r.submittedBy != "" {
-			decided["requester"] = r.submittedBy
+		// submitted_by is folded for separation of duties; an account to notify is not.
+		var account string
+		if err := tx.QueryRowContext(ctx, `SELECT submitted_account FROM leave_requests WHERE id = ?`, id).Scan(&account); err != nil {
+			return err
+		}
+		if account != "" {
+			decided["requester"] = account
 		}
 		if !approve {
 			if err := s.enqueue(ctx, tx, EventTimeOffDecided, decided); err != nil {

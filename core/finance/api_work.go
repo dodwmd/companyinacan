@@ -227,6 +227,11 @@ func (a *api) sweepOverdue(w http.ResponseWriter, r *http.Request, _ *Principal)
 	if in.AsOf == "" {
 		in.AsOf = dateOf(a.now())
 	}
+	// A later date would announce invoices that are not overdue, and never again when they are.
+	if validDate(in.AsOf) && in.AsOf > dateOf(a.now()) {
+		a.fail(w, invalid("as_of", "must not be in the future"))
+		return
+	}
 	n, err := a.store.SweepOverdue(r.Context(), in.AsOf)
 	if err != nil {
 		a.fail(w, err)

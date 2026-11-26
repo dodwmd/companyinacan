@@ -136,3 +136,27 @@ func TestOnlyTheNotificationChannelSendsAsCanCore(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// An approval a module opened is not counted against the module's quota, which that module (or the
+// public, through it) can fill; the module's switch still applies.
+func TestApprovalMailIsOutsideTheModulesQuota(t *testing.T) {
+	f := newFixture(t, baseCompany+"  modules:\n    jobs: {per_hour: 1}\n    off: {enabled: false}\n")
+	ctx := context.Background()
+	m := NotifyMailer{S: f.s}
+	spam := notify.Message{To: "alice@acme.example", ForUser: "user:alice", Module: "jobs", Authored: true, Type: "application.received", Subject: "New", Text: "x"}
+	if err := m.Send(ctx, spam); err != nil {
+		t.Fatal(err)
+	}
+	var qe *QuotaError
+	if err := m.Send(ctx, spam); !errors.As(err, &qe) {
+		t.Fatal("the module quota should be used up:", err)
+	}
+	approval := notify.Message{To: "alice@acme.example", ForUser: "user:alice", Module: "jobs", Type: "approval.requested", Subject: "Approval needed", Text: "waiting"}
+	if err := m.Send(ctx, approval); err != nil {
+		t.Fatal("approval mail:", err)
+	}
+	approval.Module = "off"
+	if err := m.Send(ctx, approval); !errors.Is(err, ErrNotAllowed) {
+		t.Fatal("a module with email turned off:", err)
+	}
+}

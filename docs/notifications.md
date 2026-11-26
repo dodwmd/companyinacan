@@ -12,8 +12,11 @@ offline (epic E11a). Email goes through the `email.send` outbox of [email.md](em
   notifications always go out at once.
 - **Preferences** per notification type and channel (`email`, `inapp`); `*` is the default for types
   without their own setting. Urgent notices ignore the in-app mute.
-- **Limits**: at most 30 emails per person per hour (the rest are logged as suppressed; the inbox still
-  gets every notice). Nothing here throttles logins or valid API credentials.
+- **Limits**: at most 30 emails per person per hour **per origin** (the rest are logged as suppressed;
+  the inbox still gets the notice). can-core's approval notices are counted apart from every module's, so
+  no module's notices can use up their allowance. Job applications and website leads, which anyone on the
+  internet can raise, are e-mailed and pushed one by one up to five an hour per person; further ones
+  go into one digest e-mail an hour later, without push. Nothing here throttles logins or valid API credentials.
 
 ## What triggers them
 
@@ -37,7 +40,9 @@ offline (epic E11a). Email goes through the `email.send` outbox of [email.md](em
 
 Rules from manifests honour each recipient's in-app mute even when `urgent`, may only use types in
 their own `<module-id>.` namespace, and dedupe per module. A recipient receives at most 200 in-app
-notices per hour; the rest are dropped.
+notices per hour from one origin (a module, or can-core's approvals); the rest are dropped. A rule on an
+event its own module publishes only reacts to that module's (or can-core's) event: another module
+publishing the same event name does not set it off.
 
 Notifications created from events copy only `id` and `*_id` members of the event data (and `count`, a
 number), never names or emails. When a rule names a role and no recipient of the rule is a person (nobody
@@ -68,9 +73,10 @@ counted against the module's quota, with a fixed wording unless `email.modules.<
 
 **Once only, and no flood.** Each scheduled check records what it announced in the module's own database,
 in the transaction that queues the event, so a restart repeats nothing. A check that finds more than five
-at once (the first run after the upgrade, or after downtime) raises one summary with the number.
+at once (the first run after the upgrade, or after downtime) raises one summary with the number; this
+holds for contract renewals too. A person is told about one P0 issue at most once an hour.
 Overdue invoices and filings are checked hourly; the invoice check can be run now with
-`POST /v1/invoices/overdue-sweep` (finance admin).
+`POST /v1/invoices/overdue-sweep` (finance admin; `as_of` not in the future).
 
 **Upgrading.** The new module manifests publish new events and add notification rules. A can-core that
 holds upgrades which widen a module for approval will hold these until you approve them. Until then the

@@ -33,10 +33,11 @@ func TestRemindersReachTheInbox(t *testing.T) {
 		env.Run(t, "exec", "-T", "core", "/can-core", "admin", "roles", "grant", "admin", role)
 	}
 
-	// An invoice due today, approved; the sweep is asked to look from two days ahead.
+	// A backdated invoice that fell due yesterday, approved.
+	day := func(ago int) string { return time.Now().UTC().AddDate(0, 0, -ago).Format("2006-01-02") }
 	fin := financeAPI(t)
 	party := fin.Post(t, "/v1/parties", map[string]any{"kind": "customer", "name": "Late Payer " + u, "email": "late-" + u + "@acme.example"}).Expect(t, "create party", 201).Str("id")
-	id := fin.Post(t, "/v1/invoices", map[string]any{"party_id": mustInt(t, party), "currency": "USD", "due_days": 0,
+	id := fin.Post(t, "/v1/invoices", map[string]any{"party_id": mustInt(t, party), "currency": "USD", "issue_date": day(2), "due_date": day(1),
 		"lines": []map[string]any{{"description": "Anvil " + u, "quantity_milli": 1000, "unit_price_minor": 4900}},
 	}).Expect(t, "create invoice", 201).Str("id")
 	approver := fin.WithToken(fin.Post(t, "/v1/tokens", map[string]any{"kind": "service", "subject": "e2e-late-" + u, "name": "e2e late " + u, "scopes": []string{"finance.approve", "finance.read"}}).
@@ -45,12 +46,9 @@ func TestRemindersReachTheInbox(t *testing.T) {
 	harness.Wait(t, "the approval decision to reach finance", time.Minute, func() bool {
 		return approver.Post(t, "/v1/invoices/"+id+"/approve", nil).Status == 200
 	})
-	later := map[string]any{"as_of": time.Now().UTC().AddDate(0, 0, 2).Format("2006-01-02")}
-	swept := fin.Post(t, "/v1/invoices/overdue-sweep", later).Expect(t, "sweep overdue invoices", 200)
-	if n, _ := swept.JSON()["invoices"].(float64); n < 1 {
-		t.Fatalf("the sweep covered no invoice: %s", swept.String())
-	}
-	again := fin.Post(t, "/v1/invoices/overdue-sweep", later).Expect(t, "sweep a second time", 200)
+	// The hourly sweep may have got there first; either way a second sweep finds nothing.
+	fin.Post(t, "/v1/invoices/overdue-sweep", map[string]any{}).Expect(t, "sweep overdue invoices", 200)
+	again := fin.Post(t, "/v1/invoices/overdue-sweep", map[string]any{}).Expect(t, "sweep a second time", 200)
 	if n, _ := again.JSON()["invoices"].(float64); n != 0 {
 		t.Fatalf("a second sweep announced invoices again: %s", again.String())
 	}

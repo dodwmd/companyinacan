@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // queued returns the data of the outbox events of one type, oldest first.
@@ -36,7 +37,7 @@ func (e *env) queued(typ string) []map[string]any {
 	return out
 }
 
-// dueToday issues an invoice due on the clock's date.
+// dueToday issues an invoice due on the clock's date (2026-11-25).
 func (e *env) dueToday(maker string, party int64) int64 {
 	e.t.Helper()
 	var inv Invoice
@@ -67,6 +68,10 @@ func TestOverdueReminderOnceAcrossRestarts(t *testing.T) {
 	if n := e.sweepOverdue("2026-11-25"); n != 0 {
 		t.Fatalf("an invoice due today is not overdue: %d", n)
 	}
+	e.advance(4 * 24 * time.Hour)
+	if code := e.do(adminTok, "POST", "/v1/invoices/overdue-sweep", obj{"as_of": "2026-11-30"}, nil); code != 422 {
+		t.Fatalf("a future date: %d", code)
+	}
 	if n := e.sweepOverdue("2026-11-28"); n != 1 {
 		t.Fatalf("one unpaid overdue invoice: %d", n)
 	}
@@ -77,6 +82,7 @@ func TestOverdueReminderOnceAcrossRestarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	e = newEnv(t, same) // a restart
+	e.advance(40 * 24 * time.Hour)
 	if n := e.sweepOverdue("2026-12-30"); n != 0 {
 		t.Fatalf("announced again after a restart: %d", n)
 	}
@@ -93,6 +99,7 @@ func TestOverdueBacklogIsOneEvent(t *testing.T) {
 	for range summaryAbove + 3 {
 		e.dueToday(maker, party)
 	}
+	e.advance(10 * 24 * time.Hour)
 	if n := e.sweepOverdue("2026-12-01"); n != summaryAbove+3 {
 		t.Fatalf("%d", n)
 	}
@@ -104,8 +111,9 @@ func TestOverdueBacklogIsOneEvent(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 	// One more falls due later: it is announced by itself.
-	e.dueToday(maker, party)
-	if n := e.sweepOverdue("2026-12-03"); n != 1 || len(e.queued(EventInvoiceOverdue)) != 2 {
+	e.dueToday(maker, party) // due 2026-12-05
+	e.advance(24 * time.Hour)
+	if n := e.sweepOverdue("2026-12-06"); n != 1 || len(e.queued(EventInvoiceOverdue)) != 2 {
 		t.Fatalf("%d", n)
 	}
 }
@@ -114,6 +122,7 @@ func TestOverdueWithEventsOffMarksNothing(t *testing.T) {
 	e := newEnv(t, func(c *Config, _ *Options) { c.Webhook.URL = "" })
 	maker := e.token("maker", []string{"finance.write"}, nil, nil, false)
 	e.dueToday(maker, e.party(adminTok, "Customer One", "customer"))
+	e.advance(10 * 24 * time.Hour)
 	if n := e.sweepOverdue("2026-12-01"); n != 0 {
 		t.Fatalf("%d", n)
 	}
@@ -146,6 +155,29 @@ func TestDeclinedSigningRaisesAnEventWithoutTheReason(t *testing.T) {
 	}
 	got := e.queued(EventContractDeclined)
 	if len(got) != 1 || len(got[0]) != 3 || got[0]["contract_id"] != float64(e.ct.ID) {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestRenewalBacklogIsOneEvent(t *testing.T) {
+	e := newEnv(t)
+	maker := e.token("maker", []string{"finance.write"}, nil, nil, false)
+	party := e.party(adminTok, "Customer One", "customer")
+	for range summaryAbove + 2 {
+		var c Contract
+		e.must(201, maker, "POST", "/v1/contracts", obj{"party_id": party, "title": "C", "body": "Plain text.", "start_date": "2026-01-01", "end_date": "2026-12-31", "renewal_date": "2026-12-01", "reminder_days": 30}, &c)
+		e.must(200, maker, "POST", "/v1/contracts/"+id(c.ID)+"/send", obj{"manual": true}, &c)
+		e.must(200, maker, "POST", "/v1/contracts/"+id(c.ID)+"/signature", obj{"sha256": c.SHA256}, &c)
+	}
+	for i, want := range []int{summaryAbove + 2, 0} {
+		var r struct{ Reminders int }
+		e.must(200, adminTok, "POST", "/v1/contracts/sweep", obj{"as_of": "2026-11-25"}, &r)
+		if r.Reminders != want {
+			t.Fatalf("sweep %d: %d", i, r.Reminders)
+		}
+	}
+	got := e.queued(EventContractExpiring)
+	if len(got) != 1 || len(got[0]) != 1 || got[0]["count"] != float64(summaryAbove+2) {
 		t.Fatalf("%v", got)
 	}
 }

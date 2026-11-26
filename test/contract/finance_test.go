@@ -346,9 +346,9 @@ func TestFinanceLiveEventsMatchSchemas(t *testing.T) {
 	do(maker, "POST", n+"/send", nil)
 	do(maker, "POST", n+"/payments", map[string]any{"amount_minor": 5000})
 	// A second invoice stays unpaid and is overdue by the sweep's date.
-	late := int(do(maker, "POST", "/v1/invoices", map[string]any{"party_id": party, "lines": []map[string]any{{"description": "y", "quantity_milli": 1000, "unit_price_minor": 700}}})["id"].(float64))
+	late := int(do(maker, "POST", "/v1/invoices", map[string]any{"party_id": party, "issue_date": "2026-01-02", "due_date": "2026-01-03", "lines": []map[string]any{{"description": "y", "quantity_milli": 1000, "unit_price_minor": 700}}})["id"].(float64))
 	do(boss, "POST", "/v1/invoices/"+strconv.Itoa(late)+"/approve", nil)
-	do(tok, "POST", "/v1/invoices/overdue-sweep", map[string]any{"as_of": "2099-01-01"})
+	do(tok, "POST", "/v1/invoices/overdue-sweep", nil)
 	// E15c: a bank statement import (counts only in the event; the account number is sealed).
 	ba := int(do(tok, "POST", "/v1/bank/accounts", map[string]any{"name": "Main", "currency": "USD", "number": "DE89370400440532013000", "ledger_account_code": "1000"})["id"].(float64))
 	stmt, _ := http.NewRequest("POST", base+"/v1/bank/accounts/"+strconv.Itoa(ba)+"/statements?format=csv&delimiter=comma&date_col=1&amount_col=2&id_col=3", strings.NewReader("date,amount,id\n2026-01-05,50.00,T1\n"))

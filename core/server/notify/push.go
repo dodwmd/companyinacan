@@ -371,7 +371,18 @@ func (s *Service) deliverPush(ctx context.Context, id int64, n Notice) {
 		s.logDelivery(ctx, id, ChannelWebPush, "suppressed", "quiet hours")
 		return
 	}
-	cnt, err := s.externalCount(ctx, n.Subject, ChannelWebPush, now.Add(-time.Hour))
+	if !n.Urgent {
+		many, err := s.burst(ctx, n.Subject, n.Type)
+		if err != nil {
+			s.opt.Log.Error("burst lookup failed", "error", err)
+			return
+		}
+		if many {
+			s.logDelivery(ctx, id, ChannelWebPush, "suppressed", "burst")
+			return
+		}
+	}
+	cnt, err := s.externalCount(ctx, n.Subject, ChannelWebPush, n.Module, n.Type, now.Add(-time.Hour))
 	if err != nil {
 		s.opt.Log.Error("rate limit lookup failed", "error", err)
 		return

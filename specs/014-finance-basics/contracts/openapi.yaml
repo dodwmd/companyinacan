@@ -1026,7 +1026,7 @@ paths:
         "429": { description: "Rate limited" }
   /v1/invoices/overdue-sweep:
     post:
-      summary: "Announce overdue invoices, once each (admin; also runs hourly)"
+      summary: "Announce overdue invoices, once each (admin; also runs hourly; as_of may not be in the future)"
       operationId: POST_v1_invoices_overdue_sweep
       x-scope: finance.admin
       requestBody:

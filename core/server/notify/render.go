@@ -24,7 +24,8 @@ var builtinTemplates = map[string]tmpl{
 	// only: names, amounts and free text stay in the module.
 	"invoice.overdue": {"{{if .count}}Invoices overdue{{else}}Invoice overdue{{end}}",
 		"{{if .count}}{{.count}} invoices are past their due date.{{else}}Invoice {{.invoice_id}} is past its due date.{{end}} See Finance."},
-	"contract.expiring":    {"Contract renewal due", "Contract {{.contract_id}} is within its renewal reminder window. See Finance."},
+	"contract.expiring": {"{{if .count}}Contract renewals due{{else}}Contract renewal due{{end}}",
+		"{{if .count}}{{.count}} contracts are{{else}}Contract {{.contract_id}} is{{end}} within the renewal reminder window. See Finance."},
 	"contract.signed":      {"Contract signed", "Contract {{.contract_id}} has been signed. See Finance."},
 	"contract.declined":    {"Contract signature declined", "A signer declined contract {{.contract_id}}; it is a draft again. See Finance."},
 	"expense.submitted":    {"Expense waiting for approval", "Expense {{.expense_id}} is waiting for a decision. See Finance."},

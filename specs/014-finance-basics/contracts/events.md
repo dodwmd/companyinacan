@@ -11,7 +11,7 @@ used as the token subject.
 | `invoice.sent.v1` | `invoice_id`, `number`, `kind` (invoice or credit_note), `party_id`, `currency`, `total_minor`, `due_date`, `sent_at` |
 | `invoice.paid.v1` | `invoice_id`, `number`, `party_id`, `currency`, `total_minor`, `paid_minor`, `paid_at` |
 | `contract.signed.v1` | `contract_id`, `party_id`, `version`, `sha256`, `signed_at` |
-| `contract.expiring.v1` | `contract_id`, `party_id`, `renewal_date`, `days_left` |
+| `contract.expiring.v1` | `contract_id`, `party_id`, `renewal_date`, `days_left`; or `count` alone for a backlog |
 | `timesheet.approved.v1` | `timesheet_id`, `person`, `week_start`, `total_minutes`, `billable_minutes`, `approved_at` |
 | `expense.approved.v1` | `expense_id`, `person`, `amount_minor`, `currency`, `category`, `approved_at` |
 | `invoice.overdue.v1` | `invoice_id`, `party_id`, `due_date`, `days_overdue`; or `count` alone for a backlog |
