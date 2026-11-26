@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -186,5 +187,31 @@ func TestApplyRefusesAModuleWhoseImageTheClusterCannotGet(t *testing.T) {
 	f.asked, f.late = 0, modimages.Ref("can-work")+"\n"
 	if code, _, errs := run(t, "apply", dir, "--modules-dir", "../../modules"); code != ExitOK || len(f.written) == 0 {
 		t.Fatalf("loaded: code=%d err=%q", code, errs)
+	}
+}
+
+// The query is run by real kubectl, offline: a container that never got its image (ImagePullBackOff
+// after a failed install) must not count as holding it.
+func TestPodImagesQueryIgnoresContainersWithoutTheirImage(t *testing.T) {
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("no kubectl")
+	}
+	list := filepath.Join(t.TempDir(), "pods.json")
+	// `patch --local` evaluates the query over one object (and treats a field `items` as a list), so
+	// the pods are another field of an object of an unknown kind
+	obj := `{"apiVersion":"example.test/v1","kind":"Probe","metadata":{"name":"x"},"pods":[
+	 {"status":{"containerStatuses":[{"image":"ghcr.io/o/pulled:1","imageID":"ghcr.io/o/pulled@sha256:ab","state":{"running":{}}}]}},
+	 {"status":{"containerStatuses":[{"image":"ghcr.io/o/backoff:1","imageID":"","state":{"waiting":{"reason":"ImagePullBackOff"}}}]}}]}`
+	if err := os.WriteFile(list, []byte(obj), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("kubectl", "patch", "--local", "-f", list, "--type=merge", "-p", `{"metadata":{"labels":{"a":"b"}}}`, "-o", strings.Replace(podImagesQuery, ".items[*]", ".pods[*]", 1)) //nolint:gosec // test
+	cmd.Env = append(os.Environ(), "KUBECONFIG=/dev/null")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("kubectl: %v", err)
+	}
+	if got := strings.Fields(string(out)); !slices.Equal(got, []string{"ghcr.io/o/pulled:1"}) {
+		t.Fatalf("held: %v", got)
 	}
 }

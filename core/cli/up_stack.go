@@ -194,11 +194,11 @@ func (t *target) preflightImages(ctx context.Context, warn io.Writer, modulesDir
 	}
 	refs := requiredImages(warn, modulesDir, ids)
 	if !f.skipImageCheck {
-		where := "in the release manifest or on the server"
+		notHeld := "" // a release manifest carries no module images: the server pulls them
 		if set.Source == launch.SourceDir {
-			where = "in " + f.imagesFrom
+			notHeld = "not in " + f.imagesFrom
 		}
-		if err := checkImages(ctx, refs, set.Holds, where); err != nil {
+		if err := checkImages(ctx, refs, set.Holds, notHeld); err != nil {
 			return set, err
 		}
 	}

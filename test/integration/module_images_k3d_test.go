@@ -65,6 +65,10 @@ func failedInstallOnK3d(t *testing.T, company []byte) {
 		out, err := kubectl("-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "modules", "problems")
 		return err == nil && strings.Contains(out, "people"), out
 	})
+	// A second apply is refused too: the pod that could not pull the image does not hold it.
+	if out, err := apply(); err == nil || !strings.Contains(out, modimages.Ref("can-people")) {
+		t.Fatalf("can apply after the failed install: %v\n%s", err, out)
+	}
 	if got := mustKubectl(t, "-n", "mod-people", "get", "pvc", "-o", "name"); !strings.Contains(got, "people-data") {
 		t.Fatalf("the failed install left no volume, so this proves nothing: %q", got)
 	}

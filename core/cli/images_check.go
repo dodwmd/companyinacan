@@ -56,8 +56,8 @@ func sortedRefs(refs map[string][]string) []string {
 }
 
 // checkImages fails when an image is neither held (loaded already, or about to be) nor pullable.
-// where says what "held" means, for the message.
-func checkImages(ctx context.Context, refs map[string][]string, held func(string) bool, where string) error {
+// notHeld says where it was looked for, for the message ("" when nowhere but the registry).
+func checkImages(ctx context.Context, refs map[string][]string, held func(string) bool, notHeld string) error {
 	var bad []string
 	for _, ref := range sortedRefs(refs) {
 		if held(ref) {
@@ -73,7 +73,11 @@ func checkImages(ctx context.Context, refs map[string][]string, held func(string
 		}
 		mods := slices.Clone(refs[ref])
 		sort.Strings(mods)
-		bad = append(bad, fmt.Sprintf("  %s (module %s): not %s, and not pullable (%s)", ref, strings.Join(mods, ", "), where, why))
+		what := "not pullable (" + why + ")"
+		if notHeld != "" {
+			what = notHeld + ", and " + what
+		}
+		bad = append(bad, fmt.Sprintf("  %s (module %s): %s", ref, strings.Join(mods, ", "), what))
 	}
 	if len(bad) == 0 {
 		return nil
@@ -83,20 +87,24 @@ func checkImages(ctx context.Context, refs map[string][]string, held func(string
 		"otherwise disable the module, or pass --skip-image-check if the server gets the image another way", strings.Join(bad, "\n"))
 }
 
+// podImagesQuery lists the images of containers that got theirs: one waiting in ImagePullBackOff
+// reports its image with an empty imageID, which a bare `?(@.imageID)` filter would still match.
+const podImagesQuery = `jsonpath={range .items[*].status.containerStatuses[?(@.imageID!="")]}{.image}{"\n"}{end}`
+
 // clusterImages lists what the cluster's nodes already hold, normalised.
 func clusterImages(cmd *cobra.Command, kubeContext string) (map[string]bool, error) {
 	have := map[string]bool{}
 	for _, query := range [][]string{
 		{"get", "nodes", "-o", `jsonpath={range .items[*].status.images[*]}{range .names[*]}{@}{"\n"}{end}{end}`},
 		// A node reports at most 50 images; what a container runs from is certainly there.
-		{"get", "pods", "-A", "-o", `jsonpath={range .items[*].status.containerStatuses[?(@.imageID)]}{.image}{"\n"}{end}`},
+		{"get", "pods", "-A", "-o", podImagesQuery},
 	} {
 		if kubeContext != "" {
 			query = append([]string{"--context", kubeContext}, query...)
 		}
 		out, err := newExecutor(cmd).Run(cmd.Context(), cluster.Cmd{Name: "kubectl", Args: query})
 		if err != nil {
-			return nil, fmt.Errorf("kubectl %s: %w (needed to check the module images; nothing was changed)", strings.Join(query, " "), err)
+			return nil, fmt.Errorf("kubectl %s: %w (needed to check the module images; nothing was changed; --skip-image-check applies without the check)", strings.Join(query, " "), err)
 		}
 		for _, ref := range strings.Fields(out) {
 			have[modimages.Normalize(ref)] = true
@@ -130,7 +138,7 @@ func applyImageCheck(cmd *cobra.Command, modulesDir, kubeContext string, c *conf
 			missing[ref] = mods
 		}
 	}
-	err = checkImages(cmd.Context(), missing, func(string) bool { return false }, "on the cluster")
+	err = checkImages(cmd.Context(), missing, func(string) bool { return false }, "not on the cluster")
 	if err == nil {
 		return nil
 	}
@@ -153,7 +161,7 @@ func applyImageCheck(cmd *cobra.Command, modulesDir, kubeContext string, c *conf
 			return nil
 		}
 	}
-	if err := checkImages(cmd.Context(), missing, held, "on the cluster"); err != nil {
+	if err := checkImages(cmd.Context(), missing, held, "not on the cluster"); err != nil {
 		return fmt.Errorf("%w (nothing was changed)", err)
 	}
 	return nil
