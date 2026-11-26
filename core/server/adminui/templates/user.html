@@ -8,7 +8,7 @@
 <dl>
 <dt>{{t "us.status"}}</dt><dd><span class="badge {{.Data.StatusClass}}">{{.Data.StatusLabel}}</span></dd>
 <dt>{{t "us.signin"}}</dt><dd>{{if eq .Data.Source "sso"}}{{t "us.src_sso"}}{{else}}{{t "us.src_local"}}{{end}}</dd>
-{{if .Data.Email}}<dt>{{t "us.email"}}</dt><dd>{{.Data.Email}}</dd>{{end}}
+{{if .Data.Email}}<dt>{{t "us.email"}}</dt><dd>{{.Data.Email}}{{if .Data.EmailSetBy}} ({{t "us.email_set_by" .Data.EmailSetBy}}){{end}}</dd>{{end}}
 </dl>
 {{with .Data.PendingLink}}<p>{{t "us.pending_link" .Purpose .CreatedBy}} <time datetime="{{iso .ExpiresAt}}">{{ts .ExpiresAt}}</time></p>{{end}}
 </section>
@@ -63,7 +63,7 @@
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <p><label for="l-email">{{t "us.new_email"}}</label>
 <input id="l-email" name="email" type="email" maxlength="254" autocomplete="off"></p>
-{{if .Data.CanMail}}<p><input id="l-send" name="send" type="checkbox" value="1" checked> <label for="l-send">{{t "us.send"}}</label></p>
+{{if .Data.CanMail}}<p><input id="l-send" name="send" type="checkbox" value="1" checked> <label for="l-send">{{if .Data.Email}}{{t "us.send_to" .Data.Email}}{{else}}{{t "us.send"}}{{end}}</label></p>
 {{else}}<p class="hint">{{t "us.no_mail"}}</p>{{end}}
 {{if eq .Data.Status "invited"}}<p><button type="submit" name="purpose" value="invite">{{t "us.link_invite"}}</button></p>
 {{else}}<p><button type="submit" name="purpose" value="mfa">{{t "us.link_mfa"}}</button><span class="hint">{{t "us.link_mfa_hint"}}</span></p>

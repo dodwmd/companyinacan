@@ -31,6 +31,8 @@ func init() {
 		"us.username_hint":  "Letters, digits and . _ @ - . It cannot be changed or used again later.",
 		"us.email_hint":     "Optional. Where the set-up link is sent.",
 		"us.send":           "Send the link by email",
+		"us.send_to":        "Send the link by email to %s, unless you type another address above",
+		"us.email_set_by":   "stored by %s",
 		"us.no_mail":        "Email is not configured, so the link is shown here once for you to pass on.",
 		"us.confirm_first":  "Confirm your identity before changing anything.",
 		"us.confirm_link":   "Confirm it is you",

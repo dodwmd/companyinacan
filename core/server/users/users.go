@@ -279,7 +279,9 @@ type LinkPending struct {
 // Detail is everything about one account.
 type Detail struct {
 	Summary
-	Linked      bool               `json:"linked"`
+	Linked bool `json:"linked"`
+	// EmailSetBy is who stored Email, the address a set-up link would be mailed to.
+	EmailSetBy  string             `json:"email_set_by,omitempty"`
 	Assigned    []Assigned         `json:"assignments"`
 	Sessions    []SessionInfo      `json:"sessions"`
 	Tokens      []pat.View         `json:"tokens"`
@@ -342,7 +344,7 @@ func (s *Service) Detail(ctx context.Context, a Actor, username string) (Detail,
 	subject := "user:" + acc.Username
 	d := Detail{
 		Summary: Summary{Username: acc.Username, Email: acc.Email, Source: acc.AuthSource, Status: status(acc), Roles: []string{}},
-		Linked:  acc.Linked, Self: acc.ID == a.User.ID,
+		Linked:  acc.Linked, Self: acc.ID == a.User.ID, EmailSetBy: acc.EmailSetBy,
 		Assigned: []Assigned{}, Sessions: []SessionInfo{}, Tokens: []pat.View{}, Grantable: []RoleInfo{},
 	}
 	if d.ActorOwner, err = s.isOwner(ctx, a.subject()); err != nil {

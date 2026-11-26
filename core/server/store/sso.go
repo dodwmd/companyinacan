@@ -247,9 +247,9 @@ func revokeSubjectTokens(ctx context.Context, tx *sql.Tx, subject string, now ti
 	return err
 }
 
-// SSOOwnerCount counts SSO-provisioned or linked users who hold an unscoped owner role.
+// SSOOwnerCount counts enabled SSO-provisioned or linked users who hold an unscoped owner role.
 func (db *DB) SSOOwnerCount(ctx context.Context) (int, error) {
 	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sso_identities i JOIN admin_users u ON u.id=i.user_id JOIN rbac_assignments a ON a.subject='user:'||u.username WHERE a.role='owner' AND a.scope=''`).Scan(&n)
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sso_identities i JOIN admin_users u ON u.id=i.user_id JOIN rbac_assignments a ON a.subject='user:'||u.username WHERE a.role='owner' AND a.scope='' AND u.disabled_at=0`).Scan(&n)
 	return n, err
 }

@@ -47,6 +47,8 @@ type Identity struct {
 	EmailVerified bool
 	Name          string
 	Groups        []string
+	// GroupsUnknown: group mapping is configured and the groups could not be read.
+	GroupsUnknown bool
 	AMR           []string
 	// AuthTime is the auth_time claim: when the person last authenticated at the provider (zero =
 	// the provider did not say).
@@ -331,14 +333,21 @@ func (p *Provider) VerifyIDToken(ctx context.Context, raw, wantNonce, accessToke
 		}
 	}
 	if (id.Email == "" || len(id.Groups) == 0 && len(p.cfg.GroupRoles) > 0) && accessToken != "" {
-		if d, derr := p.Discover(ctx); derr == nil && d.UserinfoEndpoint != "" {
+		answered := false
+		d, derr := p.Discover(ctx)
+		if derr == nil && d.UserinfoEndpoint != "" {
 			var ui map[string]any
 			if err := call(ctx, p.client, http.MethodGet, d.UserinfoEndpoint, nil, [2]string{}, accessToken, maxInfoBytes, &ui); err == nil {
 				if s, _ := ui["sub"].(string); s == sub { // a userinfo answer for another subject is ignored
 					p.fillClaims(id, ui)
+					answered = true
 				}
 			}
 		}
+		// The token says nothing about groups and the call that would have is not answered: they are
+		// unknown, which must not be mistaken for "in no group".
+		_, claimed := c[p.cfg.Claims.Groups]
+		id.GroupsUnknown = !answered && !claimed && len(p.cfg.GroupRoles) > 0 && (derr != nil || d.UserinfoEndpoint != "")
 	}
 	return id, nil
 }

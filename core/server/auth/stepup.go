@@ -22,11 +22,13 @@ func (s *Service) Reauthenticate(ctx context.Context, sess store.Session, u stor
 	}
 	now := s.opt.Now()
 	key := "reauth:" + store.PublicSessionID(sess)
-	_, over, err := s.db.RegisterFailure(ctx, key, stepUpAttempts+1, s.opt.Policy.Window, s.opt.Policy.LockFor, now)
+	// The attempt is counted, atomically, before anything is verified. The count decides, not the
+	// moment the lock was set, so requests running side by side cannot outrun the limit.
+	att, _, err := s.db.RegisterFailure(ctx, key, stepUpAttempts+1, s.opt.Policy.Window, s.opt.Policy.LockFor, now)
 	if err != nil {
 		return err
 	}
-	if over {
+	if att.Failures > stepUpAttempts {
 		if err := s.db.DeleteSession(ctx, sess.IDHash); err != nil {
 			return err
 		}

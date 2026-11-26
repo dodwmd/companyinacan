@@ -49,8 +49,13 @@ A business owner cannot manage people's access from the admin UI. Local accounts
 - **Who.** Reading and changing need `rbac.manage`. Owners only: change anything about an owner, grant or remove
   `owner`, enable, override, link and unlink identities.
 - **No escalation.** Grant: every permission of the role must be held. Set-up link for an existing account
-  (a way to take it over): the maker must hold everything the account holds; a role of a disabled module is
-  held only by holding that same role. The maker's authority is checked again when the link is used.
+  (a way to take it over): the maker must hold everything the account holds. The maker's authority is checked
+  again when the link is used.
+- **When the same role is needed.** Holding every permission is not enough, and only holding that same role
+  (or `owner`) covers it, for: a role of a disabled or removed module (an override left behind does not make it
+  a known role, and gives nothing while the module is away); and an unscoped role that an approval policy, a
+  pending request or a module's default chain names as approver (`role:`), since that is authority its
+  permissions do not show. A bare name in a policy counts for that role in every module.
 - **Self.** Nobody disables, deletes, resets or assigns roles to themselves here (own password, code and
   sessions are on `/settings`).
 - **Last owner.** Disable, delete, role removal, reset, SSO unlink and the SSO group sync refuse to leave no
@@ -58,6 +63,14 @@ A business owner cannot manage people's access from the admin UI. Local accounts
 - **Delete** removes the account, roles, sessions, set-up link, delegations, notifications and their settings,
   push devices and the SSO identity; revokes tokens and tickets; keeps the audit log, approval history and
   token records. The name is never given to a new account (modules know people as `user:<name>`).
+- **Addresses.** The user page shows the stored address, who stored it, and that a link would be mailed there.
+  A change is audited (`users.email.change`, never the address). When an account gains a role, an address
+  stored by anyone but the one assigning it is forgotten (`users.email.cleared`).
+- **Sessions and overrides.** An override ends sessions and tokens only when the role actually loses a
+  permission.
+- **Single sign-on.** When group mapping is configured and the groups cannot be read (the ID token has no
+  groups claim and userinfo fails or answers for another subject), the sign-in is refused (`userinfo`) and no
+  role, session or token changes. A disabled SSO owner no longer counts toward turning local login off.
 - **Audit** entries commit in the same transaction as the change; none holds a password, secret, token or
   email address.
 - **Throttling.** Sign-in is unchanged: valid credentials are never throttled by anything here. Wrong step-up
@@ -66,7 +79,7 @@ A business owner cannot manage people's access from the admin UI. Local accounts
 
 ## Data
 
-Migration `0014_users_roles.sql`: `admin_users.email`, `sessions.reauth_at`, `user_invites` (one row per
+Migration `0014_users_roles.sql`: `admin_users.email` and `email_set_by`, `sessions.reauth_at`, `user_invites` (one row per
 account, token hash, pending secret, purpose, maker, expiry), `deleted_users` (name, time).
 
 ## Threat model
@@ -76,9 +89,10 @@ Assets: accounts, roles, sessions, tokens, set-up links, the owner's control of 
 | Threat | Mitigation | Remaining risk |
 |---|---|---|
 | A delegated administrator raises their own or an accomplice's access | Grant subset rule in `rbac` (also under the API), no self-grant, overrides and identity links owner only | They can create accounts and give them what they themselves hold, which includes acting as a second person in approvals (two-person control assumes administrators are trusted for it). By default only owners hold `rbac.manage` |
-| A delegated administrator takes over a stronger account by resetting it | Links need the maker to cover the target, owners only for owners, checked again at use; code reset keeps the password as a factor; delegations received are revoked | Authority that is not a role (an approval policy naming `user:<name>`, access recorded inside a module) is not seen by the check |
+| A delegated administrator takes over a stronger account by resetting it | Links need the maker to cover the target, owners only for owners, checked again at use; code reset keeps the password as a factor; delegations received are revoked | Authority that is not a role (an approval policy naming `user:<name>`, being somebody's manager, access recorded inside a module) is not seen by the check |
 | The maker of a show-once link uses it themselves | Mail the link instead (then it is never shown); the setup is audited with the address it came from; the link dies if the account later holds more than the maker | Without a relay the administrator who creates an account can set it up. That is inherent in handing a link over |
 | The link leaks (mail box, proxy log, history, screen) | Single use, short life, replaced by the next one, `Referrer-Policy: no-referrer`, `no-store`, can-core logs route patterns only | Whoever opens a live link controls the account. The token is in the query string: an ingress access log would record it. A queued or dead-lettered message holds it until sent, or up to 7 days (the link itself expires first or soon after) |
+| An administrator stores their own address on an account so that a later link reaches them | The destination and who stored it are shown; changes are audited; another administrator's role grant forgets it; the link maker and use-time checks still apply | Access added without a role grant (an override, an SSO group sync, a module's own records) does not forget the address |
 | A mail scanner or prefetcher spends the link | `GET` consumes nothing | None known |
 | Guessing links or codes | 256-bit token; the code is checked before any password hashing; hashing shares the sign-in concurrency bound | The holder of a live link can cause hashing work until it is used |
 | Forged requests | CSRF token and same-site check on every change; double-submit cookie on the public page; CSP with no scripts and `form-action 'self'`; `SameSite=Strict` session cookie | None known |

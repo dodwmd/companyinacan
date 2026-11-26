@@ -16,9 +16,11 @@ package rbac
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -182,7 +184,40 @@ func (s *Service) Invalidate() {
 var withheld = map[[3]string]bool{{"finance", "employee", "finance.write"}: true}
 
 // loadRoles builds the role table from builtin roles, enabled modules' manifests and overrides.
+// Only a built-in or an enabled module makes a role exist: an override left behind by a disabled or
+// removed module gives nothing and does not make its role known.
 func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, map[string][]string, error) {
+	roles, sources, err := s.baseRoles(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT role, permission, effect FROM rbac_overrides ORDER BY role, permission LIMIT 5000`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var r, p, eff string
+		if err := rows.Scan(&r, &p, &eff); err != nil {
+			return nil, nil, err
+		}
+		if r == Owner || roles[r] == nil {
+			continue
+		}
+		if eff != EffectGrant {
+			delete(roles[r], p)
+			continue
+		}
+		roles[r][p] = true
+		if !slices.Contains(sources[r], "operator") {
+			sources[r] = append(sources[r], "operator")
+		}
+	}
+	return roles, sources, rows.Err()
+}
+
+// baseRoles is the role table before the operator's overrides.
+func (s *Service) baseRoles(ctx context.Context) (map[string]map[string]bool, map[string][]string, error) {
 	roles := map[string]map[string]bool{}
 	sources := map[string][]string{}
 	add := func(role, perm, src string) {
@@ -245,26 +280,7 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 			}
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT role, permission, effect FROM rbac_overrides ORDER BY role, permission LIMIT 5000`)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var r, p, eff string
-		if err := rows.Scan(&r, &p, &eff); err != nil {
-			return nil, nil, err
-		}
-		if r == Owner {
-			continue
-		}
-		if eff == EffectGrant {
-			add(r, p, "operator")
-		} else if roles[r] != nil {
-			delete(roles[r], p)
-		}
-	}
-	return roles, sources, rows.Err()
+	return roles, sources, nil
 }
 
 // sync drops every cache when another connection (the CLI, `can apply`) changed the database since
@@ -498,6 +514,10 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 	if err != nil {
 		return err
 	}
+	approvers, err := s.approvalRoles(ctx)
+	if err != nil && !s.breakGlass(actor) { // an unreadable policy never blocks the recovery path
+		return err
+	}
 	err = s.db.InTx(ctx, func(tx *sql.Tx) error {
 		if !s.breakGlass(actor) && subject == "user:"+actor {
 			return fmt.Errorf("%w: nobody assigns roles to themselves", ErrForbidden)
@@ -510,7 +530,7 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 		if err := s.mayManage(ctx, tx, actor, subject); err != nil {
 			return err
 		}
-		if err := s.holdsAll(ctx, tx, roles, actor, role, scope); err != nil {
+		if err := s.holdsAll(ctx, tx, roles, approvers, actor, role, scope); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO rbac_assignments(subject, role, scope, granted_by, granted_at) VALUES (?,?,?,?,?)`,
@@ -520,6 +540,19 @@ func (s *Service) Grant(ctx context.Context, actor, subject, role, scope string)
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
 			return nil
+		}
+		// Later set-up links go to the stored address. One that somebody else chose is forgotten when
+		// the account gains a role.
+		if name, ok := strings.CutPrefix(subject, "user:"); ok {
+			cleared, err := store.ClearForeignEmail(ctx, tx, name, actor)
+			if err != nil {
+				return err
+			}
+			if cleared {
+				if _, err := s.audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "users.email.cleared", Target: subject}); err != nil {
+					return err
+				}
+			}
 		}
 		_, err = s.audit.AppendTx(ctx, tx, audit.Entry{Actor: actor, Action: "rbac.grant", Target: subject, Detail: map[string]any{"role": role, "scope": scope}})
 		return err
@@ -558,7 +591,7 @@ func (s *Service) mayManage(ctx context.Context, tx *sql.Tx, actor, subject stri
 
 // holdsAll fails unless the actor holds, on scope, every permission of role: nobody hands out more
 // than they hold. Owners hold everything.
-func (s *Service) holdsAll(ctx context.Context, tx *sql.Tx, roles map[string]map[string]bool, actor, role, scope string) error {
+func (s *Service) holdsAll(ctx context.Context, tx *sql.Tx, roles map[string]map[string]bool, approvers roleNames, actor, role, scope string) error {
 	if s.breakGlass(actor) {
 		return nil
 	}
@@ -566,7 +599,7 @@ func (s *Service) holdsAll(ctx context.Context, tx *sql.Tx, roles map[string]map
 	if err != nil {
 		return err
 	}
-	if !covered(roles, mine, Assignment{Role: role, Scope: scope}) {
+	if !covered(roles, approvers, mine, Assignment{Role: role, Scope: scope}) {
 		return fmt.Errorf("%w: the role grants permissions you do not hold yourself", ErrForbidden)
 	}
 	return nil
@@ -597,10 +630,86 @@ func scopeCovers(have, want string) bool {
 	return want != "" && strings.HasSuffix(have, "/*") && strings.HasPrefix(want, strings.TrimSuffix(have, "*"))
 }
 
-// covered reports whether the holder of mine already has everything want gives. A role that no
-// enabled module defines (its permissions are unknown, and return when the module does) is covered
-// only by holding that same role.
-func covered(roles map[string]map[string]bool, mine []Assignment, want Assignment) bool {
+// roleNames are the roles that approvals name as approvers: full names, and bare names that match a
+// role of any module.
+type roleNames struct{ full, bare map[string]bool }
+
+func (n roleNames) has(role string) bool {
+	if n.full[role] {
+		return true
+	}
+	_, short, found := strings.Cut(role, ":")
+	if !found {
+		short = role
+	}
+	return n.bare[short]
+}
+
+// approvalRoles reads who may approve by role: the company's policies, the policies of pending
+// requests and the modules' default chains. A bare name in a policy means a role of the module of
+// the request, which a policy alone does not say, so it counts for every module.
+func (s *Service) approvalRoles(ctx context.Context) (roleNames, error) {
+	n := roleNames{full: map[string]bool{}, bare: map[string]bool{}}
+	rows, err := s.db.QueryContext(ctx, `SELECT policy_json FROM approval_policies
+		UNION SELECT policy_json FROM approval_requests WHERE status='pending'`)
+	if err != nil {
+		return n, err
+	}
+	defer func() { _ = rows.Close() }()
+	var policies []string
+	for rows.Next() {
+		var js string
+		if err := rows.Scan(&js); err != nil {
+			return n, err
+		}
+		policies = append(policies, js)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return n, err
+	}
+	add := func(as []config.Approver) {
+		for _, a := range as {
+			switch {
+			case a.Role == "":
+			case strings.Contains(a.Role, ":"):
+				n.full[a.Role] = true
+			default:
+				n.bare[a.Role] = true
+			}
+		}
+	}
+	for _, js := range policies {
+		var p config.ApprovalPolicy
+		if err := json.Unmarshal([]byte(js), &p); err != nil {
+			return n, fmt.Errorf("reading an approval policy: %w", err) // fail closed
+		}
+		for _, st := range p.Steps {
+			add(st.Approvers)
+			add(st.Fallback)
+		}
+		add(p.EscalateTo)
+	}
+	mods, err := s.db.ListModules(ctx)
+	if err != nil {
+		return n, err
+	}
+	for _, m := range mods {
+		for _, a := range m.Manifest.Approvals {
+			for _, c := range a.DefaultChain {
+				if c != "manager" {
+					n.full[QualifyRole(m.ID, c)] = true
+				}
+			}
+		}
+	}
+	return n, nil
+}
+
+// covered reports whether the holder of mine already has everything want gives. Holding the same
+// role covers it. Otherwise a role that no enabled module defines (its permissions are unknown, and
+// return when the module does) is never covered, nor is an unscoped role that approvals name (it
+// carries authority its permissions do not show); any other role needs each of its permissions.
+func covered(roles map[string]map[string]bool, approvers roleNames, mine []Assignment, want Assignment) bool {
 	for _, m := range mine {
 		if m.Role == Owner && m.Scope == "" {
 			return true
@@ -609,13 +718,13 @@ func covered(roles map[string]map[string]bool, mine []Assignment, want Assignmen
 	if want.Role == Owner {
 		return false
 	}
-	perms, known := roles[want.Role]
-	if !known {
-		for _, m := range mine {
-			if m.Role == want.Role && scopeCovers(m.Scope, want.Scope) {
-				return true
-			}
+	for _, m := range mine {
+		if m.Role == want.Role && scopeCovers(m.Scope, want.Scope) {
+			return true
 		}
+	}
+	perms, known := roles[want.Role]
+	if !known || (want.Scope == "" && approvers.has(want.Role)) {
 		return false
 	}
 	for p := range perms {
@@ -640,6 +749,10 @@ func (s *Service) Covers(ctx context.Context, actor, target string) (bool, error
 	if err != nil {
 		return false, err
 	}
+	approvers, err := s.approvalRoles(ctx)
+	if err != nil {
+		return false, err
+	}
 	mine, err := s.queryAssignments(ctx, `WHERE subject=?`, "user:"+actor)
 	if err != nil {
 		return false, err
@@ -649,7 +762,7 @@ func (s *Service) Covers(ctx context.Context, actor, target string) (bool, error
 		return false, err
 	}
 	for _, a := range theirs {
-		if !covered(roles, mine, a) {
+		if !covered(roles, approvers, mine, a) {
 			return false, nil
 		}
 	}
@@ -663,11 +776,15 @@ func (s *Service) CanGrant(ctx context.Context, actor, role string) (bool, error
 	if err != nil {
 		return false, err
 	}
+	approvers, err := s.approvalRoles(ctx)
+	if err != nil {
+		return false, err
+	}
 	mine, err := s.queryAssignments(ctx, `WHERE subject=?`, "user:"+actor)
 	if err != nil {
 		return false, err
 	}
-	return covered(roles, mine, Assignment{Role: role}), nil
+	return covered(roles, approvers, mine, Assignment{Role: role}), nil
 }
 
 // Revoke removes an assignment. Only an owner changes an owner, and the last owner who can sign in
@@ -744,7 +861,11 @@ func (s *Service) Override(ctx context.Context, actor, role, permission, effect 
 	if err := s.roleExists(ctx, role); err != nil {
 		return err
 	}
-	err := s.db.InTx(ctx, func(tx *sql.Tx) error {
+	base, _, err := s.baseRoles(ctx)
+	if err != nil {
+		return err
+	}
+	err = s.db.InTx(ctx, func(tx *sql.Tx) error {
 		if err := s.requireOwner(ctx, tx, actor); err != nil {
 			return err
 		}
@@ -753,7 +874,9 @@ func (s *Service) Override(ctx context.Context, actor, role, permission, effect 
 		if err := tx.QueryRowContext(ctx, `SELECT effect FROM rbac_overrides WHERE role=? AND permission=?`, role, permission).Scan(&was); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		takes := effect == EffectRevoke || (effect == EffectReset && was == EffectGrant)
+		had := was == EffectGrant || (was == "" && base[role][permission])
+		will := effect == EffectGrant || (effect == EffectReset && base[role][permission])
+		takes := had && !will
 		var err error
 		if effect == EffectReset {
 			_, err = tx.ExecContext(ctx, `DELETE FROM rbac_overrides WHERE role=? AND permission=?`, role, permission)

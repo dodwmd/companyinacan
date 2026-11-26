@@ -2,6 +2,9 @@
 
 -- Where an invitation or a new set-up link is mailed to. Optional; erased when the account is deleted.
 ALTER TABLE admin_users ADD COLUMN email TEXT NOT NULL DEFAULT '';
+-- The administrator who stored that address. It is shown with the address, and an address somebody
+-- else stored is forgotten when the account gains a role.
+ALTER TABLE admin_users ADD COLUMN email_set_by TEXT NOT NULL DEFAULT '';
 
 -- When the person last confirmed their password and a code again in this session (step-up).
 ALTER TABLE sessions ADD COLUMN reauth_at INTEGER NOT NULL DEFAULT 0;

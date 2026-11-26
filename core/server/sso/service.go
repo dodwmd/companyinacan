@@ -317,6 +317,11 @@ func (s *Service) Complete(ctx context.Context, req CompleteRequest) (Result, er
 		s.failAudit(ctx, "token", req.IP)
 		return Result{}, deny("token")
 	}
+	// Roles must not be changed (nor tokens revoked) on groups that were not read.
+	if id.GroupsUnknown {
+		s.failAudit(ctx, "userinfo", req.IP)
+		return Result{}, deny("userinfo")
+	}
 	// 3. Policy on the claims.
 	if code := checkPolicy(c.cfg, id); code != "" {
 		s.failAudit(ctx, code, req.IP)

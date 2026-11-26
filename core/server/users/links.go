@@ -113,6 +113,15 @@ func (s *Service) newLink(userID int64, actor, purpose string) (string, store.Se
 	return token, store.SetupLink{UserID: userID, TokenHash: linkHash(token), TOTPSecret: auth.NewTOTPSecret(), Purpose: purpose, CreatedBy: actor, CreatedAt: now, ExpiresAt: now.Add(ttl)}
 }
 
+// changeEmail stores a new address inside tx and records that it changed (never the address).
+func (s *Service) changeEmail(ctx context.Context, tx *sql.Tx, a Actor, userID int64, subject, address string) error {
+	if err := store.SetEmail(ctx, tx, userID, address, a.User.Username); err != nil {
+		return err
+	}
+	_, err := s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: a.User.Username, Action: "users.email.change", Target: subject})
+	return err
+}
+
 // Create makes a local account with no role and a one-time link to set it up.
 func (s *Service) Create(ctx context.Context, a Actor, username, address string, send bool) (Link, error) {
 	if err := s.sensitive(ctx, a); err != nil {
@@ -129,9 +138,14 @@ func (s *Service) Create(ctx context.Context, a Actor, username, address string,
 	var token string
 	var rec store.SetupLink
 	err = s.DB.InTx(ctx, func(tx *sql.Tx) error {
-		id, err := s.DB.InsertPendingAccount(ctx, tx, username, address)
+		id, err := s.DB.InsertPendingAccount(ctx, tx, username)
 		if err != nil {
 			return err
+		}
+		if address != "" {
+			if err := s.changeEmail(ctx, tx, a, id, "user:"+username, address); err != nil {
+				return err
+			}
 		}
 		// An assignment written for this name before the account existed must not become real now.
 		var n int
@@ -231,10 +245,13 @@ func (s *Service) SendLink(ctx context.Context, a Actor, username, purpose, addr
 		if err := store.EndAccess(ctx, tx, subject, s.now(), false); err != nil {
 			return err
 		}
-		if address == "" {
+		switch {
+		case address == "":
 			address = acc.Email
-		} else if err := store.SetEmail(ctx, tx, acc.ID, address); err != nil {
-			return err
+		case address != acc.Email:
+			if err := s.changeEmail(ctx, tx, a, acc.ID, subject, address); err != nil {
+				return err
+			}
 		}
 		token, rec = s.newLink(acc.ID, a.User.Username, kind)
 		if err := store.PutSetupLink(ctx, tx, rec); err != nil {

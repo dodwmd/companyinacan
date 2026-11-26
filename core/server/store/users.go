@@ -10,9 +10,11 @@ import (
 
 // Account is an admin user as the user administration lists it. It carries no credential.
 type Account struct {
-	ID         int64
-	Username   string
-	Email      string
+	ID       int64
+	Username string
+	Email    string
+	// EmailSetBy is the administrator who stored Email.
+	EmailSetBy string
 	AuthSource string
 	CreatedAt  time.Time
 	DisabledAt time.Time // zero while enabled
@@ -106,14 +108,14 @@ func EndPending(ctx context.Context, tx *sql.Tx, subject string) error {
 	return err
 }
 
-const accountCols = `u.id, u.username, u.email, u.auth_source, u.created_at, u.disabled_at,
+const accountCols = `u.id, u.username, u.email, u.email_set_by, u.auth_source, u.created_at, u.disabled_at,
 	(u.auth_source='local' AND (u.password_hash='!' OR u.totp_secret='')),
 	EXISTS (SELECT 1 FROM sso_identities si WHERE si.user_id=u.id)`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var a Account
 	var created, disabled int64
-	err := row.Scan(&a.ID, &a.Username, &a.Email, &a.AuthSource, &created, &disabled, &a.Pending, &a.Linked)
+	err := row.Scan(&a.ID, &a.Username, &a.Email, &a.EmailSetBy, &a.AuthSource, &created, &disabled, &a.Pending, &a.Linked)
 	a.CreatedAt, a.DisabledAt = time.Unix(created, 0), timeOrZero(disabled)
 	return a, notFound(err)
 }
@@ -151,7 +153,7 @@ func AccountTx(ctx context.Context, tx *sql.Tx, username string) (Account, error
 
 // InsertPendingAccount creates, inside tx, a local account with no credentials and no role. Names are
 // unique regardless of case and the name of a deleted account is refused.
-func (db *DB) InsertPendingAccount(ctx context.Context, tx *sql.Tx, username, email string) (int64, error) {
+func (db *DB) InsertPendingAccount(ctx context.Context, tx *sql.Tx, username string) (int64, error) {
 	if strings.HasPrefix(strings.ToLower(username), SSOUsernamePrefix) {
 		return 0, ErrReservedName
 	}
@@ -165,8 +167,8 @@ func (db *DB) InsertPendingAccount(ctx context.Context, tx *sql.Tx, username, em
 	if err := nameNotDeleted(ctx, tx, username); err != nil {
 		return 0, err
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO admin_users(username, password_hash, totp_secret, created_at, email) VALUES (?,?,'',?,?)`,
-		username, UnusedPassword, db.Now().Unix(), email)
+	res, err := tx.ExecContext(ctx, `INSERT INTO admin_users(username, password_hash, totp_secret, created_at) VALUES (?,?,'',?)`,
+		username, UnusedPassword, db.Now().Unix())
 	if err != nil {
 		return 0, err
 	}
@@ -263,10 +265,20 @@ func ClearCredentials(ctx context.Context, tx *sql.Tx, userID int64, keepPasswor
 	return err
 }
 
-// SetEmail stores, inside tx, where the account's links are mailed.
-func SetEmail(ctx context.Context, tx *sql.Tx, userID int64, email string) error {
-	_, err := tx.ExecContext(ctx, `UPDATE admin_users SET email=? WHERE id=?`, email, userID)
+// SetEmail stores, inside tx, where the account's links are mailed and who said so.
+func SetEmail(ctx context.Context, tx *sql.Tx, userID int64, email, setBy string) error {
+	_, err := tx.ExecContext(ctx, `UPDATE admin_users SET email=?, email_set_by=? WHERE id=?`, email, setBy, userID)
 	return err
+}
+
+// ClearForeignEmail forgets, inside tx, the account's address unless actor stored it.
+func ClearForeignEmail(ctx context.Context, tx *sql.Tx, username, actor string) (bool, error) {
+	res, err := tx.ExecContext(ctx, `UPDATE admin_users SET email='', email_set_by='' WHERE username=? AND email<>'' AND email_set_by<>?`, username, actor)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // DeleteAccount removes, inside tx, an account and everything keyed on its subject, and keeps its
