@@ -522,7 +522,8 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 			if a, err := t.prov.Address(t.store); err == nil {
 				res.Address = a
 			}
-			if st.Phase != provider.PhaseAbsent {
+			// While the server is still being set up the bootstrap has not reached the firewall yet.
+			if st.Phase != provider.PhaseAbsent && st.Phase != provider.PhaseProvisioning {
 				if tgt, terr := provider.TargetFor(t.spec, t.store, t.deps); terr == nil {
 					runner := t.deps.Runner
 					if runner == nil {

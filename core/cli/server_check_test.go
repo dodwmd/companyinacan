@@ -126,3 +126,16 @@ func TestUpAndStatusWarnWithoutNodeFirewall(t *testing.T) {
 		})
 	}
 }
+
+// QA of #53, 13: a server whose bootstrap has not finished has no firewall yet, which is not news.
+func TestStatusDoesNotWarnWhileProvisioning(t *testing.T) {
+	dir, r := serverCompany(t, "status=not-installed\n")
+	r.mu["k3s_active"] = "bootstrapped=\nk3s_active=inactive\nnodes_ready=0\n"
+	useLifecycle(t, func() provider.Deps { return provider.Deps{Runner: func(provider.Target) provider.Runner { return r }} }, goodResolver())
+	for _, args := range [][]string{{"status"}, {"status", "--output", "json"}} {
+		code, out, errs := run(t, append(args, dir, "--modules-dir", "../../modules")...)
+		if code != ExitFailure || !strings.Contains(out, string(provider.PhaseProvisioning)) || strings.Contains(out+errs, "node firewall") {
+			t.Errorf("%v: code=%d out=%q err=%q", args, code, out, errs)
+		}
+	}
+}

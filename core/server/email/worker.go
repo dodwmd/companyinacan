@@ -101,16 +101,40 @@ func (s *Service) RunOnce(ctx context.Context) (int, error) {
 		if err := s.record(ctx, d, sendErr); err != nil {
 			return i, err
 		}
-		var se *SendError
-		if errors.As(sendErr, &se) && se.Session {
+		if s.relayDown(d.id, sendErr) {
 			// The relay, not this message, is the problem: leave the rest alone for a while instead
 			// of spending an attempt (and a timeout) on each.
 			s.pause()
 			return i + 1, nil
 		}
-		s.failures = 0
 	}
 	return len(batch), nil
+}
+
+// stallLimit is how many different messages must go unanswered, with none answered in between, before
+// delivery is paused.
+const stallLimit = 3
+
+// relayDown reports whether the outcome of an attempt says the relay is unusable.
+func (s *Service) relayDown(id string, sendErr error) bool {
+	var se *SendError
+	switch {
+	case errors.As(sendErr, &se) && se.Session:
+		return true
+	case se != nil && se.Stalled:
+		if s.stalled == nil {
+			s.stalled = map[string]bool{}
+		}
+		s.stalled[id] = true
+		if len(s.stalled) < stallLimit {
+			return false
+		}
+		clear(s.stalled)
+		return true
+	}
+	s.failures = 0
+	clear(s.stalled)
+	return false
 }
 
 // stillAllowed applies the current rules to a queued message.

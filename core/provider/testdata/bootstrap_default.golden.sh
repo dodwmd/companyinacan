@@ -209,15 +209,16 @@ all_pods() {
     -o 'jsonpath={range .items[*]}{.metadata.namespace}{"|"}{.metadata.labels.app\.kubernetes\.io/name}{"|"}{.spec.hostNetwork}{"|"}{.status.podIP}{"|"}{.metadata.deletionTimestamp}{"\n"}{end}' 2>/dev/null
 }
 
-# Prints the trusted pod addresses, one per line; fails if the query fails.
+# Prints the trusted pod addresses (or, with "contested", the system pod addresses that are not
+# trusted), one per line; fails if the query fails.
 # An address that a non-trusted pod (not on the host network) also reports is NOT trusted: one of
 # the two records is stale and there is no telling which. A terminating trusted pod stays trusted
 # only until its grace period ends (its deletionTimestamp); a terminating non-trusted pod keeps
 # its claim for as long as it is listed.
-trusted_ips() {
+pod_addresses() { # trusted|contested
   local all
   all=$(all_pods) || return 1
-  awk -F'|' -v now="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v extra="$(extra_namespaces | tr '\n' ' ')" '
+  awk -F'|' -v mode="$1" -v now="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v extra="$(extra_namespaces | tr '\n' ' ')" '
     BEGIN { n = split(extra, e, " "); for (i = 1; i <= n; i++) ns[e[i]] = 1; ns["kube-system"] = 1 }
     $3 == "true" || $4 !~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { next }
     ($1 in ns) || ($1 == "can-system" && $2 == "can-core") {
@@ -225,8 +226,10 @@ trusted_ips() {
       next
     }
     { claimed[$4] = 1 }
-    END { for (ip in want) if (!(ip in claimed)) print ip }' <<<"$all" | sort -u
+    END { for (ip in want) if (((ip in claimed) ? "contested" : "trusted") == mode) print ip }' <<<"$all" | sort -u
 }
+
+trusted_ips() { pod_addresses trusted; }
 
 set_commands() { # newline separated addresses
   local list
@@ -308,11 +311,20 @@ set_elements() {
 }
 
 run() {
-  local sig last='' next=0 burst=0 tick=0 failed=0 rc
+  local sig last='' next=0 burst=0 tick=0 failed=0 rc blind=''
   while true; do
     if [ $((tick % 5)) -eq 0 ] && ! rules_intact; then
-      log "rules $RULES_STATE: loading them"
-      apply || true
+      # Only rules known to be wrong are replaced: "unknown" says nothing about them.
+      case $RULES_STATE in
+        missing | dormant | changed)
+          log "rules $RULES_STATE: loading them"
+          apply || true
+          ;;
+        *)
+          [ -n "$blind" ] || log "cannot compare the rules (needs unshare --net as root): leaving them"
+          blind=1
+          ;;
+      esac
     fi
     tick=$((tick + 1))
     # The CNI keeps one file per allocated pod address: a change means pods came or went, so
@@ -343,7 +355,7 @@ run() {
 }
 
 check() {
-  local bad=0 want have missing stale
+  local bad=0 want have missing stale contested
   problem() {
     echo "problem=$*"
     bad=1
@@ -392,6 +404,9 @@ check() {
     echo "stale=$stale"
     [ "$missing" -eq 0 ] || problem "$missing system pod address(es) are not trusted yet"
     [ "$stale" -eq 0 ] || problem "$stale trusted address(es) belong to no system pod"
+    contested=$(pod_addresses contested | grep -c .)
+    echo "contested=$contested"
+    [ "$contested" -eq 0 ] || problem "$contested system pod address(es) are also reported by another pod and so are not trusted"
   else
     problem "cannot list pods"
   fi
@@ -476,7 +491,9 @@ $1" || nft delete table "$TABLE_FAMILY" "$TABLE_NAME" 2>/dev/null || true
 }
 
 # Undoes a failed unit installation: every unit goes back to the enabled and running state it
-# had before, with its previous unit file, and the previous table is loaded again.
+# had before, with its previous unit file, and the previous table is loaded again. A unit that was
+# running is restarted, and runs the script that is installed now (the previous one is not kept):
+# its rules then replace the table put back here.
 # Reads SAVED (unit name to previous file), WAS_ENABLED and WAS_ACTIVE, set by install_all.
 roll_back_units() { # previous table
   local unit

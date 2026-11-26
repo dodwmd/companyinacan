@@ -56,7 +56,16 @@ type Rendered struct{ Subject, Text, HTML string }
 
 // Render renders type with data. Unknown types use the generic template, which shows the optional
 // `title` and `body` values supplied by the publishing module.
-func Render(typ string, data map[string]string) Rendered {
+func Render(typ string, data map[string]string) Rendered { return render(typ, typ, data) }
+
+// renderMail is Render for text that leaves by e-mail. A module chooses its notification types (API calls,
+// manifest rules), so their dots are spaced out: mail readers turn "some.host.example" into a link.
+func renderMail(typ string, data map[string]string) Rendered {
+	return render(typ, strings.ReplaceAll(typ, ".", " / "), data)
+}
+
+// render picks the template of typ and shows the type as label.
+func render(typ, label string, data map[string]string) Rendered {
 	compileOnce.Do(compileAll)
 	c, ok := compiledSet[typ]
 	if !ok {
@@ -66,7 +75,7 @@ func Render(typ string, data map[string]string) Rendered {
 	for k, v := range data {
 		d[k] = v
 	}
-	d["type"] = typ
+	d["type"] = label
 	var subj, text, html bytes.Buffer
 	_ = c.subject.Execute(&subj, d)
 	_ = c.body.Execute(&text, d)

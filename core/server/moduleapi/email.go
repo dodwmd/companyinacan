@@ -18,8 +18,9 @@ import (
 
 const emailCapability = "email.send"
 
-// maxEmailBody leaves room for the JSON escaping of the largest text.
-const maxEmailBody = 4 * email.MaxTextBytes
+// maxEmailBody leaves room for the JSON escaping of the largest text (at most six bytes for one: Go writes
+// <, > and & as \u003c and so on) and for the other fields.
+const maxEmailBody = 6*email.MaxTextBytes + 16<<10
 
 type sendEmailRequest struct {
 	To       []string `json:"to"`

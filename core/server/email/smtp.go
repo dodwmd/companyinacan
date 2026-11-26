@@ -31,6 +31,9 @@ type SendError struct {
 	// Session: the failure is about reaching or logging in to the relay, so other messages would
 	// fail the same way.
 	Session bool
+	// Stalled: the session was up and the relay gave no answer while taking this message. One message can
+	// cause that; several different ones in a row mean the relay.
+	Stalled bool
 }
 
 func (e *SendError) Error() string {
@@ -86,7 +89,7 @@ func smtpErr(stage string, err error, rejectable bool) error {
 		auth := pe.Code == 530 || pe.Code == 534 || pe.Code == 535 || pe.Code == 538
 		return &SendError{Stage: stage, Code: pe.Code, Permanent: rejectable && !auth && pe.Code >= 500, Session: !rejectable || auth || pe.Code == 421}
 	}
-	return &SendError{Stage: stage, Session: true}
+	return &SendError{Stage: stage, Session: !rejectable, Stalled: rejectable}
 }
 
 // tlsErr says why TLS failed, in fixed words: the usual causes are the operator's to fix and
