@@ -144,14 +144,10 @@ func companyInForce(cmd *cobra.Command, kubeContext string) *config.Company {
 	return c
 }
 
-// syncCompany writes the (already validated) company.yaml into the cluster as a ConfigMap with
+// syncCompany writes the (already validated) company.yaml raw into the cluster as a ConfigMap with
 // kubectl. can-core, running in the cluster, picks the change up within its reconcile interval and
 // installs, upgrades or disables modules (core/server/runtime/sync.go).
-func syncCompany(cmd *cobra.Command, companyFile, kubeContext, resourceVersion string) (string, error) {
-	raw, err := os.ReadFile(companyFile) //nolint:gosec // user-supplied company.yaml, already validated
-	if err != nil {
-		return "", err
-	}
+func syncCompany(cmd *cobra.Command, raw []byte, kubeContext, resourceVersion string) (string, error) {
 	manifest, err := companyConfigMap(string(raw), resourceVersion)
 	if err != nil {
 		return "", err

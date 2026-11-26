@@ -56,8 +56,9 @@ const (
 	archiveKey     = "site.tar.gz"
 )
 
-// AdmissionPolicies must be in force before can-core publishes: they hold it to exactly those two
-// writes (deploy/base/admission-policy.yaml).
+// AdmissionPolicies must be in force before can-core publishes: they refuse its other changes to
+// that ConfigMap and to long-running workloads of can-system. They do not confine it there
+// altogether (deploy/base/admission-policy.yaml says what is left).
 var AdmissionPolicies = []string{"can-core-site", "can-core-site-content"}
 
 // KubePublisher publishes the way `can up` does: the archive into ConfigMap can-system/site-content,

@@ -54,7 +54,8 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 					}
 				}
 				// Not over a change made in the admin UI (or by anyone else) since this directory saw it.
-				cc, err := readClusterCompany(cmd, kubeContext)
+				kubectl := kubectlFor(cmd, contextArgs(kubeContext)...)
+				cc, err := readClusterCompany(kubectl)
 				if err != nil {
 					return failure("%v", err)
 				}
@@ -63,7 +64,7 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 					return failure("%v", err)
 				}
 				if !forceCompany {
-					if err := overwriteRefusal(dir, cc, local); err != nil {
+					if err := overwriteRefusal(dir, kubeContext, cc, local); err != nil {
 						if !planOnly {
 							return failure("%v", err)
 						}
@@ -99,15 +100,22 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				for _, n := range reconcile.ModeNotes(companyInForce(cmd, kubeContext), desired.Company) {
 					fmt.Fprintln(cmd.OutOrStdout(), "note:", n)
 				}
-				out, err := syncCompany(cmd, filepath.Join(dir, "company.yaml"), kubeContext, expect)
+				out, err := syncCompany(cmd, local, kubeContext, expect)
 				if err != nil {
 					return failure("%v", err)
 				}
-				// What the cluster holds now, for the next apply to compare with.
-				if after, err := readClusterCompany(cmd, kubeContext); err == nil && after.Found {
-					if err := recordBase(dir, after.UID, []byte(after.Data)); err != nil {
+				// What was written, for the next apply to compare with: not a re-read, which may already
+				// hold someone else's change. Only a new ConfigMap's UID has to be asked for.
+				uid := cc.UID
+				if !cc.Found {
+					after, err := readClusterCompany(kubectl)
+					if err != nil {
 						fmt.Fprintln(cmd.ErrOrStderr(), "warning: could not record what was applied:", err)
 					}
+					uid = after.UID
+				}
+				if err := recordBase(dir, uid, local); err != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "warning: could not record what was applied:", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "synced company.yaml to ConfigMap can-system/company (%s)\ncan-core applies it within its reconcile interval; watch with: kubectl -n can-system logs deploy/can-core\n", out)
 				if notApplied != nil {

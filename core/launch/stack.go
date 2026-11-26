@@ -449,7 +449,7 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 		have := hex.EncodeToString(cs[:])
 		switch {
 		case have == want:
-			return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
+			return r.pushed(ctx, want)
 		case have != last && !r.o.ForceCompany && !r.seenCompany(ctx, st, have):
 			return errors.New("the company.yaml in the cluster differs from the one `can up` last pushed (it was changed through the admin UI or `can apply`); applying this directory's company.yaml would discard those changes. Bring them into this directory with `can pull` (`can pull --out other.yaml` to compare first), or run `can up --force-company` to overwrite them")
 		}
@@ -463,7 +463,27 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 	if _, err = r.apply(ctx, []byte(cm), true); err != nil {
 		return err
 	}
-	return r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).CompanySHA256 = want; return nil })
+	return r.pushed(ctx, want)
+}
+
+// pushed records that the cluster holds the document with digest want: for the next `can up`, and,
+// by the ConfigMap's UID, for `can apply` and `can pull`, which also tell clusters apart by it.
+func (r *runner) pushed(ctx context.Context, want string) error {
+	uid, err := r.kube(ctx, nil, "-n", SystemNS, "get", "configmap", "company", "--ignore-not-found", "-o", "jsonpath={.metadata.uid}")
+	if uid = strings.TrimSpace(uid); err != nil || len(uid) > 64 {
+		uid = "" // the UID only sharpens the next comparison; the digest is enough to go on
+	}
+	return r.d.Store.Mutate(func(s *provider.State) error {
+		l := launchOf(s)
+		l.CompanySHA256 = want
+		if uid != "" {
+			if l.CompanyBases == nil || len(l.CompanyBases) > 20 {
+				l.CompanyBases = map[string]string{}
+			}
+			l.CompanyBases[uid] = want
+		}
+		return nil
+	})
 }
 
 // seenCompany reports whether `can apply` or `can pull` of this directory last saw the document
