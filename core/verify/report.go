@@ -96,9 +96,10 @@ func (s *Scrubber) Text(v string) string {
 		v = strings.NewReplacer(s.pairs...).Replace(v)
 	}
 	return reIPish.ReplaceAllStringFunc(v, func(m string) string {
-		t := strings.Trim(m, ".:")
-		if _, err := netip.ParseAddr(t); err == nil {
-			return strings.Replace(m, t, "<address>", 1)
+		for _, t := range []string{strings.Trim(m, "."), strings.Trim(m, ".:")} {
+			if _, err := netip.ParseAddr(t); err == nil {
+				return strings.Replace(m, t, "<address>", 1)
+			}
 		}
 		return m
 	})

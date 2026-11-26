@@ -134,6 +134,16 @@ func TestEvalSkips(t *testing.T) {
 	}
 }
 
+func TestEvalNoVerdictFromUnreadableLogs(t *testing.T) {
+	in := strings.Replace(strings.Replace(healthy, "oom_kernel=0\n", "", 1), "acme_errors=0\n", "", 1)
+	got := byID(EvalServer(ParseFacts(in), allOn, true))
+	for _, id := range []string{"server.oom", "tls.acme-errors"} {
+		if got[id].Status != Skip {
+			t.Errorf("%s: %s %q", id, got[id].Status, got[id].Detail)
+		}
+	}
+}
+
 func TestEvalReboot(t *testing.T) {
 	notYet := strings.Replace(healthy, "boot=1799990000", "boot=1798000000", 1)
 	if c := byID(EvalServer(ParseFacts(notYet), allOn, true))["server.reboot"]; c.Status != Skip {
@@ -279,10 +289,10 @@ func TestScriptsChangeNothing(t *testing.T) {
 }
 
 func TestScrubber(t *testing.T) {
-	r := &Report{Checks: []Check{{ID: "a", Status: Fail, Detail: "admin.acme.example missing at 203.0.113.7 and 2001:db8::1, 203-0-113-7.sslip.io, bob@x.org, https://u:p@h/x Acme Co"},
+	r := &Report{Checks: []Check{{ID: "a", Status: Fail, Detail: "admin.acme.example missing at 203.0.113.7 and 2001:db8::1 and 2001:db9::, 203-0-113-7.sslip.io, bob@x.org, https://u:p@h/x Acme Co"},
 		{ID: "b", Status: Pass, Detail: "k3s v1.33.5+k3s1, 2 h, 6443 closed"}}}
 	r.Finish(NewScrubber("acme.example", "203.0.113.7", "Acme Co", ""))
-	for _, bad := range []string{"acme.example", "203.0.113.7", "203-0-113-7", "2001:db8", "bob@", "u:p", "Acme"} {
+	for _, bad := range []string{"acme.example", "203.0.113.7", "203-0-113-7", "2001:db8", "2001:db9", "bob@", "u:p", "Acme"} {
 		if strings.Contains(r.Checks[0].Detail, bad) {
 			t.Errorf("%q survived: %s", bad, r.Checks[0].Detail)
 		}

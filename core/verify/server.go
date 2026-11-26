@@ -39,7 +39,8 @@ kv nodes_ready "$(k get nodes --no-headers | awk '$2=="Ready" {n++} END {print n
 awk '/^MemTotal:/ {t=$2} /^MemAvailable:/ {a=$2} /^SwapTotal:/ {st=$2} /^SwapFree:/ {sf=$2}
   END {printf "mem_total_mb=%d\nmem_available_mb=%d\nswap_total_mb=%d\nswap_used_mb=%d\n", t/1024, a/1024, st/1024, (st-sf)/1024}' /proc/meminfo
 kv k3s_rss_mb "$(ps -eo rss=,comm= 2>/dev/null | awk '$2 ~ /^k3s/ {s+=$1} END {printf "%d", s/1024}')"
-if have journalctl; then kv oom_kernel "$(journalctl -k -b --no-pager 2>/dev/null | grep -c 'Out of memory')"; fi
+# A log that cannot be read gives no fact: no verdict is better than a false "none".
+if have journalctl && log=$(journalctl -k -b --no-pager 2>/dev/null); then kv oom_kernel "$(printf '%s\n' "$log" | grep -c 'Out of memory')"; fi
 kv disk_used_pct "$(df -P "$R/var/lib" 2>/dev/null | awk 'NR==2 {sub("%","",$5); print $5}')"
 if have timedatectl; then kv ntp_synced "$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)"; fi
 
@@ -60,7 +61,8 @@ if [ -n "$acme" ]; then
   kv acme_mode "$(stat -c %a "$acme")"
   kv acme_certs "$(grep -o '"certificate"' "$acme" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-kv acme_errors "$(k -n kube-system logs deploy/traefik --since=24h | grep -ci 'unable to obtain acme certificate')"
+if log=$(k -n kube-system logs deploy/traefik --since=24h); then kv acme_errors "$(printf '%s\n' "$log" | grep -ci 'unable to obtain acme certificate')"; fi
+log=
 
 k get deploy,statefulset -A -o jsonpath='{range .items[*]}{"workload="}{.metadata.namespace}{"/"}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{"\n"}{end}'
 k get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{"container="}{.restartCount}{" "}{.lastState.terminated.reason}{"\n"}{end}{end}'
@@ -228,7 +230,7 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 		add(skip("server.memory", "could not read /proc/meminfo"))
 	}
 
-	oomK, _ := f.num("oom_kernel")
+	oomK, haveKernel := f.num("oom_kernel")
 	var killed, restarts int64
 	for _, c := range f["container"] {
 		p := strings.Fields(c)
@@ -242,7 +244,14 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 		}
 	}
 	d := fmt.Sprintf("%d kernel OOM events this boot, %d containers last ended by OOM, %d restarts in all", oomK, killed, restarts)
-	add(verdict("server.oom", oomK == 0 && killed == 0, d, d))
+	switch {
+	case oomK > 0 || killed > 0:
+		add(fail("server.oom", d))
+	case !haveKernel || len(f["container"]) == 0:
+		add(skip("server.oom", "the kernel log or the pod states could not be read"))
+	default:
+		add(pass("server.oom", d))
+	}
 
 	if used, ok := f.num("disk_used_pct"); ok {
 		d := fmt.Sprintf("/var/lib is %d%% full", used)
@@ -375,7 +384,10 @@ func evalACME(f Facts) []Check {
 	default:
 		cs = append(cs, pass("tls.acme-persistence", fmt.Sprintf("acme.json on the volume holds %d certificates", certs)))
 	}
-	n, _ := f.num("acme_errors")
+	n, ok := f.num("acme_errors")
+	if !ok {
+		return append(cs, skip("tls.acme-errors", "Traefik's log could not be read"))
+	}
 	return append(cs, verdict("tls.acme-errors", n == 0, "no certificate errors in Traefik's log for 24 h",
 		fmt.Sprintf("%d certificate errors in Traefik's log in 24 h (kubectl -n kube-system logs deploy/traefik)", n)))
 }

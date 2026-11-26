@@ -60,7 +60,7 @@ func CheckClientIP(ctx context.Context, n Net, r provider.Runner, addr, domain s
 	}
 	var rec struct{ Detail string }
 	var detail struct{ IP string }
-	if json.Unmarshal([]byte(strings.TrimSpace(out)), &rec) != nil || json.Unmarshal([]byte(rec.Detail), &detail) != nil {
+	if json.Unmarshal(jsonPart(out), &rec) != nil || json.Unmarshal([]byte(rec.Detail), &detail) != nil {
 		return skip(id, "the audit log has no entry for the probe")
 	}
 	got, err := netip.ParseAddr(detail.IP)
@@ -77,6 +77,14 @@ func CheckClientIP(ctx context.Context, n Net, r provider.Runner, addr, domain s
 		return fail(id, "can-core saw a private address for a request made to a public server (if you reach it over a VPN, this is expected)")
 	}
 	return pass(id, "can-core recorded a client address outside the cluster (compare it with yours in the audit log)")
+}
+
+// jsonPart drops what ssh or sudo printed before a JSON object (the runner merges the streams).
+func jsonPart(out string) []byte {
+	if i := strings.Index(out, "{"); i >= 0 {
+		return []byte(strings.TrimSpace(out[i:]))
+	}
+	return nil
 }
 
 // CheckBackupRepo lists the snapshots of the real repository from the server, without taking a
@@ -175,7 +183,7 @@ func CheckSSO(ctx context.Context, r provider.Runner, issuer string) Check {
 		JWKS   string   `json:"jwks_uri"`
 		Algs   []string `json:"id_token_signing_alg_values_supported"`
 	}
-	if json.Unmarshal([]byte(strings.TrimSpace(out)), &d) != nil {
+	if json.Unmarshal(jsonPart(out), &d) != nil {
 		return fail(id, "the discovery document is not JSON")
 	}
 	var bad []string
