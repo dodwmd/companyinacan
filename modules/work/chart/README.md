@@ -11,7 +11,7 @@ installer. The other in-house module charts (forms, people, jobs, finance) use t
 | PersistentVolumeClaim `work-data` | `helm.sh/resource-policy: keep`: disabling the module keeps the data |
 | ConfigMap `work-config` | `work.yaml` built from the `config:` block of `values.yaml` only (the binary loads it strictly); no secrets, no webhook URL (events go to can-core's module API) |
 | NetworkPolicy `allow-intra-namespace` | off by default (single pod); same-namespace pods only when enabled |
-| IngressRoute | only when `ingress.enabled` and can-core supplies `ingress.host`, which it does only for a manifest with `runtime.subdomain`; work has none, so nothing is routed |
+| IngressRoute | only when `ingress.enabled` and can-core supplies `ingress.host`, which it does only for a manifest with `runtime.subdomain`; work has none, so the chart routes nothing (can-core routes the web UI with `expose.ui`, docs/module-routing.md) |
 
 Secrets are not chart values. can-core writes them once into the `can-module` Secret and the installer
 injects that Secret as environment into every container, with `CAN_API_URL`, `CAN_MODULE_ID`,

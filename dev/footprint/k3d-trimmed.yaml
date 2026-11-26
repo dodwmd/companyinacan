@@ -4,7 +4,7 @@ apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
   name: fp-trimmed
-image: rancher/k3s:v1.31.5-k3s1
+image: rancher/k3s:v1.33.5-k3s1
 servers: 1
 agents: 0
 options:

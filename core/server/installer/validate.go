@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/dodwmd/companyinacan/core/routing"
 	"github.com/dodwmd/companyinacan/core/server/kube"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
@@ -22,13 +23,14 @@ var (
 	dnsRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$`)
 )
 
-// hostFor is the one public hostname a module may route: <subdomain>.<domain>.
+// hostFor is the one public hostname a module's chart may route: <subdomain>.<domain>, where the
+// subdomain is one the module may claim (core/routing).
 func (in *Installer) hostFor(s reconcile.Spec) string {
 	domain := s.Domain
 	if domain == "" {
 		domain = in.cfg.Domain
 	}
-	if s.Manifest == nil || s.Manifest.Runtime.Subdomain == "" || domain == "" {
+	if s.Manifest == nil || domain == "" || !routing.MayClaim(s.ID, s.Manifest.Runtime.Subdomain) {
 		return ""
 	}
 	return s.Manifest.Runtime.Subdomain + "." + domain
@@ -149,7 +151,7 @@ func checkNetworkPolicy(name string, spec map[string]any) error {
 func (in *Installer) checkIngressRoute(name string, spec map[string]any, s reconcile.Spec) error {
 	host := in.hostFor(s)
 	if host == "" {
-		return fmt.Errorf("ingressroute %s: the module declares no runtime.subdomain, or can-core has no company domain (CAN_COMPANY_DOMAIN); routing is refused", name)
+		return fmt.Errorf("ingressroute %s: the module declares no runtime.subdomain it may claim, or can-core has no company domain (CAN_COMPANY_DOMAIN); routing is refused", name)
 	}
 	for _, ep := range asList(spec["entryPoints"]) {
 		if ep != "web" && ep != "websecure" {

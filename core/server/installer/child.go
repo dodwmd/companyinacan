@@ -27,9 +27,10 @@ type renderJob struct {
 	Chart      string         `json:"chart"`
 	ValuesFile string         `json:"values_file,omitempty"`
 	Settings   map[string]any `json:"settings"`
-	Can        map[string]any `json:"can"`   // .Values.can
-	Input      map[string]any `json:"input"` // inputs of values.tmpl.yaml
-	Host       string         `json:"host"`  // ingress.host, merged last
+	Can        map[string]any `json:"can"`                 // .Values.can
+	Input      map[string]any `json:"input"`               // inputs of values.tmpl.yaml
+	Overrides  map[string]any `json:"overrides,omitempty"` // exposure settings, over the values file
+	Host       string         `json:"host"`                // ingress.host, merged last
 	Release    ReleaseInfo    `json:"release"`
 	TimeoutSec int            `json:"timeout_s"` // the child's own deadline
 }
@@ -76,6 +77,7 @@ func buildValues(ctx context.Context, j renderJob) (map[string]any, error) {
 		}
 		out = deepMerge(out, mapped)
 	}
+	out = deepMerge(out, j.Overrides)
 	if j.Host != "" { // last, so no values file can override the host can-core validates routes against
 		out = deepMerge(out, map[string]any{"ingress": map[string]any{"host": j.Host}})
 	}

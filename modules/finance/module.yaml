@@ -20,10 +20,10 @@ version: 0.1.0
 # through can-core's installer in unit tests (specs/016-module-wiring); the image has not been built
 # or run on a cluster, there is no real payment or e-signature adapter (fakes only). A server-rendered
 # web UI (E15b, specs/031-finance-ui) ships in the same binary, off by default (ui.enabled), built offline
-# and not browser- or cluster-verified; the chart does not route it yet (no subdomain).
+# and not browser- or cluster-verified; the web UI is routed only with expose.ui.
 # can-core generates the secrets, introspects personal access tokens, routes events and decides
 # invoice approvals (tested with fakes, not on a cluster). The public invoice link is not routed
-# (no subdomain, so the installer refuses a route). See specs/014-finance-basics/tasks.md.
+# (no subdomain). See specs/014-finance-basics/tasks.md.
 status: experimental
 provider:
   type: inhouse
@@ -31,9 +31,18 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
-  # The web UI (ui.enabled) accepts can-core launch tickets (specs/036-module-ui-sso). No chart
-  # routes it: the operator gives its address with CAN_MODULE_UI_URLS.
+  # The web UI accepts can-core launch tickets (specs/036-module-ui-sso).
   web_login: {}
+  # Routed on finance.<domain> only when company.yaml sets modules.finance.expose.ui (specs/040-module-routing).
+  # An allowlist of the web UI's own paths (/v1 is not one); test/contract checks it covers every UI route.
+  public_ui:
+    service: finance
+    port: 8080
+    exact: [/, /manifest.webmanifest]
+    prefixes: [/approvals, /bank, /contracts, /expenses, /exports, /invoices, /ledger, /login, /logout, /parties, /purchase-orders, /recurring, /reports, /settings, /static, /timesheets]
+    config:
+      trust_proxy: true
+      ui: { enabled: true, force_secure: true }
 requires:
   database: sqlite
   sso: none

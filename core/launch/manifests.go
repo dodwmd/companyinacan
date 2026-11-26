@@ -270,10 +270,8 @@ type RouteOptions struct {
 	CertResolver string
 }
 
-const (
-	sitePriority  = 1
-	formsPriority = 100 // above the site's catch-all: /_forms must never be served by the site
-)
+// sitePriority is the site's catch-all; can-core's /_forms route outranks it (routing.SitePriority).
+const sitePriority = 1
 
 func (o RouteOptions) validate() error {
 	if len(o.SiteHosts) == 0 && !o.CatchAll {
@@ -347,28 +345,6 @@ func SiteRoutes(o RouteOptions) ([]byte, error) {
 		docs = append(docs, ingressRoute("admin", SystemNS, admin, o))
 	}
 	return marshalDocs(docs)
-}
-
-// FormsRoute returns the same-origin /_forms route in the forms module's namespace (Traefik does
-// not route across namespaces by default): the prefix is stripped before the request reaches the
-// gateway, and the route's priority beats the site's catch-all.
-func FormsRoute(o RouteOptions) ([]byte, error) {
-	if err := o.validate(); err != nil {
-		return nil, err
-	}
-	var rs []any
-	for _, h := range o.SiteHosts {
-		rs = append(rs, rule("Host(`"+h+"`) && PathPrefix(`/_forms`)", formsPriority, "forms", 8080, "forms-strip"))
-	}
-	if o.CatchAll {
-		rs = append(rs, rule("PathPrefix(`/_forms`)", formsPriority, "forms", 8080, "forms-strip"))
-	}
-	mw := map[string]any{
-		"apiVersion": "traefik.io/v1alpha1", "kind": "Middleware",
-		"metadata": map[string]any{"name": "forms-strip", "namespace": FormsNS, "labels": map[string]any{"app.kubernetes.io/part-of": "companyinacan"}},
-		"spec":     map[string]any{"stripPrefix": map[string]any{"prefixes": []any{"/_forms"}}},
-	}
-	return marshalDocs([]map[string]any{mw, ingressRoute("forms-public", FormsNS, rs, o)})
 }
 
 // CompanyConfigMap renders company.yaml as the ConfigMap can-core mounts and reconciles.

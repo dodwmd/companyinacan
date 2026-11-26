@@ -23,9 +23,18 @@ provider:
 runtime:
   chart: ./chart
   values: ./chart/values.yaml
-  # The web UI (ui.enabled) accepts can-core launch tickets (specs/036-module-ui-sso). No chart
-  # routes it: the operator gives its address with CAN_MODULE_UI_URLS.
+  # The web UI accepts can-core launch tickets (specs/036-module-ui-sso).
   web_login: {}
+  # Routed on jobs.<domain> only when company.yaml sets modules.jobs.expose.ui (specs/040-module-routing).
+  # An allowlist of the web UI's own paths (/v1 is not one); test/contract checks it covers every UI route.
+  public_ui:
+    service: jobs
+    port: 8080
+    exact: [/, /manifest.webmanifest]
+    prefixes: [/applications, /candidates, /interviews, /jobs, /login, /logout, /reports, /settings, /static, /talent]
+    config:
+      trust_proxy: true
+      ui: { enabled: true }
   # The careers pages and feeds are the only public routes (see chart/templates/ingressroute.yaml).
   subdomain: careers
 requires:

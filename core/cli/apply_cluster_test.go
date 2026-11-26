@@ -18,6 +18,9 @@ type fileExec struct {
 	args     []string
 	manifest string
 	err      error
+	// facts answers `get configmap can-routing` and site `get ingressroutes site`.
+	facts, site string
+	written     []string // every manifest applied
 }
 
 func (f *fileExec) Run(_ context.Context, c cluster.Cmd) (string, error) {
@@ -26,7 +29,14 @@ func (f *fileExec) Run(_ context.Context, c cluster.Cmd) (string, error) {
 		if a == "-f" {
 			b, _ := os.ReadFile(c.Args[i+1])
 			f.manifest = string(b)
+			f.written = append(f.written, f.manifest)
 		}
+	}
+	switch line := strings.Join(c.Args, " "); {
+	case strings.Contains(line, "get configmap can-routing"):
+		return f.facts, f.err
+	case strings.Contains(line, "get ingressroutes.traefik.io site"):
+		return f.site, f.err
 	}
 	return "configmap/company serverside-applied", f.err
 }
@@ -76,5 +86,41 @@ func TestApplySyncFailureIsReported(t *testing.T) {
 	code, _, errs := run(t, "apply", writeCompany(t, applyCompany), "--modules-dir", "../../modules")
 	if code != ExitFailure || !strings.Contains(errs, "connection refused") {
 		t.Fatalf("code=%d err=%q", code, errs)
+	}
+}
+
+// The routing facts are never invented: they are kept, read off the site route, or left to `can up`.
+func TestApplyRoutingFacts(t *testing.T) {
+	sslip := `{"spec":{"entryPoints":["web"],"routes":[{"match":"PathPrefix(` + "`/`" + `)"}]}}`
+	for _, c := range []struct {
+		name, facts, site string
+		want              []string // in the facts written; nil = none written
+		say               string
+	}{
+		{"already for this domain", "a.example", sslip, nil, ""},
+		{"missing, plain HTTP stack", "", sslip, []string{`tls: "false"`, `catchAll: "true"`, `siteHosts: ""`}, "from the site route"},
+		{"missing, no site route", "", "", nil, "run `can up`"},
+	} {
+		f := &fileExec{facts: c.facts, site: c.site}
+		useExec(t, f)
+		dir := writeCompany(t, applyCompany)
+		code, out, errs := run(t, "apply", dir, "--modules-dir", "../../modules")
+		if code != ExitOK || !strings.Contains(out, c.say) {
+			t.Fatalf("%s: %d %q %q", c.name, code, out, errs)
+		}
+		var facts string
+		for _, m := range f.written {
+			if strings.Contains(m, "name: can-routing") {
+				facts = m
+			}
+		}
+		if (facts != "") != (c.want != nil) {
+			t.Fatalf("%s: facts written: %q", c.name, facts)
+		}
+		for _, w := range c.want {
+			if !strings.Contains(facts, w) {
+				t.Errorf("%s: lacks %s in %s", c.name, w, facts)
+			}
+		}
 	}
 }

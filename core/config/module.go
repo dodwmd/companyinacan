@@ -26,6 +26,14 @@ type Module struct {
 		// <UI base>/login/ticket (specs/036-module-ui-sso); nil means it does not and it is never
 		// offered in the Apps launcher.
 		WebLogin *WebLogin `yaml:"web_login"`
+		// PublicUI says what can-core routes when company.yaml sets `expose.ui` or `expose.api`
+		// (specs/040-module-routing).
+		PublicUI *PublicUI `yaml:"public_ui"`
+		// SiteRoute is a path on the public site's hosts (forms: /_forms).
+		SiteRoute *SiteRoute `yaml:"site_route"`
+		// RoutedUIHost is set by can-core in its recorded copy of the manifest when it routes the
+		// web UI; never read from module.yaml. The Apps launcher derives the address from it.
+		RoutedUIHost string `yaml:"-"`
 	} `yaml:"runtime"`
 	Requires struct {
 		Database     string   `yaml:"database"`
@@ -92,6 +100,25 @@ type WebLogin struct {
 	// ViaSubdomain says that https://<runtime.subdomain>.<company domain> serves the UI. Without it
 	// the operator has to give the address (CAN_MODULE_UI_URLS).
 	ViaSubdomain bool `yaml:"via_subdomain"`
+}
+
+// PublicUI is module.yaml `runtime.public_ui`.
+type PublicUI struct {
+	Service string `yaml:"service"`
+	Port    int    `yaml:"port"`
+	// Exact paths and path prefixes of the web UI: nothing else of the service is routed.
+	Exact    []string `yaml:"exact"`
+	Prefixes []string `yaml:"prefixes"`
+	// Config is merged into the chart's `config:` block while the UI is routed.
+	Config map[string]any `yaml:"config"`
+}
+
+// SiteRoute is module.yaml `runtime.site_route`: Path on the site's hosts, stripped before it
+// reaches the service.
+type SiteRoute struct {
+	Path    string `yaml:"path"`
+	Service string `yaml:"service"`
+	Port    int    `yaml:"port"`
 }
 
 // DecodeModule decodes a loaded document into the typed struct.

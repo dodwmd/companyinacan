@@ -4,7 +4,7 @@ Helm-compatible templates for the in-house people module, rendered by can-core's
 (not Helm) and applied by its installer. Same templates as the other in-house charts; see
 `modules/work/chart/README.md` for the object table.
 
-- Port 8081 only (`directory`, `performance`), Service `people-api`, ClusterIP. Never routed: people
+- Port 8081 only (`directory`, `performance`), Service `people-api`, ClusterIP. The chart routes nothing (can-core routes only the web UI, with `expose.ui`, docs/module-routing.md): people
   data is not public.
 - The sealed-field keyring is the `keyring` key of the `can-module` Secret (generated once by
   can-core), mounted as one file with `subPath` at `/etc/can-people/keys/keyring` because the loader

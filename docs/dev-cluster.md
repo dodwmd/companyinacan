@@ -31,7 +31,10 @@ Flags: `--name` (default `companyinacan-dev`), `--k3d-config`, `--manifests`. Ex
 ## What gets created
 
 - `dev/k3d.yaml`: one server, ports 80 and 443 on the k3d load balancer, Traefik kept,
-  metrics-server disabled, secrets encryption on, k3s pinned to `rancher/k3s:v1.31.5-k3s1`.
+  metrics-server disabled, secrets encryption on, k3s pinned to `rancher/k3s:v1.33.5-k3s1`, the release servers get
+  (`provider.DefaultK3sVersion`; a contract test keeps them equal). Releases before v1.32.2 bundle a
+  Traefik chart that silently ignores `certificatesResolvers`, so no ACME resolver exists on them;
+  `provider.options.k3s_version` older than that is refused.
   To bump k3s change the tag there; production (E06) must use the same minor version.
 - `deploy/base/` (applied with `kubectl apply -k`): namespaces `can-system`, `can-data`,
   `can-portal`; default-deny NetworkPolicies plus explicit allows; ResourceQuota and LimitRange

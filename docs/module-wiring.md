@@ -17,15 +17,17 @@ modules:
 renderer, creates the namespace, the ServiceAccount and the `can-module` Secret, and applies the
 workloads. A chart may contain only Deployments, Services, PVCs, ConfigMaps, NetworkPolicies and (for a
 module with a `runtime.subdomain`) an IngressRoute for `<subdomain>.<domain>`; anything else is refused.
+Web UIs, APIs and the forms route are created by can-core, not the chart: see
+[`module-routing.md`](module-routing.md).
 Per module:
 
 | Module | Service and port | Public route | Needs |
 |---|---|---|---|
-| work | `work` 8080 | none | |
-| people | `people-api` 8081 | none | keyring |
-| jobs | `jobs` 8080 | `careers.<domain>`: only `/careers`, `/feeds`, `/robots.txt` | keyring, `company.name`, `company.base_url` in the chart `config:` |
-| finance | `finance` 8080 | none (see below) | |
-| forms | `forms` 8080 public, `forms-api` 8081 | none (see below) | at least one form in the chart `config:` |
+| work | `work` 8080 | none; `work.<domain>` with `expose.ui` | |
+| people | `people-api` 8081 | none; `people.<domain>` with `expose.ui` | keyring |
+| jobs | `jobs` 8080 | `careers.<domain>`: only `/careers`, `/feeds`, `/robots.txt`; `jobs.<domain>` with `expose.ui` | keyring, `company.name`, `company.base_url` in the chart `config:` |
+| finance | `finance` 8080 | none; `finance.<domain>` with `expose.ui` | |
+| forms | `forms` 8080 public, `forms-api` 8081 | `/_forms` on the site hosts | at least one form in the chart `config:` |
 
 All run one replica with the `Recreate` strategy (SQLite on a ReadWriteOnce volume), as non-root with a
 read-only root filesystem, resources equal to the manifest's `ram_mb` and `ram_limit_mb`, readiness on
@@ -253,11 +255,10 @@ whole integration suite including the `work` install): can-core RSS 49.0 MiB, hi
 * Invalid token lookups from one module beyond 300 a minute are delayed 200 ms each; valid tokens never.
 * equity (merged separately) has its own authenticator and is not wired here.
 
-* **forms has no route to the internet through can-core.** The installer only routes
-  `<subdomain>.<domain>`; forms' public form post is meant to be a same-origin path of the company site.
-  forms also has no durable event outbox: if can-core is down for the four attempts the lead is stored
-  but the `lead.created.v1` event is dropped.
-* **finance** wires invoices only. Its public invoice link is not routed for the same reason.
+* **forms** is routed at `/_forms` by can-core ([`module-routing.md`](module-routing.md)) but has no
+  durable event outbox: if can-core is down for the four attempts the lead is stored but the
+  `lead.created.v1` event is dropped.
+* **finance** wires invoices only. Its public invoice link is not routed.
 * **people** does not fetch the new hire's name and contact details from the `ats` capability; HR
   completes the placeholder record.
 * **Manager and reporting-line facts** cannot ride on a personal access token (see the people mapping).

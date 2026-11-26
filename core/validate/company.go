@@ -10,6 +10,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/provider"
+	"github.com/dodwmd/companyinacan/core/routing"
 	"github.com/dodwmd/companyinacan/core/schema"
 )
 
@@ -105,6 +106,22 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		enabled = append(enabled, id)
 	}
 	sort.Strings(enabled)
+
+	// routing: only what the manifest offers can be exposed (hosts are checked at install and admission)
+	for _, id := range enabled {
+		m, x := manifests[id], c.Modules[id].Exposure()
+		if (x.UI || x.API) && m.Runtime.PublicUI == nil {
+			add("semantic.module-not-exposable", "/modules/"+id+"/expose", fmt.Sprintf("module %q has no web UI that can-core can route (no runtime.public_ui in its manifest)", id))
+		}
+		if p := m.Runtime.PublicUI; p != nil {
+			if err := routing.CheckUIPaths(p.Exact, p.Prefixes); err != nil {
+				add("semantic.module-ui-paths", "/modules/"+id, fmt.Sprintf("module %q: runtime.public_ui: %v", id, err))
+			}
+		}
+		if r := m.Runtime.SiteRoute; r != nil && routing.SitePrefixes[id] != r.Path {
+			add("semantic.module-site-route", "/modules/"+id, fmt.Sprintf("module %q may not claim %s on the public site", id, r.Path))
+		}
+	}
 
 	// unique subdomains
 	owner := map[string]string{}

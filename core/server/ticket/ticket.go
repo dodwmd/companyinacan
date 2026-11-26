@@ -135,6 +135,8 @@ func (l Launcher) Base(m store.Module) (string, bool) {
 		if u, err := url.Parse(raw); err == nil && u.Path == "" {
 			raw += wl.BasePath
 		}
+	case m.Manifest.Runtime.RoutedUIHost != "": // can-core routes it (specs/040-module-routing)
+		raw = "https://" + m.Manifest.Runtime.RoutedUIHost + wl.BasePath
 	case wl.ViaSubdomain && m.Manifest.Runtime.Subdomain != "" && l.Domain != "":
 		raw = "https://" + m.Manifest.Runtime.Subdomain + "." + l.Domain + wl.BasePath
 	default:
