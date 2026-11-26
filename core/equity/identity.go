@@ -74,11 +74,21 @@ func (s *Service) approver(ctx context.Context, subject string) (Actor, error) {
 	return a, nil
 }
 
+// establishedSQL is the condition, over a stakeholders row, for "a second actor confirmed this
+// record". With a directory a record that names a person needs that person link confirmed
+// against it: an attestation made while there was no directory checked no person_id.
+func (s *Service) establishedSQL() string {
+	if s.directory != nil {
+		return `(CASE WHEN person_id IS NULL THEN external_attested_by IS NOT NULL ELSE person_verified_by IS NOT NULL END)`
+	}
+	return `(person_verified_by IS NOT NULL OR external_attested_by IS NOT NULL)`
+}
+
 // requireEstablished refuses an action on a holder no second actor has confirmed. A service
 // account inside the break-glass window is exempt (authorize puts each use on record).
 func (s *Service) requireEstablished(ctx context.Context, q querier, a Actor, stakeholderID string) error {
 	var ok bool
-	err := q.QueryRowContext(ctx, `SELECT person_verified_by IS NOT NULL OR external_attested_by IS NOT NULL FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&ok)
+	err := q.QueryRowContext(ctx, `SELECT `+s.establishedSQL()+` FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&ok)
 	if err != nil {
 		return err
 	}
@@ -205,9 +215,10 @@ func (s *Service) VerifyPerson(ctx context.Context, a Actor, id string) (*Stakeh
 const (
 	ReviewUnconfirmedLink = "unconfirmed_person_link"
 	ReviewUnattested      = "unattested_holder"
+	ReviewErasedHolder    = "erased_holder" // still holds shares: cancel, repurchase or transfer them
 )
 
-// ReviewItem is a holder record that is not established. Ids and counts only.
+// ReviewItem is a holder record that needs someone to act. Ids and counts only.
 type ReviewItem struct {
 	StakeholderID string `json:"stakeholder_id"`
 	EntityID      string `json:"entity_id"`
@@ -219,10 +230,11 @@ type ReviewItem struct {
 }
 
 func (s *Service) reviewItems(ctx context.Context) ([]ReviewItem, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT s.id, s.entity_id, s.kind, IFNULL(s.person_id, ''),
+	rows, err := s.db.QueryContext(ctx, `SELECT s.id, s.entity_id, s.kind, IFNULL(s.person_id, ''), s.erased_at IS NOT NULL,
 		(SELECT COUNT(*) FROM grants g WHERE g.stakeholder_id = s.id AND g.status IN ('draft', 'pending_approval', 'approved', 'active')),
 		(SELECT COUNT(*) FROM ledger l WHERE l.stakeholder_id = s.id)
-		FROM stakeholders s WHERE s.erased_at IS NULL AND s.person_verified_by IS NULL AND s.external_attested_by IS NULL
+		FROM stakeholders s WHERE (s.erased_at IS NULL AND NOT `+s.establishedSQL()+`)
+		OR (s.erased_at IS NOT NULL AND (SELECT IFNULL(SUM(quantity), 0) FROM ledger l WHERE l.stakeholder_id = s.id) > 0)
 		ORDER BY s.created_at, s.id LIMIT 5000`)
 	if err != nil {
 		return nil, err
@@ -231,11 +243,15 @@ func (s *Service) reviewItems(ctx context.Context) ([]ReviewItem, error) {
 	out := []ReviewItem{}
 	for rows.Next() {
 		var it ReviewItem
-		if err := rows.Scan(&it.StakeholderID, &it.EntityID, &it.Kind, &it.PersonID, &it.OpenGrants, &it.LedgerEntries); err != nil {
+		var erased bool
+		if err := rows.Scan(&it.StakeholderID, &it.EntityID, &it.Kind, &it.PersonID, &erased, &it.OpenGrants, &it.LedgerEntries); err != nil {
 			return nil, err
 		}
 		it.Reason = ReviewUnattested
-		if it.PersonID != "" {
+		switch {
+		case erased:
+			it.Reason = ReviewErasedHolder
+		case it.PersonID != "":
 			it.Reason = ReviewUnconfirmedLink
 		}
 		out = append(out, it)
@@ -243,7 +259,7 @@ func (s *Service) reviewItems(ctx context.Context) ([]ReviewItem, error) {
 	return out, rows.Err()
 }
 
-// IdentityReview lists the holder records that still need a second actor. Whoever may list
+// IdentityReview lists the holder records that need a second actor, or hold shares after erasure. Whoever may list
 // stakeholders may see it, linked to a person or not, so a locked-out administrator can.
 func (s *Service) IdentityReview(ctx context.Context, a Actor) ([]ReviewItem, error) {
 	if err := s.authorize(ctx, a, ActStakeholderList, Fact{}, "identity-review"); err != nil {

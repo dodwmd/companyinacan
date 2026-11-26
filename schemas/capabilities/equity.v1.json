@@ -169,7 +169,7 @@
       "path": "/v1/identity/review",
       "response": "IdentityReviewList",
       "permission": "equity.read",
-      "description": "Holder records that are not established. Ids and counts only."
+      "description": "Holder records that are not established, and erased ones still holding shares. Ids and counts only."
     },
     {
       "verb": "get_my_identity",
@@ -969,7 +969,7 @@
               "entity_id": {"type": "string", "pattern": "^ent_[0-9a-f]{24}$"},
               "kind": {"enum": ["founder", "employee", "investor", "advisor"]},
               "person_id": {"type": "string", "pattern": "^pers_[0-9a-f]{24}$"},
-              "reason": {"enum": ["unconfirmed_person_link", "unattested_holder"]},
+              "reason": {"enum": ["unconfirmed_person_link", "unattested_holder", "erased_holder"]},
               "open_grants": {"type": "integer", "minimum": 0},
               "ledger_entries": {"type": "integer", "minimum": 0}
             }

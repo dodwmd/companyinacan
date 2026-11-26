@@ -642,9 +642,18 @@ func (s *Service) ApproveGrant(ctx context.Context, a Actor, id string) (*Grant,
 		if err != nil {
 			return err
 		}
-		chain := append([]string{g.createdBy, g.submittedBy, link.person, link.attester, link.verifier, link.linker, link.createdBy}, g.editedBy...)
+		// The holder and whoever wrote the grant cannot approve it. Who stands behind the holder
+		// record is not excluded: establishing it already took two actors, and excluding them
+		// as well left a company of two with nobody able to approve. It is audited instead.
+		chain := append([]string{g.createdBy, g.submittedBy, link.person}, g.editedBy...)
 		if !sodOK(decider, chain...) || !sodOK(a, chain...) {
 			return ErrSeparation
+		}
+		behind := []string{link.createdBy, link.linker, link.attester, link.verifier}
+		if !sodOK(decider, behind...) || !sodOK(a, behind...) {
+			if err := s.auditIn(ctx, tx, a, "grant.approve.by_record_establisher", "grant:"+id, nil); err != nil {
+				return err
+			}
 		}
 		if g.SupersedesID != "" {
 			if err := s.cancelSuperseded(ctx, tx, g); err != nil {
@@ -1142,8 +1151,8 @@ func (s *Service) secondActor(a Actor, g *grantRow) error {
 
 type holderLinkInfo struct{ person, attester, verifier, linker, createdBy string }
 
-// holderLink requires the stakeholder to be established (requireEstablished) and returns who
-// stands behind the record: those people cannot approve its grants.
+// holderLink requires the stakeholder to be established (requireEstablished) and returns the
+// holder and who stands behind the record.
 func (s *Service) holderLink(ctx context.Context, q querier, a Actor, stakeholderID string) (holderLinkInfo, error) {
 	var l holderLinkInfo
 	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), IFNULL(external_attested_by, ''), IFNULL(person_verified_by, ''), IFNULL(person_linked_by, ''), created_by FROM stakeholders WHERE id = ?`, stakeholderID).

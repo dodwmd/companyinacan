@@ -3278,7 +3278,7 @@
     "get":
       "operationId": "list_identity_review"
       "summary": "hr, finance, board or admin"
-      "description": "Holder records that are not established. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
+      "description": "Holder records that are not established, and erased ones still holding shares. Requires permission equity.read (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "stakeholders"
       "responses":
@@ -3912,6 +3912,7 @@
                 "enum":
                   - "unconfirmed_person_link"
                   - "unattested_holder"
+                  - "erased_holder"
               "open_grants":
                 "type": "integer"
               "ledger_entries":

@@ -170,7 +170,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 // that only someone who controls the deployment can set it.
 const breakGlassEnv = "CAN_EQUITY_BREAK_GLASS_UNTIL"
 
-const maxBreakGlass = 8 * 24 * time.Hour
+const maxBreakGlass = 7 * 24 * time.Hour
 
 func parseBreakGlass(v string, now time.Time) (time.Time, error) {
 	if v == "" {
@@ -184,7 +184,7 @@ func parseBreakGlass(v string, now time.Time) (time.Time, error) {
 		t = t.AddDate(0, 0, 1)
 	}
 	if t.After(now.Add(maxBreakGlass)) {
-		return time.Time{}, fmt.Errorf("%s may be at most 7 days ahead: break-glass is for one task, not a mode", breakGlassEnv)
+		return time.Time{}, fmt.Errorf("%s must end within 7 days from now (a date counts to its end, so at most 6 days from today): break-glass is for one task, not a mode", breakGlassEnv)
 	}
 	return t, nil
 }
@@ -234,7 +234,11 @@ func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logg
 }
 
 func maintenance(cmd string, cfg *Config, kr *Keyring, rules map[string]RetentionRule, subject, class string, stdout, stderr io.Writer) int {
-	svc, err := Open(cfg.DBPath, Options{Keyring: kr, Retention: rules})
+	opt := Options{Keyring: kr, Retention: rules}
+	if cfg.Directory.URL != "" {
+		opt.Directory = &HTTPDirectory{BaseURL: cfg.Directory.URL} // for the mode only: no maintenance command calls it
+	}
+	svc, err := Open(cfg.DBPath, opt)
 	if err != nil {
 		fmt.Fprintf(stderr, "start: %v\n", err)
 		return 2

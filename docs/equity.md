@@ -115,7 +115,8 @@ variant are one person.
   before the grant's approval date, in the future, or more than 90 days back.
 - A grant cannot leave draft, an exercise cannot be approved, paid or issued, and no manual ledger entry is
   accepted, for a holder that is not **established**: confirmed as a directory person or attested as external
-  by a second actor. The confirmer joins the grantor chain and cannot approve the grant.
+  by a second actor. A grant is approved by someone who is neither its holder nor a creator, editor or
+  submitter of it; an approval by whoever created or confirmed the holder record is allowed and audited.
 - The same rules are repeated as database triggers (`migrations/002_immutability.sql`) so a bug in the
   service layer cannot bypass them.
 
@@ -125,7 +126,7 @@ Specification and threat model: [`specs/051-holder-identity`](../specs/051-holde
 
 | Mode | Configured by | Caller's person | A holder record is established by |
 |---|---|---|---|
-| directory | `directory.url` | the person whose `sso_subject` in the people directory is the caller's subject | `POST /v1/stakeholders/{id}/verify-person` (linked) or `/attest-external` (no link), by a second actor |
+| directory | `directory.url` | the person whose `sso_subject` in the people directory is the caller's subject | with a `person_id`: only `POST /v1/stakeholders/{id}/verify-person`; without: `/attest-external`; by a second actor |
 | attestation | no `directory.url` | the introspection claim, if any; none for tokens | `/attest-external` by a second actor; a `person_id` proves nothing |
 
 - Directory mode: a `person_id` must exist in the directory; `PUT /v1/stakeholders/{id}/person` links or
@@ -133,16 +134,21 @@ Specification and threat model: [`specs/051-holder-identity`](../specs/051-holde
   `identity_required`); with the directory unreachable they answer 503 `directory_unavailable`.
 - The second actor is not whoever created the record, linked it or last set its identity. A holder may
   confirm their own linked record when other people (not the service account) created and linked it.
-- Changing the identity or the link clears the confirmation and attestation.
+- Changing the identity or the link, and erasure, clear the confirmation and attestation. Shares left on an
+  erased record can be cancelled or transferred away by someone other than whoever erased it.
 - `GET /v1/identity/review` (and `can-equity identity-report`) lists unestablished records;
   `GET /v1/me/identity` shows what the service concluded about the caller.
-- **After upgrading, every existing record is unestablished.** Nothing is lost and reads are unchanged, but
+- **After upgrading, every existing record is unestablished**, earlier attestations included (the audit log
+  keeps them). No record is lost and reads are unchanged, but
   grants leaving draft, exercises and ledger entries wait until each holder is confirmed or attested.
 - **Break-glass** for a single-administrator company or recovery:
-  `CAN_EQUITY_BREAK_GLASS_UNTIL=YYYY-MM-DD` (at most 7 days ahead) on the process, restart, use the service
-  account token, remove it. Each use is audited as `break_glass:<action>`.
+  `CAN_EQUITY_BREAK_GLASS_UNTIL` (a date or time ending within 7 days from now) on the process, restart, use
+  the service account token, remove it. Each use is audited as `break_glass:<action>`.
 - **can-core does not wire directory mode yet** (no NetworkPolicy from equity to people, no generated
   directory token): configure it by hand where equity can reach people, or run in attestation mode.
+
+A grant to a founder in a company of two, and some single-administrator tasks, need break-glass: see the
+[table in the spec](../specs/051-holder-identity/spec.md#who-can-do-what-in-a-company-of-one-or-two).
 
 ## Grant lifecycle and immutability
 
@@ -379,8 +385,9 @@ The table stores resource ids only, so a replay re-reads the record under the ca
   for someone with write access to the SQLite file, who can drop them. Keep the file out of reach and keep
   a copy of the audit chain head elsewhere.
 - **Chain history.** The grantor chain is the creator, every editor, every submitter (a rejection and
-  resubmission by someone else does not remove the first submitter), the stakeholder's creator, the
-  external-holder attester and the grantee. Terminations are accepted at most 90 days back, like
+  resubmission by someone else does not remove the first submitter) and the grantee. Whoever created or
+  confirmed the holder record is not in it, so a shell record that a second actor confirmed can be approved
+  by its creator. Terminations are accepted at most 90 days back, like
   milestones; an older correction is a cancel and a new grant.
 
 ## Not implemented, limits and gaps

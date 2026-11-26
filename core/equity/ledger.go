@@ -165,11 +165,14 @@ func (s *Service) ledgerWrite(ctx context.Context, a Actor, entityID, route, ide
 
 // guardHolders is the holder check of a manual ledger entry, on either side of it: the caller is
 // not the holder (the same sodOK rule as grants, against the stakeholder's person id), and the
-// holder is established, so a second actor stands behind the record being written to.
-func (s *Service) guardHolders(ctx context.Context, q querier, a Actor, stakeholderIDs ...string) error {
+// holder is established, so a second actor stands behind the record being written to. An erased
+// record can no longer be confirmed: its shares may be moved off it (appendLedger refuses adding
+// any) by a person other than whoever erased it, and each such write is audited.
+func (s *Service) guardHolders(ctx context.Context, q *sqlTx, a Actor, stakeholderIDs ...string) error {
 	for _, id := range stakeholderIDs {
-		var person string
-		err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, '') FROM stakeholders WHERE id = ?`, id).Scan(&person)
+		var person, erasedBy string
+		var erased bool
+		err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), erased_at IS NOT NULL, IFNULL(erased_by, '') FROM stakeholders WHERE id = ?`, id).Scan(&person, &erased, &erasedBy)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue // appendLedger refuses an unknown holder
 		}
@@ -178,6 +181,18 @@ func (s *Service) guardHolders(ctx context.Context, q querier, a Actor, stakehol
 		}
 		if !sodOK(a, person) {
 			return ErrSeparation
+		}
+		if erased {
+			if a.Service && !a.BreakGlass {
+				return ErrIdentityRequired
+			}
+			if !sodOK(a, erasedBy) {
+				return ErrSeparation
+			}
+			if err := s.auditIn(ctx, q, a, "ledger.erased_holder", "stakeholder:"+id, nil); err != nil {
+				return err
+			}
+			continue
 		}
 		if err := s.requireEstablished(ctx, q, a, id); err != nil {
 			return err

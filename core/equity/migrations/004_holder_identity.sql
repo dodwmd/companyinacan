@@ -6,6 +6,12 @@ ALTER TABLE stakeholders ADD COLUMN person_linked_by TEXT;
 ALTER TABLE stakeholders ADD COLUMN person_verified_by TEXT;
 ALTER TABLE stakeholders ADD COLUMN person_verified_on TEXT;
 ALTER TABLE stakeholders ADD COLUMN identity_by TEXT;
+ALTER TABLE stakeholders ADD COLUMN erased_by TEXT;
+
+-- Attestations made before this migration are cleared: they predate these rules (no directory
+-- check, a second credential could be the "second person", an identity change kept them). The
+-- audit log keeps who attested what; the records are listed for review.
+UPDATE stakeholders SET external_attested_by = NULL, external_attested_on = NULL;
 
 CREATE TRIGGER stakeholders_verify_sod BEFORE UPDATE ON stakeholders
 WHEN NEW.person_verified_by IS NOT NULL AND NEW.person_verified_by IS NOT OLD.person_verified_by

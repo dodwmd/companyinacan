@@ -48,12 +48,12 @@ func TestUnlinkedHolderCannotBeUsedToSidestepTheBoardCheck(t *testing.T) {
 		t.Fatal("not attested")
 	}
 	m(e.s.SubmitGrant(e.ctx, e.hr, id))
-	// the attester is part of the grantor chain: they cannot approve
+	// whoever attested the holder may approve (two actors are on the record already); it is on record
 	attester := Actor{Subject: "svc-admin", Roles: []string{RoleBoard}}
-	if _, err := e.s.ApproveGrant(e.ctx, attester, id); !isErr(err, ErrSeparation) {
-		t.Fatalf("the attester approving: %v", err)
+	m(e.s.ApproveGrant(e.ctx, attester, id))
+	if e.count(`SELECT COUNT(*) FROM audit_log WHERE action = 'grant.approve.by_record_establisher'`) != 1 {
+		t.Fatal("an approval by the attester is not audited as such")
 	}
-	m(e.s.ApproveGrant(e.ctx, e.board, id))
 	// and the link cannot be removed behind the service's back by approval time
 	id2 := e.draft(e.hr, stranger.ID, q(10))
 	m(e.s.SubmitGrant(e.ctx, e.hr, id2))
@@ -262,8 +262,11 @@ func TestStakeholderCreatorAndOriginalSubmitterStayInTheChain(t *testing.T) {
 	m(e.s.AttestExternal(e.ctx, e.admin, st.ID))
 	id := e.draft(e.hr, st.ID, q(10))
 	m(e.s.SubmitGrant(e.ctx, e.hr, id))
-	if _, err := e.s.ApproveGrant(e.ctx, fb, id); !isErr(err, ErrSeparation) {
-		t.Fatalf("the creator of the stakeholder approving a grant for it: %v", err)
+	// two actors established the record, so its creator may approve a grant somebody else wrote
+	// (specs/051-holder-identity); it is on record
+	m(e.s.ApproveGrant(e.ctx, fb, id))
+	if e.count(`SELECT COUNT(*) FROM audit_log WHERE action = 'grant.approve.by_record_establisher'`) != 1 {
+		t.Fatal("an approval by the record's creator is not audited as such")
 	}
 	// a board member cannot register themself as a holder
 	self := Actor{Subject: "sso-bob", Roles: []string{RoleBoard}, PersonID: personBob}

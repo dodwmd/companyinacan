@@ -218,11 +218,13 @@ func TestIdentityLinkedTokenAdministersGrants(t *testing.T) {
 	m(e.s.SubmitGrant(e.ctx, e.ann, id))
 	_, _, err = e.s.CreateGrant(e.ctx, e.cat, e.plan.ID, in, "", nil)
 	wantErr(t, err, ErrSeparation, "own grant")
-	// the confirmer stands behind the record and cannot approve
-	annBoard := e.ann
+	// ann drafted and submitted: she cannot approve, ben (who entered the record) can
+	annBoard, benBoard := e.ann, e.ben
 	annBoard.Roles, annBoard.CanCore = []string{RoleBoard}, false
+	benBoard.Roles, benBoard.CanCore = []string{RoleBoard}, false
 	_, err = e.s.ApproveGrant(e.ctx, annBoard, id)
-	wantErr(t, err, ErrSeparation, "confirmer approving")
+	wantErr(t, err, ErrSeparation, "the drafter approving")
+	m(e.s.ApproveGrant(e.ctx, benBoard, id))
 }
 
 // Records made before verified identities are not trusted, not lost, and listed.
@@ -273,7 +275,12 @@ func TestIdentityBreakGlassSetting(t *testing.T) {
 	if u, err := parseBreakGlass("2026-03-12", now); err != nil || !u.Equal(time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("date: %v %v", u, err)
 	}
-	for _, bad := range []string{"yes", "2027-01-01", "2026-03-30T00:00:00Z"} {
+	for _, ok := range []string{"2026-03-17T09:00:00Z", "2026-03-16"} { // exactly seven days; the last whole day inside them
+		if _, err := parseBreakGlass(ok, now); err != nil {
+			t.Errorf("%q refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"yes", "2027-01-01", "2026-03-17T09:00:01Z", "2026-03-17"} {
 		if _, err := parseBreakGlass(bad, now); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
