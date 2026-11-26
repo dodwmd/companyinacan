@@ -1,0 +1,27 @@
+{{define "content"}}
+<h1>{{t "members.title"}}</h1>
+<p><a href="/spaces/{{.Data.Space.ID}}">{{t "members.back"}}</a></p>
+<p class="hint">{{t "members.roles_help"}}</p>
+<div class="scroll">
+<table>
+<caption>{{t "members.caption"}}</caption>
+<thead><tr><th scope="col">{{t "members.who"}}</th><th scope="col">{{t "members.kind"}}</th><th scope="col">{{t "members.role"}}</th><th scope="col">{{t "common.actions"}}</th></tr></thead>
+<tbody>
+{{range .Data.Members}}<tr><th scope="row">{{.ID}}</th><td>{{if eq .Kind "user"}}{{t "kind.user"}}{{else}}{{t "kind.group"}}{{end}}</td><td>{{role .Role}}</td><td>{{if $.Data.Role.Own}}<form method="post" action="/spaces/{{$.Data.Space.ID}}/members/remove" class="inline">{{template "csrf" $}}<input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="principal" value="{{.ID}}"><button type="submit" aria-label="{{t "members.remove" .ID}}">{{t "common.remove"}}</button></form>{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .Data.Role.Own}}<h2>{{t "members.add"}}</h2>
+<form method="post" action="/spaces/{{.Data.Space.ID}}/members" class="card">
+{{template "csrf" .}}
+<p><label for="kind">{{t "members.kind"}}</label>
+<select id="kind" name="kind"><option value="user">{{t "kind.user"}}</option><option value="group">{{t "kind.group"}}</option></select></p>
+<p><label for="principal">{{t "members.principal"}}</label>
+<input id="principal" name="principal" required maxlength="80" aria-describedby="principal-hint"></p>
+<p id="principal-hint" class="hint">{{t "members.hint"}} {{t "members.group_note"}}</p>
+<p><label for="role">{{t "members.role"}}</label>
+<select id="role" name="role"><option value="viewer">{{t "role.viewer"}}</option><option value="editor">{{t "role.editor"}}</option><option value="manager">{{t "role.manager"}}</option></select></p>
+<p class="hint">{{t "members.change_hint"}}</p>
+<p><button type="submit">{{t "members.submit"}}</button></p>
+</form>
+{{end}}{{end}}

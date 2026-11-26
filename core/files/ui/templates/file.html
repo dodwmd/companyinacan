@@ -1,0 +1,98 @@
+{{define "content"}}
+{{$f := .Data.File}}
+<h1>{{$f.Name}}</h1>
+<p><a href="/spaces/{{.Data.Space.ID}}">{{.Data.Space.Name}}</a>{{range .Data.Crumbs}} / <a href="/spaces/{{$.Data.Space.ID}}?folder={{.ID}}">{{.Name}}</a>{{end}}</p>
+{{if .Data.Deleted}}<p class="notice">{{t "file.deleted_note"}}</p>
+{{else}}<p class="actions"><a href="/files/{{$f.ID}}/content">{{t "file.download"}}</a></p>
+{{end}}{{if .Data.Held}}<p class="notice">{{t "file.held_note"}}</p>
+{{end}}{{if .Data.Retained}}<p class="notice">{{t "file.retained_note"}}</p>
+{{end}}<dl class="facts">
+{{with $f.Description}}<dt>{{t "file.description"}}</dt><dd class="prose">{{.}}</dd>
+{{end}}<dt>{{t "common.state"}}</dt><dd>{{state $f.Status}}</dd>
+<dt>{{t "common.type"}}</dt><dd>{{$f.ContentType}}</dd>
+<dt>{{t "common.size"}}</dt><dd>{{size $f.Size}}</dd>
+<dt>{{t "common.version"}}</dt><dd>{{$f.Version}}</dd>
+<dt>{{t "common.created"}}</dt><dd>{{when $f.CreatedAt}}</dd>
+<dt>{{t "common.updated"}}</dt><dd>{{when $f.UpdatedAt}}</dd>
+<dt>{{t "common.role"}}</dt><dd>{{role $f.Role}}</dd>
+{{if .Data.Role.Editor}}<dt>{{t "file.scan"}}</dt><dd><strong>{{scan $f.Scan}}</strong></dd>
+<dt>{{t "file.by"}}</dt><dd>{{$f.CreatedBy}}</dd>
+<dt>{{t "file.sha"}}</dt><dd><code>{{$f.SHA256}}</code></dd>
+{{end}}{{if .Data.Role.Manager}}{{with $f.Subject}}<dt>{{t "file.subject"}}</dt><dd><code>{{.}}</code></dd>
+{{end}}{{with $f.Ref}}<dt>{{t "file.ref"}}</dt><dd><code>{{.}}</code></dd>
+{{end}}<dt>{{t "file.hold"}}</dt><dd>{{if .Data.Held}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</dd>
+{{with $f.RetainUntil}}<dt>{{t "file.retain"}}</dt><dd>{{day .}}</dd>
+{{end}}{{end}}</dl>
+{{if .Admin}}<p class="actions"><a href="/admin/files/{{$f.ID}}/hold">{{t "file.admin_hold"}}</a></p>
+{{end}}
+<h2>{{t "file.versions"}}</h2>
+<div class="scroll">
+<table>
+<caption>{{t "file.versions_cap"}}</caption>
+<thead><tr><th scope="col">{{t "common.version"}}</th><th scope="col">{{t "common.size"}}</th><th scope="col">{{t "common.created"}}</th>{{if .Data.Role.Editor}}<th scope="col">{{t "file.scan"}}</th><th scope="col">{{t "file.by"}}</th>{{end}}<th scope="col">{{t "common.actions"}}</th></tr></thead>
+<tbody>
+{{range .Data.Versions}}<tr><th scope="row">{{t "file.version_n" .N}}</th><td>{{size .Size}}</td><td>{{when .CreatedAt}}</td>{{if $.Data.Role.Editor}}<td>{{scan .Scan}}</td><td>{{.CreatedBy}}</td>{{end}}<td>{{if .Purged}}{{t "file.purged"}}{{else if not $.Data.Deleted}}<a href="/files/{{$f.ID}}/content?version={{.N}}" aria-label="{{t "file.dl_version" .N}}">{{t "file.download"}}</a>{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if .Data.Role.Editor}}
+<h2>{{t "share.heading"}}</h2>
+{{if .Data.Shares}}<div class="scroll">
+<table>
+<caption>{{t "share.caption"}}</caption>
+<thead><tr><th scope="col">{{t "share.label"}}</th><th scope="col">{{t "share.version"}}</th><th scope="col">{{t "share.expires"}}</th><th scope="col">{{t "share.uses"}}</th><th scope="col">{{t "common.state"}}</th><th scope="col">{{t "common.actions"}}</th></tr></thead>
+<tbody>
+{{range .Data.Shares}}<tr><th scope="row">{{if .Label}}{{.Label}}{{else}}<code>{{.ID}}</code>{{end}}</th><td>{{.Version}}</td><td>{{when .ExpiresAt}}</td><td>{{.Uses}}{{if .OneTime}} ({{t "share.once"}}){{end}}</td><td>{{state .State}}</td><td>{{if and $.Data.Role.Change (eq .State "live")}}<form method="post" action="/shares/{{.ID}}/revoke" class="inline">{{template "csrf" $}}<input type="hidden" name="file" value="{{$f.ID}}"><button type="submit" aria-label="{{t "share.revoke_named" (or .Label .ID)}}">{{t "share.revoke"}}</button></form>{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "share.none"}}</p>
+{{end}}{{end}}
+{{if .Data.Role.Change}}{{if .Data.Deleted}}
+<form method="post" action="/files/{{$f.ID}}/restore" class="card">
+{{template "csrf" .}}
+<p><button type="submit">{{t "common.restore"}}</button></p>
+</form>
+{{else}}
+<h2>{{t "share.new"}}</h2>
+<form method="post" action="/files/{{$f.ID}}/shares" class="card">
+{{template "csrf" .}}
+<p class="hint">{{t "share.new_hint"}}</p>
+<p><label for="label">{{t "share.label_field"}}</label>
+<input id="label" name="label" maxlength="100"></p>
+<p><label for="hours">{{t "share.hours"}}</label>
+<input id="hours" name="hours" type="number" min="1" max="{{.Data.MaxHours}}" value="{{.Data.DefaultHours}}" required aria-describedby="hours-hint"></p>
+<p id="hours-hint" class="hint">{{t "share.hours_hint" .Data.MaxHours}}</p>
+<p><label for="share-version">{{t "share.version"}}</label>
+<select id="share-version" name="version"><option value="">{{t "share.current"}}</option>{{range .Data.Versions}}{{if not .Purged}}<option value="{{.N}}">{{t "file.version_n" .N}}</option>{{end}}{{end}}</select></p>
+<p><input id="one_time" name="one_time" type="checkbox" value="1" aria-describedby="once-hint"> <label for="one_time" class="check">{{t "share.once_field"}}</label></p>
+<p id="once-hint" class="hint">{{t "share.once_hint"}}</p>
+<p><button type="submit">{{t "share.submit"}}</button></p>
+</form>
+<h2>{{t "file.new_version"}}</h2>
+<form method="post" action="/files/{{$f.ID}}/versions" enctype="multipart/form-data" class="card">
+{{template "csrf" .}}
+<p><label for="file">{{t "upload.file"}}</label>
+<input id="file" name="file" type="file" required accept="{{.Data.Accept}}"></p>
+<p><button type="submit">{{t "file.new_version_do"}}</button></p>
+</form>
+<h2>{{t "file.edit"}}</h2>
+<form method="post" action="/files/{{$f.ID}}/update" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="rev" value="{{$f.Rev}}">
+<p><label for="name">{{t "common.name"}}</label>
+<input id="name" name="name" value="{{$f.Name}}" required maxlength="255" aria-describedby="name-hint"></p>
+<p id="name-hint" class="hint">{{t "file.edit_hint"}}</p>
+<p><label for="description">{{t "file.description"}}</label>
+<textarea id="description" name="description" rows="3" maxlength="1000">{{$f.Description}}</textarea></p>
+<p><label for="folder">{{t "upload.folder"}}</label>
+<select id="folder" name="folder"><option value="">{{t "file.top"}}</option>{{range .Data.Folders}}<option value="{{.ID}}"{{if eq .ID $f.FolderID}} selected{{end}}>{{.Path}}</option>{{end}}</select></p>
+<p><button type="submit">{{t "common.save"}}</button></p>
+</form>
+<h2>{{t "file.delete"}}</h2>
+<form method="post" action="/files/{{$f.ID}}/delete" class="card">
+{{template "csrf" .}}
+<p class="hint">{{t "file.delete_hint"}}</p>
+<p><button type="submit">{{t "file.delete_do"}}</button></p>
+</form>
+{{end}}{{end}}{{end}}

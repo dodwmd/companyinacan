@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -29,6 +30,7 @@ type Config struct {
 	Share      ShareConfig   `yaml:"share"`
 	Retention  RetentionCfg  `yaml:"retention"`
 	Download   DownloadCfg   `yaml:"download"`
+	UI         UIConfig      `yaml:"ui"`
 	// TrustProxy honours the right-most X-Forwarded-For entry for rate limiting. Turn it on only
 	// behind a proxy that appends the client address.
 	TrustProxy bool `yaml:"trust_proxy"`
@@ -96,6 +98,23 @@ type RetentionCfg struct {
 type DownloadCfg struct {
 	Inline      bool     `yaml:"inline"`       // allow ?inline=1 for InlineTypes (default false)
 	InlineTypes []string `yaml:"inline_types"` // png, jpg, gif, webp only
+}
+
+// UIConfig is the server-rendered web UI (specs/049-files-ui). Off by default.
+type UIConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// InsecureCookies drops the Secure attribute (and the __Host- cookie prefix) for plain-HTTP
+	// local development. Cookies are Secure by default.
+	InsecureCookies bool `yaml:"insecure_cookies"`
+	// ForceSecure is the production guard: Secure cookies even when the listener sits behind a
+	// TLS-terminating proxy and sees plain HTTP. It cannot be combined with insecure_cookies.
+	ForceSecure bool `yaml:"force_secure"`
+	// TokenLogin keeps the "paste a personal access token" sign-in (default true). can-core turns
+	// it off while it routes the UI (specs/040-module-routing).
+	TokenLogin *bool `yaml:"token_login"`
+	// IdleMinutes and AbsoluteHours bound a session (defaults 30 minutes and 8 hours).
+	IdleMinutes   int `yaml:"idle_minutes"`
+	AbsoluteHours int `yaml:"absolute_hours"`
 }
 
 // DefaultTypes is the default allow-list of extensions.
@@ -298,6 +317,15 @@ func (c *Config) validate() error {
 	}
 	if c.Download.Inline && len(c.Download.InlineTypes) == 0 {
 		return errors.New("config: download.inline needs download.inline_types")
+	}
+	if c.UI.InsecureCookies && c.UI.ForceSecure {
+		return errors.New("config: ui.insecure_cookies and ui.force_secure contradict each other: pick one")
+	}
+	if c.UI.InsecureCookies && strings.HasPrefix(strings.ToLower(s.BaseURL), "https://") {
+		return errors.New("config: ui.insecure_cookies cannot be set when share.base_url is https: the browser would send session cookies without Secure")
+	}
+	if c.UI.IdleMinutes < 0 || c.UI.IdleMinutes > 24*60 || c.UI.AbsoluteHours < 0 || c.UI.AbsoluteHours > 24*30 {
+		return errors.New("config: ui.idle_minutes and ui.absolute_hours are out of range")
 	}
 	switch c.Backend.Type {
 	case "local":

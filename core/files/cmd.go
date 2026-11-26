@@ -226,7 +226,11 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	obs.DefaultHealth.Add("blobstore", true, be.Ping) // /readyz: the backend must answer too
-	srv := newServer(api.Handler())
+	var sessions modclient.SessionAPI
+	if can != nil {
+		sessions = can
+	}
+	srv := newServer(newHandler(api, sessions))
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -271,6 +275,26 @@ func scannerName(cfg *Config) string {
 }
 
 type logger interface{ Error(msg string, args ...any) }
+
+// newHandler is what the listener serves: the API alone, or, with ui.enabled, the API, the public
+// share-link route and the health checks on their paths and the web UI on everything else
+// (specs/049-files-ui). sessions is nil when the module does not run under can-core.
+func newHandler(api *API, sessions modclient.SessionAPI) http.Handler {
+	h := api.Handler()
+	cfg := api.Store.cfg
+	if !cfg.UI.Enabled {
+		return h
+	}
+	ui := &UI{Store: api.Store, Auth: api.Auth, Groups: api.Groups, Log: api.Log, Secure: !cfg.UI.InsecureCookies, TrustProxy: api.TrustProxy,
+		Sessions: sessions, NoTokenLogin: cfg.UI.TokenLogin != nil && !*cfg.UI.TokenLogin, Now: api.Store.now,
+		IdleTimeout: time.Duration(cfg.UI.IdleMinutes) * time.Minute, AbsoluteTimeout: time.Duration(cfg.UI.AbsoluteHours) * time.Hour}
+	top := http.NewServeMux()
+	for _, p := range []string{"/v1/", "/s/", "/healthz", "/readyz"} {
+		top.Handle(p, h)
+	}
+	top.Handle("/", obs.Instrument(ui.Handler()))
+	return top
+}
 
 // sweepLoop runs the retention sweep shortly after start and then on its interval.
 func (s *Store) sweepLoop(ctx context.Context, log logger) {

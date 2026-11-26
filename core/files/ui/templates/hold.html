@@ -1,0 +1,17 @@
+{{define "content"}}
+<h1>{{t "hold.title"}}</h1>
+<p>{{t "hold.for"}} <code>{{.Data.ID}}</code></p>
+<form method="post" action="/admin/files/{{.Data.ID}}/hold" class="card">
+{{template "csrf" .}}
+<fieldset>
+<legend>{{t "hold.legend"}}</legend>
+<p><input id="hold-on" type="radio" name="hold" value="on" required> <label for="hold-on" class="check">{{t "hold.on"}}</label></p>
+<p><input id="hold-off" type="radio" name="hold" value="off" required> <label for="hold-off" class="check">{{t "hold.off"}}</label></p>
+</fieldset>
+<p><label for="retain_until">{{t "hold.date"}}</label>
+<input id="retain_until" name="retain_until" type="date" aria-describedby="date-hint"></p>
+<p id="date-hint" class="hint">{{t "hold.date_hint"}}</p>
+<p><input id="clear_retention" name="clear_retention" type="checkbox" value="1"> <label for="clear_retention" class="check">{{t "hold.clear"}}</label></p>
+<p><button type="submit">{{t "hold.submit"}}</button></p>
+</form>
+{{end}}

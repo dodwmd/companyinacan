@@ -1,0 +1,16 @@
+{{define "content"}}
+<h1>{{t "trash.title"}}</h1>
+<p><a href="/spaces/{{.Data.Space.ID}}">{{.Data.Space.Name}}</a></p>
+<p class="hint">{{t "trash.hint"}}</p>
+{{if .Data.Files}}<div class="scroll">
+<table>
+<caption>{{t "trash.caption"}}</caption>
+<thead><tr><th scope="col">{{t "common.name"}}</th><th scope="col">{{t "common.size"}}</th><th scope="col">{{t "trash.deleted"}}</th><th scope="col">{{t "common.actions"}}</th></tr></thead>
+<tbody>
+{{range .Data.Files}}<tr><th scope="row"><a href="/files/{{.ID}}">{{.Name}}</a></th><td>{{size .Size}}</td><td>{{with .DeletedAt}}{{when .}}{{end}}</td><td>{{if $.Data.Role.Change}}<form method="post" action="/files/{{.ID}}/restore" class="inline">{{template "csrf" $}}<button type="submit" aria-label="{{t "trash.restore" .Name}}">{{t "common.restore"}}</button></form>{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p>{{t "trash.empty"}}</p>
+{{end}}{{template "pager" .Data.Next}}
+{{end}}
