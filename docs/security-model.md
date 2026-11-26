@@ -70,6 +70,8 @@ flowchart TB
 Bad tokens are refused cheaply and counted per address; **valid credentials are never throttled by other
 callers' failures**. Failed-login and failed-token budgets exist in every service.
 
+can-core's admin sign-in has no limit per account, only per address: see the residual risks below.
+
 ## Sealed data, audit and erasure
 
 - **Sealed at the application level** (XChaCha20-Poly1305 with a per-field AAD that binds the ciphertext to its
@@ -111,6 +113,7 @@ the production ingress must send it.
 | **Equity holder identity.** Verified against the people directory only where `directory.url` is set, which can-core does not wire yet; otherwise a second actor's attestation is the control and accounts are not connected to holders. Collusion, directory or account administrators and one confirmation covering later ledger entries remain. The service-account token never carries the board role, so grants can only be approved by an identity provider that issues it | open | [equity.md](equity.md#holder-identity) |
 | **SSO covers the admin UI only.** The module UIs and APIs use tokens; OIDC administrators cannot issue personal access tokens; no real identity provider has ever been tested | open | [sso.md](sso.md), [module-wiring.md](module-wiring.md) |
 | **Kubernetes Secrets are not encrypted by can-core.** Encrypting Secrets at rest is a cluster setting that can-core does not assert, and anyone with `kubectl` on `mod-*` namespaces can read module secrets and keyrings | open | [module-wiring.md](module-wiring.md) |
+| **The authentication code can be guessed by someone who has the password.** With `CAN_TRUST_PROXY=false` (the binary's default) nothing locks or limits sign-in: back-off only delays, about 128 guesses a second still get through, and the second factor can be expected to fall within about an hour. With it on (as shipped) the locks are per address, so many addresses mean many allowances. can-core does not prevent this; it records `admin.login.many_failures` and logs a warning after 20 failures on an account in a day | open; keep `CAN_TRUST_PROXY=true` behind Traefik, add the IP allowlist, act on the alert by changing the password | [deployment.md](../specs/005-can-core-mvp/deployment.md) |
 | **can-core is privileged and internet-facing.** Mandatory TOTP, narrow ClusterRole and a minimal image, but it is the first target of any review that has not happened | open | [SPEC.md](../SPEC.md) section 11 |
 | **Introspection amplification.** Every distinct bad token costs one outbound introspection call before any limit applies (the cache absorbs repeats for 5 s) | open | [people.md](people.md), [equity.md](equity.md) |
 | **Database access defeats triggers and anonymity.** Immutability triggers and anonymous-feedback guarantees do not hold against someone who can write the SQLite file | by design | [equity.md](equity.md), [people.md](people.md) |

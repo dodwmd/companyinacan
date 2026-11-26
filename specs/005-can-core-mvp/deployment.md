@@ -31,13 +31,24 @@ address. can-core therefore has two throttling modes and picks one from `CAN_TRU
 - **`CAN_TRUST_PROXY=false` (the binary's default, correct when addresses cannot be trusted).** Nothing is ever
   refused for failures, because a shared address would let an anonymous attacker lock the real admin out. Failures
   only add an increasing delay (250 ms doubling to 2 s) and at most 256 logins wait at once (more get 503). The admin
-  with valid credentials and TOTP code gets in, only slower, unless the 256-waiter cap is saturated by a sustained flood (503 while it lasts; no persistent lockout; existing sessions are unaffected).
+  with valid credentials and TOTP code gets in, only slower, unless the 256-waiter cap is saturated by a sustained flood (503 while it lasts; no persistent lockout; existing sessions are unaffected). can-core logs a warning at start in this mode.
 
 In both modes: the TOTP code is checked before the password, so junk logins never run the 19 MiB argon2 step (a
 guess passes the code check with probability about 3 in a million); argon2 runs under a concurrency cap; every login
-takes at least 150 ms regardless of which check failed. Residual risk in the shared-address mode: an attacker who
-already knows the password can guess TOTP codes at a bounded rate (roughly 100 requests a second at the cap, about
-3e-6 chance each). Turn on `CAN_TRUST_PROXY` and add the Traefik IP allowlist (SPEC 3.1) to close that. The IP allowlist is also the availability mitigation against a sustained flood saturating the waiter cap.
+takes at least 150 ms regardless of which check failed. The IP allowlist (SPEC 3.1) is also the availability
+mitigation against a sustained flood saturating the waiter cap.
+
+**Residual risk: guessing the authentication code.** With `CAN_TRUST_PROXY=false` nothing limits how many codes someone
+who already knows a password can try. The back-off delays each attempt but attempts sent side by side wait side by side:
+about 128 a second (256 waiters, 2 s each), plus a burst each time the counters start again. Three codes in a
+million are valid at any moment, so such an attacker can expect to get in within about an hour. The password is then the
+only real factor. Turn on `CAN_TRUST_PROXY` (and add the Traefik IP allowlist). With it, one address gets 10 attempts a
+minute and is locked for 15 minutes after 5 failures on a name (about 480 guesses a day), but the locks are per
+address: an attacker with many addresses gets that allowance for each.
+
+**Detection, both modes.** Twenty failed sign-ins on one account within 24 hours write the audit entry
+`admin.login.many_failures` and a log warning, once per 24 hours. Nothing is refused because of it. The usual cause of a
+real alert is somebody who has the password or is guessing it: change the password.
 
 Recovery from inside the pod: `can-core admin unlock [--username]` and `can-core admin reset-password
 [--rotate-totp]`.

@@ -63,6 +63,13 @@ type RouteAware interface {
 	Routing(ctx context.Context, s Spec) (Routing, error)
 }
 
+// RelayAware is implemented by installers that hand a module the SMTP relay.
+type RelayAware interface {
+	// RelayFingerprint changes whenever what the module would be handed does: it is part of the
+	// recorded settings hash. It is "" when the module is given nothing.
+	RelayFingerprint(ctx context.Context, s Spec) (string, error)
+}
+
 // ModuleInstaller applies and removes module workloads. Implementations must be idempotent.
 type ModuleInstaller interface {
 	// Enable installs or upgrades the module and leaves it running
@@ -213,16 +220,30 @@ func RelayOptIn(e *config.Email, module string) bool {
 }
 
 // specHash is settingsHash of the module as company c has it. For a module that speaks SMTP itself
-// and is opted in it also covers email.relay, so that opting in, opting out (which empties the
-// module's Secret) or changing the relay is an upgrade.
-func specHash(c *config.Company, id string, man *config.Module, routes string) string {
+// and is opted in it also covers email.relay and the relay can-core can read (its Secret reaches the
+// mounted volume a minute or two after it is written), so that opting in, opting out (which empties
+// the module's Secret) or a change of either is an upgrade.
+func specHash(c *config.Company, id string, man *config.Module, routes, relay string) string {
 	h := settingsHash(man, c.Modules[id].Settings, routes)
 	if !modsecrets.WantsRelay(id) || !RelayOptIn(c.Email, id) {
 		return h
 	}
 	b, _ := json.Marshal(c.Email.Relay)
 	sum := sha256.Sum256(append([]byte(h+"\x00relay\x00"), b...))
+	h = hex.EncodeToString(sum[:])
+	if relay == "" {
+		return h
+	}
+	sum = sha256.Sum256([]byte(h + "\x00" + relay))
 	return hex.EncodeToString(sum[:])
+}
+
+func (r *Reconciler) relay(ctx context.Context, d Desired, id, hmacSecret string) (string, error) {
+	ra, ok := r.Installer.(RelayAware)
+	if !ok || !modsecrets.WantsRelay(id) || !RelayOptIn(d.Company.Email, id) {
+		return "", nil
+	}
+	return ra.RelayFingerprint(ctx, Spec{ID: id, Manifest: d.Manifests[id], Domain: d.Company.Domain, Email: d.Company.Email, HMACSecret: hmacSecret})
 }
 
 func (r *Reconciler) routing(ctx context.Context, d Desired, id string) (Routing, error) {
@@ -285,7 +306,8 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 		// A routing read that fails must not stop the plan (disables above all): the hash is then
 		// unknown and is not compared.
 		rt, rerr := r.routing(ctx, d, id)
-		hash := specHash(d.Company, id, man, rt.Fingerprint)
+		relay, lerr := r.relay(ctx, d, id, rec.HMACSecret)
+		hash := specHash(d.Company, id, man, rt.Fingerprint, relay)
 		switch {
 		case !ok:
 			enables = append(enables, Action{Install, id, "not installed"})
@@ -295,7 +317,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			enables = append(enables, Action{Enable, id, "enabled in company.yaml"})
 		case rec.Version != man.Version:
 			enables = append(enables, Action{Upgrade, id, fmt.Sprintf("version %s -> %s", rec.Version, man.Version)})
-		case rerr == nil && rec.SettingsHash != hash:
+		case rerr == nil && lerr == nil && rec.SettingsHash != hash:
 			enables = append(enables, Action{Upgrade, id, "settings changed"})
 		default:
 			pend, err := r.db.PendingRotations(ctx, id)
@@ -425,9 +447,15 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	if rerr != nil {
 		rt = Routing{}
 	}
+	// Read before the installer does: a relay that changes in between differs from this and is
+	// applied by the next run. An unreadable one fails in the installer.
+	relay, lerr := r.relay(ctx, d, a.Module, secret)
+	if lerr != nil {
+		relay = ""
+	}
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
-		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man, rt.Fingerprint), HMACSecret: secret, Manifest: *man,
+		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man, rt.Fingerprint, relay), HMACSecret: secret, Manifest: *man,
 	}
 	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {

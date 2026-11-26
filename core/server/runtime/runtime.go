@@ -254,6 +254,9 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	if cfg.ShutdownTimeout == 0 {
 		cfg.ShutdownTimeout = 15 * time.Second
 	}
+	if !cfg.TrustProxy {
+		log.Warn("CAN_TRUST_PROXY is off: sign-in has no lockout or rate limit, only delays, so someone who knows a password can keep guessing authentication codes. Behind Traefik set CAN_TRUST_PROXY=true (specs/005-can-core-mvp/deployment.md)")
+	}
 	// Restore mode imports the state dump before the database is opened.
 	restoring, err := restoreops.Boot(ctx, cfg.DBPath, cfg.DumpsDir, cfg.RestoreID, cfg.RestoreID != "" && cfg.RestoreOverwrite == cfg.RestoreID)
 	if err != nil {
