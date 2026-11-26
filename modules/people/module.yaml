@@ -59,10 +59,13 @@ subscribes:
 # are enforced inside the service by one policy layer (core/people/policy.go).
 # Reviews and time off use distinctive, non-colliding names (people.reviews.*, people.timeoff.*).
 permissions: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin, performance.read, performance.write,
-  people.reviews.read, people.reviews.write, people.reviews.admin, people.timeoff.read, people.timeoff.write, people.timeoff.approve, people.timeoff.admin]
+  people.reviews.read, people.reviews.write, people.reviews.admin, people.timeoff.read, people.timeoff.write, people.timeoff.approve, people.timeoff.admin,
+  people.team.manage]
+# people.team.manage marks the manager role for personal access tokens and launch sessions: no other role may
+# carry it, so a subset of somebody else's permissions can never look like a manager (core/people/canauth.go).
 roles:
   employee: [people.read, people.sensitive-read, people.sensitive-write, performance.read, performance.write, people.reviews.read, people.reviews.write, people.timeoff.read, people.timeoff.write]
-  manager: [people.read, performance.read, performance.write, people.reviews.read, people.reviews.write, people.timeoff.read, people.timeoff.approve]
+  manager: [people.read, performance.read, performance.write, people.reviews.read, people.reviews.write, people.timeoff.read, people.timeoff.approve, people.team.manage]
   hr: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin, people.reviews.read, people.reviews.admin, people.timeoff.read, people.timeoff.approve, people.timeoff.admin]
   admin: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin, people.reviews.read, people.reviews.admin, people.timeoff.read, people.timeoff.approve, people.timeoff.admin]
 # Approval types this module registers with can-core's approval engine (E11a) when it is wired. `manager` resolves

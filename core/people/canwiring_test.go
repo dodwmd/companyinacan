@@ -22,7 +22,10 @@ func TestRolesFromPermissions(t *testing.T) {
 		want  string
 	}{
 		{[]string{"people.read", "people.sensitive-read", "people.sensitive-write", "performance.read", "performance.write"}, "employee"},
-		{[]string{"people.read", "performance.read", "performance.write"}, "employee,manager"},
+		// A subset of an employee's permissions stays an employee (it used to read as a manager).
+		{[]string{"people.read", "performance.read", "performance.write"}, "employee"},
+		{[]string{"people.read", "performance.read", "performance.write", "people.team.manage"}, "employee,manager"},
+		{[]string{"people.team.manage"}, ""},
 		{[]string{"people.read", "people.write", "people.sensitive-read", "people.sensitive-write", "people.admin"}, "employee,hr,admin"},
 		{[]string{"people.read"}, "employee"},
 		{[]string{"people.write", "people.admin"}, ""}, // no directory read: no role at all
