@@ -22,7 +22,9 @@ import (
 type nodeRunner struct{}
 
 func (nodeRunner) Run(ctx context.Context, script string) (string, error) {
-	cmd := exec.CommandContext(ctx, "docker", "exec", "-i", nodeName(), "sh", "-s") //nolint:gosec // test helper
+	// k3d writes the node's kubeconfig where K3S_KUBECONFIG_OUTPUT says, not at the path a server has.
+	const shell = `export KUBECONFIG="${K3S_KUBECONFIG_OUTPUT:-/etc/rancher/k3s/k3s.yaml}"; exec sh -s`
+	cmd := exec.CommandContext(ctx, "docker", "exec", "-i", nodeName(), "sh", "-c", shell) //nolint:gosec // test helper
 	cmd.Stdin = strings.NewReader(script)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
