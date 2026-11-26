@@ -23,6 +23,13 @@ func TestRedactIPv6(t *testing.T) {
 		"src ::ffff:8.8.4.4 closed",
 		"read 2001:db8::1: reset",
 		"https://x/?a=2001:db8::",
+		"node:2a01:4f8:c17:1234::1 down",
+		"face:2a01:4f8:c17:1234::1 down",
+		"cafe:2001:db8:85a3:0:0:8a2e:370:7334",
+		"dead:beef:2001:db8:85a3:0:0:8a2e:370:7334",
+		"peer-ade:2a01:4f8::1",
+		"ipv6:2a01:4f8::1",
+		"src 2001:db8:85a3:0:0:8a2e:370:7334:443",
 	} {
 		got := id.redact(in)
 		for _, leak := range []string{"2a01", "2A01", "4700", "8a2e", "8.8.4.4", "db8"} {

@@ -215,6 +215,9 @@ func (d *Dispatcher) retryLoop(ctx context.Context) {
 		if err := d.RetryEmails(ctx); err != nil && ctx.Err() == nil {
 			d.log.Error("notification retry", "error", err)
 		}
+		if err := d.store.ResumeScrub(ctx); err != nil && ctx.Err() == nil {
+			d.log.Error("scrubbing the database files after an erasure", "error", err)
+		}
 		if err := d.AnnounceErasures(ctx); err != nil && ctx.Err() == nil {
 			d.log.Error("announcing erasures", "error", err)
 		}

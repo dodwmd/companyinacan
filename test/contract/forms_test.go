@@ -227,3 +227,20 @@ func TestLeadErasedSchema(t *testing.T) {
 		}
 	}
 }
+
+// The image tag follows the module version: with an unchanged tag an upgraded release would keep
+// the running pod, and an unchanged module version leaves the recorded manifest as it was.
+func TestFormsVersionAndImageTagMoveTogether(t *testing.T) {
+	version := asStr(readYAML(t, "modules/forms/module.yaml")["version"])
+	chart := readYAML(t, "modules/forms/chart/Chart.yaml")
+	image := asMap(readYAML(t, "modules/forms/chart/values.yaml")["image"])
+	if version == "0.1.0" || asStr(chart["version"]) != version || asStr(chart["appVersion"]) != version || asStr(image["tag"]) != version {
+		t.Errorf("module %s, chart %v/%v, image tag %v", version, chart["version"], chart["appVersion"], image["tag"])
+	}
+	for _, f := range []string{".github/workflows/restore-e2e.yml", ".github/workflows/module-routing.yml"} {
+		raw, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil || !strings.Contains(string(raw), "can-forms:"+version) {
+			t.Errorf("%s must import can-forms:%s (%v)", f, version, err)
+		}
+	}
+}

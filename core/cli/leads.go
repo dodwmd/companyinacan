@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -179,16 +180,28 @@ func newLeadsCmd(g *globalOpts) *cobra.Command {
 				return usage("%v", err)
 			}
 			done := []cliErasure{}
-			var notes []string
+			notes := []string{}
 			var failed []string
+			var record []string // erased, or possibly erased: to be put in the erasure ledger
 			for _, id := range args {
 				var e cliErasure
 				if err := c.do(cmd.Context(), http.MethodDelete, "/v1/leads/"+id, nil, &e); err != nil {
 					failed = append(failed, id+": "+err.Error())
+					// Only a refusal (4xx) says that nothing was erased.
+					if !strings.HasPrefix(err.Error(), "4") {
+						record = append(record, id)
+					}
 					continue
 				}
-				notes, e.Notes = e.Notes, nil
+				for _, n := range e.Notes {
+					// the same note for every lead is said once
+					if !slices.Contains(notes, n) {
+						notes = append(notes, n)
+					}
+				}
+				e.Notes = nil
 				done = append(done, e)
+				record = append(record, id)
 			}
 			out := cmd.OutOrStdout()
 			if g.json() {
@@ -212,10 +225,10 @@ func newLeadsCmd(g *globalOpts) *cobra.Command {
 					fmt.Fprintln(out, "note:", n)
 				}
 			}
-			if len(done) > 0 {
-				fmt.Fprintln(cmd.ErrOrStderr(), "Check that a restore will apply this again. Where can-core does not collect the forms module's erasures, record each one on the server:")
-				for _, e := range done {
-					fmt.Fprintf(cmd.ErrOrStderr(), "  sudo can backup ledger-add --subject %s --class lead-submission\n", e.LeadID)
+			if len(record) > 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(), "A restore brings these back unless they are recorded: nothing does that by itself yet. On the server:")
+				for _, id := range record {
+					fmt.Fprintf(cmd.ErrOrStderr(), "  sudo can backup ledger-add --subject %s --class lead-submission\n", id)
 				}
 			}
 			if len(failed) > 0 {

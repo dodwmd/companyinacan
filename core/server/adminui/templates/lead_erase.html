@@ -3,6 +3,8 @@
 <h1>{{t "le.erase_title" .Data.Lead.ID}}</h1>
 <p class="alert err" role="alert">{{t "le.warning"}}</p>
 <p>{{t "le.not_recalled"}}</p>
+<p>{{t "le.record"}}</p>
+<pre><code>{{.Data.Command}}</code></pre>
 <dl>
 <dt>{{t "lead.name"}}</dt><dd>{{.Data.Lead.Name}}</dd>
 <dt>{{t "lead.email"}}</dt><dd>{{.Data.Lead.Email}}</dd>

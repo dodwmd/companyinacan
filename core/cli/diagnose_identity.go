@@ -358,31 +358,49 @@ func redactIPv6(text string) string {
 	last := 0
 	for _, m := range reIPv6Run.FindAllStringIndex(text, -1) {
 		from, to := m[0], m[1]
-		// "ip:2001:db8::1" starts the run at the label's colon.
+		// The run may begin with the end of a label: "ip:" starts it at the colon, "node:" at "de:".
 		if from > 0 && wordByte(text[from-1]) {
-			if strings.HasPrefix(text[from:to], "::") || text[from] != ':' {
-				continue // "std::string", or the middle of a word
+			from += strings.IndexByte(text[from:to], ':')
+			if strings.HasPrefix(text[from:to], "::") {
+				continue // "std::string"
 			}
 			from++
 		}
-		// Punctuation of the sentence around the address.
-		for _, c := range [][2]int{{0, 0}, {0, 1}, {1, 0}, {1, 1}, {0, 2}} {
-			f, t := from+c[0], to-c[1]
-			if f >= t || t < len(text) && wordByte(text[t]) {
-				continue
-			}
-			a, err := netip.ParseAddr(text[f:t])
-			if err != nil || !a.Is6() {
-				continue
-			}
-			if public(a) {
-				out.WriteString(text[last:f])
-				out.WriteString("<address>")
-				last = t
-			}
-			break
+		if f, t, ok := findIPv6(text, from, to); ok {
+			out.WriteString(text[last:f])
+			out.WriteString("<address>")
+			last = t
 		}
 	}
 	out.WriteString(text[last:])
 	return out.String()
+}
+
+// findIPv6 looks for a public IPv6 address in text[from:to], longest first: the run can carry a
+// label made of hex digits ("face:"), a port written without brackets, or punctuation.
+func findIPv6(text string, from, to int) (int, int, bool) {
+	starts := []int{from}
+	for f := from; len(starts) < 3; {
+		i := strings.IndexByte(text[f:to], ':')
+		if i < 0 || strings.HasPrefix(text[f+i:to], "::") {
+			break
+		}
+		f += i + 1
+		starts = append(starts, f)
+	}
+	ends := []int{to, to - 1, to - 2}
+	if i := strings.LastIndexByte(text[from:to], ':'); i > 0 {
+		ends = append(ends, from+i)
+	}
+	for _, f := range starts {
+		for _, t := range ends {
+			if f >= t || t < len(text) && wordByte(text[t]) {
+				continue
+			}
+			if a, err := netip.ParseAddr(text[f:t]); err == nil && a.Is6() {
+				return f, t, public(a)
+			}
+		}
+	}
+	return 0, 0, false
 }

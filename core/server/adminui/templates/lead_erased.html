@@ -1,0 +1,9 @@
+{{define "content"}}
+<p><a href="/leads">{{t "lead.back"}}</a></p>
+<h1>{{t "le.done_title" .Data.ID}}</h1>
+<p>{{t "le.done"}}</p>
+{{if .Data.Unscrubbed}}<p class="alert warn" role="alert">{{t "le.err_scrub"}}</p>
+{{end}}<p class="alert warn">{{t "le.record"}}</p>
+<pre><code>{{.Data.Command}}</code></pre>
+<p><a href="/lead-erasure">{{t "le.link"}}</a></p>
+{{end}}

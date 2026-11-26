@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -72,7 +73,7 @@ func TestLeadsFindAndErase(t *testing.T) {
 	if code, out, _ := cli("", "erase", id, "--yes"); code != ExitOK || !strings.Contains(out, "already erased") {
 		t.Errorf("repeat: %d %q", code, out)
 	}
-	if code, _, errs := cli("", "erase", "ld_000000000000000000000000", "--yes"); code != ExitFailure || !strings.Contains(errs, "404") {
+	if code, _, errs := cli("", "erase", "ld_000000000000000000000000", "--yes"); code != ExitFailure || !strings.Contains(errs, "404") || strings.Contains(errs, "ledger-add") {
 		t.Errorf("unknown: %d %q", code, errs)
 	}
 	if code, _, _ := cli("", "erase", "../x", "--yes"); code != ExitUsage {
@@ -80,6 +81,16 @@ func TestLeadsFindAndErase(t *testing.T) {
 	}
 	if code, out, _ := cli("ann@example.com\n", "find"); code != ExitOK || out != "" {
 		t.Errorf("after: %d %q", code, out)
+	}
+	// No answer, or a failure after the delete: the lead may be gone, so the command is shown.
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"code":"scrub_failed","message":"erased, not scrubbed"}`)
+	}))
+	defer broken.Close()
+	t.Setenv("CAN_FORMS_URL", broken.URL)
+	if code, _, errs := cli("", "erase", id, "--yes"); code != ExitFailure || !strings.Contains(errs, "ledger-add --subject "+id) {
+		t.Errorf("scrub failed: %d %q", code, errs)
 	}
 	t.Setenv("CAN_FORMS_TOKEN", "")
 	if code, _, _ := cli("a@b.example\n", "find"); code != ExitUsage {

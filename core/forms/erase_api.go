@@ -23,11 +23,15 @@ func (a *leadsAPI) channels() (out []string) {
 	return out
 }
 
-// erasureNotes are the copies an erasure cannot reach, said in every answer.
-var erasureNotes = []string{
-	"A notification e-mail already handed over cannot be recalled: can-core keeps a queued one until it is sent (up to seven days if it cannot be), and mailboxes keep what arrived.",
-	"Copies outside forms (a webhook receiver, a CRM, a newsletter list, an export) get lead.erased.v1 with the id only, where they listen for it; otherwise erase them by hand.",
-	"Backups made before the erasure hold the lead until they expire; the erasure ledger erases it again after a restore.",
+// erasureNotes are what an erasure does not do, said in every answer. Nothing records a forms
+// erasure in the backup's erasure ledger yet, so the command that does is part of it.
+func erasureNotes(id string) []string {
+	return []string{
+		"Not recorded for restores by itself: until the erasure ledger holds it, a restore of an older backup brings the lead back. On the server: sudo can backup ledger-add --subject " + id + " --class " + ClassLead,
+		"A notification e-mail already handed over cannot be recalled: can-core keeps a queued one until it is sent (up to seven days if it cannot be), and mailboxes keep what arrived.",
+		"Copies outside forms (a webhook receiver, a CRM, a newsletter list, an export) get lead.erased.v1 with the id only, where they listen for it; otherwise erase them by hand.",
+		"Backups made before the erasure hold the lead until they expire.",
+	}
 }
 
 type erasedAnswer struct {
@@ -52,14 +56,14 @@ func (a *leadsAPI) eraseLead(w http.ResponseWriter, r *http.Request, id, actor s
 	}
 	if errors.Is(err, errScrub) {
 		a.log.Error("leads api", "error", err)
-		writeError(w, http.StatusInternalServerError, "scrub_failed", errScrub.Error())
+		writeError(w, http.StatusInternalServerError, "scrub_failed", errScrub.Error()+". Record it for restores, on the server: sudo can backup ledger-add --subject "+id+" --class "+ClassLead)
 		return nil, false
 	}
 	if err != nil {
 		a.internal(w, err)
 		return nil, false
 	}
-	return &erasedAnswer{out, underWay, erasureNotes}, true
+	return &erasedAnswer{out, underWay, erasureNotes(id)}, true
 }
 
 // erase is DELETE /v1/leads/{id}.
@@ -109,7 +113,7 @@ func (a *leadsAPI) find(w http.ResponseWriter, r *http.Request, p *Principal) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "truncated": truncated})
 }
 
-// erasures is GET /v1/erasures?after=N: the tombstones can-core collects.
+// erasures is GET /v1/erasures?after=N: the tombstones, for a collector of the erasure ledger.
 func (a *leadsAPI) erasures(w http.ResponseWriter, r *http.Request, _ *Principal) {
 	after := int64(0)
 	if v := r.URL.Query().Get("after"); v != "" {

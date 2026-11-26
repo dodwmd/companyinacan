@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ type fakeEraser struct {
 	asked  []string
 	erased []string
 	err    error
+	lost   bool
 }
 
 func (f *fakeEraser) Find(_ context.Context, email string) ([]LeadMatch, bool, error) {
@@ -27,11 +29,17 @@ func (f *fakeEraser) Find(_ context.Context, email string) ([]LeadMatch, bool, e
 	return []LeadMatch{{ID: "7", FormID: "contact", Status: "new", CreatedAt: fixedNow, Match: "address"}, {ID: "8", FormID: "contact", Status: "new", CreatedAt: fixedNow, Match: "mention"}}, false, f.err
 }
 
+// Erase removes the lead unless err is set; lost makes the answer go missing after the removal.
 func (f *fakeEraser) Erase(_ context.Context, id string) error {
-	if f.err == nil {
-		f.erased = append(f.erased, id)
+	if f.err != nil {
+		return f.err
 	}
-	return f.err
+	f.erased = append(f.erased, id)
+	f.leads = slices.DeleteFunc(f.leads, func(l Lead) bool { return l.ID == id })
+	if f.lost {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 func eraserOf(h *harness) *fakeEraser {
@@ -90,8 +98,16 @@ func TestLeadErasurePages(t *testing.T) {
 		t.Fatalf("wrong confirmation: %d %v", r.StatusCode, f.erased)
 	}
 	r = h.do("POST", "/leads/7/erase", url.Values{"csrf": {s.csrf}, "confirm": {"7"}}, s.with()...)
-	if r.StatusCode != 303 || r.Header.Get("Location") != "/leads?flash=flash.lead_erased" || len(f.erased) != 1 {
+	if r.StatusCode != 303 || r.Header.Get("Location") != "/lead-erasure/7" || len(f.erased) != 1 {
 		t.Fatalf("erase: %d %s %v", r.StatusCode, r.Header.Get("Location"), f.erased)
+	}
+	command := "sudo can backup ledger-add --subject 7 --class lead-submission"
+	done := h.do("GET", "/lead-erasure/7", nil, s.with()...)
+	if done.StatusCode != 200 || !strings.Contains(done.body, command) {
+		t.Fatalf("after the erasure: %d %s", done.StatusCode, done.body)
+	}
+	for _, p := range a11yProblems(done.body) {
+		t.Errorf("done page: %s", p)
 	}
 	trail := auditText(t, h)
 	if !strings.Contains(trail, "lead.erase") || !strings.Contains(trail, "lead.find") {
@@ -101,10 +117,33 @@ func TestLeadErasurePages(t *testing.T) {
 		t.Error("the address is in the audit trail or the log")
 	}
 
+	if !strings.Contains(trail, "lead.erase_requested") {
+		t.Errorf("not on record before the erasure: %s", trail)
+	}
+
+	// The answer is lost after the lead was erased: still reported and audited as erased.
+	f.leads = append(f.leads, Lead{ID: "9", FormID: "contact", Status: "new", CreatedAt: fixedNow, UpdatedAt: fixedNow})
+	confirm := h.do("GET", "/leads/9/erase", nil, s.with()...)
+	if !strings.Contains(confirm.body, "ledger-add --subject 9 --class lead-submission") || strings.Contains(confirm.body, "erases the lead again") {
+		t.Errorf("confirm page: %s", confirm.body)
+	}
+	if r := h.do("GET", "/lead-erasure/9", nil, s.with()...); r.StatusCode != 303 || r.Header.Get("Location") != "/leads/9" {
+		t.Errorf("a lead that is still there is not reported erased: %d", r.StatusCode)
+	}
+	f.lost = true
+	r = h.do("POST", "/leads/9/erase", url.Values{"csrf": {s.csrf}, "confirm": {"9"}}, s.with()...)
+	if r.StatusCode != 303 || r.Header.Get("Location") != "/lead-erasure/9?scrub=pending" {
+		t.Fatalf("lost answer: %d %s", r.StatusCode, r.Header.Get("Location"))
+	}
+	if got := auditText(t, h); strings.Count(got, `"lead.erase"`) != 2 {
+		t.Errorf("audit: %s", got)
+	}
+	f.lost = false
+
 	// An old sign-in must be proved again before anything is destroyed.
 	*h.now = h.now.Add(time.Hour)
 	r = h.do("POST", "/leads/7/erase", url.Values{"csrf": {s.csrf}, "confirm": {"7"}}, s.with()...)
-	if r.StatusCode != http.StatusSeeOther || !strings.HasPrefix(r.Header.Get("Location"), "/reauth?next=") || len(f.erased) != 1 {
+	if r.StatusCode != http.StatusSeeOther || !strings.HasPrefix(r.Header.Get("Location"), "/reauth?next=") || len(f.erased) != 2 {
 		t.Errorf("stale session: %d %s %v", r.StatusCode, r.Header.Get("Location"), f.erased)
 	}
 }

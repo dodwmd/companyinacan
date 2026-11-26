@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/server/audit"
+	"github.com/dodwmd/companyinacan/core/server/httpx"
 )
 
 // Erasure of leads (specs/054-lead-erasure): find the submissions that name an address and erase
@@ -51,18 +52,32 @@ func (c *HTTPLeads) Find(ctx context.Context, email string) ([]LeadMatch, bool, 
 	return out.Items, out.Truncated, err
 }
 
-// Erase implements LeadEraser.
+// eraseTimeout covers the scrub of the database files, which the provider gives 20 seconds, and
+// stays inside the 30 seconds can-core has to answer the browser.
+const eraseTimeout = 25 * time.Second
+
+// Erase implements LeadEraser. It waits longer than the other calls.
 func (c *HTTPLeads) Erase(ctx context.Context, id string) error {
 	if !leadID.MatchString(id) {
 		return ErrLeadNotFound
 	}
-	return c.do(ctx, http.MethodDelete, "/v1/leads/"+id, nil, nil, nil)
+	client := *c.client()
+	client.Timeout = eraseTimeout
+	patient := *c
+	patient.Client = &client
+	return patient.do(ctx, http.MethodDelete, "/v1/leads/"+id, nil, nil, nil)
+}
+
+// ledgerCommand records an erasure for restores. Nothing does it by itself yet.
+func ledgerCommand(id string) string {
+	return "sudo can backup ledger-add --subject " + id + " --class lead-submission"
 }
 
 func (s *Server) leadEraseRoutes() []route {
 	return []route{
 		{"GET /lead-erasure", s.authedPerm(PermLeadsErase, s.leadSearchPage)},
 		{"POST /lead-erasure", s.authedPerm(PermLeadsErase, s.leadSearch)},
+		{"GET /lead-erasure/{id}", s.authedPerm(PermLeadsErase, s.leadErasedPage)},
 		{"GET /leads/{id}/erase", s.authedPerm(PermLeadsErase, s.leadErasePage)},
 		{"POST /leads/{id}/erase", s.authedPerm(PermLeadsErase, s.leadErase)},
 	}
@@ -98,8 +113,6 @@ func (s *Server) eraseFailed(w http.ResponseWriter, r *http.Request, sc *session
 		s.renderSearch(w, r, sc, http.StatusOK, leadSearchData{Unavailable: true})
 	case errors.Is(err, ErrLeadsForbidden):
 		s.fail(w, r, sc, http.StatusBadGateway, "err.gateway", "le.err_forbidden")
-	case errors.Is(err, ErrLeadScrub):
-		s.fail(w, r, sc, http.StatusBadGateway, "err.gateway", "le.err_scrub")
 	default:
 		s.leadsFailure(w, r, sc, err)
 	}
@@ -139,7 +152,32 @@ func (s *Server) leadSearch(w http.ResponseWriter, r *http.Request, sc *sessionC
 	s.renderSearch(w, r, sc, http.StatusOK, d)
 }
 
+type leadErasedData struct {
+	ID, Command string
+	Unscrubbed  bool
+}
+
+// leadErasedPage says that the lead is gone and what still has to be done.
+func (s *Server) leadErasedPage(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
+	id := r.PathValue("id")
+	if s.Leads == nil || !leadID.MatchString(id) {
+		s.eraseFailed(w, r, sc, ErrLeadNotFound)
+		return
+	}
+	_, err := s.Leads.Get(r.Context(), id)
+	switch {
+	case err == nil: // it is still there: this page must not say otherwise
+		s.redirect(w, r, "/leads/"+url.PathEscape(id), "")
+	case errors.Is(err, ErrLeadNotFound):
+		d := leadErasedData{ID: id, Command: ledgerCommand(id), Unscrubbed: r.URL.Query().Get("scrub") == "pending"}
+		s.render(w, r, http.StatusOK, "lead_erased.html", s.page(r, sc, "leads", s.msg("le.done_title", id), d))
+	default:
+		s.eraseFailed(w, r, sc, err)
+	}
+}
+
 type leadEraseData struct {
+	Command   string
 	Lead      Lead
 	Error     string
 	Recent    bool
@@ -147,7 +185,7 @@ type leadEraseData struct {
 }
 
 func (s *Server) renderErase(w http.ResponseWriter, r *http.Request, sc *sessionCtx, status int, l Lead, errKey string) {
-	d := leadEraseData{Lead: l, Recent: s.users().Recent(actorOf(sc)), StepUpURL: "/reauth?next=" + url.QueryEscape("/leads/"+l.ID+"/erase")}
+	d := leadEraseData{Command: ledgerCommand(l.ID), Lead: l, Recent: s.users().Recent(actorOf(sc)), StepUpURL: "/reauth?next=" + url.QueryEscape("/leads/"+l.ID+"/erase")}
 	if errKey != "" {
 		d.Error = s.msg(errKey)
 	}
@@ -191,19 +229,33 @@ func (s *Server) leadErase(w http.ResponseWriter, r *http.Request, sc *sessionCt
 		s.renderErase(w, r, sc, http.StatusBadRequest, l, "le.err_confirm")
 		return
 	}
-	err := eraser.Erase(r.Context(), id)
-	if err != nil && !errors.Is(err, ErrLeadScrub) {
-		s.eraseFailed(w, r, sc, err)
+	// On record before anything is destroyed: the answer of the provider may never arrive.
+	if _, err := s.Audit.Append(r.Context(), audit.Entry{Actor: sc.User.Username, Action: "lead" + ".erase_requested", Target: id}); err != nil {
+		s.internal(w, r, sc, err)
 		return
 	}
-	// The lead is gone, so it is on record even when the scrub has to be repeated.
-	if _, aerr := s.Audit.Append(context.WithoutCancel(r.Context()), audit.Entry{Actor: sc.User.Username, Action: "lead" + ".erase", Target: id, Detail: map[string]any{"scrubbed": err == nil}}); aerr != nil {
+	// A browser that gives up does not stop an erasure half way.
+	ctx := context.WithoutCancel(r.Context())
+	err := eraser.Erase(ctx, id)
+	unscrubbed := errors.Is(err, ErrLeadScrub)
+	if err != nil && !unscrubbed {
+		// No answer, or an odd one: the lead may be gone all the same.
+		check, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if _, gerr := s.Leads.Get(check, id); !errors.Is(gerr, ErrLeadNotFound) || errors.Is(err, ErrLeadNotFound) {
+			s.eraseFailed(w, r, sc, err)
+			return
+		}
+		s.Log.Warn("lead erased although the request failed", "request_id", httpx.RequestID(r.Context()), "error", err)
+		unscrubbed = true
+	}
+	if _, aerr := s.Audit.Append(ctx, audit.Entry{Actor: sc.User.Username, Action: "lead" + ".erase", Target: id, Detail: map[string]any{"scrubbed": !unscrubbed}}); aerr != nil {
 		s.internal(w, r, sc, aerr)
 		return
 	}
-	if err != nil {
-		s.eraseFailed(w, r, sc, err)
-		return
+	next := "/lead-erasure/" + url.PathEscape(id)
+	if unscrubbed {
+		next += "?scrub=pending"
 	}
-	s.redirect(w, r, "/leads", "flash.lead_erased")
+	s.redirect(w, r, next, "")
 }

@@ -6,7 +6,9 @@ id: forms
 name: Forms gateway
 description: Lead capture for the static site. Same-origin /_forms route, honeypot, timing check and optional Turnstile/hCaptcha, SQLite storage, the leads capability, email and webhook notifications, and the lead.created.v1 event.
 category: sales
-version: 0.1.0
+# 0.2.0: leads.erase, forms:admin, lead.erased.v1. The new version makes `apply` record the manifest again
+# and upgrade the release; the image tag in the chart changes with it, so that the pod is replaced.
+version: 0.2.0
 provider:
   type: inhouse
   name: can-forms

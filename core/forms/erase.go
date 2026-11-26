@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Erasure of a single lead (specs/054-lead-erasure): the way to answer a data subject's request
@@ -30,7 +33,7 @@ const maxMatches = 1000
 var leadIDRe = regexp.MustCompile(`^ld_[0-9a-f]{24}$`)
 
 // errScrub is an erasure that is committed but left traces in the database files.
-var errScrub = errors.New("the lead is erased and audited, but scrubbing the database files failed (repeat the request: it is idempotent and retries the scrub)")
+var errScrub = errors.New("the lead is erased and audited, but scrubbing the database files failed (it is retried by itself; repeating the request retries at once)")
 
 // ErasedLead is the result of an erasure.
 type ErasedLead struct {
@@ -137,7 +140,7 @@ func (s *Store) Erase(ctx context.Context, actor, id string, channels []string) 
 		}
 		// A lead brought back by a restore is erased again: the tombstone takes the new time.
 		if _, err := tx.ExecContext(ctx, `INSERT INTO erasures (subject, class, form_id, created_at) VALUES (?, ?, ?, ?)
-			ON CONFLICT (subject, class) DO UPDATE SET created_at = excluded.created_at`, id, ClassLead, formID, out.ErasedAt.Unix()); err != nil {
+			ON CONFLICT (subject, class) DO UPDATE SET created_at = excluded.created_at, scrubbed = 0`, id, ClassLead, formID, out.ErasedAt.Unix()); err != nil {
 			return nil, err
 		}
 		for _, ch := range channels {
@@ -158,7 +161,45 @@ func (s *Store) Erase(ctx context.Context, actor, id string, channels []string) 
 	if err := s.scrub(sctx); err != nil {
 		return out, fmt.Errorf("%w: %w", errScrub, err)
 	}
+	if err := s.markScrubbed(sctx, id); err != nil {
+		slog.Warn("marking an erasure as scrubbed", "error", err) // it is only scrubbed once more
+	}
 	return out, nil
+}
+
+func (s *Store) markScrubbed(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE erasures SET scrubbed = 1 WHERE subject = ?`, id)
+	return err
+}
+
+// ResumeScrub scrubs the database files if an erasure was committed and the scrub that should have
+// followed it did not finish: the process stopped, or it failed.
+func (s *Store) ResumeScrub(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT subject FROM erasures WHERE scrubbed = 0`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil || len(ids) == 0 {
+		return err
+	}
+	if err := s.scrub(ctx); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := s.markScrubbed(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ListErasures returns tombstones after a cursor, at most 1000.
@@ -190,12 +231,18 @@ func validSearchAddress(a string) bool {
 		strings.IndexFunc(a, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) < 0
 }
 
-func addressRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_%+-", r)
+func asciiAlnum(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
 }
 
-// mentions reports whether text holds addr (both lower case) as a whole address, so that
-// bob@example.com is not found inside jimbob@example.com or bob@example.com.au.
+// folded is how texts and the address searched for are compared: lower case, composed.
+func folded(s string) string { return norm.NFC.String(strings.ToLower(s)) }
+
+// mentions reports whether text holds addr (both folded). Only an ASCII letter or digit right
+// before it (jimbob@example.com), or right after it, also behind a dot (bob@example.com.au), makes
+// it another address. Anything else, such as punctuation, a dash, an underscore or a letter of
+// another script, is taken as the end of the address: a person reads a mention before erasing it, so
+// finding too much is the safer mistake.
 func mentions(text, addr string) bool {
 	for from := 0; ; {
 		i := strings.Index(text[from:], addr)
@@ -206,8 +253,8 @@ func mentions(text, addr string) bool {
 		before, _ := utf8.DecodeLastRuneInString(text[:start])
 		after, n := utf8.DecodeRuneInString(text[end:])
 		next, _ := utf8.DecodeRuneInString(text[end+n:])
-		longerBefore := start > 0 && (addressRune(before) || before == '.')
-		longerAfter := n > 0 && (addressRune(after) || (after == '.' && addressRune(next)))
+		longerBefore := start > 0 && asciiAlnum(before)
+		longerAfter := n > 0 && (asciiAlnum(after) || (after == '.' && asciiAlnum(next)))
 		if !longerBefore && !longerAfter {
 			return true
 		}
@@ -219,7 +266,7 @@ func mentions(text, addr string) bool {
 // The comparison is made here and not in SQL, which only folds ASCII. truncated reports that there
 // are more than the answer holds: erase these and search again.
 func (s *Store) FindByEmail(ctx context.Context, actor, addr string) (out []Match, truncated bool, err error) {
-	want := strings.ToLower(addr)
+	want := folded(addr)
 	rows, err := s.db.QueryContext(ctx, `SELECT id, form_id, status, email, name, fields, note, created_at FROM leads ORDER BY seq DESC`)
 	if err != nil {
 		return nil, false, err
@@ -242,7 +289,7 @@ func (s *Store) FindByEmail(ctx context.Context, actor, addr string) (out []Matc
 			texts = append(texts, v)
 		}
 		for _, t := range texts {
-			t = strings.ToLower(t)
+			t = folded(t)
 			if strings.TrimSpace(t) == want {
 				m.Match = "address"
 				break

@@ -349,10 +349,15 @@ func (s *Store) PurgeExpired(ctx context.Context, now time.Time) (int64, error) 
 		return 0, err
 	}
 	n, err := res.RowsAffected()
-	if err != nil || n == 0 {
+	if err != nil {
 		return n, err
 	}
-	return n, s.checkpoint(ctx)
+	// Also when nothing expired: an earlier run may have stopped before it got here. A blocked
+	// checkpoint then is not worth a report.
+	if err := s.checkpoint(ctx); err != nil && n > 0 {
+		return n, err
+	}
+	return n, nil
 }
 
 // RecordDelivery stores the outcome of a notification channel for a lead.

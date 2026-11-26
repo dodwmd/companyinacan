@@ -7,6 +7,8 @@ CREATE TABLE erasures (
     class      TEXT    NOT NULL,
     form_id    TEXT    NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL,
+    -- 0 until the database files have been scrubbed: finished after a crash or a failure.
+    scrubbed   INTEGER NOT NULL DEFAULT 0,
     UNIQUE (subject, class)
 );
 

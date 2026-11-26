@@ -117,16 +117,24 @@ When somebody asks for their data to be deleted:
    can leads erase ld_... ld_... --yes
    ```
 
+   The search compares each field and the staff note with the address, ignoring case. It does **not** find
+   other ways of writing it: a `+tag` or dotted alias, the domain as punycode instead of Unicode (or the
+   reverse), `bob at example dot com`, `%40`, or a submission that only gives a name or phone number. Search
+   for each spelling you know of, and look through the leads view for the rest. An ASCII letter or digit right
+   next to it makes it another address; anything else (a dash, an underscore, other scripts) does not, so
+   expect some `mention` results that are somebody else's.
 2. **Read** every `mention` first: the address is only inside a text, which may be about somebody else.
 3. **Erase** each one. There is no "erase all for this address": a person decides per submission.
 
 The admin UI needs `leads.erase` (owners; or the role `forms:admin`), a recent sign-in, and a
-`CAN_LEADS_TOKEN_FILE` credential that may erase (the read token may not). A forms module installed before
-this release has to be upgraded for can-core to know the permission and the `lead.erased.v1` event.
+`CAN_LEADS_TOKEN_FILE` credential that may erase: **`CAN_FORMS_API_TOKEN` can erase since 0.2.0** (the read token
+cannot), so anything already holding it now can. A forms module installed earlier is upgraded to 0.2.0 by the
+next apply of a can-core that ships it; that records the new permission, role and event. Personal access
+tokens issued before need to be issued again to carry `leads.erase`.
 
 **What an erasure does:** deletes the lead and its delivery records; cancels its waiting notification email
 and stops one that is being retried; records a tombstone with the lead id only; rewrites the database
-(`VACUUM`) and truncates the write-ahead log; publishes [`lead.erased.v1`](events/lead.erased.v1.json) (ids only)
+(`VACUUM`) and truncates the write-ahead log (finished later if it fails or the process stops); publishes [`lead.erased.v1`](events/lead.erased.v1.json) (ids only)
 to can-core and the signed webhook, retried until accepted. Who searched or erased is recorded in the
 `lead_audit` table and the log, and for the admin UI in can-core's audit log. None of these holds the address
 or anything that was submitted.
@@ -141,9 +149,10 @@ or anything that was submitted.
   in by hand. They are told the lead id; the CRM and newsletter adapters are not built, so erase there by hand.
 - **Exports** (`export.csv`) and anything copied from the admin UI.
 - **Backups.** Module dumps and snapshots made before the erasure hold the lead until they expire. A restore
-  applies the erasure again **if the tombstone is in the erasure ledger**. Until can-core collects this feed,
-  record it on the server: `sudo can backup ledger-add --subject <lead id> --class lead-submission`
-  (`can leads erase` prints the lines).
+  applies the erasure again **only if the tombstone is in the erasure ledger**, and nothing puts it there by
+  itself yet. After every erasure run on the server:
+  `sudo can backup ledger-add --subject <lead id> --class lead-submission`
+  (`can leads erase` and the admin UI show the line).
 
 **Retention** is separate: the hourly purge deletes expired leads and truncates the write-ahead log. It makes no
 tombstone and sends no event, because a restored lead keeps its `retention_until` and is purged again.
