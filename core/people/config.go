@@ -23,6 +23,9 @@ type Config struct {
 	Retention   map[string]string `yaml:"retention"`
 	Reviews     ReviewsConfig     `yaml:"reviews"`
 	UI          UIConfig          `yaml:"ui"`
+	// TrustProxy reads the client address for the API's limit on failed tokens from
+	// X-Forwarded-For (the last entry). Set it only behind a proxy you control.
+	TrustProxy bool `yaml:"trust_proxy"`
 }
 
 // ReviewsConfig holds the review defaults.

@@ -162,6 +162,9 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err := in.checkAdmission(ctx, len(ports) > 0); err != nil {
 		return err
 	}
+	if err := in.guardChartRoutes(ctx, s, objs, &plan); err != nil {
+		return err
+	}
 	// 2. Namespace, RBAC, policies, quota.
 	policy, err := in.ensureNamespace(ctx, s)
 	if err != nil {
@@ -174,8 +177,12 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	}
 	stampSecretVersion(objs, version)
 	stampExposure(objs, plan.values)
-	// 4. Routes that are no longer wanted go first.
-	if err := in.pruneRoutes(ctx, s.ID, plan.objects); err != nil {
+	// 4. Routes that are no longer wanted go first; the Middlewares routes refer to are there
+	// before the routes are (Traefik drops a router whose middleware is missing).
+	if err := in.pruneRoutes(ctx, s.ID, plan.objects, "IngressRoute"); err != nil {
+		return err
+	}
+	if err := in.applyMiddlewares(ctx, plan); err != nil {
 		return err
 	}
 	if !s.Expose.PublicOn() {
@@ -686,7 +693,7 @@ func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true,
 		"ServiceAccount/" + s.ServiceAccount: true,
 		"ResourceQuota/ceiling":              true, "LimitRange/defaults": true,
-		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true,
+		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true, "IngressRoute/" + routeLink: true,
 	}
 	for _, n := range []string{"default-deny", "allow-ingress-from-traefik", "allow-ingress-from-can-core", "module-egress"} {
 		r["NetworkPolicy/"+n] = true

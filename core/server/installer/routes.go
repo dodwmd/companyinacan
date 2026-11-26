@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -26,6 +27,7 @@ import (
 // Names of the routing objects can-core owns in a module namespace.
 const (
 	routeWeb        = "can-web"
+	routeLink       = "can-link"
 	middlewareWeb   = "can-web-headers"
 	middlewareSite  = "can-site-headers"
 	policyTraefik   = "allow-ingress-from-traefik"
@@ -44,10 +46,11 @@ type backend struct {
 // routePlan is what a module's exposure settings and the cluster's routing facts add up to.
 type routePlan struct {
 	cfg      routing.Config
-	uiHost   string         // set when the web UI is routed
-	values   map[string]any // chart value overrides
-	objects  []kube.Object  // can-core's IngressRoutes and Middlewares
-	backends []backend      // the Services those routes send to
+	limits   map[string]bool // the edge limit middlewares already in objects
+	uiHost   string          // set when the web UI is routed
+	values   map[string]any  // chart value overrides
+	objects  []kube.Object   // can-core's IngressRoutes and Middlewares
+	backends []backend       // the Services those routes send to
 }
 
 func (in *Installer) domain(s reconcile.Spec) string {
@@ -79,7 +82,7 @@ func (in *Installer) routingData(ctx context.Context) (data map[string]string, f
 // there is left alone (the upgrade then fails on it rather than taking it offline).
 func (in *Installer) withoutFacts(ctx context.Context, s reconcile.Spec, p routePlan) (routePlan, error) {
 	missing := fmt.Sprintf("ConfigMap %s/%s does not exist, so nothing can be routed: run `can up`", routing.Namespace, routing.ConfigMapName)
-	if s.Expose.UI || s.Expose.API {
+	if s.Expose.UI || s.Expose.API || routing.LinkWanted(s.Manifest, s.Expose) {
 		return p, errors.New(missing)
 	}
 	in.cfg.Log.Warn("not routing: "+missing, "module", s.ID)
@@ -118,7 +121,11 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		p.values = deepMerge(p.values, map[string]any{"ingress": map[string]any{"enabled": false}})
 	}
 	publicPages := m.Runtime.Subdomain != "" && x.PublicOn()
-	if in.cfg.RequireAdmission && (ui || api || siteWanted || publicPages) {
+	if publicPages && len(m.Runtime.PublicConfig) > 0 {
+		p.values = deepMerge(p.values, map[string]any{"config": m.Runtime.PublicConfig})
+	}
+	link := routing.LinkWanted(m, x)
+	if in.cfg.RequireAdmission && (ui || api || siteWanted || publicPages || link) {
 		_, found, err := in.routingData(ctx)
 		if err != nil {
 			return p, err
@@ -127,8 +134,8 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 			return in.withoutFacts(ctx, s, p)
 		}
 	}
-	if (!ui && !api && !siteWanted) || domain == "" {
-		if (ui || api) && domain == "" {
+	if (!ui && !api && !siteWanted && !link) || domain == "" {
+		if (ui || api || link) && domain == "" {
 			in.cfg.Log.Warn("not routing: no company domain", "module", s.ID)
 		}
 		return p, nil
@@ -145,6 +152,11 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		in.cfg.Log.Warn("not routing the web UI or API: the stack serves plain HTTP only (no domain yet)", "module", s.ID)
 		ui, api = false, false
 	}
+	if link && !cfg.TLS {
+		in.cfg.Log.Warn("not routing the signed links: the stack serves plain HTTP only (no domain yet)", "module", s.ID)
+		link = false
+	}
+	limit := x.EdgeLimitOn() && !cfg.NoEdgeLimit
 	if ui || api {
 		w := m.Runtime.PublicUI
 		if w == nil {
@@ -158,9 +170,18 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		}
 		host := s.ID + "." + domain
 		var routes []any
-		add := func(matcher, path string) {
-			routes = append(routes, routeRule("Host(`"+host+"`) && "+matcher+"(`"+path+"`)", 0, w.Service, w.Port, middlewareWeb))
+		at := map[string]int{} // rule -> index in routes
+		rule := func(matcher, path string, priority int, middlewares ...string) {
+			match := "Host(`" + host + "`) && " + matcher + "(`" + path + "`)"
+			r := routeRule(match, priority, w.Service, w.Port, middlewares...)
+			if i, ok := at[match]; ok {
+				routes[i] = r
+				return
+			}
+			at[match] = len(routes)
+			routes = append(routes, r)
 		}
+		add := func(matcher, path string) { rule(matcher, path, 0, middlewareWeb) }
 		if ui {
 			p.uiHost = host
 			for _, e := range w.Exact {
@@ -169,6 +190,14 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 			for _, pre := range w.Prefixes {
 				add("Path", pre)
 				add("PathPrefix", pre+"/")
+			}
+			// Sign-in is limited per client address at the edge. The rules outrank the UI's own:
+			// Traefik's default priority is the rule's length, and a shorter, broader rule can be
+			// the longer string.
+			if login := routing.LoginPath(m); limit && covers(w.Exact, w.Prefixes, login) {
+				mws := append([]string{middlewareWeb}, p.limit(s, "login", routing.LoginLimit)...)
+				rule("Path", login, loginPriority, mws...)
+				rule("PathPrefix", login+"/", loginPriority, mws...)
 			}
 			// While the UI is routed the module runs with it enabled and, unless asked otherwise,
 			// without the paste-a-token form: launch tickets are the way in.
@@ -197,7 +226,11 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		}
 		var routes []any
 		mws := []string{stripName(s.ID), middlewareSite}
-		for _, m := range cfg.SiteMatches(r.Path) {
+		matches := cfg.SiteMatches(r.Path)
+		if limit && len(matches) > 0 {
+			mws = append(mws, p.limit(s, "public", routing.PublicLimit)...)
+		}
+		for _, m := range matches {
 			routes = append(routes, routeRule(m, routing.SitePriority, r.Service, r.Port, mws...))
 		}
 		if len(routes) > 0 {
@@ -206,6 +239,11 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 				middleware(s, stripName(s.ID), map[string]any{"stripPrefix": map[string]any{"prefixes": []any{r.Path}}}),
 				middleware(s, middlewareSite, map[string]any{"headers": map[string]any{"contentTypeNosniff": true}}),
 				ingressRoute(s, siteRouteName(s.ID), cfg.TLS, routes))
+		}
+	}
+	if link {
+		if err := in.planLink(s, &p, domain, limit); err != nil {
+			return p, err
 		}
 	}
 	return p, nil
@@ -247,21 +285,26 @@ func middleware(s reconcile.Spec, name string, spec map[string]any) kube.Object 
 // routingNames are every routing object can-core may own for a module.
 func routingNames(id string) []struct{ kind, name string } {
 	return []struct{ kind, name string }{
-		{"IngressRoute", routeWeb}, {"IngressRoute", siteRouteName(id)},
+		{"IngressRoute", routeWeb}, {"IngressRoute", siteRouteName(id)}, {"IngressRoute", routeLink},
 		{"Middleware", middlewareWeb}, {"Middleware", stripName(id)}, {"Middleware", middlewareSite},
+		{"Middleware", middlewareLink}, {"Middleware", middlewareChart},
+		{"Middleware", limitName("login", "rate")}, {"Middleware", limitName("login", "inflight")},
+		{"Middleware", limitName("public", "rate")}, {"Middleware", limitName("public", "inflight")},
 	}
 }
 
-// pruneRoutes deletes the routing objects that are not in keep. It runs before a rollout too, so
-// switching exposure off takes effect even when the rollout then fails.
-func (in *Installer) pruneRoutes(ctx context.Context, id string, keep []kube.Object) error {
+// pruneRoutes deletes the routing objects of the given kinds (all when none is named) that are not
+// in keep. IngressRoutes are pruned before a rollout too, so switching exposure off takes effect
+// even when the rollout then fails; Middlewares only afterwards, because the routes of the release
+// that is still running (or that a rollback restores) refer to them.
+func (in *Installer) pruneRoutes(ctx context.Context, id string, keep []kube.Object, kinds ...string) error {
 	have := map[string]bool{}
 	for _, o := range keep {
 		have[key(o)] = true
 	}
 	ns := "mod-" + id
 	for _, n := range routingNames(id) {
-		if have[n.kind+"/"+n.name] {
+		if have[n.kind+"/"+n.name] || (len(kinds) > 0 && !slices.Contains(kinds, n.kind)) {
 			continue
 		}
 		if _, err := in.cfg.API.Get(ctx, n.kind, ns, n.name); kube.IsNotFound(err) {
@@ -477,7 +520,11 @@ func (in *Installer) Routing(ctx context.Context, s reconcile.Spec) (reconcile.R
 		UI        *config.PublicUI
 		Site      *config.SiteRoute
 		Subdomain string
-	}{1, in.domain(s), found, data, s.Expose, s.Manifest.Runtime.PublicUI, s.Manifest.Runtime.SiteRoute, s.Manifest.Runtime.Subdomain})
+		Link      *config.PublicLink
+		Config    map[string]any
+		Login     *config.WebLogin
+	}{2, in.domain(s), found, data, s.Expose, s.Manifest.Runtime.PublicUI, s.Manifest.Runtime.SiteRoute, s.Manifest.Runtime.Subdomain,
+		s.Manifest.Runtime.PublicLink, s.Manifest.Runtime.PublicConfig, s.Manifest.Runtime.WebLogin})
 	if err != nil {
 		return reconcile.Routing{}, err
 	}
