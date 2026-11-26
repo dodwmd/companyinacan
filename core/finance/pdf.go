@@ -370,8 +370,9 @@ func RenderInvoicePDF(v *Invoice, seller Seller) []byte {
 	if v.Kind == KindInvoice {
 		totals = append(totals, total{"Balance due " + cur, FormatMinor(v.BalanceMinor, cur), true})
 	}
-	d.need(len(totals) + 1)
+	d.need(len(totals) + 2)
 	d.rule()
+	d.down(1)
 	for _, t := range totals {
 		d.need(1)
 		d.right(min(discEnd, amountEnd-textCols(t.amount)-2), t.bold, t.label)

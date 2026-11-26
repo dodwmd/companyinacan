@@ -339,7 +339,7 @@ func (u *UI) msgOr(key, fallback string) string {
 
 // flashKeys are the only flash messages the "ok" query parameter can select, so a crafted link
 // cannot put text of its choosing on the page.
-var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn", "flash.link_resent", "flash.cert_resent"}
+var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn", "flash.link_resent", "flash.cert_resent", "flash.mail_queued", "flash.mail_refused", "flash.mail_failed"}
 
 func flashMsg(u *UI, key string) string {
 	for _, k := range flashKeys {
