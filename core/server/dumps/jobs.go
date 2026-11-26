@@ -55,6 +55,9 @@ func (h *KubeHooks) RunBackup(ctx context.Context, module string) error {
 	if err != nil {
 		return err
 	}
+	if m.Hooks.Builtin != nil {
+		return h.builtinJob(ctx, module, m, false)
+	}
 	if m.Hooks.Command != "" {
 		return h.runNative(ctx, module, m)
 	}
@@ -271,8 +274,7 @@ func (h *KubeHooks) stuck(ctx context.Context, ns, job string) string {
 	}
 	for _, p := range pods {
 		st, _ := p["status"].(obj)
-		cs, _ := st["containerStatuses"].([]any)
-		for _, c := range cs {
+		for _, c := range containerStatuses(st) {
 			m, _ := c.(obj)
 			state, _ := m["state"].(obj)
 			w, _ := state["waiting"].(obj)
@@ -283,6 +285,13 @@ func (h *KubeHooks) stuck(ctx context.Context, ns, job string) string {
 		}
 	}
 	return ""
+}
+
+// containerStatuses are the statuses of a pod's init containers and containers.
+func containerStatuses(status obj) []any {
+	init, _ := status["initContainerStatuses"].([]any)
+	cs, _ := status["containerStatuses"].([]any)
+	return append(append([]any{}, init...), cs...)
 }
 
 func count(v any) int {

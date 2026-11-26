@@ -5,7 +5,7 @@ name: Analytics
 description: Cookie-free, privacy-friendly web analytics for the company site. Wraps GoatCounter on SQLite (chosen over Umami for footprint, see specs/007-starter-modules/research.md); an adapter exposes the analytics capability.
 category: marketing
 # Experimental: installed through can-core on k3d by the advisory CI job (specs/041-wrapped-modules-live);
-# never on a real server or domain, backups not run (the hooks image is not published), and the
+# never on a real server or domain, and the
 # `analytics` capability adapter is not built (T032).
 status: experimental
 version: 0.1.0
@@ -44,7 +44,8 @@ data_classes:
   - { class: pageview-aggregate, retention: 3y, sensitivity: standard }
 settings_schema: ./settings.schema.json
 hooks:
-  image: ghcr.io/dodwmd/can-hooks:0.1.0
-  backup: ./hooks/backup.sh
-  restore: ./hooks/restore.sh
+  # can-core dumps and restores this module itself (specs/046-wrapped-backups).
+  backup: backup
+  restore: restore
+  builtin: {sqlite: goatcounter.sqlite3}
 healthcheck: /status

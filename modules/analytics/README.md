@@ -1,12 +1,11 @@
 # analytics
 
 > **Status: experimental.** Installed through can-core on k3d in the advisory `wrapped-modules` CI job
-> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or domain. Backups are not run, and the `analytics`
+> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or domain. The `analytics`
 > capability is marked `planned` (adapter not built, T032).
 
-> **Backups: enabling this module stops them for the whole company.** Its hook needs the `can-hooks`
-> image, which is not published, and while such a module is enabled every dump run fails and nothing is
-> backed up (`can validate` warns; [docs/backup-restore.md](../../docs/backup-restore.md)).
+> **Backups:** can-core takes a checked copy of the SQLite database in every dump run, and no unpublished image is needed
+> ([docs/backup-restore.md](../../docs/backup-restore.md#wrapped-modules)). Verified on k3d only.
 
 Cookie-free web analytics for the company site. Wraps [GoatCounter](https://github.com/arp242/goatcounter)
 (Go, SQLite) and provides the `analytics` capability.
@@ -19,7 +18,7 @@ Cookie-free web analytics for the company site. Wraps [GoatCounter](https://gith
 | Database | SQLite file on the module's PVC (`/data/goatcounter.sqlite3`), so no shared database is needed |
 | Public host | `stats.<domain>` (dashboard, and `/count` for the tracker) |
 | Capability | `analytics` (`schemas/capabilities/analytics.v1.json`), served by `analytics-adapter` (:8081, off until the adapter image exists) |
-| Backup | `hooks/backup.sh` takes an online SQLite `.backup` and PUTs it to can-core; `hooks/restore.sh` puts it back. SQLite files on PVCs are excluded from the raw PVC backup, so this dump is the only copy |
+| Backup | can-core: a checked copy of the SQLite database ([specs/046](../../specs/046-wrapped-backups/spec.md)) |
 | Data class | `pageview-aggregate`: 3 years, no cookies, no stored IP addresses |
 
 Single replica with `strategy: Recreate`: SQLite allows one writer, so a rolling update must never
