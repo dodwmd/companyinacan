@@ -73,7 +73,7 @@ func pdfInvoice() *Invoice {
 	num := "INV-00007"
 	return &Invoice{Kind: KindInvoice, Status: StSent, Number: &num, Currency: "EUR", BaseCurrency: "USD", FXRate: "1.0850", IssueDate: "2026-11-01", DueDate: "2026-11-15",
 		PartySnapshot: &PartySnapshot{Name: "Müller & Söhne (Nürnberg)", Address: "Königstraße 1\n90402 Nürnberg", TaxID: "DE000"},
-		Lines: []Line{{Description: `Café “crème” – 5 € \ (a) b)`, QuantityMilli: 1500, UnitPriceMinor: 1000, DiscountBP: 1000, TaxRatePPM: 190000, TotalMinor: 1607}},
+		Lines:         []Line{{Description: `Café “crème” – 5 € \ (a) b)`, QuantityMilli: 1500, UnitPriceMinor: 1000, DiscountBP: 1000, TaxRatePPM: 190000, TotalMinor: 1607}},
 		SubtotalMinor: 1500, DiscountMinor: 150, TaxMinor: 257, TotalMinor: 1607, PaidMinor: 600, BalanceMinor: 1007,
 		Notes: "Thank you.", PaymentInstructions: "IBAN XX00"}
 }
@@ -108,7 +108,7 @@ func TestPDFContentAndStructure(t *testing.T) {
 func TestPDFSaysWhatItCannotShow(t *testing.T) {
 	v := pdfInvoice()
 	v.PartySnapshot.Name = "株式会社 Δ"
-	v.Lines[0].Description = "a\x00b\tc‮d" // control and bidi characters
+	v.Lines[0].Description = "a\x00b\tc\u202ed" // control and bidi characters
 	texts, _ := checkPDF(t, RenderInvoicePDF(v, Seller{Name: "Example"}))
 	all := strings.Join(texts, "\n")
 	for _, want := range []string{"???? ?", lossyNote, "a b cd"} {

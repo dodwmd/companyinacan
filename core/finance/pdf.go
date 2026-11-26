@@ -403,7 +403,7 @@ func RenderInvoicePDF(v *Invoice, seller Seller) []byte {
 func pdfFilename(v *Invoice) string {
 	n := deref(v.Number)
 	if n == "" || strings.ContainsFunc(n, func(r rune) bool {
-		return !(r == '-' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z')
+		return r != '-' && (r < '0' || r > '9') && (r < 'A' || r > 'Z')
 	}) {
 		n = "document"
 	}
