@@ -518,22 +518,7 @@ func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 	now := s.now()
 	var failed failures
 	failed.add(s.sweepTrash(ctx, rep))
-	orphans, err := s.orphanBlobs(ctx, now.Add(-pendingBlobGrace))
-	failed.add(err)
-	for _, k := range orphans {
-		if err := s.backend.Delete(ctx, k); err != nil {
-			failed.add(fmt.Errorf("orphan blob %s could not be deleted: %w", k, err))
-			continue
-		}
-		if err := s.inTx(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `DELETE FROM pending_blobs WHERE (blob_key = ?)`, k)
-			return err
-		}); err != nil {
-			failed.add(err)
-			continue
-		}
-		rep.Orphans++
-	}
+	s.sweepOrphans(ctx, now.Add(-pendingBlobGrace), rep, &failed)
 	failed.add(s.inTx(ctx, func(tx *sql.Tx) error { return s.purgeOutbox(ctx, tx, now) }))
 	if rep.Purged > 0 {
 		failed.add(s.scrub(ctx, true))
@@ -541,11 +526,45 @@ func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 	return rep, failed.err()
 }
 
-// orphanBlobs lists blobs that were registered before cutoff and never recorded.
-func (s *Store) orphanBlobs(ctx context.Context, cutoff time.Time) ([]string, error) {
+const orphanBatch = 500
+
+// sweepOrphans removes every blob registered before cutoff and never recorded. It pages by blob_key,
+// so blobs that cannot be deleted (and stay registered) never keep the later ones from being tried.
+func (s *Store) sweepOrphans(ctx context.Context, cutoff time.Time, rep *RetentionReport, failed *failures) {
+	after := ""
+	for {
+		keys, err := s.orphanBlobs(ctx, cutoff, after)
+		if err != nil || len(keys) == 0 {
+			failed.add(err)
+			return
+		}
+		for _, k := range keys {
+			if ctx.Err() != nil {
+				failed.add(ctx.Err())
+				return
+			}
+			if err := s.backend.Delete(ctx, k); err != nil {
+				failed.add(fmt.Errorf("orphan blob %s could not be deleted: %w", k, err))
+				continue
+			}
+			if err := s.inTx(ctx, func(tx *sql.Tx) error {
+				_, err := tx.ExecContext(ctx, `DELETE FROM pending_blobs WHERE (blob_key = ?)`, k)
+				return err
+			}); err != nil {
+				failed.add(err)
+				continue
+			}
+			rep.Orphans++
+		}
+		after = keys[len(keys)-1]
+	}
+}
+
+// orphanBlobs is one page, in key order after `after`, of the blobs registered before cutoff.
+func (s *Store) orphanBlobs(ctx context.Context, cutoff time.Time, after string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT blob_key FROM pending_blobs WHERE (created_at <= ?) LIMIT 500`, ts(cutoff))
+	rows, err := s.db.QueryContext(ctx, `SELECT blob_key FROM pending_blobs WHERE (blob_key > ?) AND (created_at <= ?) ORDER BY blob_key LIMIT ?`, after, ts(cutoff), orphanBatch)
 	if err != nil {
 		return nil, err
 	}
