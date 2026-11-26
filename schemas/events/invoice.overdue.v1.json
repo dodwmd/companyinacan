@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/invoice.overdue.v1.json",
+  "title": "invoice.overdue.v1",
+  "description": "Published once when an issued invoice with a balance is past its due date. A sweep that finds many at once (the first after an upgrade) publishes one event with `count` instead. Delivered at least once; consumers de-duplicate on `id`. Carries identifiers, dates and counts only: no names, amounts, reasons or other text (fetch the record through the capability if the token allows).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "invoice.overdue.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "finance"
+    },
+    "data": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "invoice_id",
+            "party_id",
+            "due_date",
+            "days_overdue"
+          ],
+          "properties": {
+            "invoice_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "party_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "due_date": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            },
+            "days_overdue": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

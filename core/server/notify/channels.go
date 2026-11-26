@@ -33,6 +33,8 @@ type Message struct {
 	// Authored means the module chose some of what Subject and Text say, so a mailer must not send
 	// them unless the operator allowed that for the module.
 	Authored bool
+	// Platform marks an approval notice of can-core's engine (Notice.Platform).
+	Platform bool
 	// Type is the notification type; Count the number of notifications in a digest (0 otherwise).
 	Type  string
 	Count int

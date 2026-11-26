@@ -11,7 +11,7 @@ category: operations
 # job builds the image and installs work through can-core (see docs/module-wiring.md for what that
 # proves). `can validate` warns so it is not offered as enable-ready until that is checked.
 status: experimental
-# 0.3.0: work.issue.priority_changed.v1, project and manager views (specs/065-work-manager). 0.2.0 is the
+# 0.3.0: work.issue.priority_changed.v1, project and manager views (specs/065-work-manager). 0.2.0 was the
 # reminders change (specs/060-reminders). The new version makes `apply` record the manifest again.
 version: 0.3.0
 provider:
@@ -53,6 +53,10 @@ publishes:
   - { event: work.issue.transitioned.v1, schema: ./events/work.issue.transitioned.v1.json }
   - { event: work.comment.created.v1, schema: ./events/work.comment.created.v1.json }
   - { event: work.issue.priority_changed.v1, schema: ./events/work.issue.priority_changed.v1.json }
+  - { event: work.issue.p0.v1, schema: ./events/work.issue.p0.v1.json }
+# A P0 reaches its assignee and the managers, e-mail without waiting for quiet hours to end.
+notifications:
+  - { event: work.issue.p0.v1, recipients: ["field:assignee", "role:manager"], urgent: true }
 permissions: [work.read, work.write, work.admin]
 roles:
   member: [work.read, work.write]

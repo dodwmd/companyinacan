@@ -244,6 +244,12 @@ func (r *CreateRequest) validate() error {
 	return nil
 }
 
+// The most new approval requests one module may open.
+const (
+	MaxPerModuleHour = 120
+	MaxPerModuleDay  = 600
+)
+
 // Create opens a request. It is idempotent per (module, key): a repeat of the same request
 // returns the original with created=false; the same key with different content is refused.
 func (e *Engine) Create(ctx context.Context, cr CreateRequest) (Request, bool, error) {
@@ -264,6 +270,20 @@ func (e *Engine) Create(ctx context.Context, cr CreateRequest) (Request, bool, e
 		return r, false, err
 	case !errors.Is(err, sql.ErrNoRows):
 		return Request{}, false, err
+	}
+	// Each new request notifies people, so one module may not open them without end. A repeat of an
+	// earlier one (above) does not count.
+	for _, l := range []struct {
+		window time.Duration
+		max    int
+	}{{time.Hour, MaxPerModuleHour}, {24 * time.Hour, MaxPerModuleDay}} {
+		var n int
+		if err := e.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM approval_requests WHERE module_id=? AND created_at>?`, cr.ModuleID, e.now().Add(-l.window).Unix()).Scan(&n); err != nil {
+			return Request{}, false, err
+		}
+		if n >= l.max {
+			return Request{}, false, ErrRateLimited
+		}
 	}
 	pol, err := e.policyFor(ctx, cr.Type, cr.DefaultChain)
 	if err != nil {
@@ -397,7 +417,7 @@ func (e *Engine) notifyApprovers(ctx context.Context, r Request, step int, set a
 	delete(subjects, r.Requester)
 	for s := range subjects {
 		_, _, err := e.d.Notifier.Notify(ctx, notify.Notice{Subject: s, Type: typ, DedupeKey: fmt.Sprintf("%s:%s:%d", r.ID, typ, step),
-			Data: map[string]string{"request_id": r.ID, "approval_type": r.Type}, Link: "/approvals/" + r.ID, Module: r.ModuleID})
+			Data: map[string]string{"request_id": r.ID, "approval_type": r.Type}, Link: "/approvals/" + r.ID, Module: r.ModuleID, Platform: true})
 		if err != nil {
 			e.d.Log.Error("approval notification failed", "request", r.ID, "error", err)
 		}
@@ -409,7 +429,7 @@ func (e *Engine) notifyRequester(ctx context.Context, r Request, outcome string)
 		return
 	}
 	_, _, err := e.d.Notifier.Notify(ctx, notify.Notice{Subject: r.Requester, Type: "approval.decided", DedupeKey: r.ID + ":decided",
-		Data: map[string]string{"request_id": r.ID, "approval_type": r.Type, "outcome": outcome}, Link: "/approvals/" + r.ID, Module: r.ModuleID})
+		Data: map[string]string{"request_id": r.ID, "approval_type": r.Type, "outcome": outcome}, Link: "/approvals/" + r.ID, Module: r.ModuleID, Platform: true})
 	if err != nil {
 		e.d.Log.Error("approval notification failed", "request", r.ID, "error", err)
 	}

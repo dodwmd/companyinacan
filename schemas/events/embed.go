@@ -237,3 +237,48 @@ var BankStatementImportedV1 []byte
 //
 //go:embed lead.erased.v1.json
 var LeadErasedV1 []byte
+
+// InvoiceOverdueV1 is the JSON Schema of the invoice.overdue.v1 event.
+//
+//go:embed invoice.overdue.v1.json
+var InvoiceOverdueV1 []byte
+
+// ContractDeclinedV1 is the JSON Schema of the contract.declined.v1 event.
+//
+//go:embed contract.declined.v1.json
+var ContractDeclinedV1 []byte
+
+// ExpenseSubmittedV1 is the JSON Schema of the expense.submitted.v1 event.
+//
+//go:embed expense.submitted.v1.json
+var ExpenseSubmittedV1 []byte
+
+// ExpenseDecidedV1 is the JSON Schema of the expense.decided.v1 event.
+//
+//go:embed expense.decided.v1.json
+var ExpenseDecidedV1 []byte
+
+// TimesheetSubmittedV1 is the JSON Schema of the timesheet.submitted.v1 event.
+//
+//go:embed timesheet.submitted.v1.json
+var TimesheetSubmittedV1 []byte
+
+// TimesheetDecidedV1 is the JSON Schema of the timesheet.decided.v1 event.
+//
+//go:embed timesheet.decided.v1.json
+var TimesheetDecidedV1 []byte
+
+// WorkIssueP0V1 is the JSON Schema of the work.issue.p0.v1 event.
+//
+//go:embed work.issue.p0.v1.json
+var WorkIssueP0V1 []byte
+
+// TimeOffRequestedV1 is the JSON Schema of the timeoff.requested.v1 event.
+//
+//go:embed timeoff.requested.v1.json
+var TimeOffRequestedV1 []byte
+
+// TimeOffDecidedV1 is the JSON Schema of the timeoff.decided.v1 event.
+//
+//go:embed timeoff.decided.v1.json
+var TimeOffDecidedV1 []byte

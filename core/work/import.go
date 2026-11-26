@@ -219,6 +219,7 @@ func (s *Store) importNewIssue(ctx context.Context, tx dbq, a *Principal, proj *
 		}
 		start.wf.Initial = status
 	}
+	in.imported = true
 	is, err := s.createInTx(ctx, tx, a, &start, &in)
 	if err != nil {
 		return err

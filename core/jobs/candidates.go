@@ -167,7 +167,7 @@ func (s *Store) Apply(ctx context.Context, in PublicApplication) (*ApplyResult, 
 			}
 		}
 		res.ApplicationID, res.Created = aid, true
-		return s.emit(ctx, tx, EventApplicationRecv, applicationReceivedData{ApplicationID: aid, JobID: j.ID, CandidateID: cid, Source: in.Source, NewCandidate: res.NewCandidate, ReceivedAt: now.UTC()})
+		return s.emit(ctx, tx, EventApplicationRecv, applicationReceivedData{ApplicationID: aid, JobID: j.ID, CandidateID: cid, Source: in.Source, NewCandidate: res.NewCandidate, HiringManager: hiringAccount(j.HiringManager), ReceivedAt: now.UTC()})
 	})
 	if err != nil {
 		return nil, err
@@ -274,7 +274,11 @@ func (s *Store) CreateApplication(ctx context.Context, p *Principal, in ManualAp
 		if err := s.touchRetention(ctx, tx, cid); err != nil {
 			return err
 		}
-		if err := s.emit(ctx, tx, EventApplicationRecv, applicationReceivedData{ApplicationID: aid, JobID: in.JobID, CandidateID: cid, Source: in.Source, NewCandidate: newCand, ReceivedAt: now.UTC()}); err != nil {
+		var manager string
+		if err := tx.QueryRowContext(ctx, `SELECT hiring_manager FROM jobs WHERE id = ?`, in.JobID).Scan(&manager); err != nil {
+			return err
+		}
+		if err := s.emit(ctx, tx, EventApplicationRecv, applicationReceivedData{ApplicationID: aid, JobID: in.JobID, CandidateID: cid, Source: in.Source, NewCandidate: newCand, HiringManager: hiringAccount(manager), ReceivedAt: now.UTC()}); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, p.Subject, "application.create", "application:"+aid, []string{"consent_attested"}, "ok")

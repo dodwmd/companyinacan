@@ -15,8 +15,9 @@ id: finance
 name: Finance
 description: Customers and vendors, chart of accounts, double-entry journal with period close, bank statement import and reconciliation, invoices and credit notes with gap-free numbering and immutability after approval, multi-currency with a stored FX rate per document, payments, receivables aging, recurring invoices, contracts with versions, hashes, signature by emailed single-use link (simple electronic signature) and e-signature adapters, timesheets with approval and billing, expenses with receipt metadata and approval, and minimal purchase orders. Integer minor-unit money, tax as data, separation of duties, per-party and per-project scoping, audited exports, retention and erasure that respects legal retention.
 category: finance
+# 0.3.0: reminder events and notification rules (specs/060-reminders). The new version makes `apply` record the manifest again.
 # 0.2.0: invoices, statements and payment reminders by email, PDF (specs/062-invoice-email). The new version makes `apply` record the manifest again.
-version: 0.2.0
+version: 0.3.0
 # experimental: the service and its tests are complete and measured locally, and the chart installs
 # through can-core's installer in unit tests (specs/016-module-wiring); the image has not been built
 # or run on a cluster, there is no real payment or e-signature adapter (fakes only). A server-rendered
@@ -94,6 +95,12 @@ publishes:
   - { event: expense.approved.v1, schema: ./events/expense.approved.v1.json }
   - { event: journal.posted.v1, schema: ./events/journal.posted.v1.json }
   - { event: bank.statement.imported.v1, schema: ./events/bank.statement.imported.v1.json }
+  - { event: invoice.overdue.v1, schema: ./events/invoice.overdue.v1.json }
+  - { event: contract.declined.v1, schema: ./events/contract.declined.v1.json }
+  - { event: expense.submitted.v1, schema: ./events/expense.submitted.v1.json }
+  - { event: expense.decided.v1, schema: ./events/expense.decided.v1.json }
+  - { event: timesheet.submitted.v1, schema: ./events/timesheet.submitted.v1.json }
+  - { event: timesheet.decided.v1, schema: ./events/timesheet.decided.v1.json }
 # can-core's approvals engine decides invoices (approval.decided.v1 comes back signed); the other
 # approval types are declared for policy and notification but still use the finance.approve rule.
 subscribes:
@@ -112,6 +119,16 @@ roles:
   accountant: [finance.read, finance.write, finance.ledger.read, finance.ledger.write]
   controller: [finance.read, finance.ledger.read, finance.ledger.approve, finance.ledger.admin]
   ledger-auditor: [finance.read, finance.ledger.read]
+# Who is told (specs/060-reminders). can-core tells the owners when nobody holds a named role.
+notifications:
+  - { event: invoice.overdue.v1, recipients: ["role:finance"] }
+  - { event: contract.expiring.v1, recipients: ["role:finance"] }
+  - { event: contract.signed.v1, recipients: ["role:finance"] }
+  - { event: contract.declined.v1, recipients: ["role:finance"] }
+  - { event: expense.submitted.v1, recipients: ["role:approver"] }
+  - { event: expense.decided.v1, recipients: ["field:owner"] }
+  - { event: timesheet.submitted.v1, recipients: ["role:approver"] }
+  - { event: timesheet.decided.v1, recipients: ["field:owner"] }
 approvals:
   - { type: invoice, default_chain: [finance] }
   - { type: timesheet, default_chain: [manager] }

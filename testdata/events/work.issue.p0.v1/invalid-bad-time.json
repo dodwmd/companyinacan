@@ -1,0 +1,11 @@
+{
+  "id": "evt_0123456789abcdef01234560",
+  "type": "work.issue.p0.v1",
+  "time": 7,
+  "source": "work",
+  "data": {
+    "issue_id": "WEB-3",
+    "project": "WEB",
+    "assignee": "user:ann"
+  }
+}

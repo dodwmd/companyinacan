@@ -1,9 +1,12 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +20,9 @@ import (
 type moduleRule struct {
 	module string
 	rule   config.NotifyRule
+	// own: the module publishes the rule's event itself, so only its own events (or can-core's)
+	// count, not those of another module that names the same event.
+	own bool
 }
 
 const rulesTTL = 30 * time.Second
@@ -36,18 +42,25 @@ func (s *Service) loadRules(ctx context.Context) ([]moduleRule, error) {
 			continue
 		}
 		for _, r := range m.Manifest.Notifications {
-			rules = append(rules, moduleRule{m.ID, r})
+			own := false
+			for _, p := range m.Manifest.Publishes {
+				own = own || p.Event == r.Event
+			}
+			rules = append(rules, moduleRule{m.ID, r, own})
 		}
 	}
 	s.rules, s.rulesAt = rules, s.opt.Now()
 	return rules, nil
 }
 
-// idData keeps only identifier members of event data: `id` and `*_id`. Event payloads may carry
-// personal data (names, emails); notifications never copy it.
+// idData keeps only identifier members of event data (`id` and `*_id`, strings or whole numbers) and
+// `count`, the number of things a summary event stands for. Event payloads may carry personal data
+// (names, emails); notifications never copy it.
 func idData(raw json.RawMessage) map[string]string {
 	var m map[string]any
-	if json.Unmarshal(raw, &m) != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if dec.Decode(&m) != nil {
 		return map[string]string{}
 	}
 	out := map[string]string{}
@@ -57,8 +70,23 @@ func idData(raw json.RawMessage) map[string]string {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		v, ok := m[k].(string)
-		if !ok || !dataKeyRe.MatchString(k) || (k != "id" && !strings.HasSuffix(k, "_id")) {
+		isID := k == "id" || strings.HasSuffix(k, "_id")
+		if !dataKeyRe.MatchString(k) || (!isID && k != "count") {
+			continue
+		}
+		var v string
+		switch x := m[k].(type) {
+		case string:
+			if !isID {
+				continue
+			}
+			v = x
+		case json.Number:
+			if !wholeNumberRe.MatchString(x.String()) {
+				continue
+			}
+			v = x.String()
+		default:
 			continue
 		}
 		if len(out) >= maxDataKeys-2 {
@@ -68,6 +96,8 @@ func idData(raw json.RawMessage) map[string]string {
 	}
 	return out
 }
+
+var wholeNumberRe = regexp.MustCompile(`^[0-9]{1,18}$`)
 
 // HandleEvent is the bus handler (events.Bus.SubscribeAll) that turns events into notifications
 // according to the rules in module manifests. Errors are logged: a failing notification must never
@@ -82,7 +112,7 @@ func (s *Service) HandleEvent(ctx context.Context, env events.Envelope) {
 		return
 	}
 	for _, mr := range rules {
-		if mr.rule.Event != env.Type {
+		if mr.rule.Event != env.Type || (mr.own && env.Source != mr.module && env.Source != "can-core") {
 			continue
 		}
 		s.apply(ctx, mr, env)
@@ -101,15 +131,26 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 	}
 	data := idData(env.Data)
 	data["event_id"] = env.ID
+	// approval.* are the engine's types: a rule on such an event is the module's own notice.
+	if mr.rule.Type == "" && strings.HasPrefix(typ, "approval.") {
+		typ = mr.module + "." + typ
+	}
+	// The project's own wording is for the module it was written for: another module using the same
+	// event name is shown as itself.
+	if owner, ok := wordingOwner[typ]; ok && mr.rule.Type == "" && env.Source != "can-core" && env.Source != owner {
+		typ = mr.module + "." + typ
+	}
 	var raw map[string]any
 	_ = json.Unmarshal(env.Data, &raw)
 
 	seen := map[string]bool{}
 	var subjects, channels []string
+	byRole := false
 	for _, rcp := range mr.rule.Recipients {
 		kind, val, _ := strings.Cut(rcp, ":")
 		switch kind {
 		case "role":
+			byRole = true
 			if s.opt.Roles == nil {
 				continue
 			}
@@ -129,6 +170,15 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 			channels = append(channels, val)
 		}
 	}
+	// A rule that names a role must reach somebody: when nobody holds it (a new company has only
+	// its owner) and no other recipient is a person, the owners are told.
+	if byRole && s.opt.Roles != nil && !slices.ContainsFunc(subjects, rbac.ValidSubject) {
+		ss, err := s.opt.Roles.SubjectsWithRole(ctx, rbac.Owner, MaxRecipientsPerRule)
+		if err != nil {
+			s.opt.Log.Error("resolving the owners for a notification failed", "error", err)
+		}
+		subjects = append(subjects, ss...)
+	}
 	n := 0
 	for _, subj := range subjects {
 		if seen[subj] || !rbac.ValidSubject(subj) {
@@ -144,6 +194,15 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 		if origin == "" || origin == "can-core" {
 			origin = mr.module
 		}
+		if typ == p0Type {
+			again, err := s.toldLately(ctx, subj, typ, data["issue_id"])
+			if err != nil {
+				s.opt.Log.Error("notification throttle lookup failed", "error", err)
+			}
+			if again {
+				continue
+			}
+		}
 		if _, _, err := s.Notify(ctx, Notice{Subject: subj, Type: typ, DedupeKey: key, Data: data, Urgent: mr.rule.Urgent, RespectMute: true, Module: origin, Authored: env.Source != "can-core"}); err != nil {
 			s.opt.Log.Error("notification rule failed", "module", mr.module, "event", env.Type, "error", err)
 		}
@@ -153,6 +212,25 @@ func (s *Service) apply(ctx context.Context, mr moduleRule, env events.Envelope)
 			s.opt.Log.Error("notification channel failed", "module", mr.module, "event", env.Type, "error", err)
 		}
 	}
+}
+
+// wordingOwner names the module each reminder wording of render.go belongs to.
+var wordingOwner = map[string]string{
+	"invoice" + ".overdue": "finance", "contract" + ".expiring": "finance", "contract" + ".signed": "finance", "contract" + ".declined": "finance",
+	"expense" + ".submitted": "finance", "expense" + ".decided": "finance", "timesheet" + ".submitted": "finance", "timesheet" + ".decided": "finance",
+	"timeoff" + ".requested": "people", "timeoff" + ".decided": "people", "application" + ".received": "jobs",
+	p0Type: "work", "entity.filing" + ".due": "entity",
+}
+
+const p0Type = "work.issue" + ".p0"
+
+// toldLately reports whether the subject was told about this issue within the last hour: lowering and
+// raising a priority, or passing an issue back and forth, does not repeat an urgent notice.
+func (s *Service) toldLately(ctx context.Context, subject, typ, issue string) (bool, error) {
+	var c int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM notifications WHERE subject=? AND type=? AND created_at>? AND json_extract(data_json, '$.issue_id')=? LIMIT 1)`,
+		subject, typ, s.opt.Now().Add(-time.Hour).Unix(), issue).Scan(&c)
+	return c > 0, err
 }
 
 func errorsIsNotFound(err error) bool { return errors.Is(err, store.ErrNotFound) }

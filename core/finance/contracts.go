@@ -515,6 +515,10 @@ type contractSignedData struct {
 	SignedAt   time.Time `json:"signed_at"`
 }
 
+type contractSummaryData struct {
+	Count int `json:"count"`
+}
+
 type contractExpiringData struct {
 	ContractID  int64  `json:"contract_id"`
 	PartyID     int64  `json:"party_id"`
@@ -753,7 +757,20 @@ func (s *Store) SweepContracts(ctx context.Context, asOf string) (int, error) {
 		if _, err := tx.ExecContext(ctx, `UPDATE contracts SET status = 'expired', version = version + 1 WHERE status IN ('signed', 'active') AND end_date IS NOT NULL AND end_date < ?`, asOf); err != nil {
 			return err
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id, party_id, renewal_date, reminder_days FROM contracts WHERE status = 'active' AND renewal_date IS NOT NULL AND reminded_for <> renewal_date AND date(renewal_date, '-' || reminder_days || ' days') <= ? ORDER BY id LIMIT 500`, asOf)
+		const pending = `status = 'active' AND renewal_date IS NOT NULL AND reminded_for <> renewal_date AND date(renewal_date, '-' || reminder_days || ' days') <= ?`
+		var waiting int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM contracts WHERE `+pending, asOf).Scan(&waiting); err != nil {
+			return err
+		}
+		// Many at once become one event with a count (summaryAbove, reminders.go).
+		if waiting > summaryAbove {
+			if _, err := tx.ExecContext(ctx, `UPDATE contracts SET reminded_for = renewal_date WHERE `+pending, asOf); err != nil {
+				return err
+			}
+			reminders = waiting
+			return s.emit(ctx, tx, EventContractExpiring, contractSummaryData{Count: waiting})
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT id, party_id, renewal_date, reminder_days FROM contracts WHERE `+pending+` ORDER BY id`, asOf)
 		if err != nil {
 			return err
 		}

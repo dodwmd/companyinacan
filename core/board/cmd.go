@@ -123,6 +123,8 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	}
 	if can != nil {
 		handler = withSummary(handler, can, svc, log, api.summaryLimit())
+		disp = NewDispatcher("", nil, log) // events go through can-core only
+		disp.Can = can
 	}
 	srv := &http.Server{Handler: obs.Instrument(handler), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup

@@ -289,8 +289,10 @@ func (s *Store) SubmitExpense(ctx context.Context, a *Principal, id int64, ifMat
 		if err := s.checkUnlocked(ctx, tx, e.IncurredOn); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE expenses SET status='submitted', reject_reason='', version=version+1, updated_at=? WHERE id=?`, ts(s.now()), id)
-		return err
+		if _, err := tx.ExecContext(ctx, `UPDATE expenses SET status='submitted', reject_reason='', version=version+1, updated_at=? WHERE id=?`, ts(s.now()), id); err != nil {
+			return err
+		}
+		return s.emit(ctx, tx, EventExpenseSubmitted, expenseStepData{ExpenseID: id, Owner: e.Owner})
 	})
 }
 
@@ -326,6 +328,9 @@ func (s *Store) decideExpense(ctx context.Context, a *Principal, id int64, ifMat
 			return err
 		}
 		if err := s.audit(ctx, tx, a.Subject, "expense."+status, fmt.Sprint(id), map[string]any{"owner": e.Owner, "amount_minor": e.AmountMinor, "currency": e.Currency}); err != nil {
+			return err
+		}
+		if err := s.emit(ctx, tx, EventExpenseDecided, expenseStepData{ExpenseID: id, Owner: e.Owner}); err != nil {
 			return err
 		}
 		if approve {

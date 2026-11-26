@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dodwmd/companyinacan/schemas/events/timesheet.submitted.v1.json",
+  "title": "timesheet.submitted.v1",
+  "description": "Timesheet. Published when it is submitted for approval inside finance. `owner` is the subject whose timesheet it is. Delivered at least once; consumers de-duplicate on `id`. Carries identifiers, dates and counts only: no names, amounts, reasons or other text (fetch the record through the capability if the token allows).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "time",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{24}$",
+      "description": "Unique event id, stable across redeliveries."
+    },
+    "type": {
+      "const": "timesheet.submitted.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "finance"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timesheet_id",
+        "owner"
+      ],
+      "properties": {
+        "timesheet_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 254
+        }
+      }
+    }
+  }
+}
