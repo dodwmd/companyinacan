@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
@@ -35,8 +36,9 @@ type Store struct {
 	rdb *sql.DB // read-only pool for searches and boards (WAL readers do not block the writer)
 	now func() time.Time
 	// events turns the outbox on; with no webhook configured nothing is queued.
-	events bool
-	kick   chan struct{}
+	events    bool
+	kick      chan struct{}
+	importing sync.Mutex // one CSV import at a time (specs/047-csv-import)
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.
