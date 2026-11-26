@@ -68,17 +68,21 @@ ConfigMap `can-system/can-routing`:
 kubectl -n can-system get configmap can-routing -o yaml
 ```
 
-`can up` writes it; `can apply` writes it when it is missing or names another domain. can-core cannot
-write it. Changing the domain in the admin UI therefore also needs `can apply` (or `can up`): until
+`can up` writes it on every run. `can apply` only writes it when it is missing or names another
+domain, and then reads it off the site's route; where there is no site route it writes nothing and
+says so. can-core cannot write it. Changing the domain in the admin UI therefore also needs `can apply` (or `can up`): until
 then routed modules fail with a message saying so.
 
 ## Upgrading an existing installation
 
-1. Run `can up` (or apply `deploy/base` and then `can apply`). Without the new policies can-core
+1. Run `can up` (or apply `deploy/base`, then `can apply` on a server that has the site route). Without the new policies can-core
    refuses to install a routed module, and without `can-routing` the API server denies module routes.
 2. Every module is reconciled once.
 3. **Routes you made by hand** to a module UI stop working, because the namespace now admits Traefik
    only on ports can-core routes. Replace them with `expose.ui`.
+
+Servers must run k3s v1.32.2 or later: older releases bundle a Traefik chart that ignores the
+certificate resolver. `provider.options.k3s_version` older than that is refused.
 
 ## Troubleshooting
 

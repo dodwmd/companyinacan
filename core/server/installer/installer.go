@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -162,6 +163,11 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	// 4. Routes that are no longer wanted go first.
 	if err := in.pruneRoutes(ctx, s.ID, plan.objects); err != nil {
 		return err
+	}
+	if !s.Expose.PublicOn() {
+		if err := in.closePublic(ctx, s); err != nil {
+			return err
+		}
 	}
 	// 5. The module's workloads, atomically.
 	if err := in.rollout(ctx, s, objs); err != nil {
@@ -688,6 +694,10 @@ func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.
 	prev, err := in.loadRelease(ctx, s)
 	if err != nil {
 		return fmt.Errorf("the recorded release in Secret %s is unreadable or fails its HMAC check (%w); inspect it or delete it to reinstall", secretRelease, err)
+	}
+	if !s.Expose.PublicOn() {
+		// A rollback must not put a public route back.
+		prev = slices.DeleteFunc(prev, func(o kube.Object) bool { return o["kind"] == "IngressRoute" })
 	}
 	if err := in.applyAll(ctx, objs); err != nil {
 		in.restore(ctx, s, prev, objs)

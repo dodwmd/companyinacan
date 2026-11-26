@@ -105,7 +105,7 @@ once are refused (`another can up or can down is already running`).
 | access (tunnel) | opens it again; if local port 16443 is busy, close the other tunnel |
 | base | `kubectl apply` again (converges) |
 | images | uploads again unless the same set (fingerprint) was recorded as loaded |
-| company, core, site, routes | applied again (converges; an unchanged site does not restart the pod) |
+| company, routing, core, site, routes | applied again (converges; an unchanged site does not restart the pod) |
 | admin, before the account was created | creates it |
 | admin, created but the credentials were never shown | issues a new password and TOTP secret (nobody has the old ones) and shows them |
 | admin, credentials already shown | leaves the account alone and says so; lost them: `kubectl -n can-system exec -i deploy/can-core -- /can-core admin reset-password --rotate-totp` (new password on stdin) |
@@ -178,7 +178,7 @@ Budget by phase, with what is known:
 | Create VM (provider API) | 30-60 s | not measured | human run |
 | Boot + k3s install (bootstrap script) | about 60 s | not measured | human run |
 | images: upload and import (`--images-from`) | in parallel with k3s in the SPEC | not measured on a server; CI imports with `k3d image import` (see below) | the tarballs are tens of MiB; upload time depends on your uplink. A release manifest has no upload, the server pulls |
-| base + company + core + admin + site + routes + ready | about 30 s deploy | see the k3d table | |
+| base + company + routing + core + admin + site + routes + ready | about 30 s deploy | see the k3d table | |
 | Instant URL | immediate | n/a | needs the server's real address |
 
 ### Measured on k3d in CI (workflow `make-up-e2e`, advisory)

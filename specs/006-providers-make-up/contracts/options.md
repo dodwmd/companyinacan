@@ -11,7 +11,7 @@ The schema keeps `options` a free map (E01); these keys are validated by the pro
 | `port` | 22 | also the port the host firewall keeps open |
 | `key_file` | ssh default | identity file |
 | `operator_ip` | any | restrict SSH in the host firewall to this IP/CIDR |
-| `k3s_version` | pinned default | must match `vX.Y.Z+k3sN` |
+| `k3s_version` | pinned default | must match `vX.Y.Z+k3sN`, v1.32.2 or later (specs/040) |
 | `node_name` | `can` | DNS label |
 | `swap_mb` | 1024 | used on hosts with < 4 GB RAM |
 | `image_tarballs` | none | list of `{name, url (https), sha256}` pre-seeded into k3s |

@@ -87,7 +87,7 @@ func applyRoutingFacts(t *testing.T, c routing.Config) {
 
 func TestAdmissionPolicyRoutes(t *testing.T) {
 	mustKubectl(t, "get", "validatingadmissionpolicy", "can-core-routes", "can-core-routing-config")
-	mustKubectl(t, "get", "validatingadmissionpolicybinding", "can-core-routes", "can-core-routing-config")
+	mustKubectl(t, "get", "validatingadmissionpolicybinding", "can-core-routes", "can-core-routing-config", "can-core-services")
 	for _, id := range []string{"work", "forms", "jobs"} {
 		if out, err := kubectlStdin(moduleNamespaceYAML(id), "apply", "-f", "-"); err != nil {
 			t.Fatalf("namespace mod-%s: %v\n%s", id, err, out)
@@ -145,6 +145,18 @@ func TestAdmissionPolicyRoutes(t *testing.T) {
 	other := strings.Replace(routeYAML("mod-work", host("work."+routeDomain), ""), "{name: x, port: 8080}", "{name: can-core, namespace: can-system, port: 8080}", 1)
 	if out, err := create(other); err == nil {
 		t.Errorf("a route to another namespace's Service was allowed: %s", out)
+	}
+
+	svc := func(kind, extra string) (string, error) {
+		return create(fmt.Sprintf("apiVersion: v1\nkind: Service\nmetadata: {name: vap-probe, namespace: mod-work}\nspec:\n  type: %s\n  ports: [{port: 80}]\n%s", kind, extra))
+	}
+	if out, err := svc("ClusterIP", ""); err != nil {
+		t.Errorf("a ClusterIP Service must be allowed: %s", out)
+	}
+	for _, c := range [][2]string{{"LoadBalancer", ""}, {"NodePort", ""}, {"ClusterIP", "  externalIPs: [192.0.2.1]\n"}} {
+		if out, err := svc(c[0], c[1]); err == nil || !strings.Contains(out, "can-core-services") {
+			t.Errorf("Service %v: want a denial by can-core-services, got err=%v %s", c, err, out)
+		}
 	}
 
 	// Without the routing facts only module routes are held back; the rest of the cluster (k3s's

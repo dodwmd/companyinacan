@@ -70,7 +70,7 @@ jobs:
         env:
           CAN_IT_CANCORE: "1"
           CAN_IT_ROUTING: "1"
-        run: go test -tags integration -count=1 -v -timeout 20m -run 'TestAdmissionPolicyRoutes|TestModuleRoutingThroughTheIngress' ./test/integration/
+        run: go test -tags integration -count=1 -v -timeout 20m -run 'TestTraefikHasTheACMEResolver|TestAdmissionPolicyRoutes|TestModuleRoutingThroughTheIngress' ./test/integration/
       - name: Cluster state on failure
         if: failure()
         run: |

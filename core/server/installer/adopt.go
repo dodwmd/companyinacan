@@ -47,7 +47,7 @@ func (in *Installer) checkAdmission(ctx context.Context, routed bool) error {
 	}
 	names := []string{"can-core-rolebindings", "can-core-namespaces"}
 	if routed {
-		names = append(names, "can-core-routes", "can-core-routing-config")
+		names = append(names, "can-core-routes", "can-core-routing-config", "can-core-services")
 	}
 	for _, n := range names {
 		if _, err := in.cfg.API.Get(ctx, "ValidatingAdmissionPolicy", "", n); err != nil {

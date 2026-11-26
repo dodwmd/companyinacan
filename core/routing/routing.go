@@ -6,9 +6,11 @@
 package routing
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -111,6 +113,62 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// SiteMatches are the Traefik rules of a module's route on the site: path on every site host, and
+// for any host when the site is served that way. can-core creates exactly these and `can up` waits
+// for exactly these.
+func (c Config) SiteMatches(path string) []string {
+	var out []string
+	for _, h := range c.SiteHosts {
+		out = append(out, "Host(`"+h+"`) && PathPrefix(`"+path+"`)")
+	}
+	if c.CatchAll {
+		out = append(out, "PathPrefix(`"+path+"`)")
+	}
+	return out
+}
+
+// EntryPoint is the Traefik entry point of the stack.
+func (c Config) EntryPoint() string {
+	if c.TLS {
+		return "websecure"
+	}
+	return "web"
+}
+
+var siteHostRule = regexp.MustCompile("^Host\\(`([^`]+)`\\)$")
+
+// FromSiteRoute reads the facts off the site's IngressRoute (can-system/site, as JSON), which `can
+// up` made: the hosts that serve the site and whether it does so over TLS. A rule it does not
+// understand is an error: guessing would route modules on the wrong names.
+func FromSiteRoute(domain string, ingressRoute []byte) (Config, error) {
+	var r struct {
+		Spec struct {
+			EntryPoints []string `json:"entryPoints"`
+			Routes      []struct {
+				Match string `json:"match"`
+			} `json:"routes"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal(ingressRoute, &r); err != nil {
+		return Config{}, fmt.Errorf("routing: the site route is not readable: %w", err)
+	}
+	c := Config{Domain: domain, TLS: slices.Contains(r.Spec.EntryPoints, "websecure")}
+	for _, rt := range r.Spec.Routes {
+		switch m := siteHostRule.FindStringSubmatch(rt.Match); {
+		case m != nil:
+			c.SiteHosts = append(c.SiteHosts, m[1])
+		case rt.Match == "PathPrefix(`/`)":
+			c.CatchAll = true
+		default:
+			return Config{}, fmt.Errorf("routing: the site route has a rule this does not understand: %q", rt.Match)
+		}
+	}
+	if len(c.SiteHosts) == 0 && !c.CatchAll {
+		return Config{}, errors.New("routing: the site route serves nothing")
+	}
+	return c, c.Validate()
 }
 
 // Data is the ConfigMap data.

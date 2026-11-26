@@ -294,6 +294,7 @@ func TestChartMayNotClaimAnotherHost(t *testing.T) {
 func TestRoutesNeedTheAdmissionPolicy(t *testing.T) {
 	in, api, spec := routed(t, "work", config.Expose{UI: true})
 	in.cfg.RequireAdmission = true
+	facts(t, api, map[string]any{"domain": "acme.example", "tls": "true", "siteHosts": "acme.example"})
 	for _, n := range []string{"can-core-rolebindings", "can-core-namespaces"} {
 		for _, o := range []kube.Object{
 			{"apiVersion": "admissionregistration.k8s.io/v1", "kind": "ValidatingAdmissionPolicy", "metadata": map[string]any{"name": n}},
@@ -313,4 +314,58 @@ func TestRoutesNeedTheAdmissionPolicy(t *testing.T) {
 	// a module with nothing to route is not held back by it
 	spec.Expose = config.Expose{}
 	enable(t, in, spec)
+}
+
+func facts(t *testing.T, api *kube.Fake, data map[string]any) {
+	t.Helper()
+	if err := api.Apply(context.Background(), kube.Object{"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": routing.ConfigMapName, "namespace": routing.Namespace}, "data": data}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPublicOffHoldsWhenTheRolloutFails(t *testing.T) {
+	in, api, spec := routed(t, "jobs", config.Expose{})
+	enable(t, in, spec)
+	off := false
+	spec.Expose = config.Expose{Public: &off}
+	api.NotReady["jobs"] = true
+	if err := in.Enable(context.Background(), spec); err == nil {
+		t.Fatal("the rollout should have failed")
+	}
+	if exists(api, "IngressRoute", spec.Namespace, "jobs") {
+		t.Error("the careers route is still there (or the rollback put it back)")
+	}
+}
+
+func TestAPIOnlyTrustsTheProxy(t *testing.T) {
+	for _, id := range []string{"work", "jobs", "finance"} {
+		in, api, spec := routed(t, id, config.Expose{API: true})
+		enable(t, in, spec)
+		raw, _ := dig(get(t, api, "ConfigMap", spec.Namespace, id+"-config"), "data", id+".yaml").(string)
+		if !strings.Contains(raw, "trust_proxy: true") || strings.Contains(raw, "token_login") {
+			t.Errorf("%s: %s", id, raw)
+		}
+	}
+}
+
+func TestBrokenRoutingFactsFailOnlyWhatNeedsThem(t *testing.T) {
+	in, api, spec := routed(t, "work", config.Expose{})
+	facts(t, api, map[string]any{"domain": "not a name"})
+	if rt, err := in.Routing(context.Background(), spec); err != nil || rt.UIHost != "" || rt.Fingerprint == "" {
+		t.Fatalf("%+v %v", rt, err)
+	}
+	enable(t, in, spec) // nothing to route
+	spec.Expose = config.Expose{UI: true}
+	if err := in.Enable(context.Background(), spec); err == nil {
+		t.Fatal("a routed module needs readable facts")
+	}
+}
+
+func TestInAClusterTheFactsMustExist(t *testing.T) {
+	in, _, spec := routed(t, "work", config.Expose{UI: true})
+	in.cfg.RequireAdmission = true
+	if err := in.Enable(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "run `can up`") {
+		t.Fatalf("%v", err)
+	}
 }

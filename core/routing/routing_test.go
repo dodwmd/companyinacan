@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,29 @@ func TestConfigRoundTripAndRefusals(t *testing.T) {
 	for _, bad := range []string{"", "a b", "acme.example`)", "UPPER.example"} {
 		if _, err := Default(bad).Manifest(); err == nil {
 			t.Errorf("domain %q accepted", bad)
+		}
+	}
+}
+
+func TestFromSiteRoute(t *testing.T) {
+	for _, c := range []struct {
+		name, in string
+		want     Config
+		matches  int
+	}{
+		{"domain and sslip", `{"spec":{"entryPoints":["websecure"],"routes":[{"match":"Host(` + "`" + `acme.example` + "`" + `)"},{"match":"Host(` + "`" + `1-2-3-4.sslip.io` + "`" + `)"}]}}`,
+			Config{Domain: "acme.example", TLS: true, SiteHosts: []string{"acme.example", "1-2-3-4.sslip.io"}}, 2},
+		{"plain HTTP catch-all", `{"spec":{"entryPoints":["web"],"routes":[{"match":"PathPrefix(` + "`" + `/` + "`" + `)"}]}}`,
+			Config{Domain: "acme.example", CatchAll: true}, 1},
+	} {
+		got, err := FromSiteRoute("acme.example", []byte(c.in))
+		if err != nil || !reflect.DeepEqual(got, c.want) || len(got.SiteMatches("/_forms")) != c.matches {
+			t.Errorf("%s: %+v %v", c.name, got, err)
+		}
+	}
+	for _, bad := range []string{"", "{}", `{"spec":{"routes":[{"match":"HostRegexp(` + "`" + `.*` + "`" + `)"}]}}`} {
+		if _, err := FromSiteRoute("acme.example", []byte(bad)); err == nil {
+			t.Errorf("%q accepted", bad)
 		}
 	}
 }

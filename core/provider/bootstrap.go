@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 )
@@ -15,6 +16,20 @@ import (
 // UNVERIFIED on a real host: E00 (Phase 0 measurements) confirms the pin and
 // the flag set. Change it here only together with the golden file.
 const DefaultK3sVersion = "v1.33.5+k3s1"
+
+// MinK3sVersion is the oldest accepted k3s_version: the first release whose bundled Traefik chart
+// (34) reads `certificatesResolvers` from deploy/base/traefik-config.yaml. Older charts (27) ignore
+// it without a word and no certificate is ever issued.
+const MinK3sVersion = "v1.32.2+k3s1"
+
+func k3sOlderThan(v, min string) bool {
+	parse := func(s string) (n [3]int) {
+		_, _ = fmt.Sscanf(s, "v%d.%d.%d", &n[0], &n[1], &n[2])
+		return n
+	}
+	a, b := parse(v), parse(min)
+	return slices.Compare(a[:], b[:]) < 0
+}
 
 // Default k3s network CIDRs (SPEC.md section 3.1).
 const (
@@ -73,6 +88,8 @@ func (o *BootstrapOptions) normalise() error {
 	switch {
 	case !reVersion.MatchString(o.K3sVersion):
 		return fmt.Errorf("k3s version %q: want a pinned release like v1.33.5+k3s1", o.K3sVersion)
+	case k3sOlderThan(o.K3sVersion, MinK3sVersion):
+		return fmt.Errorf("k3s version %q is too old: %s or later is needed, or Traefik gets no certificate resolver", o.K3sVersion, MinK3sVersion)
 	case !reNode.MatchString(o.NodeName):
 		return fmt.Errorf("node name %q is not a valid hostname label", o.NodeName)
 	case o.SSHPort < 1 || o.SSHPort > 65535:

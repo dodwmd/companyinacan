@@ -15,13 +15,19 @@
 - **Order**: plan, render, check admission, namespace, secrets, remove unwanted routes, roll out,
   then NetworkPolicy and routes. Disable removes can-core's routes and closes the policy.
 - **Routing facts**: ConfigMap `can-system/can-routing` (`domain`, `tls`, `siteHosts`, `catchAll`),
-  written by `can up` (all four) and `can apply` (only when missing or for another domain). The
-  admission policy takes it as its parameter, so it cannot be a can-core environment variable.
+  written by `can up` on every run, as its own phase, and by `can apply` only when missing or for
+  another domain, read off `can-system/site` (never assumed). The admission policy takes it as its
+  parameter, so it cannot be a can-core environment variable. A routing read that fails does not stop
+  the reconcile plan; a ConfigMap that does not parse fails only the modules that need it.
 - **Reconcile**: the installer's routing fingerprint is part of the settings hash; exposure changes
   that alter chart configuration also annotate the pod template so pods restart.
 - **Apps**: the reconciler records the routed host in its copy of the manifest; the ticket launcher
   uses it unless `CAN_MODULE_UI_URLS` names the module. No database migration.
-- **forms**: `can up` no longer applies the route itself; it waits for can-core's.
+- **forms**: `can up` no longer applies the route itself; it waits for can-core's, with the entry
+  point and rules the facts ask for.
+- **Services**: policy `can-core-services` keeps can-core to ClusterIP Services without externalIPs.
+- **k3s**: dev, CI and servers run v1.33.5; `k3s_version` before v1.32.2 is refused, because the
+  older bundled Traefik chart ignores `certificatesResolvers` (found while testing this epic).
 
 ## Constitution check
 

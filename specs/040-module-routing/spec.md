@@ -52,6 +52,10 @@ installer (4), same-origin `/_forms` (6.1, E05). Refines what 016 (module wiring
   The installer MUST check this and a ValidatingAdmissionPolicy MUST enforce it on can-core's
   requests.
 - **FR-010** The domain and site hosts the policy compares against MUST NOT be writable by can-core.
+- **FR-012** `public: false` MUST remove the module's public route even if the rollout fails.
+- **FR-013** `api: true` MUST make the module take the client address from Traefik where it can.
+  (people's API has no such setting: its limit on failed tokens is shared by all callers behind
+  Traefik; valid tokens are never refused.)
 - **FR-011** A change of exposure or of routing facts MUST be applied by the next reconcile without
   any other change, and switching exposure off MUST remove the route even if the rollout then fails.
 
@@ -80,6 +84,7 @@ buggy module chart or manifest; a compromised module pod; a compromised can-core
 | A module claims the apex or a site path | Only forms, only `/_forms`, only on hosts listed in `can-routing` | `PathPrefix(/_forms)` also matches `/_formsX`, which forms answers with 404 |
 | Loose Traefik rules (`||`, `HostRegexp`, two hosts) | Installer allows one `&&` chain with one Host; the policy requires the rule to start with `Host` and contain only Path, PathPrefix, Method and Headers matchers | The policy matches the rule text with a regular expression, not Traefik's parser |
 | A compromised can-core widens its own bounds | `can-routing` and the policies are not writable by it (policy `can-core-routing-config`; no admission verbs in RBAC); plain Ingress is refused | It can still create any Middleware or workload inside `mod-*`, and can rewrite Traefik's HelmChartConfig and CoreDNS through the older kube-system grant (`deploy/base/rbac.yaml`, residual risk 3), which defeats routing bounds |
+| can-core publishes a module past Traefik with a LoadBalancer, NodePort or externalIPs Service | Installer refuses it in charts; policy `can-core-services` refuses it from can-core | It can still run host-visible workloads only as far as pod security `restricted` allows |
 | A route reaches a Service in another namespace | Installer and policy refuse namespaces and `@provider` names; Traefik does not cross namespaces by default; ExternalName Services are refused | - |
 | The API or health endpoints leak through the UI route | UI paths are an allowlist, `/v1`, `healthz`, `readyz`, `metrics`, `public` cannot be listed; contract test | A UI prefix also reaches the module's own handling of that prefix; the module's authentication still applies |
 | Session theft or downgrade | TLS only; Secure `__Host-` cookies forced on; HSTS; no UI over plain HTTP | HSTS has no `includeSubDomains`; no HTTP to HTTPS redirect (plain HTTP gets 404) |

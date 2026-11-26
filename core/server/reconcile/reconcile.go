@@ -248,10 +248,9 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 	for _, id := range installOrder(want) {
 		man := want[id]
 		rec, ok := have[id]
-		rt, err := r.routing(ctx, d, id)
-		if err != nil {
-			return nil, fmt.Errorf("routing of %s: %w", id, err)
-		}
+		// A routing read that fails must not stop the plan (disables above all): the hash is then
+		// unknown and is not compared.
+		rt, rerr := r.routing(ctx, d, id)
 		hash := settingsHash(man, d.Company.Modules[id].Settings, rt.Fingerprint)
 		switch {
 		case !ok:
@@ -262,7 +261,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			enables = append(enables, Action{Enable, id, "enabled in company.yaml"})
 		case rec.Version != man.Version:
 			enables = append(enables, Action{Upgrade, id, fmt.Sprintf("version %s -> %s", rec.Version, man.Version)})
-		case rec.SettingsHash != hash:
+		case rerr == nil && rec.SettingsHash != hash:
 			enables = append(enables, Action{Upgrade, id, "settings changed"})
 		default:
 			pend, err := r.db.PendingRotations(ctx, id)
@@ -383,10 +382,11 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		}
 	}
 	settings := d.Company.Modules[a.Module].Settings
-	rt, err := r.routing(ctx, d, a.Module)
-	if err != nil {
-		r.log(ctx, "module.failed", a, map[string]any{"error": err.Error()})
-		return err
+	// On an error the installer decides (it fails a module that needs the routing facts); the
+	// recorded hash then differs from the next good one, so the module is applied again.
+	rt, rerr := r.routing(ctx, d, a.Module)
+	if rerr != nil {
+		rt = Routing{}
 	}
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,

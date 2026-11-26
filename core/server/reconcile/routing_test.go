@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -65,4 +66,25 @@ func TestExposureIsAppliedAndRecorded(t *testing.T) {
 	}
 	launcher.Overrides = nil
 	apply(false, Upgrade, "")
+}
+
+type brokenRouting struct{ *FakeInstaller }
+
+func (brokenRouting) Routing(context.Context, Spec) (Routing, error) {
+	return Routing{}, errors.New("can-routing cannot be read")
+}
+
+// Routing facts that cannot be read must not stop disables or installs.
+func TestUnreadableRoutingDoesNotStopReconciling(t *testing.T) {
+	ctx := context.Background()
+	rg := newRig(t)
+	a, b := mf("a", "0.1.0", nil), mf("b", "0.1.0", nil)
+	if _, err := New(rg.db, rg.reg, audit.New(rg.db), rg.fk).Apply(ctx, desired(nil, nil, a), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	r := New(rg.db, rg.reg, audit.New(rg.db), brokenRouting{rg.fk})
+	res, err := r.Apply(ctx, desired(nil, map[string]bool{"a": false}, a, b), Options{})
+	if err != nil || len(res.Actions) != 2 || res.Actions[0].Kind != Disable || res.Actions[1].Kind != Install {
+		t.Fatalf("%v %v", res.Actions, err)
+	}
 }

@@ -56,20 +56,35 @@ func (in *Installer) domain(s reconcile.Spec) string {
 	return in.cfg.Domain
 }
 
-// routingConfig reads ConfigMap can-system/can-routing; absent means the defaults for the domain.
-func (in *Installer) routingConfig(ctx context.Context, s reconcile.Spec) (routing.Config, error) {
+// routingData reads ConfigMap can-system/can-routing; found is false when there is none.
+func (in *Installer) routingData(ctx context.Context) (data map[string]string, found bool, err error) {
 	o, err := in.cfg.API.Get(ctx, "ConfigMap", routing.Namespace, routing.ConfigMapName)
 	if kube.IsNotFound(err) {
-		return routing.Default(in.domain(s)), nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return routing.Config{}, fmt.Errorf("reading ConfigMap %s/%s: %w", routing.Namespace, routing.ConfigMapName, err)
+		return nil, false, fmt.Errorf("reading ConfigMap %s/%s: %w", routing.Namespace, routing.ConfigMapName, err)
 	}
-	data := map[string]string{}
+	data = map[string]string{}
 	for k, v := range asMap(o["data"]) {
 		data[k], _ = v.(string)
 	}
-	return routing.Parse(data)
+	return data, true, nil
+}
+
+// routingConfig is the routing facts. In a cluster (RequireAdmission) they must exist: the admission
+// policy refuses every module route without them. Elsewhere the defaults for the domain apply.
+func (in *Installer) routingConfig(ctx context.Context, s reconcile.Spec) (routing.Config, error) {
+	data, found, err := in.routingData(ctx)
+	switch {
+	case err != nil:
+		return routing.Config{}, err
+	case found:
+		return routing.Parse(data)
+	case in.cfg.RequireAdmission:
+		return routing.Config{}, fmt.Errorf("ConfigMap %s/%s does not exist, so nothing can be routed: run `can up`", routing.Namespace, routing.ConfigMapName)
+	}
+	return routing.Default(in.domain(s)), nil
 }
 
 func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePlan, error) {
@@ -131,6 +146,11 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		}
 		if api {
 			add("PathPrefix", "/v1/")
+			// Behind Traefik the module must take the client address Traefik appends, or every
+			// caller shares one address for its limits. Modules that can say so do it here.
+			if tp, ok := w.Config["trust_proxy"]; ok {
+				p.values = deepMerge(p.values, map[string]any{"config": map[string]any{"trust_proxy": tp}})
+			}
 		}
 		p.backends = append(p.backends, backend{w.Service, w.Port})
 		p.objects = append(p.objects,
@@ -146,11 +166,8 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		}
 		var routes []any
 		mws := []string{stripName(s.ID), middlewareSite}
-		for _, h := range cfg.SiteHosts {
-			routes = append(routes, routeRule("Host(`"+h+"`) && PathPrefix(`"+r.Path+"`)", routing.SitePriority, r.Service, r.Port, mws...))
-		}
-		if cfg.CatchAll {
-			routes = append(routes, routeRule("PathPrefix(`"+r.Path+"`)", routing.SitePriority, r.Service, r.Port, mws...))
+		for _, m := range cfg.SiteMatches(r.Path) {
+			routes = append(routes, routeRule(m, routing.SitePriority, r.Service, r.Port, mws...))
 		}
 		if len(routes) > 0 {
 			p.backends = append(p.backends, backend{r.Service, r.Port})
@@ -409,30 +426,52 @@ func stampExposure(objs []kube.Object, values map[string]any) {
 }
 
 // Routing implements reconcile.RouteAware: the fingerprint makes a change of exposure settings or
-// routing facts re-apply the module, and the UI host is recorded for the Apps launcher.
+// routing facts re-apply the module, and the UI host is recorded for the Apps launcher. It is built
+// from the facts as stored, so facts that do not parse fail the modules that need them (in Enable)
+// and nothing else.
 func (in *Installer) Routing(ctx context.Context, s reconcile.Spec) (reconcile.Routing, error) {
 	if s.Manifest == nil {
 		return reconcile.Routing{}, nil
 	}
-	cfg, err := in.routingConfig(ctx, s)
+	data, found, err := in.routingData(ctx)
 	if err != nil {
 		return reconcile.Routing{}, err
 	}
 	b, err := json.Marshal(struct {
 		V         int
 		Domain    string
-		Config    routing.Config
+		Found     bool
+		Facts     map[string]string
 		Expose    config.Expose
 		UI        *config.PublicUI
 		Site      *config.SiteRoute
 		Subdomain string
-	}{1, in.domain(s), cfg, s.Expose, s.Manifest.Runtime.PublicUI, s.Manifest.Runtime.SiteRoute, s.Manifest.Runtime.Subdomain})
+	}{1, in.domain(s), found, data, s.Expose, s.Manifest.Runtime.PublicUI, s.Manifest.Runtime.SiteRoute, s.Manifest.Runtime.Subdomain})
 	if err != nil {
 		return reconcile.Routing{}, err
 	}
 	out := reconcile.Routing{Fingerprint: base64.RawStdEncoding.EncodeToString(b)}
-	if s.Expose.UI && s.Manifest.Runtime.PublicUI != nil && cfg.TLS && cfg.Domain == in.domain(s) && cfg.Domain != "" && routing.MayClaim(s.ID, s.ID) {
+	cfg, err := in.routingConfig(ctx, s)
+	if err == nil && s.Expose.UI && s.Manifest.Runtime.PublicUI != nil && cfg.TLS && cfg.Domain == in.domain(s) && cfg.Domain != "" && routing.MayClaim(s.ID, s.ID) {
 		out.UIHost = s.ID + "." + cfg.Domain
 	}
 	return out, nil
+}
+
+// closePublic removes the chart's own routes (the module's anonymous surface) before a rollout, so
+// `public: false` holds even when the rollout fails.
+func (in *Installer) closePublic(ctx context.Context, s reconcile.Spec) error {
+	items, err := in.cfg.API.List(ctx, "IngressRoute", s.Namespace, labelModule+"="+s.ID+","+labelManaged+"=can-core")
+	if err != nil {
+		return fmt.Errorf("listing routes: %w", err)
+	}
+	for _, o := range items {
+		if asMap(asMap(o["metadata"])["labels"])[labelRoute] != nil {
+			continue // can-core's own: pruneRoutes
+		}
+		if err := in.deleteOwned(ctx, s, "IngressRoute", nameOf(o)); err != nil {
+			return fmt.Errorf("removing route %s: %w", nameOf(o), err)
+		}
+	}
+	return nil
 }
