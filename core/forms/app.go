@@ -162,7 +162,12 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	api := &leadsAPI{store: store, auth: auth, log: log}
 	h := api.handler()
 	if opt.Can != nil {
-		h = withSummary(h, opt.Can, store, log) // the business overview (specs/053-business-overview)
+		// The business overview (specs/053-business-overview).
+		fails := NewRateLimiter(summaryFailuresPerMin, cfg.RateLimit.MaxTrackedIPs, now)
+		h = withSummary(h, opt.Can, store, log, modclient.SummaryLimit{
+			Client: func(r *http.Request) string { return clientIP(r, cfg.TrustProxy) },
+			Failed: func(ip string) bool { ok, _ := fails.Allow(ip); return ok },
+		})
 	}
 	return &App{
 		cfg: cfg, store: store, dispatcher: d, log: log, now: now,

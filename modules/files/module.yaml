@@ -61,6 +61,7 @@ resources:
   disk_mb: 10000
 provides:
   - { capability: files, schema: files.v1, service: files, port: 8095 }
+  - { capability: summary, schema: summary.v1, service: files, port: 8095 }   # aggregates for the business overview
 publishes:
   - { event: file.uploaded.v1, schema: ./events/file.uploaded.v1.json }
   - { event: file.shared.v1, schema: ./events/file.shared.v1.json }

@@ -245,7 +245,7 @@ func TestAccessPageAndLeastPrivilege(t *testing.T) {
 			t.Errorf("alice GET %s = %d, want 403", path, r.StatusCode)
 		}
 	}
-	if r := p.do("GET", "/", nil, alice.with()...); r.StatusCode != 303 || r.Header.Get("Location") != "/approvals" {
+	if r := p.do("GET", "/dashboard", nil, alice.with()...); r.StatusCode != 303 || r.Header.Get("Location") != "/approvals" {
 		t.Fatalf("dashboard for a user without platform.view = %d %s", r.StatusCode, r.Header.Get("Location"))
 	}
 	if r := p.do("GET", "/settings", nil, alice.with()...); r.StatusCode != 200 {

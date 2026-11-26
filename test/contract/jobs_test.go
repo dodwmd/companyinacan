@@ -62,7 +62,7 @@ func TestJobsManifest(t *testing.T) {
 		}
 	}
 	sort.Strings(caps)
-	if strings.Join(caps, " ") != "ats=ats.v1 jobs=jobs.v1" {
+	if strings.Join(caps, " ") != "ats=ats.v1 jobs=jobs.v1 summary=summary.v1" {
 		t.Errorf("provides = %v", caps)
 	}
 	perms := map[string]bool{}

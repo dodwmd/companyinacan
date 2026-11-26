@@ -43,6 +43,14 @@
             "work.urgent_open",
             "people.headcount",
             "people.off_today",
+            "requisitions.open",
+            "applications.new",
+            "interviews.due",
+            "grants.pending_approval",
+            "vesting.upcoming",
+            "storage.company",
+            "storage.managed",
+            "files.retention_ending",
             "filings.overdue",
             "filings.upcoming"
           ]

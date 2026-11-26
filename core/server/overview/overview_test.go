@@ -2,10 +2,12 @@ package overview
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,6 +21,8 @@ type fakeDeps struct {
 	perms     map[string][]string // module -> the viewer's permissions
 	providers []registry.Provider
 	minted    atomic.Int32
+	// broken fails the module record or the standing of a module.
+	brokenRecord, brokenStanding string
 }
 
 func (f *fakeDeps) Resolve(context.Context, string) (registry.Resolution, error) {
@@ -29,12 +33,18 @@ func (f *fakeDeps) Resolve(context.Context, string) (registry.Resolution, error)
 }
 
 func (f *fakeDeps) GetModule(_ context.Context, id string) (store.Module, error) {
+	if id == f.brokenRecord {
+		return store.Module{}, errors.New("disk I/O error")
+	}
 	return store.Module{ID: id, State: store.StateEnabled, Manifest: config.Module{Name: strings.ToUpper(id)}}, nil
 }
 
-func (f *fakeDeps) Standing(_ context.Context, module, _ string) ([]string, bool) {
+func (f *fakeDeps) Standing(_ context.Context, module, _ string) ([]string, bool, error) {
+	if module == f.brokenStanding {
+		return nil, false, errors.New("rbac: database is locked")
+	}
 	p := f.perms[module]
-	return append([]string(nil), p...), len(p) > 0
+	return append([]string(nil), p...), len(p) > 0, nil
 }
 
 func (f *fakeDeps) MintSummary(context.Context, string, string) (string, error) {
@@ -170,5 +180,114 @@ func TestFormatMoney(t *testing.T) {
 		if want != got {
 			t.Errorf("%q, want %q", got, want)
 		}
+	}
+}
+
+// hang answers nothing until the test ends or the caller gives up.
+func hang(t *testing.T, hits *atomic.Int32) string {
+	t.Helper()
+	release := make(chan struct{})
+	url := serve(t, func(_ http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	})
+	t.Cleanup(func() { close(release) })
+	return url
+}
+
+func TestAHangingModuleDoesNotMakeOthersUnavailableAndQueueTimeoutsAreNotCached(t *testing.T) {
+	var stuck, ok atomic.Int32
+	f := &fakeDeps{perms: map[string][]string{"work": {"p"}, "finance": {"p"}}, providers: []registry.Provider{
+		{ModuleID: "work", URL: hang(t, &stuck)},
+		{ModuleID: "finance", URL: serve(t, answer(`{"version":1,"figures":[{"key":"invoices.overdue","count":1}]}`, &ok))},
+	}}
+	s := &Service{Registry: f, DB: f, Grants: f, Timeout: 300 * time.Millisecond, Log: slog.New(slog.DiscardHandler)}
+	// Many more people than the hanging module has slots, all at once.
+	var wg sync.WaitGroup
+	people := 4 * maxPerModule
+	for i := range people {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := s.Collect(context.Background(), "user:p"+utoa(uint64(i)))
+			if err != nil || len(got) != 2 {
+				t.Errorf("%+v %v", got, err)
+				return
+			}
+			for _, m := range got {
+				if m.Unavailable != (m.ID == "work") {
+					t.Errorf("%s unavailable = %v", m.ID, m.Unavailable)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if stuck.Load() < maxPerModule {
+		t.Fatal("the hanging module was not asked")
+	}
+	// The failures of the calls that were made are cached briefly; those that only waited are not.
+	s.mu.Lock()
+	cached := 0
+	for k := range s.cache {
+		if strings.HasPrefix(k, "work\x00") {
+			cached++
+		}
+	}
+	s.mu.Unlock()
+	if cached != maxPerModule {
+		t.Errorf("%d failures of the hanging module are cached, want %d: waiting for a slot says nothing about it", cached, maxPerModule)
+	}
+}
+
+func TestConcurrentLoadsShareOneCallEvenWhenTheFirstIsAbandoned(t *testing.T) {
+	var hits atomic.Int32
+	release := make(chan struct{})
+	f := &fakeDeps{perms: map[string][]string{"work": {"p"}}, providers: []registry.Provider{{ModuleID: "work", URL: serve(t, func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		<-release
+		_, _ = w.Write([]byte(`{"version":1,"figures":[{"key":"work.urgent_open","count":2}]}`))
+	})}}}
+	s := &Service{Registry: f, DB: f, Grants: f, Timeout: 5 * time.Second}
+	first, abandon := context.WithCancel(context.Background())
+	gone := make(chan struct{})
+	go func() { defer close(gone); _, _ = s.Collect(first, "user:alice") }()
+	for hits.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	abandon()
+	<-gone
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := s.Collect(context.Background(), "user:alice")
+			if err != nil || len(got) != 1 || got[0].Unavailable || got[0].Values[0].Count != 2 {
+				t.Errorf("%+v %v", got, err)
+			}
+		}()
+	}
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	if hits.Load() != 1 || f.minted.Load() != 1 {
+		t.Errorf("%d calls and %d grants for one person and module", hits.Load(), f.minted.Load())
+	}
+}
+
+func TestUnreadableRecordsAndRightsAreUnavailableNotHidden(t *testing.T) {
+	var hits atomic.Int32
+	url := serve(t, answer(`{"version":1,"figures":[]}`, &hits))
+	f := &fakeDeps{brokenRecord: "work", brokenStanding: "finance", providers: []registry.Provider{{ModuleID: "work", URL: url}, {ModuleID: "finance", URL: url}}}
+	s := &Service{Registry: f, DB: f, Grants: f, Log: slog.New(slog.DiscardHandler)}
+	got, err := s.Collect(context.Background(), "user:alice")
+	if err != nil || len(got) != 2 || !got[0].Unavailable || !got[1].Unavailable {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if hits.Load() != 0 || f.minted.Load() != 0 {
+		t.Error("a module was asked without knowing the person's rights")
 	}
 }

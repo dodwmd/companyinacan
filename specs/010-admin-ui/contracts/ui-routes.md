@@ -13,7 +13,8 @@ Unauthenticated requests to a session route get `303 /login`. Routes marked step
 | `GET /login` | no | Login form; sets the login CSRF cookie |
 | `POST /login` | no | Fields `username`, `password`, `totp`, `csrf`. 303 `/` on success; 401, 403, 429, 503 re-render the form |
 | `POST /logout` | yes | Ends the session, 303 `/login` |
-| `GET /{$}` | yes | Dashboard |
+| `GET /{$}` | yes | Where sign-in lands: 303 to `/overview` (an owner who has not finished or dismissed the setup wizard goes to `/setup`) |
+| `GET /dashboard` | yes (`platform.view`) | The technical dashboard: modules, event deliveries, recent audit entries. Without the permission, 303 to `/approvals` |
 | `GET /overview` | yes | Business overview (`specs/053-business-overview/`): approvals waiting, the modules' aggregate figures the person may see, and (`platform.view`) the last database dump. No permission of its own: each part is gated by the person's rights |
 | `GET /modules` | yes | Module list with RAM total |
 | `GET /modules/{id}` | yes | Manifest summary |

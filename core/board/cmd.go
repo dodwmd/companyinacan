@@ -122,7 +122,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		return 2
 	}
 	if can != nil {
-		handler = withSummary(handler, can, svc, log)
+		handler = withSummary(handler, can, svc, log, api.summaryLimit())
 	}
 	srv := &http.Server{Handler: obs.Instrument(handler), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	var wg sync.WaitGroup

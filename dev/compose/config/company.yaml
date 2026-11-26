@@ -8,6 +8,7 @@ name: Acme Co
 domain: acme.example
 provider: { type: local }
 modules:
+  forms: {}
   work: {}
   people: {}
   jobs: {}

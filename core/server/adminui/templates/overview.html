@@ -14,7 +14,8 @@
 {{end}}</tbody>
 </table>
 </div>
-{{else}}<p class="empty">{{t "ov.nothing_attention"}}</p>{{end}}
+{{else if not .Data.Incomplete}}<p class="empty">{{t "ov.nothing_attention"}}</p>{{end}}
+{{if .Data.Incomplete}}<p class="alert warn">{{t "ov.incomplete"}}</p>{{end}}
 </section>
 
 {{range .Data.Sections}}<section aria-labelledby="h-ov-{{.ID}}">

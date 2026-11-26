@@ -9,8 +9,8 @@ framework, no build step. Source: `core/server/adminui`. Specification: `specs/0
 | Path | What it shows |
 |---|---|
 | `/login` | Username, password and authentication code. Same throttling and error text as the JSON API |
-| `/overview` | **Business overview** (E17e): what needs attention and a few totals per module (new leads, overdue invoices and receivables by currency, contracts, urgent work, headcount and who is off today, filings, last database dump). Each person sees only what their roles allow in each module; a module that does not answer in 2 seconds is shown as unavailable. [`specs/053-business-overview/`](../specs/053-business-overview/spec.md) |
-| `/` | Dashboard: company, module cards (enabled, failed, last error), capability map, webhook delivery health with a requeue button per dead delivery, recent audit entries |
+| `/overview` | **Business overview** (E17e), where sign-in lands: what needs attention and a few totals per module (new leads, overdue invoices and receivables by currency, contracts, urgent work, headcount and who is off today, open requisitions, new applications and interviews, grants waiting and vesting due, storage use and retention dates, filings, last database dump). Each person sees only what their roles allow in each module; a module that does not answer in 2 seconds is shown as unavailable. [`specs/053-business-overview/`](../specs/053-business-overview/spec.md) |
+| `/dashboard` | Dashboard: company, module cards (enabled, failed, last error), capability map, webhook delivery health with a requeue button per dead delivery, recent audit entries |
 | `/modules`, `/modules/{id}` | Installed modules with state, version, licence (a **Source-available** badge when `licence_class: source-available`), declared RAM and its total; detail shows the manifest summary |
 | `/audit` | Audit log, newest first, filter by actor, action prefix and target; **Verify chain**; **Export as JSON lines** (both are POST buttons; only one runs at a time) |
 | `/events`, `/events/{id}` | Event deliveries and the attempt log; requeue for dead deliveries. Event payloads are deliberately not shown (they can hold personal data) |
