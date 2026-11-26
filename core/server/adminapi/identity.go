@@ -1,11 +1,10 @@
 package adminapi
 
 import (
-	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/dodwmd/companyinacan/core/server/httpx"
-	"github.com/dodwmd/companyinacan/core/server/identity"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 )
 
@@ -20,61 +19,47 @@ func (s *Server) identityRoutes() []route {
 	}
 }
 
-func (s *Server) revokeNow(w http.ResponseWriter, r *http.Request, p principal) {
+func (s *Server) accountSubject(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if s.Identity == nil {
 		s.unavailable(w)
-		return
+		return "", false
 	}
 	var b struct {
 		Subject string `json:"subject"`
 	}
 	if !httpx.DecodeJSONMax(w, r, &b, 4<<10) {
-		return
+		return "", false
 	}
-	if b.Subject == p.Subject() {
-		httpx.Problem(w, http.StatusBadRequest, "you cannot revoke your own account")
-		return
-	}
-	res, err := s.Identity.RevokeNow(r.Context(), p.Subject(), b.Subject)
-	switch {
-	case errors.Is(err, identity.ErrInvalid):
+	name, ok := strings.CutPrefix(b.Subject, "user:")
+	if !ok || !rbac.ValidSubject(b.Subject) {
 		httpx.Problem(w, http.StatusBadRequest, "subject must be user:<name>")
-	case errors.Is(err, identity.ErrUnknown):
-		httpx.Problem(w, http.StatusNotFound, "no such account")
-	case errors.Is(err, identity.ErrForbidden):
-		httpx.Problem(w, http.StatusForbidden, "only an owner may disable an owner")
-	case errors.Is(err, identity.ErrLastOwner):
-		httpx.Problem(w, http.StatusConflict, "that is the last enabled owner")
-	case err != nil:
-		s.internal(w, r, err)
-	default:
-		httpx.WriteJSON(w, http.StatusOK, res)
+		return "", false
 	}
+	return name, true
+}
+
+func (s *Server) revokeNow(w http.ResponseWriter, r *http.Request, p principal) {
+	name, ok := s.accountSubject(w, r)
+	if !ok {
+		return
+	}
+	res, err := s.users().Disable(r.Context(), actorOf(p), name)
+	if err != nil {
+		s.usersErr(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
 // enableAccount re-enables a disabled account. Owner only: rbac.manage alone is not enough.
 func (s *Server) enableAccount(w http.ResponseWriter, r *http.Request, p principal) {
-	if s.Identity == nil {
-		s.unavailable(w)
+	name, ok := s.accountSubject(w, r)
+	if !ok {
 		return
 	}
-	var b struct {
-		Subject string `json:"subject"`
-	}
-	if !httpx.DecodeJSONMax(w, r, &b, 4<<10) {
+	if err := s.users().Enable(r.Context(), actorOf(p), name); err != nil {
+		s.usersErr(w, r, err)
 		return
 	}
-	err := s.Identity.Enable(r.Context(), p.Subject(), b.Subject)
-	switch {
-	case errors.Is(err, identity.ErrInvalid):
-		httpx.Problem(w, http.StatusBadRequest, "subject must be user:<name>")
-	case errors.Is(err, identity.ErrUnknown):
-		httpx.Problem(w, http.StatusNotFound, "no such account")
-	case errors.Is(err, identity.ErrForbidden):
-		httpx.Problem(w, http.StatusForbidden, "only an owner may re-enable an account")
-	case err != nil:
-		s.internal(w, r, err)
-	default:
-		w.WriteHeader(http.StatusNoContent)
-	}
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -6,6 +6,7 @@
 <h2 id="h-users">{{t "ac.users"}}</h2>
 {{range $ui, $u := .Data.Users}}
 <h3 id="u-{{$ui}}">{{$u.Username}}</h3>
+<p><a href="/users/{{$u.Username}}">{{t "ac.manage_user"}} {{$u.Username}}</a></p>
 {{if $u.Assignments}}<ul>
 {{range $u.Assignments}}<li>{{.Role}}{{if .Scope}} ({{.Scope}}){{end}}
 <form method="post" action="/access/{{$u.Username}}/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="role" value="{{.Role}}"><input type="hidden" name="scope" value="{{.Scope}}"><button type="submit">{{t "ac.revoke"}}</button></form></li>
@@ -30,11 +31,36 @@
 <div class="table-wrap" role="region" aria-labelledby="cap-roles" tabindex="0">
 <table>
 <caption id="cap-roles" class="sr">{{t "ac.role_table"}}</caption>
-<thead><tr><th scope="col">{{t "ac.role_name"}}</th><th scope="col">{{t "ac.role_perms"}}</th><th scope="col">{{t "ac.role_sources"}}</th></tr></thead>
+<thead><tr><th scope="col">{{t "ac.role_name"}}</th><th scope="col">{{t "ac.role_perms"}}</th><th scope="col">{{t "ac.role_sources"}}</th><th scope="col">{{t "ac.role_overrides"}}</th></tr></thead>
 <tbody>
-{{range .Data.Roles}}<tr><th scope="row">{{.Name}}</th><td>{{.Permissions}}</td><td>{{.Sources}}</td></tr>
+{{range .Data.Roles}}<tr><th scope="row">{{.Name}}</th><td>{{.Permissions}}</td><td>{{.Sources}}</td><td>{{.Overrides}}</td></tr>
 {{end}}</tbody>
 </table>
 </div>
 </section>
+{{if .Data.Editable}}
+<section aria-labelledby="h-override">
+<h2 id="h-override">{{t "ac.override"}}</h2>
+<p class="hint">{{t "ac.override_help"}}</p>
+{{range $i, $role := .Data.Editable}}
+<form method="post" action="/access/roles/{{$role}}/override" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<fieldset>
+<legend>{{$role}}</legend>
+<p><label for="o-perm-{{$i}}">{{t "ac.override_perm"}}</label>
+<select id="o-perm-{{$i}}" name="permission">
+{{range $.Data.Permissions}}<option value="{{.}}">{{.}}</option>
+{{end}}</select></p>
+<p><label for="o-eff-{{$i}}">{{t "ac.override_effect"}}</label>
+<select id="o-eff-{{$i}}" name="effect">
+<option value="grant">{{t "ac.effect_grant"}}</option>
+<option value="revoke">{{t "ac.effect_revoke"}}</option>
+<option value="reset">{{t "ac.effect_reset"}}</option>
+</select></p>
+<p><button type="submit">{{t "ac.override_save"}}</button></p>
+</fieldset>
+</form>
+{{end}}
+</section>
+{{end}}
 {{end}}

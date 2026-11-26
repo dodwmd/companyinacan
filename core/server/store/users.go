@@ -88,6 +88,14 @@ func EndAccess(ctx context.Context, tx *sql.Tx, subject string, now time.Time, k
 	return endLaunchAccess(ctx, tx, subject, now)
 }
 
+// EndSessions ends, inside tx, a subject's admin sessions and what they launched into modules.
+func EndSessions(ctx context.Context, tx *sql.Tx, subject string, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (SELECT id FROM admin_users WHERE username=?)`, strings.TrimPrefix(subject, "user:")); err != nil {
+		return err
+	}
+	return endLaunchAccess(ctx, tx, subject, now)
+}
+
 // EndPending removes, inside tx, a subject's pending set-up link and its approval delegations (given
 // and received).
 func EndPending(ctx context.Context, tx *sql.Tx, subject string) error {

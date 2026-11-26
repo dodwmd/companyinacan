@@ -1,0 +1,19 @@
+{{define "content"}}
+<section class="narrow">
+<h1>{{t "re.title"}}</h1>
+<p class="hint">{{t "re.help"}}</p>
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+{{if .Data.Local}}<form method="post" action="/reauth" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="next" value="{{.Data.Next}}">
+<p><label for="re-pw">{{t "login.password"}}</label>
+<input id="re-pw" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+<p><label for="re-otp">{{t "login.totp"}}</label>
+<input id="re-otp" name="totp" type="text" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" required aria-describedby="re-otp-hint">
+<span id="re-otp-hint" class="hint">{{t "settings.otp_hint"}}</span></p>
+<p><button type="submit">{{t "re.submit"}}</button></p>
+</form>
+{{else if .Data.SSOHref}}<p><a class="button" href="{{.Data.SSOHref}}">{{t "re.sso"}}</a></p>
+{{else}}<p>{{t "re.no_sso"}}</p>{{end}}
+</section>
+{{end}}

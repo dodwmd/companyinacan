@@ -35,6 +35,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
+	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
 //go:embed templates static
@@ -70,6 +71,9 @@ type Server struct {
 	SSO *sso.Service
 	// Tickets mints the launch tickets of single sign-on into module UIs (E11c); nil hides the Apps page.
 	Tickets *ticket.Service
+	// Users is user and role administration (E11e, users.go); nil builds one over the fields above,
+	// without e-mail.
+	Users *users.Service
 	// Email is the email.send outbox (E03d, email.go); nil hides the delivery page.
 	Email *email.Service
 	// Leads reads leads through the `leads` capability; nil means "not configured".
@@ -95,7 +99,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(s.appRoutes(), s.emailRoutes()...)...)
+	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(append(s.appRoutes(), s.emailRoutes()...), s.userRoutes()...)...)
 }
 
 func (s *Server) coreRoutes() []route {

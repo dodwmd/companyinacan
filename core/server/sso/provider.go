@@ -203,7 +203,7 @@ func (p *Provider) fetchKeys(ctx context.Context) ([]Key, error) {
 }
 
 // AuthURL is the authorization request for the browser.
-func (p *Provider) AuthURL(ctx context.Context, state, nonce, challenge string) (string, error) {
+func (p *Provider) AuthURL(ctx context.Context, state, nonce, challenge string, fresh ...bool) (string, error) {
 	d, err := p.Discover(ctx)
 	if err != nil {
 		return "", err
@@ -224,6 +224,10 @@ func (p *Provider) AuthURL(ctx context.Context, state, nonce, challenge string) 
 	// OpenID Connect makes auth_time a required claim when max_age is requested. A year forces no
 	// new sign-in; it is asked so that irreversible actions can tell how fresh a sign-in is.
 	q.Set("max_age", "31536000")
+	if len(fresh) > 0 && fresh[0] { // step-up: the person authenticates again now
+		q.Set("max_age", "0")
+		q.Set("prompt", "login")
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }

@@ -47,6 +47,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
 	"github.com/dodwmd/companyinacan/core/server/tokenreview"
+	"github.com/dodwmd/companyinacan/core/server/users"
 	"github.com/dodwmd/companyinacan/core/server/webhook"
 )
 
@@ -342,6 +343,13 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	bus.Subscribe("person.offboarded.v1", idSvc.HandleOffboarded)
 	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc, Tickets: tickets, Email: mail}
 	uiSrv.Email = mail
+	// People's access (E11e): one service for the admin UI and API. Set-up links go by e-mail when a
+	// relay is configured, to the address of the admin UI taken from configuration.
+	people := &users.Service{DB: db, Audit: al, Auth: adminSrv.Auth, RBAC: rb, PATs: pats, SSO: ssoSvc, Identity: idSvc, Mail: users.EmailSender{S: mail}, Log: log}
+	if cfg.CompanyDomain != "" {
+		people.BaseURL = "https://admin." + cfg.CompanyDomain
+	}
+	uiSrv.Users, adminSrv.Users = people, people
 
 	var dumper *dumps.Dumper
 	if cfg.DumpsDir != "" {
