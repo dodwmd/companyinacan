@@ -290,6 +290,7 @@ healthcheck: /health         # becomes the readiness/liveness probe
 
 - `install` runs as a pre-install Job that seeds data and config (can-core has already created the database and credentials, §4.5); `enable` = `helm upgrade --install --atomic` in the module's namespace; `disable` = scale to zero (data kept), no hook needed. Uninstall runs `export`, then asks keep/purge.
 - All lifecycle steps are idempotent and run by `can apply`. Upgrades are atomic Helm releases, so a failed readiness check rolls back the chart (Helm does not undo database migrations, hence `can upgrade` snapshots first).
+- An installed module is upgraded when its manifest, chart, image references or can-core's module templates differ from what was installed; the version number is not the trigger. An upgrade that would let a module do, reach or expose more than before waits for the operator's approval, shown in `can apply` and the admin UI; the running release stays until then.
 
 ### 4.3 Contracts between modules (so they stay swappable)
 
