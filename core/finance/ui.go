@@ -122,6 +122,10 @@ func (u *UI) routes() []route {
 		{"POST /contracts/{id}/send", w, false, u.contractSend},
 		{"POST /contracts/{id}/terminate", w, false, u.contractTerminate},
 		{"POST /contracts/{id}/dates", w, false, u.contractDates},
+		{"POST /contracts/{id}/signing", w, false, u.signingSend},
+		{"POST /contracts/{id}/signing/revoke", w, false, u.signingRevoke},
+		{"POST /contracts/{id}/signing/signers/{signer}/resend", w, false, u.signingResend},
+		{"GET /contracts/{id}/signing/certificate", r, false, u.signingCertificate},
 
 		{"GET /timesheets", r, true, u.timesheets},
 		{"POST /timesheets", w, true, u.timesheetOpen},
