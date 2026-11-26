@@ -4,8 +4,8 @@ What the [acceptance journey](../../specs/063-acceptance-journey/spec.md) measur
 built `can` binary, the built images and an empty directory to a restored company. Every run writes the
 same report as the artifact `acceptance-report`, with the containers' memory and the logs.
 
-**Read these first.** The journey installs `can` on the server by hand after the first `can up`, which does
-not do it; the backup's erasure ledger, and so the restore measured here, depend on it. The server is a GitHub `ubuntu-24.04` runner VM (4 CPUs, 16 GB), reached over ssh by
+**Read these first.** The figures below are from runs made while the journey still installed `can` on the
+server by hand; `can up` does that now (E08g) and the journey asserts it. The server is a GitHub `ubuntu-24.04` runner VM (4 CPUs, 16 GB), reached over ssh by
 the `ssh` provider; it is also the operator's machine, so uploads cross a loopback. The certificate, DNS,
 mail relay and backup bucket are stand-ins (listed in each report). Nothing here is a measurement of a real
 or a 2 GB server, and VM creation and the image build are not included.
@@ -49,14 +49,12 @@ Fixed with the change that added it:
 | Found | Effect |
 |---|---|
 | With `--domain-live` on the plain-HTTP-fallback address, the site's catch-all and the admin host rule had the same priority | `https://admin.<domain>` served the public site after a second `can up` |
-| The erasure ledger reached the bucket only once something had been erased | **a company that never erased anything could not be restored** without `--allow-no-ledger`, although `backup status` and `verify` passed. Fixed for a server that has `can`, and only when the run's ledger import succeeds ([what it does not cover](../backup-restore.md)) |
+| The erasure ledger reached the bucket only once something had been erased | **a company that never erased anything could not be restored** without `--allow-no-ledger`, although `backup status` and `verify` passed. Fixed for a server with `can` (`can up` installs it), and only when the run's ledger import succeeds ([what it does not cover](../backup-restore.md)) |
+| `make build` built a dynamically linked `can` | copied outside the checkout it cannot be installed on a server, so `can up` with backups stops (found by reading, when `can up` began to install it) |
 | `can restore` waited for modules with an exposed UI or API, which cannot start before `can up` | 5 minutes of waiting and a false warning that the module had not come up |
 
 Not fixed, each needs more than a local change:
 
-- `can up` does not copy `can` to the server. Until the operator does, erasures never reach the bucket, no
-  empty ledger is uploaded, and a restore stops without `--allow-no-ledger`: the fix above does not reach a stock
-  install.
 - The `work` web UI cannot create a project. A new company needs an API call with a token, and the API is only
   reachable with `expose.api` or a port-forward.
 - There is no k3d (or `local`) provider for `can up`, so only a server over ssh can walk the whole journey.

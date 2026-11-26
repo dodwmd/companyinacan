@@ -8,6 +8,7 @@ package acceptance
 // (certificate, DNS, mail relay, bucket) is listed in standIns and in the report.
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -52,7 +53,6 @@ const (
 )
 
 var standIns = []string{
-	"The journey puts `can` on the server by hand after the first `can up`, which does not do it. A stock install does not have it: its erasures never reach the bucket, no empty ledger is uploaded either, and its restore stops without --allow-no-ledger. The restore shown here depends on that step.",
 	"The server is the CI runner VM itself, reached over ssh as a sudo user: the same bootstrap script and k3s as on a server, but not a fresh cloud image, and no VM creation time.",
 	"The certificate is signed by a test CA and set as Traefik's default; Let's Encrypt is blocked. ACME issuance is not proven.",
 	"DNS is /etc/hosts on the one machine; the domain is acceptance.test and `can up` runs with --domain-live.",
@@ -279,15 +279,24 @@ func (j *journey) firstUp(t *testing.T) string {
 	}
 	j.kit = r.KitFile
 	j.status(t)
-	// The erasure ledger upload needs `can` on the server, which `can up` does not copy
-	// (docs/backup-restore.md): the operator's step.
-	j.mustSSH(t, time.Minute, "install -m 0755 "+j.canBin+" /usr/local/bin/can")
+	j.canOnServer(t)
 	note := "within the five-minute promise"
 	if took > promiseUp {
 		note = fmt.Sprintf("OVER the five-minute promise (%.0f s)", took.Seconds())
 		j.rep.Note("`make up` took %.0f s, more than the promised %.0f", took.Seconds(), promiseUp.Seconds())
 	}
 	return note + "; includes the k3s install, excludes creating a VM and building the images"
+}
+
+// canOnServer asserts that `can up` put the operator's own `can` on the server: the backup's
+// erasure ledger, and so a restore, needs it (specs/061-can-on-server).
+func (j *journey) canOnServer(t *testing.T) {
+	t.Helper()
+	want := fmt.Sprintf("%x", sha256.Sum256(j.read(t, j.canBin)))
+	out := j.mustSSH(t, time.Minute, "sha256sum /usr/local/bin/can | cut -d' ' -f1\n/usr/local/bin/can version >/dev/null")
+	if got := strings.TrimSpace(out); got != want {
+		t.Fatalf("/usr/local/bin/can on the server has sha256 %q, want the operator's %s", got, want)
+	}
 }
 
 // --- the public site --------------------------------------------------------------------------
@@ -589,7 +598,7 @@ func (j *journey) verifyServer(t *testing.T) {
 
 func (j *journey) destroy(t *testing.T) string {
 	j.mustCan(t, budgetDestroy, "down", ".", "--yes")
-	// The machine stays: take away what a blank server would not have.
+	// The machine stays: take away what a blank server would not have (`can down` leaves `can`).
 	j.mustSSH(t, time.Minute, `test ! -e /usr/local/bin/k3s
 test ! -e /var/lib/rancher/k3s/storage
 test ! -e /var/lib/can
@@ -603,21 +612,21 @@ rm -rf /usr/local/bin/can /usr/local/bin/restic /var/cache/can-backup /root/.cac
 
 func (j *journey) provisionOnly(t *testing.T) string {
 	j.mustCan(t, budgetNewVM, "up", ".", "--provision-only")
-	return ""
+	j.canOnServer(t) // `can restore` is run with it
+	return "installs `can` for the restore"
 }
 
 func (j *journey) restore(t *testing.T) string {
 	before := j.companyYAML(t)
-	// docs/backup-restore.md "Restore": can, restic, the kit and the images on the new server.
+	// docs/backup-restore.md "Restore": restic, the kit and the images on the new server.
 	out := j.mustSSH(t, budgetRestore, fmt.Sprintf(`install -d -m 0700 /root/restore
-install -m 0755 %[1]s /usr/local/bin/can
-install -m 0755 %[2]s /usr/local/bin/restic
-install -m 0600 %[3]s /root/restore/kit.enc
-install -m 0600 %[4]s /root/restore/pass
-cp -r %[5]s /root/restore/images
+install -m 0755 %[1]s /usr/local/bin/restic
+install -m 0600 %[2]s /root/restore/kit.enc
+install -m 0600 %[3]s /root/restore/pass
+cp -r %[4]s /root/restore/images
 cd /root/restore
 can restore --kit /root/restore/kit.enc --passphrase-file /root/restore/pass --images-from /root/restore/images --dir /root/restore/company 2>&1`,
-		j.canBin, filepath.Join(j.standins, "restic"), j.kit, filepath.Join(j.standins, "kit.pass"), j.images))
+		filepath.Join(j.standins, "restic"), j.kit, filepath.Join(j.standins, "kit.pass"), j.images))
 	j.save("restore", out)
 	for _, l := range strings.Split(out, "\n") {
 		if strings.Contains(l, "WARNING") || strings.Contains(l, "warning:") || strings.Contains(l, "NOT replayed") {

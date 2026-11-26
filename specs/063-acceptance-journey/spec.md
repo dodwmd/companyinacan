@@ -28,12 +28,12 @@ Go code with fakes for the parts around it. Nothing walked the journey with the 
 | k3d | `can up` has no k3d provider (`local` is not implemented), so the binary cannot drive it; `make-up-e2e` and `restore-e2e` already run the in-cluster phases on k3d through Go seams |
 | a privileged systemd container as the server | k3s, nftables and swap in a container differ from a server; more moving parts than the VM that is already there |
 
-## A step the product does not do
+## `can` on the server
 
-`can up` does not copy `can` to the server, so after the first `can up` the journey installs it by hand, as
-docs/backup-restore.md tells the operator to. The erasure ledger, including the empty one that lets a company
-without erasures be restored, needs it there. The report lists this with the stand-ins. When `can up` installs it,
-the manual step becomes an assertion.
+The journey asserts that `can up`, also with `--provision-only`, put the operator's own binary at
+`/usr/local/bin/can` (specs/061-can-on-server); the erasure ledger, including the empty one that lets a
+company without erasures be restored, and `can restore` need it. The operator's `can` is `make build`'s, run
+from outside the checkout, so it has to be static to be installed.
 
 ## Stand-ins
 
