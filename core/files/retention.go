@@ -163,25 +163,57 @@ func (s *Store) tombstoneClaimed(ctx context.Context, tx dbq, action string) err
 	return nil
 }
 
-// finishPurges destroys every claimed file matching where, in batches until none is left.
+// maxReported bounds how many failures one pass spells out; the rest are counted.
+const maxReported = 20
+
+// failures collects what went wrong in a pass that carries on past each failure.
+type failures struct {
+	errs []error
+	more int
+}
+
+func (f *failures) add(err error) {
+	switch {
+	case err == nil:
+	case len(f.errs) < maxReported:
+		f.errs = append(f.errs, err)
+	default:
+		f.more++
+	}
+}
+
+func (f *failures) err() error {
+	if f.more > 0 {
+		return errors.Join(append(f.errs[:len(f.errs):len(f.errs)], fmt.Errorf("and %d more failures", f.more))...)
+	}
+	return errors.Join(f.errs...)
+}
+
+// finishPurges destroys every claimed file matching where, in batches until none is left. A file
+// that cannot be destroyed stays claimed and does not stop the others; the failures are returned
+// joined.
 func (s *Store) finishPurges(ctx context.Context, where string, args ...any) (int, error) {
 	total := 0
 	last := ""
+	var failed failures
 	for {
 		ids, err := s.claimedIDs(ctx, last, where, args...)
 		if err != nil || len(ids) == 0 {
 			if total > 0 {
 				s.wake()
 			}
-			return total, err
+			failed.add(err)
+			return total, failed.err()
 		}
 		for _, id := range ids {
 			done, err := s.finishPurge(ctx, id)
-			if err != nil {
-				return total, err
-			}
+			failed.add(err)
 			if done {
 				total++
+			}
+			if ctx.Err() != nil {
+				failed.add(ctx.Err())
+				return total, failed.err()
 			}
 		}
 		last = ids[len(ids)-1]
@@ -243,10 +275,16 @@ func (s *Store) finishPurge(ctx context.Context, id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Every blob is tried, so one that cannot be deleted does not keep the others' bytes around.
+	stuck := 0
+	var cause error
 	for _, k := range keys {
 		if err := s.backend.Delete(ctx, k); err != nil {
-			return false, fmt.Errorf("%w: a stored object could not be deleted; the file stays marked for purging, repeat the request or let the sweep finish it", ErrUnavailable)
+			stuck, cause = stuck+1, err
 		}
+	}
+	if stuck > 0 {
+		return false, fmt.Errorf("%w: a stored object could not be deleted; the file stays marked for purging, repeat the request or let the sweep finish it (%s: %d of %d objects: %v)", ErrUnavailable, id, stuck, len(keys), cause)
 	}
 	done := false
 	now := s.now()
@@ -324,6 +362,9 @@ func (s *Store) EraseSubject(ctx context.Context, p *Principal, subject string) 
 	}
 	n, err := s.finishPurges(ctx, ofSubject, subject, subject)
 	if err != nil {
+		if n > 0 { // what could be destroyed is gone: do not leave its names in free pages
+			err = errors.Join(err, s.scrub(ctx, true))
+		}
 		return nil, err
 	}
 	// The erasure and its audit records are committed; now remove it from the file's free pages
@@ -409,10 +450,11 @@ func (s *Store) PurgeSubject(ctx context.Context, p *Principal, subject, class s
 	if err != nil {
 		return err
 	}
-	if _, err := s.finishPurges(ctx, ofSubject, subject, subject); err != nil {
+	n, err := s.finishPurges(ctx, ofSubject, subject, subject)
+	if err != nil && n == 0 {
 		return err
 	}
-	return s.scrub(ctx, false)
+	return errors.Join(err, s.scrub(ctx, false))
 }
 
 // RetentionReport counts what a sweep did.
@@ -427,20 +469,17 @@ type RetentionReport struct {
 // ended. Held and retention-locked files are excluded in the query, so they can never fill a batch
 // and starve the others.
 func (s *Store) sweepTrash(ctx context.Context, rep *RetentionReport) error {
-	n, err := s.finishPurges(ctx, `(1 = 1)`)
+	// stuck is what the latest pass could not destroy. Each pass retries every claimed file, so the
+	// latest one says it all; claiming goes on regardless.
+	n, stuck := s.finishPurges(ctx, `(1 = 1)`)
 	rep.Purged += n
-	if err != nil {
-		return err
-	}
 	d := *s.cfg.Retention.TrashDays
 	if d <= 0 {
-		return nil
+		return stuck
 	}
 	const due = `(status = 'deleted') AND (deleted_at <= ?)`
 	cutoff := ts(s.now().AddDate(0, 0, -d))
-	if err := s.countSkipped(ctx, rep, due, cutoff); err != nil {
-		return err
-	}
+	counted := s.countSkipped(ctx, rep, due, cutoff)
 	for {
 		var claimed int64
 		if err := s.inTx(ctx, func(tx *sql.Tx) error {
@@ -452,16 +491,13 @@ func (s *Store) sweepTrash(ctx context.Context, rep *RetentionReport) error {
 			}
 			return s.tombstoneClaimed(ctx, tx, "file.retention_purge")
 		}); err != nil {
-			return err
+			return errors.Join(counted, stuck, err)
 		}
 		if claimed == 0 {
-			return nil
+			return errors.Join(counted, stuck)
 		}
-		n, err := s.finishPurges(ctx, `(1 = 1)`)
+		n, stuck = s.finishPurges(ctx, `(1 = 1)`)
 		rep.Purged += n
-		if err != nil {
-			return err
-		}
 	}
 }
 
@@ -475,50 +511,52 @@ func (s *Store) countSkipped(ctx context.Context, rep *RetentionReport, due stri
 // RunRetention enforces the retention rules: files in the trash for trash_days are purged (a hold
 // or an unpassed retention date skips them), interrupted purges are finished, blobs that were
 // written but never recorded are removed, and old outbox rows are dropped. Safe to run at any time
-// and repeatedly.
+// and repeatedly. A failure does not stop the rest of the work: every failure is returned, joined,
+// beside the report of what was done.
 func (s *Store) RunRetention(ctx context.Context) (*RetentionReport, error) {
 	rep := &RetentionReport{}
 	now := s.now()
-	if err := s.sweepTrash(ctx, rep); err != nil {
-		return rep, err
-	}
-	cctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	rows, err := s.db.QueryContext(cctx, `SELECT blob_key FROM pending_blobs WHERE (created_at <= ?) LIMIT 500`, ts(now.Add(-pendingBlobGrace)))
-	if err != nil {
-		cancel()
-		return rep, err
-	}
-	var orphans []string
-	for rows.Next() {
-		var k string
-		if err := rows.Scan(&k); err != nil {
-			_ = rows.Close()
-			cancel()
-			return rep, err
-		}
-		orphans = append(orphans, k)
-	}
-	_ = rows.Close()
-	cancel()
+	var failed failures
+	failed.add(s.sweepTrash(ctx, rep))
+	orphans, err := s.orphanBlobs(ctx, now.Add(-pendingBlobGrace))
+	failed.add(err)
 	for _, k := range orphans {
 		if err := s.backend.Delete(ctx, k); err != nil {
-			return rep, err
+			failed.add(fmt.Errorf("orphan blob %s could not be deleted: %w", k, err))
+			continue
 		}
 		if err := s.inTx(ctx, func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, `DELETE FROM pending_blobs WHERE (blob_key = ?)`, k)
 			return err
 		}); err != nil {
-			return rep, err
+			failed.add(err)
+			continue
 		}
 		rep.Orphans++
 	}
-	if err := s.inTx(ctx, func(tx *sql.Tx) error { return s.purgeOutbox(ctx, tx, now) }); err != nil {
-		return rep, err
-	}
+	failed.add(s.inTx(ctx, func(tx *sql.Tx) error { return s.purgeOutbox(ctx, tx, now) }))
 	if rep.Purged > 0 {
-		if err := s.scrub(ctx, true); err != nil {
-			return rep, err
-		}
+		failed.add(s.scrub(ctx, true))
 	}
-	return rep, nil
+	return rep, failed.err()
+}
+
+// orphanBlobs lists blobs that were registered before cutoff and never recorded.
+func (s *Store) orphanBlobs(ctx context.Context, cutoff time.Time) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx, `SELECT blob_key FROM pending_blobs WHERE (created_at <= ?) LIMIT 500`, ts(cutoff))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
 }

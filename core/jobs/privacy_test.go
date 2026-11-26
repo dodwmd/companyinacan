@@ -2,6 +2,10 @@ package jobs
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"log/slog"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -375,5 +379,23 @@ func TestScannerRequiredByDefaultRefusesResumes(t *testing.T) {
 	}
 	if DefaultConfig().Apply.ScannerRequired != true {
 		t.Error("scanner_required must default to true")
+	}
+}
+
+// A lookup that ran out of time is "try again" (503), not "no such candidate" (404).
+func TestPatchCandidateAnswers503NotA404WhenTheDatabaseTimesOut(t *testing.T) {
+	s := newScenario(t)
+	p := &Principal{Subject: "user:root", Role: RoleAdmin}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	notes := "n"
+	_, err := s.app.store.PatchCandidate(ctx, p, s.c1, CandidatePatch{Notes: &notes})
+	w := httptest.NewRecorder()
+	writeStoreError(w, slog.New(slog.DiscardHandler), err)
+	if w.Code != 503 || w.Header().Get("Retry-After") == "" {
+		t.Fatalf("%d (%v)", w.Code, err)
+	}
+	if _, err := s.app.store.PatchCandidate(context.Background(), p, "cand_missing", CandidatePatch{Notes: &notes}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a candidate that does not exist: %v", err)
 	}
 }

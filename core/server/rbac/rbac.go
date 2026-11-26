@@ -174,6 +174,13 @@ func (s *Service) Invalidate() {
 	s.mu.Unlock()
 }
 
+// withheld lists role grants a module manifest may carry that can-core must not honour. finance up
+// to this change gave its employee role finance.write, meant for finance's own own_only tokens; a
+// can-core personal access token or launch ticket is never own-only, so it was full write access to
+// every party and project. Installed modules keep their recorded manifest until upgraded, hence
+// the rule here as well as in the manifest. An operator's explicit override still applies.
+var withheld = map[[3]string]bool{{"finance", "employee", "finance.write"}: true}
+
 // loadRoles builds the role table from builtin roles, enabled modules' manifests and overrides.
 func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, map[string][]string, error) {
 	roles := map[string]map[string]bool{}
@@ -220,11 +227,11 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 		for _, p := range m.Manifest.Permissions {
 			declared[p] = true
 		}
-		for r, ps := range m.Manifest.Roles {
-			if config.IsBuiltinRole(r) {
+		for name, ps := range m.Manifest.Roles {
+			if config.IsBuiltinRole(name) {
 				continue // module roles never merge into built-in roles
 			}
-			r = QualifyRole(m.ID, r) // and never into another module's role of the same name
+			r := QualifyRole(m.ID, name) // and never into another module's role of the same name
 			if roles[r] == nil {
 				roles[r] = map[string]bool{}
 				sources[r] = append(sources[r], m.ID)
@@ -232,7 +239,7 @@ func (s *Service) loadRoles(ctx context.Context) (map[string]map[string]bool, ma
 			for _, p := range ps {
 				// Defence in depth behind validate and the registry: a role grants only
 				// permissions its own manifest declares, never platform ones.
-				if declared[p] && !config.IsReservedPermission(p) && permOwners[p] == 1 {
+				if declared[p] && !config.IsReservedPermission(p) && permOwners[p] == 1 && !withheld[[3]string{m.ID, name, p}] {
 					add(r, p, m.ID)
 				}
 			}

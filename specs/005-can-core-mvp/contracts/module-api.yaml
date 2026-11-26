@@ -439,7 +439,8 @@ components:
         permissions: { type: array, items: { type: string } }
         return_path: { type: string, pattern: "^/[A-Za-z0-9/_-]{0,100}$", description: "Landing path inside the module's UI, relative to its base; redeem only" }
         session: { type: string, pattern: "^cans_[A-Za-z0-9_-]{43}$", description: "Opaque handle for revalidation; redeem only" }
-        session_expires_at: { type: string, format: date-time, description: "Redeem only" }
+        session_expires_at: { type: string, format: date-time, description: "Redeem only. The module session must end by then" }
+        authenticated_at: { type: string, format: date-time, description: "Redeem and revalidate: when the person last authenticated to the admin UI (password and TOTP, or the identity provider's auth_time); absent when unknown" }
     Self:
       type: object
       required: [id, version, namespace, service_account, state, provides]

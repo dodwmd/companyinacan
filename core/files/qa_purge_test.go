@@ -14,6 +14,7 @@ type hookBackend struct {
 	Backend
 	onPut    func()
 	onDelete func() error
+	failKey  func(string) bool
 }
 
 func (h *hookBackend) Put(ctx context.Context, key string, r io.Reader, size int64, sha string) error {
@@ -25,6 +26,9 @@ func (h *hookBackend) Put(ctx context.Context, key string, r io.Reader, size int
 }
 
 func (h *hookBackend) Delete(ctx context.Context, key string) error {
+	if h.failKey != nil && h.failKey(key) {
+		return errors.New("object is locked")
+	}
 	if f := h.onDelete; f != nil {
 		if err := f(); err != nil {
 			return err

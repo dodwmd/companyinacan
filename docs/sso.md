@@ -181,7 +181,9 @@ stored; a GET (link scanner, prefetch) never spends it; every refusal is the sam
 failed redeems are slowed per module while valid ones never are; the landing path is a strict allowlist and
 the address of the module comes from configuration, never from the request; a disabled account, a removed role,
 an SSO unlink or an access revocation ends the module session at the next revalidation (1 minute for
-privileged sessions in people, jobs and finance, 5 minutes for the others, 30 seconds in work); minting is
+privileged sessions in people, jobs and finance, 5 minutes for the others, 30 seconds in work); a module session
+never outlives the identity provider's revalidation deadline; finance's party erasure needs an admin sign-in at
+most 5 minutes old (can-core sends `max_age=31536000` so the provider reports `auth_time`); minting is
 limited to 30 per person and minute; mint and redeem are audited with ids only. Logging out of a module ends
 that module's session only.
 
@@ -191,7 +193,7 @@ that module's session only.
 |---|---|
 | module manifest `runtime.web_login {base_path, via_subdomain}` | the module's UI accepts tickets. Declared by work, people, jobs and finance. An app without it (wiki, CRM, ...) is never offered. With `via_subdomain: true` the address is `https://<runtime.subdomain>.<company domain><base_path>` |
 | `CAN_MODULE_UI_URLS` (can-core env) | `work=https://work.acme.example/ui,people=https://people.acme.example`: the operator's address (https, on the company domain or below, not the admin host); wins over the manifest; a bare origin gets `base_path` appended |
-| `CAN_COMPANY_DOMAIN` | module UI hosts must be this domain or below; the admin host is refused; it is also the launch cookie's `Domain`. can-core warns at start-up when it is missing or a single label, and about unacceptable `CAN_MODULE_UI_URLS` entries |
+| `CAN_COMPANY_DOMAIN` | module UI hosts must be this domain or below; the admin host is refused; it is also the launch cookie's `Domain`. can-core warns at start-up when it is missing or a single label, and about unacceptable `CAN_MODULE_UI_URLS` entries and entries that name a module that is not installed |
 | plain-http development (`CAN_COOKIE_SECURE=false`) | the cookie has no `__Secure-` prefix; run the admin UI and the module on the same host name (for example both on `localhost`, different ports). `admin.localhost` + `work.localhost` cannot share a cookie |
 | `ui.token_login` (each module's `ui:` block / env, see its UI doc) | `true` (default, for compatibility) keeps the paste-a-token form; set `false` once SSO is used so the only way in is a ticket. Scripts keep using tokens against the APIs |
 

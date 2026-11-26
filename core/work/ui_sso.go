@@ -180,7 +180,7 @@ func (u *webUI) ticketPost(c *uiCtx) {
 		return
 	}
 	perms := workPerms(ls.Permissions)
-	if !ls.Active || !canSubjectRe.MatchString(ls.Subject) || len(perms) == 0 || ls.Session == "" {
+	if !ls.Active || !canSubjectRe.MatchString(ls.Subject) || len(perms) == 0 || ls.Session == "" || !ls.ExpiresAt.After(u.now()) {
 		refuse()
 		return
 	}
@@ -188,7 +188,7 @@ func (u *webUI) ticketPost(c *uiCtx) {
 	if old, err := r.Cookie(u.sessionCookieName(r)); err == nil {
 		u.sessions.delete(old.Value)
 	}
-	id, _ := u.sessions.createSSO(ls.Subject, ls.Name, ls.Session, perms)
+	id, _ := u.sessions.createSSO(ls.Subject, ls.Name, ls.Session, perms, ls.ExpiresAt)
 	u.setCookie(c.w, r, u.sessionCookieName(r), id, int(u.sessions.abs.Seconds()))
 	u.setCookie(c.w, r, u.loginCookieName(r), "", -1)
 	// Land on a clean URL: the ticket is not in it, and the place to land is checked here again.

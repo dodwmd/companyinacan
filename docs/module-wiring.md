@@ -136,14 +136,19 @@ A module that serves a web UI for people can accept **launch tickets** instead o
 projected token:
 
 * The browser that launched also holds a nonce cookie, `__Secure-can_launch_<module id>`
-  (`modclient.LaunchBinding` reads it). Send it as `binding`; without it nothing works.
+  (`modclient.LaunchBinding` reads it; its result is opaque, give it to `PeekTicket` or `RedeemTicket` as is,
+  and they try each candidate when several cookies of that name arrived). Send one nonce as `binding`; without
+  it nothing works.
 * `POST /v1/tickets/peek {"ticket", "binding"}` names the account (`subject`, `name`) without consuming, for the
   confirmation page. Never replace another account's session without asking.
 * `POST /v1/tickets/redeem {"ticket", "binding"}` exchanges the ticket the browser brought (`cant_...`, 60 seconds, once,
   minted for this module only) for `{"active": true, "subject", "name", "permissions", "return_path",
   "session", "session_expires_at"}` or the identical `{"active": false}` for every failure. `permissions` are the
   module's manifest permissions the person holds right now; `name` is a display name (no email, no groups);
-  `session` is an opaque handle to keep in memory only.
+  `session` is an opaque handle to keep in memory only. **End your session at `session_expires_at`**, whatever
+  your own timeouts say (it carries the identity provider's deadline). `authenticated_at` (also in revalidate;
+  absent when unknown) is when the person last authenticated to the admin UI: require it to be recent before
+  anything irreversible, and treat absent as not recent.
 * `POST /v1/tickets/revalidate {"session"}` returns the same shape (without `session`) while the person is
   still enabled and holds at least one permission of the module, else `{"active": false}`. Ask on the
   interval your PAT sessions already use; any doubt (can-core unreachable, inactive) ends the session.

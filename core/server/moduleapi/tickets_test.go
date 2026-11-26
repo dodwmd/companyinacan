@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,11 +24,12 @@ import (
 )
 
 type ticketEnv struct {
-	t    *testing.T
-	srv  *httptest.Server
-	svc  *ticket.Service
-	db   *store.DB
-	bind map[string]string // ticket -> launching browser's nonce
+	sessions int
+	t        *testing.T
+	srv      *httptest.Server
+	svc      *ticket.Service
+	db       *store.DB
+	bind     map[string]string // ticket -> launching browser's nonce
 }
 
 func newTicketEnv(t *testing.T) *ticketEnv {
@@ -82,7 +84,18 @@ func (e *ticketEnv) call(path, token string, body any) (int, string) {
 
 func (e *ticketEnv) mint(module string) string {
 	e.t.Helper()
-	res, err := e.svc.Launch(context.Background(), "user:alice", module, "/x", time.Time{})
+	ctx := context.Background()
+	u, err := e.db.AdminByUsername(ctx, "alice")
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.sessions++
+	now := e.svc.Now()
+	admin := store.Session{IDHash: fmt.Sprintf("%064d", e.sessions), UserID: u.ID, CSRF: "c", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	if err := e.db.CreateSession(ctx, admin); err != nil {
+		e.t.Fatal(err)
+	}
+	res, err := e.svc.Launch(ctx, "user:alice", module, "/x", admin)
 	if err != nil {
 		e.t.Fatal(err)
 	}

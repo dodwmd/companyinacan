@@ -58,7 +58,7 @@ subscribes:
   - { event: approval.decided.v1, service: finance, port: 8080, webhook: /v1/can/events }
 permissions: [finance.read, finance.write, finance.approve, finance.admin]
 roles:
-  employee: [finance.write]          # with an own_only token: their own timesheets and expenses only
+  employee: []                       # nothing in can-core: its tokens are never own-only (use finance's own_only tokens)
   finance: [finance.read, finance.write]
   approver: [finance.read, finance.approve]
   admin: [finance.read, finance.write, finance.approve, finance.admin]

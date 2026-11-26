@@ -34,6 +34,7 @@ work that needs a browser or cluster and is **not** done.
 
 - [x] T016 Login CSRF: browser nonce cookie, `binding_hash`, `POST /v1/tickets/peek`, account on the interstitial, confirmation before replacing another account's session; two-browser tests in all four modules
 - [x] T017 finance party erasure for ticket sessions: recent launch plus live check (`stepUpSSO`); people, jobs and work have no token step-up
+- [x] T018 QA follow-ups: revocation covers redeem and launch in progress (R19); erasure needs a recent admin authentication, not a recent launch (R18); modules end sessions at `session_expires_at`; peek checks permissions; unknown ids in `CAN_MODULE_UI_URLS` warned; every launch cookie candidate tried
 - [x] T018 Credential change/reset, session revocation and unlink end launch sessions and unused tickets; SSO deadline cap
 - [x] T019 Start-up warnings for module UI configuration
 

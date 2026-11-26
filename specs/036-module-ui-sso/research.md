@@ -182,6 +182,20 @@ about unacceptable `CAN_MODULE_UI_URLS` entries (module id or position only, nev
 ## R18. Step-up in a ticket session
 
 finance's party erasure asks a token session for its token again. A ticket session has none, so the step-up is
-a launch at most 5 minutes old plus a revalidation at that moment that still holds `finance.admin`. It proves
-the admin UI session was usable minutes ago; it does not ask for a password. people, jobs and work have no
-token step-up.
+an admin authentication at most 5 minutes old plus a revalidation at that moment that still holds
+`finance.admin`. The authentication time is the creation of a local admin session (password and TOTP) or the
+`auth_time` claim of the identity provider's ID token; it travels with the ticket to the module session and is
+returned as `authenticated_at`. A recent *launch* was not enough: an admin session left open on a screen can
+launch for hours. can-core sends `max_age=31536000` in the authorization request, which obliges a provider to
+return `auth_time` without forcing a new sign-in; a provider that still omits it leaves the time unknown, and
+erasure from a ticket session is refused. Signing out of the admin UI and in again does not move `auth_time`
+while the provider's own session lives: the person has to sign out at the provider too. people, jobs and work
+have no token step-up.
+
+## R19. Revocation during a redeem or a launch
+
+Redeem consumes the ticket, then reads the account and its permissions (not possible inside the transaction:
+the store has one connection), then stores the module session. Revocation therefore marks every ticket of the
+subject (`login_tickets.revoked_at`), consumed ones included, and the session is inserted by one statement that
+requires its ticket to be unmarked. Launch likewise stores the ticket only if the launching admin session
+still exists, inside the same transaction.

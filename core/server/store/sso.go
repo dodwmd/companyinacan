@@ -25,6 +25,9 @@ type SSOIdentity struct {
 	LinkedBy   string
 }
 
+// ErrLastOwner means the change would leave no enabled account holding the owner role.
+var ErrLastOwner = errors.New("that is the last enabled owner")
+
 // ErrSSOConflict means the user already has an identity or the identity is already bound.
 var ErrSSOConflict = errors.New("sso identity conflict")
 
@@ -160,11 +163,19 @@ func (db *DB) LinkSSOIdentity(ctx context.Context, identityID, targetUserID int6
 
 // UnlinkSSOIdentity removes an identity. A provisioned (sso) user is deleted with its sessions and
 // role assignments; a local user stays and only loses the link. audit runs in the same transaction.
+// Deleting the last enabled owner is refused with ErrLastOwner, whoever calls.
 func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit func(tx *sql.Tx, id SSOIdentity) error) error {
 	return db.InTx(ctx, func(tx *sql.Tx) error {
 		id, err := scanSSO(tx.QueryRowContext(ctx, `SELECT `+ssoCols+` FROM sso_identities i JOIN admin_users u ON u.id=i.user_id WHERE i.id=?`, identityID))
 		if err != nil {
 			return err
+		}
+		if id.UserSource == SourceSSO {
+			if last, err := lastEnabledOwner(ctx, tx, id.UserID, "user:"+id.Username); err != nil {
+				return err
+			} else if last {
+				return ErrLastOwner
+			}
 		}
 		if audit != nil {
 			if err := audit(tx, id); err != nil {
@@ -195,6 +206,20 @@ func (db *DB) UnlinkSSOIdentity(ctx context.Context, identityID int64, audit fun
 		}
 		return err
 	})
+}
+
+// lastEnabledOwner reports whether the account is an enabled, unscoped owner and no other enabled
+// account is one. Disabled accounts and assignments without an account do not count.
+func lastEnabledOwner(ctx context.Context, tx *sql.Tx, userID int64, subject string) (bool, error) {
+	var mine int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments a JOIN admin_users u ON u.id=? AND u.disabled_at=0
+		WHERE a.subject=? AND a.role='owner' AND a.scope=''`, userID, subject).Scan(&mine); err != nil || mine == 0 {
+		return false, err
+	}
+	var others int
+	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments a JOIN admin_users u ON a.subject='user:'||u.username
+		WHERE a.role='owner' AND a.scope='' AND a.subject<>? AND u.disabled_at=0`, subject).Scan(&others)
+	return others == 0, err
 }
 
 // revokeSubjectTokens revokes the personal access tokens a user issued. The username of a provisioned

@@ -172,7 +172,8 @@ A token can be limited to **parties** (customers and vendors by id) and **projec
 to the whole query: a record outside it is a `404`, exactly like one that does not exist, and no
 filter can widen it. A party-scoped token cannot create parties. An **`own_only`** token (for an
 employee) sees and edits only the timesheets and expenses it owns and has no access to anything
-else. A token creator can only hand out scopes, parties and projects it holds itself. The bootstrap
+else. The can-core role `finance:employee` grants nothing: a can-core token or admin sign-in is never
+own-only, so give employees an `own_only` token from finance itself. A token creator can only hand out scopes, parties and projects it holds itself. The bootstrap
 token `CAN_FINANCE_ADMIN_TOKEN` has every scope; mint real tokens with it. The subject
 `bootstrap-admin` is reserved. Use opaque person ids (not email addresses) as token subjects, since
 they appear in timesheet and expense events.

@@ -32,6 +32,7 @@ func newSSOEnv(t *testing.T, mutate func(*Config)) *ssoEnv {
 			mutate(c)
 		}
 	})
+	core.Now = func() time.Time { u.mu.Lock(); defer u.mu.Unlock(); return u.now }
 	return &ssoEnv{u, core}
 }
 
@@ -341,19 +342,22 @@ func TestTicketNeverReachesLogsOrErrors(t *testing.T) {
 }
 
 // A ticket session has no token to type again. Its step-up for the irreversible erasure is a recent
-// launch from the Apps page plus a live check with can-core at that moment.
-func TestTicketSessionErasureNeedsARecentLaunchAndALiveCheck(t *testing.T) {
+// sign-in at the admin UI plus a live check with can-core at that moment: a recent launch is not
+// enough.
+func TestTicketSessionErasureNeedsARecentAdminSignInAndALiveCheck(t *testing.T) {
 	e := newSSOEnv(t, nil)
 	admin := []string{PermRead, PermWrite, PermApprove, PermAdmin}
 	party := func(name string) string {
 		return "/parties/" + strconv.FormatInt(e.party(adminTok, name, "customer"), 10) + "/erase"
 	}
-	login := func() *client {
+	loginWith := func(g fakecore.Grant) *client {
+		g.Subject, g.Name, g.Permissions = "user:alice", "Alice", admin
 		c := e.client(t)
-		e.land(c, e.ticket(admin...))
+		e.land(c, e.core.NewTicket(g))
 		c.get("/") // picks up the session's CSRF token
 		return c
 	}
+	login := func() *client { return loginWith(fakecore.Grant{}) }
 	erase := func() url.Values { return url.Values{"confirm": {"ERASE"}} }
 
 	c := login()
@@ -363,16 +367,23 @@ func TestTicketSessionErasureNeedsARecentLaunchAndALiveCheck(t *testing.T) {
 		t.Fatalf("a ticket session is asked for a token it does not have: %d", page.Code)
 	}
 	if r := c.post(first, erase()); r.Code != 200 || !strings.Contains(r.Body.String(), "Erased fields") {
-		t.Fatalf("erasure just after the launch: %d %.600s", r.Code, r.Body.String())
+		t.Fatalf("erasure just after signing in: %d %.600s", r.Code, r.Body.String())
 	}
 
-	// Older than the step-up window: refused, whatever else is true.
-	c = login()
 	second := party("Second Ltd")
-	e.advance(uiStepUpMaxAge + time.Second)
-	if r := c.post(second, erase()); r.Code != 422 || !strings.Contains(r.Body.String(), "Apps page") {
-		t.Fatalf("a stale launch erased: %d %.600s", r.Code, r.Body.String())
+	refused := func(why string, c *client) {
+		t.Helper()
+		if r := c.post(second, erase()); r.Code != 422 || !strings.Contains(r.Body.String(), "sign in again") {
+			t.Fatalf("%s: %d %.600s", why, r.Code, r.Body.String())
+		}
 	}
+	// Launched this second from an admin session signed in an hour ago (an unlocked screen).
+	refused("fresh launch, old sign-in", loginWith(fakecore.Grant{AuthenticatedAt: e.now.Add(-time.Hour)}))
+	refused("can-core does not know when", loginWith(fakecore.Grant{NoAuthTime: true}))
+	refused("a time in the future", loginWith(fakecore.Grant{AuthenticatedAt: e.now.Add(time.Hour)}))
+	c = login()
+	e.advance(uiStepUpMaxAge + time.Second)
+	refused("sign-in grown old", c)
 	// A pasted token does not stand in for the step-up either.
 	if r := c.post(second, url.Values{"confirm": {"ERASE"}, "token": {adminTok}}); r.Code != 422 {
 		t.Fatalf("a token replaced the step-up: %d", r.Code)
@@ -394,6 +405,24 @@ func TestTicketSessionErasureNeedsARecentLaunchAndALiveCheck(t *testing.T) {
 	c = login()
 	if r := c.get(second); r.Code != 200 {
 		t.Fatalf("the party must still be there to erase: %d", r.Code)
+	}
+}
+
+// can-core's session_expires_at (the identity provider's deadline) ends the module session.
+func TestTicketSessionNeverOutlivesCanCoresDeadline(t *testing.T) {
+	e := newSSOEnv(t, nil)
+	c := e.client(t)
+	e.land(c, e.core.NewTicket(fakecore.Grant{Subject: "user:alice", Permissions: []string{PermRead}, SessionExpires: e.now.Add(2 * time.Minute)}))
+	if p := c.get("/"); p.Code != 200 {
+		t.Fatalf("before the deadline: %d", p.Code)
+	}
+	e.advance(2 * time.Minute) // well inside the idle timeout and the revalidation interval
+	if p := c.get("/"); p.Code != 303 || p.Header().Get("Location") != "/login" {
+		t.Fatalf("the session outlived the deadline: %d", p.Code)
+	}
+	late := e.core.NewTicket(fakecore.Grant{Subject: "user:alice", Permissions: []string{PermRead}, SessionExpires: e.now.Add(-time.Second)})
+	if r := e.land(e.client(t), late); r.Code != 401 {
+		t.Fatalf("a session past its deadline was started: %d", r.Code)
 	}
 }
 

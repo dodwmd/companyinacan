@@ -88,10 +88,13 @@ keep tokens for scripts only.
   and fail closed without spending the ticket. The interstitial names the account, and another account's live
   session is never replaced without confirmation.
 - FR-10 A credential change or reset, an admin session revocation, SSO unlink and ending the account's access
-  revoke launch sessions and unused tickets in the same transaction; a session from an SSO sign-in does not
-  outlive that sign-in's revalidation deadline.
+  revoke launch sessions and tickets in the same transaction, tickets already consumed by a redeem still in
+  progress included: the module session is stored only while its ticket is unrevoked, and a ticket is stored
+  only while the admin session that launches it is still live. A session from an SSO sign-in does not outlive
+  that sign-in's revalidation deadline, in can-core and in the module.
 - FR-11 An irreversible action that asks a token session for its token again (finance party erasure) asks a
-  ticket session for a launch at most 5 minutes old, confirmed live by can-core.
+  ticket session for an admin authentication (password and TOTP, or the identity provider's `auth_time`) at most
+  5 minutes old, confirmed live by can-core. A recent launch alone is not enough.
 
 ## Success criteria
 

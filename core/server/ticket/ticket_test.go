@@ -2,6 +2,7 @@ package ticket
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +24,8 @@ type env struct {
 	mu   sync.Mutex
 	held map[string]bool   // "subject|permission"
 	bind map[string]string // ticket -> the nonce cookie value of the launching browser
+
+	sessions int
 }
 
 func (e *env) hold(subject string, perms ...string) {
@@ -95,9 +98,32 @@ func newEnv(t *testing.T) *env {
 	return e
 }
 
+// admin returns a live admin session of the account behind subject, as the admin UI would hand it
+// to Launch (a session that was never stored for an unknown account).
+func (e *env) admin(t *testing.T, subject string, change ...func(*store.Session)) store.Session {
+	t.Helper()
+	ctx := context.Background()
+	u, err := e.db.AdminByUsername(ctx, strings.TrimPrefix(subject, "user:"))
+	if err != nil {
+		return store.Session{IDHash: "none"}
+	}
+	e.mu.Lock()
+	e.sessions++
+	h := fmt.Sprintf("%064d", e.sessions)
+	e.mu.Unlock()
+	s := store.Session{IDHash: h, UserID: u.ID, CSRF: "c", CreatedAt: e.now, ExpiresAt: e.now.Add(12 * time.Hour), Source: store.SourceLocal}
+	for _, c := range change {
+		c(&s)
+	}
+	if err := e.db.CreateSession(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func launch(t *testing.T, e *env, subject, module, ret string) (string, string) {
 	t.Helper()
-	res, err := e.s.Launch(context.Background(), subject, module, ret, time.Time{})
+	res, err := e.s.Launch(context.Background(), subject, module, ret, e.admin(t, subject))
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
@@ -162,7 +188,7 @@ func TestPeekNamesTheAccountWithoutConsuming(t *testing.T) {
 
 func TestBindingCookie(t *testing.T) {
 	e := newEnv(t)
-	res, err := e.s.Launch(context.Background(), "user:alice", "work", "", time.Time{})
+	res, err := e.s.Launch(context.Background(), "user:alice", "work", "", e.admin(t, "user:alice"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +225,10 @@ func TestSessionIsCappedAtTheLaunchersDeadline(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	deadline := e.now.Add(10 * time.Minute)
-	res, err := e.s.Launch(ctx, "user:alice", "work", "", deadline)
+	until := func(at time.Time) func(*store.Session) {
+		return func(s *store.Session) { s.Source, s.RevalidateAt = store.SourceSSO, at }
+	}
+	res, err := e.s.Launch(ctx, "user:alice", "work", "", e.admin(t, "user:alice", until(deadline)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +241,7 @@ func TestSessionIsCappedAtTheLaunchersDeadline(t *testing.T) {
 	if _, ok := e.s.Revalidate(ctx, "work", r.Handle); ok {
 		t.Fatal("active past the deadline")
 	}
-	if _, err := e.s.Launch(ctx, "user:alice", "work", "", e.now.Add(-time.Second)); err == nil {
+	if _, err := e.s.Launch(ctx, "user:alice", "work", "", e.admin(t, "user:alice", until(e.now.Add(-time.Second)))); err == nil {
 		t.Fatal("launched from an expired sign-in")
 	}
 }
@@ -369,12 +398,12 @@ func TestReturnPathAllowlist(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	for _, bad := range []string{"//evil.example", "/\\evil", "https://evil.example/", "javascript:alert(1)", "/a/../b", "/a?x=1", "/a#f", "/a b", "/%2e%2e/", "/" + strings.Repeat("a", 200), "x", "/ü", "/a\r\nSet-Cookie: x=1", "/ui//x", "/a/./b"} {
-		if _, err := e.s.Launch(ctx, "user:alice", "work", bad, time.Time{}); err == nil {
+		if _, err := e.s.Launch(ctx, "user:alice", "work", bad, e.admin(t, "user:alice")); err == nil {
 			t.Errorf("return path %q accepted", bad)
 		}
 	}
 	for _, good := range []string{"", "/", "/projects/ABC-1", "/people/pers_0123", "/a_b-c/d"} {
-		if _, err := e.s.Launch(ctx, "user:alice", "work", good, time.Time{}); err != nil {
+		if _, err := e.s.Launch(ctx, "user:alice", "work", good, e.admin(t, "user:alice")); err != nil {
 			t.Errorf("return path %q refused: %v", good, err)
 		}
 	}
@@ -392,12 +421,12 @@ func TestMintRequiresAllowedActiveUserAndModule(t *testing.T) {
 		"not a user subject":          {"party:p1", "work"},
 		"bad module id":               {"user:alice", "../work"},
 	} {
-		if _, err := e.s.Launch(ctx, c.subject, c.module, "", time.Time{}); err == nil {
+		if _, err := e.s.Launch(ctx, c.subject, c.module, "", e.admin(t, c.subject)); err == nil {
 			t.Errorf("%s: a ticket was minted", name)
 		}
 	}
 	e.disable(t, "alice")
-	if _, err := e.s.Launch(ctx, "user:alice", "work", "", time.Time{}); err == nil {
+	if _, err := e.s.Launch(ctx, "user:alice", "work", "", e.admin(t, "user:alice")); err == nil {
 		t.Fatal("a disabled user minted a ticket")
 	}
 }
@@ -426,18 +455,18 @@ func TestMintRateLimitIsPerUser(t *testing.T) {
 	ctx := context.Background()
 	e.hold("user:bob", "work.read")
 	for i := 0; i < MintPerMinute; i++ {
-		if _, err := e.s.Launch(ctx, "user:alice", "work", "", time.Time{}); err != nil {
+		if _, err := e.s.Launch(ctx, "user:alice", "work", "", e.admin(t, "user:alice")); err != nil {
 			t.Fatalf("mint %d: %v", i, err)
 		}
 	}
-	if _, err := e.s.Launch(ctx, "user:alice", "work", "", time.Time{}); err != ErrRateLimited {
+	if _, err := e.s.Launch(ctx, "user:alice", "work", "", e.admin(t, "user:alice")); err != ErrRateLimited {
 		t.Fatalf("31st mint: %v", err)
 	}
-	if _, err := e.s.Launch(ctx, "user:bob", "work", "", time.Time{}); err != nil {
+	if _, err := e.s.Launch(ctx, "user:bob", "work", "", e.admin(t, "user:bob")); err != nil {
 		t.Fatalf("another user is throttled: %v", err)
 	}
 	e.now = e.now.Add(61 * time.Second)
-	if _, err := e.s.Launch(ctx, "user:alice", "work", "", time.Time{}); err != nil {
+	if _, err := e.s.Launch(ctx, "user:alice", "work", "", e.admin(t, "user:alice")); err != nil {
 		t.Fatalf("still throttled a minute later: %v", err)
 	}
 }
@@ -690,5 +719,147 @@ func TestLauncherURLRules(t *testing.T) {
 	}
 	if _, ok := (Launcher{Domain: "example.org", Overrides: map[string]string{"work": "http://localhost:8080/ui"}}).Base(mod("", "")); ok {
 		t.Fatal("http accepted outside development")
+	}
+}
+
+// accountChanges are the events that must end single sign-on into modules for alice. sso says the
+// admin session in use came from the identity provider (unlinking ends only those).
+var accountChanges = map[string]struct {
+	sso    bool
+	change func(e *env, u store.AdminUser, admin store.Session) error
+}{
+	"password or TOTP change": {change: func(e *env, u store.AdminUser, _ store.Session) error {
+		return e.db.SetAdminCredentials(context.Background(), u.ID, "new-hash", "new-seed")
+	}},
+	"admin session revoked": {change: func(e *env, u store.AdminUser, admin store.Session) error {
+		_, err := e.db.RevokeSession(context.Background(), u.ID, store.PublicSessionID(admin))
+		return err
+	}},
+	"SSO unlink": {sso: true, change: func(e *env, u store.AdminUser, _ store.Session) error {
+		ctx := context.Background()
+		id, err := e.db.SSOIdentityByUser(ctx, u.ID)
+		if err != nil {
+			return err
+		}
+		return e.db.UnlinkSSOIdentity(ctx, id.ID, nil)
+	}},
+}
+
+// raceEnv arranges for change to happen while the next Launch or Redeem is between its checks and
+// its write: the permission lookup is made there, outside any transaction.
+func raceEnv(t *testing.T, name string) (e *env, admin store.Session, arm func()) {
+	t.Helper()
+	c := accountChanges[name]
+	e = newEnv(t)
+	ctx := context.Background()
+	u, err := e.db.AdminByUsername(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mod []func(*store.Session)
+	if c.sso {
+		if _, err := e.db.ExecContext(ctx, `INSERT INTO sso_identities(issuer_hash,subject,user_id,email,name,groups_json,amr_json,created_at,last_login,linked_by) VALUES ('h','s',?,'','','[]','[]',0,0,'root')`, u.ID); err != nil {
+			t.Fatal(err)
+		}
+		mod = append(mod, func(s *store.Session) { s.Source = store.SourceSSO })
+	}
+	admin = e.admin(t, "user:alice", mod...)
+	holds, armed := e.s.Holds, false
+	e.s.Holds = func(ctx context.Context, subject, perm string) (bool, error) {
+		if armed {
+			armed = false
+			if err := c.change(e, u, admin); err != nil {
+				t.Error(err)
+			}
+		}
+		return holds(ctx, subject, perm)
+	}
+	return e, admin, func() { armed = true }
+}
+
+func TestAChangeWhileATicketIsBeingRedeemedLeavesNoSession(t *testing.T) {
+	for name := range accountChanges {
+		t.Run(name, func(t *testing.T) {
+			e, admin, arm := raceEnv(t, name)
+			ctx := context.Background()
+			res, err := e.s.Launch(ctx, "user:alice", "work", "", admin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			arm() // after the ticket is consumed, before the module session is stored
+			r, ok := e.s.Redeem(ctx, "work", res.URL[strings.Index(res.URL, "t=")+2:], res.Binding)
+			if ok || r.Handle != "" {
+				t.Fatalf("redeemed across the change: %+v", r)
+			}
+			var n int
+			if err := e.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ui_launch_sessions WHERE revoked_at=0`).Scan(&n); err != nil || n != 0 {
+				t.Fatalf("%d live module sessions (%v)", n, err)
+			}
+		})
+	}
+}
+
+func TestAChangeWhileLaunchingMintsNoTicket(t *testing.T) {
+	for name := range accountChanges {
+		t.Run(name, func(t *testing.T) {
+			e, admin, arm := raceEnv(t, name)
+			ctx := context.Background()
+			arm()
+			if _, err := e.s.Launch(ctx, "user:alice", "work", "", admin); err != ErrNotAllowed {
+				t.Fatalf("launched from a session that ended meanwhile: %v", err)
+			}
+			var n int
+			if err := e.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_tickets`).Scan(&n); err != nil || n != 0 {
+				t.Fatalf("%d tickets (%v)", n, err)
+			}
+		})
+	}
+}
+
+func TestPeekAppliesTheSamePermissionCheckAsRedeem(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	tk, _ := launch(t, e, "user:alice", "work", "")
+	e.drop("user:alice", "work.read")
+	e.drop("user:alice", "work.write")
+	if p, ok := e.s.Peek(ctx, "work", tk, e.bind[tk]); ok || p.Subject != "" || p.Name != "" {
+		t.Fatalf("peek named somebody redeem would refuse: %+v", p)
+	}
+}
+
+// The time the person authenticated travels from the admin session to the module session.
+func TestAuthenticationTimeIsTheAdminSessionsNotTheLaunch(t *testing.T) {
+	for name, c := range map[string]struct {
+		session func(s *store.Session)
+		want    time.Duration // before the launch; -1 = unknown
+	}{
+		"local sign-in": {func(s *store.Session) { s.CreatedAt = s.CreatedAt.Add(-time.Hour) }, time.Hour},
+		"identity provider auth_time": {func(s *store.Session) {
+			s.Source, s.AuthAt = store.SourceSSO, s.CreatedAt.Add(-3*time.Hour)
+		}, 3 * time.Hour},
+		"identity provider said nothing": {func(s *store.Session) { s.Source = store.SourceSSO }, -1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			ctx := context.Background()
+			admin := e.admin(t, "user:alice", c.session)
+			res, err := e.s.Launch(ctx, "user:alice", "work", "", admin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := time.Time{}
+			if c.want >= 0 {
+				want = e.now.Add(-c.want)
+			}
+			r, ok := e.s.Redeem(ctx, "work", res.URL[strings.Index(res.URL, "t=")+2:], res.Binding)
+			if !ok || !r.AuthenticatedAt.Equal(want) {
+				t.Fatalf("redeem: %v %v, want %v", r.AuthenticatedAt, ok, want)
+			}
+			e.now = e.now.Add(time.Minute)
+			v, ok := e.s.Revalidate(ctx, "work", r.Handle)
+			if !ok || !v.AuthenticatedAt.Equal(want) {
+				t.Fatalf("revalidate: %v %v, want %v", v.AuthenticatedAt, ok, want)
+			}
+		})
 	}
 }

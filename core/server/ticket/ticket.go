@@ -381,11 +381,13 @@ func (s *Service) BindingCookie(r LaunchResult, adminHost string) (*http.Cookie,
 }
 
 // Launch mints a ticket for subject to open module and returns the module's ticket URL. returnPath
-// is where to land inside the module (see ValidReturnPath). notAfter, when not zero, is the latest
-// the module session may live (the identity provider's revalidation deadline of the launching
-// sign-in). The ticket value is in the URL only.
-func (s *Service) Launch(ctx context.Context, subject, module, returnPath string, notAfter time.Time) (LaunchResult, error) {
-	if !subjectRe.MatchString(subject) || (!notAfter.IsZero() && !notAfter.After(s.now())) {
+// is where to land inside the module (see ValidReturnPath). admin is the signed-in admin session that
+// launches: it must still exist when the ticket is stored, its identity provider revalidation
+// deadline (if any) caps the module session, and its authentication time travels with the ticket.
+// The ticket value is in the URL only.
+func (s *Service) Launch(ctx context.Context, subject, module, returnPath string, admin store.Session) (LaunchResult, error) {
+	notAfter := admin.RevalidateAt
+	if !subjectRe.MatchString(subject) || admin.IDHash == "" || (!notAfter.IsZero() && !notAfter.After(s.now())) {
 		return LaunchResult{}, ErrNotAllowed
 	}
 	if s.count(&s.mints, subject) > MintPerMinute {
@@ -415,8 +417,15 @@ func (s *Service) Launch(ctx context.Context, subject, module, returnPath string
 	now := s.now()
 	tk, binding := randomSecret(TicketPrefix), randomSecret(modclient.BindingPrefix)
 	rec := store.LoginTicket{ID: randomID("tkt_"), TokenHash: hashOf(tk), Subject: subject, ModuleID: m.ID, ReturnPath: returnPath,
-		BindingHash: hashOf(binding), NotAfter: notAfter, CreatedAt: now, ExpiresAt: now.Add(MaxTicketTTL)}
+		BindingHash: hashOf(binding), NotAfter: notAfter, AuthAt: admin.AuthenticatedAt(), CreatedAt: now, ExpiresAt: now.Add(MaxTicketTTL)}
 	err = s.DB.InTx(ctx, func(tx *sql.Tx) error {
+		// The request was authenticated before the checks above: a credential change, a revocation or
+		// an unlink since then must not leave a ticket behind.
+		if live, err := s.DB.AdminSessionLive(ctx, tx, admin.IDHash, strings.TrimPrefix(subject, "user:"), now); err != nil {
+			return err
+		} else if !live {
+			return ErrNotAllowed
+		}
 		if err := s.DB.InsertLoginTicket(ctx, tx, rec); err != nil {
 			return err
 		}
@@ -435,9 +444,27 @@ type Peeked struct {
 	Name    string
 }
 
+// standing is what a person is in a module right now: the module is enabled, the account is active
+// and holds at least one of the module's permissions. Peek, Redeem and Revalidate all apply it.
+func (s *Service) standing(ctx context.Context, module, subject string) (name string, perms []string, ok bool) {
+	m, ok := s.enabledModule(ctx, module)
+	if !ok {
+		return "", nil, false
+	}
+	name, ok = s.person(ctx, subject)
+	if !ok {
+		return "", nil, false
+	}
+	perms, err := s.permissions(ctx, subject, m)
+	if err != nil || len(perms) == 0 {
+		return "", nil, false
+	}
+	return name, perms, true
+}
+
 // Peek names the account behind a ticket without consuming it, so the module can show it before
-// the person confirms. It answers only for what Redeem would accept, the browser's nonce included,
-// so a ticket alone learns nothing.
+// the person confirms. It answers only for what Redeem would accept, the browser's nonce and the
+// permission check included, so a ticket alone learns nothing.
 func (s *Service) Peek(ctx context.Context, callerModule, ticket, binding string) (Peeked, bool) {
 	if !LooksLikeTicket(ticket) || !modclient.BindingShaped(binding) {
 		s.penalise(ctx, callerModule)
@@ -448,10 +475,7 @@ func (s *Service) Peek(ctx context.Context, callerModule, ticket, binding string
 		s.penalise(ctx, callerModule)
 		return Peeked{}, false
 	}
-	if _, ok := s.enabledModule(ctx, callerModule); !ok {
-		return Peeked{}, false
-	}
-	name, ok := s.person(ctx, subject)
+	name, _, ok := s.standing(ctx, callerModule, subject)
 	if !ok {
 		return Peeked{}, false
 	}
@@ -468,6 +492,8 @@ type Redeemed struct {
 	// Handle is the opaque session handle the module keeps (in memory) to revalidate the person.
 	Handle         string
 	SessionExpires time.Time
+	// AuthenticatedAt is when the person last authenticated to the admin UI (zero = not known).
+	AuthenticatedAt time.Time
 }
 
 // penalise slows invalid redeems of one module past a per-minute quota; it never runs for a valid
@@ -515,16 +541,8 @@ func (s *Service) Redeem(ctx context.Context, callerModule, ticket, binding stri
 		s.penalise(ctx, callerModule)
 		return Redeemed{}, false
 	}
-	m, ok := s.enabledModule(ctx, callerModule)
+	name, perms, ok := s.standing(ctx, callerModule, rec.Subject)
 	if !ok {
-		return Redeemed{}, false
-	}
-	name, ok := s.person(ctx, rec.Subject)
-	if !ok {
-		return Redeemed{}, false
-	}
-	perms, err := s.permissions(ctx, rec.Subject, m)
-	if err != nil || len(perms) == 0 {
 		return Redeemed{}, false
 	}
 	handle := randomSecret(HandlePrefix)
@@ -535,17 +553,19 @@ func (s *Service) Redeem(ctx context.Context, callerModule, ticket, binding stri
 	if !exp.After(now) {
 		return Redeemed{}, false
 	}
+	// A revocation since the ticket was consumed above (credential change, session revocation, unlink,
+	// offboarding) has marked it, and then no session is stored.
 	err = s.DB.InTx(ctx, func(tx *sql.Tx) error {
-		if err := s.DB.InsertLaunchSession(ctx, tx, store.LaunchSession{HandleHash: hashOf(handle), TicketID: rec.ID, Subject: rec.Subject, ModuleID: m.ID, CreatedAt: now, ExpiresAt: exp}); err != nil {
+		if err := s.DB.InsertLaunchSession(ctx, tx, store.LaunchSession{HandleHash: hashOf(handle), TicketID: rec.ID, Subject: rec.Subject, ModuleID: callerModule, CreatedAt: now, ExpiresAt: exp, AuthAt: rec.AuthAt}); err != nil {
 			return err
 		}
-		_, err := s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: "module:" + m.ID, Action: "ui.ticket.redeem", Target: rec.ID, Detail: map[string]any{"subject": rec.Subject}})
+		_, err := s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: "module:" + callerModule, Action: "ui.ticket.redeem", Target: rec.ID, Detail: map[string]any{"subject": rec.Subject}})
 		return err
 	})
 	if err != nil {
 		return Redeemed{}, false
 	}
-	return Redeemed{Subject: rec.Subject, Name: name, Permissions: perms, ReturnPath: rec.ReturnPath, Handle: handle, SessionExpires: exp}, true
+	return Redeemed{Subject: rec.Subject, Name: name, Permissions: perms, ReturnPath: rec.ReturnPath, Handle: handle, SessionExpires: exp, AuthenticatedAt: rec.AuthAt}, true
 }
 
 // Validated is the current standing of a person in a module. Its zero value is "inactive".
@@ -553,6 +573,8 @@ type Validated struct {
 	Subject     string
 	Name        string
 	Permissions []string
+	// AuthenticatedAt is when the person last authenticated to the admin UI (zero = not known).
+	AuthenticatedAt time.Time
 }
 
 // Revalidate answers whether the person behind a session handle is still allowed in the calling
@@ -572,17 +594,9 @@ func (s *Service) Revalidate(ctx context.Context, callerModule, handle string) (
 	if ls.ModuleID != callerModule || !ls.RevokedAt.IsZero() || !s.now().Before(ls.ExpiresAt) {
 		return Validated{}, false
 	}
-	m, ok := s.enabledModule(ctx, callerModule)
+	name, perms, ok := s.standing(ctx, callerModule, ls.Subject)
 	if !ok {
 		return Validated{}, false
 	}
-	name, ok := s.person(ctx, ls.Subject)
-	if !ok {
-		return Validated{}, false
-	}
-	perms, err := s.permissions(ctx, ls.Subject, m)
-	if err != nil || len(perms) == 0 {
-		return Validated{}, false
-	}
-	return Validated{Subject: ls.Subject, Name: name, Permissions: perms}, true
+	return Validated{Subject: ls.Subject, Name: name, Permissions: perms, AuthenticatedAt: ls.AuthAt}, true
 }
