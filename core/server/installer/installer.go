@@ -181,7 +181,12 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err != nil {
 		return err
 	}
-	s.Values = deepMerge(deepMerge(facts, wiring), plan.values)
+	mapped, err := in.settingValues(s)
+	if err != nil {
+		return err
+	}
+	// What can-core itself sets (facts, connections, routes) wins over a setting.
+	s.Values = deepMerge(deepMerge(deepMerge(mapped, facts), wiring), plan.values)
 	s.Values = deepMerge(s.Values, mailValues(s))
 	objs, err := in.renderBounded(ctx, s)
 	if err != nil {

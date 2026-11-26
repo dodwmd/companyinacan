@@ -15,7 +15,8 @@ Helm-compatible templates for the in-house people module, rendered by can-core's
   that is group-readable by its own group, the pod does not start. This is not covered by any
   test here.
 - `config:` is written to `people.yaml` (strict loader); `webhook.url` stays empty because events go
-  to can-core's module API. Settings from `company.yaml` are not yet mapped onto `config:`.
+  to can-core's module API. Settings from `company.yaml` are laid over `config:`
+  ([docs/module-wiring.md](../../../docs/module-wiring.md#settings)).
 
 ## What is verified
 

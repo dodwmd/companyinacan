@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/dodwmd/companyinacan/core/modsettings"
 )
 
 // Charts are rendered in a CHILD PROCESS (`can-core render-chart`), not in can-core. In-process limits
@@ -77,7 +79,8 @@ func buildValues(ctx context.Context, j renderJob) (map[string]any, error) {
 		}
 		out = deepMerge(out, mapped)
 	}
-	out = deepMerge(out, j.Overrides)
+	// JSON made every number a float64: a byte count must not be written as 5.36870912e+09.
+	out = deepMerge(out, modsettings.Normalise(j.Overrides))
 	if j.Host != "" { // last, so no values file can override the host can-core validates routes against
 		out = deepMerge(out, map[string]any{"ingress": map[string]any{"host": j.Host}})
 	}

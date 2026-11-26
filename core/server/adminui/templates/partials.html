@@ -51,3 +51,4 @@
 
 {{define "issues"}}{{if .Issues}}<div class="alert err" role="alert"><p><strong>{{t "ch.issues"}}</strong></p><ul>{{range .Issues}}<li>{{.}}</li>
 {{end}}</ul></div>{{end}}{{end}}
+{{define "setwarn"}}{{with .}}<div class="alert warn">{{t "cg.setting_warnings"}}<ul>{{range .}}<li>{{.}}{{end}}</ul></div>{{end}}{{end}}

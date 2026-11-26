@@ -33,9 +33,183 @@ All run one replica with the `Recreate` strategy (SQLite on a ReadWriteOnce volu
 read-only root filesystem, resources equal to the manifest's `ram_mb` and `ram_limit_mb`, readiness on
 `/healthz` and liveness running the binary's own `healthcheck`. The volume is `<id>-data` and survives
 uninstall and disable. Configuration is the `config:` block of the chart's `values.yaml`, rendered into a
-ConfigMap (company.yaml `settings` are **not** mapped onto it yet). Image references are
+ConfigMap, over which company.yaml's settings and facts are laid ([Settings](#settings)). Image references are
 `repository:tag` plus a digest that is a placeholder until release; `make release-check` fails while
 any remains.
+
+## Settings
+
+`modules.<id>.settings` of `company.yaml` reach the module through a mapping declared beside each property of its
+`settings.schema.json` (`x-can`; [specs/064-module-settings](../specs/064-module-settings/spec.md)). `config.` below is
+the module's configuration file. Secrets are never settings.
+
+```yaml
+organisation:                      # optional: facts modules print or compute with
+  legal_name: Acme Pty Ltd         # default: name
+  address: |
+    1 Anvil Way
+    Brisbane QLD 4000
+  tax_id: ABN 00 000 000 000
+  currency: AUD
+  timezone: Australia/Brisbane
+modules:
+  finance:
+    settings:
+      payment_instructions: "BSB 000-000, account 12345678"
+      retention_years: 10
+```
+
+A module setting wins over a company fact, a fact over the module's default, and what can-core sets itself
+(connections, routes, public addresses) over all of them. An unknown or invalid setting is **not** applied: the module
+runs with the fact or the default, and `can validate`, `can apply` and the admin UI warn. A change is planned as an
+upgrade. An upgrade that widens what the module does, compared with what it was installed with, waits for approval
+(the "approval" column); this includes a setting that was written before settings were mapped and takes effect only
+now, and removing a setting whose default is looser than the value it had. Each line to approve shows the new value, or
+the entry a list gains or loses, and a digest of the whole value: an approval covers that value only.
+
+**Restore.** `can restore` asks nobody, so it installs nothing wider than what the backup recorded as installed: a
+setting that widens (and equity's break-glass window, or leaving its directory mode) stays as it was, or at the module's
+default where nothing was recorded. The apply that starts the modules does the same; the next one lists the difference
+and holds it for approval. A module that was disabled or failed at backup time gets the same on its first apply.
+
+**Re-enabling.** Enabling a disabled module is not held, as for a new permission in its manifest: it applies
+`company.yaml` as it is, including settings that widen compared with its last installation. The plan (`can apply --plan`,
+the admin UI preview) lists them as "newly allowed" first.
+
+### What is applied
+
+| Module | Setting | Goes to | Notes |
+|---|---|---|---|
+| `analytics` | `admin_email` | read by the chart, when the site is first created |  |
+| `board` | `retention.board-minutes` | `config.retention.board-minutes` |  |
+| `board` | `retention.board-resolutions` | `config.retention.board-resolutions` |  |
+| `board` | `retention.board-audit` | `config.retention.board-audit` |  |
+| `board` | `retention.board-packs` | `config.retention.board-packs` | approval: data of this class is deleted sooner |
+| `board` | `retention.board-private` | `config.retention.board-private` | approval: data of this class is deleted sooner |
+| `entity` | `retention.entity-register` | `config.retention.entity-register` |  |
+| `entity` | `retention.entity-filings` | `config.retention.entity-filings` |  |
+| `entity` | `retention.entity-audit` | `config.retention.entity-audit` |  |
+| `entity` | `retention.entity-person` | `config.retention.entity-person` | approval: data of this class is deleted sooner |
+| `equity` | `identity` | can-core connects equity to the people directory (specs/057-module-capability-wiring) |  |
+| `equity` | `break_glass_until` | can-core sets the chart value breakGlassUntil (specs/057-module-capability-wiring) |  |
+| `equity` | `retention.equity-ledger` | `config.retention.equity-ledger` |  |
+| `equity` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
+| `equity` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
+| `equity` | `retention.equity-audit` | `config.retention.equity-audit` |  |
+| `equity` | `retention.equity-stakeholder` | `config.retention.equity-stakeholder` | approval: data of this class is deleted sooner |
+| `equity` | `retention.equity-grants` | `config.retention.equity-grants` | approval: data of this class is deleted sooner |
+| `equity` | `retention.equity-valuation` | `config.retention.equity-valuation` | approval: data of this class is deleted sooner |
+| `files` | `max_file_mb` | `config.limits.max_file_bytes` |  |
+| `files` | `quota_gb_per_owner` | `config.limits.quota_bytes_per_owner` |  |
+| `files` | `trash_days` | `config.retention.trash_days` | approval: deleted files are purged sooner |
+| `files` | `scanner_required` | `config.scanner.required` | approval: uploads are accepted without a virus scan |
+| `files` | `inline_images` | `config.download.inline` | approval: uploaded images are shown in the browser instead of downloaded |
+| `files` | `share.max_ttl_hours` | `config.share.max_ttl_hours` | approval: share links can stay open longer |
+| `files` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
+| `files` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
+| `finance` | `base_currency` | `config.base_currency` | default: `organisation.currency`; approval: the reporting currency changes, and FX rates already stored are against the old one |
+| `finance` | `payment_instructions` | `config.payment_instructions` |  |
+| `finance` | `seller.name` | `config.seller.name` | default: `organisation.legal_name`, `name` |
+| `finance` | `seller.address` | `config.seller.address` | default: `organisation.address` |
+| `finance` | `seller.tax_id` | `config.seller.tax_id` | default: `organisation.tax_id` |
+| `finance` | `public_base_url` | `config.public_base_url` | approval: the invoice links sent to customers point there |
+| `finance` | `payment_provider` | `config.payment_provider` | approval: a development stand-in answers as if it were a real provider |
+| `finance` | `esign_provider` | `config.esign_provider` | approval: a development stand-in answers as if it were a real provider |
+| `finance` | `retention_years` | `config.retention_years` | approval: financial records are deleted sooner |
+| `finance` | `audit_retention_days` | `config.audit_retention_days` | approval: the audit trail is deleted sooner |
+| `finance` | `trust_proxy` | `config.trust_proxy` | approval: client addresses are taken from a request header |
+| `finance` | `max_body_bytes` | `config.max_body_bytes` |  |
+| `finance` | `rate_limit_per_minute` | `config.rate_limit.per_minute` | approval: the request limit per API token is switched off |
+| `finance` | `auth_failures_per_minute` | `config.rate_limit.auth_failures_per_minute` | approval: more password and link guessing is let through |
+| `finance` | `signing_record_ip` | `config.signing_record_ip` | approval: more of signers' IP addresses is stored |
+| `finance` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
+| `finance` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
+| `forms` | `trust_proxy` | `config.trust_proxy` |  |
+| `forms` | `max_body_bytes` | `config.max_body_bytes` |  |
+| `forms` | `rate_limit_per_minute` | `config.rate_limit.per_minute` | approval: one address may submit more often |
+| `forms` | `retention_days` | `config.retention_days` | approval: submissions are deleted sooner |
+| `forms` | `cors_allowed_origins` | `config.cors_allowed_origins` | approval: pages of another origin may submit the forms from a visitor's browser |
+| `forms` | `notify_email` | `config.notify_email` | approval: this address is emailed the content of new submissions |
+| `jobs` | `approval_required` | `config.approval.required` | approval: jobs open without an approved requisition |
+| `jobs` | `collect_eeo` | `config.apply.collect_eeo` | approval: diversity data about applicants is collected |
+| `jobs` | `retention.rejected_days` | `config.retention.rejected_days` | approval: rejected candidates are deleted sooner |
+| `jobs` | `retention.talent_pool_days` | `config.retention.talent_pool_days` | approval: talent pool candidates are deleted sooner |
+| `jobs` | `retention.hired_days` | `config.retention.hired_days` | approval: hired candidates' records are deleted sooner |
+| `jobs` | `retention.eeo_days` | `config.retention.eeo_days` | approval: diversity counts are deleted sooner |
+| `jobs` | `retention.closed_job_days` | `config.retention.closed_job_days` | approval: closed jobs are deleted sooner |
+| `jobs` | `max_resume_mb` | `config.apply.max_resume_bytes` |  |
+| `jobs` | `scanner_required` | `config.apply.scanner_required` | approval: resumes are accepted without a virus scan |
+| `jobs` | `apply_per_hour` | `config.rate_limit.apply_per_hour` | approval: one address may apply more often |
+| `jobs` | `default_valid_days` | `config.apply.default_valid_days` |  |
+| `jobs` | `consent_version` | `config.apply.consent_version` | approval: another consent version is recorded for applicants |
+| `jobs` | `consent_text` | `config.apply.consent_text` | approval: applicants consent to different wording |
+| `jobs` | `eeo_min_cell` | `config.eeo.min_cell` | approval: smaller groups of applicants can be told apart in diversity reports |
+| `jobs` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
+| `jobs` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
+| `people` | `retention.directory-basic` | `config.retention.directory-basic` | approval: data of this class is deleted sooner |
+| `people` | `retention.people-sensitive` | `config.retention.people-sensitive` | approval: data of this class is deleted sooner |
+| `people` | `retention.people-checklists` | `config.retention.people-checklists` | approval: data of this class is deleted sooner |
+| `people` | `retention.performance-oneonone` | `config.retention.performance-oneonone` | approval: data of this class is deleted sooner |
+| `people` | `retention.performance-goals` | `config.retention.performance-goals` | approval: data of this class is deleted sooner |
+| `people` | `retention.performance-reviews` | `config.retention.performance-reviews` | approval: data of this class is deleted sooner |
+| `people` | `retention.people-timeoff` | `config.retention.people-timeoff` | approval: data of this class is deleted sooner |
+| `people` | `reviews.min_responses` | `config.reviews.min_responses` | approval: fewer answers hide who gave feedback |
+| `people` | `ui.idle_minutes` | `config.ui.idle_minutes` | approval: idle web sessions stay signed in longer |
+| `people` | `ui.absolute_hours` | `config.ui.absolute_hours` | approval: web sessions last longer |
+| `provisioning` | `dry_run` | `config.workflows.dry_run` | approval: connectors are called: accounts in other systems are changed |
+| `provisioning` | `privileged_groups` | `config.workflows.privileged_groups` | approval: access of a group no longer needs a second person |
+| `provisioning` | `delete_after_days` | `config.workflows.delete_after_days` | approval: leavers' downstream accounts are deleted (sooner) |
+| `provisioning` | `timezone` | `config.workflows.timezone` | default: `organisation.timezone`; approval: leavers lose their access at a different time |
+| `provisioning` | `leaver_cutoff` | `config.workflows.leaver_cutoff` | approval: a leaver keeps access through their last day |
+| `provisioning` | `compensate_with_delete` | `config.workflows.compensate_with_delete` | approval: failed joiner workflows delete accounts |
+| `provisioning` | `tasks.joiner_template` | `config.tasks.joiner_template` | approval: different manager and IT tasks are created for joiners |
+| `provisioning` | `tasks.leaver_template` | `config.tasks.leaver_template` | approval: different manager and IT tasks are created for leavers |
+| `support` | `admin_email` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `support_address` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `mailbox_name` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `inbound.mode` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `inbound.imap.host` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `inbound.imap.port` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `inbound.imap.username` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `inbound.imap.encryption` | can-core reads it (specs/059-support-mailbox) |  |
+| `support` | `inbound.imap.folder` | can-core reads it (specs/059-support-mailbox) |  |
+| `wiki` | `php_memory_limit` | `app.phpMemoryLimit` |  |
+| `work` | `trust_proxy` | `config.trust_proxy` | approval: client addresses are taken from a request header |
+| `work` | `max_body_bytes` | `config.max_body_bytes` |  |
+| `work` | `rate_limit_per_minute` | `config.rate_limit.per_minute` | approval: the request limit per API token is switched off |
+| `work` | `auth_failures_per_minute` | `config.rate_limit.auth_failures_per_minute` | approval: more password guessing is let through |
+| `work` | `retention_days` | `config.retention_days` | approval: resolved issues are deleted sooner |
+| `work` | `audit_retention_days` | `config.audit_retention_days` | approval: the audit trail is deleted sooner |
+
+### What is not applied
+
+| Module | Setting | Why |
+|---|---|---|
+| `analytics` | `site_domain` | the tracked site is the module's own host |
+| `analytics` | `retention_days` | it is configured inside the application, and can-core does not write it |
+| `crm` | `from_address` | it is configured inside the application, and can-core does not write it |
+| `crm` | `lead_intake.enabled` | the module's adapter, which would apply it, is not built |
+| `crm` | `lead_intake.form_ids` | the module's adapter, which would apply it, is not built |
+| `crm` | `contact_retention_days` | it is configured inside the application, and can-core does not write it |
+| `finance` | `webhook_url` | an installed module's events go to can-core, and no webhook secret is provisioned |
+| `forms` | `captcha_provider` | the provider needs a secret that can-core does not provision, and no installed form asks for a captcha |
+| `forms` | `webhook_url` | an installed module's events go to can-core, and no webhook secret is provisioned |
+| `newsletter` | `from_address` | it is configured inside the application, and can-core does not write it |
+| `newsletter` | `double_opt_in` | it is configured inside the application, and can-core does not write it |
+| `newsletter` | `relay` | it is configured inside the application, and can-core does not write it |
+| `newsletter` | `subscribe_from_forms` | the module's adapter, which would apply it, is not built |
+| `newsletter` | `default_list` | the module's adapter, which would apply it, is not built |
+| `status` | `page_slug` | it is configured inside the application, and can-core does not write it |
+| `status` | `heartbeat_retention_days` | it is configured inside the application, and can-core does not write it |
+| `status` | `external_probe_hint` | nothing reads it |
+| `support` | `inbound.webhook.provider` | the inbound-parse webhook is not built |
+| `support` | `retention_days` | it is configured inside the application, and can-core does not write it |
+| `wiki` | `wiki_title` | it is configured inside the application, and can-core does not write it |
+| `wiki` | `public_help_centre` | it is configured inside the application, and can-core does not write it; the help namespace stays private until its access list is set there |
+| `wiki` | `revision_retention_days` | it is configured inside the application, and can-core does not write it |
+| `work` | `webhook_url` | an installed module's events go to can-core, and no webhook secret is provisioned |
+
+The forms themselves (fields, which forms exist) are not settings: they are the forms chart's `config.forms`.
 
 ## Secrets
 
@@ -276,7 +450,7 @@ whole integration suite including the `work` install): can-core RSS 49.0 MiB, hi
 * **people** does not fetch the new hire's name and contact details from the `ats` capability; HR
   completes the placeholder record.
 * **Manager and reporting-line facts** cannot ride on a personal access token (see the people mapping).
-* company.yaml `settings` are not mapped onto the charts' `config:` blocks.
+* The forms definitions and several settings of the wrapped modules are not applied ([Settings](#settings)).
 * Image digests are placeholders until a release; the images other than `work` have never been built in CI
   (`work` is built there with the base image digests of the day).
 * A failed rollout after a secret rotation is rolled back to the old pods, which keep the old values

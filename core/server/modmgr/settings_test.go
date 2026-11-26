@@ -26,8 +26,8 @@ func TestBuildFormRendersSafeSubset(t *testing.T) {
 			t.Errorf("field %s kind %q, want %q", k, kinds[k], v)
 		}
 	}
-	if len(f.Unsupported) != 1 || f.Unsupported[0] != "origins" {
-		t.Fatalf("arrays are not rendered, they are reported: %v", f.Unsupported)
+	if kinds["origins"] != KindList || len(f.Unsupported) != 0 {
+		t.Fatalf("a list of strings is rendered: %v %v", kinds["origins"], f.Unsupported)
 	}
 	for _, fl := range f.Fields {
 		if fl.Name == "site_title" && (fl.Value != "Acme" || !fl.Required || fl.MaxLen != 20) {
@@ -49,8 +49,8 @@ func TestParseSettingsValidatesWithTheModuleSchema(t *testing.T) {
 	if got["site_title"] != "New" || got["max_rows"] != int64(25) || got["verbose"] != true || got["captcha"] != "turnstile" || got["api_key_secret"] != "web-api-key" {
 		t.Fatalf("%v", got)
 	}
-	if o, _ := got["origins"].([]any); len(o) != 1 {
-		t.Fatalf("a setting the form cannot render must be kept as it was: %v", got)
+	if _, ok := got["origins"]; ok {
+		t.Fatalf("an emptied list is removed: %v", got)
 	}
 	if cur["site_title"] != "Old" {
 		t.Fatal("the current settings map was modified")

@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Forms gateway settings",
-  "description": "Operator settings of the forms module; rendered into forms.yaml by the chart. Secrets are never settings (they come from the module's Secret).",
+  "description": "Operator settings of the forms module (docs/module-wiring.md#settings). Secrets are never settings (they come from the module's Secret). The forms themselves are not settings.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "trust_proxy": { "type": "boolean", "default": true, "description": "Use the right-most X-Forwarded-For entry (set by Traefik) as the client address. Enable only behind a proxy that appends the client address; never when the service is directly reachable." },
-    "max_body_bytes": { "type": "integer", "minimum": 1024, "maximum": 10485760, "default": 65536 },
-    "rate_limit_per_minute": { "type": "integer", "minimum": 1, "default": 10 },
-    "retention_days": { "type": "integer", "minimum": 1, "default": 730 },
-    "cors_allowed_origins": { "type": "array", "items": { "type": "string", "pattern": "^https?://[^/]+$" }, "default": [] },
-    "captcha_provider": { "enum": ["none", "turnstile", "hcaptcha"], "default": "none" },
-    "webhook_url": { "type": "string", "pattern": "^$|^https?://" },
-    "notify_email": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 254, "pattern": "^[A-Za-z0-9#$&'*+/=?^_`{|}~-]+(\\.[A-Za-z0-9#$&'*+/=?^_`{|}~-]+)*@[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$" }, "default": [], "description": "Who gets an email for every new submission. Sent through the platform's email.send; these addresses are also what can-core allows this module to mail (unless company.yaml email.modules.forms.recipients says otherwise)." }
+    "trust_proxy": {"type": "boolean", "default": true, "description": "Use the right-most X-Forwarded-For entry (set by Traefik) as the client address. Enable only behind a proxy that appends the client address; never when the service is directly reachable.", "x-can": {"config": "trust_proxy"}},
+    "max_body_bytes": {"type": "integer", "minimum": 1024, "maximum": 10485760, "default": 65536, "description": "Largest submission accepted, in bytes.", "x-can": {"config": "max_body_bytes"}},
+    "rate_limit_per_minute": {"type": "integer", "minimum": 1, "default": 10, "description": "Submissions per client address per minute.", "x-can": {"config": "rate_limit.per_minute", "widens": "higher", "unset": 10, "risk": "one address may submit more often"}},
+    "retention_days": {"type": "integer", "minimum": 1, "default": 730, "description": "Submissions are deleted after this many days.", "x-can": {"config": "retention_days", "widens": "lower", "unset": 730, "risk": "submissions are deleted sooner"}},
+    "cors_allowed_origins": {"type": "array", "items": {"type": "string", "maxLength": 280, "pattern": "^https?://(\\[[0-9a-fA-F:]+\\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$"}, "default": [], "description": "Other origins whose pages may submit the forms.", "x-can": {"config": "cors_allowed_origins", "widens": "added", "unset": [], "risk": "pages of another origin may submit the forms from a visitor's browser"}},
+    "captcha_provider": {"enum": ["none", "turnstile", "hcaptcha"], "default": "none", "x-can": {"not_applied": "the provider needs a secret that can-core does not provision, and no installed form asks for a captcha"}},
+    "webhook_url": {"type": "string", "pattern": "^$|^https?://", "x-can": {"not_applied": "an installed module's events go to can-core, and no webhook secret is provisioned"}},
+    "notify_email": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 254, "pattern": "^[A-Za-z0-9#$&'*+/=?^_`{|}~-]+(\\.[A-Za-z0-9#$&'*+/=?^_`{|}~-]+)*@[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"}, "default": [], "description": "Who gets an email for every new submission. Sent through the platform's email.send; these addresses are also what can-core allows this module to mail (unless company.yaml email.modules.forms.recipients says otherwise).", "x-can": {"config": "notify_email", "widens": "added", "unset": [], "risk": "this address is emailed the content of new submissions", "previously_applied": true}}
   }
 }

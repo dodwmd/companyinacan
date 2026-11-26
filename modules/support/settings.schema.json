@@ -5,32 +5,34 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "admin_email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Login of the first FreeScout administrator; defaults to admin@<company domain>. Used once, on the first start." },
-    "support_address": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Address customers write to, e.g. support@example.com. The mailbox is created for it and replies leave with this From address. Must differ from admin_email." },
-    "mailbox_name": { "type": "string", "maxLength": 40, "description": "Name of the mailbox, shown to customers as the sender. Default: Support." },
+    "admin_email": {"type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Login of the first FreeScout administrator; defaults to admin@<company domain>. Used once, on the first start.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+    "support_address": {"type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$", "description": "Address customers write to, e.g. support@example.com. The mailbox is created for it and replies leave with this From address. Must differ from admin_email.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+    "mailbox_name": {"type": "string", "maxLength": 40, "description": "Name of the mailbox, shown to customers as the sender. Default: Support.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
     "inbound": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "mode": { "enum": ["imap", "webhook"], "default": "imap", "description": "imap: FreeScout fetches a hosted mailbox that the support address forwards to. webhook: an inbound-parse service posts to /inbound on the support host." },
+        "mode": {"enum": ["imap", "webhook"], "default": "imap", "description": "imap: FreeScout fetches a hosted mailbox that the support address forwards to. webhook: an inbound-parse service posts to /inbound on the support host.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
         "imap": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "host": { "type": "string", "minLength": 1 },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "username": { "type": "string", "description": "Mailbox user name; the Secret can-system/can-support-imap may name it instead. The password is only ever in that Secret." },
-            "encryption": { "enum": ["ssl", "starttls", "tls", "none"], "default": "ssl", "description": "ssl: implicit TLS (993). starttls: STARTTLS (143). tls and none were accepted before and are not applied." },
-            "folder": { "type": "string", "default": "INBOX" }
+            "host": {"type": "string", "minLength": 1, "description": "IMAP server host name.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535, "description": "IMAP port (default by encryption: 993 or 143).", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+            "username": {"type": "string", "description": "Mailbox user name; the Secret can-system/can-support-imap may name it instead. The password is only ever in that Secret.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+            "encryption": {"enum": ["ssl", "starttls", "tls", "none"], "default": "ssl", "description": "ssl: implicit TLS (993). starttls: STARTTLS (143). tls and none were accepted before and are not applied.", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}},
+            "folder": {"type": "string", "default": "INBOX", "description": "IMAP folder to fetch (default INBOX).", "x-can": {"handled": "can-core reads it (specs/059-support-mailbox)"}}
           }
         },
         "webhook": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "provider": { "enum": ["postmark", "mailgun", "ses"] } }
+          "properties": {
+            "provider": {"enum": ["postmark", "mailgun", "ses"], "x-can": {"not_applied": "the inbound-parse webhook is not built"}}
+          }
         }
       }
     },
-    "retention_days": { "type": "integer", "minimum": 30, "default": 1095, "description": "Not applied yet. Matches the support-conversation data class (3y)." }
+    "retention_days": {"type": "integer", "minimum": 30, "default": 1095, "description": "Matches the support-conversation data class (3y).", "x-can": {"not_applied": "it is configured inside the application, and can-core does not write it"}}
   }
 }

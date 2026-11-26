@@ -29,7 +29,7 @@
 <section aria-labelledby="h-set">
 <h2 id="h-set">{{t "cg.settings"}}</h2>
 {{if .Data.SchemaNote}}<p class="alert warn">{{.Data.SchemaNote}}</p>{{end}}
-{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}
+{{if .Data.Error}}<p class="alert err" role="alert">{{.Data.Error}}</p>{{end}}{{template "setwarn" .Data.Warnings}}
 {{if not .Data.Enabled}}<p class="alert warn">{{t "cg.settings_need_enabled"}}</p>{{else if .Data.Fields}}{{if .Data.CanOperate}}<form method="post" action="/catalogue/{{.Data.Row.ID}}/settings" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 {{range $i, $f := .Data.Fields}}<p>
@@ -38,16 +38,19 @@
 <select id="f-{{$i}}" name="s.{{$f.Name}}">{{range $f.Options}}<option value="{{.}}"{{if eq . $f.Value}} selected{{end}}>{{.}}</option>{{end}}</select>
 {{else if eq $f.Kind "int"}}<label for="f-{{$i}}">{{$f.Name}}</label>
 <input type="number" id="f-{{$i}}" name="s.{{$f.Name}}" value="{{$f.Value}}"{{if $f.Min}} min="{{$f.Min}}"{{end}}{{if $f.Max}} max="{{$f.Max}}"{{end}}{{if $f.Required}} required{{end}}>
+{{else if $f.Multi}}<label for="f-{{$i}}">{{$f.Name}}</label>
+<textarea id="f-{{$i}}" name="s.{{$f.Name}}" rows="4">
+{{$f.Value}}</textarea>
 {{else}}<label for="f-{{$i}}">{{$f.Name}}</label>
 <input type="text" id="f-{{$i}}" name="s.{{$f.Name}}" value="{{$f.Value}}"{{if $f.MaxLen}} maxlength="{{$f.MaxLen}}"{{end}}{{if $f.Required}} required{{end}} autocomplete="off">
 {{if eq $f.Kind "secret-ref"}}<span class="hint">{{t "cg.secret_ref_hint"}}</span>{{end}}
-{{end}}{{if $f.Description}}<span class="hint">{{$f.Description}}</span>{{end}}
+{{end}}{{if $f.Description}}<span class="hint">{{$f.Description}}</span>{{end}}{{if $f.Fact}}<span class="hint">{{t "cg.fact_hint" $f.Fact}}</span>{{end}}
 {{if $f.ErrLabel}}<span class="errtext" role="alert">{{$f.ErrLabel}}</span>{{end}}</p>
 {{end}}
 {{if .Data.Unsupported}}<p class="hint">{{t "cg.unsupported"}} {{range $i, $u := .Data.Unsupported}}{{if $i}}, {{end}}<code>{{$u}}</code>{{end}}</p>{{end}}
 <p><button type="submit">{{t "cg.settings_preview"}}</button></p>
 </form>{{else}}<p class="hint">{{t "cg.read_only"}}</p>{{end}}
-{{else if .Data.HasSchema}}<p class="muted">{{t "cg.no_settings"}}</p>{{else}}<p class="muted">{{t "cg.no_schema"}}</p>{{end}}
+{{else if .Data.HasSchema}}<p class="muted">{{t "cg.no_settings"}}</p>{{else}}<p class="muted">{{t "cg.no_schema"}}</p>{{end}}{{with .Data.NotApplied}}<h3>{{t "cg.not_applied"}}</h3><ul>{{range .}}<li><code>{{.Name}}</code>: {{.Reason}}{{end}}</ul>{{end}}
 </section>
 {{if .Data.CanPurge}}<p><a href="/catalogue/{{.Data.Row.ID}}/purge">{{t "cg.purge_link"}}</a></p>{{end}}
 {{end}}

@@ -9,5 +9,5 @@ import "embed"
 // validates and plans with, and everything can-core hashes to tell whether a module changed, so the
 // two agree. all: because chart helpers start with "_". Installing is can-core's alone.
 //
-//go:embed */module.yaml all:*/chart all:*/hooks
+//go:embed */module.yaml */settings.schema.json all:*/chart all:*/hooks
 var Shipped embed.FS

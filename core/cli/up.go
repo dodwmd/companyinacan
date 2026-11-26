@@ -67,11 +67,18 @@ type target struct {
 // load validates company.yaml in dir and builds the provider.
 func load(cmd *cobra.Command, g *globalOpts, dir, modulesDir string) (*target, error) {
 	file := filepath.Join(dir, "company.yaml")
-	if ps := validate.CompanyFile(file, resolveModulesDir(modulesDir, dir)); problem.HasErrors(ps) {
-		if err := printProblems(cmd, g, ps); err != nil {
+	checked := validate.CompanyFile(file, resolveModulesDir(modulesDir, dir))
+	if problem.HasErrors(checked) {
+		if err := printProblems(cmd, g, checked); err != nil {
 			return nil, err
 		}
 		return nil, silent(ExitFailure)
+	}
+	// A setting that reaches no module is said, never dropped quietly (specs/064-module-settings).
+	for _, p := range checked {
+		if p.Rule == "semantic.organisation" || strings.HasPrefix(p.Rule, "semantic.setting-") {
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning:", p.String())
+		}
 	}
 	doc, ps := config.Load(file)
 	if problem.HasErrors(ps) {

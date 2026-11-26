@@ -10,6 +10,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/modsettings"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
@@ -356,6 +357,8 @@ type fieldView struct {
 }
 
 type catModuleData struct {
+	NotApplied  []modmgr.NotApplied
+	Warnings    []string
 	Row         catRow
 	Fields      []fieldView
 	Unsupported []string
@@ -436,6 +439,8 @@ func (s *Server) renderModule(w http.ResponseWriter, r *http.Request, sc *sessio
 		d.Fields = append(d.Fields, fv)
 	}
 	d.Unsupported = form.Unsupported
+	d.NotApplied = form.NotApplied
+	d.Warnings = settingWarnings(e, company, current)
 	s.render(w, r, status, "cmodule.html", s.page(r, sc, "catalogue", d.Row.Name, d))
 }
 
@@ -498,6 +503,7 @@ type resourceView struct {
 }
 
 type changeData struct {
+	Warnings           []string
 	ID, Actor, Summary string
 	Created            time.Time
 	Applied            bool
@@ -535,7 +541,7 @@ var keepLabels = map[string]string{
 
 func (s *Server) previewData(pv *modmgr.Preview) changeData {
 	d := changeData{ID: pv.Change.ID, Actor: pv.Change.Actor, Summary: pv.Change.Summary, Created: pv.Change.CreatedAt, Stale: pv.Stale,
-		Applied: pv.Change.State == modmgr.ChangeApplied, RunID: pv.Change.RunID, DiffTooLarge: pv.DiffTooLarge, Footprint: s.fpView(pv.Footprint), Conflicts: pv.Analysis.Conflicts}
+		Applied: pv.Change.State == modmgr.ChangeApplied, RunID: pv.Change.RunID, Warnings: pv.Warnings, DiffTooLarge: pv.DiffTooLarge, Footprint: s.fpView(pv.Footprint), Conflicts: pv.Analysis.Conflicts}
 	for _, l := range pv.Diff {
 		switch l.Op {
 		case '+':
@@ -820,5 +826,21 @@ func sortedKeys(m map[string]bool) []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// settingWarnings says what of the module's current settings and company facts reaches nothing.
+func settingWarnings(e *modmgr.Entry, company *config.Company, current map[string]any) []string {
+	if e.Mapping == nil {
+		return nil
+	}
+	var out []string
+	for _, is := range e.Mapping.Map(current, modsettings.FactsOf(company.Name, company.Organisation)).Issues {
+		msg := is.Message
+		if name := is.Name(); name != "" && is.Kind != modsettings.BadFact {
+			msg = name + ": " + msg
+		}
+		out = append(out, modmgr.Sanitise(msg))
+	}
 	return out
 }

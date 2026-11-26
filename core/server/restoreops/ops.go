@@ -206,8 +206,12 @@ func (o *Ops) Apply(ctx context.Context, overwrite bool) (backup.ApplyReport, er
 			if ce, ok := co.Modules[m.ID]; ok {
 				settings = ce.Settings
 			}
-			err = inst.Enable(ctx, reconcile.Spec{ID: m.ID, Version: man.Version, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount,
-				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain, CompanyName: co.Name,
+			// A restore asks nobody, so it installs nothing wider than what was backed up as
+			// installed: a setting still waiting for approval (a shorter retention) must not
+			// reach, and purge, the restored data.
+			within := reconcile.ParseApplied(m.Applied)
+			err = inst.Enable(ctx, reconcile.Spec{Within: &within, ID: m.ID, Version: man.Version, Namespace: m.Namespace, ServiceAccount: m.ServiceAccount,
+				Settings: settings, Manifest: man, HMACSecret: m.HMACSecret, Domain: co.Domain, CompanyName: co.Name, Organisation: co.Organisation,
 				Links: m.Manifest.Runtime.Wired}) // connected as it was when it was backed up
 		}
 		switch {
@@ -752,7 +756,10 @@ func (o *Ops) Complete(ctx context.Context) (backup.CompleteReport, error) {
 		{`DELETE FROM login_tickets`, nil},
 		{`DELETE FROM ui_launch_sessions`, nil},
 		// The restore leaves these stopped: the apply that starts them must not wait for an approval.
-		{`UPDATE modules SET settings_hash='', approved_upgrade='*' WHERE state='enabled'`, nil},
+		{`UPDATE modules SET settings_hash='' WHERE state='enabled'`, nil},
+		// "*" also makes that apply, and a later one of a module that is failed or disabled now,
+		// keep settings that widen at what is recorded (reconcile.restored).
+		{`UPDATE modules SET approved_upgrade='*'`, nil},
 	} {
 		if _, err := o.DB.ExecContext(ctx, q.sql, q.args...); err != nil {
 			return rep, err

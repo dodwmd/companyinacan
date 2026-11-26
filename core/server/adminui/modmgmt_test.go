@@ -551,7 +551,7 @@ func TestSettingsFormIsGeneratedValidatedAndRecordedAsAPatch(t *testing.T) {
 	m := newMM(t)
 	s := m.loginAs("ops")
 	r := m.do("GET", "/catalogue/web", nil, s.with()...)
-	for _, want := range []string{`name="s.site_title"`, `value="Acme"`, `name="s.max_rows"`, `type="number"`, `type="checkbox"`, `<select`, `name="s.api_key_secret"`, "never the secret itself", "<code>origins</code>", "Shown in the page header."} {
+	for _, want := range []string{`name="s.site_title"`, `value="Acme"`, `name="s.max_rows"`, `type="number"`, `type="checkbox"`, `<select`, `name="s.api_key_secret"`, "never the secret itself", `name="s.origins"`, "Shown in the page header."} {
 		if !strings.Contains(r.body, want) {
 			t.Errorf("settings form lacks %q", want)
 		}

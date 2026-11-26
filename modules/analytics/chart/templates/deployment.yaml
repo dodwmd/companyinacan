@@ -24,7 +24,8 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- $host := required "ingress.host is supplied by can-core" .Values.ingress.host }}
-      {{- $email := default (printf "admin@%s" (trimPrefix "stats." $host)) .Values.settings.admin_email }}
+      {{- /* "$$" is a literal "$": without it a setting such as "$(NAME)" would be expanded. */}}
+      {{- $email := default (printf "admin@%s" (trimPrefix "stats." $host)) .Values.settings.admin_email | toString | replace "$" "$$" }}
       initContainers:
         # Creates the first site and its user once, with the password can-core generated, so the server
         # never runs without an account. GoatCounter takes a password on its command line only (or from

@@ -113,8 +113,8 @@ Apart from `ci`, `security`, `e2e` and `flaky-hunt`, nothing runs again after a 
   real release yet.
 - The admin UI's Leads page has no credential on an install. Messages arrive by notification email (needs a relay)
   or are read through the forms API.
-- `company.yaml` module `settings` are generally not mapped onto module configuration
-  ([module-wiring.md](module-wiring.md)).
+- Most settings of the wrapped modules, and the forms definitions, are not applied from `company.yaml`
+  ([module-wiring.md](module-wiring.md#settings)).
 - Security weaknesses are listed in [security-model.md](security-model.md#known-residual-risks).
 
 ## Decisions waiting on the maintainer

@@ -46,6 +46,6 @@ release that bumps the digest and the module's `version`.
 
 - **Snippet.** The site renderer does not inject the tracking snippet; add
   `<script data-goatcounter="https://stats.<domain>/count" async src="//stats.<domain>/count.js"></script>` by hand.
-- `site_domain` and `retention_days` in the settings are accepted but not applied.
+- `site_domain` and `retention_days` in the settings are not applied; `can validate` warns.
 - A changed company domain creates a second site at the new host; the old one keeps the history.
 - Upgrades to a newer GoatCounter are untested.

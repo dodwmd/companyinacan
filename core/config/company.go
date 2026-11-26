@@ -17,6 +17,18 @@ type Company struct {
 	SSO *SSO `yaml:"sso"`
 	// Email is the outbound relay and the per-module sending rules (epic E03d); nil = nothing set here.
 	Email *Email `yaml:"email"`
+	// Organisation is what the modules print or compute with about the company itself
+	// (specs/064-module-settings).
+	Organisation Organisation `yaml:"organisation"`
+}
+
+// Organisation is company.yaml `organisation`. Every field is optional.
+type Organisation struct {
+	LegalName string `yaml:"legal_name"`
+	Address   string `yaml:"address"`
+	TaxID     string `yaml:"tax_id"`
+	Currency  string `yaml:"currency"` // ISO 4217
+	Timezone  string `yaml:"timezone"` // IANA
 }
 
 // Provider selects where the company runs.
