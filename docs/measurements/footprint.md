@@ -1,14 +1,21 @@
 # Footprint: method, before and after, budgets
 
-Measured 2026-11-25 on one development machine: linux/amd64, 32 hardware threads, rootless Podman 6.1 with
+Measured 2026-11-26 on one development machine: linux/amd64, 32 hardware threads, rootless Podman 6.1 with
 podman-compose 1.6.0, Go 1.27.3, cgroup v2. **Not a 2 GB server and not a cluster.** All figures are MiB.
-"Before" is `main` at `b4a2caa`; "after" is the same plus the changes below.
+"Before" is `main` at `171a7b1`; "after" is the same plus the changes below. Two rounds of each; "a / b" below
+is idle / loaded unless said otherwise.
+
+**Corrected.** The first version of these figures ran the end-to-end suite with its restart test, which does
+`compose down` and `up`: the "after the suite" samples (and the first loaded budgets) mostly described containers
+that had just been recreated, and understated the loaded figures by up to a third. Everything in the stack tables
+was measured again with `E2E_RESTART=0`, the same processes from the idle sample to the last one.
 
 ## Method
 
 Compose stack of `make e2e-up`, run twice (before, after), each time: build, wait 30 s, sample ("idle"), run the
-end-to-end suite once (the load: about 2 minutes, every module, admin logins, a restart of the stack), sample
-("loaded"), wait 60 s, sample again. For every container:
+end-to-end suite once with `E2E_RESTART=0` (the load: about 2 minutes, every module, admin logins; **no
+restart**), sample ("loaded"), wait 60 s, sample again. The checker records each container's id, process, start
+time and restart count when idle and refuses to report a loaded figure for any other run. For every container:
 
 - `cgroup`: `memory.current`; `anon` and `file` from `memory.stat`;
 - `RssAnon`, `VmRSS`, `VmHWM` from `/proc/<pid>/status` of the main process.
@@ -33,31 +40,32 @@ local profiles ran one binary at a time with the compose dev config.
 
 | | before | after |
 |---|---|---|
-| cgroup, idle | 109.3 | **76.8** |
-| cgroup, after the suite | 143.9 | **92.2** |
-| cgroup, 60 s later | 130.7 | **80.4** |
-| `docker stats` sum after the suite, in its decimal MB | 149.5 | 95.9 |
-| sum of `VmRSS`, idle / after the suite | 244.8 / 267.5 | **209.0 / 216.0** |
+| cgroup, idle | 110 to 111 | **73** |
+| cgroup, loaded | 163 to 164 | **120 to 121** |
+| cgroup, 60 s later | 153 to 154 | **111 to 113** |
+| `docker stats` sum loaded, in its decimal MB | 166 | 121 to 122 |
+| sum of `VmRSS`, idle | 246 to 247 | **207 to 209** |
+| sum of `VmRSS`, loaded | 288 to 289 | **240 to 244** |
 
-The first CI run of the check (GitHub `ubuntu-latest`, Docker Engine, after only) agrees or is lower: cgroup 70.0
-idle and 70.5 after the suite, can-core `RssAnon` 11.9 and 11.8, peak 49.3.
+**The "under 100 MiB" figure is met idle and not met under load.**
 
-## Per service (`RssAnon` idle / after the suite; `VmHWM` is the peak)
+## Per service (`RssAnon` idle / loaded; `VmHWM` is the peak of the same process)
 
 | Service | before | after | peak before | peak after |
 |---|---|---|---|---|
-| can-core | 41.8 / 55.5 | **13.1 / 13.2** (16.4 a minute later) | 72.7 | **48.6** |
-| people | 8.1 / 8.3 | **4.9 / 4.5** | 22.0 | 18.0 |
-| work | 7.1 / 9.2 | **4.7 / 8.3** | 22.3 | 21.3 |
-| jobs | 7.9 / 7.3 | **5.9 / 5.3** | 20.5 | 18.5 |
-| finance | 5.5 / 7.6 | 5.7 / 7.4 | 22.0 | 21.8 |
-| equity | 4.0 / 3.8 | 4.0 / 3.9 | 14.9 | 14.9 |
-| files | 3.9 / 3.3 | 4.0 / 3.3 | 13.1 | 13.1 |
-| forms | 4.3 / 5.9 | 4.3 / 4.5 | 16.6 | 15.2 |
-| site | 1.8 / 2.0 | 1.9 / 2.0 | 7.7 | 7.7 |
-| Caddy (not ours) | 12.3 / 12.9 | 12.7 / 12.4 | 41.9 | 41.0 |
+| can-core | 42 to 43 / 56 to 57 | **14 / 15 to 16** (19 to 20 a minute later) | 77 to 78 | **51 to 53** |
+| people | 8.1 to 8.3 / 11.0 to 11.1 | **4.9 to 5.0 / 8.5 to 8.7** | 25 | 22 |
+| work | 7.0 to 7.2 / 9.1 to 9.5 | **4.7 / 8.6 to 8.7** | 22 to 23 | 22 |
+| jobs | 8.1 / 10.0 to 10.6 | **5.8 to 5.9 / 9.6 to 9.8** | 24 | 23 |
+| finance | 5.7 to 5.9 / 9.2 to 9.5 | 5.6 to 5.8 / 9.4 to 9.5 | 24 | 24 |
+| equity | 4.0 to 4.2 / 6.7 to 6.8 | 4.0 to 4.2 / 6.6 to 6.7 | 18 | 18 |
+| files | 3.8 to 3.9 / 6.4 to 6.7 | 3.9 / 5.4 to 6.6 | 17 to 18 | 16 to 18 |
+| forms | 4.2 to 4.4 / 6.4 | 4.3 to 4.4 / 6.2 to 6.4 | 17 | 17 |
+| site | 1.9 / 2.0 | 1.8 to 2.0 / 2.0 to 2.2 | 7.7 | 7.7 to 7.9 |
+| Caddy (not ours) | 11.5 to 11.9 / 15 | 11.5 to 12.3 / 14.5 to 15 | 44 | 43 |
 
-Run-to-run variation of a service is about 1 to 2 MiB; differences of that size are noise.
+Run-to-run variation of a service is about 1 MiB; differences of that size are noise. So the gains are in
+can-core (idle and loaded) and in `people`, `work` and `jobs` when idle and, less, under load.
 
 ## Where the memory was
 
@@ -65,7 +73,7 @@ Run-to-run variation of a service is about 1 to 2 MiB; differences of that size 
 of working memory) to have something to verify unknown user names against, so an idle can-core held it as
 garbage for a long time. Local profile before: resident heap 27.9, `RssAnon` 30.8 idle, 51.0 after one login.
 The dummy is now built from random salt and key with the same parameters (verifying it costs exactly what a real
-verification costs), and the memory is returned after every hash. After: resident heap 8.8, `RssAnon` 12.1 idle,
+verification costs), and the memory is returned after every hash (about 4 to 6 ms on a 13 ms hash on this machine). After: resident heap 8.8, `RssAnon` 12.1 idle,
 12.0 after one login, peak 46. **argon2 parameters are unchanged** (m=19 MiB, t=2, p=1; a test now fails if
 they are lowered). A login still needs the 19 MiB while it runs.
 
@@ -85,7 +93,7 @@ were **not** measured; their uploads are written through the same files, which `
 **Template parsing.** `people`, `jobs`, `work` and the admin UI parsed every page at start (`finance` already
 did not). Heap profile of idle `people`: about 3 MiB of parsed templates. Pages are now parsed on first use
 (`core/lazytmpl`), and each UI has a test that parses them all. Local `RssAnon`: people 8.1 to 4.8, work 7.2 to
-4.4, jobs 7.8 to 5.7. A service whose pages have all been visited ends up about where it was.
+4.4, jobs 7.8 to 5.7. The more of a service's pages are visited, the smaller this gain.
 
 **The rest of an idle module** (4 to 6 MiB `RssAnon`): resident Go heap 2 to 4 MiB of which live objects 1.3 to
 2.5, goroutine stacks 0.8 to 1.2, GC metadata about 2. SQLite (pure-Go modernc, memory outside the Go heap) has
@@ -102,7 +110,7 @@ finance 16.0, people 15.5, jobs 14.9, work 14.5, equity 12.6, board 12.6, files 
 
 | Idea | Result |
 |---|---|
-| `GOGC=50` on every service, whole stack | stack anon 69.5 idle and 70.8 loaded against 67.0 and 66.3 with the default: no gain (the heaps are already at the minimum). For can-core alone under 2,000 local requests it saved about 3 MiB |
+| `GOGC=50` on every service, whole stack | stack cgroup anon 71 idle and 90 loaded against 64 and 90 to 91 with the default: no gain (the heaps are already at the minimum). For can-core alone under 2,000 local requests it saved about 3 MiB |
 | SQLite `cache_size` for can-core cut from 2 MB to 256 KB, 40 MiB database, 2,000 requests | under 1 MiB difference: not worth slower queries |
 | `mmap_size` | already off (SQLite default); turning it on would add file pages |
 | `-gcflags=all=-l` (no inlining) or compressing binaries | not tried: slower code, and a compressed binary turns shareable file pages into private memory |
@@ -122,7 +130,7 @@ support, newsletter and analytics, idling under 1.5 GB of total used RAM (OS, k3
   room on paper; it is arithmetic across different machines and not a measurement, and it says nothing about real
   data, peaks (image pulls, Helm, backups) or page cache.
 - Of the per-layer targets: "can-core + site + forms at most about 100 MB" is met in Compose (sum of `VmRSS`
-  about 52 MiB); the k3s layer is inside its 600 target only on the large runner; "each module within 1.2 times
+  about 52 MiB idle, 57 loaded); the k3s layer is inside its 600 target only on the large runner; "each module within 1.2 times
   `ram_mb`" holds for the in-house services' `RssAnon` and `VmRSS` here, not for any wrapped app.
 
 Use 4 GB. The step that settles it: install the bundle on a real 2 GB server and read `free` after an hour.
@@ -132,18 +140,21 @@ Use 4 GB. The step that settles it: install the bundle on a real 2 GB server and
 [`footprint-budgets`](../../.github/workflows/footprint-budgets.yml) (advisory, pull requests touching code or
 the stack, and manual) runs `dev/footprint/composecheck` against
 [`dev/footprint/budgets.json`](../../dev/footprint/budgets.json): binary sizes; each service's `RssAnon` idle and
-after the end-to-end suite, with a total for both; and each service's peak RSS. A service without a budget, or a
+after the end-to-end suite (run with `E2E_RESTART=0`), with a total for both; and each service's peak RSS.
+The loaded phase fails, without judging any budget, if a container was restarted or recreated since the idle
+phase. A service without a budget, or a
 budgeted one that is not running, fails too. Each excess is printed with the service and both numbers, and as an
 annotation. The budgets have headroom over the figures above: they catch a regression the size of the ones fixed
-here (checked locally: the previous `main` fails with can-core at 41.8 against 20), not a 1 MiB drift.
+here (checked locally: the previous `main` fails with can-core at 42 against 20 idle and 56 against 30 loaded),
+not a 1 MiB drift.
 
 Locally, with the stack up:
 
 ```sh
 make e2e-up
-go run ./dev/footprint/composecheck -project can-e2e -phase idle      # add -engine podman if needed
-make e2e
-go run ./dev/footprint/composecheck -project can-e2e -phase loaded
+go run ./dev/footprint/composecheck -project can-e2e -phase idle -state /tmp/containers.json    # add -engine podman if needed
+E2E_RESTART=0 make e2e
+go run ./dev/footprint/composecheck -project can-e2e -phase loaded -state /tmp/containers.json
 make e2e-down
 ```
 

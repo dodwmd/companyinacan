@@ -279,10 +279,10 @@ cluster installs or isolates the modules.
 ## Resources
 
 Measured on rootless podman ([measurements/footprint.md](measurements/footprint.md) has the method and the
-per-service figures). The whole stack, Caddy and the two stubs included, uses 77 MiB of cgroup memory idle and
-80 to 92 MiB after a full e2e run (about 96 MB in `docker stats`; about 150 MB before the 2026-11-25
-reductions). Those figures leave out most binary file pages, which the image build had already cached: the
-processes' resident sets add up to about 220 MiB. `docker stats` reports cgroup memory, not RSS. Building needs
+per-service figures). The whole stack, Caddy and the two stubs included, uses 73 MiB of cgroup memory idle and
+about 120 MiB after an e2e run without its restart test (about 122 MB in `docker stats`; 166 MB before the
+2026-11 reductions, measured the same way). Those figures leave out most binary file pages, which the image
+build had already cached: the processes' resident sets add up to about 208 MiB idle and 242 MiB loaded. `docker stats` reports cgroup memory, not RSS. Building needs
 more: allow 2 GB of free RAM and about 5 GB of disk while images build (Go compiles eleven binaries).
 
 ## Troubleshooting
