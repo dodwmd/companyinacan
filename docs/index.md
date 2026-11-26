@@ -27,6 +27,7 @@ and the code is the truth.
 | [site-contact.md](site-contact.md) | The contact section of the site, the form behind it and who is emailed |
 | [make-up.md](make-up.md), [providers.md](providers.md) | `make up` on a server; the ssh, Hetzner and DigitalOcean providers; Cloudflare DNS |
 | [backup-restore.md](backup-restore.md) | Backups, the recovery kit, `can restore` |
+| [export.md](export.md) | `can export`: all company data in open formats, what is left out, encryption |
 | [real-server-verification.md](real-server-verification.md) | `can verify --server`, and the ordered runbook for what has never run on a real server |
 | [observability.md](observability.md) | Metrics, `/readyz`, request ids, log redaction, alert rules, `can diagnose` support bundles, measured cost |
 | [releasing.md](releasing.md), [maintainers.md](maintainers.md) | Cutting a release, required checks, branch protection, advisories |
