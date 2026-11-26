@@ -6,7 +6,7 @@ import (
 )
 
 var allActions = []Action{
-	ActDirRead, ActDirCreate, ActDirUpdate, ActDirUpdateSelf, ActDirOrg, ActDirStatus, ActDirHistory,
+	ActDirRead, ActDirCreate, ActDirUpdate, ActDirUpdateSelf, ActDirOrg, ActDirStatus, ActDirHistory, ActDirImport,
 	ActLegalHold, ActErasure, ActRetention, ActTemplateManage, ActChecklistCreate, ActChecklistRead,
 	ActTaskComplete, ActTaskListOwn, ActOneOnOneCreate, ActOneOnOneRead, ActOneOnOneWrite,
 	ActOneOnOnePrivate, ActGoalCreate, ActGoalRead, ActGoalWrite, ActGoalListOwn,
@@ -99,7 +99,7 @@ func TestPolicyInvariantsExhaustive(t *testing.T) {
 				}
 				// 6. HR/admin-only actions are denied to everyone else.
 				switch act {
-				case ActDirCreate, ActDirUpdate, ActDirOrg, ActDirStatus, ActLegalHold, ActErasure, ActRetention, ActTemplateManage:
+				case ActDirCreate, ActDirUpdate, ActDirImport, ActDirOrg, ActDirStatus, ActLegalHold, ActErasure, ActRetention, ActTemplateManage:
 					if got && !a.has(RoleHR) && !a.has(RoleAdmin) {
 						t.Fatalf("%s allowed without hr/admin: %s", act, describe(a, f))
 					}

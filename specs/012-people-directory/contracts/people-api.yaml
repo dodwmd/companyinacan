@@ -30,6 +30,48 @@ paths:
           description: "ok"
         "503":
           description: "database unavailable"
+  "/v1/import/people":
+    post:
+      summary: "Preview or apply a CSV of people (specs/047-csv-import)"
+      description: "Who: hr or admin (a restricted token also needs people.write). All or nothing; at most 1 MiB and 2000 rows."
+      tags:
+        - "directory"
+      parameters:
+        - name: "apply"
+          in: "query"
+          required: false
+          schema:
+            type: "boolean"
+          description: "Write. Without it the request is a preview and nothing is written"
+        - name: "map"
+          in: "query"
+          required: false
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          description: "Repeatable <field>=<column header>"
+      requestBody:
+        required: true
+        content:
+          "text/csv":
+            schema:
+              type: "string"
+      responses:
+        "200":
+          description: "The report of a preview, or of an applied import"
+        "400":
+          "$ref": "#/components/responses/Invalid"
+        "401":
+          "$ref": "#/components/responses/Unauthenticated"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        "409":
+          "$ref": "#/components/responses/Conflict"
+        "413":
+          description: "The file is over the size or row limit"
+        "422":
+          description: "apply=true and a row has an error: the report; nothing was written"
   "/v1/people":
     get:
       summary: "List the people the caller may see"

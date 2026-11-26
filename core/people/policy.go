@@ -38,6 +38,7 @@ const (
 	ActDirOrg        Action = "dir.org"         // departments, teams, positions, manager assignment
 	ActDirStatus     Action = "dir.status"      // employment status transitions
 	ActDirHistory    Action = "dir.history"     // status history of a person
+	ActDirImport     Action = "dir.import"      // CSV import of directory records
 	ActLegalHold     Action = "dir.legal_hold"
 	ActErasure       Action = "dir.erasure"
 	ActRetention     Action = "dir.retention" // run the retention sweep, list the erasure ledger
@@ -143,6 +144,7 @@ func (a Actor) permits(perm string) bool {
 // actionPerm is the permission a restricted caller needs for an action, whatever its role.
 var actionPerm = map[Action]string{
 	ActDirCreate: "people.write", ActDirUpdate: "people.write", ActDirOrg: "people.write", ActDirStatus: "people.write",
+	ActDirImport:      "people.write",
 	ActTemplateManage: "people.write",
 	ActLegalHold:      "people.admin", ActErasure: "people.admin", ActRetention: "people.admin",
 	ActOneOnOneRead: "performance.read", ActGoalRead: "performance.read",
@@ -236,7 +238,7 @@ func Decide(a Actor, act Action, f Fact) bool {
 	switch act {
 	case ActDirRead:
 		return a.selfStaff(f) || a.hrAdmin() || a.chainOf(f) || (a.staff() && visibleStatus(f.Status))
-	case ActDirCreate, ActDirUpdate, ActDirOrg, ActDirStatus, ActLegalHold, ActErasure, ActRetention, ActTemplateManage:
+	case ActDirCreate, ActDirUpdate, ActDirImport, ActDirOrg, ActDirStatus, ActLegalHold, ActErasure, ActRetention, ActTemplateManage:
 		return a.hrAdmin()
 	case ActDirUpdateSelf:
 		return a.selfStaff(f)

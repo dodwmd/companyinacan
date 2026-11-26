@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -84,7 +85,8 @@ type Service struct {
 	keys       *Keyring
 	audit      Auditor
 	deny       denyLimiter
-	rotateHook func() // tests: runs between reading a value and its compare-and-swap
+	rotateHook func()     // tests: runs between reading a value and its compare-and-swap
+	importing  sync.Mutex // one CSV import at a time (specs/047-csv-import)
 	retention  map[string]RetentionRule
 	now        func() time.Time
 

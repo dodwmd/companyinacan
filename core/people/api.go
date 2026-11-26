@@ -83,6 +83,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func (a *API) fail(w http.ResponseWriter, err error) {
+	if importFailure(w, err) {
+		return
+	}
 	var inv *InvalidError
 	switch {
 	case errors.As(err, &inv):
@@ -173,6 +176,7 @@ func (a *API) Handler() http.Handler {
 
 	// directory
 	route("GET /v1/people", a.listPeople)
+	route("POST /v1/import/people", a.importPeople)
 	route("POST /v1/people", func(ctx context.Context, ac Actor, r *http.Request) (int, any, error) {
 		var in PersonInput
 		if err := decode(r, &in); err != nil {

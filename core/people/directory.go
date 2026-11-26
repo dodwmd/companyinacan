@@ -200,6 +200,39 @@ func (s *Service) CreatePerson(ctx context.Context, a Actor, in PersonInput) (*P
 	return s.createPerson(ctx, a, in, "")
 }
 
+// insertPerson writes a validated new record with its history, event and checklists, so every
+// way of creating a person (API, jobs hand-off, CSV import) has the same effects. hireRef and
+// externalID are "" for none. The caller has authorised the actor and audits.
+func (s *Service) insertPerson(ctx context.Context, tx *sqlTx, a Actor, id string, in PersonInput, hireRef, externalID string) error {
+	now := s.now().Unix()
+	for table, ref := range map[string]string{"departments": in.DepartmentID, "teams": in.TeamID, "positions": in.PositionID} {
+		if err := s.orgRef(ctx, tx, table, ref); err != nil {
+			return err
+		}
+	}
+	if err := s.checkManager(ctx, tx, "", in.ManagerID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO people (id, kind, status, sso_subject, given_name, family_name, preferred_name, work_email, work_phone, location,
+		department_id, team_id, position_id, manager_id, start_date, created_at, updated_at, hire_ref, external_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, in.Kind, string(in.Status), nullStr(in.SSOSubject), in.GivenName, in.FamilyName, in.PreferredName, in.WorkEmail, in.WorkPhone, in.Location,
+		nullStr(in.DepartmentID), nullStr(in.TeamID), nullStr(in.PositionID), nullStr(in.ManagerID), in.StartDate, now, now, nullStr(hireRef), nullStr(externalID)); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return conflict("that sso_subject is already linked to a person")
+		}
+		return err
+	}
+	eff := s.today() // the record's own history starts when it is created, not at the start date
+	if _, err := tx.ExecContext(ctx, `INSERT INTO status_history (person_id, from_status, to_status, effective_date, applied, recorded_at, recorded_by) VALUES (?,?,?,?,1,?,?)`,
+		id, "", string(in.Status), eff, now, a.auditID()); err != nil {
+		return err
+	}
+	if err := s.enqueue(ctx, tx, EventPersonCreated, map[string]any{"party_id": id, "kind": in.Kind, "status": string(in.Status)}); err != nil {
+		return err
+	}
+	return s.autoChecklists(ctx, tx, id, in.Status, a)
+}
+
 // createPerson is CreatePerson plus the hire reference of the jobs hand-off ("" for none).
 func (s *Service) createPerson(ctx context.Context, a Actor, in PersonInput, hireRef string) (*Person, error) {
 	if !Decide(a, ActDirCreate, Fact{}) {
@@ -210,36 +243,7 @@ func (s *Service) createPerson(ctx context.Context, a Actor, in PersonInput, hir
 		return nil, err
 	}
 	id := newID("pers")
-	now := s.now().Unix()
-	err := s.tx(ctx, func(tx *sqlTx) error {
-		for table, ref := range map[string]string{"departments": in.DepartmentID, "teams": in.TeamID, "positions": in.PositionID} {
-			if err := s.orgRef(ctx, tx, table, ref); err != nil {
-				return err
-			}
-		}
-		if err := s.checkManager(ctx, tx, "", in.ManagerID); err != nil {
-			return err
-		}
-		start := in.StartDate
-		if _, err := tx.ExecContext(ctx, `INSERT INTO people (id, kind, status, sso_subject, given_name, family_name, preferred_name, work_email, work_phone, location,
-			department_id, team_id, position_id, manager_id, start_date, created_at, updated_at, hire_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			id, in.Kind, string(in.Status), nullStr(in.SSOSubject), in.GivenName, in.FamilyName, in.PreferredName, in.WorkEmail, in.WorkPhone, in.Location,
-			nullStr(in.DepartmentID), nullStr(in.TeamID), nullStr(in.PositionID), nullStr(in.ManagerID), start, now, now, nullStr(hireRef)); err != nil {
-			if strings.Contains(err.Error(), "UNIQUE") {
-				return conflict("that sso_subject is already linked to a person")
-			}
-			return err
-		}
-		eff := s.today() // the record's own history starts when it is created, not at the start date
-		if _, err := tx.ExecContext(ctx, `INSERT INTO status_history (person_id, from_status, to_status, effective_date, applied, recorded_at, recorded_by) VALUES (?,?,?,?,1,?,?)`,
-			id, "", string(in.Status), eff, now, a.auditID()); err != nil {
-			return err
-		}
-		if err := s.enqueue(ctx, tx, EventPersonCreated, map[string]any{"party_id": id, "kind": in.Kind, "status": string(in.Status)}); err != nil {
-			return err
-		}
-		return s.autoChecklists(ctx, tx, id, in.Status, a)
-	})
+	err := s.tx(ctx, func(tx *sqlTx) error { return s.insertPerson(ctx, tx, a, id, in, hireRef, "") })
 	if err != nil {
 		return nil, err
 	}
