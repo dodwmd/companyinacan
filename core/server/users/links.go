@@ -377,5 +377,12 @@ func (s *Service) UseLink(ctx context.Context, token, password, code, ip string)
 	if errors.Is(err, store.ErrNotFound) {
 		return ErrBadLink
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// Failed guesses under the old credentials must not slow or refuse the new, valid ones.
+	if _, err := s.DB.ClearLoginAttempts(ctx, u.Username); err != nil && s.Log != nil {
+		s.Log.Warn("users: clearing sign-in failure counters failed", "error", err)
+	}
+	return nil
 }

@@ -119,7 +119,7 @@ func (u *uui) useLink(token, password string) resp {
 	}
 	r := u.do("POST", "/set-password", form, c)
 	if r.StatusCode == http.StatusSeeOther {
-		u.pui.secrets["bob"] = m[1]
+		u.secrets["bob"] = m[1]
 	}
 	return r
 }
@@ -427,7 +427,7 @@ func TestMFAResetKeepsThePasswordAsAFactor(t *testing.T) {
 	root := u.loginAs("root")
 	old := u.secrets["dave"]
 	token := tokenIn(t, u.want(u.post(root, "/users/dave/link", "purpose", "mfa"), 200).body)
-	u.pui.secrets["dave"] = old
+	u.secrets["dave"] = old
 	if r := u.signIn("dave", u.pw); r.StatusCode != 401 {
 		t.Fatalf("the old authenticator still works: %d", r.StatusCode)
 	}
@@ -455,9 +455,8 @@ func TestSetPasswordPostNeedsItsCSRF(t *testing.T) {
 func TestDeletedNamesAreNeverReused(t *testing.T) {
 	u := newUUI(t)
 	ctx := context.Background()
-	root := u.loginAs("root")
 	u.holdings()
-	root = u.loginAs("root")
+	root := u.loginAs("root")
 	u.want(u.post(root, "/users/dave/delete", "confirm", "wrong"), 400)
 	u.want(u.post(root, "/users/dave/delete", "confirm", "dave"), 303)
 	u.want(u.do("GET", "/users/dave", nil, root.with()...), 404)
@@ -477,9 +476,8 @@ func TestDeletedNamesAreNeverReused(t *testing.T) {
 // A change that cannot be audited does not happen.
 func TestChangesAreAuditedInTheSameTransaction(t *testing.T) {
 	u := newUUI(t)
-	root := u.loginAs("root")
 	u.holdings()
-	root = u.loginAs("root")
+	root := u.loginAs("root")
 	_, err := u.db.Exec(`CREATE TRIGGER no_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'no audit'); END`)
 	must(t, err)
 	for _, c := range [][]string{
@@ -551,5 +549,18 @@ func TestSSOStepUpAsksTheProviderToAuthenticateAgain(t *testing.T) {
 	}
 	if strings.Contains(plain, "prompt=login") {
 		t.Fatalf("an ordinary sign-in forces none: %s", plain)
+	}
+}
+
+// The older token page refuses a manager who is not an owner, instead of failing.
+func TestOwnerTokensAreRevokedByOwnersOnly(t *testing.T) {
+	u := newUUI(t)
+	iss, err := u.pats.Issue(context.Background(), "user:root", pat.IssueRequest{Name: "ci", Module: "work", Permissions: []string{"work.read"}, TTL: 24 * time.Hour})
+	must(t, err)
+	alice := u.manager()
+	u.want(u.post(alice, "/tokens/"+iss.ID+"/revoke"), 403)
+	u.want(u.post(alice, "/users/root/tokens/"+iss.ID+"/revoke"), 403)
+	if _, ok := u.pats.Introspect(context.Background(), "work", iss.Token); !ok {
+		t.Fatal("the owner's token was revoked")
 	}
 }

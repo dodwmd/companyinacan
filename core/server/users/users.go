@@ -161,6 +161,12 @@ func keepsAnOwner(ctx context.Context, tx *sql.Tx, subject string) error {
 	return err
 }
 
+// refusal keeps the message of an underlying error and answers errors.Is for one of ours.
+type refusal struct{ kind, cause error }
+
+func (e refusal) Error() string   { return e.cause.Error() }
+func (e refusal) Unwrap() []error { return []error{e.kind, e.cause} }
+
 // mapErr turns the errors of the services underneath into this package's.
 func mapErr(err error) error {
 	switch {
@@ -169,9 +175,9 @@ func mapErr(err error) error {
 	case errors.Is(err, rbac.ErrLastOwner), errors.Is(err, identity.ErrLastOwner), errors.Is(err, store.ErrLastOwner):
 		return ErrLastOwner
 	case errors.Is(err, rbac.ErrForbidden), errors.Is(err, pat.ErrForbidden), errors.Is(err, identity.ErrForbidden), errors.Is(err, sso.ErrLinkForbidden):
-		return fmt.Errorf("%w: %s", ErrForbidden, err.Error())
+		return refusal{ErrForbidden, err}
 	case errors.Is(err, rbac.ErrUnknownRole), errors.Is(err, rbac.ErrInvalid), errors.Is(err, identity.ErrInvalid), errors.Is(err, sso.ErrLinkInvalid):
-		return fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+		return refusal{ErrInvalid, err}
 	case errors.Is(err, identity.ErrUnknown), errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	}

@@ -16,6 +16,10 @@ framework, no build step. Source: `core/server/adminui`. Specification: `specs/0
 | `/leads`, `/leads/{id}` | Read-only list of form submissions with a status filter, and a status change form |
 | `/email` | Outbound email delivery status (`notifications.admin`): the relay, and per message the sending module, masked recipient, status, attempts and last error; **Send again** for dead letters (`platform.operate`). See [`email.md`](email.md) |
 | `/settings` | Change password, rotate the authentication (TOTP) secret, list and revoke sessions. For users who signed in through single sign-on the password and TOTP sections are replaced by a note |
+| `/users`, `/users/{name}` | **Users** (E11e, `rbac.manage`): add, disable, enable, delete; roles and what each grants; reset the authentication code or password; sessions, personal access tokens, single sign-on identity. See [below](#users-and-roles-epic-e11e) |
+| `/set-password` | Public page behind a one-time link: choose a password and add the authenticator |
+| `/reauth` | Confirm password and code again before a sensitive change |
+| `/access` | Role assignments and definitions; owners can override what a role grants |
 | `/settings/sso` | **Single sign-on** (E11b, `rbac.manage`): status without secrets (issuer, client id, the *name* of the client secret, redirect URI, policy, group to role table, effective local-login mode), **Test discovery**, and the known identities with **Link** (to an existing local account) and **Unlink** (owners only). Configured in `company.yaml`, see [`sso.md`](sso.md) |
 | `/apps` | **Apps** (E11c): the enabled modules with a web page in which your roles give you a permission, each with an **Open** button (a POST) that signs you in to that module with a one-time launch ticket instead of a pasted token. A module appears only when its UI address is configured. See [`sso.md`](sso.md#opening-module-web-pages-from-the-admin-ui-e11c) |
 | `/auth/oidc/login`, `/auth/oidc/callback` | The OpenID Connect sign-in flow. When `sso.enabled`, `/login` also shows **Sign in with single sign-on** above the password form |
@@ -30,6 +34,27 @@ framework, no build step. Source: `core/server/adminui`. Specification: `specs/0
 The full route table, with methods and fields, is [`specs/010-admin-ui/contracts/ui-routes.md`](../specs/010-admin-ui/contracts/ui-routes.md).
 Unknown paths show a styled 404; failures show a styled error page with a request id you can look up in
 the can-core log.
+
+## Users and roles (epic E11e)
+
+Design, rules and threat model: [`specs/044-users-roles/spec.md`](../specs/044-users-roles/spec.md).
+
+- **Add a person.** `/users`: a user name (it cannot be changed, and is never reused after deletion) and an
+  optional email address. The account has no role. They set it up through a **one-time link**: they add the
+  secret to an authenticator app, choose a password and type a code. With an email relay configured the link
+  is mailed (to the company domain or `email.notification_recipients`) and you never see it; otherwise it is
+  shown to you once. It lasts 72 hours; send a new one from their page.
+- **Roles.** Their page lists each role with the permissions it grants. You are offered only roles you could
+  give: nobody hands out more than they hold, and only an owner changes an owner. Removing a role signs the
+  person out and revokes their access tokens.
+- **Lost phone or password.** *Reset the authentication code* keeps the password, which they must type when
+  using the link. *Reset password and code* replaces both. Both sign them out at once.
+- **Leaving.** *Disable* stops sign-in and ends sessions, module sessions and tokens, keeping roles; only an
+  owner can enable again. *Delete* removes the account and roles; the audit log keeps its history.
+- **Confirming it is you.** Sensitive changes need a sign-in or confirmation within the last 10 minutes.
+- **Recovery** stays with `can-core admin` inside the pod (`roles`, `reset-password`, `enable`, `unlock`).
+
+Not checked in a real browser or with a real mail relay.
 
 ## Single sign-on (epic E11b)
 
