@@ -1,21 +1,17 @@
 package launch
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
-	"sort"
 
 	"go.yaml.in/yaml/v3"
 
@@ -35,7 +31,7 @@ const (
 	FormsNS = "mod-forms"
 	// MaxSiteArchive is the largest site tarball `can up` publishes: a ConfigMap is limited to
 	// 1 MiB and binaryData is base64 (+33%), so this leaves room for the object's own overhead.
-	MaxSiteArchive = 700 << 10
+	MaxSiteArchive = site.MaxArchive
 )
 
 var (
@@ -460,6 +456,8 @@ type SiteArchive struct {
 	TarGz  []byte
 	SHA256 string
 	Files  int
+	// BaseURL and SourceSHA256 are recorded on the ConfigMap for can-core's site editor.
+	BaseURL, SourceSHA256 string
 	// Warnings of the site build, for the operator.
 	Warnings []string
 }
@@ -492,53 +490,16 @@ func BuildSiteArchive(dir string, opts site.Options, maxBytes int) (SiteArchive,
 	if err != nil {
 		return SiteArchive{}, fmt.Errorf("render site: %w", err)
 	}
-	tmp, err := os.MkdirTemp("", "can-site-")
+	tgz, files, err := out.Archive()
 	if err != nil {
-		return SiteArchive{}, err
-	}
-	defer func() { _ = os.RemoveAll(tmp) }()
-	if err := out.Write(tmp, site.WriteOptions{Compress: true}); err != nil {
 		return SiteArchive{}, fmt.Errorf("write site: %w", err)
 	}
-	var names []string
-	err = filepath.WalkDir(tmp, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		rel, _ := filepath.Rel(tmp, p)
-		names = append(names, filepath.ToSlash(rel))
-		return nil
-	})
-	if err != nil {
-		return SiteArchive{}, err
+	if len(tgz) > maxBytes {
+		return SiteArchive{}, fmt.Errorf("the built site is %d KiB compressed, over the %d KiB that fits in a Kubernetes ConfigMap; shrink the logo or other assets in company.yaml's site section (or serve large assets from elsewhere)", len(tgz)>>10, maxBytes>>10)
 	}
-	sort.Strings(names)
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for _, n := range names {
-		b, err := os.ReadFile(filepath.Join(tmp, filepath.FromSlash(n))) //nolint:gosec // walked from our own temp dir
-		if err != nil {
-			return SiteArchive{}, err
-		}
-		if err := tw.WriteHeader(&tar.Header{Name: n, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(b)), Format: tar.FormatPAX}); err != nil {
-			return SiteArchive{}, err
-		}
-		if _, err := tw.Write(b); err != nil {
-			return SiteArchive{}, err
-		}
-	}
-	if err := tw.Close(); err != nil {
-		return SiteArchive{}, err
-	}
-	if err := gz.Close(); err != nil {
-		return SiteArchive{}, err
-	}
-	if buf.Len() > maxBytes {
-		return SiteArchive{}, fmt.Errorf("the built site is %d KiB compressed, over the %d KiB that fits in a Kubernetes ConfigMap; shrink the logo or other assets in company.yaml's site section (or serve large assets from elsewhere)", buf.Len()>>10, maxBytes>>10)
-	}
-	h := sha256.Sum256(buf.Bytes())
-	return SiteArchive{TarGz: buf.Bytes(), SHA256: hex.EncodeToString(h[:]), Files: len(names), Warnings: out.Warnings}, nil
+	h := sha256.Sum256(tgz)
+	return SiteArchive{TarGz: tgz, SHA256: hex.EncodeToString(h[:]), Files: files, Warnings: out.Warnings,
+		BaseURL: opts.BaseURL, SourceSHA256: site.SectionHash(c.Site)}, nil
 }
 
 // SiteContentConfigMap renders the ConfigMap the site pod unpacks.
@@ -547,8 +508,9 @@ func SiteContentConfigMap(a SiteArchive) string {
 		"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": map[string]any{
 			"name": "site-content", "namespace": SystemNS,
-			"labels":      map[string]any{"app.kubernetes.io/part-of": "companyinacan"},
-			"annotations": map[string]any{"can.dev/site-sha256": a.SHA256},
+			"labels": map[string]any{"app.kubernetes.io/part-of": "companyinacan"},
+			// The base URL and source hash let can-core publish the same site again (core/server/siteedit).
+			"annotations": map[string]any{site.AnnotationSHA: a.SHA256, site.AnnotationBaseURL: a.BaseURL, site.AnnotationSource: a.SourceSHA256},
 		},
 		"binaryData": map[string]any{"site.tar.gz": base64.StdEncoding.EncodeToString(a.TarGz)},
 	})

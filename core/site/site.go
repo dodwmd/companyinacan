@@ -42,6 +42,7 @@ const (
 var (
 	colourRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 	langRe   = regexp.MustCompile(`^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
+	slugRe   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,40}$`)
 	logoExts = map[string]bool{".svg": true, ".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true}
 )
 
@@ -100,12 +101,20 @@ type page struct {
 	Contact               *contactSection
 	Support               *supportSection
 	Footer                config.SiteFooter
+	// Root prefixes the section links of the header: "" on the home and not-found pages, "/" elsewhere.
+	Root    string
+	Careers *config.SiteLink
+	// Text is set on the extra text pages.
+	Text *textPage
 }
 
 type contactSection struct{ Title, Text, Button, Href string }
 type supportSection struct{ Title, Text, Button, Address, Href string }
 
-type cssData struct{ Accent, AccentText, Accent2, Accent2Text, Link, LinkDark string }
+type cssData struct {
+	Accent, AccentText, Accent2, Accent2Text, Link, LinkDark string
+	Pages                                                    bool
+}
 
 type orgLD struct {
 	Context     string   `json:"@context"`
@@ -250,6 +259,21 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 	if supportWarning != "" {
 		warnings = append(warnings, supportWarning)
 	}
+	careers, careersWarning := config.CheckCareers(c)
+	if careersWarning != "" {
+		warnings = append(warnings, careersWarning)
+	}
+	for i, pg := range s.Pages {
+		if !slugRe.MatchString(pg.Slug) {
+			v.add("site.pages[%d].slug: %q must be lower-case letters, digits and hyphens, starting with a letter", i, pg.Slug)
+		}
+		if strings.TrimSpace(pg.Title) == "" {
+			v.add("site.pages[%d].title: must not be empty", i)
+		}
+	}
+	for _, is := range config.CheckPages(s.Pages) {
+		v.add("site.pages[%d].slug: %s", is.Index, is.Message)
+	}
 
 	logoPath, logoData := "", []byte(nil)
 	if s.Brand.Logo != "" {
@@ -272,7 +296,7 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 
 	var css bytes.Buffer
 	if err := cssTemplate.Execute(&css, cssData{Accent: accent, AccentText: contrastText(accent), Accent2: accent2, Accent2Text: contrastText(accent2),
-		Link: readable(accent, lightBG), LinkDark: readable(accent, darkBG)}); err != nil {
+		Link: readable(accent, lightBG), LinkDark: readable(accent, darkBG), Pages: len(s.Pages) > 0}); err != nil {
 		return nil, err
 	}
 	sum := sha256.Sum256(css.Bytes())
@@ -337,6 +361,19 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 		p.Nav = append(p.Nav, navItem{"Support", "support"})
 	}
 
+	// The footer lists the extra pages, then the careers link, then the operator's own links.
+	var auto []config.SiteLink
+	for _, pg := range s.Pages {
+		auto = append(auto, config.SiteLink{Label: pg.Title, Href: "/" + pg.Slug})
+	}
+	if careers {
+		p.Careers = &config.SiteLink{Label: firstNonEmpty(s.Careers.Label, "Careers"), Href: "https://" + routing.Aliases["jobs"] + "." + c.Domain + "/careers"}
+		auto = append(auto, *p.Careers)
+	}
+	if len(auto) > 0 {
+		p.Footer.Links = append(auto, s.Footer.Links...)
+	}
+
 	ld := orgLD{Context: "https://schema.org", Type: "Organization", Name: c.Name, URL: base + "/",
 		Description: firstNonEmpty(s.Description, s.Tagline), SameAs: s.SameAs}
 	if logoPath != "" {
@@ -356,6 +393,24 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 	if out.Files["index.html"], err = execute("index", p); err != nil {
 		return nil, err
 	}
+	for _, pg := range s.Pages {
+		sp := *p
+		sp.Root = "/"
+		sp.Title = pg.Title + " - " + c.Name
+		sp.Description = sp.Title
+		sp.Canonical = base + "/" + pg.Slug
+		sp.Text = &textPage{Title: pg.Title, Blocks: textBlocks(pg.Body)}
+		// "#anchor" links of the footer point at sections of the home page.
+		sp.Footer.Links = append([]config.SiteLink(nil), p.Footer.Links...)
+		for i := range sp.Footer.Links {
+			if strings.HasPrefix(sp.Footer.Links[i].Href, "#") {
+				sp.Footer.Links[i].Href = "/" + sp.Footer.Links[i].Href
+			}
+		}
+		if out.Files[pg.Slug+".html"], err = execute("textpage", &sp); err != nil {
+			return nil, err
+		}
+	}
 	nf := *p
 	nf.Title = "Page not found - " + c.Name
 	nf.NoIndex = true
@@ -367,8 +422,11 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 		out.Files["robots.txt"] = []byte("User-agent: *\nDisallow: /\n")
 	} else {
 		out.Files["robots.txt"] = []byte("User-agent: *\nAllow: /\n\nSitemap: " + base + "/sitemap.xml\n")
-		out.Files["sitemap.xml"] = []byte(xmlHeader + "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url><loc>" +
-			xmlEscape(base+"/") + "</loc></url>\n</urlset>\n")
+		urls := "  <url><loc>" + xmlEscape(base+"/") + "</loc></url>\n"
+		for _, pg := range s.Pages {
+			urls += "  <url><loc>" + xmlEscape(base+"/"+pg.Slug) + "</loc></url>\n"
+		}
+		out.Files["sitemap.xml"] = []byte(xmlHeader + "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" + urls + "</urlset>\n")
 	}
 	return out, nil
 }
