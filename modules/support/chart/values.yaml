@@ -29,6 +29,9 @@ mail:                      # filled by can-core from the settings it could valid
   name: ""
   imapWanted: false
   invalid: ""              # why nothing is applied
+leadIntake:                # filled by can-core: website leads become conversations (specs/067-lead-adapters)
+  enabled: false           # true once modules.support.settings.tickets_from_forms names a form
+  port: 8081               # in-cluster only; no route ever reaches it
 resources:
   requests: { memory: 176Mi, cpu: 50m }
   limits: { memory: 640Mi }

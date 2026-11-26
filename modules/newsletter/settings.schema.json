@@ -12,8 +12,8 @@
       "type": "array",
       "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" },
       "default": [],
-      "description": "Form ids whose submissions subscribe the sender when they ticked the newsletter field."
+      "description": "Form ids whose submissions subscribe the sender, only when they ticked the newsletter consent checkbox (modules.forms.settings.newsletter_consent). Always double opt-in."
     },
-    "default_list": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$", "default": "newsletter" }
+    "default_list": { "type": "string", "minLength": 1, "maxLength": 100, "default": "newsletter", "description": "Name or UUID of the public double opt-in list those people are subscribed to. A single opt-in list is refused." }
   }
 }

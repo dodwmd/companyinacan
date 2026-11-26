@@ -1,0 +1,19 @@
+{{- /* The lead listener (templates/_leads.tpl): cluster-internal, and no IngressRoute names it. */ -}}
+{{- if .Values.leadIntake.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Chart.Name }}-leads
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mod.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mod.selector" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  ports:
+    - name: leads
+      port: {{ .Values.leadIntake.port }}
+      targetPort: leads
+{{- end }}

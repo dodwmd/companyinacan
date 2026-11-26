@@ -9,7 +9,8 @@ category: marketing
 # adapter is not built (T031), and the SMTP settings are MANUAL: paste the relay credentials into
 # Listmonk Settings, SMTP (Listmonk keeps them in its database; can-core does not give it any).
 status: experimental
-version: 0.1.0
+# 0.2.0: website leads with consent are subscribed, double opt-in (specs/067-lead-adapters).
+version: 0.2.0
 provider:
   type: oss-wrapper
   name: Listmonk
@@ -43,10 +44,11 @@ consumes: [leads]
 publishes:
   - { event: subscriber.added.v1, schema: ./events/subscriber.added.v1.json }
 subscribes:
-  # Only forms that carry the newsletter opt-in field are subscribed; the adapter ignores the rest.
-  - { event: lead.created.v1, service: newsletter-adapter, port: 8081, webhook: /hooks/lead, optional: true, status: planned }
-  # a lead erased on request, by id only: the adapter drops the subscription that lead created
-  - { event: lead.erased.v1, service: newsletter-adapter, port: 8081, webhook: /hooks/lead-erased, optional: true, status: planned }
+  # Delivered by an adapter inside can-core, which calls Listmonk. Only forms named in
+  # settings.subscribe_from_forms, and only senders who ticked the consent checkbox.
+  - { event: lead.created.v1, service: newsletter, port: 9000, webhook: /hooks/lead, optional: true, via: can-core }
+  # a lead erased on request, by id only: the adapter deletes the subscriber that lead created
+  - { event: lead.erased.v1, service: newsletter, port: 9000, webhook: /hooks/lead-erased, optional: true, via: can-core }
 permissions: [newsletter.read, newsletter.write, newsletter.admin]
 roles:
   marketing: [newsletter.read, newsletter.write]

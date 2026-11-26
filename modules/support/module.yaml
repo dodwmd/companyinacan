@@ -8,7 +8,8 @@ category: support
 # never on a real server, domain, mail relay or mail provider (mail is tested against an in-cluster fake, specs/059);
 # the `tickets` adapter is not built (T030). The image is a third party build of FreeScout (PikaPods).
 status: experimental
-version: 0.2.0
+# 0.3.0: website leads become conversations (specs/067-lead-adapters).
+version: 0.3.0
 provider:
   type: oss-wrapper
   name: FreeScout
@@ -38,6 +39,12 @@ resources:
 # provider resolution and event routing ignore planned entries. Keep in step with chart adapter.enabled.
 provides:
   - { capability: tickets, schema: tickets.v1, service: support-adapter, port: 8081, status: planned }
+# Website leads, delivered by an adapter inside can-core which calls the listener of this chart
+# (templates/_leads.tpl). Nothing is handed on until settings.tickets_from_forms names a form.
+subscribes:
+  - { event: lead.created.v1, service: support-leads, port: 8081, webhook: /hooks/lead, optional: true, via: can-core }
+  # a lead erased on request: an internal note on its conversation, which an operator then deletes
+  - { event: lead.erased.v1, service: support-leads, port: 8081, webhook: /hooks/lead-erased, optional: true, via: can-core }
 publishes:
   - { event: ticket.created.v1, schema: ./events/ticket.created.v1.json }
 permissions: [tickets.read, tickets.write, tickets.admin]

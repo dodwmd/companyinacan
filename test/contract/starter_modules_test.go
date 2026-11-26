@@ -107,6 +107,9 @@ func TestStarterManifests(t *testing.T) {
 				}
 			}
 			for _, p := range asList(m["subscribes"]) {
+				if asMap(p)["via"] == "can-core" {
+					continue // the adapter is in can-core, not in the chart (specs/067-lead-adapters)
+				}
 				if (asMap(p)["status"] != "planned") != adapterOn {
 					t.Errorf("subscribes %v status and chart adapter.enabled=%v drifted apart", asMap(p)["event"], adapterOn)
 				}

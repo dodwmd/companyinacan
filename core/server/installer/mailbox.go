@@ -46,7 +46,12 @@ func mailValues(s reconcile.Spec) map[string]any {
 	if invalid != "" {
 		address = ""
 	}
-	return map[string]any{"mail": map[string]any{"address": address, "name": m.MailboxName, "imapWanted": m.IMAP != nil, "invalid": invalid}}
+	// Website leads become conversations once a form is named (specs/067-lead-adapters).
+	forms, ok := config.FormList(s.Settings["tickets_from_forms"])
+	return map[string]any{
+		"mail":       map[string]any{"address": address, "name": m.MailboxName, "imapWanted": m.IMAP != nil, "invalid": invalid},
+		"leadIntake": map[string]any{"enabled": ok && len(forms) > 0},
+	}
 }
 
 // imapValues is what `can-imap` holds for s: empty without an account.

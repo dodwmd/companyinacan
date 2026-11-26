@@ -55,6 +55,13 @@ spec:
               $mail['stream'] = ['ssl' => ['verify_peer' => $verify, 'verify_peer_name' => $verify, 'allow_self_signed' => !$verify]];
               return $mail;
               CANCONF
+              {{- if .Values.leadIntake.enabled }}
+              # Website leads (templates/_leads.tpl): started again if it ever stops.
+              cat >/tmp/can-leads.php <<'CANLEADS'
+              {{- include "support.leads" . | nindent 14 }}
+              CANLEADS
+              ( while :; do php -d expose_php=0 -S 0.0.0.0:{{ .Values.leadIntake.port }} /tmp/can-leads.php; sleep 10; done ) &
+              {{- end }}
               (
                 n=0
                 until wget -q -O /dev/null --header "Host: $CAN_HOST" --header "X-Forwarded-Proto: https" http://127.0.0.1:{{ .Values.service.port }}/login; do
@@ -78,6 +85,9 @@ spec:
               exec docker-php-serversideup-entrypoint /init
           ports:
             - {name: http, containerPort: {{ .Values.service.port }}}
+            {{- if .Values.leadIntake.enabled }}
+            - {name: leads, containerPort: {{ .Values.leadIntake.port }}}
+            {{- end }}
           env:
             - {name: APP_URL, value: "{{ include "mod.scheme" . }}://{{ $host }}"}
             - {name: CAN_HOST, value: {{ $host | quote }}}
