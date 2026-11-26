@@ -101,6 +101,9 @@ type SMTPRelay struct {
 	Username, Password, From string
 	// Encryption is `tls` (STARTTLS) or `ssl` (implicit TLS), the names PHP mailers use.
 	Encryption string
+	// SkipVerify turns the app's check of the relay's certificate off: only the operator's relay
+	// Secret can ask for it.
+	SkipVerify bool
 }
 
 // Installer implements reconcile.ModuleInstaller.
@@ -170,6 +173,7 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 		return err
 	}
 	s.Values = deepMerge(facts, plan.values)
+	s.Values = deepMerge(s.Values, mailValues(s))
 	objs, err := in.renderBounded(ctx, s)
 	if err != nil {
 		return err
@@ -684,7 +688,7 @@ func (in *Installer) relayValues(s reconcile.Spec) (map[string]string, error) {
 		return nil, fmt.Errorf("reading the email relay settings: %w", err)
 	}
 	if r != nil {
-		vals = map[string]string{"host": r.Host, "port": fmt.Sprint(r.Port), "user": r.Username, "password": r.Password, "from": r.From, "encryption": r.Encryption}
+		vals = map[string]string{"host": r.Host, "port": fmt.Sprint(r.Port), "user": r.Username, "password": r.Password, "from": r.From, "encryption": r.Encryption, "verify": fmt.Sprint(!r.SkipVerify)}
 	}
 	return vals, nil
 }

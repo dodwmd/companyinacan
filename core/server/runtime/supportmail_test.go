@@ -91,3 +91,46 @@ func TestAppIMAPBindsTheCredentialsToTheirHost(t *testing.T) {
 		t.Fatal("no inbound in company.yaml")
 	}
 }
+
+// The certificate check is on unless the relay Secret itself, naming its host, turns it off.
+func TestAppRelayVerifiesUnlessTheSecretSaysNot(t *testing.T) {
+	dir := t.TempDir()
+	c := Config{Env: func(k string) string {
+		if k == "CAN_SMTP_SECRET_DIR" {
+			return dir
+		}
+		return ""
+	}}
+	on := true
+	spec := reconcile.Spec{ID: "support", Domain: "acme.example", Email: &config.Email{
+		Relay: &config.EmailRelay{Host: "smtp.example.net"}, Modules: map[string]config.EmailModule{"support": {Enabled: &on}}}}
+	write := func(k, v string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, k), []byte(v), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	skipped := func() bool {
+		t.Helper()
+		r, err := c.appRelay(spec)
+		if err != nil || r == nil {
+			t.Fatalf("%+v %v", r, err)
+		}
+		return r.SkipVerify
+	}
+	if skipped() {
+		t.Fatal("unchecked by default")
+	}
+	write("tls_verify", "false")
+	if skipped() {
+		t.Fatal("without a host in the Secret, company.yaml would choose the unchecked server")
+	}
+	write("host", "smtp.example.net")
+	if !skipped() {
+		t.Fatal("the operator's opt-out is not applied")
+	}
+	write("tls_verify", "no")
+	if skipped() {
+		t.Fatal("only \"false\" turns the check off")
+	}
+}

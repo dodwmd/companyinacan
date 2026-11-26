@@ -53,7 +53,8 @@ senders (today `support` only), from the same relay settings as `email.send` (`c
   relay and for IMAP on 993 to a hosted mailbox. No extra NetworkPolicy is needed.
 - **Support** keeps mail settings in its database. At every start the relay is written into its system settings
   (invitations, password resets, notifications) and, with a `support_address`, into that mailbox for replies.
-  FreeScout does not verify the relay's certificate.
+  The module makes FreeScout verify the relay's certificate (`tls_verify: "false"` in the relay Secret turns it
+  off). Prefer port 465: on STARTTLS FreeScout falls back to plaintext if `EHLO` is refused.
 - **Newsletter** keeps its SMTP servers in its database too and is given nothing: the operator enters
   them in Settings, SMTP. A **separate bulk relay** is recommended once lists grow: marketing
   complaints then cannot damage the reputation of support and invoice mail.

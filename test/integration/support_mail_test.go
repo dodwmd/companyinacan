@@ -8,12 +8,14 @@ package integration
 //
 //   - enabling the module creates the mailbox with outgoing and incoming settings, with no step by hand;
 //   - a message put into the IMAP mailbox becomes a conversation by FreeScout's own scheduled fetch;
-//   - a reply written in FreeScout reaches the SMTP server, from the support address, in the thread;
+//   - the relay's self-signed certificate is refused by default, and accepted only when the
+//     operator's relay Secret says tls_verify: "false"; a reply then reaches the SMTP server,
+//     from the support address, in the thread;
 //   - `can support status` and `credentials` report; a wrong IMAP password is applied and reported
 //     without being printed; and opting out removes what was written.
 //
-// What it does NOT cover: a real mail provider, certificate verification (the server's certificate is
-// self-signed, so the Secret turns it off), IMAP with STARTTLS, deliverability or DNS records. The
+// What it does NOT cover: a real mail provider, a certificate that passes verification (the server's
+// is self-signed; IMAP's check is turned off by its Secret throughout), IMAP with STARTTLS, deliverability or DNS records. The
 // network rule that lets the module reach a server inside the cluster is added by the test: a real
 // mail server is on the internet, which the module's own policy allows.
 //
@@ -95,11 +97,17 @@ func supportMailCompany(configured, enabled bool) string {
 	return y
 }
 
-func mailSecrets(t *testing.T, imapPassword string) {
+// mailSecrets writes the operator's two Secrets. relayUnchecked adds tls_verify: "false" to the
+// relay's, the only way to turn the certificate check off.
+func mailSecrets(t *testing.T, imapPassword string, relayUnchecked bool) {
 	t.Helper()
-	y := fmt.Sprintf("apiVersion: v1\nkind: Secret\nmetadata: {name: can-smtp-relay, namespace: can-system}\nstringData:\n  host: %s\n  username: %s\n  password: '%s'\n  from: no-reply@%s\n"+
+	optOut := ""
+	if relayUnchecked {
+		optOut = "  tls_verify: \"false\"\n"
+	}
+	y := fmt.Sprintf("apiVersion: v1\nkind: Secret\nmetadata: {name: can-smtp-relay, namespace: can-system}\nstringData:\n  host: %s\n  username: %s\n  password: '%s'\n  from: no-reply@%s\n%s"+
 		"---\napiVersion: v1\nkind: Secret\nmetadata: {name: can-support-imap, namespace: can-system}\nstringData:\n  host: %s\n  username: %s\n  password: '%s'\n  port: \"9993\"\n  tls_verify: \"false\"\n",
-		sinkHost, supportAddr, sinkPassword, wrappedDomain, sinkHost, supportAddr, imapPassword)
+		sinkHost, supportAddr, sinkPassword, wrappedDomain, optOut, sinkHost, supportAddr, imapPassword)
 	if out, err := kubectlStdin(y, "apply", "-f", "-"); err != nil {
 		t.Fatalf("creating the mail Secrets: %v\n%s", err, out)
 	}
@@ -155,7 +163,7 @@ func TestSupportMailThroughCanCore(t *testing.T) {
 		t.Fatalf("deploying the mail server: %v\n%s", err, out)
 	}
 	mustKubectl(t, "-n", sinkNS, "rollout", "status", "deploy/mailsink", "--timeout=180s")
-	mailSecrets(t, sinkPassword)
+	mailSecrets(t, sinkPassword, false)
 
 	company := supportMailCompany(true, true)
 	canApplyModules(t, company)
@@ -219,20 +227,63 @@ func TestSupportMailThroughCanCore(t *testing.T) {
 		t.Fatalf("signing in: %d to %q", p.status, p.location)
 	}
 	csrf := token("/conversation/" + ids[0])
-	reply := url.Values{"_token": {csrf}, "action": {"send_reply"}, "conversation_id": {ids[0]}, "mailbox_id": {ids[1]},
-		"body": {"<div>Please-restart-the-widget.</div>"}, "status": {"1"}}
-	p := b.do(t, "POST", "/conversation/ajax", "application/x-www-form-urlencoded", reply.Encode(),
-		map[string]string{"X-Requested-With": "XMLHttpRequest", "X-CSRF-TOKEN": csrf})
-	if p.status != 200 || !strings.Contains(p.body, `"status":"success"`) {
-		t.Fatalf("replying: %d %.300s", p.status, p.body)
+	reply := func(text string) {
+		t.Helper()
+		v := url.Values{"_token": {csrf}, "action": {"send_reply"}, "conversation_id": {ids[0]}, "mailbox_id": {ids[1]},
+			"body": {"<div>" + text + "</div>"}, "status": {"1"}}
+		p := b.do(t, "POST", "/conversation/ajax", "application/x-www-form-urlencoded", v.Encode(),
+			map[string]string{"X-Requested-With": "XMLHttpRequest", "X-CSRF-TOKEN": csrf})
+		if p.status != 200 || !strings.Contains(p.body, `"status":"success"`) {
+			t.Fatalf("replying: %d %.300s", p.status, p.body)
+		}
 	}
-	var got sentMail
-	eventually(t, 5*time.Minute, "the reply to reach the mail server", func() (bool, string) {
+	allSent := func() []sentMail {
 		var sent []sentMail
 		pg := sink.do(t, "GET", "/sent", "", "", nil)
 		if err := json.Unmarshal([]byte(pg.body), &sent); err != nil {
-			return false, err.Error()
+			t.Fatalf("listing sent mail: %v", err)
 		}
+		return sent
+	}
+
+	// 3a. The mail server's certificate is self-signed: by default FreeScout refuses it. This is
+	// the proof, in the real image, that the relay's certificate is checked.
+	eventually(t, 4*time.Minute, "the unchecked certificate to be reported", func() (bool, string) {
+		o, err := canSupport(t, company, "status")
+		return err != nil && strings.Contains(o, "send:   failing (SMTP: TLS failed"), o
+	})
+	reply("This-must-not-leave.")
+	eventually(t, 3*time.Minute, "FreeScout to try to send, and fail", func() (bool, string) {
+		n := moduleSQL(t, "mod_support", "select count(*) from send_logs where email = '"+customerAddr+"'")
+		return n != "0", n
+	})
+	if sent := allSent(); len(sent) != 0 {
+		t.Fatalf("%d messages were sent to a server whose certificate cannot be checked", len(sent))
+	}
+	if logs := mustKubectl(t, "-n", sinkNS, "logs", "deploy/mailsink"); !strings.Contains(logs, "smtp: TLS handshake") {
+		t.Errorf("the mail server saw no refused handshake:\n%s", logs)
+	}
+
+	// 3b. The operator's Secret turns the check off, and the reply leaves.
+	mailSecrets(t, sinkPassword, true)
+	eventually(t, 6*time.Minute, "the opt-out to reach the module", func() (bool, string) {
+		o, err := kubectl("-n", "mod-support", "get", "secret", "can-smtp", "-o", "jsonpath={.data.verify}")
+		return err == nil && o == base64.StdEncoding.EncodeToString([]byte("false")), o
+	})
+	rolledOut("support to be back with the opt-out")
+	eventually(t, 6*time.Minute, "mail send to be reported healthy", func() (bool, string) {
+		o, err := canSupport(t, company, "status")
+		return err == nil && strings.Contains(o, "send:   ok"), o
+	})
+	b = newBrowser(portForward(t, "mod-support", "support", 8080), "support."+wrappedDomain) // the pod is a new one
+	if p := b.form(t, "/login", url.Values{"_token": {token("/login")}, "email": {"admin@" + wrappedDomain}, "password": {password}}); p.status != 302 || strings.HasSuffix(p.location, "/login") {
+		t.Fatalf("signing in again: %d to %q", p.status, p.location)
+	}
+	csrf = token("/conversation/" + ids[0])
+	reply("Please-restart-the-widget.")
+	var got sentMail
+	eventually(t, 5*time.Minute, "the reply to reach the mail server", func() (bool, string) {
+		sent := allSent()
 		for _, m := range sent {
 			if len(m.To) == 1 && m.To[0] == customerAddr && strings.Contains(m.Data, "Please-restart-the-widget") {
 				got = m
@@ -261,7 +312,7 @@ func TestSupportMailThroughCanCore(t *testing.T) {
 
 	// 5. A new, wrong IMAP password is applied by itself and reported, without being repeated.
 	const wrong = "ci-wrong-imap-password"
-	mailSecrets(t, wrong)
+	mailSecrets(t, wrong, true)
 	eventually(t, 8*time.Minute, "the failing fetch to be reported", func() (bool, string) {
 		o, err := canSupport(t, company, "status")
 		return err != nil && strings.Contains(o, "fetch:  failing (IMAP: the server refused the user name or password)"), o

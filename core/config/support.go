@@ -6,6 +6,7 @@ package config
 // can-system/can-support-imap, the relay's in can-system/can-smtp-relay.
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -34,10 +35,18 @@ type SupportIMAP struct {
 	Folder     string
 }
 
-// SupportIssue is one validation finding. A warning does not refuse company.yaml.
+// SupportIssue is one validation finding. All of them are warnings: releases before specs/059
+// accepted these keys and ignored them, so a company.yaml must not start to be refused.
 type SupportIssue struct {
 	Path, Rule, Message string
-	Warning             bool
+	// Invalid: a value that cannot be applied. While there is one, no mailbox setting is changed.
+	Invalid bool
+}
+
+// SupportMailFor is SupportMailOf for one enabled module's settings.
+func SupportMailFor(id, domain string, email *Email, settings map[string]any) (SupportMail, []SupportIssue) {
+	on := true
+	return SupportMailOf(&Company{Domain: domain, Email: email, Modules: map[string]ModuleEntry{id: {Enabled: &on, Settings: settings}}})
 }
 
 // SupportMailOf reads modules.support.settings. A disabled or unlisted module has no findings.
@@ -51,10 +60,10 @@ func SupportMailOf(c *Company) (SupportMail, []SupportIssue) {
 	var issues []SupportIssue
 	const base = "/modules/support/settings"
 	bad := func(path, msg string) {
-		issues = append(issues, SupportIssue{Path: base + path, Rule: "semantic.support-mail", Message: msg})
+		issues = append(issues, SupportIssue{Path: base + path, Rule: "semantic.support-mail", Message: msg, Invalid: true})
 	}
 	warn := func(path, msg string) {
-		issues = append(issues, SupportIssue{Path: base + path, Rule: "semantic.support-mail-incomplete", Message: msg, Warning: true})
+		issues = append(issues, SupportIssue{Path: base + path, Rule: "semantic.support-mail-incomplete", Message: msg})
 	}
 	text := func(in map[string]any, key, path string, max int) string {
 		v, set := in[key]
@@ -147,7 +156,8 @@ func SupportMailOf(c *Company) (SupportMail, []SupportIssue) {
 		if m.Address == "" {
 			bad("/inbound/imap", "set support_address too: it is the address of the mailbox that is fetched into")
 		}
-		if m.Address != "" && in.Host != "" {
+		invalid := slices.ContainsFunc(issues, func(is SupportIssue) bool { return is.Invalid })
+		if m.Address != "" && in.Host != "" && !invalid {
 			m.IMAP = in
 		}
 	}

@@ -24,7 +24,8 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- $host := required "ingress.host is supplied by can-core" .Values.ingress.host }}
-      {{- $email := default (printf "admin@%s" (trimPrefix "support." $host)) .Values.settings.admin_email }}
+      {{- /* "$$" is a literal "$": without it a setting such as "$(DB_PASS)" would be expanded. */}}
+      {{- $email := default (printf "admin@%s" (trimPrefix "support." $host)) .Values.settings.admin_email | toString | replace "$" "$$" }}
       containers:
         - name: app
           image: {{ include "mod.image" .Values.image | quote }}
@@ -39,6 +40,21 @@ spec:
               cat >/tmp/can-support.php <<'CANPHP'
               {{- include "support.provision" . | nindent 14 }}
               CANPHP
+              # FreeScout's mail library does not check the relay's certificate unless its mail
+              # config says so. Upstream's config/mail.php is kept as it is and wrapped, before the
+              # first boot step caches the configuration. Failing here stops the pod: it must not
+              # run without the check.
+              mail=/var/www/html/config/mail.php
+              upstream=/var/www/html/bootstrap/can-mail-upstream.php
+              grep -q can-mail-upstream "$mail" || cp "$mail" "$upstream" || exit 1
+              cat >"$mail" <<'CANCONF' || exit 1
+              <?php
+              $mail = require dirname(__DIR__).'/bootstrap/can-mail-upstream.php';
+              // Off only when the operator's relay Secret says tls_verify: "false".
+              $verify = getenv('CAN_MAIL_VERIFY') !== 'false';
+              $mail['stream'] = ['ssl' => ['verify_peer' => $verify, 'verify_peer_name' => $verify, 'allow_self_signed' => !$verify]];
+              return $mail;
+              CANCONF
               (
                 n=0
                 until wget -q -O /dev/null --header "Host: $CAN_HOST" --header "X-Forwarded-Proto: https" http://127.0.0.1:{{ .Values.service.port }}/login; do
@@ -82,13 +98,13 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.module }}, key: CAN_SUPPORT_ADMIN_PASSWORD}}
             - {name: FREESCOUT_APP_NAME, value: {{ .Values.app.applicationName | quote }}}
             - {name: PHP_FPM_PM_MAX_CHILDREN, value: {{ .Values.app.phpMaxChildren | quote }}}
-            # The support inbox (modules/support/README.md): company.yaml modules.support.settings.
-            - {name: CAN_SUPPORT_ADDRESS, value: {{ .Values.settings.support_address | default "" | quote }}}
-            - {name: CAN_SUPPORT_NAME, value: {{ .Values.settings.mailbox_name | default "" | quote }}}
-            {{- with .Values.settings.inbound }}
-            {{- if and .imap (ne (toString .mode) "webhook") }}
+            # The support inbox (modules/support/README.md): what can-core read of company.yaml
+            # modules.support.settings, never the settings as written.
+            - {name: CAN_SUPPORT_ADDRESS, value: {{ .Values.mail.address | toString | replace "$" "$$" | quote }}}
+            - {name: CAN_SUPPORT_NAME, value: {{ .Values.mail.name | toString | replace "$" "$$" | quote }}}
+            - {name: CAN_SUPPORT_INVALID, value: {{ .Values.mail.invalid | toString | replace "$" "$$" | quote }}}
+            {{- if .Values.mail.imapWanted }}
             - {name: CAN_IMAP_WANTED, value: "1"}
-            {{- end }}
             {{- end }}
             # Optional: empty until company.yaml asks for inbound mail and the credentials are there.
             {{- range list "HOST" "PORT" "ENCRYPTION" "FOLDER" "VERIFY" }}
@@ -113,6 +129,8 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: encryption, optional: true}}
             - name: CAN_MAIL_FROM
               valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: from, optional: true}}
+            - name: CAN_MAIL_VERIFY
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.smtp }}, key: verify, optional: true}}
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

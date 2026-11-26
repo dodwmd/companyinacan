@@ -67,12 +67,12 @@ func TestSupportMailFindings(t *testing.T) {
 		_, issues := SupportMailOf(supportCompanyYAML(t, tc.yaml))
 		found := false
 		for _, is := range issues {
-			if is.Path == "/modules/support/settings"+tc.path && strings.Contains(is.Message, tc.want) && is.Warning == tc.warning {
+			if is.Path == "/modules/support/settings"+tc.path && strings.Contains(is.Message, tc.want) && is.Invalid == !tc.warning {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("%s: want %q (warning=%v) at %s, got %v", name, tc.want, tc.warning, tc.path, issues)
+			t.Errorf("%s: want %q (usable=%v) at %s, got %v", name, tc.want, tc.warning, tc.path, issues)
 		}
 	}
 }

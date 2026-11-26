@@ -29,7 +29,7 @@ function reason($msg) {
     foreach ([
         '/auth/i' => 'the server refused the user name or password',
         '/getaddrinfo|resolve/i' => 'the host name does not resolve',
-        '/certificate|SSL operation|enable TLS|STARTTLS|crypto/i' => 'TLS failed (certificate not trusted, or no TLS on this port)',
+        '/certificate|SSL operation|enable TLS|TLS encryption|STARTTLS|crypto/i' => 'TLS failed (certificate not trusted, or no TLS on this port)',
         '/timed? ?out/i' => 'the server did not answer in time',
         '/connect|refused|unreachable|no response/i' => 'cannot connect to the host and port',
         '/folder/i' => 'the folder does not exist',
@@ -87,6 +87,10 @@ function clear_connection($mailbox, $direction) {
 }
 
 function apply_mailbox() {
+    if (env_str('CAN_SUPPORT_INVALID') !== '') {
+        // Nothing is changed: a typing mistake must not remove a working mailbox's settings.
+        throw new ConfigRefused(env_str('CAN_SUPPORT_INVALID'));
+    }
     $address = strtolower(trim(env_str('CAN_SUPPORT_ADDRESS')));
     $id = (int) opt('can_mailbox_id');
     $managed = $id ? Mailbox::find($id) : null;
@@ -109,6 +113,9 @@ function apply_mailbox() {
     }
     $mailbox = $mailbox ?: $managed ?: new Mailbox();
     $new = !$mailbox->exists;
+    if (!$new && (int) $mailbox->id !== $id) {
+        echo "can: WARNING: the existing mailbox $address was taken over: what company.yaml configures replaces its connection settings\n";
+    }
     $mailbox->email = $address;
     $name = mb_substr(trim(strip_tags(env_str('CAN_SUPPORT_NAME'))), 0, 40);
     if ($name !== '') {
@@ -200,6 +207,20 @@ function fetch_state($mailbox) {
     if ($test['result'] !== 'success') {
         return state('failing', 'IMAP: ' . reason($test['msg']));
     }
+    // That test looks at INBOX only, and a scheduled fetch skips a folder that is not there.
+    try {
+        $client = \App\Misc\Mail::getMailboxClient($mailbox);
+        $client->connect();
+        foreach ($mailbox->getInImapFolders() as $name) {
+            $folder = \App\Misc\Mail::getImapFolder($client, $name);
+            if (!$folder || !empty($folder->no_select)) {
+                return state('failing', 'IMAP: the folder "' . mb_substr($name, 0, 60) . '" does not exist or cannot be read');
+            }
+        }
+        $client->disconnect();
+    } catch (\Exception $e) {
+        return state('failing', 'IMAP: ' . reason($e->getMessage()));
+    }
     // Counted from the last apply when that is later: after a restart the scheduler gets its time.
     $last = (int) opt('fetch_emails_last_successful_run');
     $since = max($last, (int) opt('can_applied_at'));
@@ -217,9 +238,15 @@ function send_state($mailbox) {
     if (env_str('CAN_MAIL_HOST') === '') {
         return state('not_configured', 'no relay: email.modules.support.enabled and email.relay (docs/email.md)');
     }
+    // The options FreeScout sends with (config/mail.php): the check that it verifies certificates.
+    $stream = (array) config('mail.stream');
+    if (env_str('CAN_MAIL_VERIFY') !== 'false' && empty($stream['ssl']['verify_peer'])) {
+        return state('failing', 'SMTP: FreeScout is not checking the relay\'s certificate');
+    }
     try {
         $transport = new Swift_SmtpTransport(env_str('CAN_MAIL_HOST'), (int) env_str('CAN_MAIL_PORT'), env_str('CAN_MAIL_ENCRYPTION'));
         $transport->setTimeout(15);
+        $transport->setStreamOptions($stream);
         if (env_str('CAN_MAIL_USERNAME') !== '') {
             $transport->setUsername(env_str('CAN_MAIL_USERNAME'));
             $transport->setPassword(env_str('CAN_MAIL_PASSWORD'));
@@ -249,10 +276,10 @@ function status() {
     $address = strtolower(trim(env_str('CAN_SUPPORT_ADDRESS')));
     $mailbox = $address === '' ? null : Mailbox::where('email', $address)->first();
     $error = (string) opt('can_support_error');
-    if ($address === '') {
-        $config = state('not_configured', 'modules.support.settings.support_address is not set');
-    } elseif ($error !== '') {
+    if ($error !== '') {
         $config = state('failing', $error);
+    } elseif ($address === '') {
+        $config = state('not_configured', 'modules.support.settings.support_address is not set');
     } else {
         $config = $mailbox ? state('ok') : state('pending', 'the mailbox has not been created yet');
     }

@@ -34,7 +34,7 @@ relay that lets you send **as the support address**, with SPF, DKIM and DMARC se
 
    ```yaml
    email:
-     relay: { host: smtp.example.com }          # replies leave through it
+     relay: { host: smtp.example.com, port: 465 }   # replies leave through it; 465 is implicit TLS
      modules:
        support: { enabled: true }               # hands the relay password to FreeScout
    modules:
@@ -88,11 +88,43 @@ What is applied:
 New passwords: update the Secret (or run `make up` again with the file); can-core sees it in a minute or two and
 restarts the module.
 
+### The relay's certificate
+
+FreeScout is set to verify the relay's certificate and name (this module wraps its `config/mail.php`: as shipped, it
+verifies nothing). A relay with a self-signed or private-CA certificate is refused. To send to it anyway, add the key
+to the relay Secret, which also has to name the `host`; nothing in `company.yaml` can turn the check off, and
+can-core's own `email.send` ignores the key and always verifies:
+
+```sh
+kubectl -n can-system patch secret can-smtp-relay --type merge -p '{"stringData":{"tls_verify":"false"}}'
+```
+
+**Use port 465 (implicit TLS) if your relay offers it.** With STARTTLS (587), FreeScout's mail library falls back to
+plain `HELO` when the server answers `EHLO` with an error, and then sends **without TLS**. Someone on the network path
+could force this and read the message (the relay password is not sent in that case). With 465 there is no such
+fallback.
+
+### Upgrading from module 0.1.0
+
+Releases before 0.2.0 accepted these settings and ignored them. Read this before upgrading an installation that has
+them in `company.yaml`:
+
+- **A mailbox with the `support_address` that you set up by hand is taken over**: what `company.yaml` configures
+  (outgoing with the relay opted in, incoming with `inbound.imap`) replaces its connection settings, and the pod log
+  says `can: WARNING: the existing mailbox ... was taken over`. Note your settings first, or remove `support_address`.
+  A different address creates a second mailbox.
+- Values that cannot be applied (for example `encryption: tls` or `none`, or a support address equal to the
+  administrator's) are warnings of `can validate`, not errors; while there is one, no mailbox setting is changed and
+  `can support status` says which.
+- **The relay's certificate is now checked**, for every mailbox, including ones set up by hand, with the relay
+  opted in or not. One that relied on a self-signed certificate stops sending; `tls_verify` above reaches the module
+  only with the relay opted in.
+
 ### Health
 
 | Where | What |
 |---|---|
-| `can support status` | Signs in to the IMAP server and the relay now (nothing is read or sent), looks at the last scheduled fetch and at replies that failed or wait |
+| `can support status` | Signs in to the IMAP server and the relay now (nothing is read or sent), checks that each fetched folder exists, looks at the last scheduled fetch and at replies that failed or wait |
 | `can verify --server` | The same as `support.mail-config`, `support.mail-fetch`, `support.mail-send` |
 | Pod log | `can: mail status {...}` when the state changes (checked every 5 minutes) |
 | FreeScout | Manage, Logs and System; its fetch alert by email |
@@ -101,10 +133,7 @@ The admin UI's status page does not show mail health.
 
 ### Not covered
 
-- **The relay's certificate is not checked.** FreeScout turns SMTP certificate verification off (its own override
-  of its mail library), for STARTTLS and implicit TLS alike. Someone between your server and the relay could read
-  the mail and the relay password. can-core's own `email.send` does verify. IMAP certificates are verified (unless
-  the Secret says `tls_verify: "false"`). Use a relay credential that can only send, and only as your domain.
+- STARTTLS can be downgraded to no encryption by an attacker on the path (above); use 465.
 - OAuth sign-in (Google Workspace and Microsoft 365 mailboxes that refuse passwords) cannot be set from
   `company.yaml`; POP3 and the inbound-parse webhook (`inbound.mode: webhook`) neither.
 - No real mail provider has been tried.

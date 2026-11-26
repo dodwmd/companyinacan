@@ -20,7 +20,7 @@
             "host": { "type": "string", "minLength": 1 },
             "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
             "username": { "type": "string", "description": "Mailbox user name; the Secret can-system/can-support-imap may name it instead. The password is only ever in that Secret." },
-            "encryption": { "enum": ["ssl", "starttls"], "default": "ssl", "description": "ssl: implicit TLS (993). starttls: STARTTLS (143)." },
+            "encryption": { "enum": ["ssl", "starttls", "tls", "none"], "default": "ssl", "description": "ssl: implicit TLS (993). starttls: STARTTLS (143). tls and none were accepted before and are not applied." },
             "folder": { "type": "string", "default": "INBOX" }
           }
         },

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
 
@@ -26,6 +27,27 @@ type IMAPAccount struct {
 
 // wantsMailbox reports whether the module is a helpdesk that fetches a mailbox itself.
 func wantsMailbox(id string) bool { return id == "support" }
+
+// mailValues are the chart values of the support inbox: the settings as can-core read and checked
+// them, so that a value it refused never reaches the application. nil for other modules.
+func mailValues(s reconcile.Spec) map[string]any {
+	if !wantsMailbox(s.ID) {
+		return nil
+	}
+	m, issues := config.SupportMailFor(s.ID, s.Domain, s.Email, s.Settings)
+	invalid := ""
+	for _, is := range issues {
+		if is.Invalid {
+			invalid = is.Message
+			break
+		}
+	}
+	address := m.Address
+	if invalid != "" {
+		address = ""
+	}
+	return map[string]any{"mail": map[string]any{"address": address, "name": m.MailboxName, "imapWanted": m.IMAP != nil, "invalid": invalid}}
+}
 
 // imapValues is what `can-imap` holds for s: empty without an account.
 func (in *Installer) imapValues(s reconcile.Spec) (map[string]string, error) {

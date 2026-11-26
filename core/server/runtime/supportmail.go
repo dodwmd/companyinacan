@@ -27,9 +27,7 @@ const maxIMAPSecretValue = 4 << 10
 // password sent to another server. nil means nothing usable; an unreadable Secret is an error, so
 // that a module keeps what it has.
 func (c Config) appIMAP(spec reconcile.Spec) (*installer.IMAPAccount, error) {
-	on := true
-	m, _ := config.SupportMailOf(&config.Company{Domain: spec.Domain, Email: spec.Email,
-		Modules: map[string]config.ModuleEntry{spec.ID: {Enabled: &on, Settings: spec.Settings}}})
+	m, _ := config.SupportMailFor(spec.ID, spec.Domain, spec.Email, spec.Settings)
 	if m.IMAP == nil {
 		return nil, nil
 	}

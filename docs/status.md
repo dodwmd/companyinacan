@@ -75,7 +75,7 @@ applications are not in it.
 | OIDC single sign-on, Web Push, SCIM, CSV import, accounting | unit tests against fakes | any real identity provider, push service, SCIM client or accounting system |
 | Contracts signed by emailed link | unit tests; signed in a browser through the compose SMTP sink | a real relay, legal review |
 | Outbound email | fake relays and the compose sink | a real relay, deliverability |
-| Support inbox mail (`company.yaml`) | `support-mail` on k3d: a message in an in-memory IMAP server becomes a ticket, a reply reaches its SMTP side ([specs/059](../specs/059-support-mailbox/spec.md)) | a real mail provider or relay, certificate checks, STARTTLS fetch |
+| Support inbox mail (`company.yaml`) | `support-mail` on k3d: a message in an in-memory IMAP server becomes a ticket, a reply reaches its SMTP side ([specs/059](../specs/059-support-mailbox/spec.md)) | a real mail provider or relay (the job shows an untrusted relay certificate refused), STARTTLS fetch |
 | `make up` phases, backup script, `can verify --server` | `make-up-e2e` on k3d with a fake host and a local restic repository | creating a server, cloud-init, k3s install on a fresh OS, ACME certificates, the five-minute target, `can verify` against a real server |
 | Hetzner, DigitalOcean, Cloudflare DNS | fake HTTP APIs | any real account |
 | Restore onto a new cluster | `restore-e2e` (forms, work, people, finance, with erasures) | a real server or bucket, systemd, restore time, large data |

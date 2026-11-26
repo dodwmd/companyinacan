@@ -60,10 +60,12 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 
 	_, support := config.SupportMailOf(c)
 	for _, is := range support {
-		add(is.Rule, is.Path, is.Message)
-		if is.Warning {
-			ps[len(ps)-1].Severity = problem.Warning
+		msg := is.Message
+		if is.Invalid {
+			msg += " (no mailbox setting is applied until this is fixed)"
 		}
+		add(is.Rule, is.Path, msg)
+		ps[len(ps)-1].Severity = problem.Warning
 	}
 
 	if _, warning := config.SiteSupportAddress(c); warning != "" {
