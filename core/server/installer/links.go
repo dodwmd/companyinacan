@@ -73,6 +73,11 @@ func (in *Installer) wireSecrets(ctx context.Context, s reconcile.Spec, data map
 		if tok == "" && (link || required || in.cfg.Quiesce) {
 			tok = have
 		}
+		// A restore runs nothing, so a missing credential stops nothing: a module that was disabled
+		// or failed has none, and is given one when it is next applied.
+		if tok == "" && in.cfg.Quiesce {
+			continue
+		}
 		switch {
 		case tok != "":
 			data[g.ConsumerKey] = tok
