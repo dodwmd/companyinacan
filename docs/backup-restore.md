@@ -26,8 +26,9 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      than the module dumps beside them; without a marker the set is not backed up either way;
    - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
      data is still there), as a Job in `mod-<id>`. For the in-house modules the Job is `<binary> backup` in the
-     module's own image within the module's memory limit (see [In-house modules](#in-house-modules)). For the
-     wrapped modules it is a shell script in the `can-hooks` image: restricted pod, projected audience-`can` token, the module's
+     module's own image within the module's memory limit (see [In-house modules](#in-house-modules)). analytics,
+     support and newsletter are dumped by can-core itself (see [Wrapped modules](#wrapped-modules)). For
+     wiki, status and crm it is a shell script in the `can-hooks` image: restricted pod, projected audience-`can` token, the module's
      volume at `/data`, `/storage` and `/app/data` (read-only unless SQLite; none for MariaDB/PostgreSQL modules).
      A module with neither a volume nor a database is skipped. A hook pod that cannot start (image pull, config)
      is given up after 2 minutes, a hook after 15;
@@ -40,7 +41,7 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      (`LAST-RUN`).
    - A run that leaves a database (or vanished data) out is announced: `dump-request --wait` prints it, and the
      host script logs a warning and POSTs it to the failure webhook after each backup (the run still exits 0).
-   - **A disabled module never stops backups.** If its hook cannot run (the unpublished `can-hooks` image) or fails,
+   - **A disabled module never stops backups.** If its hook cannot run (the unpublished `can-hooks` image: wiki, status, crm) or fails,
      it is skipped and reported by `can backup status`, the admin status page and `can up`. Only its raw volume
      files are then backed up; for a MariaDB or PostgreSQL module **the database is not backed up**. A module that
      had a dump and suddenly reports no data is reported the same way, and its earlier dump is kept. To get backups
@@ -114,6 +115,26 @@ can-files restore -config files.yaml -from ./set -blobs <restored volume>/blobs
 Kubernetes Secrets. Without the original keys the restored data is unreadable. They are in the snapshot only
 inside the k3s datastore copy; export them and keep them with the recovery kit. Which keys, and the contract
 `can restore` follows: [specs/043-module-backup-hooks/contracts/hooks.md](../specs/043-module-backup-hooks/contracts/hooks.md).
+
+## Wrapped modules
+
+analytics, support and newsletter need no hooks image ([specs/046-wrapped-backups](../specs/046-wrapped-backups/spec.md)).
+The hook Job uses images already on the server: the pinned Postgres image runs `pg_dump` / `pg_restore` with the
+module's own database role, and can-core's image uploads and downloads.
+
+| Module | In the dump set |
+|---|---|
+| analytics | a checked copy of its SQLite database |
+| support | `pg_dump` of its database, then an archive of its volume (attachments) |
+| newsletter | `pg_dump` of its database, then an archive of its volume (uploads) |
+
+- The database is dumped before the files are archived. A file the application deletes between the two is missing from
+  the set although the dumped database refers to it. The application is not stopped.
+- The files are in the dumps directory as well as on their volume, so they take disk twice, and a set is limited to
+  4 GiB per file and 8 GiB per module. A bigger module fails the dump run (and then nothing is backed up).
+- A restore replaces the whole schema `public` of the module's database and the whole content of its volume.
+- A server installed before this is covered from the next dump run; no module upgrade is needed.
+- wiki, status and crm still need the unpublished `can-hooks` image: enabling one stops every backup.
 
 ## Retention and erasure of dumps
 
@@ -237,23 +258,20 @@ measured by a person:
 6. Record the results in `specs/008-backup-restore/measurements.md` and update SPEC.md section 6.5 and section 10 with the
    measured number. Until then the claim stays unproven.
 
-## The shared Postgres is not backed up
+## The shared Postgres
 
 can-core runs a Postgres in `can-data` for modules that need one (today `support` and `newsletter`,
-[specs/041](../specs/041-wrapped-modules-live/spec.md)). **Nothing backs it up today:**
+[specs/041](../specs/041-wrapped-modules-live/spec.md)).
 
 - Its data directory (`pvc-*_can-data_postgres-data`) is excluded from the file backup, because a copy of a
   running server's files is not a backup.
-- Its databases would be held by the modules' dump hooks (`pg_dump`), which cannot run until the `can-hooks`
-  image is published; and while such a module is enabled no backup completes at all.
-- So losing the server, or its volume, loses every database in it. The admin UI says so when such a module is
-  enabled, and `can validate` warns.
+- Each module's database is in the backup as that module's [dump](#wrapped-modules). A database no module dumps (one
+  you made by hand, or the server's roles and settings) is **not** backed up. can-core creates the roles again.
+- An operator's own server (`CAN_POSTGRES_ADMIN_URL`) is dumped the same way; its major version must not be newer
+  than 17, or the dump run fails. If it runs in `can-data` with a claim named `postgres-data`, that volume is
+  excluded too.
 - The backup script of an existing server excludes the directory only after it is generated again
   (`can backup install` or `can up`).
-- An operator's own server (`CAN_POSTGRES_ADMIN_URL`) is theirs to back up. If it runs in `can-data` with a
-  claim named `postgres-data`, that volume is excluded too.
-- After a restore onto a blank host the server starts empty: the module databases exist again only after the
-  modules are applied again, and hold only what a dump restores.
 
 ## What is and is not in a snapshot
 
@@ -286,15 +304,17 @@ a module backup hook Job. The numbers are in
 - **Restore.** `can restore` is not functional (the provisioning and can-core adapters return exit 3). Restoring
   onto a blank host, importing can-core state, module `restore` hooks and PVC data have never run. can-core has no
   restore mode: whoever implements it must keep dump runs off until the import is done.
-- The shipped script hooks (wiki, support, newsletter, analytics, crm, status): CI builds the `can-hooks` image and
+- The shipped script hooks (wiki, crm, status): CI builds the `can-hooks` image and
   parses them in it, but the image is not published, so while one of these modules is enabled the dump run fails (and
   no marker is written); disabled, it is skipped. None of these hooks has run against its application. A release
   publishes the image (docs/releasing.md); until then there is nothing to pull.
 - In-house hooks on a cluster: forms, work and files only (`module-backup` in CI). jobs, people, finance and
   provisioning are covered by unit tests; equity, board and entity cannot be installed by can-core yet. Restore ran
   by hand on fresh instances (docker), not through can-core.
-- `can-hooks` Jobs against a database module (DB credentials come from the `can-db` Secret). Only `crm`'s chart
-  still names a `can-database` Secret that can-core does not write.
+- `can-hooks` Jobs against a database module. Only `crm`'s chart still names a `can-database` Secret that
+  can-core does not write.
+- The wrapped modules' dumps (analytics, support, newsletter) on a real server, with large data, or against an
+  external Postgres.
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
   directory and a run holds the old and the new set at once. Hooks retry with `--retry` only, which does not cover
   a connection refused while a new pod's network rules are still being programmed.

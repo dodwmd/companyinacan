@@ -5,7 +5,7 @@ name: Newsletter
 description: Mailing lists, double opt-in, campaigns and subscriber management. Wraps Listmonk; an adapter exposes the newsletter capability, publishes subscriber.added.v1 and subscribes people who opt in on a form (lead.created.v1). Sends through a bulk relay (docs/email-policy.md).
 category: marketing
 # Experimental: installed through can-core on k3d by the advisory CI job (specs/041-wrapped-modules-live);
-# never on a real server or relay, backups not run (the hooks image is not published), the capability
+# never on a real server or relay, the capability
 # adapter is not built (T031), and the SMTP settings are MANUAL: paste the relay credentials into
 # Listmonk Settings, SMTP (Listmonk keeps them in its database; can-core does not give it any).
 status: experimental
