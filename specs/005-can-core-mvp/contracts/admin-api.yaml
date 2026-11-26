@@ -33,7 +33,7 @@ paths:
       summary: Log in with password and TOTP code
       description: |
         Every failure (unknown user, wrong password, wrong or already-used code) returns the same 401.
-        Input limits: body 4 KiB, username 64 characters, password 1024. With CAN_TRUST_PROXY (real client addresses) each address is limited to 10 attempts a minute, 5 failures lock a (username, address) pair and 20 lock an address (429 with Retry-After); without it failures only delay logins and nothing is refused for them, so codes can be guessed by someone who knows the password. The TOTP code is checked before argon2, which runs under a concurrency cap (503 when busy).
+        Input limits: body 4 KiB, username 64 characters, password 1024. With CAN_TRUST_PROXY (real client addresses) 5 failures lock a (username, address) pair and 20 lock an address (429 with Retry-After; only failures count, sign-ins with valid credentials are never throttled); without it failures only delay logins and nothing is refused for them, so codes can be guessed by someone who knows the password. The TOTP code is checked before argon2, which runs under a concurrency cap (503 when busy).
       security: []
       requestBody:
         required: true
@@ -368,7 +368,7 @@ paths:
     post:
       operationId: issueToken
       summary: "Issue a personal access token for one module"
-      description: "The permissions must be declared by the module and held by the caller. The token is returned once and only its hash is stored."
+      description: "The permissions must be declared by the module and held by the caller. A token carrying equity.board needs a session whose sign-in or confirmation is at most 10 minutes old (403 otherwise: sign in again). The token is returned once and only its hash is stored."
       security: [{ session: [], csrf: [] }]
       requestBody:
         required: true

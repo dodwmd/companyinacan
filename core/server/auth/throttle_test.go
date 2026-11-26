@@ -24,7 +24,7 @@ func (e *env) wrongCode(t *testing.T) string {
 func throttleEnv(t *testing.T, hardLock bool) *env {
 	e := newEnv(t)
 	pol := DefaultPolicy
-	pol.HardLock, pol.AttemptsPerMin = hardLock, 100000
+	pol.HardLock = hardLock
 	e.svc = NewService(e.db, audit.New(e.db), Options{Now: func() time.Time { return *e.now }, Policy: pol,
 		MinLoginTime: time.Nanosecond, Sleep: noSleep, HashSlots: 4, HashWait: time.Minute})
 	return e

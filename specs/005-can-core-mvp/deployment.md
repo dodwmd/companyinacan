@@ -22,8 +22,8 @@ address. can-core therefore has two throttling modes and picks one from `CAN_TRU
 
 - **`CAN_TRUST_PROXY=true` (the deployment default for the chart).** The client address is the **last**
   `X-Forwarded-For` entry, the one Traefik itself appends (never the first, which the client controls). Repeated
-  failures then lock the (username, address) pair (5) or the address (20) for 15 minutes, and an address is limited to
-  10 attempts a minute. Requirements: Traefik must be the only route to the admin port (the NetworkPolicy already
+  failures then lock the (username, address) pair (5) or the address (20) for 15 minutes. Only failures count: sign-ins
+  with valid credentials are never throttled. Requirements: Traefik must be the only route to the admin port (the NetworkPolicy already
   allows only Traefik) and must not be told to trust forwarded headers from arbitrary clients
   (`forwardedHeaders.trustedIPs` unset or limited to a known load balancer), and the Service keeps
   `externalTrafficPolicy: Local` (already set in `deploy/base/traefik-config.yaml`) so the real source address
@@ -42,8 +42,8 @@ mitigation against a sustained flood saturating the waiter cap.
 who already knows a password can try. The back-off delays each attempt but attempts sent side by side wait side by side:
 about 128 a second (256 waiters, 2 s each), plus a burst each time the counters start again. Three codes in a
 million are valid at any moment, so such an attacker can expect to get in within about an hour. The password is then the
-only real factor. Turn on `CAN_TRUST_PROXY` (and add the Traefik IP allowlist). With it, one address gets 10 attempts a
-minute and is locked for 15 minutes after 5 failures on a name (about 480 guesses a day), but the locks are per
+only real factor. Turn on `CAN_TRUST_PROXY` (and add the Traefik IP allowlist). With it, one address
+is locked for 15 minutes after 5 failures on a name (about 480 guesses a day), but the locks are per
 address: an attacker with many addresses gets that allowance for each.
 
 **Detection, both modes.** Twenty failed sign-ins on one account within 24 hours write the audit entry
