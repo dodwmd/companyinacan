@@ -75,6 +75,10 @@ k get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}
 k get ingressroutes.traefik.io -A -o jsonpath='{range .items[*]}{"route="}{.metadata.namespace}{"/"}{.metadata.name}{"|"}{.spec.entryPoints}{"|"}{range .spec.routes[*]}{.match}{" "}{end}{"\n"}{end}'
 kv login_limit "$(k -n can-system get middlewares.traefik.io can-login-rate -o name)"
 k -n can-system get secrets -o name | sed 's|^secret/|system_secret=|'
+# The support module's own check of its mail; it signs in to the servers and sends nothing.
+if [ -n "$(k -n mod-support get deploy support -o name)" ]; then
+  kv support_mail "$(k -n mod-support exec deploy/support -c app --request-timeout=60s -- php /tmp/can-support.php status | grep '^{"config"' | tail -n 1)"
+fi
 
 if have systemctl; then
   kv timer_enabled "$(systemctl is-enabled can-backup.timer 2>/dev/null || true)"
@@ -166,6 +170,8 @@ type ServerOptions struct {
 	// RelaySecret is true when company.yaml has email.relay, SSOSecret names the SSO client secret.
 	EmailRelay bool
 	SSOSecret  string
+	// SupportMail is true when company.yaml gives the support module a mailbox address.
+	SupportMail bool
 }
 
 const (
@@ -303,6 +309,7 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 	} else {
 		add(skip("email.relay-secret", "no email.relay in company.yaml"))
 	}
+	add(evalSupportMail(f, o)...)
 	if o.SSOSecret != "" {
 		add(verdict("sso.client-secret", slices.Contains(f["system_secret"], o.SSOSecret),
 			"the SSO client Secret exists", "sso is enabled but its client Secret is missing from can-system (docs/sso.md)"))

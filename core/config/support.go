@@ -163,3 +163,16 @@ func SupportMailOf(c *Company) (SupportMail, []SupportIssue) {
 	}
 	return m, issues
 }
+
+// SiteSupportAddress is the address site.support links to: "" without the section, or when it has
+// nothing to point at, which the warning then says.
+func SiteSupportAddress(c *Company) (address, warning string) {
+	if c.Site.Support == nil {
+		return "", ""
+	}
+	m, _ := SupportMailOf(c)
+	if m.Address == "" {
+		return "", "site.support is left out of the site: it needs the support module enabled with modules.support.settings.support_address"
+	}
+	return m.Address, ""
+}

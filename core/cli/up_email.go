@@ -37,3 +37,32 @@ func (t *target) smtpRelay(path string) (*launch.SMTPRelay, error) {
 	}
 	return r, nil
 }
+
+// imapAccount reads --support-imap-credentials-file (docs/support.md).
+func (t *target) imapAccount(path string) (*launch.SupportIMAP, error) {
+	if path == "" {
+		return nil, nil
+	}
+	env, err := backup.LoadEnvFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("--support-imap-credentials-file: %w", err)
+	}
+	var user, pass string
+	for _, e := range env {
+		k, v, _ := strings.Cut(e, "=")
+		switch k {
+		case "IMAP_USERNAME":
+			user = v
+		case "IMAP_PASSWORD":
+			pass = v
+		}
+	}
+	if pass != "" {
+		t.redact.Add(pass)
+	}
+	a, err := launch.SupportIMAPFrom(t.company, user, pass)
+	if err != nil {
+		return nil, fmt.Errorf("--support-imap-credentials-file: %w", err)
+	}
+	return a, nil
+}

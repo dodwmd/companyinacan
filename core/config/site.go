@@ -16,6 +16,7 @@ type Site struct {
 	FAQ         []SiteFAQ     `yaml:"faq"`
 	CTA         *SiteCTA      `yaml:"cta"`
 	Contact     *SiteContact  `yaml:"contact"`
+	Support     *SiteSupport  `yaml:"support"`
 	Footer      SiteFooter    `yaml:"footer"`
 }
 
@@ -91,6 +92,15 @@ func (c *SiteContact) FormID() string {
 		return DefaultContactForm
 	}
 	return c.Form
+}
+
+// SiteSupport is the support section: a link to write to the support module's support_address
+// (docs/support.md). Every field is optional. It never links to the helpdesk itself, whose sign-in is
+// for the company's own people.
+type SiteSupport struct {
+	Title  string `yaml:"title"`
+	Text   string `yaml:"text"`
+	Button string `yaml:"button"`
 }
 
 // SiteFooter is the footer content.

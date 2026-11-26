@@ -66,6 +66,11 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		}
 	}
 
+	if _, warning := config.SiteSupportAddress(c); warning != "" {
+		add("semantic.support-section-off", "/site/support", warning)
+		ps[len(ps)-1].Severity = problem.Warning
+	}
+
 	if c.Site.Contact != nil {
 		if forms, err := config.FormsOfModules(modulesDir); err != nil {
 			add("semantic.contact-form", "/site/contact", err.Error())
