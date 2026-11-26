@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>{{t "home.title"}}</h1>
+<p class="hint">{{t "home.intro"}}</p>
+{{if .Data.Spaces}}<div class="scroll">
+<table>
+<caption>{{t "home.caption"}}</caption>
+<thead><tr><th scope="col">{{t "common.name"}}</th><th scope="col">{{t "common.role"}}</th><th scope="col">{{t "common.created"}}</th></tr></thead>
+<tbody>
+{{range .Data.Spaces}}<tr><th scope="row"><a href="/spaces/{{.ID}}">{{.Name}}</a></th><td>{{role .Role}}</td><td>{{when .CreatedAt}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p>{{t "home.empty"}}</p>
+{{end}}{{template "pager" .Data.Next}}
+{{if .Write}}<h2>{{t "home.new"}}</h2>
+<form method="post" action="/spaces" class="card">
+{{template "csrf" .}}
+<p><label for="space-name">{{t "common.name"}}</label>
+<input id="space-name" name="name" required maxlength="100" aria-describedby="space-hint"></p>
+<p id="space-hint" class="hint">{{t "home.new_hint"}}</p>
+<p><button type="submit">{{t "home.new_submit"}}</button></p>
+</form>
+{{end}}{{end}}

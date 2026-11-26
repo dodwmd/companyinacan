@@ -15,7 +15,8 @@ ports:
 services:                  # ClusterIP only; the `files` capability
   - { name: files, portName: http, port: 8095 }
 ingress:
-  # Only the share-link download route is public, and only when the manifest declares
+  # Of this chart's routes only the share-link download route is public (can-core routes the web UI itself,
+  # with modules.files.expose.ui), and only when the manifest declares
   # runtime.subdomain (host <subdomain>.<domain>, supplied by can-core). /v1 stays cluster-internal.
   enabled: true
   host: ""
@@ -52,13 +53,15 @@ config:
   share: { default_ttl_hours: 24, max_ttl_hours: 720, failures_per_minute: 20, base_url: "" }
   retention: { trash_days: 30, sweep_interval_hours: 6 }
   download: { inline: false }
+  # Web UI (specs/050-files-ui): off by default. modules.files.expose.ui turns it on and routes it
+  # (module.yaml runtime.public_ui); it needs TLS (Secure, __Host- cookies).
 keyring:
   enabled: true            # can-core generates it once into the can-module Secret (key `keyring`)
   mountPath: /etc/can-files/keyring
   # 0440 with fsGroup: kubelet makes the file root:65532 group-readable. See modules/files/chart/README.md.
   mode: 288
 resources:
-  requests: { memory: 20Mi, cpu: 5m }
+  requests: { memory: 28Mi, cpu: 5m }
   limits: { memory: 64Mi }
 podSecurityContext:
   runAsNonRoot: true

@@ -168,7 +168,7 @@ func TestAppsLaunchSignsInToModuleUIs(t *testing.T) {
 	peopleAPI(tokenOf(t, "people", "CAN_PEOPLE_API_TOKEN")).Post(t, "/v1/people", map[string]any{"kind": "employee", "status": "active", "given_name": "Admin", "family_name": u,
 		"work_email": "admin-" + u + "@acme.example", "sso_subject": "user:admin"}).Expect(t, "link a directory person to the admin account", 201, 409, 422)
 
-	for i, app := range []struct{ id, base string }{{"work", "/ui"}, {"people", ""}, {"jobs", ""}, {"finance", ""}} {
+	for i, app := range []struct{ id, base string }{{"work", "/ui"}, {"people", ""}, {"jobs", ""}, {"finance", ""}, {"files", ""}} {
 		port := strconv.Itoa(env.AppsPort + 1 + i)
 		if !strings.Contains(apps.String(), `action="/apps/`+app.id+`/launch"`) {
 			t.Fatalf("Apps does not offer %s: %.400s", app.id, apps.String())

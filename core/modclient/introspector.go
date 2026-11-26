@@ -132,6 +132,31 @@ func (in *Introspector) Lookup(ctx context.Context, token string) (Identity, err
 	return c.id, c.err
 }
 
+// Fresh asks now, whatever is cached, for a check that must not be up to TTL old (the step-up before
+// an irreversible action). The answer replaces the cached one; an error means no answer.
+func (in *Introspector) Fresh(ctx context.Context, token string) (Identity, error) {
+	if !TokenShaped(token) {
+		return Identity{}, nil
+	}
+	key := sha256.Sum256([]byte(token))
+	now := in.now()
+	id, err := in.API.Introspect(ctx, token)
+	if err != nil {
+		return Identity{}, err
+	}
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if in.ll == nil {
+		in.ll, in.m, in.inflight = list.New(), map[[sha256.Size]byte]*list.Element{}, map[[sha256.Size]byte]*call{}
+	}
+	if e, ok := in.m[key]; ok { // an inactive answer with no negative TTL must not leave the old one
+		in.ll.Remove(e)
+		delete(in.m, key)
+	}
+	in.put(key, id, now)
+	return id, nil
+}
+
 func (in *Introspector) put(key [sha256.Size]byte, id Identity, now time.Time) {
 	ttl := in.TTL
 	if ttl <= 0 {

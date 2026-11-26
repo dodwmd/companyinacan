@@ -61,7 +61,11 @@ http://localhost:8184 {
 	reverse_proxy finance:8080
 }
 
-http://:8180, http://:8181, http://:8182, http://:8183, http://:8184 {
+http://localhost:8185 {
+	reverse_proxy files:8095
+}
+
+http://:8180, http://:8181, http://:8182, http://:8183, http://:8184, http://:8185 {
 	respond "unknown host" 421
 }
 
@@ -75,7 +79,7 @@ http://equity.localhost:8080 {
 	reverse_proxy equity:8081
 }
 
-# The files API (bearer token) and the public share-link route /s/{token}. DEV ONLY: in a real install only /s/ is public.
+# The files web UI, API (bearer token) and public share-link route /s/{token}. DEV ONLY: in a real install /v1 is not public.
 http://files.localhost:8080 {
 	reverse_proxy files:8095
 }

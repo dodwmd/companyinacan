@@ -314,6 +314,9 @@ func (s *Store) finishPurge(ctx context.Context, id string) (bool, error) {
 	return done && err == nil, err
 }
 
+// errScrub is an erasure that destroyed the files but could not scrub the database files.
+var errScrub = errors.New("the files are erased and audited, but scrubbing the database files failed (repeat the request: it is idempotent and retries the scrub)")
+
 // Erasure is the result of an erasure request: an opaque subject id and the classes purged.
 type Erasure struct {
 	Subject string   `json:"subject"`
@@ -370,7 +373,7 @@ func (s *Store) EraseSubject(ctx context.Context, p *Principal, subject string) 
 	// The erasure and its audit records are committed; now remove it from the file's free pages
 	// and the write-ahead log. A failure is reported and the request can be repeated.
 	if err := s.scrub(ctx, true); err != nil {
-		return nil, fmt.Errorf("the files are erased and audited, but scrubbing the database files failed (repeat the request: it is idempotent and retries the scrub): %w", err)
+		return nil, fmt.Errorf("%w: %w", errScrub, err)
 	}
 	return &Erasure{Subject: subject, Classes: Classes, Date: date, Files: n}, nil
 }

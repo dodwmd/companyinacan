@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Upload a file - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/" aria-current="page">Spaces</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Upload a file</h1>
+<p><a href="/spaces/spc_000000000000000000000001">Contracts &lt;b&gt;2026&lt;/b&gt;</a></p>
+<p id="limits" class="hint">At most 25.0 MiB. Allowed types: pdf, png, jpg, jpeg, gif, webp, docx, xlsx, pptx, odt, ods, odp, rtf, txt, csv, md. The content must match the extension.</p>
+<p class="hint">Scanning is not required on this installation: a file may be stored without being scanned, and is then marked Not scanned.</p>
+<form method="post" action="/spaces/spc_000000000000000000000001/files" enctype="multipart/form-data" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="folder">Folder</label>
+<select id="folder" name="folder"><option value="">No folder</option><option value="fld_000000000000000000000002" selected>Leases</option><option value="fld_000000000000000000000003">Leases / Old</option></select></p>
+<p><label for="description">Description (optional)</label>
+<textarea id="description" name="description" rows="3" maxlength="1000"></textarea></p>
+<details>
+<summary>Links to other records (optional)</summary>
+<p><label for="subject">Data subject id</label>
+<input id="subject" name="subject" maxlength="128" aria-describedby="subject-hint"></p>
+<p id="subject-hint" class="hint">An opaque id such as cand_1234, never a name. Erasing that subject destroys this file.</p>
+<p><label for="ref">Reference</label>
+<input id="ref" name="ref" maxlength="160" aria-describedby="ref-hint"></p>
+<p id="ref-hint" class="hint">module:id, for example jobs:application-1234.</p>
+</details>
+<p><label for="file">File</label>
+<input id="file" name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.xlsx,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,.md" aria-describedby="limits"></p>
+<p class="hint">Stay on this page until it is done; there is no progress bar.</p>
+<p><button type="submit">Upload</button></p>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>

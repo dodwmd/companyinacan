@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Erase a data subject - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Spaces</a></li>
+<li><a href="/admin/files">Holds and retention</a></li>
+<li><a href="/admin/erasure" aria-current="page">Erasure</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Erase a data subject</h1>
+<p>Erasure destroys every file recorded for a subject, with its names and versions. It cannot be undone. Backups made earlier keep the data until they expire.</p>
+<form method="get" action="/admin/erasure" class="inline filter">
+<label for="find">Data subject id</label>
+<input id="find" name="subject" value="" required maxlength="128">
+<button type="submit">Show what would be destroyed</button>
+</form>
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>

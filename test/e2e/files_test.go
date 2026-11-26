@@ -4,15 +4,18 @@ package e2e
 
 import (
 	"bytes"
+	"mime/multipart"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/dodwmd/companyinacan/test/e2e/harness"
 )
 
-// (j) Files: through the edge, with the service token (the compose stack has no can-core to
-// introspect personal access tokens, so there is one identity and no second person to be refused).
+// (j) Files: through the edge, with the service token (one identity and no second person to be
+// refused; the Apps launch of the web UI is in TestAppsLaunchSignsInToModuleUIs).
 // A space, an upload with a hostile name, a download that is always an attachment, a version, a share
 // link that is public and works once, a rejected upload, a legal hold that blocks erasure, and the
 // erasure itself. Every run creates its own space.
@@ -68,4 +71,55 @@ func TestFilesUploadShareHoldAndErase(t *testing.T) {
 	if list := api.Get(t, "/v1/erasures").Expect(t, "tombstones", 200); !strings.Contains(list.String(), subject) {
 		t.Fatalf("no tombstone for the subject: %.300s", list.String())
 	}
+}
+
+// The files web UI through the edge (specs/050-files-ui): sign in with the service token, make a
+// space, upload a file in a multipart form, download it as an attachment and make a share link.
+func TestFilesWebUI(t *testing.T) {
+	const host = "files.localhost"
+	s := harness.NewSession(env)
+	login := s.Do(t, harness.Req{Host: host, Path: "/login"}).Expect(t, "sign-in page", 200)
+	s.Do(t, harness.Req{Method: "POST", Host: host, Path: "/login",
+		Body: url.Values{"csrf": {harness.CSRF(login.String())}, "token": {tokenOf(t, "files", "CAN_FILES_API_TOKEN")}}}).Expect(t, "sign in", 303)
+	u := harness.Unique()
+	csrf := harness.CSRF(s.Do(t, harness.Req{Host: host, Path: "/"}).Expect(t, "spaces page", 200).String())
+	made := s.Do(t, harness.Req{Method: "POST", Host: host, Path: "/spaces", Body: url.Values{"csrf": {csrf}, "name": {"UI " + u}}}).Expect(t, "create a space", 303)
+	space, _, _ := strings.Cut(made.Header.Get("Location"), "?")
+
+	doc := []byte("%PDF-1.7\nui e2e " + u + "\n")
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("csrf", csrf)
+	_ = mw.WriteField("description", "from the e2e suite")
+	part, err := mw.CreateFormFile("file", "report-"+u+".pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write(doc)
+	_ = mw.Close()
+	up := s.Do(t, harness.Req{Method: "POST", Host: host, Path: space + "/files", Body: body.Bytes(),
+		Headers: map[string]string{"Content-Type": mw.FormDataContentType()}}).Expect(t, "upload", 303)
+	file, _, _ := strings.Cut(up.Header.Get("Location"), "?")
+	page := s.Do(t, harness.Req{Host: host, Path: file}).Expect(t, "file page", 200)
+	if !strings.Contains(page.String(), "Not scanned") { // the stack runs no virus scanner
+		t.Fatalf("no scan verdict: %.600s", page.String())
+	}
+	dl := s.Do(t, harness.Req{Host: host, Path: file + "/content"}).Expect(t, "download", 200)
+	if !bytes.Equal(dl.Body, doc) || !strings.HasPrefix(dl.Header.Get("Content-Disposition"), "attachment") {
+		t.Fatalf("download: %q %v", dl.Body, dl.Header)
+	}
+	link := s.Do(t, harness.Req{Method: "POST", Host: host, Path: file + "/shares", Body: url.Values{"csrf": {csrf}, "hours": {"1"}}}).Expect(t, "share link", 200)
+	m := regexp.MustCompile(`<code class="link">http://files\.localhost:8080(/s/[^<]+)</code>`).FindStringSubmatch(link.String())
+	if m == nil {
+		t.Fatalf("no link: %.600s", link.String())
+	}
+	web.Do(t, harness.Req{Host: host, Path: m[1]}).Expect(t, "the link, without a session", 200)
+
+	// A personal access token issued in the admin UI signs in too, as that person.
+	p := harness.NewSession(env)
+	pl := p.Do(t, harness.Req{Host: host, Path: "/login"}).Expect(t, "sign-in page", 200)
+	p.Do(t, harness.Req{Method: "POST", Host: host, Path: "/login",
+		Body: url.Values{"csrf": {harness.CSRF(pl.String())}, "token": {issuePAT(t, adminSession(t), "files", "files.read")}}}).Expect(t, "sign in with a personal access token", 303)
+	p.Do(t, harness.Req{Host: host, Path: "/"}).Expect(t, "its spaces", 200)
+	p.Do(t, harness.Req{Host: host, Path: file}).Expect(t, "a space it is not in does not exist for it", 404)
 }

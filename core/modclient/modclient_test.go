@@ -382,3 +382,39 @@ func TestWebhookBodyIsBounded(t *testing.T) {
 		t.Fatalf("%d", w.Code)
 	}
 }
+
+type countingIntrospect struct {
+	id    Identity
+	calls int
+}
+
+func (c *countingIntrospect) Introspect(context.Context, string) (Identity, error) {
+	c.calls++
+	return c.id, nil
+}
+
+// Fresh asks even when an answer is cached, and what it learns replaces the cached answer.
+func TestIntrospectorFreshBypassesTheCache(t *testing.T) {
+	api := &countingIntrospect{id: Identity{Active: true, Kind: "user", Subject: "user:a"}}
+	in := &Introspector{API: api}
+	const tok = "canpat_fresh-0123456789"
+	ctx := context.Background()
+	for range 2 {
+		if id, err := in.Lookup(ctx, tok); err != nil || !id.Active {
+			t.Fatal(id, err)
+		}
+	}
+	api.id = Identity{}
+	if id, _ := in.Lookup(ctx, tok); !id.Active || api.calls != 1 {
+		t.Fatal("expected the cached answer", id, api.calls)
+	}
+	if id, err := in.Fresh(ctx, tok); err != nil || id.Active || api.calls != 2 {
+		t.Fatal("Fresh used the cache", id, err, api.calls)
+	}
+	if id, _ := in.Lookup(ctx, tok); id.Active {
+		t.Fatal("the cache kept the old answer")
+	}
+	if id, err := in.Fresh(ctx, "junk"); err != nil || id.Active || api.calls != 2 {
+		t.Fatal("a malformed token reached can-core")
+	}
+}

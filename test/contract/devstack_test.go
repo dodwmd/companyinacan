@@ -79,8 +79,8 @@ func TestComposeDevStackStaysOnLoopbackAndIsUsable(t *testing.T) {
 	env := compose.Services["core"].Environment
 	l := ticket.Launcher{Domain: env["CAN_COMPANY_DOMAIN"].(string), AllowHTTP: true}
 	urls := strings.Split(env["CAN_MODULE_UI_URLS"].(string), ",")
-	if len(urls) != 4 {
-		t.Errorf("CAN_MODULE_UI_URLS = %v, want work, people, jobs and finance", urls)
+	if len(urls) != 5 {
+		t.Errorf("CAN_MODULE_UI_URLS = %v, want work, people, jobs, finance and files", urls)
 	}
 	for _, e := range urls {
 		id, u, _ := strings.Cut(e, "=")

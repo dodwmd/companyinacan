@@ -41,7 +41,7 @@ var uiRouteRE = regexp.MustCompile(`"(?:GET|POST|PUT|DELETE)(?: |", ")(/[^"]*)"`
 // UI does not serve.
 func TestPublicUIPathsMatchTheWebUIs(t *testing.T) {
 	ms := routingManifests(t)
-	for _, id := range []string{"work", "people", "jobs", "finance"} {
+	for _, id := range []string{"work", "people", "jobs", "finance", "files"} {
 		p := ms[id].Runtime.PublicUI
 		if p == nil || ms[id].Runtime.WebLogin == nil {
 			t.Errorf("%s: a web UI with launch tickets needs runtime.public_ui", id)

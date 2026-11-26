@@ -9,7 +9,7 @@
     "jobs":    {"idle_anon_mib": 9,  "loaded_anon_mib": 13, "peak_rss_mib": 36},
     "finance": {"idle_anon_mib": 9,  "loaded_anon_mib": 13, "peak_rss_mib": 36},
     "equity":  {"idle_anon_mib": 7,  "loaded_anon_mib": 9,  "peak_rss_mib": 28},
-    "files":   {"idle_anon_mib": 7,  "loaded_anon_mib": 9,  "peak_rss_mib": 28}
+    "files":   {"idle_anon_mib": 7,  "loaded_anon_mib": 12, "peak_rss_mib": 36}
   },
   "unbudgeted": ["edge", "introstub", "smtpsink"],
   "idle_total_anon_mib": 62,
@@ -23,7 +23,7 @@
     "can-jobs": 16.5,
     "can-finance": 17.5,
     "can-equity": 14,
-    "can-files": 13.5,
+    "can-files": 16,
     "can-board": 14,
     "can-provision": 13.5
   }

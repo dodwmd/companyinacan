@@ -1,0 +1,7 @@
+{{define "content"}}
+<h1>{{t "erase.done_title"}}</h1>
+<p role="status">{{t "erase.done" .Data.Subject .Data.Report.Files .Data.Report.Date}}</p>
+<p>{{t "erase.classes"}}</p>
+<ul>{{range .Data.Report.Classes}}<li><code>{{.}}</code></li>{{end}}</ul>
+<p><a href="/admin/files">{{t "nav.admin_files"}}</a></p>
+{{end}}

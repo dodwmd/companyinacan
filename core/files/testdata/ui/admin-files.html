@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Holds and retention - Company in a Can: Files</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Files</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Spaces</a></li>
+<li><a href="/admin/files" aria-current="page">Holds and retention</a></li>
+<li><a href="/admin/erasure">Erasure</a></li>
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Holds and retention</h1>
+<p class="hint">An administrator sees ids, states and sizes, never names or content, and cannot open a space they are not in.</p>
+<form method="get" action="/admin/files" class="inline filter">
+<label for="subject">Data subject id</label>
+<input id="subject" name="subject" value="" maxlength="128">
+<button type="submit">Filter</button>
+</form>
+<div class="scroll">
+<table>
+<caption>Files by id</caption>
+<thead><tr><th scope="col">File id</th><th scope="col">Space id</th><th scope="col">Subject</th><th scope="col">Reference</th><th scope="col">State</th><th scope="col">Versions</th><th scope="col">Size</th><th scope="col">Legal hold</th><th scope="col">Keep until</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>fil_000000000000000000000004</code></th><td><code>spc_000000000000000000000001</code></td><td>cand_golden</td><td>jobs:application-7</td><td>Active</td><td>2</td><td>25 B</td><td>Yes</td><td>2027-01-31</td><td><a href="/admin/files/fil_000000000000000000000004/hold" aria-label="Set hold or retention for fil_000000000000000000000004">Set hold</a></td></tr>
+<tr><th scope="row"><code>fil_000000000000000000000005</code></th><td><code>spc_000000000000000000000001</code></td><td></td><td></td><td>Active</td><td>1</td><td>22 B</td><td>No</td><td></td><td><a href="/admin/files/fil_000000000000000000000005/hold" aria-label="Set hold or retention for fil_000000000000000000000005">Set hold</a></td></tr>
+<tr><th scope="row"><code>fil_000000000000000000000006</code></th><td><code>spc_000000000000000000000001</code></td><td></td><td></td><td>In the trash</td><td>1</td><td>22 B</td><td>No</td><td></td><td><a href="/admin/files/fil_000000000000000000000006/hold" aria-label="Set hold or retention for fil_000000000000000000000006">Set hold</a></td></tr>
+</tbody>
+</table>
+</div>
+
+
+</main>
+<footer>
+<p>Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator&#39;s responsibility.</p>
+</footer>
+</body>
+</html>
