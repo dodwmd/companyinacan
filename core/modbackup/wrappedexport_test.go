@@ -35,11 +35,14 @@ func wrappedExport(t *testing.T, module string, w modbackup.Wrapped) map[string]
 
 func TestWrappedExportKeepsSecretsOut(t *testing.T) {
 	data := t.TempDir()
-	for name, body := range map[string]string{"attachments/a.pdf": "an attachment", ".env": "APP_KEY=base64:KEYMATERIAL", "app/private.key": "KEYMATERIAL"} {
+	// As FreeScout lays its volume out: its configuration is a file with no telling name.
+	for name, body := range map[string]string{"storage/app/attachment/a.pdf": "an attachment", "config": "APP_KEY=base64:KEYMATERIAL",
+		"storage/framework/sessions/abc": "KEYMATERIAL", "storage/logs/x.log": "KEYMATERIAL",
+		"storage/app/.env": "APP_KEY=base64:KEYMATERIAL", "storage/app/private.key": "KEYMATERIAL"} {
 		check(t, os.MkdirAll(filepath.Dir(filepath.Join(data, name)), 0o700))
 		check(t, os.WriteFile(filepath.Join(data, name), []byte(body), 0o600))
 	}
-	check(t, os.Symlink("/etc/hostname", filepath.Join(data, "link")))
+	check(t, os.Symlink("/etc/hostname", filepath.Join(data, "storage/app/link")))
 	dump := filepath.Join(t.TempDir(), "database.sql")
 	sql := "--\n-- PostgreSQL database dump\n--\nCREATE TABLE public.customers (id integer, name text, api_token text);\n" +
 		"COPY public.customers (id, name, api_token) FROM stdin;\n1\tAnn\tTOKENVALUE\n2\tBob\t\\N\n\\.\n" +
@@ -50,11 +53,11 @@ func TestWrappedExportKeepsSecretsOut(t *testing.T) {
 	if strings.Contains(got, "TOKENVALUE") || !strings.Contains(got, "1\tAnn\t\n2\tBob\t\\N\n") || !strings.Contains(got, "my password is in the body") {
 		t.Fatalf("redaction: %q", got)
 	}
-	if out["files/attachments/a.pdf"] != "an attachment" {
+	if out["files/storage/app/attachment/a.pdf"] != "an attachment" {
 		t.Fatal("the attachment is missing")
 	}
 	for name, body := range out {
-		if strings.Contains(body, "KEYMATERIAL") || strings.HasPrefix(name, "files/link") {
+		if strings.Contains(body, "KEYMATERIAL") || strings.HasSuffix(name, "/link") {
 			t.Errorf("%s is in the export", name)
 		}
 	}

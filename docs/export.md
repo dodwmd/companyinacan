@@ -98,12 +98,12 @@ Their schemas are theirs; nothing here maps them.
 | Module | What you get | Left out |
 |---|---|---|
 | analytics (GoatCounter) | its SQLite tables as JSON Lines and CSV | accounts, API tokens, sessions |
-| support (FreeScout) | `pg_dump --format=plain` and the attachments | agent accounts, mailbox settings, options, sessions, jobs |
+| support (FreeScout) | `pg_dump --format=plain` and the volume's `storage/app` (attachments) | agent accounts, mailbox settings, options, sessions, jobs; the rest of the volume (its configuration file holds the application key and database password; sessions, caches, logs, uploaded add-on modules) |
 | newsletter (Listmonk) | `pg_dump --format=plain` and the uploads | accounts, sessions, settings (they hold the relay password) |
 | wiki, status, crm | **nothing** (the manifest says so) | their hooks are shell scripts without an export: use the application's own export |
 
 Besides the tables above, tables named like credentials are left out, columns named like credentials
-are blanked, and files such as `.env` and `*.key` are not copied. **These rules go by name.** A
+are blanked, and files such as `.env` and `*.key` are not copied. **The table and column rules go by name.** A
 secret an application stores somewhere unexpected (inside a message, a JSON column, a file with
 another name) would be in the export: treat the file as sensitive. Without the accounts, references
 to agents by id have no name in the export. Load a dump with `psql -f database.sql` into an empty

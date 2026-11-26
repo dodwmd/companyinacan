@@ -31,16 +31,20 @@ type wrappedRules struct {
 	// secretTables hold credentials, sessions or settings with passwords in them: their rows are
 	// never exported.
 	secretTables []string
-	note         string
+	// uploads is the directory of the volume that holds what people uploaded, "." for a volume that
+	// holds nothing else. Only it is copied: an application keeps its configuration (with its keys
+	// and database password), sessions and caches elsewhere on the same volume.
+	uploads string
+	note    string
 }
 
 var wrapped = map[string]wrappedRules{
 	"analytics": {secretTables: []string{"users", "api_tokens", "sessions", "store"},
 		note: "GoatCounter: its SQLite tables as they are. Accounts, API tokens and sessions are left out."},
-	"newsletter": {secretTables: []string{"users", "sessions", "settings"},
+	"newsletter": {secretTables: []string{"users", "sessions", "settings"}, uploads: ".",
 		note: "Listmonk: a plain SQL pg_dump (load with psql) and the uploads. Accounts, sessions and the settings (which hold the mail relay password) are left out."},
-	"support": {secretTables: []string{"users", "password_resets", "sessions", "options", "mailboxes", "jobs", "failed_jobs"},
-		note: "FreeScout: a plain SQL pg_dump (load with psql) and the attachments. Agent accounts, mailbox settings (with their passwords) and application options are left out."},
+	"support": {secretTables: []string{"users", "password_resets", "sessions", "options", "mailboxes", "jobs", "failed_jobs"}, uploads: "storage/app",
+		note: "FreeScout: a plain SQL pg_dump (load with psql) and the attachments (storage/app). Agent accounts, mailbox settings (with their passwords), application options and the rest of the volume (configuration, sessions, caches, logs) are left out."},
 }
 
 // secretPatterns are table names that are left out of every wrapped export, whatever the rules say.
@@ -119,7 +123,7 @@ func ExportWrapped(ctx context.Context, w Wrapped, getenv func(string) string, s
 			}
 		}
 		if w.Files {
-			if err := exportVolume(ctx, a, w.DataDir, &m); err != nil {
+			if err := exportVolume(ctx, a, w.DataDir, rules.uploads, &m); err != nil {
 				return err
 			}
 		}
@@ -265,9 +269,12 @@ func redactSQL(file string, out io.Writer) error {
 	}
 }
 
-// exportVolume copies the regular files of a volume. Links are not followed, and files that hold
-// keys or secrets are left out.
-func exportVolume(ctx context.Context, a *exportfmt.Archive, dir string, m *ModuleExport) error {
+// exportVolume copies the regular files under uploads of a volume. Links are not followed, and
+// files that hold keys or secrets are left out.
+func exportVolume(ctx context.Context, a *exportfmt.Archive, dir, uploads string, m *ModuleExport) error {
+	if uploads == "" {
+		return nil
+	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return err
@@ -275,12 +282,12 @@ func exportVolume(ctx context.Context, a *exportfmt.Archive, dir string, m *Modu
 	defer func() { _ = root.Close() }()
 	var secret, unnamed int
 	var paths []string
-	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(root.FS(), uploads, func(p string, d fs.DirEntry, err error) error {
 		if cerr := ctx.Err(); cerr != nil {
 			return cerr
 		}
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) && p != "." {
+			if errors.Is(err, fs.ErrNotExist) && p != "." { // also: nothing was ever uploaded
 				return nil
 			}
 			return err
