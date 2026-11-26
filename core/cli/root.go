@@ -75,6 +75,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newSupportCmd(g),
 		newDiagnoseCmd(g),
 		newApplyCmd(g),
+		newPullCmd(g),
 		newDevCmd(g),
 		newUpCmd(g),
 		newDownCmd(g),

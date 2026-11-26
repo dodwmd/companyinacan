@@ -32,11 +32,14 @@
 {{- define "header"}}<header class="site-header">
   <div class="wrap bar">
     <a class="brand" href="/">{{if .Logo}}<img src="{{.Logo}}" alt="" width="32" height="32">{{end}}<span>{{.Name}}</span></a>
-    {{- if .Nav}}
+    {{- if or .Nav .Careers}}
     <nav aria-label="Primary">
       <ul>
         {{- range .Nav}}
-        <li><a href="#{{.Anchor}}">{{.Label}}</a></li>
+        <li><a href="{{$.Root}}#{{.Anchor}}">{{.Label}}</a></li>
+        {{- end}}
+        {{- if .Careers}}
+        <li><a href="{{.Careers.Href}}" rel="noopener">{{.Careers.Label}}</a></li>
         {{- end}}
       </ul>
     </nav>
@@ -84,6 +87,38 @@
       <p><a class="btn" href="/">Back to the home page</a></p>
     </div>
   </section>
+</main>
+{{template "footer" .}}
+</body>
+</html>
+{{end}}
+{{- define "textpage"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+{{template "header" .}}
+<main id="main">
+  <article class="section">
+    <div class="wrap narrow">
+      <h1>{{.Text.Title}}</h1>
+      {{- range .Text.Blocks}}
+      {{- if .Heading}}
+      <h2>{{.Heading}}</h2>
+      {{- else if .Items}}
+      <ul class="bullets">
+        {{- range .Items}}
+        <li>{{.}}</li>
+        {{- end}}
+      </ul>
+      {{- else}}
+      <p>{{.Text}}</p>
+      {{- end}}
+      {{- end}}
+    </div>
+  </article>
 </main>
 {{template "footer" .}}
 </body>

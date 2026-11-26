@@ -3,7 +3,8 @@
 #  1. generates random dev keyrings for can-people, can-jobs, can-equity and can-files into the dev-secrets volume
 #     (only if absent, so data stays readable across restarts);
 #  2. generates one random identity token per module that can-core knows (CAN_DEV_STACK), each into a
-#     volume of its own (token-<module>), and seeds can-core's company.yaml (both only if absent);
+#     volume of its own (token-<module>), and seeds can-core's company.yaml and the website the site
+#     container serves and the admin UI's editor publishes to (each only if absent);
 #  3. bootstraps the can-core admin account once and prints its TOTP secret.
 # Idempotent: safe to run on every `compose up`.
 set -eu
@@ -34,6 +35,9 @@ done
 # The directory is handed to can-core below: the admin UI replaces the file by renaming over it.
 mkdir -p /var/lib/can/company
 [ -s /var/lib/can/company/company.yaml ] || cp /company.seed.yaml /var/lib/can/company/company.yaml
+[ -e /site-content/.can-site ] || cp -r /site.seed/. /site-content/
+chmod -R u+rwX,go+rX /site-content
+chown -R 65532:65532 /site-content
 
 export CAN_DB_PATH="${CAN_DB_PATH:-/var/lib/can/state.db}"
 if [ -z "${CAN_ADMIN_PASSWORD:-}" ]; then echo "init: CAN_ADMIN_PASSWORD is not set" >&2; exit 1; fi

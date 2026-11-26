@@ -95,7 +95,9 @@ details p { margin: 0.6rem 0 0; color: var(--muted); }
 .cta .lead { color: inherit; opacity: 0.9; }
 .cta .btn { background: var(--accent-2-text); color: var(--accent-2); border-color: var(--accent-2-text); }
 
-.site-footer { border-top: 1px solid var(--line); padding-block: 2rem; color: var(--muted); font-size: 0.95rem; }
+{{if .Pages}}.bullets { list-style: disc; padding-left: 1.5rem; margin-bottom: 1em; }
+article h2 { margin-top: 1.5em; font-size: 1.4rem; }
+{{end}}.site-footer { border-top: 1px solid var(--line); padding-block: 2rem; color: var(--muted); font-size: 0.95rem; }
 .site-footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; align-items: center; }
 .site-footer p { margin: 0; }
 

@@ -19,7 +19,9 @@ metadata:
   namespace: can-system
   labels: {app.kubernetes.io/name: site, app.kubernetes.io/part-of: companyinacan}
 spec:
-  selector: {app.kubernetes.io/name: site}
+  # Not only the name label: a Job pod carrying it would otherwise receive visitors. The extra label
+  # is on the Deployment's pods only (it is no barrier against someone who copies it on purpose).
+  selector: {app.kubernetes.io/name: site, can.dev/site-server: "true"}
   ports:
     - {name: http, port: 8081, targetPort: http}
 ---
@@ -35,7 +37,7 @@ spec:
     matchLabels: {app.kubernetes.io/name: site}
   template:
     metadata:
-      labels: {app.kubernetes.io/name: site, app.kubernetes.io/part-of: companyinacan}
+      labels: {app.kubernetes.io/name: site, app.kubernetes.io/part-of: companyinacan, can.dev/site-server: "true"}
       annotations:
         can.dev/site-sha256: "none"
     spec:

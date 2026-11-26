@@ -283,8 +283,9 @@ Do not run this from CI. With a fresh Hetzner account:
   privileged workload. Download `can` and the manifest from the release and verify them (docs/releasing.md).
 - **Re-running does not overwrite the company you edited in the cluster.** `can up` remembers the digest of the
   `company.yaml` it last pushed. If the ConfigMap in the cluster differs from that (changed in the admin UI or by
-  `can apply`), the `company` phase stops and asks for `--force-company`; an identical document is not
-  re-applied at all.
+  `can apply`), the `company` phase stops: `can pull` brings the cluster's document into your directory,
+  `--force-company` overwrites it. An identical document is not re-applied at all
+  ([site-editor.md](site-editor.md#the-editor-and-can)).
 - **The company guard has a window.** `can up` compares the cluster's `company.yaml` with what it last pushed just before applying; an edit made in the admin UI in the instant between that read and the apply can still be overwritten. Do not edit the company in the UI while `can up` runs.
 - **`--output json` never carries secrets without `--print-secrets`**, even in a terminal; in that case the
   credentials are *not* marked as shown, and the next run issues new ones.

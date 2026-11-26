@@ -34,6 +34,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
+	"github.com/dodwmd/companyinacan/core/server/siteedit"
 	"github.com/dodwmd/companyinacan/core/server/sso"
 	"github.com/dodwmd/companyinacan/core/server/store"
 	"github.com/dodwmd/companyinacan/core/server/ticket"
@@ -67,6 +68,8 @@ type Server struct {
 	// Mod is module management (catalogue, changes, wizard, status; epic E12b). Nil answers 503 on
 	// its pages and shows none of its navigation.
 	Mod *modmgr.Service
+	// Site is the website editor (site.go); nil answers 503 on its pages and shows no link to it.
+	Site *siteedit.Service
 	// PATs issues personal access tokens for module APIs; the tokens page answers 503 without it.
 	PATs *pat.Service
 	// SSO is OpenID Connect sign-in (epic E11b); nil hides every trace of it.
@@ -104,7 +107,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(append(s.appRoutes(), s.emailRoutes()...), append(s.userRoutes(), s.overviewRoutes()...)...)...)
+	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(append(s.appRoutes(), s.emailRoutes()...), append(s.userRoutes(), append(s.overviewRoutes(), s.siteRoutes()...)...)...)...)
 }
 
 func (s *Server) coreRoutes() []route {
@@ -242,6 +245,7 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 			p.Nav = append(p.Nav, navItem{Href: n.href, Label: s.msg(n.label), Current: n.key == active})
 		}
 		p.Nav = append(p.Nav, s.platformNav(r, sc, active)...)
+		p.Nav = append(p.Nav, s.siteNav(r, sc, active)...)
 		p.Nav = append(p.Nav, s.appsNav(active)...)
 		p.Nav = append(p.Nav, s.modNav(r, sc, active)...)
 		p.Nav = append(p.Nav, s.ssoNav(r, sc, active)...)

@@ -17,6 +17,10 @@ type planExec struct {
 
 func (f *planExec) Run(ctx context.Context, c cluster.Cmd) (string, error) {
 	line := strings.Join(c.Args, " ")
+	// The read of the cluster's company.yaml (conflict check) changes nothing and is not counted.
+	if strings.Contains(line, "get configmap company --ignore-not-found -o json") {
+		return f.fileExec.Run(ctx, c)
+	}
 	f.calls = append(f.calls, line)
 	if strings.Contains(line, "/can-core modules plan") {
 		return `{"actions":[{"kind":"upgrade","module":"forms","reason":"manifest changed","widens":["new permission leads.erase"],"held":"approval","approval":"0123456789abcdef","not_applied":["switching off the public routes (they stay public)"],"urgent":true}]}`, nil
