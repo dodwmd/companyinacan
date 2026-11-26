@@ -507,7 +507,16 @@ func TestEmailVerifiedNotRequiredWhenConfiguredOff(t *testing.T) {
 	e := newEnv(t, func(c *config.SSO) { c.RequireEmailVerified = &f })
 	u := alice()
 	u.EmailVerified = false
-	e.mustLogin(u)
+	// QA of #52, 5: whether the address was verified is stored with it, at every sign-in.
+	for _, verified := range []bool{false, true, false} {
+		u.EmailVerified = verified
+		r := e.mustLogin(u)
+		_, user, _ := e.au.Authenticate(context.Background(), r.Login.Token)
+		ident, err := e.db.SSOIdentityByUser(context.Background(), user.ID)
+		if err != nil || ident.EmailVerified != verified {
+			t.Fatalf("stored %v, want %v (%v)", ident.EmailVerified, verified, err)
+		}
+	}
 }
 
 func TestAMRRequirement(t *testing.T) {

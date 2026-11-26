@@ -336,11 +336,11 @@ func (s *Service) Complete(ctx context.Context, req CompleteRequest) (Result, er
 	ident, err := s.DB.SSOIdentityByExternal(ctx, id.IssuerHash, id.Subject)
 	switch {
 	case err == nil:
-		if err := s.DB.TouchSSOIdentity(ctx, ident.ID, id.Email, id.Name, string(groupsJSON), string(amrJSON)); err != nil {
+		if err := s.DB.TouchSSOIdentity(ctx, ident.ID, id.Email, id.EmailVerified, id.Name, string(groupsJSON), string(amrJSON)); err != nil {
 			return Result{}, err
 		}
 	case errors.Is(err, store.ErrNotFound):
-		ident, err = s.DB.CreateSSOUser(ctx, usernameFor(id), store.SSOIdentity{IssuerHash: id.IssuerHash, Subject: id.Subject, Email: id.Email, Name: id.Name, GroupsJSON: string(groupsJSON), AMRJSON: string(amrJSON)},
+		ident, err = s.DB.CreateSSOUser(ctx, usernameFor(id), store.SSOIdentity{IssuerHash: id.IssuerHash, Subject: id.Subject, Email: id.Email, EmailVerified: id.EmailVerified, Name: id.Name, GroupsJSON: string(groupsJSON), AMRJSON: string(amrJSON)},
 			func(tx *sql.Tx) error {
 				_, aerr := s.Audit.AppendTx(ctx, tx, audit.Entry{Actor: "sso", Action: "sso.provision", Target: "user:" + usernameFor(id), Detail: map[string]any{"issuer_hash": id.IssuerHash, "external_subject": id.ExternalSubject()}})
 				return aerr

@@ -1,7 +1,7 @@
 # Data model: Accounting interfaces (E15c)
 
 Migration `core/finance/migrations/003_accounting.sql` (after `001_finance.sql` and `002_core_approvals.sql`; the existing migrator applies it to
-existing databases in a transaction and records version 3). Dates are `YYYY-MM-DD` text, timestamps unix seconds, amounts integer minor units.
+existing databases in a transaction and records version 3). `004_purge_indexes.sql` indexes `invoices.original_id` and `time_entries.invoice_id` for the retention purge. Dates are `YYYY-MM-DD` text, timestamps unix seconds, amounts integer minor units.
 
 | Table | Purpose | Guards (triggers unless noted) |
 |---|---|---|

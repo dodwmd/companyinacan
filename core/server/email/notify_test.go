@@ -98,7 +98,7 @@ func TestNotificationAddressesMustBeVouchedFor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.db.Exec(`INSERT INTO sso_identities(issuer_hash, subject, user_id, email, name, groups_json, amr_json, created_at, last_login) VALUES ('h','sub',?, 'alice@idp-mail.example','', '[]','[]',1,1)`, u.ID); err != nil {
+	if _, err := f.db.Exec(`INSERT INTO sso_identities(issuer_hash, subject, user_id, email, email_verified, name, groups_json, amr_json, created_at, last_login) VALUES ('h','sub',?, 'alice@idp-mail.example',1,'', '[]','[]',1,1)`, u.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := send("alice@idp-mail.example"); err != nil {

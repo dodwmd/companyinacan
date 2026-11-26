@@ -325,7 +325,7 @@ func (s *Service) deliverEmail(ctx context.Context, id int64, n Notice, data map
 		s.logDelivery(ctx, id, ChannelEmail, "suppressed", "rate limited")
 		return
 	}
-	r := Render(n.Type, data)
+	r := renderMail(n.Type, data)
 	cctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 	if err := s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: r.Subject, Text: r.Text, HTML: r.HTML, ForUser: n.Subject, Module: n.Module, Authored: n.Authored, Type: n.Type}); err != nil {
@@ -737,7 +737,7 @@ func (s *Service) FlushDigests(ctx context.Context) (int, error) {
 		for _, it := range items {
 			var data map[string]string
 			_ = json.Unmarshal([]byte(it.dataJSON), &data)
-			b.WriteString("- " + Render(it.typ, data).Subject + "\n")
+			b.WriteString("- " + renderMail(it.typ, data).Subject + "\n")
 		}
 		cctx, cancel := context.WithTimeout(ctx, sendTimeout)
 		err = s.opt.Mailer.Send(cctx, Message{To: set.Email, Subject: fmt.Sprintf("%d notifications", len(items)), Text: b.String(), HTML: "<pre>" + htmlEscape(b.String()) + "</pre>",

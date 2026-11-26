@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Names reserved for can-core itself. A module manifest may not define permissions in these
 // namespaces, redefine a built-in role, or publish platform events: otherwise a manifest could
@@ -12,6 +15,9 @@ var (
 	BuiltinRoles = []string{"owner", "operator", "auditor"}
 	// ReservedEventPrefixes are event namespaces only can-core publishes.
 	ReservedEventPrefixes = []string{"approval.", "notification."}
+	// ReservedModuleIDs would pass for can-core: as a mail or event source, or as the prefix of its
+	// permissions, events and notification types.
+	ReservedModuleIDs = []string{"can-core", "core", "platform", "rbac", "approval", "approvals", "notification", "notifications"}
 )
 
 // IsReservedPermission reports whether p lies in a platform namespace (or is the wildcard).
@@ -54,6 +60,9 @@ type Violation struct{ Path, Message string }
 // `can validate` and the registry call it, so a manifest that passes neither cannot be installed.
 func PlatformViolations(m *Module) []Violation {
 	var out []Violation
+	if slices.Contains(ReservedModuleIDs, m.ID) {
+		out = append(out, Violation{"/id", "module id " + m.ID + " is reserved for can-core"})
+	}
 	for i, p := range m.Permissions {
 		if IsReservedPermission(p) {
 			out = append(out, Violation{"/permissions/" + itoa(i), "permission " + p + " is in a namespace reserved for can-core (platform., rbac., approvals., notifications.)"})

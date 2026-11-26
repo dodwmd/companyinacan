@@ -169,6 +169,8 @@ case \$verb in
       exit 1
     fi
     for u; do touch "$work/active/\$u"; rm -f "$work/failed/\$u"; done
+    # With $work/systemctl.execs, starting a unit also runs its command: the installed script.
+    [ ! -e "$work/systemctl.execs" ] || bash "\$FW_UNDER_TEST" apply
     ;;
   is-enabled) [ -e "$work/enabled/\$1" ] ;;
   is-active)
@@ -410,6 +412,14 @@ assert "the units were never disabled" test -z "$(grep '^disable' <(tail -n 12 "
 assert "units still enabled and running" test "$had" = "$(states)"
 assert "previous unit file restored" cmp "$work/sync.unit.before" "$work/units/can-firewall-sync.service"
 expect BLOCKED "still enforcing after the failed re-install" $MOD tcp 192.0.2.1 6443
+# The previous script is not kept, so a unit the rollback restarts loads the installed script's rules
+# over the table it put back (docs/node-isolation.md says so).
+in_ns $NODE nft add rule inet can_isolation input tcp dport 9999 counter drop
+touch "$work/systemctl.execs" "$work/systemctl.fail"
+refute "re-install fails with units that run their command" fw env FW_UNDER_TEST="$FW" bash "$FW" install
+refute "the restarted unit loaded the installed rules" grep -q 'dport 9999' <(listing)
+rm "$work/systemctl.execs"
+expect BLOCKED "still enforcing after that rollback" $MOD tcp 192.0.2.1 6443
 # Enabled but stopped stays enabled and stopped.
 rm "$work/active/can-firewall-sync.service"
 touch "$work/systemctl.fail"
@@ -479,6 +489,9 @@ pods "$SYS_POD" 'mod-x|app|false|10.42.0.10|'
 assert "sync" can sync
 refute "an address a module pod also reports is not trusted" trusted 10.42.0.10
 expect BLOCKED "contested address" $SYS tcp 192.0.2.1 6443
+refute "a contested address fails check" can check
+cp "$work/last.log" "$work/check.out"
+assert "and is reported" grep -q '^problem=1 system pod address.*also reported by another pod' "$work/check.out"
 pods "$SYS_POD" 'kube-system||true|10.42.0.10|' 'mod-x|app|true|10.42.0.10|'
 assert "sync" can sync
 assert "a host network pod claims nothing" trusted 10.42.0.10

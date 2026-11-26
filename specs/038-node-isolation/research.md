@@ -36,7 +36,9 @@ therefore require `cni0`.
 ## R4: Rollback, and why there is no dead-man timer
 
 `nft -f` is one transaction: a ruleset that does not load changes nothing. `install` saves the previous
-table, verifies after loading and restores it on failure. A timed auto-revert protects against rules
+table, verifies after loading and restores it on failure. When the units themselves are refused, the
+rollback restarts the ones that were running, and those load the rules of the script now installed: the
+previous script is not kept. A timed auto-revert protects against rules
 that cut the operator off; these rules cannot match the operator's traffic (R3), so a timer would only
 add a way for the protection to disappear.
 

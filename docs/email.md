@@ -125,7 +125,11 @@ email:
 Addresses people type in their notification settings are not verified, so notification mail only goes
 to the **company domain** (or to `email.notification_recipients`, which replaces it) and to the
 person's **single sign-on address** when sign-on requires verified email claims
-(`sso.require_email_verified`, the default). Anything else is logged as a failed delivery.
+(`sso.require_email_verified`, the default) and is switched on, and the provider said the address was
+verified at the sign-in that stored it (after an upgrade from before this was recorded, people sign in
+once again). Anything else is logged as a failed delivery. Mailed text shows notification types with
+spaces around their dots, so a mail reader does not make a link of one. Mail still queued from before
+can-core recorded which module caused it is attributed by the type's module prefix on upgrade.
 
 ```yaml
 email:
@@ -139,7 +143,8 @@ transaction. One worker delivers it. A temporary failure (network, TLS, authenti
 retried after 1, 2, 4, 8, 16, 32 and 60 minutes; after 8 attempts, a permanent refusal (SMTP 5xx for
 the sender, recipient or content), or 72 hours of waiting, the message is a **dead letter**.
 When the failure is about the relay itself (connection, TLS, login) can-core stops the pass and
-pauses all delivery for 1 to 15 minutes. Senders take turns, so one sender's backlog does not hold
+pauses all delivery for 1 to 15 minutes. A relay that goes silent while taking one message delays only
+that message; three different messages in a row without an answer count as a relay failure. Senders take turns, so one sender's backlog does not hold
 up the others.
 Delivery is at least once: a crash at the wrong moment can send a message twice (same `Message-ID`).
 
