@@ -831,6 +831,8 @@ func TestQA3LedgerPrivilegeUsesTheShortRecheck(t *testing.T) {
 	u := &UI{RecheckEvery: uiRecheckDefault}
 	for perm, want := range map[string]time.Duration{
 		PermLedgerApprove: uiRecheckPrivil, PermLedgerAdmin: uiRecheckPrivil, PermApprove: uiRecheckPrivil, PermAdmin: uiRecheckPrivil,
+		// writers too, as in jobs
+		PermWrite: uiRecheckPrivil, PermLedgerWrite: uiRecheckPrivil,
 		PermLedgerRead: uiRecheckDefault, PermRead: uiRecheckDefault,
 	} {
 		if got := u.recheckFor(&Principal{Permissions: []string{perm}}); got != want {

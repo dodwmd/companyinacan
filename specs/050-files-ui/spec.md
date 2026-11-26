@@ -31,7 +31,7 @@ sweep and the purge hook (API only), several files in one upload.
   and no access decision of its own; the route table demands the permission the API's guard demands, groups
   are resolved as the API resolves them, and invisible things answer the same 404 page.
 - **FR-002 Sessions.** As the other module UIs: server-side, `__Host-` cookie, HttpOnly, SameSite=Strict,
-  idle and absolute timeouts, re-authentication every 5 minutes (1 for administrators), ticket sessions end
+  idle and absolute timeouts, re-authentication every 5 minutes (1 for writers and administrators), ticket sessions end
   at can-core's deadline. The restore-only credential cannot sign in.
 - **FR-003 CSRF.** Every POST carries the session's token; a `Sec-Fetch-Site` other than `same-origin` or
   `none` is refused. On a multipart upload the token is the first part of the body and is checked before a

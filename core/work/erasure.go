@@ -54,6 +54,9 @@ type ErasureResult struct {
 	Pseudonym     string         `json:"pseudonym,omitempty"`
 	AlreadyErased bool           `json:"already_erased,omitempty"`
 	Changed       map[string]int `json:"changed"`
+	// ScrubPending: the person is erased, but traces may remain in the database files until the
+	// scrub, which is retried, succeeds.
+	ScrubPending bool `json:"scrub_pending,omitempty"`
 }
 
 // ErasurePersonRequest is the body of POST /v1/people/erase. The identifier travels in the body,
@@ -69,6 +72,12 @@ type ErasurePersonRequest struct {
 // identifier that appears nowhere and was never erased. With an error wrapping errScrub the result
 // is set: the person is erased.
 func (s *Store) ErasePerson(ctx context.Context, a *Principal, identity string) (*ErasureResult, error) {
+	return s.erasePerson(ctx, a, identity, time.Time{})
+}
+
+// erasePerson is ErasePerson; erasedAt, when set, is when a replayed erasure was first made, which
+// the tombstone keeps.
+func (s *Store) erasePerson(ctx context.Context, a *Principal, identity string, erasedAt time.Time) (*ErasureResult, error) {
 	if !a.Can(PermAdmin) || !a.Unscoped() {
 		return nil, ErrForbidden
 	}
@@ -97,8 +106,12 @@ func (s *Store) ErasePerson(ctx context.Context, a *Principal, identity string) 
 			}
 		} else {
 			out.Pseudonym = pseudo
+			stamp := erasedAt
+			if stamp.IsZero() {
+				stamp = s.now()
+			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO erasures (subject, class, created_at) VALUES (?, ?, ?)
-				ON CONFLICT (subject, class) DO UPDATE SET created_at = excluded.created_at, scrubbed = 0`, out.Subject, ClassPerson, ts(s.now())); err != nil {
+				ON CONFLICT (subject, class) DO UPDATE SET created_at = MAX(created_at, excluded.created_at), scrubbed = 0`, out.Subject, ClassPerson, ts(stamp)); err != nil {
 				return err
 			}
 		}
@@ -115,6 +128,7 @@ func (s *Store) ErasePerson(ctx context.Context, a *Principal, identity string) 
 	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 	defer cancel()
 	if err := s.ResumeScrub(sctx); err != nil {
+		out.ScrubPending = true
 		return out, fmt.Errorf("%w: %w", errScrub, err)
 	}
 	return out, nil
@@ -308,8 +322,9 @@ func (s *Store) identityOf(ctx context.Context, subject string) (string, error) 
 }
 
 // PurgeSubject replays one erasure on a restored database. A person who does not appear in it is
-// not an error and gives a nil result. Repeating it changes nothing more.
-func (s *Store) PurgeSubject(ctx context.Context, subject, class string) (*ErasureResult, error) {
+// not an error and gives a nil result. Repeating it changes nothing more. erasedAt is when the
+// erasure was first made (zero: unknown, now is recorded).
+func (s *Store) PurgeSubject(ctx context.Context, subject, class string, erasedAt time.Time) (*ErasureResult, error) {
 	if class != ClassPerson {
 		return nil, fmt.Errorf("purge handles class %s only", ClassPerson)
 	}
@@ -323,7 +338,7 @@ func (s *Store) PurgeSubject(ctx context.Context, subject, class string) (*Erasu
 	if identity == "" {
 		return nil, s.ResumeScrub(ctx)
 	}
-	return s.ErasePerson(ctx, &Principal{Subject: replayActor, Permissions: []string{PermAdmin}}, identity)
+	return s.erasePerson(ctx, &Principal{Subject: replayActor, Permissions: []string{PermAdmin}}, identity, erasedAt)
 }
 
 // ResumeScrub scrubs the database files if an erasure was committed and the scrub that should have

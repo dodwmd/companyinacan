@@ -184,7 +184,8 @@ stored; a GET (link scanner, prefetch) never spends it; every refusal is the sam
 failed redeems are slowed per module while valid ones never are; the landing path is a strict allowlist and
 the address of the module comes from configuration, never from the request; a disabled account, a removed role,
 an SSO unlink or an access revocation ends the module session at the next revalidation (1 minute for
-privileged sessions in people, jobs and finance, 5 minutes for the others, 30 seconds in work); a module session
+sessions that can write or are privileged in files, finance and jobs, and privileged sessions in people, 5 minutes for
+the others, 30 seconds in work); a module session
 never outlives the identity provider's revalidation deadline; finance's party erasure needs an admin sign-in at
 most 5 minutes old (can-core sends `max_age=31536000` so the provider reports `auth_time`); minting is
 limited to 30 per person and minute; mint and redeem are audited with ids only. Logging out of a module ends

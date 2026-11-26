@@ -2,6 +2,7 @@ package work
 
 import (
 	"log/slog"
+	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 )
 
 func TestUISecurityConformance(t *testing.T) {
+	var built *App // the module built last
 	conformance.Run(t, conformance.Module{
 		Name: "work", Prefix: "/ui", SessionCookie: "work_session", CSRFCookie: "work_login_csrf",
 		User: []string{PermWrite}, Privileged: []string{PermAdmin},
@@ -35,12 +37,23 @@ func TestUISecurityConformance(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = app.Close() })
+			built = app
 			for _, a := range app.srv.auth.(Chain) {
 				if ca, ok := a.(*CanAuth); ok {
 					ca.In.Now = clk.Now
 				}
 			}
 			return &conformance.Env{H: app.Handler(), Core: core, Advance: clk.Advance}
+		},
+		// no page here is for administrators alone, so the demotion is to read-only and the request
+		// is a write
+		Demoted: []string{PermRead},
+		Gated: func(t *testing.T, _ *conformance.Env, _ *conformance.Browser) (string, string, url.Values) {
+			setup := &Principal{Subject: "user:setup", Permissions: []string{PermAdmin}}
+			if _, err := built.Store().CreateProject(t.Context(), setup, NewProject{Key: "DEMO", Name: "Demo"}); err != nil {
+				t.Fatal(err)
+			}
+			return "POST", "/projects/DEMO/issues", url.Values{"title": {"x"}, "type": {"task"}}
 		},
 	})
 }

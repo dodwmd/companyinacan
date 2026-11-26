@@ -613,3 +613,19 @@ func CheckNotBehind(bucket, snapshot []Entry) ([]Entry, error) {
 	}
 	return MergeLedgers(bucket, snapshot), nil
 }
+
+// PurgeAtEnv tells a module's purge command, run by `can restore`, when the erasure it replays was
+// first made (RFC 3339), so that the tombstone it records keeps that time instead of the restore's:
+// a later restore must not replay it into data copied after the real erasure. A command that does
+// not know the variable ignores it.
+const PurgeAtEnv = "CAN_PURGE_AT"
+
+// ReplayedAt reads PurgeAtEnv's value; zero (the caller's own clock) when it is unset or unreadable,
+// or later than now.
+func ReplayedAt(v string, now time.Time) time.Time {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil || t.After(now) {
+		return time.Time{}
+	}
+	return t
+}

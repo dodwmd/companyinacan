@@ -34,7 +34,7 @@ type Hooks interface {
 	// recorded manifest says (specs/043-module-backup-hooks).
 	HasSubcommandRestore(module string) bool
 	RunPurgeScript(ctx context.Context, module, subject, class string) error
-	RunPurgeCLI(ctx context.Context, module, subject, class string) error
+	RunPurgeCLI(ctx context.Context, module, subject, class string, at time.Time) error
 }
 
 var _ Hooks = (*dumps.KubeHooks)(nil)
@@ -465,6 +465,7 @@ func (o *Ops) Erase(ctx context.Context, es []backup.Entry, accept []string) (ba
 	unapplied := map[string]bool{}
 	times := o.dumpTimes()
 	planned := map[string]bool{}
+	latest := map[string]time.Time{} // the newest erasure among those replayed, per planned purge
 	for _, e := range es {
 		held := false
 		for _, m := range mods {
@@ -485,7 +486,11 @@ func (o *Ops) Erase(ctx context.Context, es []backup.Entry, accept []string) (ba
 				// Replaying blind could destroy data that was never erased.
 				unapplied[m.ID+":"+e.Class] = true
 			default:
-				if k := m.ID + "\x00" + e.Subject + "\x00" + e.Class; !planned[k] {
+				k := m.ID + "\x00" + e.Subject + "\x00" + e.Class
+				if at, ok := e.Erased(); ok && at.After(latest[k]) {
+					latest[k] = at
+				}
+				if !planned[k] {
 					planned[k] = true
 					todo = append(todo, purge{m, e})
 				}
@@ -529,7 +534,7 @@ func (o *Ops) Erase(ctx context.Context, es []backup.Entry, accept []string) (ba
 		case p.module.Manifest.Hooks.Purge != "":
 			err = o.Hooks.RunPurgeScript(ctx, id, s, c)
 		case builtin && method.cli:
-			err = o.Hooks.RunPurgeCLI(ctx, id, s, c)
+			err = o.Hooks.RunPurgeCLI(ctx, id, s, c, latest[id+"\x00"+s+"\x00"+c])
 		default:
 			err = o.httpPurge(ctx, p.module, method.tokenKey, s, c)
 		}

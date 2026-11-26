@@ -13,6 +13,9 @@ var erasureNotes = []string{
 	"Copies outside the tracker (webhook receivers, can-core's queued events, exports) and backups made before the erasure are not changed.",
 }
 
+// scrubPendingNote is said when the erasure is committed but the database files were not scrubbed.
+const scrubPendingNote = "NOT FINISHED: the person is erased, but scrubbing the database files failed, so the identifier may still be readable in them. It is retried by itself; check the log before relying on the files or copies of them."
+
 // erasePerson is POST /v1/people/erase. The identifier is not logged.
 func (a *api) erasePerson(w http.ResponseWriter, r *http.Request, p *Principal) {
 	var in ErasurePersonRequest
@@ -28,10 +31,14 @@ func (a *api) erasePerson(w http.ResponseWriter, r *http.Request, p *Principal) 
 		return
 	}
 	a.log.Info("audit", "action", "person.erase", "erasure", out.Subject, "already_erased", out.AlreadyErased)
+	notes := erasureNotes
+	if out.ScrubPending {
+		notes = append([]string{scrubPendingNote}, erasureNotes...)
+	}
 	writeJSON(w, http.StatusOK, struct {
 		*ErasureResult
 		Notes []string `json:"notes"`
-	}{out, erasureNotes})
+	}{out, notes})
 }
 
 // erasures is GET /v1/erasures?after=N: the tombstones, for the collector of the erasure ledger.
