@@ -535,19 +535,28 @@ func defaultIsTTY() bool {
 var defaultLookPath = exec.LookPath
 
 // stackChecks reports the company stack: the recorded phases, and (through the SSH tunnel) the
-// deployments. A tunnel that cannot be opened is a failed check, not a silent pass.
-func (t *target) stackChecks(ctx context.Context) ([]provider.Check, bool) {
+// deployments. A tunnel that cannot be opened is a failed check, not a silent pass. The strings are
+// warnings: modules can-core could not install or upgrade.
+func (t *target) stackChecks(ctx context.Context) ([]provider.Check, bool, []string) {
 	tgt, err := provider.TargetFor(t.spec, t.store, t.deps)
 	if err != nil {
-		return []provider.Check{{Name: "stack", Detail: err.Error()}}, false
+		return []provider.Check{{Name: "stack", Detail: err.Error()}}, false, nil
 	}
 	closeTunnel, err := lifecycle.access(ctx, tgt)
 	if err != nil {
 		cs, _ := launch.Status(ctx, t.store, unreachable{err})
-		return cs, false
+		return cs, false, nil
 	}
 	defer closeTunnel()
-	return launch.Status(ctx, t.store, lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)))
+	kube := lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name))
+	checks, ok := launch.Status(ctx, t.store, kube)
+	var warnings []string
+	for _, c := range checks {
+		if c.Name == "can-core" && c.OK {
+			warnings = launch.ModuleWarnings(ctx, kube)
+		}
+	}
+	return checks, ok, warnings
 }
 
 // unreachable is a Kube that reports why the cluster cannot be queried.

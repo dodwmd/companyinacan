@@ -511,8 +511,9 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 			if st.Phase == provider.PhaseReady {
 				// A company deployed by `can up` also has to be up inside the cluster.
 				if ls, lerr := t.store.Load(); lerr == nil && ls.Launch != nil {
-					checks, ok := t.stackChecks(ctx)
+					checks, ok, warnings := t.stackChecks(ctx)
 					res.Checks = append(res.Checks, checks...)
+					res.Warnings = append(res.Warnings, warnings...)
 					if !ok {
 						res.Phase = provider.PhaseDegraded
 						st.Phase = provider.PhaseDegraded
