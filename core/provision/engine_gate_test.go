@@ -64,6 +64,7 @@ func TestPrivilegedLeaverDeletionProceedsOnSecondPersonApproval(t *testing.T) {
 	h := newHarness(t, func(p *Policy) { p.DeleteAfterDays = 1 })
 	h.dir.put(person(alice, "former", "alice@example.com"))
 	h.linkAccounts(alice, "app-a")
+	h.accountGone(alice, "app-b")
 	h.addGroup("admins", alice)
 	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
 	h.settle()

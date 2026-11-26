@@ -45,6 +45,10 @@ left.
   sensitive fields or the `leave` status.
 - FR-3 Workflows `joiner`, `mover`, `leaver` of ordered idempotent steps against a `Connector`
   interface (create, update, disable, delete account; add and remove group membership).
+- FR-3a (added with specs/047-csv-import) A leaver or mover never skips a connector it holds no account
+  record for and reports success. It looks the account up where the connector can (never changing a
+  doubtful match), and otherwise dead-letters a step naming the connector; a leaver also dead-letters the
+  kill switch when the directory links no can-core account. See `docs/provisioning.md`.
 - FR-4 Adapters: `scim-client`, `webhook`; `google-workspace`, `github`, `slack` as documented
   stubs with no network access.
 - FR-5 Dry-run and plan mode; per-step retries with backoff and a dead letter; compensation; a state

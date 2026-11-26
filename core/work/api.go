@@ -46,6 +46,7 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("PATCH /v1/projects/{key}", a.guard(admin, a.patchProject))
 	mux.HandleFunc("POST /v1/projects/{key}/issues", a.guard(write, a.createIssue))
 	mux.HandleFunc("POST /v1/projects/{key}/issues/bulk", a.guard(write, a.bulkCreate))
+	mux.HandleFunc("POST /v1/projects/{key}/issues/import", a.guard(admin, a.importIssues))
 	mux.HandleFunc("GET /v1/projects/{key}/board", a.guard(read, a.board))
 	mux.HandleFunc("GET /v1/projects/{key}/sprints", a.guard(read, a.listSprints))
 	mux.HandleFunc("POST /v1/projects/{key}/sprints", a.guard(write, a.createSprint))

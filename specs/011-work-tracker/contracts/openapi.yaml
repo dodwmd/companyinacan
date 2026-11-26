@@ -141,6 +141,30 @@ paths:
         "201": { description: Created in request order, content: { application/json: { schema: { $ref: "#/components/schemas/IssueList" } } } }
         "200": { description: Replay, content: { application/json: { schema: { $ref: "#/components/schemas/IssueList" } } } }
         "422": { $ref: "#/components/responses/Invalid" }
+  /v1/projects/{key}/issues/import:
+    parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
+    post:
+      tags: [issues]
+      operationId: importIssues
+      x-required-scope: work.admin
+      summary: Preview or apply a CSV of issues (specs/047-csv-import), all or nothing
+      description: Not for project-limited tokens. At most 1 MiB and 2000 rows. Idempotent on the external_id column.
+      parameters:
+        - { name: apply, in: query, required: false, schema: { type: boolean }, description: Write; without it nothing is written }
+        - { name: map, in: query, required: false, schema: { type: array, items: { type: string } }, description: "<field>=<column header>" }
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: { type: string }
+      responses:
+        "200": { description: The report of a preview or of an applied import }
+        "400": { description: The file or a query parameter is unusable }
+        "403": { description: Missing scope, or a project-limited token }
+        "404": { description: No such project }
+        "409": { description: Another import is running, or the project is archived }
+        "413": { description: Over the size or row limit }
+        "422": { description: "apply=true and a row has an error: the report; nothing was written" }
   /v1/projects/{key}/board:
     parameters: [{ $ref: "#/components/parameters/ProjectKey" }]
     get:

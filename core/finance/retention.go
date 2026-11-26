@@ -15,6 +15,13 @@ const (
 		AND NOT EXISTS (SELECT 1 FROM invoices c WHERE c.original_id = invoices.id)`
 )
 
+// purgeableParties are the erased parties that no record refers to any more.
+const purgeableParties = `erased_at IS NOT NULL
+	AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.party_id = parties.id)
+	AND NOT EXISTS (SELECT 1 FROM contracts c WHERE c.party_id = parties.id)
+	AND NOT EXISTS (SELECT 1 FROM purchase_orders p WHERE p.vendor_id = parties.id)
+	AND NOT EXISTS (SELECT 1 FROM recurring r WHERE r.party_id = parties.id)`
+
 // PurgeReport counts what a purge removed.
 type PurgeReport struct {
 	Invoices       int64 `json:"invoices"`
@@ -117,11 +124,11 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			if err := exec(&rep.PurchaseOrders, `DELETE FROM purchase_orders WHERE status IN ('received', 'cancelled') AND date(created_at, 'unixepoch') < ?`, cutoff); err != nil {
 				return err
 			}
-			if err := exec(&rep.ErasedParties, `DELETE FROM parties WHERE erased_at IS NOT NULL
-				AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.party_id = parties.id)
-				AND NOT EXISTS (SELECT 1 FROM contracts c WHERE c.party_id = parties.id)
-				AND NOT EXISTS (SELECT 1 FROM purchase_orders p WHERE p.vendor_id = parties.id)
-				AND NOT EXISTS (SELECT 1 FROM recurring r WHERE r.party_id = parties.id)`); err != nil {
+			// The ids they were imported under stay behind as hashes (specs/047-csv-import).
+			if err := s.keepErasedIDs(ctx, tx); err != nil {
+				return err
+			}
+			if err := exec(&rep.ErasedParties, `DELETE FROM parties WHERE `+purgeableParties); err != nil {
 				return err
 			}
 		}

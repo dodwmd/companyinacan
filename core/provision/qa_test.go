@@ -61,6 +61,7 @@ func TestLeaverCutoffEndOfDay(t *testing.T) {
 // can-core being down or rate limiting never uses up the attempts of the kill-switch step.
 func TestCoreUnavailableDoesNotConsumeAttempts(t *testing.T) {
 	h := newHarness(t, nil) // MaxAttempts 3
+	h.linkAccounts(alice, "app-a", "app-b")
 	h.dir.put(person(alice, "former", "alice@example.com"))
 	h.core.err = modclient.ErrUnavailable
 	h.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})
@@ -82,6 +83,7 @@ func TestCoreUnavailableDoesNotConsumeAttempts(t *testing.T) {
 	}
 	// a refusal is not an outage and still counts
 	h2 := newHarness(t, nil)
+	h2.linkAccounts(alice, "app-a", "app-b")
 	h2.dir.put(person(alice, "former", "alice@example.com"))
 	h2.core.err = modclient.ErrRevokeRefused
 	h2.mustEvent(EventPersonOffboarded, map[string]any{"party_id": alice, "kind": "employee", "effective_date": "2026-06-10"})

@@ -532,6 +532,7 @@ can pull                 # write UI-made changes back to company.yaml
 can backup | backup verify | restore <snapshot> | restore --kit <file>
 can upgrade [<id>]       # pinned, Helm rollback on failed readiness
 can export | import <file>   # portable data export / import (per module or whole company)
+can import people|parties|issues <csv>   # CSV into one module: preview first, --apply writes all or nothing (specs/047)
 can doctor               # check local prerequisites and provider credentials, and whether Docker, the compose stack and the cluster answer
 can diagnose             # write a support bundle (versions, redacted config, checks, log tail, metrics snapshot); see docs/observability.md
 can email                # connect outbound relay + inbound mail

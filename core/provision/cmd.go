@@ -167,8 +167,9 @@ func connectorInfo(cfg *Config, cs *ConnectorSet) []ConnectorInfo {
 	return out
 }
 
-// groupMovers starts a mover run for people whose SCIM group membership changed and who already
-// have a downstream account. Best effort: a failure is logged, and an administrator can start the
+// groupMovers starts a mover run for people whose SCIM group membership changed. A person with no
+// recorded account gets one too (the run reports every connector it cannot change), unless their
+// joiner is still under way. Best effort: a failure is logged, and an administrator can start the
 // mover through the API.
 func (e *Engine) groupMovers(ctx context.Context, ids []string) {
 	for _, id := range ids {
@@ -176,8 +177,14 @@ func (e *Engine) groupMovers(ctx context.Context, ids []string) {
 			continue
 		}
 		accts, err := e.Store.activeAccounts(ctx, id)
-		if err != nil || len(accts) == 0 {
+		if err != nil {
+			e.log().Warn("provision: mover for a group change not started", "party_id", id, "error", err)
 			continue
+		}
+		if len(accts) == 0 {
+			if _, live, err := e.Store.liveRun(ctx, id, KindJoiner); err != nil || live {
+				continue
+			}
 		}
 		key := fmt.Sprintf("scim-%d", e.now().UnixNano())
 		if _, _, err := e.Start(ctx, StartRequest{Kind: KindMover, PartyID: id, Trigger: "scim", Key: key}); err != nil && !errors.Is(err, ErrConflict) {

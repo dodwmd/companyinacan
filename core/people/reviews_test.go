@@ -641,13 +641,18 @@ func TestMigrationOnExistingDatabase(t *testing.T) {
 		`DROP TRIGGER leave_ledger_no_delete`, `DROP TRIGGER leave_ledger_no_update`,
 		`DROP TABLE ledger_guard`, `DROP TABLE leave_ledger`, `DROP TABLE leave_requests`, `DROP TABLE blackouts`, `DROP TABLE holidays`,
 		`DROP TABLE holiday_calendars`, `DROP TABLE leave_types`, `DROP TABLE review_responses`, `DROP TABLE review_requests`,
-		`DROP TABLE review_participants`, `DROP TABLE review_cycles`, `DROP TABLE review_templates`, `DELETE FROM schema_migrations WHERE version = 4`,
+		`DROP TABLE review_participants`, `DROP TABLE review_cycles`, `DROP TABLE review_templates`, `DELETE FROM schema_migrations WHERE version >= 4`,
 	} {
 		if _, err := e.s.db.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}
 	p, _ := e.person("Old", "", RoleEmployee)
+	// 005 runs again after 004; its column is dropped only now because creating the person uses it.
+	for _, q := range []string{`DROP INDEX people_external_id`, `ALTER TABLE people DROP COLUMN external_id`} {
+		_, err := e.s.db.Exec(q)
+		e.must(err)
+	}
 	e.must(e.s.migrate(e.ctx))
 	if _, err := e.s.CreateReviewTemplate(e.ctx, e.hr, TemplateIn{Name: "t", Questions: testQuestions}); err != nil {
 		t.Fatal(err)
