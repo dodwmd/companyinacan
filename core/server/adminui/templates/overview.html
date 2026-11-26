@@ -34,4 +34,4 @@
 {{end}}
 {{end}}
 {{define "ovvalue"}}{{.Value}}{{range .Amounts}}<br>{{.}}{{end}}{{end}}
-{{define "ovlink"}}{{with .Link}}{{if .Href}}<a href="{{.Href}}">{{.Name}}<span class="sr">: {{$.Label}}</span></a>{{else}}<form method="post" action="/apps/{{.App}}/launch"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="return" value="{{.Return}}"><button type="submit">{{t "ov.open_in" .Name}}<span class="sr">: {{$.Label}}</span></button></form>{{end}}{{else}}-{{end}}{{end}}
+{{define "ovlink"}}{{with .Link}}{{if .Href}}<a href="{{.Href}}">{{.Name}}<span class="sr">: {{$.Label}}</span></a>{{else}}<form method="post" action="/apps/{{.App}}/launch"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="return" value="{{.Return}}"><button type="submit">{{t "ov.open_in" .Name}}<span class="sr">: {{$.Label}}</span></button></form>{{end}}{{else}}-{{end}}{{end}}

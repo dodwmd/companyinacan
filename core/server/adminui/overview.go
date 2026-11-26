@@ -29,7 +29,7 @@ func (s *Server) overviewRoutes() []route {
 
 // overviewLink is where a figure leads: a page of the admin UI (Href) or a page of a module's own
 // UI, opened through the Apps launcher (App and Return).
-type overviewLink struct{ Href, App, Return, Name string }
+type overviewLink struct{ Href, App, Return, Name, CSRF string }
 
 type overviewRow struct {
 	Label     string
@@ -49,7 +49,6 @@ type overviewSection struct {
 }
 
 type overviewData struct {
-	CSRF      string
 	Attention []overviewRow
 	Sections  []overviewSection
 	// Failed means the modules could not be listed at all.
@@ -58,7 +57,7 @@ type overviewData struct {
 
 func (s *Server) overviewPage(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 	ctx, me := r.Context(), subjectOf(sc)
-	d := overviewData{CSRF: sc.Session.CSRF}
+	d := overviewData{}
 	platform, err := s.allowed(r, sc, rbac.PermView)
 	if err != nil {
 		s.internal(w, r, sc, err)
@@ -100,7 +99,7 @@ func (s *Server) overviewPage(w http.ResponseWriter, r *http.Request, sc *sessio
 		for _, m := range mods {
 			sec := overviewSection{ID: m.ID, Name: m.Name, Unavailable: m.Unavailable, At: m.At}
 			for _, v := range m.Values {
-				sec.Rows = append(sec.Rows, s.overviewRow(m, v, apps, platform))
+				sec.Rows = append(sec.Rows, s.overviewRow(m, v, apps, platform, sc.Session.CSRF))
 			}
 			d.Sections = append(d.Sections, sec)
 		}
@@ -121,7 +120,7 @@ func (s *Server) overviewPage(w http.ResponseWriter, r *http.Request, sc *sessio
 	s.render(w, r, http.StatusOK, "overview.html", s.page(r, sc, "overview", s.msg("ov.title"), d))
 }
 
-func (s *Server) overviewRow(m overview.Module, v overview.Value, apps map[string]string, platform bool) overviewRow {
+func (s *Server) overviewRow(m overview.Module, v overview.Value, apps map[string]string, platform bool, csrf string) overviewRow {
 	row := overviewRow{Label: s.msg("ov." + "fig_" + strings.ReplaceAll(v.Key, ".", "_")), Value: strconv.FormatInt(v.Count, 10), Attention: v.Attention && v.Count > 0}
 	for _, a := range v.Amounts {
 		row.Amounts = append(row.Amounts, overview.FormatMoney(a.Currency, a.Minor))
@@ -133,7 +132,7 @@ func (s *Server) overviewRow(m overview.Module, v overview.Value, apps map[strin
 			row.Link = &overviewLink{Href: "/leads?status=new", Name: s.msg("nav.leads")}
 		}
 	case v.Path != "" && apps[m.ID] != "":
-		row.Link = &overviewLink{App: m.ID, Return: v.Path, Name: apps[m.ID]}
+		row.Link = &overviewLink{App: m.ID, Return: v.Path, Name: apps[m.ID], CSRF: csrf}
 	}
 	return row
 }

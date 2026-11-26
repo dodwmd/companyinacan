@@ -22,7 +22,9 @@ type SummaryStats struct {
 // Summary computes the figures for the actor.
 func (s *Service) Summary(ctx context.Context, a Actor) (SummaryStats, error) {
 	var st SummaryStats
-	if a.blocked() {
+	// Without a person record and without hr there is nothing to look at: no figure rather than a
+	// zero that reads as "nobody works here" or "everyone is in".
+	if a.blocked() || (!a.HasPerson && !a.hrAdmin()) {
 		return st, nil
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id, status FROM people WHERE erased_at IS NULL ORDER BY seq`)
@@ -61,9 +63,7 @@ func (s *Service) Summary(ctx context.Context, a Actor) (SummaryStats, error) {
 	}
 	st.Headcount = &n
 
-	// Without a person record and without hr there is no team to look at: no figure rather than a
-	// zero that reads as "everyone is in".
-	if !Decide(a, ActLeaveCalendar, Fact{}) || (!a.HasPerson && !a.hrAdmin()) {
+	if !Decide(a, ActLeaveCalendar, Fact{}) {
 		return st, nil
 	}
 	today := s.today()
