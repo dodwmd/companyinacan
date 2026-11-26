@@ -327,14 +327,21 @@ func (u *UI) partyErase(c *uiCtx) error {
 		return invalid("confirm", "type ERASE to confirm")
 	}
 	// Step-up: erasing is irreversible, so a session left open on an unlocked screen is not enough.
-	// A token session is asked for its sign-in token again, compared with the one it was made from;
-	// a launch-ticket session needs a recent admin sign-in, confirmed by can-core (stepUpSSO).
+	// A token session is asked for its sign-in token again, which can-core (or the token store) must
+	// accept now, not from a cache: it may have been revoked since. A launch-ticket session needs a recent admin sign-in, confirmed by can-core (stepUpSSO).
 	if c.ss.ssoHandle != "" {
 		if err := u.stepUpSSO(c); err != nil {
 			return err
 		}
-	} else if !constEq(strings.TrimSpace(c.r.PostForm.Get("token")), c.ss.token) {
-		return invalid("token", "re-enter your sign-in token to confirm the erasure")
+	} else {
+		if !constEq(strings.TrimSpace(c.r.PostForm.Get("token")), c.ss.token) {
+			return invalid("token", "re-enter your sign-in token to confirm the erasure")
+		}
+		p, err := u.authenticateNow(c.r, c.ss.token)
+		if err != nil || p.Subject != c.ss.subject || !allowedBy(p, PermAdmin, false) {
+			return invalid("token", "your sign-in token could not be confirmed as still allowed to erase; sign in again")
+		}
+		c.p = p
 	}
 	rep, err := u.Store.ErasePartyData(c.ctx(), c.p, id, u.Cfg.RetentionYears)
 	warn := false

@@ -98,4 +98,14 @@ func TestProxiedDNSAndTheFlagSwitchEdgeLimitsOff(t *testing.T) {
 	if code, out, errs := run(t, stackArgs(dir, "--no-edge-limits")...); code != ExitOK || !spy.opts.Routes.NoEdgeLimit {
 		t.Fatalf("--no-edge-limits: %d %s %s", code, out, errs)
 	}
+	// QA: remembered, so a later run without the flag does not switch the limits back on.
+	if code, out, errs := run(t, stackArgs(dir)...); code != ExitOK || !spy.opts.Routes.NoEdgeLimit || spy.opts.Routes.NoEdgeLimitReason != "flag" {
+		t.Fatalf("a later run: %d %s %s %+v", code, out, errs, spy.opts.Routes)
+	}
+	if code, out, errs := run(t, stackArgs(dir, "--no-edge-limits=false")...); code != ExitOK || spy.opts.Routes.NoEdgeLimit {
+		t.Fatalf("--no-edge-limits=false: %d %s %s", code, out, errs)
+	}
+	if code, out, errs := run(t, stackArgs(dir)...); code != ExitOK || spy.opts.Routes.NoEdgeLimit {
+		t.Fatalf("after turning them on: %d %s %s", code, out, errs)
+	}
 }

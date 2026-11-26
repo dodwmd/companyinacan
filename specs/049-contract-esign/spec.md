@@ -65,7 +65,8 @@ This is a **simple electronic signature**. It is not an advanced or qualified el
   title are stored with the request. Text and titles with control, bidirectional, zero-width,
   other invisible format or tag characters are refused, and so are such characters or line
   separators in signer names and typed names. (This also refuses a byte-order mark and the zero-width
-  joiners some scripts and emoji use: retype or remove them.)
+  joiners some scripts and emoji use: retype or remove them.) A name needs a letter or digit that draws
+  something: blanks such as U+3164 and U+2800 alone are refused.
 - **FR-002** Links are 256 random bits, stored only as SHA-256, expire (default 7 days, 1 to 30) and
   work once. No staff page, API response, log, audit entry or event ever contains a link.
 - **FR-003** Mail goes through can-core's `email.send`, one recipient per message, only to the
@@ -84,7 +85,11 @@ This is a **simple electronic signature**. It is not an advanced or qualified el
   only. Events carry no personal data.
 - **FR-010** Each request has a hash chain over `sent`, `invited`, `signed`, `declined`, `revoked`
   and `completed`, with digests (not copies) of the personal data. `GET /v1/contracts/{id}/verify`
-  checks the chain, the records against it, and the text against the hash, in one read transaction.
+  checks the chain, the records against it, and the text against the hash, in one read transaction. It
+  also compares a request's creation and closing times with the chain's (an event may be dated up to 5 seconds after
+  the stored time, never before), refuses signature or refusal
+  fields a signer's status does not allow, and checks that a completed request's contract still has the
+  signing time, title, link provider and a signed status.
   The "erased" mark is accepted only on a declined or revoked request whose personal fields are all
   empty; it never switches a check off elsewhere.
 - **FR-011** IP policy: `signing_record_ip` is `truncated` (default, /24 or /48), `full` or `none`.
@@ -95,7 +100,9 @@ This is a **simple electronic signature**. It is not an advanced or qualified el
   setting finance refuses to send and answers 404 to every link.
 - **FR-013** Reading a signing request or a certificate is audited.
 - **FR-014** The outcome of mailing each signer's certificate is stored, audited and shown to staff,
-  who can send it again (at most 10 times, never after the party is erased). The last signer's own
+  who can send it again (at most 10 times, never after the party is erased). A second resend of a link
+  or certificate to the same signer within 30 seconds is refused unless the previous one failed; a slower
+  earlier send does not overwrite a later one's outcome. The last signer's own
   certificate is handed to the mail service before the page answers, so the page does not announce
   one that was refused. There is no automatic retry beyond can-core's own delivery retries.
 

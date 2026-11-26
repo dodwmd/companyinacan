@@ -205,8 +205,8 @@ func (u *UI) Handler() http.Handler {
 	for _, p := range u.publicRoutes() {
 		h := p.h
 		mux.HandleFunc(p.pattern, func(w http.ResponseWriter, r *http.Request) {
-			if r.Body != nil {
-				r.Body = http.MaxBytesReader(w, r.Body, uiMaxFormBytes)
+			if r.Method == http.MethodPost {
+				modclient.LimitPublicForm(w, r) // anyone can post here
 			}
 			h(w, r)
 		})

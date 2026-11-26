@@ -76,10 +76,15 @@ func (u *UI) signingResend(c *uiCtx) error {
 	if err != nil {
 		return err
 	}
-	if _, err := u.Store.Resend(c.ctx(), c.p, id, signer); err != nil {
+	e, err := u.Store.Resend(c.ctx(), c.p, id, signer)
+	if err != nil {
 		return err
 	}
-	return c.redirect("/contracts/"+itoa(id), "flash.invited")
+	flash := "flash.link_resent"
+	if e.Status == EnvCompleted {
+		flash = "flash.cert_resent"
+	}
+	return c.redirect("/contracts/"+itoa(id), flash)
 }
 
 func (u *UI) signingCertificate(c *uiCtx) error {

@@ -68,10 +68,15 @@ flowchart TB
 | Webhook signature | can-core to modules | HMAC secret per module | 5-minute replay window; at-least-once, so receivers de-duplicate |
 | People and jobs UI sessions | browser | server memory only, SHA-256 of a 256-bit id | the people UI keeps the token in memory to re-check it every few minutes (revocation); a restart ends every session |
 
-Bad tokens are refused cheaply and counted per address; **valid credentials are never throttled by other
-callers' failures**. Failed-login and failed-token budgets exist in every service.
+Bad tokens are refused cheaply and counted per address (the address the service sees: behind a proxy it is not
+told to trust, that is the proxy's, shared by everyone); **valid credentials are never throttled by other
+callers' failures**. Failed-login and failed-token budgets exist in every service. A form posted to a module
+web UI without a session is limited to 4 KiB and 16 fields: without that, a few hundred posts side by side ran the
+pod out of its 64 MiB. Measured on one machine with 300 connections; larger floods and large headers were not.
 
-can-core's admin sign-in has no limit per account, only per address: see the residual risks below.
+can-core's admin sign-in has no limit per account. With `CAN_TRUST_PROXY=true` (as shipped) it limits per client
+address; with it off (the binary's default) it limits nothing, per address or otherwise, and failures only add a
+delay: see the residual risks below.
 
 ## Sealed data, audit and erasure
 
@@ -111,7 +116,7 @@ the production ingress must send it.
 | **Policy lag.** In a new default-deny namespace a pod could reach others for up to 20 s while kube-router programmed the policy | observed on k3d | [measurements](measurements/phase0-ci.md) |
 | **NodePort exposure.** The bootstrap sets `ufw default allow routed`; a NodePort or LoadBalancer Service created later on a bring-your-own host may be internet-reachable despite ufw listing 22, 80, 443 | open on `ssh`; not on `hetzner`'s cloud firewall | [providers.md](providers.md) |
 | **Equity quantities in plaintext.** Grant quantity, strike, schedule and ledger quantities are plain columns in SQLite (pool and dilution maths and the immutability triggers need them); only identity, notes, payment references, valuations and convertibles are sealed. Run on an encrypted volume with encrypted backups | by design, documented | [equity.md](equity.md) |
-| **Equity holder identity.** Verified against the people directory only where `directory.url` is set, which can-core does not wire yet; otherwise a second actor's attestation is the control and accounts are not connected to holders. Collusion, directory or account administrators and one confirmation covering later ledger entries remain. The service-account token never carries the board role, so grants can only be approved by an identity provider that issues it | open | [equity.md](equity.md#holder-identity) |
+| **Equity holder identity.** Verified against the people directory only where `directory.url` is set, which can-core does not wire yet; otherwise a second actor's attestation is the control and accounts are not connected to holders, so one administrator with the board role and the service-account token can give themself a grant without break-glass. Collusion, directory or account administrators and one confirmation covering later ledger entries remain. The service-account token never carries the board role, so grants can only be approved by an identity provider that issues it | open | [equity.md](equity.md#holder-identity) |
 | **SSO covers the admin UI only.** The module UIs and APIs use tokens; OIDC administrators cannot issue personal access tokens; no real identity provider has ever been tested | open | [sso.md](sso.md), [module-wiring.md](module-wiring.md) |
 | **Kubernetes Secrets are not encrypted by can-core.** Encrypting Secrets at rest is a cluster setting that can-core does not assert, and anyone with `kubectl` on `mod-*` namespaces can read module secrets and keyrings | open | [module-wiring.md](module-wiring.md) |
 | **The authentication code can be guessed by someone who has the password.** With `CAN_TRUST_PROXY=false` (the binary's default) nothing locks or limits sign-in: back-off only delays, about 128 guesses a second still get through, and the second factor can be expected to fall within about an hour. With it on (as shipped) the locks are per address, so many addresses mean many allowances. can-core does not prevent this; it records `admin.login.many_failures` and logs a warning after 20 failures on an account in a day | open; keep `CAN_TRUST_PROXY=true` behind Traefik, add the IP allowlist, act on the alert by changing the password | [deployment.md](../specs/005-can-core-mvp/deployment.md) |

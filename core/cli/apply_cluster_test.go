@@ -97,7 +97,7 @@ func TestApplyRoutingFacts(t *testing.T) {
 		want              []string // in the facts written; nil = none written
 		say               string
 	}{
-		{"already for this domain", "a.example", sslip, nil, ""},
+		{"already for this domain", `{"data":{"domain":"a.example","tls":"true","edgeLimit":"on"}}`, sslip, nil, ""},
 		{"missing, plain HTTP stack", "", sslip, []string{`tls: "false"`, `catchAll: "true"`, `siteHosts: ""`}, "from the site route"},
 		{"missing, no site route", "", "", nil, "run `can up`"},
 	} {

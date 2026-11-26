@@ -402,7 +402,8 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) loginPost(w http.ResponseWriter, r *http.Request) {
-	if u.NoTokenLogin { // pasted-token sign-in is off (ui.token_login: false): launch tickets only
+	modclient.LimitPublicForm(w, r) // anyone can post here
+	if u.NoTokenLogin {             // pasted-token sign-in is off (ui.token_login: false): launch tickets only
 		u.loginForm(w, r, http.StatusForbidden, u.msg("login.token_off"))
 		return
 	}

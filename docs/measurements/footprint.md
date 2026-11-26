@@ -124,9 +124,8 @@ finance 16.0, people 15.5, jobs 14.9, work 14.5, equity 12.6, board 12.6, files 
 **Not established, and not claimed.** The bundle SPEC 3.2 and 10 name for 2 GB is the platform plus site, forms,
 support, newsletter and analytics, idling under 1.5 GB of total used RAM (OS, k3s and databases included).
 
-- The three wrapped apps are installable (`experimental`) but have only been started one at a time on k3d, and
-  enabling any of them stops every backup until the `can-hooks` image is published. So the wizard's starter
-  template is the site and forms only, not the bundle SPEC names.
+- The three wrapped apps are installable (`experimental`) but have only been started one at a time on k3d. The
+  wizard's starter template is the site and forms only, not the bundle SPEC names.
 - The bundle has never run together, and nothing here has run on a 2 GB machine.
 - What exists are separate measurements: k3s with Traefik, CoreDNS and local-path 510 to 563 MiB on a 16 GB
   CI runner ([phase0-ci.md](phase0-ci.md)); and, on k3d with empty data (the module READMEs), analytics 25 to 35,

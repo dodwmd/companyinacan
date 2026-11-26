@@ -116,7 +116,7 @@ and every download is written to the audit log. A malformed date is a 422 page, 
 
 ## Erasure and legal retention
 
-An administrator opens **Erase personal data** on a party, reads what will happen, types `ERASE` and enters the sign-in token again (step-up). A person who signed in from the admin UI (no token) is not asked
+An administrator opens **Erase personal data** on a party, reads what will happen, types `ERASE` and enters the sign-in token again (step-up; the token is checked again there and then, so a just-revoked one erases nothing). A person who signed in from the admin UI (no token) is not asked
 for one: erasure works only within five minutes of **authenticating** to the admin UI (password and code, or the
 identity provider's `auth_time`; opening finance from the **Apps** page again does not count), and can-core is asked
 at that moment whether they still hold `finance.admin`. Otherwise it is refused: sign out of the admin UI (with

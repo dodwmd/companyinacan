@@ -62,6 +62,21 @@ func (c *Cloudflare) ttlFor(r Record) int {
 	return DefaultTTL
 }
 
+// keepSettings leaves an existing record's proxy and TTL as they are, unless company.yaml asks for
+// something (dns.proxied, dns.ttl): an operator may have set them in the dashboard.
+func (c *Cloudflare) keepSettings(want cfWrite, cur cfRec) cfWrite {
+	if !c.cfg.ProxiedSet && !c.cfg.Proxied {
+		want.Proxied = cur.Proxied
+	}
+	switch {
+	case want.Proxied:
+		want.TTL = 1 // proxied records must use automatic TTL
+	case c.cfg.TTL == 0 && !cur.Proxied && cur.TTL != 0:
+		want.TTL = cur.TTL
+	}
+	return want
+}
+
 // PlanRecords implements DNSPlanner.
 func (c *Cloudflare) PlanRecords(domain string, recs []Record) []string {
 	zone := "the zone containing " + domain
@@ -70,7 +85,7 @@ func (c *Cloudflare) PlanRecords(domain string, recs []Record) []string {
 	}
 	var out []string
 	for _, r := range recs {
-		out = append(out, fmt.Sprintf("cloudflare: upsert %s %s -> %s in %s (ttl %d, proxied=%t, comment %q)", r.Type, r.Name, r.Value, zone, c.ttlFor(r), c.cfg.Proxied, cfOwnerComment))
+		out = append(out, fmt.Sprintf("cloudflare: upsert %s %s -> %s in %s (ttl %d, proxied=%t for a new record; an existing one keeps what dns does not set, comment %q)", r.Type, r.Name, r.Value, zone, c.ttlFor(r), c.cfg.Proxied, cfOwnerComment))
 	}
 	return out
 }
@@ -335,6 +350,11 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 				foreign = e
 			}
 		}
+		// Another record type of can's own there does not make a foreign record of this type can's.
+		if r.NoAdopt && owned == nil && foreign != nil {
+			fmt.Fprintf(w, "dns: skipped %s %s: a %s record there (-> %s) was not created by can; point it at %s yourself, or remove it and run `can up` again\n", r.Type, r.Name, foreign.Type, foreign.Content, r.Value)
+			continue
+		}
 		if r.NoAdopt && owned != nil && owned.Content != want.Content {
 			if wrote, ok := c.lastWrote(owned.ID); ok && wrote != owned.Content {
 				fmt.Fprintf(w, "dns: skipped %s %s: it was changed after can wrote it (now -> %s); left in place\n", r.Type, r.Name, owned.Content)
@@ -347,6 +367,11 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 		}
 		switch {
 		case owned != nil:
+			want = c.keepSettings(want, *owned)
+			base.Proxied = want.Proxied
+			if want.Proxied && !c.cfg.Proxied {
+				fmt.Fprintf(w, "dns: warning: %s %s is proxied in Cloudflare and is left so: set dns.proxied: true (no per-address limits behind a proxy) or dns.proxied: false (turns the proxy off)\n", r.Type, r.Name)
+			}
 			if owned.Content != want.Content || owned.TTL != want.TTL || owned.Proxied != want.Proxied {
 				if _, err := cl.do(ctx, http.MethodPut, "/zones/"+url.PathEscape(zone)+"/dns_records/"+url.PathEscape(owned.ID), want); err != nil {
 					return err
@@ -363,7 +388,8 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 			if foreign.Proxied {
 				return fmt.Errorf("the existing %s record for %s is proxied; dns.adopt_existing only takes over unproxied records. Turn the proxy off in Cloudflare first", r.Type, r.Name)
 			}
-			adopt := want
+			adopt := c.keepSettings(want, *foreign)
+			base.Proxied = adopt.Proxied
 			adopt.Comment = foreign.Comment // leave its comment alone: it stays foreign
 			if _, err := cl.do(ctx, http.MethodPut, "/zones/"+url.PathEscape(zone)+"/dns_records/"+url.PathEscape(foreign.ID), adopt); err != nil {
 				return err

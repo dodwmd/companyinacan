@@ -231,10 +231,15 @@ Safety rules:
 - A record at the same name and type that does **not** carry the comment is never changed; `can up`
   stops. If several records of that type exist at a name (round robin), `can` warns and manages
   only its own one.
-- `can up` sets `proxied` back to the configured value on records it owns: turning the proxy on in the
-  dashboard is undone by the next run unless you set `proxied: true`. A `CNAME` at the same name also stops it (Cloudflare does not allow both).
+- `can up` leaves the proxy setting and the TTL of an existing record as you set them in the dashboard,
+  unless `company.yaml` asks: `dns.proxied` (true or false) sets the proxy, `dns.ttl` the TTL. A record
+  left proxied without `proxied: true` is warned about: the per-address rate limits stay on behind the
+  proxy and certificates will not issue. Removing `proxied: true` does not turn the proxy off; set
+  `proxied: false`. A `CNAME` at the same name stops `can up` (Cloudflare does not allow both).
 - `adopt_existing: true` lets `can` take over such a record, but only if it is not proxied. It
-  updates content and TTL, leaves the comment alone, and `can down` will never delete it.
+  updates the content (and the TTL if `dns.ttl` is set), leaves the comment alone, and `can down` will
+  never delete it. It does not apply to module hostnames: a record there that `can` did not create is
+  skipped.
 - `can down --yes` removes the DNS records first (so no record points at an address that is about to
   be recycled), only those recorded in `.can/state.json` that were created by `can`, still carry the
   comment and still point where `can` put them (a record an operator repointed is left in place and
