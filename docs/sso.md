@@ -128,6 +128,9 @@ prompt while the IdP session lasts; the IdP then supplies the current groups). T
 disable them at the IdP **and** remove their identity (*Unlink*), which deletes their sessions. Back-channel
 logout is not implemented.
 
+If group mapping is configured and the groups cannot be read (no groups claim in the ID token and userinfo
+fails), the sign-in is refused and the person's roles, sessions and tokens stay as they are.
+
 ### Local login and MFA
 
 SSO users have no password or authentication code in can-core; their MFA is whatever the IdP enforces.

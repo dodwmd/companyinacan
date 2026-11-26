@@ -202,8 +202,9 @@ func (s *Service) Enabled(ctx context.Context) bool {
 	return !c.off
 }
 
-// Begin starts a login: it returns where to send the browser and the transaction cookie.
-func (s *Service) Begin(ctx context.Context, next string) (string, *http.Cookie, error) {
+// Begin starts a login: it returns where to send the browser and the transaction cookie. fresh asks
+// the provider to authenticate the person again (a step-up before a sensitive change).
+func (s *Service) Begin(ctx context.Context, next string, fresh ...bool) (string, *http.Cookie, error) {
 	c := s.load(ctx)
 	if c.off {
 		return "", nil, ErrNotConfigured
@@ -212,7 +213,7 @@ func (s *Service) Begin(ctx context.Context, next string) (string, *http.Cookie,
 		return "", nil, c.err
 	}
 	sd := stateData{State: randString(6) + randString(32), Nonce: randString(32), Verifier: randString(48), Next: SafeNext(next), Exp: s.Now().Add(StateTTL).Unix()}
-	loc, err := c.prov.AuthURL(ctx, sd.State, sd.Nonce, pkceChallenge(sd.Verifier))
+	loc, err := c.prov.AuthURL(ctx, sd.State, sd.Nonce, pkceChallenge(sd.Verifier), fresh...)
 	if err != nil {
 		s.Log.Error("sso: starting login failed", "error", err)
 		return "", nil, errors.New("the identity provider cannot be reached")
@@ -315,6 +316,11 @@ func (s *Service) Complete(ctx context.Context, req CompleteRequest) (Result, er
 		s.Log.Warn("sso: ID token refused", "error", err)
 		s.failAudit(ctx, "token", req.IP)
 		return Result{}, deny("token")
+	}
+	// Roles must not be changed (nor tokens revoked) on groups that were not read.
+	if id.GroupsUnknown {
+		s.failAudit(ctx, "userinfo", req.IP)
+		return Result{}, deny("userinfo")
 	}
 	// 3. Policy on the claims.
 	if code := checkPolicy(c.cfg, id); code != "" {

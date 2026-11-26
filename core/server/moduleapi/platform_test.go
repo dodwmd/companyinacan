@@ -56,7 +56,7 @@ func newPlatform(t *testing.T, wire bool) *pf {
 	reg := registry.New(db, "http://can-core")
 	bus := events.NewBus(db)
 	al := audit.New(db)
-	rb := rbac.New(db, al, rbac.Options{Now: func() time.Time { return now }})
+	rb := rbac.New(db, al, rbac.Options{Now: func() time.Time { return now }, BreakGlass: true})
 	ntf := notify.New(db, notify.Options{Now: func() time.Time { return now }, Mailer: &notify.FakeMailer{}, Bus: bus, Roles: rb})
 	eng := approvals.New(db, al, approvals.Deps{Roles: rb, Perms: rb, Lines: lines{"user:emp": "user:boss"}, Notifier: ntf, Bus: bus, Now: func() time.Time { return now }})
 	s := &Server{Auth: modauth.New(tr, db), Registry: reg, Bus: bus, Log: slog.New(slog.NewJSONHandler(io.Discard, nil))}
@@ -77,7 +77,7 @@ func newPlatform(t *testing.T, wire bool) *pf {
 		}
 		tr.Add("tok-"+m.ID, "mod-"+m.ID, m.ID)
 	}
-	if err := rb.Grant(ctx, "t", "user:fin", "expenses:finance", ""); err != nil {
+	if err := rb.Grant(ctx, rbac.CLIActor, "user:fin", "expenses:finance", ""); err != nil {
 		t.Fatal(err)
 	}
 	return &pf{t: t, srv: srv, rb: rb, eng: eng, ntf: ntf, db: db}

@@ -220,6 +220,9 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 			if errors.Is(err, store.ErrExists) {
 				return fail("admin %q already exists", *user)
 			}
+			if errors.Is(err, store.ErrDeletedName) {
+				return fail("username %q: %v", *user, err)
+			}
 			if errors.Is(err, store.ErrReservedName) {
 				return fail("username %q: names starting sso- are reserved for single sign-on users", *user)
 			}
@@ -311,6 +314,12 @@ func adminCmd(stdin io.Reader, getenv func(string) string) *cobra.Command {
 		if d.AdminDisabled(c.Context(), u.ID) {
 			// a password reset must never quietly bring back an account that was disabled on purpose
 			return fail("admin %q is disabled (the person left); run `can-core admin enable --username %s` first", *ruser, *ruser)
+		}
+		if u.AuthSource != store.SourceLocal {
+			return fail("%q signs in through single sign-on and has no password here", *ruser)
+		}
+		if u.TOTPSecret == "" && !*rotate {
+			return fail("%q has no authentication code yet (invited or reset): add --rotate-totp", *ruser)
 		}
 		secret := ""
 		if *rotate {

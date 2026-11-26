@@ -350,6 +350,9 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 	if uerr == nil && u.AuthSource != store.SourceLocal {
 		uerr = store.ErrNotFound // SSO users have no password: indistinguishable from an unknown user
 	}
+	if uerr == nil && (u.TOTPSecret == "" || u.PasswordHash == store.UnusedPassword) {
+		uerr = store.ErrNotFound // not set up yet: indistinguishable from an unknown user
+	}
 	if uerr == nil {
 		secret, hash = u.TOTPSecret, u.PasswordHash
 	}

@@ -1,0 +1,38 @@
+{{define "content"}}
+<h1>{{t "us.title"}}</h1>
+<p class="hint">{{t "us.help"}}</p>
+{{if not .Data.Recent}}<p class="alert warn">{{t "us.confirm_first"}} <a href="{{.Data.StepUpURL}}">{{t "us.confirm_link"}}</a></p>{{end}}
+<section aria-labelledby="h-list">
+<h2 id="h-list">{{t "us.list"}}</h2>
+<div class="table-wrap" role="region" aria-labelledby="cap-users" tabindex="0">
+<table>
+<caption id="cap-users" class="sr">{{t "us.list"}}</caption>
+<thead><tr><th scope="col">{{t "us.username"}}</th><th scope="col">{{t "us.email"}}</th><th scope="col">{{t "us.status"}}</th><th scope="col">{{t "us.signin"}}</th><th scope="col">{{t "us.roles"}}</th></tr></thead>
+<tbody>
+{{range .Data.Rows}}<tr>
+<th scope="row"><a href="/users/{{.Username}}">{{.Username}}</a></th><td>{{.Email}}</td>
+<td><span class="badge {{.StatusClass}}">{{.Status}}</span></td>
+<td>{{if eq .Source "sso"}}{{t "us.src_sso"}}{{else}}{{t "us.src_local"}}{{end}}</td>
+<td>{{if .Roles}}{{.Roles}}{{else}}{{t "us.no_roles"}}{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+</div>
+</section>
+
+<section aria-labelledby="h-create">
+<h2 id="h-create">{{t "us.create"}}</h2>
+<form method="post" action="/users" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label for="nu-name">{{t "us.username"}}</label>
+<input id="nu-name" name="username" type="text" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="nu-name-hint">
+<span id="nu-name-hint" class="hint">{{t "us.username_hint"}}</span></p>
+<p><label for="nu-email">{{t "us.email"}}</label>
+<input id="nu-email" name="email" type="email" maxlength="254" autocomplete="off" aria-describedby="nu-email-hint">
+<span id="nu-email-hint" class="hint">{{t "us.email_hint"}}</span></p>
+{{if .Data.CanMail}}<p><input id="nu-send" name="send" type="checkbox" value="1" checked> <label for="nu-send">{{t "us.send"}}</label></p>
+{{else}}<p class="hint">{{t "us.no_mail"}}</p>{{end}}
+<p><button type="submit">{{t "us.create_button"}}</button></p>
+</form>
+</section>
+{{end}}

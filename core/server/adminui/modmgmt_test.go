@@ -174,7 +174,7 @@ func newMM(t *testing.T) *mm {
 	clock := func() time.Time { return *h.now }
 	m.rb = rbac.New(h.db, h.audit, rbac.Options{Now: clock})
 	for u, role := range map[string]string{"ops": "operator", "viewer": "auditor"} {
-		if err := m.rb.Grant(ctx, "user:root", "user:"+u, role, ""); err != nil {
+		if err := m.rb.Grant(ctx, "root", "user:"+u, role, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

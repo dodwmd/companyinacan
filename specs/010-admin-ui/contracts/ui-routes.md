@@ -6,7 +6,7 @@ this table with `adminui.Routes()`.
 
 Unsafe requests are `application/x-www-form-urlencoded` posts carrying the hidden field `csrf` (the
 session's CSRF token; on the login form, the double-submit token from the login cookie: `__Host-can_login_csrf` when cookies are Secure, `can_login_csrf` on plain-HTTP development).
-Unauthenticated requests to a session route get `303 /login`. Unknown paths get the 404 page.
+Unauthenticated requests to a session route get `303 /login`. Routes marked step-up answer `303 /reauth` unless the session signed in or confirmed within 10 minutes. Unknown paths get the 404 page.
 
 | Route | Session | Purpose |
 |---|---|---|
@@ -45,8 +45,27 @@ Unauthenticated requests to a session route get `303 /login`. Unknown paths get 
 | `POST /notifications/push/{id}/remove` | yes | Removes one of the caller's push devices (404 for someone else's or an unknown id). Works without JavaScript |
 | `POST /notifications/{id}/read` | yes | Mark one of your own read; 404 otherwise |
 | `GET /access` | yes (`rbac.manage`) | Users, role assignments and role definitions |
-| `POST /access/{username}/grant` | yes (`rbac.manage`) | Fields `role`, `scope` |
-| `POST /access/{username}/revoke` | yes (`rbac.manage`) | Fields `role`, `scope`; 409 for the last owner |
+| `POST /access/{username}/grant` | yes (`rbac.manage`, step-up) | Fields `role`, `scope`; 403 for a permission you do not hold |
+| `POST /access/{username}/revoke` | yes (`rbac.manage`, step-up) | Fields `role`, `scope`; 409 for the last owner; the person's sessions and tokens end |
+| `GET /users` | yes (`rbac.manage`) | Users with status and roles, and the form to add one (E11e, `specs/044-users-roles/`) |
+| `POST /users` | yes (`rbac.manage`, step-up) | Fields `username`, `email`, `send`. Creates a role-less account and shows its one-time set-up link, or mails it. 409 for a taken name |
+| `GET /users/{username}` | yes (`rbac.manage`) | Roles with what they grant, sessions, tokens, single sign-on identity, sign-in and deletion actions |
+| `POST /users/{username}/link` | yes (`rbac.manage`, step-up) | Fields `purpose` (`invite`, `mfa`, `reset`), `email`, `send`. Ends the credentials, sessions and tokens and makes a new one-time link. Never for yourself; the target may hold nothing you do not |
+| `POST /users/{username}/disable` | yes (`rbac.manage`, step-up) | Disables the account and ends what it holds. 409 for the last owner |
+| `POST /users/{username}/enable` | yes (owner, step-up) | Enables a disabled account |
+| `POST /users/{username}/delete` | yes (`rbac.manage`, step-up) | Field `confirm` (the user name). 409 for the last owner |
+| `POST /users/{username}/roles/grant` | yes (`rbac.manage`, step-up) | Fields `role`, `scope`; 403 for a permission you do not hold |
+| `POST /users/{username}/roles/revoke` | yes (`rbac.manage`, step-up) | Fields `role`, `scope`; the person's sessions and tokens end |
+| `POST /users/{username}/sessions/revoke` | yes (`rbac.manage`) | Ends all of the person's sessions |
+| `POST /users/{username}/sessions/{sid}/revoke` | yes (`rbac.manage`) | Ends one session |
+| `POST /users/{username}/tokens/{id}/revoke` | yes (`rbac.manage`) | Revokes one personal access token |
+| `POST /users/{username}/sso/link` | yes (owner, step-up) | Field `identity`: binds it to this local account |
+| `POST /users/{username}/sso/unlink` | yes (owner, step-up) | Field `identity` |
+| `POST /access/roles/{role}/override` | yes (owner, step-up) | Fields `permission`, `effect` (`grant`, `revoke`, `reset`) |
+| `GET /reauth` | yes | Step-up form (query `next`, a local path); for single sign-on, a link that makes the provider authenticate again |
+| `POST /reauth` | yes | Fields `password`, `totp`, `next`. 303 to `next`; 401 wrong; five wrong tries end the session |
+| `GET /set-password` | no | The page behind a one-time link (query `token`): authenticator secret and form. Consumes nothing. 404 for any link that is not usable |
+| `POST /set-password` | no | Fields `token`, `password`, `confirm` (new password only), `totp`, `csrf` (double submit, as login). Uses the link once; 303 `/login` |
 | `GET /catalogue` | yes (`platform.view`) | Module catalogue (E12b): every manifest with status badge (`ready`, `experimental`, `not-deployable`), licence and source-available warning, declared RAM request and limit, the footprint total against the declared server size, requires/provides (planned capabilities shown as "not yet served"), exclusive-capability conflicts, and the selection form. 503 without module management |
 | `GET /catalogue/{id}` | yes (`platform.view`) | One module: summary, requires/provides, and the settings form generated from its `settings.schema.json` (shown to `platform.operate`). 404 for an unknown id |
 | `POST /catalogue/{id}/settings` | yes (`platform.operate`) | Fields `s.<property>` for each rendered property. Validated server side with the module's schema; 400 re-renders the form with per-field errors. 303 to `/changes/{cid}` (a stored proposal, not yet applied) |

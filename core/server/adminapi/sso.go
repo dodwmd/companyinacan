@@ -8,6 +8,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/sso"
+	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
 // Single sign-on administration (epic E11b). Sign-in itself is the browser flow of the admin UI
@@ -82,7 +83,7 @@ func (s *Server) ssoLink(w http.ResponseWriter, r *http.Request, p principal) {
 	if !httpx.DecodeJSON(w, r, &b) {
 		return
 	}
-	s.ssoDone(w, r, s.SSO.Link(r.Context(), p.User.Username, id, b.Username))
+	s.ssoDone(w, r, s.users().LinkIdentity(r.Context(), actorOf(p), id, b.Username))
 }
 
 func (s *Server) ssoUnlink(w http.ResponseWriter, r *http.Request, p principal) {
@@ -95,18 +96,16 @@ func (s *Server) ssoUnlink(w http.ResponseWriter, r *http.Request, p principal) 
 		s.unavailable(w)
 		return
 	}
-	s.ssoDone(w, r, s.SSO.Unlink(r.Context(), p.User.Username, id))
+	s.ssoDone(w, r, s.users().UnlinkIdentity(r.Context(), actorOf(p), id))
 }
 
 func (s *Server) ssoDone(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
-	case errors.Is(err, sso.ErrLinkForbidden):
-		httpx.Problem(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, sso.ErrLinkInvalid), errors.Is(err, rbac.ErrLastOwner):
+	case errors.Is(err, users.ErrInvalid): // this endpoint has always answered 409 for these
 		httpx.Problem(w, http.StatusConflict, err.Error())
 	default:
-		s.internal(w, r, err)
+		s.usersErr(w, r, err)
 	}
 }

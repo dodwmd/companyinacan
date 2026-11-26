@@ -25,7 +25,11 @@ func TestRevokeAndListAreOwnUnlessAdmin(t *testing.T) {
 	if got, _ := e.s.ListFor(ctx, "user:bob", true); len(got) != 1 {
 		t.Fatalf("a manager sees %d tokens", len(got))
 	}
-	if err := e.s.Revoke(ctx, "user:bob", iss.ID, true); err != nil {
+	// alice is the owner: a manager who is not one may not revoke her token.
+	if err := e.s.Revoke(ctx, "user:bob", iss.ID, true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("a non-owner revoked an owner's token: %v", err)
+	}
+	if err := e.s.Revoke(ctx, "user:alice", iss.ID, true); err != nil {
 		t.Fatal(err)
 	}
 }

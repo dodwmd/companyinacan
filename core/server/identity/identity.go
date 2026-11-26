@@ -52,7 +52,7 @@ var (
 
 var (
 	partyRe   = regexp.MustCompile(`^pers_[0-9a-f]{24}$`)
-	subjectRe = regexp.MustCompile(`^user:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	subjectRe = regexp.MustCompile(`^user:[A-Za-z0-9_.@-]{1,64}$`) // the account subjects of rbac
 	refRe     = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	dateRe    = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 )
@@ -227,6 +227,10 @@ func (s *Service) end(ctx context.Context, tx *sql.Tx, subject string) (Result, 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE subject=?`, subject); err != nil {
 		return Result{}, err
 	}
+	// A pending set-up link and approval delegations, given or received, end with the account.
+	if err := store.EndPending(ctx, tx, subject); err != nil {
+		return Result{}, err
+	}
 	// Module sessions that began with a launch ticket, and unused tickets (E11c), end with the account.
 	if err := store.EndLaunchAccess(ctx, tx, subject, s.now()); err != nil {
 		return Result{}, err
@@ -243,17 +247,12 @@ func (s *Service) ownerState(ctx context.Context, tx *sql.Tx, subject string) (i
 	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM rbac_assignments WHERE subject=? AND role=? AND scope=''`, subject, rbac.Owner).Scan(&n); err != nil || n == 0 {
 		return false, false, err
 	}
-	var enabled int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_users WHERE username=? AND disabled_at=0`, strings.TrimPrefix(subject, "user:")).Scan(&enabled); err != nil {
-		return true, false, err
+	usable, err := store.IsUsable(ctx, tx, strings.TrimPrefix(subject, "user:"))
+	if err != nil || !usable {
+		return true, false, err // disabled or never set up: nothing is taken away
 	}
-	if enabled == 0 {
-		return true, false, nil // already disabled: nothing is taken away
-	}
-	var others int
-	err = tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT a.subject) FROM rbac_assignments a JOIN admin_users u ON a.subject = 'user:' || u.username
-		WHERE a.role=? AND a.scope='' AND a.subject<>? AND u.disabled_at=0`, rbac.Owner, subject).Scan(&others)
-	return true, others == 0, err
+	other, err := store.OtherUsableOwner(ctx, tx, subject)
+	return true, !other, err
 }
 
 // actorIsOwner: an unscoped owner, or the break-glass CLI actor.
