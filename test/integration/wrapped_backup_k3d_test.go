@@ -201,6 +201,18 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 		}
 	}
 	holds(t, exported, "manifest.json", `"complete": true`)
+	// No file of an application's volume carries its key or a password out.
+	for name, body := range exported {
+		if !strings.Contains(name, "/files/") {
+			continue
+		}
+		t.Logf("exported file: %s (%d bytes)", name, len(body))
+		for _, bad := range []string{"APP_KEY", "DB_PASS", "DB_PASSWORD", "PRIVATE KEY"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s holds %s", name, bad)
+			}
+		}
+	}
 
 	// --- one dump run: every module's Job, within its namespace's quota and policies -----------
 	t.Logf("MEASURE dump run with analytics, support and newsletter: %s", requestDump(t).Round(100*time.Millisecond))
