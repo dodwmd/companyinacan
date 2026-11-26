@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/backup"
+	"github.com/dodwmd/companyinacan/core/canbin"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/provider"
 	"github.com/dodwmd/companyinacan/core/routing"
@@ -32,6 +33,7 @@ const (
 	PhaseAdmin   = "admin"
 	PhaseSite    = "site"
 	PhaseRoutes  = "routes"
+	PhaseCLI     = "cli"
 	PhaseBackup  = "backup"
 	PhaseReady   = "ready"
 )
@@ -77,6 +79,9 @@ type Options struct {
 	SiteBaseURL  string     // canonical origin baked into the site (sitemap, canonical links)
 	SMTP         *SMTPRelay // nil leaves the relay Secret as it is
 	Backup       *BackupInstall
+	// CLI supplies the `can` installed on the server (specs/060-can-on-server). Required when
+	// Backup is set and there is a server.
+	CLI canbin.Source
 	// Mods are the manifests of the company's modules that could be read, for backup warnings.
 	Mods     map[string]*config.Module
 	Timeouts Timeouts
@@ -120,6 +125,8 @@ type Result struct {
 	BundleAdded bool
 	SiteSHA256  string
 	FormsRouted bool
+	// CLI is the `can` on the server; nil when it was not (or could not be) installed.
+	CLI *canbin.Result
 	// CompanyYAML is the document pushed to the cluster (with the default bundle, if it was added).
 	CompanyYAML []byte
 	Warnings    []string
@@ -149,7 +156,8 @@ var hints = map[string]string{
 	PhaseAdmin:   "kubectl -n can-system logs deploy/can-core; the admin is created with `can-core admin bootstrap` inside the pod",
 	PhaseSite:    "kubectl -n can-system describe pod -l app.kubernetes.io/name=site; kubectl -n can-system logs deploy/site -c extract",
 	PhaseRoutes:  "kubectl -n can-system logs deploy/can-core (can-core installs the forms module); kubectl -n mod-forms get pods",
-	PhaseBackup:  "check that the server can reach github.com (pinned restic download) and apt (sqlite3), and the bucket endpoint and credentials; journalctl -u can-backup on the server",
+	PhaseCLI:     "ssh to the server and check /usr/local/bin/can and the free disk space there",
+	PhaseBackup:  "the can binary for the server (--release-manifest, --can-binary or a source checkout with Go); check that the server can reach github.com (pinned restic download) and apt (sqlite3), and the bucket endpoint and credentials; journalctl -u can-backup on the server",
 	PhaseReady:   "kubectl -n can-system get pods; kubectl -n mod-forms get pods",
 }
 
@@ -309,6 +317,22 @@ func Run(ctx context.Context, o Options, d Deps) (*Result, error) {
 		{PhaseAdmin, "admin account", func() (bool, string, error) { return r.admin(ctx) }},
 		{PhaseSite, "build and publish the site", func() (bool, string, error) { return false, "", r.site(ctx) }},
 		{PhaseRoutes, "routes (site, admin, /_forms)", func() (bool, string, error) { return false, "", r.routes(ctx) }},
+	}
+	// The server's `can` is part of the backup: the backup phase installs it, and without the
+	// backup flags it is still kept up to date.
+	if o.Backup == nil && d.Host != nil && o.CLI != nil {
+		st, err := d.Store.Load()
+		if err != nil {
+			return nil, err
+		}
+		name, title := PhaseCLI, "can CLI on the server"
+		if st.Launch != nil && st.Launch.BackupInstalled {
+			name, title = PhaseBackup, "can CLI for the server's backup timer"
+		}
+		steps = append(steps, struct {
+			name, title string
+			fn          func() (bool, string, error)
+		}{name, title, func() (bool, string, error) { return r.cli(ctx, name == PhaseBackup) }})
 	}
 	if o.Backup != nil {
 		steps = append(steps, struct {

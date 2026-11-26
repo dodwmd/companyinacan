@@ -102,9 +102,9 @@ Read these caveats first; they are the honest state of this path:
   credential on an install, so read messages through the notification email (needs a relay, [email.md](email.md))
   or the forms API.
 - Backups are optional (`--backup-endpoint`, `--backup-bucket`, `--backup-credentials-file`, passed in `ARGS`) and
-  print a recovery kit once. `can restore` runs on a new server and has been exercised on k3d only. `make up` does
-  not copy the `can` binary to the server: put it at `/usr/local/bin/can`, or erasures never reach the bucket
-  ([backup-restore.md](backup-restore.md)).
+  print a recovery kit once. `can restore` runs on a new server and has been exercised on k3d only. `make up`
+  installs `can` on the server (built from your checkout), which the backup needs to copy erasures to the bucket
+  ([backup-restore.md](backup-restore.md#the-can-on-the-server)).
 - The 2 GB target is unmeasured; use 4 GB. See the footprint table in the [README](../README.md#footprint-measured-against-claimed).
 - SPEC.md section 6.1 sketches `make init`, `make enable <module>`, `make backup` and `make email`; those do not
   exist. Edit `company.yaml` or use the admin UI catalogue, and run `bin/can apply`.

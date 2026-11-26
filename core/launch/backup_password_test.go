@@ -65,6 +65,7 @@ func TestInstalledServerWithoutAPasswordIsAnError(t *testing.T) {
 		if _, err := Run(context.Background(), o, d); err == nil || !strings.Contains(err.Error(), "recovery kit") {
 			t.Fatalf("%q: got %v", content, err)
 		}
+		delete(h.copied, cliPath) // the can is installed first, and is harmless
 		if len(h.copied) != 0 {
 			t.Fatalf("%q: files written: %v", content, keys(h.copied))
 		}

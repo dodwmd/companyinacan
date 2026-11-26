@@ -134,3 +134,18 @@ func TestResolveOrdersSourcesAndFailsClosed(t *testing.T) {
 		t.Fatalf("%v %+v", err, set)
 	}
 }
+
+func TestLoadReleaseReadsTheCanArchives(t *testing.T) {
+	images := `"images":{"can-core":{"ref":"ghcr.io/x/c@` + goodDigest + `"},"can-static":{"ref":"ghcr.io/x/s@` + goodDigest + `"},"can-forms":{"ref":"ghcr.io/x/f@` + goodDigest + `"}}`
+	cli := func(file string) string {
+		return `{"schema":1,"version":"v1.0.0",` + images + `,"cli":{"linux/arm64":{"file":"` + file + `","sha256":"` + strings.Repeat("a", 64) + `"}}}`
+	}
+	p := writeFile(t, t.TempDir(), "r.json", cli("can_v1.0.0_linux_arm64.tar.gz"))
+	set, err := LoadRelease(p)
+	if err != nil || set.CLI["linux/arm64"].File == "" || set.Dir != filepath.Dir(p) {
+		t.Fatalf("%v %+v", err, set)
+	}
+	if _, err := LoadRelease(writeFile(t, t.TempDir(), "r.json", cli("../../etc/passwd"))); err == nil {
+		t.Fatal("a path was accepted")
+	}
+}
