@@ -2,12 +2,16 @@ package adminui
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/server/auth"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/server/users"
 )
 
 // A role whose module is disabled or gone, but which still has a grant override, is not a role with
@@ -141,4 +145,71 @@ func TestPlantedAddressDoesNotReceiveLaterLinks(t *testing.T) {
 			t.Errorf("an address is in the audit log: %s", rec.Detail)
 		}
 	}
+}
+
+// Passwords typed into a code-reset link side by side get no more checks than ones typed in turn,
+// and once they are used up every answer is the same.
+func TestLinkPasswordLimitHoldsUnderConcurrency(t *testing.T) {
+	u := newUUI(t)
+	ctx := context.Background()
+	root := u.loginAs("root")
+	token := tokenIn(t, u.want(u.post(root, "/users/dave/link", "purpose", "mfa"), 200).body)
+	setup, err := u.svc.OpenLink(ctx, token)
+	must(t, err)
+	key, err := auth.DecodeTOTPSecret(setup.Secret)
+	must(t, err)
+	code := auth.Code(key, auth.SHA1, 6, 30, *u.now)
+
+	const n = 80
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs[i] = u.svc.UseLink(ctx, token, "not the password at all", code, "10.0.0.1")
+		}()
+	}
+	close(start)
+	wg.Wait()
+	told := 0
+	for _, err := range errs {
+		switch {
+		case errors.Is(err, users.ErrBadPassword):
+			told++
+		case !errors.Is(err, users.ErrBadLink):
+			t.Fatalf("unexpected: %v", err)
+		}
+	}
+	// Five are checked; the one that takes the last attempt is told only that the link is dead.
+	if told != 4 {
+		t.Fatalf("%d guesses were answered as wrong passwords, want 4", told)
+	}
+	for _, password := range []string{u.pw, "not the password at all"} {
+		if err := u.svc.UseLink(ctx, token, password, code, "10.0.0.1"); !errors.Is(err, users.ErrBadLink) {
+			t.Fatalf("after the limit: %v", err)
+		}
+	}
+}
+
+// A link whose attempts are all taken is dead even before the last one has been answered.
+func TestExhaustedLinkAnswersTheSameForAnyPassword(t *testing.T) {
+	u := newUUI(t)
+	ctx := context.Background()
+	root := u.loginAs("root")
+	token := tokenIn(t, u.want(u.post(root, "/users/dave/link", "purpose", "mfa"), 200).body)
+	setup, err := u.svc.OpenLink(ctx, token)
+	must(t, err)
+	key, err := auth.DecodeTOTPSecret(setup.Secret)
+	must(t, err)
+	_, err = u.db.Exec(`UPDATE user_invites SET failures=5`)
+	must(t, err)
+	for _, password := range []string{u.pw, "not the password at all"} {
+		if err := u.svc.UseLink(ctx, token, password, auth.Code(key, auth.SHA1, 6, 30, *u.now), "10.0.0.1"); !errors.Is(err, users.ErrBadLink) {
+			t.Fatalf("%v", err)
+		}
+	}
+	u.want(u.do("GET", "/set-password?token="+token, nil), 404)
 }

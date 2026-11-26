@@ -12,7 +12,8 @@ ALTER TABLE sessions ADD COLUMN reauth_at INTEGER NOT NULL DEFAULT 0;
 -- One pending one-time set-up link per account. Only the SHA-256 of the token is stored. totp_secret
 -- is the secret being enrolled; it moves to the account when the link is used.
 -- purpose: invite (new account) and reset (password and code) set both; mfa keeps the password, which
--- must be typed again, and sets only the code.
+-- must be typed again, and sets only the code. failures counts the password attempts taken on an mfa
+-- link, each before it is checked.
 CREATE TABLE user_invites (
   user_id     INTEGER PRIMARY KEY REFERENCES admin_users(id) ON DELETE CASCADE,
   token_hash  TEXT NOT NULL UNIQUE,

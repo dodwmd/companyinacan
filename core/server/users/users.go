@@ -72,6 +72,15 @@ type Service struct {
 	BaseURL string
 	Now     func() time.Time
 	Log     *slog.Logger
+	// compare replaces the password comparison in tests (nil uses Auth).
+	compare func(ctx context.Context, password, hash string) (bool, error)
+}
+
+func (s *Service) checkPassword(ctx context.Context, password, hash string) (bool, error) {
+	if s.compare != nil {
+		return s.compare(ctx, password, hash)
+	}
+	return s.Auth.CheckPassword(ctx, password, hash)
 }
 
 func (s *Service) now() time.Time {

@@ -29,8 +29,8 @@ import (
 const (
 	InviteTTL = 72 * time.Hour
 	ResetTTL  = 24 * time.Hour
-	// maxLinkFailures wrong current passwords delete an mfa link. Only the holder of the link can
-	// make them, so nobody else is affected.
+	// maxLinkFailures is how many current passwords an mfa link accepts for checking; a fifth wrong
+	// one deletes it. Only the holder of the link can use them up, so nobody else is affected.
 	maxLinkFailures = 5
 	tokenLen        = 43
 	// SetupPath is the public page a link opens.
@@ -309,7 +309,7 @@ func (s *Service) open(ctx context.Context, token string) (store.SetupLink, stor
 	if len(token) != tokenLen {
 		return none, store.AdminUser{}, ErrBadLink
 	}
-	l, u, err := s.DB.SetupLinkByHash(ctx, linkHash(token), s.now())
+	l, u, err := s.DB.SetupLinkByHash(ctx, linkHash(token), maxLinkFailures, s.now())
 	if errors.Is(err, store.ErrNotFound) {
 		return none, u, ErrBadLink
 	}
@@ -362,19 +362,30 @@ func (s *Service) UseLink(ctx context.Context, token, password, code, ip string)
 	}
 	hash := u.PasswordHash
 	if l.Purpose == store.LinkMFA {
-		ok, err := s.Auth.CheckPassword(ctx, password, u.PasswordHash)
+		// The attempt is taken before the password is looked at. Without one, the answer is the same
+		// whatever was typed.
+		used, reserved, err := s.DB.ReserveSetupAttempt(ctx, l.TokenHash, maxLinkFailures)
 		if err != nil {
 			return err
 		}
+		if !reserved {
+			return ErrBadLink
+		}
+		ok, err := s.checkPassword(ctx, password, u.PasswordHash)
+		if err != nil { // too busy, or the caller left: nothing was compared
+			if rerr := s.DB.ReleaseSetupAttempt(context.WithoutCancel(ctx), l.TokenHash); rerr != nil && s.Log != nil {
+				s.Log.Warn("users: returning a set-up link attempt failed", "error", rerr)
+			}
+			return err
+		}
 		if !ok {
-			burned, err := s.DB.FailSetupLink(ctx, l.TokenHash, maxLinkFailures)
-			if err != nil {
+			if used < maxLinkFailures {
+				return ErrBadPassword
+			}
+			if err := s.DB.DeleteSetupLink(context.WithoutCancel(ctx), l.TokenHash); err != nil {
 				return err
 			}
-			if burned {
-				return ErrBadLink
-			}
-			return ErrBadPassword
+			return ErrBadLink
 		}
 	} else {
 		if len(password) < auth.MinPasswordLen || len(password) > auth.MaxPasswordLen {

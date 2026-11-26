@@ -193,12 +193,13 @@ func PutSetupLink(ctx context.Context, tx *sql.Tx, l SetupLink) error {
 	return err
 }
 
-// SetupLinkByHash finds an unexpired link and the account it is for. A disabled account has none.
-func (db *DB) SetupLinkByHash(ctx context.Context, hash string, now time.Time) (SetupLink, AdminUser, error) {
+// SetupLinkByHash finds an unexpired link with a password attempt left and the account it is for. A
+// disabled account has none.
+func (db *DB) SetupLinkByHash(ctx context.Context, hash string, maxAttempts int, now time.Time) (SetupLink, AdminUser, error) {
 	var l SetupLink
 	var created, expires int64
 	err := db.QueryRowContext(ctx, `SELECT i.user_id, i.token_hash, i.totp_secret, i.purpose, i.created_by, i.created_at, i.expires_at
-		FROM user_invites i JOIN admin_users u ON u.id=i.user_id WHERE i.token_hash=? AND i.expires_at>? AND u.disabled_at=0`, hash, now.Unix()).
+		FROM user_invites i JOIN admin_users u ON u.id=i.user_id WHERE i.token_hash=? AND i.expires_at>? AND i.failures<? AND u.disabled_at=0`, hash, now.Unix(), maxAttempts).
 		Scan(&l.UserID, &l.TokenHash, &l.TOTPSecret, &l.Purpose, &l.CreatedBy, &created, &expires)
 	if err != nil {
 		return SetupLink{}, AdminUser{}, notFound(err)
@@ -218,21 +219,27 @@ func (db *DB) SetupLinkOf(ctx context.Context, userID int64, now time.Time) (Set
 	return l, notFound(err)
 }
 
-// FailSetupLink counts a wrong password on a link and deletes the link at max failures.
-func (db *DB) FailSetupLink(ctx context.Context, hash string, max int) (burned bool, err error) {
-	err = db.InTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE user_invites SET failures=failures+1 WHERE token_hash=?`, hash); err != nil {
-			return err
-		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM user_invites WHERE token_hash=? AND failures>=?`, hash, max)
-		if err != nil {
-			return err
-		}
-		n, _ := res.RowsAffected()
-		burned = n > 0
-		return nil
-	})
-	return burned, err
+// ReserveSetupAttempt takes one of the link's password attempts, before the password is checked: one
+// statement, so attempts running side by side cannot get more than max between them. used is how many
+// are now taken; ok is false when none was left (or the link is gone).
+func (db *DB) ReserveSetupAttempt(ctx context.Context, hash string, max int) (used int, ok bool, err error) {
+	err = db.QueryRowContext(ctx, `UPDATE user_invites SET failures=failures+1 WHERE token_hash=? AND failures<? RETURNING failures`, hash, max).Scan(&used)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	return used, err == nil, err
+}
+
+// ReleaseSetupAttempt gives back an attempt whose password was never checked.
+func (db *DB) ReleaseSetupAttempt(ctx context.Context, hash string) error {
+	_, err := db.ExecContext(ctx, `UPDATE user_invites SET failures=failures-1 WHERE token_hash=? AND failures>0`, hash)
+	return err
+}
+
+// DeleteSetupLink removes a link that has no attempt left.
+func (db *DB) DeleteSetupLink(ctx context.Context, hash string) error {
+	_, err := db.ExecContext(ctx, `DELETE FROM user_invites WHERE token_hash=?`, hash)
+	return err
 }
 
 // ConsumeSetupLink uses a link once, inside tx: it deletes the link and sets the account's

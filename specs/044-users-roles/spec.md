@@ -76,6 +76,18 @@ A business owner cannot manage people's access from the admin UI. Local accounts
 - **Throttling.** Sign-in is unchanged: valid credentials are never throttled by anything here. Wrong step-up
   attempts are counted per session and end that session after five. Wrong current passwords on a
   code-reset link delete that link after five.
+- **Counting before checking.** Every limit this epic adds takes the attempt atomically before the secret is
+  compared, so requests sent side by side get no more than the limit: the code-reset link (password; an
+  exhausted link answers the same for any password) and the step-up (per session). The older account-change
+  throttle already did. The code typed on a set-up link is not limited: its secret is on the page, so there is
+  nothing to guess.
+- **Limits not changed here.** Sign-in (`specs/005`) counts a failure after checking. Behind the trusted proxy
+  (`CAN_TRUST_PROXY`, as shipped) an atomic limit of 10 attempts a minute per address applies first, so
+  requests sent together can exceed the 5-failure lock only up to that. Without it there is no lock at all, by
+  design, and the back-off delay does not bound parallel guesses; the password is only compared when the code
+  is already right. Personal access tokens, launch tickets, session handles, SCIM tokens, share links and
+  set-up link tokens are 256-bit random values: their failure counters only slow and protect no guessable
+  secret.
 
 ## Data
 

@@ -50,3 +50,40 @@ func TestStepUpLimitHoldsUnderConcurrency(t *testing.T) {
 		t.Fatalf("the session survived: %v", err)
 	}
 }
+
+// The older throttle of account changes counts before it verifies, so it holds the same way.
+func TestAccountThrottleHoldsUnderConcurrency(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	res := login(t, e)
+	_, u, err := e.svc.Authenticate(ctx, res.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const n = 40
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs[i] = e.svc.ConfirmPassword(ctx, u, "wrong password!!")
+		}()
+	}
+	close(start)
+	wg.Wait()
+	checked := 0
+	for _, err := range errs {
+		switch {
+		case errors.Is(err, ErrInvalidCredentials):
+			checked++
+		case !errors.As(err, new(*LockedError)):
+			t.Fatalf("unexpected: %v", err)
+		}
+	}
+	if checked != accountMaxFailures {
+		t.Fatalf("%d attempts were checked, want %d", checked, accountMaxFailures)
+	}
+}
