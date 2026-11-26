@@ -3,6 +3,7 @@ package people
 // Time off through can-core's approval engine (specs/070-approvals-inbox), against the fake can-core.
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"strings"
@@ -179,5 +180,24 @@ func TestTimeOffApprovalThatCannotBeApplied(t *testing.T) {
 	x.must(err)
 	if got.Status != "approved" {
 		t.Fatalf("%+v", got)
+	}
+}
+
+// Erasing a person leaves nothing about them in the queue, and their request is withdrawn.
+func TestErasureClearsTheApprovalQueue(t *testing.T) {
+	x := newEngineEnv(t)
+	x.submit(x.zed, x.vac, "2026-03-23", "2026-03-24")
+	x.sync()
+	for _, class := range []string{ClassBasic, ClassTimeOff} {
+		x.must(x.s.wtx(x.ctx, func(ctx context.Context, tx *sqlTx) error { return x.s.purgeClass(ctx, tx, x.zed.PersonID, class) }))
+	}
+	var n int
+	x.must(x.s.db.QueryRow(`SELECT COUNT(*) FROM approval_queue WHERE requester <> '' OR manager <> '' OR status <> 'cancel'`).Scan(&n))
+	if n != 0 {
+		t.Fatalf("%d rows keep something", n)
+	}
+	x.sync()
+	if got := x.core.Requests()[0].Status; got != "cancelled" {
+		t.Fatalf("in the inbox: %s", got)
 	}
 }
