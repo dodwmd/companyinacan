@@ -628,6 +628,27 @@ func (s *Store) ListPartyMails(ctx context.Context, a *Principal, partyID int64)
 	return list, st, err
 }
 
+// mailLoop sends due payment reminders and asks what became of queued mail, hourly.
+func (a *App) mailLoop(ctx context.Context) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		if n, err := a.store.RunDunning(ctx); err != nil && ctx.Err() == nil {
+			a.log.Error("payment reminders", "error", err)
+		} else if n > 0 {
+			a.log.Info("payment reminders queued", "count", n)
+		}
+		if err := a.store.RefreshMails(ctx, 0, 0); err != nil && ctx.Err() == nil {
+			a.log.Error("mail delivery status", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
 // eraseMail runs inside a party erasure: what has not been handed over never will be. A message
 // already in can-core's outbox cannot be recalled (docs/email.md, "Data kept").
 func (s *Store) eraseMail(ctx context.Context, tx dbq, actor string, partyID int64) error {

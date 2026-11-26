@@ -273,27 +273,6 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	return nil
 }
 
-// mailLoop sends due payment reminders and asks what became of queued mail, hourly.
-func (a *App) mailLoop(ctx context.Context) {
-	t := time.NewTicker(time.Hour)
-	defer t.Stop()
-	for {
-		if n, err := a.store.RunDunning(ctx); err != nil && ctx.Err() == nil {
-			a.log.Error("payment reminders", "error", err)
-		} else if n > 0 {
-			a.log.Info("payment reminders queued", "count", n)
-		}
-		if err := a.store.RefreshMails(ctx, 0, 0); err != nil && ctx.Err() == nil {
-			a.log.Error("mail delivery status", "error", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-	}
-}
-
 // purgeLoop runs the housekeeping: retention, due recurring invoices and contract reminders.
 func (a *App) purgeLoop(ctx context.Context) {
 	t := time.NewTicker(time.Hour)
