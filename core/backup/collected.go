@@ -43,7 +43,8 @@ type CollectStatus struct {
 	NotAsked []string `json:"not_asked,omitempty"`
 	// NoFeed hold data classes but have no erasure feed: NOTHING erased in them is recorded.
 	NoFeed []string `json:"no_feed,omitempty"`
-	// Rejected counts tombstones whose subject or class is not an opaque id.
+	// Rejected counts tombstones refused: a subject that is not an opaque id, or a data class the
+	// module does not declare.
 	Rejected int `json:"rejected,omitempty"`
 }
 
@@ -148,7 +149,7 @@ func ImportCollected(dir string, l *Ledger, now time.Time) (ImportReport, error)
 		rep.Problems = append(rep.Problems, "the erasures of these modules could not be read, newer ones are NOT in the ledger: "+strings.Join(failed, ", "))
 	}
 	if st.Rejected > 0 {
-		rep.Problems = append(rep.Problems, fmt.Sprintf("%d tombstones were refused because their subject is not an opaque id: they are NOT in the ledger (see can-core's log)", st.Rejected))
+		rep.Problems = append(rep.Problems, fmt.Sprintf("%d tombstones were refused (a subject that is not an opaque id, or a data class the module does not declare): they are NOT in the ledger (see can-core's log)", st.Rejected))
 	}
 	if len(st.NoFeed) > 0 {
 		rep.Notes = append(rep.Notes, "no erasure feed, so nothing erased in them is recorded: "+strings.Join(st.NoFeed, ", "))

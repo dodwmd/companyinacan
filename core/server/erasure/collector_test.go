@@ -50,7 +50,7 @@ func (f *fakeFeed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func module(t *testing.T, id, state string) store.Module {
 	t.Helper()
 	m := store.Module{ID: id, State: state, Namespace: "mod-" + id}
-	text := fmt.Sprintf("id: %[1]s\nprovides: [{service: %[1]s, port: 8080}]\ndata_classes: [{class: %[1]s-x}]\n", id)
+	text := fmt.Sprintf("id: %[1]s\nprovides: [{service: %[1]s, port: 8080}]\ndata_classes: [{class: %[1]s-x}, {class: directory-basic}, {class: people-sensitive}]\n", id)
 	if err := yaml.Unmarshal([]byte(text), &m.Manifest); err != nil {
 		t.Fatal(err)
 	}
@@ -59,10 +59,10 @@ func module(t *testing.T, id, state string) store.Module {
 
 func TestCollect(t *testing.T) {
 	people := &fakeFeed{items: []tombstone{
-		{1, "pers_1", "directory-basic", "2026-01-02"},
-		{2, "pers_1", "people-sensitive", "2026-01-02"},
-		{3, "jane@example.com", "directory-basic", "2026-01-02"}, // not an opaque id
-		{4, "pers_2", "directory-basic", "2026-02-03"},
+		{1, "pers_1", "directory-basic", "2026-01-02", ""},
+		{2, "pers_1", "people-sensitive", "2026-01-02", ""},
+		{3, "jane@example.com", "directory-basic", "2026-01-02", ""}, // not an opaque id
+		{4, "pers_2", "directory-basic", "2026-02-03", ""},
 	}}
 	jobs := &fakeFeed{down: true}
 	srv := map[string]*httptest.Server{"people": httptest.NewServer(people), "jobs": httptest.NewServer(jobs)}
@@ -101,7 +101,7 @@ func TestCollect(t *testing.T) {
 	}
 
 	// A second run adds nothing; a restored module that numbers afresh is still read from the start.
-	people.items = []tombstone{{1, "pers_3", "directory-basic", "2026-03-04"}}
+	people.items = []tombstone{{1, "pers_3", "directory-basic", "2026-03-04", ""}}
 	for range 2 {
 		if _, err := c.Collect(context.Background()); err != nil {
 			t.Fatal(err)

@@ -39,6 +39,15 @@ const (
 	maxPages = 10000
 )
 
+// Bounds on what one module can put into the ledger, so that a faulty or compromised one can
+// neither grow it without limit nor stop the others: the host refuses to read a collected ledger of
+// more than 64 MiB. They are variables for the tests.
+var (
+	maxNewPerRun   = 5000            // entries added for one module in one run; the rest follow
+	maxModuleBytes = int64(8 << 20)  // of the ledger, for one module (about 30,000 erasures)
+	maxTotalBytes  = int64(56 << 20) // of the ledger, for all of them
+)
+
 // Collector reads the feeds and appends to the ledger under Dir (the dumps directory).
 type Collector struct {
 	Modules func(context.Context) ([]store.Module, error)
@@ -70,6 +79,57 @@ type tombstone struct {
 	Subject string `json:"subject"`
 	Class   string `json:"class"`
 	Date    string `json:"date"`
+	At      string `json:"at"`
+}
+
+// held is what the ledger already records, and how much room each module takes in it.
+type held struct {
+	latest map[string]string // module, subject, class -> latest erasure time
+	bytes  map[string]int64
+	total  int64
+}
+
+func target(module, subject, class string) string { return module + "\x00" + subject + "\x00" + class }
+
+// size is an upper bound of the entry's line in the ledger.
+func size(e backup.Entry) int64 {
+	return int64(len(e.Subject) + len(e.Class) + len(e.Module) + len(e.At) + len(e.Date) + 220)
+}
+
+func (h *held) add(e backup.Entry) {
+	k := target(e.Module, e.Subject, e.Class)
+	if e.At > h.latest[k] {
+		h.latest[k] = e.At
+	}
+	h.bytes[e.Module] += size(e)
+	h.total += size(e)
+}
+
+// accept turns one tombstone of m into a ledger entry. ok is false when m may not report it: a
+// module speaks only for the data classes it declares, so that one cannot order another's data
+// erased.
+func (c *Collector) accept(m store.Module, t tombstone) (backup.Entry, bool) {
+	declared := backup.SharedClass(m.ID, t.Class)
+	for _, d := range m.Manifest.DataClasses {
+		declared = declared || d.Class == t.Class
+	}
+	if !declared || !backup.ValidTombstone(t.Subject, t.Class) {
+		return backup.Entry{}, false
+	}
+	now := c.now().UTC().Truncate(time.Second)
+	at, err := time.Parse(time.RFC3339, t.At)
+	if err != nil { // no time given: the end of its day, so that it is replayed rather than not
+		day, derr := time.Parse("2006-01-02", t.Date)
+		if derr != nil {
+			day = now
+		}
+		at = day.Add(24*time.Hour - time.Second)
+	}
+	if at.After(now) {
+		at = now
+	}
+	at = at.UTC()
+	return backup.Entry{Module: m.ID, Subject: t.Subject, Class: t.Class, Date: at.Format("2006-01-02"), At: at.Format(time.RFC3339)}, true
 }
 
 // Collect reads every feed from the start (a restored module numbers its tombstones afresh, so no
@@ -80,6 +140,15 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 	mods, err := c.Modules(ctx)
 	if err != nil {
 		return st, fmt.Errorf("list modules: %w", err)
+	}
+	dir := filepath.Join(c.Dir, backup.CollectedDir)
+	have, err := backup.ReadCollected(dir)
+	if err != nil {
+		return st, err
+	}
+	h := &held{latest: map[string]string{}, bytes: map[string]int64{}}
+	for _, e := range have {
+		h.add(e)
 	}
 	var found []backup.Entry
 	for _, m := range mods {
@@ -94,26 +163,24 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 			st.NotAsked = append(st.NotAsked, m.ID)
 			continue
 		}
-		es, rejected, err := c.feed(ctx, m, key)
+		es, rejected, err := c.feed(ctx, m, key, h)
 		// What was read before a failure is still an erasure.
 		found = append(found, es...)
 		st.Rejected += rejected
 		if rejected > 0 {
-			c.log().Warn("erasure feed: tombstones refused, their subject or class is not an opaque id", "module", m.ID, "count", rejected)
+			c.log().Warn("erasure feed: tombstones refused: a subject that is not an opaque id, or a data class the module does not declare", "module", m.ID, "count", rejected)
 		}
-		switch {
-		case err == nil:
+		// A module recorded as failed may well have run, and erased, before: not being able to
+		// ask it is reported like any other.
+		if err == nil {
 			st.Collected = append(st.Collected, m.ID)
-		case m.State == store.StateFailed: // it may never have run
-			st.NotAsked = append(st.NotAsked, m.ID)
-		default:
+		} else {
 			st.Failed[m.ID] = err.Error()
 		}
 	}
 	sort.Strings(st.Collected)
 	sort.Strings(st.NoFeed)
 	sort.Strings(st.NotAsked)
-	dir := filepath.Join(c.Dir, backup.CollectedDir)
 	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
 		return st, err
 	}
@@ -143,8 +210,9 @@ func writeStatus(p string, st backup.CollectStatus) error {
 	return os.Rename(tmp, p)
 }
 
-// feed reads one module's tombstones, page by page.
-func (c *Collector) feed(ctx context.Context, m store.Module, tokenKey string) (out []backup.Entry, rejected int, _ error) {
+// feed reads one module's tombstones, page by page, and returns those the ledger does not record
+// yet, within the module's share of it.
+func (c *Collector) feed(ctx context.Context, m store.Module, tokenKey string, h *held) (out []backup.Entry, rejected int, _ error) {
 	if len(m.Manifest.Provides) == 0 {
 		return nil, 0, errors.New("the manifest names no service to call")
 	}
@@ -181,14 +249,22 @@ func (c *Collector) feed(ctx context.Context, m store.Module, tokenKey string) (
 		next := after
 		for _, t := range page {
 			next = max(next, t.Seq)
-			if !backup.ValidTombstone(t.Subject, t.Class) {
+			e, ok := c.accept(m, t)
+			if !ok {
 				rejected++
 				continue
 			}
-			if _, err := time.Parse("2006-01-02", t.Date); err != nil {
-				t.Date = c.now().UTC().Format("2006-01-02")
+			if latest, ok := h.latest[target(e.Module, e.Subject, e.Class)]; ok && e.At <= latest {
+				continue
 			}
-			out = append(out, backup.Entry{Subject: t.Subject, Class: t.Class, Date: t.Date}) // duplicates are dropped on append
+			if len(out) >= maxNewPerRun {
+				return out, rejected, nil // the next run takes the rest
+			}
+			if h.bytes[m.ID]+size(e) > maxModuleBytes || h.total+size(e) > maxTotalBytes {
+				return out, rejected, errors.New("its share of the erasure ledger is full: newer erasures are NOT recorded")
+			}
+			h.add(e)
+			out = append(out, e)
 		}
 		if next <= after {
 			return out, rejected, errors.New("the feed does not advance")

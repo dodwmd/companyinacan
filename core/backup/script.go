@@ -85,9 +85,18 @@ warn() {
   notify "warning: $1"
 }
 
+# The frequent ledger sync would send the same webhook every quarter of an hour: it sends each
+# message once, again after a day, and again when it returns after a run that succeeded.
+ALERTS={{q .StateDir}}/ledger-alerts
+
 report() {
   logger -t can-backup -p user.err -- "FAILED($1): $2" || true
   echo "can-backup: FAILED($1): $2" >&2
+  if [ "$LEDGER_ONLY" -eq 1 ]; then
+    [ -z "$(find "$ALERTS" -mmin +1440 2>/dev/null)" ] || rm -f "$ALERTS"
+    if grep -qxF -- "($1) $2" "$ALERTS" 2>/dev/null; then return 0; fi
+    printf '%s\n' "($1) $2" >>"$ALERTS" || true
+  fi
   notify "failed: ($1) $2"
 }
 
@@ -149,7 +158,10 @@ flock -w 600 8 || fail 12 "another run holds the erasure ledger lock"
 COLLECTED="$DUMPS/{{.CollectedDir}}"
 if [ -e "$COLLECTED" ] && [ ! -L "$LEDGER" ] && { [ -e "$LEDGER" ] || [ ! -s "$HOSTSTATE/{{.LedgerCopy}}" ]; }; then
   if [ -x {{q .CanBin}} ]; then
-    if ! {{q .CanBin}} backup ledger-import --from "$COLLECTED" --ledger "$LEDGER"; then
+    if ! {{q .CanBin}} backup --help 2>/dev/null | grep ledger-import >/dev/null; then
+      ledger_rc=22
+      report 22 "{{.CanBin}} is too old (it has no ledger-import): update it to this release; erasures do NOT reach the bucket"
+    elif ! {{q .CanBin}} backup ledger-import --from "$COLLECTED" --ledger "$LEDGER"; then
       ledger_rc=22
       report 22 "erasures collected by can-core are missing from the ledger (journalctl -t can-backup and the unit's journal say why)"
     fi
@@ -178,7 +190,10 @@ elif [ -s "$HOSTSTATE/{{.LedgerCopy}}" ]; then
   report 22 "erasure ledger $LEDGER vanished (a copy from an earlier run is kept in $HOSTSTATE)"
 fi
 exec 8>&-
-if [ "$LEDGER_ONLY" -eq 1 ]; then finish; fi
+if [ "$LEDGER_ONLY" -eq 1 ]; then
+  if [ "$ledger_rc" -eq 0 ]; then rm -f "$ALERTS"; fi
+  finish
+fi
 
 # The dumps dir is writable by can-core; refuse anything a root script could be tricked by.
 [ -d "$DUMPS" ] && [ ! -L "$DUMPS" ] || fail 10 "dumps directory $DUMPS is missing"

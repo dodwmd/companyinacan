@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -35,22 +36,74 @@ var (
 	ErrNotFound = errors.New("object not found")
 )
 
-// Entry is one erasure request: an opaque subject id, a data class and a date.
-// It deliberately carries no PII.
+// Entry is one erasure: an opaque subject id, a data class and when. It deliberately carries no
+// PII.
 type Entry struct {
 	Seq     int    `json:"seq"`
 	Subject string `json:"subject"`
 	Class   string `json:"class"`
 	Date    string `json:"date"` // YYYY-MM-DD, UTC
-	Prev    string `json:"prev"`
-	Hash    string `json:"hash"`
+	// Module is the module whose feed reported the erasure: a restore applies it to that module
+	// only. Empty for an entry recorded by hand, which is applied wherever the class is held.
+	Module string `json:"module,omitempty"`
+	// At is when the data was erased (RFC 3339, UTC). A restore does not replay an erasure into a
+	// dump taken after it: that dump already reflects it, and may hold data created since. Empty
+	// means unknown, and the entry is always replayed.
+	At   string `json:"at,omitempty"`
+	Prev string `json:"prev"`
+	Hash string `json:"hash"`
 }
 
-func (e Entry) key() string { return e.Subject + "\x00" + e.Class }
+func (e Entry) target() string { return e.Module + "\x00" + e.Subject + "\x00" + e.Class }
+
+func (e Entry) key() string { return e.target() + "\x00" + e.At }
 
 func (e Entry) computeHash() string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s|%s|%s", e.Prev, e.Seq, e.Subject, e.Class, e.Date)))
+	s := fmt.Sprintf("%s|%d|%s|%s|%s", e.Prev, e.Seq, e.Subject, e.Class, e.Date)
+	if e.Module != "" || e.At != "" { // entries without them keep the hash they always had
+		s += "|" + e.Module + "|" + e.At
+	}
+	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+// Erased is when the data was erased; ok is false when the entry does not say.
+func (e Entry) Erased() (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339, e.At)
+	return t, err == nil
+}
+
+// manualRepeat is how close two records made by hand are taken to be the same erasure.
+const manualRepeat = time.Minute
+
+// covers reports whether x already records what e would: the same erasure or a later one. A subject
+// erased again later (data created since) is a new entry.
+func covers(x, e Entry) bool {
+	at, ok := e.Erased()
+	if !ok {
+		return true
+	}
+	have, ok := x.Erased()
+	if !ok {
+		return true // always replayed, whenever it was
+	}
+	slack := time.Duration(0)
+	if e.Module == "" {
+		slack = manualRepeat
+	}
+	return !at.After(have.Add(slack))
+}
+
+var moduleRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+
+// sharedClasses are written into the erasure feed of either instance of the can-board binary
+// (board and entity), whichever of the two declares them in its manifest.
+var sharedClasses = []string{"board-private", "entity-person"}
+
+// SharedClass reports whether module may report and purge class although its manifest does not
+// declare it.
+func SharedClass(module, class string) bool {
+	return (module == "board" || module == "entity") && slices.Contains(sharedClasses, class)
 }
 
 var (
@@ -134,21 +187,22 @@ func parseLedger(raw []byte) ([]Entry, int, error) {
 // Append records an erasure. Subject ids are only checked against a character
 // pattern: the ledger cannot know that an id is not personal data, so callers
 // must pass opaque ids.
-// It is idempotent per (subject, class): added is
-// false when the pair is already recorded. The file is only ever appended to.
+// It records that the erasure happened now or before. It is idempotent: added is false when the
+// pair was already recorded a moment ago. The file is only ever appended to.
 func (l *Ledger) Append(subject, class string) (e Entry, added bool, err error) {
 	now := time.Now
 	if l.Now != nil {
 		now = l.Now
 	}
-	out, n, err := l.append([]Entry{{Subject: subject, Class: class, Date: now().UTC().Format("2006-01-02")}})
+	t := now().UTC()
+	out, n, err := l.append([]Entry{{Subject: subject, Class: class, Date: t.Format("2006-01-02"), At: t.Format(time.RFC3339)}})
 	if err != nil {
 		return e, false, err
 	}
 	return out[0], n == 1, nil
 }
 
-// AppendMany appends the (subject, class) pairs that are not recorded yet, keeping their dates, and
+// AppendMany appends the erasures that are not recorded yet, keeping their dates, and
 // returns how many were added. Nothing is written when one of them is not acceptable.
 func (l *Ledger) AppendMany(in []Entry) (int, error) {
 	if len(in) == 0 {
@@ -170,6 +224,12 @@ func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 		}
 		if _, err := time.Parse("2006-01-02", e.Date); err != nil {
 			return nil, 0, fmt.Errorf("erasure ledger: bad date %q", e.Date)
+		}
+		if _, ok := e.Erased(); e.At != "" && !ok {
+			return nil, 0, fmt.Errorf("erasure ledger: bad time %q", e.At)
+		}
+		if e.Module != "" && !moduleRe.MatchString(e.Module) {
+			return nil, 0, fmt.Errorf("erasure ledger: bad module %q", e.Module)
 		}
 	}
 	l.mu.Lock()
@@ -194,13 +254,13 @@ func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 	have := map[string]Entry{}
 	prev := ""
 	for _, x := range es {
-		have[x.key()], prev = x, x.Hash
+		have[x.target()], prev = newest(have[x.target()], x), x.Hash
 	}
 	var b []byte
 	out := make([]Entry, 0, len(in))
 	seq, added := len(es), 0
 	for _, e := range in {
-		if x, ok := have[e.key()]; ok {
+		if x, ok := have[e.target()]; ok && covers(x, e) {
 			out = append(out, x)
 			continue
 		}
@@ -208,7 +268,7 @@ func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 		added++
 		e.Seq, e.Prev = seq, prev
 		e.Hash = e.computeHash()
-		prev, have[e.key()] = e.Hash, e
+		prev, have[e.target()] = e.Hash, e
 		line, _ := json.Marshal(e)
 		b = append(append(b, line...), '\n')
 		out = append(out, e)
@@ -228,6 +288,18 @@ func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 	return out, added, f.Close()
 }
 
+// newest is whichever of two records of one target speaks for the later erasure; a record without
+// a time speaks for all of them.
+func newest(a, b Entry) Entry {
+	switch {
+	case a.Subject == "":
+		return b
+	case a.At == "" || (b.At != "" && a.At >= b.At):
+		return a
+	}
+	return b
+}
+
 // syncDir flushes a directory entry, where the file system allows it.
 func syncDir(dir string) {
 	if d, err := os.Open(dir); err == nil { //nolint:gosec // a directory we write in
@@ -236,7 +308,7 @@ func syncDir(dir string) {
 	}
 }
 
-// MergeLedgers unions entries by (subject, class), keeps the earliest date,
+// MergeLedgers unions entries by (module, subject, class, time), keeps the earliest date,
 // orders by date then subject then class, and rebuilds the sequence and chain.
 func MergeLedgers(a, b []Entry) []Entry {
 	byKey := map[string]Entry{}

@@ -322,8 +322,8 @@ type Erasure struct {
 	Files   int      `json:"files"`
 }
 
-// EraseSubject purges every file of a data subject on request and records the subject's tombstones
-// for the backup ledger. files.admin only; a legal hold or an unpassed retention date on any of
+// EraseSubject purges every file of a data subject on request and records a tombstone for each of
+// those files for the backup ledger. files.admin only; a legal hold or an unpassed retention date on any of
 // the files blocks the whole request. Idempotent: a repeat finishes an interrupted erasure and
 // retries the scrub of the database files, which is the last step.
 func (s *Store) EraseSubject(ctx context.Context, p *Principal, subject string) (*Erasure, error) {
@@ -347,10 +347,10 @@ func (s *Store) EraseSubject(ctx context.Context, p *Principal, subject string) 
 		if _, err := s.markPurging(ctx, tx, purgeIntent{"erasure", p.Subject, "file.erase"}, ofSubject, subject, subject); err != nil {
 			return err
 		}
-		for _, c := range Classes {
-			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO erasures (subject, class, date, created_at) VALUES (?,?,?,?)`, subject, c, date, ts(s.now())); err != nil {
-				return err
-			}
+		// The tombstones name the files, not the data subject: a replay must never take a file
+		// uploaded for the subject afterwards.
+		if err := s.tombstoneClaimed(ctx, tx, "file.erase"); err != nil {
+			return err
 		}
 		return s.audit(ctx, tx, p.Subject, "subject.erase", "subject:"+subject, nil, "ok")
 	})
@@ -381,6 +381,8 @@ type ErasureEntry struct {
 	Subject string `json:"subject"`
 	Class   string `json:"class"`
 	Date    string `json:"date"`
+	// At is when the data was erased: a restore leaves alone a backup made after it.
+	At string `json:"at,omitempty"`
 }
 
 // ListErasures returns tombstones after a cursor. files.admin only (the can-core service account).
@@ -390,7 +392,7 @@ func (s *Store) ListErasures(ctx context.Context, p *Principal, after int64) ([]
 	}
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT seq, subject, class, date FROM erasures WHERE (seq > ?) ORDER BY seq LIMIT 1000`, after)
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, subject, class, date, created_at FROM erasures WHERE (seq > ?) ORDER BY seq LIMIT 1000`, after)
 	if err != nil {
 		return nil, err
 	}
@@ -398,17 +400,19 @@ func (s *Store) ListErasures(ctx context.Context, p *Principal, after int64) ([]
 	out := []ErasureEntry{}
 	for rows.Next() {
 		var e ErasureEntry
-		if err := rows.Scan(&e.Seq, &e.Subject, &e.Class, &e.Date); err != nil {
+		var created int64
+		if err := rows.Scan(&e.Seq, &e.Subject, &e.Class, &e.Date, &created); err != nil {
 			return nil, err
 		}
+		e.At = time.Unix(created, 0).UTC().Format(time.RFC3339)
 		out = append(out, e)
 	}
 	return out, rows.Err()
 }
 
 // PurgeSubject is the purge(subject, class) hook the backup restore replays: idempotent, and an
-// unknown subject is a no-op. The subject is a data subject id (an erasure) or a file id (a
-// retention purge). An administrator is refused when any matching file is under a legal hold or a
+// unknown subject is a no-op. The subject is a file id, or a data subject id (a tombstone written
+// by hand or by an earlier release). An administrator is refused when any matching file is under a legal hold or a
 // retention date. Only the restore-only credential (Principal.Restore) ignores both, because a
 // restore re-applies an erasure that was authorised when its tombstone was written; it is audited
 // as file.restore_purge.

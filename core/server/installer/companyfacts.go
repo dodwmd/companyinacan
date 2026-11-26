@@ -67,3 +67,16 @@ func (in *Installer) wireSecrets(ctx context.Context, s reconcile.Spec, data map
 	data[modsecrets.ProvisioningDirectoryKey] = tok
 	return nil
 }
+
+// WiringFingerprint implements reconcile.WiringAware: a digest of the people directory token as the
+// provisioning module was or would be given it, "" while there is none.
+func (in *Installer) WiringFingerprint(ctx context.Context, s reconcile.Spec) (string, error) {
+	if s.ID != "provisioning" {
+		return "", nil
+	}
+	tok, err := in.secretKey(ctx, "mod-people", secretModule, modsecrets.PeopleDirectoryKey)
+	if err != nil || tok == "" {
+		return "", err
+	}
+	return secretVersion(s.HMACSecret, map[string]string{modsecrets.PeopleDirectoryKey: tok}), nil
+}

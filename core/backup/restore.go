@@ -70,6 +70,9 @@ type HookReport struct {
 type EraseReport struct {
 	// Purged are "module: class subject" lines.
 	Purged []string `json:"purged"`
+	// Reflected counts the erasures older than the dump they would apply to: the dump already
+	// reflects them, so they are not replayed into it.
+	Reflected int `json:"reflected,omitempty"`
 	// Unapplied are "module:class" pairs ("*:class" when no installed module holds the class)
 	// for which tombstones exist but there is no way to replay them.
 	Unapplied []string `json:"unapplied,omitempty"`
@@ -1131,7 +1134,7 @@ func (o *Restore) stepErasure(ctx context.Context, st *restoreState) error {
 		o.say("WARNING: --accept-unerased: tombstones of %s were NOT replayed; erase that data by hand", u)
 	}
 	st.Entries = es
-	o.say("%d tombstones replayed; %d derived rows removed from can-core", len(es), rep.CoreRows)
+	o.say("%d erasure purges replayed; %d erasures the backup already reflects were left alone; %d derived rows removed from can-core", len(rep.Purged), rep.Reflected, rep.CoreRows)
 	o.say("WARNING: %s", ErasureWarning(st.Snapshot))
 	return nil
 }
@@ -1177,6 +1180,7 @@ func (o *Restore) writeLedger(applied []Entry) error {
 	for _, e := range applied {
 		have[e.key()] = true
 	}
+
 	var late []string
 	for _, e := range local {
 		if !have[e.key()] {

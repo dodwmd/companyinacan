@@ -246,6 +246,10 @@ func specHash(c *config.Company, id string, man *config.Module, routes, relay st
 		h = hex.EncodeToString(sum[:])
 	}
 	if !modsecrets.WantsRelay(id) || !RelayOptIn(c.Email, id) {
+		if relay != "" { // a credential wired in from another module (WiringAware)
+			sum := sha256.Sum256([]byte(h + "\x00wired\x00" + relay))
+			return hex.EncodeToString(sum[:])
+		}
 		return h
 	}
 	b, _ := json.Marshal(c.Email.Relay)
@@ -258,7 +262,19 @@ func specHash(c *config.Company, id string, man *config.Module, routes, relay st
 	return hex.EncodeToString(sum[:])
 }
 
+// WiringAware is implemented by installers that copy a credential of one module into another: the
+// fingerprint changes when the source does (the people module installed afresh), so that the copy
+// is made again.
+type WiringAware interface {
+	WiringFingerprint(ctx context.Context, s Spec) (string, error)
+}
+
+// relay is the fingerprint of what is written into the module from outside its own settings: the
+// SMTP relay, or another module's credential.
 func (r *Reconciler) relay(ctx context.Context, d Desired, id, hmacSecret string) (string, error) {
+	if wa, ok := r.Installer.(WiringAware); ok && id == "provisioning" {
+		return wa.WiringFingerprint(ctx, Spec{ID: id, Manifest: d.Manifests[id], HMACSecret: hmacSecret})
+	}
 	ra, ok := r.Installer.(RelayAware)
 	if !ok || !modsecrets.WantsRelay(id) || !RelayOptIn(d.Company.Email, id) {
 		return "", nil

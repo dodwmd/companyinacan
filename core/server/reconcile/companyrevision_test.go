@@ -22,3 +22,12 @@ func TestCompanyFactsChangeTheSpecHash(t *testing.T) {
 		t.Error("work does not carry company facts")
 	}
 }
+
+// The wired credential of another module is part of what provisioning is installed from.
+func TestAWiredCredentialChangesTheSpecHash(t *testing.T) {
+	c := &config.Company{Modules: map[string]config.ModuleEntry{"provisioning": {}}}
+	man := &config.Module{Version: "1"}
+	if specHash(c, "provisioning", man, "", "a") == specHash(c, "provisioning", man, "", "b") {
+		t.Error("a new people directory token is not an upgrade")
+	}
+}
