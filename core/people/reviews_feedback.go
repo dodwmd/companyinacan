@@ -28,7 +28,7 @@ import (
 )
 
 // ApprovalRequest asks the approval engine (can-core, specs/015-approvals-notifications) to
-// decide. Types are declared in module.yaml: timeoff, review-release.
+// decide. Only review releases use this seam; time off goes through the queue (queued.go).
 type ApprovalRequest struct {
 	Type      string
 	Ref       string // the request or review id
@@ -41,7 +41,7 @@ type ApprovalStatus struct {
 	DecidedBy string // subject of the final approver
 }
 
-// ApprovalEngine is the seam to can-core's approval engine. The engine resolves the approver
+// ApprovalEngine is the seam to can-core's approval engine for review releases (not wired). The engine resolves the approver
 // through the reporting line (the `directory` capability this module provides). Without an engine
 // the service decides itself: the policy layer says who may (the live direct manager or hr) and
 // the same separation-of-duties function applies. The engine's decider is held to the

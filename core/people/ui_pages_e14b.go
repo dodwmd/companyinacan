@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dodwmd/companyinacan/core/modapproval"
 )
 
 // Time off and reviews pages (Service methods of E14b). As elsewhere, every decision is the
@@ -144,6 +146,10 @@ type leaveDetail struct {
 	Person                     string
 	Self, CanDecide, CanCancel bool
 	CanSubmit                  bool
+	// With can-core the decision is taken in its approvals inbox: EngineState says where it stands
+	// (queued, pending, refused, approved), and the buttons offer only what the service accepts.
+	EngineState, EngineNote string
+	MayApprove, MayReject   bool
 }
 
 func (u *UI) timeoffDetail(c *uiCtx) error {
@@ -158,6 +164,17 @@ func (u *UI) timeoffDetail(c *uiCtx) error {
 	d.CanSubmit = self && lr.Status == "draft"
 	d.CanCancel = lr.Status == "draft" || lr.Status == "pending" || lr.Status == "approved"
 	d.CanDecide = !self && lr.Status == "pending" // the Service still decides who may
+	d.MayApprove, d.MayReject = true, true
+	if lr.Status == "pending" {
+		engine, state, note, err := u.Svc.ApprovalState(c.r.Context(), lr.ID)
+		if err != nil {
+			return err
+		}
+		if engine {
+			d.EngineState, d.EngineNote = state, note
+			d.MayApprove, d.MayReject = state == modapproval.Approved, state != modapproval.Pending
+		}
+	}
 	u.render(c.w, c.r, c, http.StatusOK, "leave.html", "nav.timeoff", d)
 	return nil
 }

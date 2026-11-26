@@ -9,14 +9,18 @@
 <dt>{{t "to.status"}}</dt><dd><span class="badge">{{.Data.Row.Status}}</span></dd>
 {{if .Data.R.Note}}<dt>{{t "to.note"}}</dt><dd class="prose">{{.Data.R.Note}}</dd>{{end}}
 </dl>
+{{- if .Data.EngineState}}
+<p class="notice" role="status">{{t (printf "engine.%s" .Data.EngineState)}}{{with .Data.EngineNote}} ({{.}}){{end}}</p>{{end}}
 <div class="actions">
 {{if .Data.CanSubmit}}
 <form method="post" action="/timeoff/{{.Data.R.ID}}/submit" class="inline">{{template "csrf" .}}<button type="submit">{{t "to.submit"}}</button></form>
 {{end}}
-{{if .Data.CanDecide}}
+{{if and .Data.CanDecide (or .Data.MayApprove .Data.MayReject)}}
 <form method="post" action="/timeoff/{{.Data.R.ID}}/decide" class="inline">{{template "csrf" .}}
-<button type="submit" name="decision" value="approve">{{t "to.approve"}}</button>
-<button type="submit" name="decision" value="reject">{{t "to.decline"}}</button></form>
+{{- if .Data.MayApprove}}
+<button type="submit" name="decision" value="approve">{{t "to.approve"}}</button>{{end}}
+{{- if .Data.MayReject}}
+<button type="submit" name="decision" value="reject">{{t "to.decline"}}</button>{{end}}</form>
 {{end}}
 {{if .Data.CanCancel}}
 <form method="post" action="/timeoff/{{.Data.R.ID}}/cancel" class="inline">{{template "csrf" .}}<button type="submit">{{t "to.cancel"}}</button></form>

@@ -302,38 +302,6 @@ func TestRequestLifecycleLedgerAndSeparation(t *testing.T) {
 	}
 }
 
-func TestApprovalEngineAndLeaveSeparation(t *testing.T) {
-	x := newToEnv(t)
-	eng := &fakeEngine{}
-	x.s.approvals = eng
-	lr := x.submit(x.annA, x.vac, "2026-03-23", "2026-03-24")
-	if len(eng.reqs) != 1 || eng.reqs[0].Type != "timeoff" || eng.reqs[0].Ref != lr.ID {
-		t.Fatalf("engine requests = %+v", eng.reqs)
-	}
-	if _, err := x.s.DecideLeaveRequest(x.ctx, x.mgrA, lr.ID, true); !errors.Is(err, ErrConflict) {
-		t.Fatalf("approved while the engine says pending: %v", err)
-	}
-	// The engine's decider is the requester under another spelling: refused.
-	eng.out, eng.by = "approved", " SSO-ANN\u200b"
-	if _, err := x.s.DecideLeaveRequest(x.ctx, x.mgrA, lr.ID, true); !errors.Is(err, ErrSeparation) {
-		t.Fatalf("engine decider = requester: %v", err)
-	}
-	eng.by = "sso-mgr"
-	if _, err := x.s.DecideLeaveRequest(x.ctx, x.mgrA, lr.ID, true); err != nil {
-		t.Fatal(err)
-	}
-	// An engine failure at submission fails the submission: nothing is left half-pending.
-	eng.failReq = true
-	lr2 := x.draft(x.annA, x.vac, "2026-04-13", "2026-04-14")
-	if _, err := x.s.SubmitLeaveRequest(x.ctx, x.annA, lr2.ID); err == nil {
-		t.Fatal("submitted although the engine is down")
-	}
-	got, _ := x.s.GetLeaveRequest(x.ctx, x.annA, lr2.ID)
-	if got.Status != "draft" {
-		t.Fatalf("status after failed submit = %s", got.Status)
-	}
-}
-
 func TestBalanceChecksUnderConcurrency(t *testing.T) {
 	x := newToEnv(t)
 	// 50 halves available; each request is 10 halves; submit 12 concurrently: exactly 5 may be pending.
