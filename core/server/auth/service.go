@@ -141,8 +141,7 @@ func NewService(db *store.DB, a Appender, opt Options) *Service {
 	if opt.HashWait == 0 {
 		opt.HashWait = 3 * time.Second
 	}
-	d, _ := HashPassword("dummy password for timing equalisation")
-	return &Service{db: db, audit: a, opt: opt, dummy: d, dummyTOTP: NewTOTPSecret(), slots: make(chan struct{}, opt.HashSlots), rate: map[string]*window{}}
+	return &Service{db: db, audit: a, opt: opt, dummy: dummyHash(), dummyTOTP: NewTOTPSecret(), slots: make(chan struct{}, opt.HashSlots), rate: map[string]*window{}}
 }
 
 // LoginRequest is one login attempt.
@@ -226,6 +225,7 @@ func (s *Service) verify(ctx context.Context, password, hash string) (bool, erro
 		return false, err
 	}
 	defer release()
+	defer releaseHashMemory() // runs before release: the next hash starts with the memory given back
 	return VerifyPassword(password, hash)
 }
 
@@ -235,6 +235,7 @@ func (s *Service) hash(ctx context.Context, password string) (string, error) {
 		return "", err
 	}
 	defer release()
+	defer releaseHashMemory()
 	return HashPassword(password)
 }
 

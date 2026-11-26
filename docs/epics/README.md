@@ -52,6 +52,12 @@ Backlog (broken down into epics when the previous phase is done):
 | E19 | Android companion app (approvals, notifications, timesheets, 1:1s, work items) on the public API; PWA hardening for the web UI | 3a — **E19a (PWA hardening and Web Push: installable manifest with maskable icons and shortcuts, phone layouts, hashed static assets, a push-only service worker, a `webpush` notification channel with VAPID/RFC 8291 implemented on the standard library, device management with a test button) is built offline against fakes; nothing verified on a real browser, push service or Android device**: `specs/025-pwa-webpush/`, `docs/pwa.md`. Decision: PWA first; the native Kotlin app (E19b, timesheets, 1:1s, work items) starts only if PWA limits are proven |
 | E22 | Observability, health and diagnostics across can-core and every in-house service: `core/obs` (stdlib Prometheus exposition, process and footprint self-check metrics, HTTP and database metrics), `/readyz`, request ids and log redaction, `can diagnose`, `can doctor` reachability, `deploy/monitoring` alerts, dashboard and compose profile | 1-3 — built offline and verified against the compose stack only, no cluster, Prometheus and Grafana images not run: `specs/030-observability/`, `docs/observability.md` |
 
+### Follow-ups
+
+| Item | Why |
+|---|---|
+| Verified holder identity in `equity` | A stakeholder's `person_id` is not checked against the directory, so the separation-of-duties checks that compare it (grants, exercises, manual ledger entries, erasure) are sidestepped by a second record or a made-up id. Needs a design: link stakeholders to verified directory people, say how external holders are identified, and decide which ledger writes need a second person (found in review of PR #60) |
+
 ---
 
 ## E00 — Phase 0 measurements

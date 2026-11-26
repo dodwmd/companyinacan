@@ -91,10 +91,10 @@ and iOS apps are out of scope.
 | Item | Claimed | Measured | Source |
 |---|---|---|---|
 | k3s + Traefik + CoreDNS + local-path, idle | at most about 600 MB | 510 to 563 MiB node total, on a 16 GB CI runner (not a 2 GB VPS); the pods are 50 to 55 MiB of it | [phase0-ci.md](docs/measurements/phase0-ci.md) |
-| can-core, idle | 48 MB declared | 41.9 MiB RSS idle, 60 MiB after 4,000 requests; 49 MiB in a cluster | [module-wiring.md](docs/module-wiring.md) |
-| In-house services, idle | 15 to 30 MB declared each | 13.5 to 16 MiB RSS each (forms 3.2 MiB cgroup working set in CI) | module READMEs, phase0-ci.md |
-| Whole compose stack (10 services incl. Caddy and the e2e stub, plus the one-shot init job), after the e2e suite | "under 100 MiB" | **not met since the modules were wired to can-core**: about 150 MB by `docker stats` on rootless podman (94 MB before) | measured after the full suite; [local-compose.md](docs/local-compose.md) |
-| "Starter stack fits a 2 GB server" | aim | **not measured**; the wrapped apps (support, newsletter, analytics) were only started one at a time on k3d | [SPEC.md](SPEC.md) 3.2, 11 |
+| can-core, idle | 48 MB declared, 96 MiB limit | 31 MiB RSS (14 MiB anonymous) idle, 33 MiB after the end-to-end suite, 51 to 53 MiB peak with admin logins, in Compose; the cluster figure (49 MiB) is older than the 2026-11-26 reductions and was not repeated | [footprint.md](docs/measurements/footprint.md) |
+| In-house services, idle | 15 to 30 MB declared each | 14 to 19 MiB RSS each idle (4 to 6 MiB anonymous), 16 to 24 MiB after the end-to-end suite (5 to 10 MiB anonymous), in Compose (forms 3.2 MiB cgroup working set in CI) | [footprint.md](docs/measurements/footprint.md), phase0-ci.md |
+| Whole compose stack (9 services, Caddy and two development stubs) | "under 100 MiB" | **met idle; under load it depends on the machine.** cgroup on a 32-thread development machine: 73 MiB idle (110 before), 120 MiB after the end-to-end suite and 112 a minute later (163 and 153 before). One run on the 4-vCPU CI runner: 68 idle, 92 after the suite (no "before" there). This **leaves out most of the binaries' file pages**, already cached by the image build: resident sets add up to about 208 MiB idle and 242 MiB loaded, nearer what a freshly booted server needs. Rootless Podman locally | [footprint.md](docs/measurements/footprint.md) |
+| "Starter stack fits a 2 GB server" | aim | **not established**: the full default bundle has never run together or on a 2 GB machine; the wrapped apps (support, newsletter, analytics) were only started one at a time on k3d, and enabling any of them stops backups for now. Use 4 GB | [footprint.md](docs/measurements/footprint.md#2-gb-server-are-the-spec-targets-met-by-the-full-default-bundle) |
 
 ## Security posture and limitations
 
