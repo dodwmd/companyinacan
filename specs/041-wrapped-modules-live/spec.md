@@ -101,9 +101,9 @@ charts; upgrades between app versions; the tracking snippet in the site renderer
   It is also in the app container's environment. Changing it in the app does not update the Secret.
 - Mail that FreeScout sends itself bypasses `email.send`: no recipient allow-list, quota or delivery
   log. Hence the opt-in.
-- A new password in the relay Secret reaches the module only at its next install or upgrade. A Secret
-  written less than a minute or two before the apply may not be mounted yet: the module is then given
-  nothing until its next upgrade (seen in CI).
+- A Secret written less than a minute or two before the apply may not be mounted yet (seen in CI): the
+  module is then given nothing at first. What can-core reads of the relay is part of the recorded settings
+  hash, so the reconcile loop upgrades the module once the Secret shows up, and again for a new password.
 - Opting out empties `can-smtp` but does not clear what FreeScout stored in its database: clear its mail
   and mailbox settings by hand and rotate the relay password.
 - While opted in with a relay, FreeScout's system mail settings are overwritten at every pod start.

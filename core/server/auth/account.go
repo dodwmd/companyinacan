@@ -58,7 +58,8 @@ func (s *Service) checkCurrentOpt(ctx context.Context, u store.AdminUser, curren
 		}
 	}
 	ok, err := s.verify(ctx, current, u.PasswordHash)
-	if err != nil {
+	if err != nil { // nothing was compared
+		s.release(ctx, []reservation{{key: key, max: accountMaxFailures}})
 		return err
 	}
 	if !ok {

@@ -40,7 +40,8 @@ func (s *Service) Reauthenticate(ctx context.Context, sess store.Session, u stor
 		s.recordBestEffort(ctx, u.Username, "admin.reauth.failed", ip)
 		return ErrInvalidCredentials
 	}
-	if ok, err = s.verify(ctx, password, u.PasswordHash); err != nil {
+	if ok, err = s.verify(ctx, password, u.PasswordHash); err != nil { // nothing was compared
+		s.release(ctx, []reservation{{key: key, max: stepUpAttempts + 1}})
 		return err
 	}
 	if ok {

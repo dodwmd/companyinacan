@@ -8,9 +8,24 @@ import (
 	"time"
 )
 
+// LoginFailedKey prefixes the per-account count of failed sign-ins (the lower-case username follows),
+// which only feeds an audit entry; LoginFailedWindow is how long it counts.
+const (
+	LoginFailedKey    = "failed:"
+	LoginFailedWindow = 24 * time.Hour
+)
+
+// ReleaseFailure takes back one attempt that was counted before it was checked, lifting the lock
+// when what remains is below max.
+func (db *DB) ReleaseFailure(ctx context.Context, key string, max int) error {
+	_, err := db.ExecContext(ctx, `UPDATE login_attempts SET failures=failures-1,
+		locked_until=CASE WHEN failures-1<? THEN 0 ELSE locked_until END WHERE key=? AND failures>0`, max, key)
+	return err
+}
+
 // RegisterFailure atomically records one failed attempt for key and returns the new state and
 // whether this failure established a lock. Failures older than window, or an expired lock, start a
-// fresh count. The read-modify-write runs in one transaction.
+// fresh count, but a lock that is still running is never dropped. The read-modify-write runs in one transaction.
 func (db *DB) RegisterFailure(ctx context.Context, key string, max int, window, lockFor time.Duration, now time.Time) (LoginAttempt, bool, error) {
 	var a LoginAttempt
 	locked := false
@@ -23,7 +38,7 @@ func (db *DB) RegisterFailure(ctx context.Context, key string, max int, window, 
 		}
 		a.FirstFailed, a.LockedUntil = time.Unix(f, 0), time.Unix(l, 0)
 		lockExpired := l > 0 && !now.Before(a.LockedUntil)
-		if a.Failures == 0 || lockExpired || now.Sub(a.FirstFailed) > window {
+		if a.Failures == 0 || lockExpired || (now.Sub(a.FirstFailed) > window && !now.Before(a.LockedUntil)) {
 			a = LoginAttempt{Key: key, FirstFailed: now}
 		}
 		a.Failures++
@@ -41,7 +56,9 @@ func (db *DB) RegisterFailure(ctx context.Context, key string, max int, window, 
 
 // PruneLoginAttempts deletes counters whose lock has expired and whose window has passed.
 func (db *DB) PruneLoginAttempts(ctx context.Context, now time.Time, window time.Duration) (int64, error) {
-	res, err := db.ExecContext(ctx, `DELETE FROM login_attempts WHERE locked_until <= ? AND first_failure <= ?`, now.Unix(), now.Add(-window).Unix())
+	res, err := db.ExecContext(ctx, `DELETE FROM login_attempts WHERE locked_until <= ?
+		AND first_failure <= CASE WHEN key LIKE ? THEN ? ELSE ? END`,
+		now.Unix(), LoginFailedKey+"%", now.Add(-max(window, LoginFailedWindow)).Unix(), now.Add(-window).Unix())
 	if err != nil {
 		return 0, err
 	}
