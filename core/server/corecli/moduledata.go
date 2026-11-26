@@ -29,7 +29,11 @@ func moduleDataCmd(getenv func(string) string, stdout io.Writer) *cobra.Command 
 				}
 				ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 				defer stop()
-				ctx, cancel := context.WithTimeout(ctx, 14*time.Minute) // inside the Job's 15
+				limit := 14 * time.Minute // inside the Job's 15
+				if c.Name() == "export" {
+					limit = 55 * time.Minute // inside the export Job's hour
+				}
+				ctx, cancel := context.WithTimeout(ctx, limit)
 				defer cancel()
 				err := f(ctx, w, getenv, stdout)
 				switch {
@@ -48,6 +52,7 @@ func moduleDataCmd(getenv func(string) string, stdout io.Writer) *cobra.Command 
 		return c
 	}
 	cmd.AddCommand(sub("backup", "Upload the module's dump set", modbackup.BackupWrapped),
-		sub("restore", "Download, verify and install the module's dump set (restore mode)", modbackup.RestoreWrapped))
+		sub("restore", "Download, verify and install the module's dump set (restore mode)", modbackup.RestoreWrapped),
+		sub("export", "Send the module's data to can export", modbackup.ExportWrapped))
 	return cmd
 }
