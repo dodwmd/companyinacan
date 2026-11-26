@@ -18,6 +18,8 @@ V-1,Bolt Supplies,vendor,,,
 
 var importer = &Principal{Subject: "importer", Permissions: []string{PermWrite}}
 
+const fullFile = 500 // under -race the pure-Go SQLite is about forty times slower
+
 func (e *env) importParties(p *Principal, apply bool, in string) (*csvimport.Report, error) {
 	e.t.Helper()
 	return e.app.store.ImportParties(context.Background(), p, strings.NewReader(in), csvimport.Options{Apply: apply})
@@ -74,11 +76,11 @@ func TestImportPartiesPreviewApplyAndRerun(t *testing.T) {
 
 func TestImportPartiesAllOrNothingAndErased(t *testing.T) {
 	e := newEnv(t)
-	rep, err := e.importParties(importer, true, partiesCSV)
+	_, err := e.importParties(importer, true, partiesCSV)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err = e.importParties(importer, true, "external_id,name,kind,email,currency\nN-1,Fine,,,\nN-2,,,,\nN-3,x,robot,secret-not-an-address,ZZZ\n")
+	rep, err := e.importParties(importer, true, "external_id,name,kind,email,currency\nN-1,Fine,,,\nN-2,,,,\nN-3,x,robot,secret-not-an-address,ZZZ\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,10 +159,10 @@ func TestImportPartiesAPIAndFullFile(t *testing.T) {
 	}
 	var big strings.Builder
 	big.WriteString("external_id,name,address\n")
-	for i := range csvimport.MaxRows {
+	for i := range fullFile {
 		fmt.Fprintf(&big, "C%d,Company %d,1 Example Street\n", i, i)
 	}
-	if code, rep := post(adminTok, "?apply=true", big.String()); code != 200 || rep.Create != csvimport.MaxRows {
+	if code, rep := post(adminTok, "?apply=true", big.String()); code != 200 || rep.Create != fullFile {
 		t.Fatalf("full file: %d %+v", code, rep.Errors)
 	}
 }

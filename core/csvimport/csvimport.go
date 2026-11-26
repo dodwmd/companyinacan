@@ -27,6 +27,8 @@ const (
 	MaxBytes   = 1 << 20
 	MaxRows    = 2000
 	MaxColumns = 64
+	// maxSeparators bounds the cells of a file (commas inside quoted text count too).
+	maxSeparators = MaxRows * MaxColumns
 	// MaxListed caps the errors and the warnings a report lists; the counts stay complete.
 	MaxListed = 200
 )
@@ -106,6 +108,10 @@ func Read(r io.Reader, fields []Field, mapping map[string]string) (*File, error)
 	}
 	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return nil, fileErr("the file must be UTF-8 text without NUL bytes (save it as \"CSV UTF-8\")")
+	}
+	// A file of nothing but separators would cost many times its size in memory to split.
+	if bytes.Count(data, []byte(",")) > maxSeparators {
+		return nil, &FileError{Msg: "the file has too many cells; split it", TooLarge: true}
 	}
 	sum := sha256.Sum256(data)
 	cr := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(data, []byte("\ufeff"))))

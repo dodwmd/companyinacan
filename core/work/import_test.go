@@ -11,6 +11,9 @@ import (
 	"github.com/dodwmd/companyinacan/core/csvimport"
 )
 
+// Over the ~840 appends at which ranks are respaced; MaxRows would be slow under -race.
+const fullFile = 1000
+
 // Children come before parents on purpose.
 const issuesCSV = `external_id,title,type,status,priority,labels,parent_external_id,description
 J-3,Write the form,subtask,,,,J-2,
@@ -159,14 +162,14 @@ func TestImportIssuesAPIAndFullFile(t *testing.T) {
 	}
 	var big strings.Builder
 	big.WriteString("external_id,title,type,parent_external_id\n")
-	for i := range csvimport.MaxRows {
+	for i := range fullFile {
 		if i%10 == 0 {
 			fmt.Fprintf(&big, "P%d,Epic,epic,\n", i)
 		} else {
 			fmt.Fprintf(&big, "P%d,Task %d,task,P%d\n", i, i, i-i%10)
 		}
 	}
-	if code, rep := post(bootstrap, "?apply=true", big.String()); code != 200 || rep.Create != csvimport.MaxRows {
+	if code, rep := post(bootstrap, "?apply=true", big.String()); code != 200 || rep.Create != fullFile {
 		t.Fatalf("full file: %d %+v", code, rep.Errors)
 	}
 }

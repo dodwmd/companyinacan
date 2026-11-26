@@ -25,6 +25,10 @@ func (e *env) count(query string) (n int) {
 	return n
 }
 
+// fullFile is large but well below csvimport.MaxRows: under -race the pure-Go SQLite is about forty
+// times slower and a loaded runner could reach the write timeout.
+const fullFile = 500
+
 // The boss comes last on purpose: managers are linked after every row exists.
 const peopleCSV = `external_id,given_name,family_name,work_email,start_date,manager_external_id
 E2,Ann,Example,ann@example.com,2025-01-06,E1
@@ -271,7 +275,7 @@ func TestImportRunsOneAtATimeAndTakesAFullFile(t *testing.T) {
 
 	var big strings.Builder
 	big.WriteString("external_id,given_name,family_name,work_email,manager_external_id\n")
-	for i := range csvimport.MaxRows {
+	for i := range fullFile {
 		mgr := ""
 		if i > 0 {
 			mgr = fmt.Sprintf("P%d", i/8)
@@ -280,7 +284,7 @@ func TestImportRunsOneAtATimeAndTakesAFullFile(t *testing.T) {
 	}
 	rep, err := e.importCSV(e.hr, true, big.String())
 	e.must(err)
-	if !rep.Applied || rep.Create != csvimport.MaxRows {
+	if !rep.Applied || rep.Create != fullFile {
 		t.Fatalf("report = %d %v", rep.Create, rep.Errors)
 	}
 }

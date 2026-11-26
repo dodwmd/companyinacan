@@ -58,6 +58,7 @@ func TestReadRefusesBadFiles(t *testing.T) {
 		"nul":               {in: "external_id,name\nE1,a\x00b\n"},
 		"columns":           {in: "external_id,name" + strings.Repeat(",x", MaxColumns) + "\n"},
 		"rows":              {in: many, tooBig: true},
+		"cells":             {in: "external_id,name\nE1" + strings.Repeat(",", MaxRows*MaxColumns) + "\n", tooBig: true},
 		"bytes":             {in: "external_id,name\nE1," + strings.Repeat("a", MaxBytes) + "\n", tooBig: true},
 	} {
 		_, err := Read(strings.NewReader(c.in), fields, c.mapping)
