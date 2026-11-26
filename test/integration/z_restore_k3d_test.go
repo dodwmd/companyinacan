@@ -70,8 +70,8 @@ func moduleToken(t *testing.T, ns, key string) string {
 	return mustKubectl(t, "-n", ns, "get", "secret", "can-module", "-o", fmt.Sprintf("go-template={{index .data %q | base64decode}}", key))
 }
 
-// call is an HTTP request against a port-forwarded service.
-func call(t *testing.T, method, u, token string, body any) (int, string) {
+// rcall is an HTTP request against a port-forwarded service.
+func rcall(t *testing.T, method, u, token string, body any) (int, string) {
 	t.Helper()
 	var rd io.Reader
 	if body != nil {
@@ -142,7 +142,7 @@ func (a adminLogin) attempt(t *testing.T, base string) (int, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return call(t, "POST", base+"/api/v1/login", "", map[string]string{"username": "admin", "password": a.password, "totp": auth.Code(key, auth.SHA1, 6, 30, time.Now())})
+	return rcall(t, "POST", base+"/api/v1/login", "", map[string]string{"username": "admin", "password": a.password, "totp": auth.Code(key, auth.SHA1, 6, 30, time.Now())})
 }
 
 type seeded struct {
@@ -200,7 +200,7 @@ func seed(t *testing.T) seeded {
 	s.secretKeyring = moduleToken(t, "mod-people", "keyring")
 	api := portForward(t, "mod-people", "people-api", 8081)
 	create := func(family, national string) string {
-		st, body := call(t, "POST", api+"/v1/people", s.peopleToken, map[string]string{"kind": "employee", "status": "candidate", "given_name": "Robin", "family_name": family})
+		st, body := rcall(t, "POST", api+"/v1/people", s.peopleToken, map[string]string{"kind": "employee", "status": "candidate", "given_name": "Robin", "family_name": family})
 		if st != 201 {
 			t.Fatalf("create person: %d %s", st, body)
 		}
@@ -210,7 +210,7 @@ func seed(t *testing.T) seeded {
 		if err := json.Unmarshal([]byte(body), &p); err != nil || p.ID == "" {
 			t.Fatalf("person: %v %s", err, body)
 		}
-		if st, body := call(t, "PUT", api+"/v1/people/"+p.ID+"/sensitive", s.peopleToken, map[string]string{"national_id": national}); st != 204 {
+		if st, body := rcall(t, "PUT", api+"/v1/people/"+p.ID+"/sensitive", s.peopleToken, map[string]string{"national_id": national}); st != 204 {
 			t.Fatalf("sensitive: %d %s", st, body)
 		}
 		return p.ID
@@ -229,7 +229,7 @@ func seed(t *testing.T) seeded {
 
 	// --- forms: a lead ---
 	forms := portForward(t, "mod-forms", "forms", 8080)
-	st, body := call(t, "GET", forms+"/contact/token", "", nil)
+	st, body := rcall(t, "GET", forms+"/contact/token", "", nil)
 	var tok struct {
 		Token string `json:"token"`
 	}
@@ -371,7 +371,7 @@ func TestRestoreOnK3d(t *testing.T) {
 
 	// --- AFTER the backup, one person is erased; the tombstone goes to the bucket ledger -------
 	api := portForward(t, "mod-people", "people-api", 8081)
-	if st, body := call(t, "POST", api+"/v1/people/"+s.goneID+"/erasure", s.peopleToken, nil); st != 200 {
+	if st, body := rcall(t, "POST", api+"/v1/people/"+s.goneID+"/erasure", s.peopleToken, nil); st != 200 {
 		t.Fatalf("erasure: %d %s", st, body)
 	}
 	ledger := backup.DefaultSettings().LedgerSource
@@ -443,22 +443,22 @@ func TestRestoreOnK3d(t *testing.T) {
 	}
 
 	api = portForward(t, "mod-people", "people-api", 8081)
-	st, body := call(t, "GET", api+"/v1/people/"+s.keptID, s.peopleToken, nil)
+	st, body := rcall(t, "GET", api+"/v1/people/"+s.keptID, s.peopleToken, nil)
 	if st != 200 || !strings.Contains(body, keptName) {
 		t.Fatalf("the kept person: %d %s", st, body)
 	}
-	st, body = call(t, "GET", api+"/v1/people/"+s.keptID+"/sensitive?fields=national_id", s.peopleToken, nil)
+	st, body = rcall(t, "GET", api+"/v1/people/"+s.keptID+"/sensitive?fields=national_id", s.peopleToken, nil)
 	if st != 200 || !strings.Contains(body, nationalA) {
 		t.Fatalf("the sealed field must decrypt with the restored keyring: %d %s", st, body)
 	}
-	_, body = call(t, "GET", api+"/v1/people/"+s.goneID, s.peopleToken, nil)
+	_, body = rcall(t, "GET", api+"/v1/people/"+s.goneID, s.peopleToken, nil)
 	if strings.Contains(body, goneName) {
 		t.Fatalf("THE ERASED PERSON IS BACK: %s", body)
 	}
-	if _, body = call(t, "GET", api+"/v1/people/"+s.goneID+"/sensitive?fields=national_id", s.peopleToken, nil); strings.Contains(body, nationalB) {
+	if _, body = rcall(t, "GET", api+"/v1/people/"+s.goneID+"/sensitive?fields=national_id", s.peopleToken, nil); strings.Contains(body, nationalB) {
 		t.Fatalf("THE ERASED PERSON'S SENSITIVE DATA IS BACK: %s", body)
 	}
-	if _, body = call(t, "GET", api+"/v1/people", s.peopleToken, nil); strings.Contains(body, goneName) || !strings.Contains(body, keptName) {
+	if _, body = rcall(t, "GET", api+"/v1/people", s.peopleToken, nil); strings.Contains(body, goneName) || !strings.Contains(body, keptName) {
 		t.Fatalf("directory listing: %s", body)
 	}
 	// ... and not in the database files either (the purge scrubs them).
@@ -479,7 +479,7 @@ func TestRestoreOnK3d(t *testing.T) {
 	}
 
 	api = portForward(t, "mod-forms", "forms-api", 8081)
-	if st, leads := call(t, "GET", api+"/v1/leads", s.formsReadToken, nil); st != 200 || !strings.Contains(leads, "lead@restore.example") {
+	if st, leads := rcall(t, "GET", api+"/v1/leads", s.formsReadToken, nil); st != 200 || !strings.Contains(leads, "lead@restore.example") {
 		t.Fatalf("the lead: %d %s", st, leads)
 	}
 	stub := volumeDir(t, "mod-stub", "data")
