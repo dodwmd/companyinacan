@@ -229,9 +229,11 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 	appKey := mustKubectl(t, "-n", "mod-support", "exec", "deploy/support", "-c", "app", "--", "grep", "^APP_KEY", "/data/config")
 	restoreOntoNothing(t)
 	for _, id := range []string{"support", "analytics", "newsletter"} {
+		// Not "rollout status": the restore leaves the Deployment at 0 replicas, which counts as
+		// rolled out until can-core applies the module again.
 		eventually(t, 15*time.Minute, id+" to be back", func() (bool, string) {
-			o, err := kubectl("-n", "mod-"+id, "rollout", "status", "deploy/"+id, "--timeout=5s")
-			return err == nil, o
+			o, err := kubectl("-n", "mod-"+id, "get", "deploy", id, "-o", "jsonpath={.spec.replicas}/{.status.updatedReplicas}/{.status.readyReplicas}/{.status.replicas}")
+			return err == nil && o == "1/1/1/1", o
 		})
 	}
 	for id, dir := range wrappedVolumes {
