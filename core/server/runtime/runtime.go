@@ -82,6 +82,9 @@ type Config struct {
 	ShutdownTimeout    time.Duration     // CAN_SHUTDOWN_TIMEOUT_SECONDS
 	PublicIPs          []string          // CAN_PUBLIC_IPS: the server's public addresses, listed in the setup wizard's DNS step
 	SSOSecretDir       string            // CAN_SSO_SECRET_DIR: directory with the SSO client secret as <name>/<key> files, a mounted Secret (default /etc/can/sso)
+	DevStack           bool              // CAN_DEV_STACK: the Docker Compose development mode (devstack.go); refused by release builds
+	DevModuleTokenDir  string            // CAN_DEV_MODULE_TOKEN_DIR: <module id>/token files, for CAN_DEV_STACK only
+	DevWebhookSecret   string            // CAN_DEV_WEBHOOK_SECRET: signs events to every module, for CAN_DEV_STACK only
 
 	// Backup dumps (epic E08b, dumps.go): CAN_DUMPS_DIR, CAN_DUMP_AT (UTC), CAN_DUMP_START_DELAY_SECONDS,
 	// CAN_DUMP_REQUEST_FILE.
@@ -181,13 +184,19 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			c.PublicIPs = append(c.PublicIPs, ip)
 		}
 	}
+	if c.DevStack, err = boolean(envDevStack, false); err != nil {
+		return c, err
+	}
+	c.DevModuleTokenDir, c.DevWebhookSecret, c.Env = getenv(envDevTokenDir), getenv(envDevHook), getenv
+	if err := c.checkDevStack(); err != nil {
+		return c, err
+	}
 	if c.AdminAddr == c.ModuleAddr {
 		return c, errors.New("CAN_ADMIN_ADDR and CAN_MODULE_ADDR must differ: the admin and module APIs are separate listeners")
 	}
 	if err := c.dumpEnv(getenv); err != nil {
 		return c, err
 	}
-	c.Env = getenv
 	return c, nil
 }
 
@@ -208,6 +217,9 @@ func (c Config) reviewer(log *slog.Logger) (tokenreview.Reviewer, error) {
 	if c.Reviewer != nil {
 		return c.Reviewer, nil
 	}
+	if c.DevStack {
+		return devReviewer(c.DevModuleTokenDir, log)
+	}
 	if c.TokenReview == "fake" {
 		log.Warn("CAN_TOKEN_REVIEW=fake: module tokens are NOT verified against Kubernetes; development only")
 		return tokenreview.NewFake(), nil
@@ -224,6 +236,9 @@ func (c Config) reviewer(log *slog.Logger) (tokenreview.Reviewer, error) {
 
 // Run starts can-core and blocks until ctx is cancelled, then shuts down gracefully.
 func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
+	if err := cfg.checkDevStack(); err != nil { // again: a Config need not come from FromEnv
+		return err
+	}
 	if cfg.MemLimitMB > 0 {
 		debug.SetMemoryLimit(int64(cfg.MemLimitMB) << 20)
 	} else if os.Getenv("GOMEMLIMIT") == "" {
@@ -379,6 +394,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			return errors.New("CAN_NODE_IP is required with CAN_INSTALLER=kubernetes")
 		}
 		rec := newReconciler(db, reg, al, inst)
+		rec.FixedWebhookSecret = cfg.DevWebhookSecret // empty outside the development stack (checkDevStack)
+		if cfg.DevStack {
+			rec.Keep = isDevModule
+		}
 		svc, cs, run, merr := cfg.moduleManagement(db, al, rec, log)
 		if merr != nil {
 			stopWork()

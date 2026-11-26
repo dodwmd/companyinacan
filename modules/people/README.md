@@ -20,7 +20,7 @@ installer in unit tests; not yet run on a cluster. A self-service web UI exists 
 sealed-field keyring once and rotates them on request (`can-core admin secrets rotate people keyring`
 adds a key and keeps the old ones; run `can-people rotate-keys` afterwards to re-seal). Personal access
 tokens are introspected through can-core and become roles from their permissions (`people.read` is
-employee, `performance.write` without `people.sensitive-write` adds manager, `people.write` is hr,
+employee, `people.team.manage` (held only by the manager role; **managers must reissue their personal access tokens with it**, see below) adds manager, `people.write` is hr,
 `people.admin` is admin); a token's subject is `user:<admin username>`, so a person is linked to it by
 setting their `sso_subject` to that value. Events go to can-core. **`candidate.hired.v1` from jobs
 starts onboarding:** a person in status `onboarding` (named "New hire" and the candidate id; the hand-off

@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/modclient"
 	"github.com/dodwmd/companyinacan/core/obs"
 	obslog "github.com/dodwmd/companyinacan/core/obs/log"
 )
@@ -95,6 +96,14 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	auth := MultiAuth{st}
 	if cfg.Introspect.URL != "" {
 		auth = append(auth, &IntrospectAuthenticator{URL: cfg.Introspect.URL, Token: sec.IntrospectToken})
+	}
+	can, err := modclient.FromEnv(getenv) // installed under can-core: personal access tokens
+	if err != nil {
+		fmt.Fprintf(stderr, "can-core: %v\n", err)
+		return 2
+	}
+	if can != nil {
+		auth = append(auth, &CanAuth{In: &modclient.Introspector{API: can}})
 	}
 	var disp *Dispatcher
 	if cfg.Webhook.URL != "" {

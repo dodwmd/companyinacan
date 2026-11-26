@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,9 +30,12 @@ type T interface {
 // Env describes where the stack is and how to reach it. Every field has a default for the
 // compose stack of `make e2e-up`; the E2E_* environment variables override them.
 type Env struct {
-	Port    string // host port of the edge (E2E_PORT, default 8080)
-	Compose string // compose command prefix (E2E_COMPOSE, default "docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml"), run from Root
-	Root    string // repository root, for the public dev secrets (E2E_ROOT, default: found from this file)
+	Port string // host port of the edge (E2E_PORT, default 8080)
+	// AppsPort is the first of the edge's one-host-name ports (E2E_APPS_PORT, default 8180): admin UI,
+	// then work, people, jobs and finance on the next four.
+	AppsPort int
+	Compose  string // compose command prefix (E2E_COMPOSE, default "docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml"), run from Root
+	Root     string // repository root, for the public dev secrets (E2E_ROOT, default: found from this file)
 }
 
 // FromEnv reads the environment.
@@ -39,6 +43,9 @@ func FromEnv() Env {
 	e := Env{Port: os.Getenv("E2E_PORT"), Compose: os.Getenv("E2E_COMPOSE"), Root: os.Getenv("E2E_ROOT")}
 	if e.Port == "" {
 		e.Port = "8080"
+	}
+	if e.AppsPort, _ = strconv.Atoi(os.Getenv("E2E_APPS_PORT")); e.AppsPort == 0 {
+		e.AppsPort = 8180
 	}
 	if e.Compose == "" {
 		e.Compose = "docker compose -p can-e2e -f docker-compose.yml -f dev/compose/e2e.yml"
@@ -84,7 +91,7 @@ func (e Env) Run(t T, args ...string) string {
 }
 
 // Client talks to the edge. The host name picks the virtual host; the connection always goes to
-// 127.0.0.1:<port>, so *.localhost needs no resolver support.
+// 127.0.0.1 at the port of the URL, so *.localhost needs no resolver support.
 type Client struct {
 	env  Env
 	http *http.Client
@@ -99,8 +106,12 @@ func NewSession(e Env) *Client { return newClient(e, true) }
 func newClient(e Env, jar bool) *Client {
 	d := &net.Dialer{Timeout: 5 * time.Second}
 	tr := &http.Transport{
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return d.DialContext(ctx, network, "127.0.0.1:"+e.Port)
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			return d.DialContext(ctx, network, "127.0.0.1:"+port)
 		},
 		DisableKeepAlives: true,
 	}
@@ -147,6 +158,7 @@ func (r *Response) Str(key string) string {
 type Req struct {
 	Method  string
 	Host    string // virtual host, e.g. "work.localhost" (no port)
+	Port    string // edge port, when not Env.Port
 	Path    string
 	Token   string // bearer token, optional
 	Body    any    // JSON-encoded unless it is url.Values (form) or []byte/string (raw)
@@ -176,7 +188,10 @@ func (c *Client) Do(t T, r Req) *Response {
 	if r.Method == "" {
 		r.Method = http.MethodGet
 	}
-	req, err := http.NewRequest(r.Method, "http://"+r.Host+":"+c.env.Port+r.Path, body)
+	if r.Port == "" {
+		r.Port = c.env.Port
+	}
+	req, err := http.NewRequest(r.Method, "http://"+r.Host+":"+r.Port+r.Path, body)
 	if err != nil {
 		t.Fatalf("bad request %s %s: %v", r.Method, r.Path, err)
 	}
@@ -195,7 +210,7 @@ func (c *Client) Do(t T, r Req) *Response {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		t.Fatalf("%s http://%s%s: %v (is the stack up? `make e2e-up`; edge port %s)", r.Method, r.Host, r.Path, err, c.env.Port)
+		t.Fatalf("%s http://%s%s: %v (is the stack up? `make e2e-up`; edge port %s)", r.Method, r.Host, r.Path, err, r.Port)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))

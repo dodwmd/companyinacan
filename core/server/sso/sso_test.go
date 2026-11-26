@@ -902,6 +902,31 @@ func (e *env) mustLoginNoMutate() {
 
 // --- linking ------------------------------------------------------------------------------------
 
+// The service reports the store's last-owner refusal as the error the admin UI and API map to 409.
+func TestLinkingAwayTheLastOwnerIsRefused(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, nil)
+	r := e.mustLogin(alice())
+	_, jit, _ := e.au.Authenticate(ctx, r.Login.Token)
+	ident, _ := e.db.SSOIdentityByUser(ctx, jit.ID)
+	hash, _ := auth.HashPassword(ownerPW)
+	if _, err := e.db.CreateAdmin(ctx, "carol", hash, auth.NewTOTPSecret()); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.rb.Grant(ctx, "root", "user:"+jit.Username, rbac.Owner, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.ExecContext(ctx, `UPDATE admin_users SET disabled_at=1 WHERE username='root'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Link(ctx, jit.Username, ident.ID, "carol"); !errors.Is(err, rbac.ErrLastOwner) {
+		t.Fatalf("%v", err)
+	}
+	if ok, err := e.rb.HasRole(ctx, "user:"+jit.Username, rbac.Owner); err != nil || !ok {
+		t.Fatalf("the owner lost the role: %v %v", ok, err)
+	}
+}
+
 func TestLinkIsExplicitOwnerOnlyAndAudited(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, nil)

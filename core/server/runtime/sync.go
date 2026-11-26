@@ -24,6 +24,9 @@ func (c Config) newInstaller(log *slog.Logger) (reconcile.ModuleInstaller, error
 	if c.ModuleInstaller != nil {
 		return c.ModuleInstaller, nil
 	}
+	if c.DevStack {
+		return recordOnly{log}, nil
+	}
 	if c.Installer != "kubernetes" {
 		return nil, nil
 	}

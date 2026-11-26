@@ -12,8 +12,8 @@ description: Cap table and employee stock options. Entities, share classes, plan
 category: finance
 version: 0.1.0
 # experimental: unit-, contract- and race-tested offline, but not yet run on a cluster; there are no Helm templates yet
-# (values only), no admin UI or portal, and can-core does not yet inject the keyring Secret, route its introspection
-# endpoint or drive the approval engine for this module. See modules/equity/README.md.
+# (values only), no admin UI or portal, and can-core does not yet inject the keyring Secret or drive the approval
+# engine for this module. See modules/equity/README.md.
 status: experimental
 provider:
   type: inhouse

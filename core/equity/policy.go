@@ -59,6 +59,7 @@ type Actor struct {
 	Subject  string
 	Roles    []string
 	PersonID string
+	CanCore  bool // see Principal.CanCore
 }
 
 // Principal is an authenticated caller as the Authenticator reports it.
@@ -66,6 +67,9 @@ type Principal struct {
 	Subject  string
 	Roles    []string
 	PersonID string
+	// CanCore marks a can-core personal access token: a human caller about whom nothing says which
+	// directory person they are.
+	CanCore bool
 }
 
 func (a Actor) has(role string) bool {
@@ -96,9 +100,17 @@ func (a Actor) selfStaff(f Fact) bool { return a.staff() && f.Self }
 func (a Actor) money() bool           { return a.has(RoleFinance) || a.has(RoleBoard) || a.has(RoleAdmin) }
 func (a Actor) any() bool             { return a.has(RoleHR) || a.money() }
 
+// needsPerson are the actions whose separation of duties compares the actor's directory person with
+// the holder's. A can-core token carries none, so a person holding equity could act on their own grant
+// or exercise unnoticed: such a token may not perform them.
+var needsPerson = map[Action]bool{
+	ActGrantDraft: true, ActGrantAdminister: true,
+	ActExerciseApprove: true, ActExercisePay: true, ActExerciseIssue: true,
+}
+
 // Decide answers whether the actor may perform the action given the facts.
 func Decide(a Actor, act Action, f Fact) bool {
-	if !a.known() {
+	if !a.known() || (a.CanCore && a.PersonID == "" && needsPerson[act]) {
 		return false
 	}
 	switch act {
