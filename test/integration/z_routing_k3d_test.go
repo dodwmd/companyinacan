@@ -147,6 +147,18 @@ func TestAdmissionPolicyRoutes(t *testing.T) {
 		t.Errorf("a route to another namespace's Service was allowed: %s", out)
 	}
 
+	// Without the routing facts only module routes are held back; the rest of the cluster (k3s's
+	// own Traefik chart creates a route) is not.
+	mustKubectl(t, "-n", "can-system", "delete", "configmap", "can-routing")
+	eventually(t, 60*time.Second, "a module route to be refused without can-routing", func() (bool, string) {
+		out, err := create(routeYAML("mod-work", host("work."+routeDomain), ""))
+		return err != nil, out
+	})
+	if out, err := kubectlStdin(routeYAML("kube-system", host("anything.example"), ""), "create", "--dry-run=server", "-f", "-"); err != nil {
+		t.Errorf("a route outside module namespaces is blocked while can-routing is missing: %s", out)
+	}
+	applyRoutingFacts(t, routing.Default(routeDomain))
+
 	// can-core cannot widen its own bounds.
 	m, err := routing.Default("attacker.example").Manifest()
 	if err != nil {
@@ -256,7 +268,7 @@ func TestModuleRoutingThroughTheIngress(t *testing.T) {
 		t.Fatalf("admin route: %v\n%s", err, out)
 	}
 	t.Cleanup(func() {
-		_, _ = kubectl("-n", "can-system", "delete", "ingressroute", "site", "admin", "--ignore-not-found")
+		_, _ = kubectl("-n", "can-system", "delete", "ingressroutes.traefik.io", "site", "admin", "--ignore-not-found")
 	})
 
 	const password = "ci-Passw0rd-not-a-secret-9f31"
@@ -283,8 +295,8 @@ func TestModuleRoutingThroughTheIngress(t *testing.T) {
 		})
 	}
 	eventually(t, 120*time.Second, "can-core to create the routes", func() (bool, string) {
-		a, err1 := kubectl("-n", "mod-work", "get", "ingressroute", "can-web", "-o", "name")
-		b, err2 := kubectl("-n", "mod-forms", "get", "ingressroute", "forms-public", "-o", "name")
+		a, err1 := kubectl("-n", "mod-work", "get", "ingressroutes.traefik.io", "can-web", "-o", "name")
+		b, err2 := kubectl("-n", "mod-forms", "get", "ingressroutes.traefik.io", "forms-public", "-o", "name")
 		return err1 == nil && err2 == nil, a + "\n" + b
 	})
 	if got := mustKubectl(t, "-n", "mod-work", "get", "networkpolicy", "allow-ingress-from-traefik", "-o", "jsonpath={.spec.ingress[*].ports[*].port}"); got != "8080" {

@@ -278,8 +278,8 @@ func setLabels(o kube.Object, labels map[string]string) {
 	}
 }
 
-// ensureNamespace creates the namespace and applies its policies, except the one that admits the
-// ingress controller, which it returns for applyRoutes.
+// ensureNamespace creates the namespace and applies its policies. The one that admits the ingress
+// controller is only created closed; the template is returned for applyRoutes.
 func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) (kube.Object, error) {
 	if !nodeIPRE.MatchString(in.cfg.NodeIP) {
 		return nil, fmt.Errorf("CAN_NODE_IP %q is not an IP address", in.cfg.NodeIP)
@@ -315,7 +315,16 @@ func (in *Installer) ensureNamespace(ctx context.Context, s reconcile.Spec) (kub
 	for i, o := range objs[1:] {
 		setLabels(o, labels)
 		if o["kind"] == "NetworkPolicy" && nameOf(o) == policyTraefik {
+			// Created closed if missing and left as it is otherwise (an upgrade must not cut the
+			// running release off); applyRoutes opens the routed ports after the rollout.
 			traefik = o
+			closed, err := closedPolicy(o)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := in.cfg.API.Create(ctx, closed); err != nil {
+				return nil, fmt.Errorf("creating NetworkPolicy %s: %w", policyTraefik, err)
+			}
 			continue
 		}
 		if i == 0 {

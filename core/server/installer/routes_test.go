@@ -43,6 +43,27 @@ func traefikPorts(t *testing.T, api *kube.Fake, ns string) string {
 	return toJSON(dig(get(t, api, "NetworkPolicy", ns, policyTraefik), "spec", "ingress"))
 }
 
+// The policy is there, closed, from the first moment, and an upgrade does not shut a running route.
+func TestTraefikPolicyExistsClosedBeforeTheRollout(t *testing.T) {
+	in, api, spec := routed(t, "work", config.Expose{UI: true})
+	api.NotReady["work"] = true
+	if err := in.Enable(context.Background(), spec); err == nil {
+		t.Fatal("the rollout should have failed")
+	}
+	if got := traefikPorts(t, api, spec.Namespace); got != "[]" {
+		t.Errorf("a module that never became ready is open: %s", got)
+	}
+	delete(api.NotReady, "work")
+	enable(t, in, spec)
+	api.NotReady["work"] = true
+	if err := in.Enable(context.Background(), spec); err == nil {
+		t.Fatal("the upgrade should have failed")
+	}
+	if got := traefikPorts(t, api, spec.Namespace); !strings.Contains(got, `"port":8080`) {
+		t.Errorf("a failed upgrade shut the running release off: %s", got)
+	}
+}
+
 func TestNothingIsRoutedByDefault(t *testing.T) {
 	for _, id := range []string{"work", "people", "finance"} {
 		in, api, spec := routed(t, id, config.Expose{})

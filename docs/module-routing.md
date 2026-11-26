@@ -84,7 +84,7 @@ then routed modules fail with a message saying so.
 
 | Symptom | Look at |
 |---|---|
-| 404 on `https://work.<domain>` | `kubectl -n mod-work get ingressroute`; can-core logs for "not routing" |
+| 404 on `https://work.<domain>` | `kubectl -n mod-work get ingressroutes.traefik.io`; can-core logs for "not routing" |
 | Certificate warning | the DNS record; Traefik logs (ACME) |
 | Module failed: "run `can apply`" | `can-routing` names another domain |
 | Denied by `can-core-routes` | the host in the message against the table above |

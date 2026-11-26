@@ -340,6 +340,19 @@ func traefikPolicy(tmpl kube.Object, ports []int) kube.Object {
 	return tmpl
 }
 
+// closedPolicy is a copy of the template policy that admits nothing.
+func closedPolicy(tmpl kube.Object) (kube.Object, error) {
+	b, err := json.Marshal(tmpl)
+	if err != nil {
+		return nil, err
+	}
+	var o kube.Object
+	if err := json.Unmarshal(b, &o); err != nil {
+		return nil, err
+	}
+	return traefikPolicy(o, nil), nil
+}
+
 // applyRoutes runs after a successful rollout.
 func (in *Installer) applyRoutes(ctx context.Context, s reconcile.Spec, policy kube.Object, p routePlan) error {
 	if err := in.cfg.API.Apply(ctx, policy); err != nil {

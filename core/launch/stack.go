@@ -624,7 +624,7 @@ func (r *runner) routes(ctx context.Context) error {
 		return err
 	}
 	if err := r.poll(ctx, r.o.Timeouts.Module, func() error {
-		_, err := r.kube(ctx, nil, "-n", FormsNS, "get", "ingressroute", "forms-public", "-o", "name")
+		_, err := r.kube(ctx, nil, "-n", FormsNS, "get", "ingressroutes.traefik.io", "forms-public", "-o", "name")
 		return err
 	}); err != nil {
 		return fmt.Errorf("can-core did not route /_forms in time: %w", err)

@@ -329,7 +329,7 @@ func TestFormsRoutedAfterModuleAppears(t *testing.T) {
 	if len(k.called("get svc forms")) != 3 {
 		t.Fatalf("must poll until the service exists: %d", len(k.called("get svc forms")))
 	}
-	if len(k.called("get ingressroute forms-public")) == 0 {
+	if len(k.called("get ingressroutes.traefik.io forms-public")) == 0 {
 		t.Fatal("did not wait for can-core to route /_forms")
 	}
 	facts, company := -1, -1

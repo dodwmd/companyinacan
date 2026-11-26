@@ -93,6 +93,11 @@ spec:
   failurePolicy: Fail
   paramKind: {apiVersion: v1, kind: ConfigMap}
   matchConstraints:
+    # Not matchConditions: a missing parameter is refused before those are looked at, so anything
+    # wider would block every route in the cluster (k3s's own Traefik chart included) until
+    # can-routing exists. Routes by can-core anywhere else are refused by can-core-routing-config.
+    namespaceSelector:
+      matchLabels: {can.dev/namespace-kind: module}
     resourceRules:
       - apiGroups: [traefik.io, traefik.containo.us]
         apiVersions: ["*"]
@@ -168,10 +173,19 @@ spec:
         apiVersions: ["*"]
         operations: [CREATE, UPDATE]
         resources: [ingresses]
+      - apiGroups: [traefik.io, traefik.containo.us]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [ingressroutes]
   matchConditions:
     - name: requester-is-can-core
       expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
   validations:
+    - expression: >-
+        request.resource.resource != 'ingressroutes' || (request.namespace.startsWith('mod-')
+        && has(namespaceObject.metadata.labels) && 'can.dev/namespace-kind' in namespaceObject.metadata.labels
+        && namespaceObject.metadata.labels['can.dev/namespace-kind'] == 'module')
+      message: "can-core may only create routes in module namespaces (mod-*)"
     - expression: "request.resource.resource != 'ingresses'"
       message: "can-core routes with Traefik IngressRoutes only; plain Ingress objects are refused"
     - expression: |-
