@@ -439,7 +439,7 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 }
 
 func (r *runner) facts() routing.Config {
-	return routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll, NoEdgeLimit: r.o.Routes.NoEdgeLimit}
+	return routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll, NoEdgeLimit: r.o.Routes.NoEdgeLimit, NoEdgeLimitReason: r.o.Routes.NoEdgeLimitReason}
 }
 
 // routingFacts writes which hosts serve the site, and whether over TLS, as ConfigMap

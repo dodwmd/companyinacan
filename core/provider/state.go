@@ -39,6 +39,9 @@ type State struct {
 	// Issued records ACME issuance attempts for the instant URL (see sslip.go).
 	Issued []Issuance `json:"issued,omitempty"`
 
+	// NoEdgeLimits remembers `can up --no-edge-limits`, so later runs need not repeat it.
+	NoEdgeLimits bool `json:"no_edge_limits,omitempty"`
+
 	// Launch is the checkpoint record of the in-cluster phases of `can up` (epic E24, core/launch).
 	// Like everything here it never holds a secret: only that something happened, and a digest.
 	Launch *LaunchState `json:"launch,omitempty"`

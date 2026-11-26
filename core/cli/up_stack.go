@@ -22,6 +22,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/launch"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/provider"
+	"github.com/dodwmd/companyinacan/core/routing"
 	"github.com/dodwmd/companyinacan/core/validate"
 )
 
@@ -59,7 +60,7 @@ func (f *stackFlags) register(cmd *cobra.Command) {
 	fl.BoolVar(&f.writeBundle, "write-bundle", false, "also write the default bundle (the forms module) into company.yaml on disk, so `can apply` keeps it")
 	fl.BoolVar(&f.forceCompany, "force-company", false, "overwrite the company.yaml in the cluster even if it was changed there (admin UI, `can apply`) since the last `can up`")
 	fl.BoolVar(&f.domainLive, "domain-live", false, "the company domain's DNS records resolve to the server: also route and certify it (implied by dns.provider: cloudflare)")
-	fl.BoolVar(&f.noEdgeLimits, "no-edge-limits", false, "no per-address rate limit on sign-in and public routes: for a server behind your own proxy or CDN (implied by dns.proxied)")
+	fl.BoolVar(&f.noEdgeLimits, "no-edge-limits", false, "no per-address rate limit on sign-in and public routes: for a server behind your own proxy or CDN (implied by dns.proxied; remembered, --no-edge-limits=false turns the limits on again)")
 	fl.StringVar(&f.acmeEmail, "acme-email", "", "registration address for Let's Encrypt certificates (optional)")
 	fl.StringVar(&f.backupEndpoint, "backup-endpoint", "", "S3 endpoint URL; with --backup-bucket and --backup-credentials-file turns the backup timer and recovery kit on")
 	fl.StringVar(&f.backupBucket, "backup-bucket", "", "backup bucket name")
@@ -256,7 +257,16 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	defer closeTunnel()
 
 	routes, base := t.stackRoutes(instant, ip, f, dns.Name())
-	routes.NoEdgeLimit = f.noEdgeLimits || t.dnsCfg.Proxied
+	if cmd.Flags().Changed("no-edge-limits") {
+		if err := t.store.Mutate(func(s *provider.State) error { s.NoEdgeLimits = f.noEdgeLimits; return nil }); err != nil {
+			return t.fail(err)
+		}
+	}
+	state, err := t.store.Load()
+	if err != nil {
+		return t.fail(err)
+	}
+	routes.NoEdgeLimit, routes.NoEdgeLimitReason = routing.EdgeLimits(state.NoEdgeLimits, t.dnsCfg.Proxied)
 	res.SiteURLs = hostURLs(schemeOf(routes.TLS), routes.SiteHosts)
 	res.AdminURLs = hostURLs(schemeOf(routes.TLS), routes.AdminHosts)
 	if routes.CatchAll {
