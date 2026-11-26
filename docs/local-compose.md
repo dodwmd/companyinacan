@@ -116,7 +116,9 @@ A token works for its own module only. `work` and `finance` check each permissio
 - `people`: `people.read` is an employee; add `people.write` for HR, `people.admin` for admin and
   `people.team.manage` for manager.
 - `equity`: `finance` needs `equity.read`, `write`, `approve` and `sensitive-read`; add `equity.admin` for
-  admin. A personal access token is never the equity **board** ([equity.md](equity.md)).
+  admin. A personal access token is never the equity **board**, and because it carries no `person_id` an equity
+  token **cannot** draft or administer grants, nor approve, pay or issue exercises, whatever permissions it has.
+  It **can** write share ledger entries, with no holder separation-of-duties check ([equity.md](equity.md)).
 
 **Apps (single sign-on into module web UIs).** Open the admin UI at **<http://localhost:8180>** (not
 `admin.localhost`), go to **Apps** and press **Open**. In plain HTTP the launch cookie belongs to one host

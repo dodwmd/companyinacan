@@ -3,6 +3,7 @@ package equity
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sort"
 )
 
@@ -157,12 +158,35 @@ func (s *Service) ledgerWrite(ctx context.Context, a Actor, entityID, route, ide
 	})
 }
 
+// guardHolders refuses a manual ledger entry whose holder, on either side, is the caller: the same
+// sodOK rule as grants, against the stakeholder's directory person id. A caller without a person_id
+// (a service account, a can-core personal access token) cannot be compared and is not refused here.
+func guardHolders(ctx context.Context, q querier, a Actor, stakeholderIDs ...string) error {
+	for _, id := range stakeholderIDs {
+		var person string
+		err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, '') FROM stakeholders WHERE id = ?`, id).Scan(&person)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue // appendLedger refuses an unknown holder
+		}
+		if err != nil {
+			return err
+		}
+		if !sodOK(a, person) {
+			return ErrSeparation
+		}
+	}
+	return nil
+}
+
 // IssueNewShares records an issuance of shares to a holder. finance or admin. The returned
 // id is the ledger entry.
 func (s *Service) IssueNewShares(ctx context.Context, a Actor, entityID string, in LedgerInput, idemKey string, body []byte) (string, bool, error) {
 	return s.ledgerWrite(ctx, a, entityID, "ledger.issue", idemKey, body, func(ctx context.Context, tx *sqlTx) (string, error) {
 		if in.Quantity <= 0 || in.Quantity > MaxQty {
 			return "", invalid("quantity must be a positive quantity")
+		}
+		if err := guardHolders(ctx, tx, a, in.StakeholderID); err != nil {
+			return "", err
 		}
 		return s.appendLedger(ctx, tx, ledgerRow{entityID: entityID, classID: in.ClassID, stakeholderID: in.StakeholderID, kind: "issuance", date: in.EffectiveDate,
 			qty: in.Quantity, priceMinor: in.PriceMinor, currency: in.Currency, by: canonSubject(a.Subject)})
@@ -177,6 +201,9 @@ func (s *Service) TransferShares(ctx context.Context, a Actor, entityID string, 
 		}
 		if in.StakeholderID == in.ToID {
 			return "", invalid("a transfer needs two different holders")
+		}
+		if err := guardHolders(ctx, tx, a, in.StakeholderID, in.ToID); err != nil {
+			return "", err
 		}
 		group := newID("led")
 		out, err := s.appendLedger(ctx, tx, ledgerRow{entityID: entityID, classID: in.ClassID, stakeholderID: in.StakeholderID, kind: "transfer_out", date: in.EffectiveDate,
@@ -204,6 +231,9 @@ func (s *Service) CancelShares(ctx context.Context, a Actor, entityID string, in
 		}
 		if kind != "cancellation" && kind != "repurchase" {
 			return "", invalid("kind must be cancellation or repurchase")
+		}
+		if err := guardHolders(ctx, tx, a, in.StakeholderID); err != nil {
+			return "", err
 		}
 		return s.appendLedger(ctx, tx, ledgerRow{entityID: entityID, classID: in.ClassID, stakeholderID: in.StakeholderID, kind: kind, date: in.EffectiveDate,
 			qty: -in.Quantity, priceMinor: in.PriceMinor, currency: in.Currency, by: canonSubject(a.Subject)})
