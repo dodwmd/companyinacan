@@ -11,7 +11,7 @@ import (
 func TestCompanyFactsChangeTheSpecHash(t *testing.T) {
 	man := &config.Module{Version: "1"}
 	hash := func(name, domain, id string) string {
-		return specHash(&config.Company{Name: name, Domain: domain, Modules: map[string]config.ModuleEntry{id: {}}}, id, man, "")
+		return specHash(&config.Company{Name: name, Domain: domain, Modules: map[string]config.ModuleEntry{id: {}}}, id, man, "", "")
 	}
 	for _, id := range []string{"jobs", "files"} {
 		if hash("A", "a.example", id) == hash("B", "a.example", id) || hash("A", "a.example", id) == hash("A", "b.example", id) {
