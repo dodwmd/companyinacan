@@ -61,6 +61,7 @@ type IdP struct {
 	DiscIssuer   string                          // when set, discovery advertises this issuer
 	NoEndSession bool
 	UserinfoSub  string // when set, userinfo answers with this subject
+	UserinfoDown bool   // userinfo answers 500
 
 	// Counters.
 	JWKSHits, TokenHits, DiscHits int
@@ -240,6 +241,10 @@ func (i *IdP) token(w http.ResponseWriter, r *http.Request) {
 }
 
 func (i *IdP) userinfo(w http.ResponseWriter, r *http.Request) {
+	if i.UserinfoDown {
+		http.Error(w, "unavailable", http.StatusInternalServerError)
+		return
+	}
 	tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	i.mu.Lock()
 	defer i.mu.Unlock()

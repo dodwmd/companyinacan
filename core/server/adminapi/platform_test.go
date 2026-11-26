@@ -191,8 +191,8 @@ func TestRoleAssignmentTakesEffectAtOnceAndIsAudited(t *testing.T) {
 	if code, _ := h.call(root, "POST", "/api/v1/users/alice/roles/revoke", map[string]string{"role": "operator"}); code != 204 {
 		t.Fatal("revoke")
 	}
-	if code, _ := h.call(alice, "GET", "/api/v1/modules", nil); code != 403 {
-		t.Fatal("revoked role must stop working at once")
+	if code, _ := h.call(alice, "GET", "/api/v1/modules", nil); code != 401 {
+		t.Fatalf("removing a role must end the person's sessions at once: %d", code)
 	}
 	if code, _ := h.call(root, "POST", "/api/v1/users/root/roles/revoke", map[string]string{"role": "owner"}); code != 409 {
 		t.Fatalf("revoking the last owner = %d, want 409", code)

@@ -26,7 +26,7 @@ func split(route string) (string, string) {
 	return m, concrete(p)
 }
 
-var publicRoutes = map[string]bool{"GET /auth/oidc/login": true, "GET /auth/oidc/callback": true, "GET /login": true, "POST /login": true, "GET /static/{file}": true, "GET /manifest.webmanifest": true, "GET /sw.js": true}
+var publicRoutes = map[string]bool{"GET /auth/oidc/login": true, "GET /auth/oidc/callback": true, "GET /login": true, "POST /login": true, "GET /static/{file}": true, "GET /manifest.webmanifest": true, "GET /sw.js": true, "GET /set-password": true, "POST /set-password": true}
 
 func TestEveryPageRequiresSession(t *testing.T) {
 	h := newHarness(t)

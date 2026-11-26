@@ -42,8 +42,8 @@ func TestEmailDeliveryPage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	must(t, p.rb.Grant(context.Background(), "user:root", "user:alice", "operator", ""))
-	must(t, p.rb.Grant(context.Background(), "user:root", "user:carol", "auditor", ""))
+	must(t, p.rb.Grant(context.Background(), "root", "user:alice", "operator", ""))
+	must(t, p.rb.Grant(context.Background(), "root", "user:carol", "auditor", ""))
 	alice, carol := p.loginAs("alice"), p.loginAs("carol")
 
 	r := p.do("GET", "/email", nil, alice.with()...)

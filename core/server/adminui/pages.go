@@ -818,17 +818,17 @@ func (s *Server) totpConfirm(w http.ResponseWriter, r *http.Request, sc *session
 }
 
 func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
-	ok, err := s.DB.RevokeSession(r.Context(), sc.User.ID, r.PathValue("sid"))
+	sid := r.PathValue("sid")
+	ok, err := s.DB.RevokeSession(r.Context(), sc.User.ID, sid, func(tx *sql.Tx) error {
+		_, err := s.Audit.AppendTx(r.Context(), tx, audit.Entry{Actor: sc.User.Username, Action: "admin.session.revoke", Target: "admin", Detail: map[string]any{"session": sid}})
+		return err
+	})
 	if err != nil {
 		s.internal(w, r, sc, err)
 		return
 	}
 	if !ok {
 		s.fail(w, r, sc, http.StatusNotFound, "err.not_found_title", "err.not_found")
-		return
-	}
-	if _, err := s.Audit.Append(r.Context(), audit.Entry{Actor: sc.User.Username, Action: "admin.session.revoke", Target: "admin", Detail: map[string]any{"session": r.PathValue("sid")}}); err != nil {
-		s.internal(w, r, sc, err)
 		return
 	}
 	s.redirect(w, r, "/settings", "flash.session_revoked")

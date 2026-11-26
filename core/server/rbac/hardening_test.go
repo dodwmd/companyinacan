@@ -67,8 +67,14 @@ func TestOnlyOwnersChangeOwnersAndNobodySelfGrants(t *testing.T) {
 	if err := e.s.Override(ctx, "mgr", "expenses:viewer", "expenses.write", EffectGrant); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("non-owner overriding a role: %v", err)
 	}
-	if err := e.s.Grant(ctx, "mgr", "user:other", "expenses:viewer", ""); err != nil {
-		t.Fatalf("a non-owner may assign ordinary roles to others: %v", err)
+	if err := e.s.Grant(ctx, "mgr", "user:other", "expenses:viewer", ""); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("a non-owner granted a permission they do not hold: %v", err)
+	}
+	if err := e.s.Grant(ctx, "mgr", "user:other", "auditor", ""); err != nil {
+		t.Fatalf("a non-owner may assign what they hold to others: %v", err)
+	}
+	if err := e.s.Grant(ctx, "mgr", "user:boss", "auditor", ""); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("a non-owner changed an owner: %v", err)
 	}
 	if err := e.s.Grant(ctx, "boss", "user:two", Owner, ""); err != nil {
 		t.Fatalf("owner granting owner: %v", err)
@@ -117,8 +123,8 @@ func TestChangesFromAnotherProcessAreSeenAtOnce(t *testing.T) {
 	}
 	defer func() { _ = db2.Close() }()
 	now := time.Unix(1_700_000_000, 0)
-	s1 := New(db1, audit.New(db1), Options{Now: func() time.Time { return now }})
-	s2 := New(db2, audit.New(db2), Options{Now: func() time.Time { return now }})
+	s1 := New(db1, audit.New(db1), Options{Now: func() time.Time { return now }, BreakGlass: true})
+	s2 := New(db2, audit.New(db2), Options{Now: func() time.Time { return now }, BreakGlass: true})
 	m := store.Module{ID: "x", Version: "1", Namespace: "mod-x", ServiceAccount: "x", State: store.StateEnabled, HMACSecret: "s", Manifest: config.Module{ID: "x", Permissions: []string{"x.read"}, Roles: map[string][]string{"viewer": {"x.read"}}}}
 	if err := db1.UpsertModule(ctx, m, nil, nil); err != nil {
 		t.Fatal(err)

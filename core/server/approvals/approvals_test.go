@@ -65,7 +65,7 @@ func newEnv(t *testing.T) *env {
 	x := &env{t: t, db: db, lines: fakeLines{}, notes: &recNotifier{}, now: time.Unix(1_700_000_000, 0)}
 	db.Now = func() time.Time { return x.now }
 	al := audit.New(db)
-	x.rb = rbac.New(db, al, rbac.Options{Now: func() time.Time { return x.now }})
+	x.rb = rbac.New(db, al, rbac.Options{Now: func() time.Time { return x.now }, BreakGlass: true})
 	bus := events.NewBus(db)
 	x.e = New(db, al, Deps{Roles: x.rb, Perms: x.rb, Lines: x.lines, Notifier: x.notes, Bus: bus, Now: func() time.Time { return x.now }})
 	mk := func(id string, roles map[string][]string, subs ...store.Subscription) {
@@ -79,7 +79,7 @@ func newEnv(t *testing.T) *env {
 		store.Subscription{ModuleID: exp, Event: "approval.decided.v1", Service: exp, Port: 80, Webhook: "/hook"})
 	mk("vendors", nil, store.Subscription{ModuleID: "vendors", Event: "approval.decided.v1", Service: "vendors", Port: 80, Webhook: "/hook"})
 	for _, g := range []struct{ s, r string }{{"user:fin1", "expenses:finance"}, {"user:fin2", "expenses:finance"}, {"user:fin3", "expenses:finance"}, {"user:lawyer", "expenses:legal"}, {"user:dir", "expenses:director"}} {
-		if err := x.rb.Grant(ctx, "test", g.s, g.r, ""); err != nil {
+		if err := x.rb.Grant(ctx, rbac.CLIActor, g.s, g.r, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -344,7 +344,7 @@ func TestAdminCanCancelAnyRequest(t *testing.T) {
 	ctx := context.Background()
 	x.policy(chain)
 	r := x.create("k", 1)
-	if err := x.rb.Grant(ctx, "t", "user:ops", "operator", ""); err != nil {
+	if err := x.rb.Grant(ctx, rbac.CLIActor, "user:ops", "operator", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := x.e.Cancel(ctx, r.ID, "user:ops", "policy change"); err != nil {
@@ -610,7 +610,7 @@ func TestVisibility(t *testing.T) {
 			t.Errorf("CanView(%s) = %v, want %v", who, got, want)
 		}
 	}
-	_ = x.rb.Grant(ctx, "t", "user:ops", "operator", "")
+	_ = x.rb.Grant(ctx, rbac.CLIActor, "user:ops", "operator", "")
 	if !x.e.CanView(ctx, d, "user:ops") {
 		t.Error("an approvals admin sees everything")
 	}

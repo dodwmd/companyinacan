@@ -163,6 +163,8 @@ func (s *Server) tokenRevoke(w http.ResponseWriter, r *http.Request, sc *session
 		return
 	}
 	switch err := s.PATs.Revoke(r.Context(), subjectOf(sc), r.PathValue("id"), manage); {
+	case errors.Is(err, pat.ErrForbidden):
+		s.fail(w, r, sc, http.StatusForbidden, "err.forbidden", "err.owner_only")
 	case errors.Is(err, store.ErrNotFound):
 		s.fail(w, r, sc, http.StatusNotFound, "err.not_found_title", "err.not_found")
 	case err != nil:

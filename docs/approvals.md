@@ -120,8 +120,10 @@ under. Rules that cannot be configured away:
 - Role membership for approvals (who may approve a `role:` step, who is notified for a `role:`
   recipient) counts **unscoped** assignments only. A scoped assignment (`dept/sales/*`) answers
   `can.check` for resources under the scope and nothing else.
-- Only an owner may assign or remove `owner` or edit a role's grants (overrides); nobody can assign a
-  role to themselves; the last owner cannot be removed, also under concurrent requests. The CLI actor
+- Only an owner may assign or remove `owner`, change anything about an owner, or edit a role's grants
+  (overrides); nobody can assign a role to themselves, or assign a role with a permission they do not hold;
+  the last owner who can sign in cannot be removed, also under concurrent requests. Removing a role ends the
+  person's sessions and personal access tokens. The CLI actor
   (`can-core admin roles ...`, run inside the pod; audit actor `can-core:cli`, which no admin username can
   equal) is the exception, as the recovery path. An admin who happens to be named `cli` has no special
   rights.
@@ -129,8 +131,8 @@ under. Rules that cannot be configured away:
   `auditor`; module manifests add theirs. `/access` (needs `rbac.manage`) assigns roles, optionally
   scoped to a resource prefix such as `dept/sales/*`. Scopes and the `resource` argument of
   `can.check` are compared as exact strings: modules must canonicalise them (one spelling per
-  resource, no trailing slashes or case variants) before asking or storing. Overrides of a role's grants (owner only, existing roles only): `POST
-  /api/v1/roles/{role}/overrides` (API only for now).
+  resource, no trailing slashes or case variants) before asking or storing. Overrides of a role's grants
+  (owner only, existing roles only): the form on `/access`, or `POST /api/v1/roles/{role}/overrides`.
 - Recovery without the UI: `can-core admin roles grant <user> owner --db <path>` (also `revoke`,
   `list`), audited as actor `cli`. The first admin created, and every admin that existed before this
   version, is an owner.
@@ -138,8 +140,8 @@ under. Rules that cannot be configured away:
   `sso.group_roles`: assigned and removed at sign-in with audit actor `sso` (`rbac.sso_sync`, with before and
   after). The sync only changes assignments it made, never assigns `owner` without `confirm_owner_mapping`, and
   never removes the last owner. Approval steps and notifications see these roles like any other.
-- Create more admin users with `can-core admin bootstrap --username <name>` (names: letters, digits,
-  `_ . @ -`). An admin created by an older version with other characters gets no role from the
+- Add people on `/users` in the admin UI (see [admin-ui.md](admin-ui.md#users-and-roles-epic-e11e)), or with
+  `can-core admin bootstrap --username <name>` inside the pod (names: letters, digits, `_ . @ -`). An admin created by an older version with other characters gets no role from the
   upgrade; create a new admin with a valid name and grant it `owner` from the CLI.
 
 ## Measured footprint
