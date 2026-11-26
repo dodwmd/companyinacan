@@ -136,11 +136,17 @@ func TestUIContractRoutesEnforceTheirScope(t *testing.T) {
 func TestUIEveryPostNeedsTheCSRFToken(t *testing.T) {
 	u := newUIEnv(t)
 	c := u.login(t, patRoot)
+	// the upload routes check the space role before the body, so they need a real space and file
+	sp := created(t, c.post("/spaces", url.Values{"name": {"S"}}))
+	fid := created(t, c.upload("/spaces/"+sp+"/files", "a.pdf", doc))
 	good, n := c.csrf, 0
 	for pattern, d := range readRouteContract(t) {
 		method, path := contractPath(pattern)
 		if method != "POST" {
 			continue
+		}
+		if isUpload(d) {
+			path = strings.NewReplacer("spc_000000000000000000000000", sp, "fil_000000000000000000000000", fid).Replace(path)
 		}
 		for _, bad := range []string{"", strings.Repeat("A", len(good))} {
 			n++
@@ -193,6 +199,10 @@ func TestUIContractNamesRealStoreMethods(t *testing.T) {
 	for _, m := range regexp.MustCompile(`u\.Store\.([A-Z][A-Za-z]+)\(`).FindAllStringSubmatch(ui, -1) {
 		if !used[m[1]] {
 			t.Errorf("the UI calls Store.%s, which no route of the contract names", m[1])
+		}
+		// the two reservations are the checks Upload and UploadVersion make anyway, made earlier
+		if m[1] == "ReserveUpload" || m[1] == "ReserveVersion" {
+			continue
 		}
 		// and it is a call the API handlers make too: no second path into the service
 		if api, _ := os.ReadFile("api.go"); !strings.Contains(string(api), "a.Store."+m[1]+"(") {

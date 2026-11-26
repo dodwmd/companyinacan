@@ -65,9 +65,28 @@ func (a *API) guard(perm string, fn apiFn) http.HandlerFunc {
 	return a.guardWhen(perm, func(p *Principal) bool { return p.Has(perm) }, fn)
 }
 
-// guardPurge opens the purge hook to administrators and to the restore-only credential.
+// guardPurge opens the purge hook to administrators and to the restore-only credential. The latter
+// ignores legal holds, so it is refused on a request that came through a proxy: a restore calls the
+// module's Service directly, and `expose.api` must not put that power on the internet.
 func (a *API) guardPurge(fn apiFn) http.HandlerFunc {
-	return a.guardWhen(PermAdmin, func(p *Principal) bool { return p.Restore || p.Has(PermAdmin) }, fn)
+	return a.guardWhen(PermAdmin, func(p *Principal) bool { return p.Restore || p.Has(PermAdmin) }, func(w http.ResponseWriter, r *http.Request, p *Principal) error {
+		if p.Restore && proxied(r) {
+			problem(w, http.StatusForbidden, "the restore credential is accepted only from inside the cluster, never through a proxy")
+			return nil
+		}
+		return fn(w, r, p)
+	})
+}
+
+// proxied reports whether a request carries any header a reverse proxy adds (Traefik always does;
+// a client cannot remove them).
+func proxied(r *http.Request) bool {
+	for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"} {
+		if len(r.Header.Values(h)) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *API) guardWhen(perm string, allowed func(*Principal) bool, fn apiFn) http.HandlerFunc {

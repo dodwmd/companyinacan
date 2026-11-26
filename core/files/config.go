@@ -86,6 +86,8 @@ type ShareConfig struct {
 	MaxPerFile        int    `yaml:"max_per_file"`
 	FailuresPerMinute int    `yaml:"failures_per_minute"` // per client address, failures only
 	BaseURL           string `yaml:"base_url"`            // public origin, shown in the created link
+	// Published is set by can-core while /s/ is routed (module.yaml runtime.public_config).
+	Published bool `yaml:"published"`
 }
 
 // RetentionCfg shapes deletion.
@@ -112,9 +114,17 @@ type UIConfig struct {
 	// TokenLogin keeps the "paste a personal access token" sign-in (default true). can-core turns
 	// it off while it routes the UI (specs/040-module-routing).
 	TokenLogin *bool `yaml:"token_login"`
+	// ShareLinks false makes the web UI offer no new share links unless share.published says /s/ is
+	// routed. can-core sets it while it routes the UI, so `expose.public: false` offers none.
+	ShareLinks *bool `yaml:"share_links"`
 	// IdleMinutes and AbsoluteHours bound a session (defaults 30 minutes and 8 hours).
 	IdleMinutes   int `yaml:"idle_minutes"`
 	AbsoluteHours int `yaml:"absolute_hours"`
+}
+
+// offerShareLinks says whether the web UI offers to create share links.
+func (c *Config) offerShareLinks() bool {
+	return c.Share.Published || c.UI.ShareLinks == nil || *c.UI.ShareLinks
 }
 
 // DefaultTypes is the default allow-list of extensions.

@@ -55,7 +55,8 @@
 </form>
 {{else}}
 <h2>{{t "share.new"}}</h2>
-<form method="post" action="/files/{{$f.ID}}/shares" class="card">
+{{if not .Data.Links}}<p class="notice">{{t "share.unpublished"}}</p>
+{{else}}<form method="post" action="/files/{{$f.ID}}/shares" class="card">
 {{template "csrf" .}}
 <p class="hint">{{t "share.new_hint"}}</p>
 <p><label for="label">{{t "share.label_field"}}</label>
@@ -68,7 +69,7 @@
 <p><input id="one_time" name="one_time" type="checkbox" value="1" aria-describedby="once-hint"> <label for="one_time" class="check">{{t "share.once_field"}}</label></p>
 <p id="once-hint" class="hint">{{t "share.once_hint"}}</p>
 <p><button type="submit">{{t "share.submit"}}</button></p>
-</form>
+</form>{{end}}
 <h2>{{t "file.new_version"}}</h2>
 <form method="post" action="/files/{{$f.ID}}/versions" enctype="multipart/form-data" class="card">
 {{template "csrf" .}}

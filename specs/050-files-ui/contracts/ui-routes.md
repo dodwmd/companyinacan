@@ -14,6 +14,9 @@ includes both). The **Store methods** are the calls the route makes; they apply 
 
 **Unsafe requests** carry the field `csrf`. They are `application/x-www-form-urlencoded`, except the two
 uploads, which are `multipart/form-data` with `csrf` as the first part and `file` after the other fields.
+Before a byte of an upload is read the route's permission is checked and the Store's `ReserveUpload` /
+`ReserveVersion` check the scanner and the space role and take an upload slot; then at most 64 KiB are read
+before the file's own bytes (preamble, part headers and fields together; 413 beyond).
 A `Sec-Fetch-Site` header, when sent, must be `same-origin` or `none`. Failures are 403. Unauthenticated
 requests to a session route get `303 /login`.
 
@@ -40,12 +43,12 @@ unavailable.
 | `POST /spaces/{id}/folders` | yes | write | `CreateFolder` | Fields `name`, `parent` |
 | `POST /folders/{id}/delete` | yes | write | `DeleteFolder` | Fields `space`, `parent` (where to return to) |
 | `GET /spaces/{id}/upload` | yes | write | `GetSpace`, `ListFolders` | Upload form (editors) |
-| `POST /spaces/{id}/files` | yes | write | `Upload` | Multipart: `csrf`, `folder`, `description`, `subject`, `ref`, `file` |
+| `POST /spaces/{id}/files` | yes | write | `ReserveUpload`, `Upload` | Multipart: `csrf`, `folder`, `description`, `subject`, `ref`, `file` |
 | `GET /spaces/{id}/trash` | yes | read | `GetSpace`, `ListFiles` | Deleted files (editors) |
 | `GET /files/{id}` | yes | read | `GetFile`, `GetSpace`, `ListFolders`, `ListVersions`, `ListShares` | Details, scan verdict, versions, links, forms; links only for editors |
 | `GET /files/{id}/content` | yes | read | `OpenContent` | Download (`version` optional): always an attachment |
 | `POST /files/{id}/update` | yes | write | `UpdateFile` | Fields `rev` (required), `name`, `description`, `folder` |
-| `POST /files/{id}/versions` | yes | write | `UploadVersion` | Multipart: `csrf`, `file` |
+| `POST /files/{id}/versions` | yes | write | `ReserveVersion`, `UploadVersion` | Multipart: `csrf`, `file` |
 | `POST /files/{id}/delete` | yes | write | `DeleteFile` | To the trash |
 | `POST /files/{id}/restore` | yes | write | `RestoreFile` | Out of the trash |
 | `POST /files/{id}/shares` | yes | write | `CreateShare` | Fields `label`, `hours`, `version`, `one_time`; the page shows the link once |

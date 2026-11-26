@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -89,7 +90,7 @@ func newUIEnvWith(t *testing.T, o uiOpts) *uiEnv {
 		patRoot:  {Active: true, Kind: "user", Subject: "user:root", Permissions: []string{PermAdmin}},
 	}}
 	auth := MultiAuth{StaticToken{Token: apiToken}, StaticRestoreToken{Token: restore},
-		&CanAuth{In: &modclient.Introspector{API: u, TTL: time.Nanosecond}}}
+		&CanAuth{In: &modclient.Introspector{API: u, Now: u.now}}} // cached for 30 s, as in the binary
 	u.apiSrv = &API{Store: u.s, Auth: auth, Log: slog.New(slog.NewTextHandler(u.logs, nil))}
 	u.h = newHandler(u.apiSrv, o.sessions)
 	return u
@@ -633,6 +634,181 @@ func TestUIUploadOverARealServer(t *testing.T) {
 	}
 }
 
+// ---- what is read before the file --------------------------------------------------------------
+
+// Nothing of an upload's body is read for a caller who may not upload there, and for one who may,
+// no more than the head limit before the file: mime/multipart would buffer 10 MiB of part headers.
+func TestUIUploadHeadIsBoundedAndCheckedBeforeParsing(t *testing.T) {
+	e := newUIEnv(t)
+	a, ro, b := e.login(t, patAlice), e.login(t, patRO), e.login(t, patBob)
+	sp := created(t, a.post("/spaces", url.Values{"name": {"S"}}))
+	fid := created(t, a.upload("/spaces/"+sp+"/files", "a.pdf", doc))
+	e.member(e.alice, sp, "user", "user:ro", "editor")
+
+	const bnd = "headboundary"
+	pad := strings.Repeat("X-Pad: "+strings.Repeat("v", 900)+"\r\n", 4000) // ~3.6 MiB of headers
+	part := func(headers, value string) string { return "--" + bnd + "\r\n" + headers + "\r\n" + value + "\r\n" }
+	field := func(name, value string) string {
+		return part(`Content-Disposition: form-data; name="`+name+`"`+"\r\n", value)
+	}
+	file := part(`Content-Disposition: form-data; name="file"; filename="a.pdf"`+"\r\n", doc)
+	end := "--" + bnd + "--\r\n"
+	send := func(c *client, path, body string) (int, int) {
+		t.Helper()
+		cr := &countedBody{r: strings.NewReader(body)}
+		r := httptest.NewRequest("POST", path, cr)
+		r.ContentLength = int64(len(body))
+		r.Header.Set("Content-Type", "multipart/form-data; boundary="+bnd)
+		w := httptest.NewRecorder()
+		// The recorder has no connection: stop the drain of a refusal from counting.
+		counting := &stopAtDrain{countedBody: cr}
+		r.Body = counting
+		for k, v := range c.cookies {
+			r.AddCookie(&http.Cookie{Name: k, Value: v})
+		}
+		e.h.ServeHTTP(w, r)
+		return w.Code, counting.largestRead
+	}
+	huge := part(pad, "x") + end
+	upload := "/spaces/" + sp + "/files"
+	for name, c := range map[string]struct {
+		who  *client
+		path string
+		body string
+		code int
+	}{
+		"nonexistent space":      {a, "/spaces/spc_000000000000000000000000/files", huge, 404},
+		"not a member":           {b, upload, huge, 404},
+		"read-only token":        {ro, upload, huge, 403},
+		"nonexistent file":       {a, "/files/fil_000000000000000000000000/versions", huge, 404},
+		"not a member, version":  {b, "/files/" + fid + "/versions", huge, 404},
+		"csrf part headers":      {a, upload, huge, 413},
+		"preamble":               {a, upload, strings.Repeat("preamble line\r\n", 300000) + end, 413},
+		"preamble in one line":   {a, upload, strings.Repeat("p", 1<<20), 403},
+		"headers after the csrf": {a, upload, field("csrf", a.csrf) + huge, 413},
+		"file part headers":      {a, upload, field("csrf", a.csrf) + part(`Content-Disposition: form-data; name="file"; filename="a.pdf"`+"\r\n"+pad, doc) + end, 413},
+		"huge field":             {a, upload, field("csrf", a.csrf) + field("description", strings.Repeat("d", 1<<20)) + file + end, 422},
+		"huge csrf value":        {a, upload, field("csrf", strings.Repeat("c", 1<<20)) + file + end, 403},
+		"version headers":        {a, "/files/" + fid + "/versions", field("csrf", a.csrf) + huge, 413},
+	} {
+		code, got := send(c.who, c.path, c.body)
+		if code != c.code {
+			t.Errorf("%s: %d, want %d", name, code, c.code)
+		}
+		if got > uiMaxHeadBytes {
+			t.Errorf("%s: %d bytes were read before the refusal", name, got)
+		}
+	}
+	if n := e.count(`SELECT COUNT(*) FROM files`); n != 1 || e.staged() != 0 {
+		t.Fatal("something was stored", n)
+	}
+	// Every refusal gave its slot back, and a large file is not held to the head limit.
+	created(t, a.upload(upload, "big.pdf", "%PDF-"+strings.Repeat("x", 1<<20)))
+	want(t, a.upload("/files/"+fid+"/versions", "a.pdf", "%PDF-"+strings.Repeat("y", 1<<20)), 303)
+}
+
+// stopAtDrain records how much had been read when the handler began to discard the rest: io.Copy to
+// io.Discard asks for 8 KiB at a time after the parsing reads stop.
+type stopAtDrain struct {
+	*countedBody
+	largestRead int
+}
+
+func (s *stopAtDrain) Close() error { return nil }
+
+func (s *stopAtDrain) Read(p []byte) (int, error) {
+	if !calledFromDiscard() {
+		n, err := s.countedBody.Read(p)
+		s.largestRead += n
+		return n, err
+	}
+	return 0, io.EOF
+}
+
+func calledFromDiscard() bool {
+	pc := make([]uintptr, 16)
+	frames := runtime.CallersFrames(pc[:runtime.Callers(2, pc)])
+	for {
+		f, more := frames.Next()
+		if strings.HasPrefix(f.Function, "io.discard.") {
+			return true
+		}
+		if !more {
+			return false
+		}
+	}
+}
+
+// The API's upload has no multipart form to buffer: the body is the file, and none of it is read
+// for a caller who may not upload there.
+func TestAPIUploadReadsNothingForACallerWhoMayNotUpload(t *testing.T) {
+	e := newUIEnv(t)
+	sp := e.space(e.alice, "S")
+	for tok, code := range map[string]int{patBob: 404, patRO: 403} {
+		body := &countedBody{r: strings.NewReader("%PDF-" + strings.Repeat("x", 1<<20))}
+		r := httptest.NewRequest("POST", "/v1/spaces/"+sp.ID+"/files?name=a.pdf", body)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		e.h.ServeHTTP(w, r)
+		if w.Code != code || body.n != 0 {
+			t.Errorf("%d (want %d), %d bytes read", w.Code, code, body.n)
+		}
+	}
+}
+
+// With share links unpublished (expose.public: false while the UI is routed) the UI offers none.
+func TestUIOffersNoShareLinksWhenTheyAreNotPublished(t *testing.T) {
+	no := false
+	for _, published := range []bool{false, true} {
+		e := newUIEnv(t, func(c *Config, _ *StoreOptions) { c.UI.ShareLinks, c.Share.Published = &no, published })
+		a := e.login(t, patAlice)
+		sp := created(t, a.post("/spaces", url.Values{"name": {"S"}}))
+		fid := created(t, a.upload("/spaces/"+sp+"/files", "a.pdf", doc))
+		page := want(t, a.get("/files/"+fid), 200)
+		w := a.post("/files/"+fid+"/shares", url.Values{"hours": {"1"}})
+		if offered := strings.Contains(page, `action="/files/`+fid+`/shares"`); offered != published || strings.Contains(page, "not published") == published {
+			t.Errorf("published %v: form offered %v", published, offered)
+		}
+		if published {
+			want(t, w, 200, "shown only this once")
+		} else {
+			want(t, w, 409, "not published")
+			if e.count(`SELECT COUNT(*) FROM shares`) != 0 {
+				t.Error("a link was made")
+			}
+		}
+	}
+}
+
+// The restore-only credential ignores legal holds, so it is refused through a proxy (expose.api
+// publishes /v1); a restore calls the Service directly.
+func TestRestoreCredentialIsRefusedThroughAProxy(t *testing.T) {
+	e := newUIEnv(t)
+	purge := func(token string, hdr ...string) int {
+		r := httptest.NewRequest("POST", "/v1/purge", strings.NewReader(`{"subject":"cand_x","class":"file-content"}`))
+		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("Content-Type", "application/json")
+		for i := 0; i+1 < len(hdr); i += 2 {
+			r.Header.Set(hdr[i], hdr[i+1])
+		}
+		w := httptest.NewRecorder()
+		e.h.ServeHTTP(w, r)
+		return w.Code
+	}
+	if code := purge(restore); code != 204 {
+		t.Fatal("direct", code)
+	}
+	for _, h := range []string{"X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip", "Forwarded"} {
+		if code := purge(restore, h, "x"); code != 403 {
+			t.Errorf("with %s: %d", h, code)
+		}
+	}
+	// an administrator's token is unaffected: it honours holds
+	if code := purge(patRoot, "X-Forwarded-For", "203.0.113.9"); code != 204 {
+		t.Fatal("admin", code)
+	}
+}
+
 // ---- who may see and do what -------------------------------------------------------------------
 
 func TestUIRolesAndAntiEnumeration(t *testing.T) {
@@ -865,8 +1041,10 @@ func TestUIErasureNeedsATokenThatStillWorks(t *testing.T) {
 	created(t, a.upload("/spaces/"+sp+"/files", "a.pdf", doc, "subject", "cand_ui3"))
 	root.get("/admin/erasure")
 	root.csrf = csrfRe.FindStringSubmatch(root.get("/admin/erasure").Body.String())[1]
-	e.revoke(patRoot)
-	time.Sleep(time.Millisecond) // past the introspector's (test) cache lifetime
+	e.revoke(patRoot) // the cached answer would still say yes for 30 seconds
+	if p, err := e.apiSrv.Auth.Authenticate(context.Background(), patRoot); err != nil || p == nil {
+		t.Fatal("this test needs the introspection cache to be warm")
+	}
 	want(t, root.post("/admin/erasure", url.Values{"subject": {"cand_ui3"}, "confirm": {"ERASE"}, "token": {patRoot}}), 403)
 	if e.count(`SELECT COUNT(*) FROM files WHERE status = 'active'`) != 1 {
 		t.Fatal("a revoked token erased")

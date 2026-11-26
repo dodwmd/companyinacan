@@ -143,10 +143,22 @@ func (u *UI) setCookie(w http.ResponseWriter, name, value string, maxAge int) {
 // authenticateToken runs the API's Authenticator over a pasted token. The restore-only credential
 // never signs in: it opens the purge hook and nothing else.
 func (u *UI) authenticateToken(ctx context.Context, token string) (*Principal, error) {
+	return u.checkToken(ctx, token, u.Auth.Authenticate)
+}
+
+// authenticateNow is authenticateToken without any cached answer, for a step-up.
+func (u *UI) authenticateNow(ctx context.Context, token string) (*Principal, error) {
+	if f, ok := u.Auth.(freshAuthenticator); ok {
+		return u.checkToken(ctx, token, f.AuthenticateFresh)
+	}
+	return u.authenticateToken(ctx, token)
+}
+
+func (u *UI) checkToken(ctx context.Context, token string, check func(context.Context, string) (*Principal, error)) (*Principal, error) {
 	if token == "" || len(token) > uiMaxTokenLen || strings.ContainsAny(token, " \r\n\t") {
 		return nil, nil
 	}
-	p, err := u.Auth.Authenticate(ctx, token)
+	p, err := check(ctx, token)
 	if err != nil || p == nil || p.Restore || !p.Has(PermRead) {
 		return nil, err
 	}

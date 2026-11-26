@@ -57,12 +57,26 @@ func (s StaticRestoreToken) Authenticate(_ context.Context, tok string) (*Princi
 // is "not valid"; an introspection outage is an error.
 type CanAuth struct{ In *modclient.Introspector }
 
+// freshAuthenticator is an Authenticator whose answers may be cached and that can also ask now.
+type freshAuthenticator interface {
+	AuthenticateFresh(ctx context.Context, token string) (*Principal, error)
+}
+
 // Authenticate implements Authenticator.
 func (a *CanAuth) Authenticate(ctx context.Context, tok string) (*Principal, error) {
+	return a.authenticate(ctx, tok, a.In.Lookup)
+}
+
+// AuthenticateFresh implements freshAuthenticator: introspection without the cache.
+func (a *CanAuth) AuthenticateFresh(ctx context.Context, tok string) (*Principal, error) {
+	return a.authenticate(ctx, tok, a.In.Fresh)
+}
+
+func (a *CanAuth) authenticate(ctx context.Context, tok string, lookup func(context.Context, string) (modclient.Identity, error)) (*Principal, error) {
 	if !modclient.TokenShaped(tok) {
 		return nil, nil
 	}
-	id, err := a.In.Lookup(ctx, tok)
+	id, err := lookup(ctx, tok)
 	if err != nil {
 		return nil, fmt.Errorf("%w: token introspection", ErrUnavailable)
 	}
@@ -97,9 +111,22 @@ type MultiAuth []Authenticator
 
 // Authenticate implements Authenticator.
 func (m MultiAuth) Authenticate(ctx context.Context, tok string) (*Principal, error) {
+	return m.each(ctx, tok, false)
+}
+
+// AuthenticateFresh implements freshAuthenticator.
+func (m MultiAuth) AuthenticateFresh(ctx context.Context, tok string) (*Principal, error) {
+	return m.each(ctx, tok, true)
+}
+
+func (m MultiAuth) each(ctx context.Context, tok string, fresh bool) (*Principal, error) {
 	var firstErr error
 	for _, a := range m {
-		p, err := a.Authenticate(ctx, tok)
+		check := a.Authenticate
+		if f, ok := a.(freshAuthenticator); ok && fresh {
+			check = f.AuthenticateFresh
+		}
+		p, err := check(ctx, tok)
 		if p != nil {
 			return p, nil
 		}

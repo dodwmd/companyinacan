@@ -347,6 +347,15 @@ func uploadParts(mr *multipart.Reader, allowed ...string) (map[string]string, *m
 	}
 }
 
+// reserveUpload and reserveVersion are the checks an upload route makes before its body is read.
+func (u *UI) reserveUpload(c *uiCtx) (context.Context, func(), error) {
+	return u.Store.ReserveUpload(c.ctx(), c.p, c.id())
+}
+
+func (u *UI) reserveVersion(c *uiCtx) (context.Context, func(), error) {
+	return u.Store.ReserveVersion(c.ctx(), c.p, c.id())
+}
+
 func bodyError(err error) error {
 	var mbe *http.MaxBytesError
 	if errors.As(err, &mbe) {
@@ -358,12 +367,25 @@ func bodyError(err error) error {
 // declaredSize is a lower bound of the file's size, for the quota check made before staging.
 func declaredSize(r *http.Request) int64 { return max(0, r.ContentLength-uiUploadOverhead) }
 
+// filePart is uploadParts under the head limit, which is lifted once the file begins.
+func filePart(c *uiCtx, allowed ...string) (map[string]string, *multipart.Part, error) {
+	fields, part, err := uploadParts(c.parts, allowed...)
+	if c.head.exceeded {
+		return nil, nil, errHeadTooLong
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	c.head.lifted = true
+	return fields, part, nil
+}
+
 func (u *UI) upload(c *uiCtx) error {
-	fields, part, err := uploadParts(c.parts, "folder", "description", "subject", "ref")
+	fields, part, err := filePart(c, "folder", "description", "subject", "ref")
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(c.ctx(), uploadBudget(u.Store.cfg))
+	ctx, cancel := context.WithTimeout(c.upload, uploadBudget(u.Store.cfg))
 	defer cancel()
 	f, err := u.Store.Upload(ctx, c.p, UploadRequest{SpaceID: c.id(), FolderID: fields["folder"], Name: part.FileName(), Description: fields["description"],
 		Subject: fields["subject"], Ref: fields["ref"], Body: part, Size: declaredSize(c.r)})
@@ -374,11 +396,11 @@ func (u *UI) upload(c *uiCtx) error {
 }
 
 func (u *UI) versionUpload(c *uiCtx) error {
-	_, part, err := uploadParts(c.parts)
+	_, part, err := filePart(c)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(c.ctx(), uploadBudget(u.Store.cfg))
+	ctx, cancel := context.WithTimeout(c.upload, uploadBudget(u.Store.cfg))
 	defer cancel()
 	f, err := u.Store.UploadVersion(ctx, c.p, c.id(), part, declaredSize(c.r))
 	if err != nil {
@@ -403,6 +425,7 @@ type fileData struct {
 	Retained bool
 
 	DefaultHours, MaxHours int
+	Links                  bool // new share links are offered (share links are published)
 }
 
 type shareRow struct {
@@ -427,7 +450,7 @@ func (u *UI) file(c *uiCtx) error {
 	d := fileData{File: *f, Space: *sp, Role: roleOf(f.Role, c.p.canWrite()), Crumbs: tree.chain(f.FolderID), Folders: tree.options(),
 		Deleted: f.Status != "active", Held: f.LegalHold != nil && *f.LegalHold,
 		Retained:     f.RetainUntil != nil && f.RetainUntil.After(u.Now()),
-		DefaultHours: cfg.Share.DefaultTTLHours, MaxHours: cfg.Share.MaxTTLHours}
+		DefaultHours: cfg.Share.DefaultTTLHours, MaxHours: cfg.Share.MaxTTLHours, Links: cfg.offerShareLinks()}
 	if i := strings.LastIndexByte(f.Name, '.'); i >= 0 {
 		d.Accept = strings.ToLower(f.Name[i:])
 	}
@@ -533,6 +556,9 @@ func (u *UI) shareURL(r *http.Request, token string) string {
 // shareCreate shows the new link in the answer to the post itself: the token is never put in a URL,
 // a cookie or the session, and cannot be shown again.
 func (u *UI) shareCreate(c *uiCtx) error {
+	if !u.Store.cfg.offerShareLinks() { // a link nobody outside could open
+		return conflict("share links are not published on this installation")
+	}
 	hours, err := strconv.Atoi(c.form("hours"))
 	if err != nil || hours < 1 || hours > 24*366 {
 		return formError{"share.bad_hours"}
@@ -701,7 +727,7 @@ func (u *UI) erasePost(c *uiCtx) error {
 		if !constEq(c.form("token"), c.ss.token) {
 			return formError{"erase.reenter"}
 		}
-		p, err := u.authenticateToken(c.ctx(), c.ss.token)
+		p, err := u.authenticateNow(c.ctx(), c.ss.token) // never the introspection cache
 		if errors.Is(err, ErrUnavailable) {
 			return err
 		}

@@ -39,7 +39,11 @@ const (
 	// uiUploadOverhead is how much larger than the largest file a multipart upload request may be:
 	// the boundaries and the few short text fields beside the file.
 	uiUploadOverhead = 64 << 10
-	uiPageSize       = 50
+	// uiMaxHeadBytes is all that may be read of an upload before the file's own bytes begin: the
+	// preamble, every part header and every text field together. mime/multipart would otherwise
+	// buffer up to 10 MiB of headers per part.
+	uiMaxHeadBytes = 64 << 10
+	uiPageSize     = 50
 )
 
 // UI serves the web UI.
@@ -74,39 +78,43 @@ type UI struct {
 type uiRoute struct {
 	pattern string
 	perm    string // permission the route needs ("" = a session is enough)
-	upload  bool   // a multipart/form-data post that is streamed, never parsed whole
+	// reserve marks a multipart/form-data post that is streamed, never parsed whole. It is called
+	// before a byte of the body is read: the Store's checks and its upload slot.
+	reserve uiReserve
 	h       uiHandler
 }
+
+type uiReserve func(c *uiCtx) (context.Context, func(), error)
 
 func (u *UI) routes() []uiRoute {
 	r, w, a := PermRead, PermWrite, PermAdmin
 	return []uiRoute{
-		{"GET /{$}", r, false, u.home},
-		{"POST /spaces", w, false, u.spaceCreate},
-		{"GET /spaces/{id}", r, false, u.space},
-		{"GET /spaces/{id}/members", r, false, u.members},
-		{"POST /spaces/{id}/members", w, false, u.memberSet},
-		{"POST /spaces/{id}/members/remove", w, false, u.memberRemove},
-		{"POST /spaces/{id}/folders", w, false, u.folderCreate},
-		{"POST /folders/{id}/delete", w, false, u.folderDelete},
-		{"GET /spaces/{id}/upload", w, false, u.uploadForm},
-		{"POST /spaces/{id}/files", w, true, u.upload},
-		{"GET /spaces/{id}/trash", r, false, u.trash},
+		{"GET /{$}", r, nil, u.home},
+		{"POST /spaces", w, nil, u.spaceCreate},
+		{"GET /spaces/{id}", r, nil, u.space},
+		{"GET /spaces/{id}/members", r, nil, u.members},
+		{"POST /spaces/{id}/members", w, nil, u.memberSet},
+		{"POST /spaces/{id}/members/remove", w, nil, u.memberRemove},
+		{"POST /spaces/{id}/folders", w, nil, u.folderCreate},
+		{"POST /folders/{id}/delete", w, nil, u.folderDelete},
+		{"GET /spaces/{id}/upload", w, nil, u.uploadForm},
+		{"POST /spaces/{id}/files", w, u.reserveUpload, u.upload},
+		{"GET /spaces/{id}/trash", r, nil, u.trash},
 
-		{"GET /files/{id}", r, false, u.file},
-		{"GET /files/{id}/content", r, false, u.download},
-		{"POST /files/{id}/update", w, false, u.fileUpdate},
-		{"POST /files/{id}/versions", w, true, u.versionUpload},
-		{"POST /files/{id}/delete", w, false, u.fileDelete},
-		{"POST /files/{id}/restore", w, false, u.fileRestore},
-		{"POST /files/{id}/shares", w, false, u.shareCreate},
-		{"POST /shares/{id}/revoke", w, false, u.shareRevoke},
+		{"GET /files/{id}", r, nil, u.file},
+		{"GET /files/{id}/content", r, nil, u.download},
+		{"POST /files/{id}/update", w, nil, u.fileUpdate},
+		{"POST /files/{id}/versions", w, u.reserveVersion, u.versionUpload},
+		{"POST /files/{id}/delete", w, nil, u.fileDelete},
+		{"POST /files/{id}/restore", w, nil, u.fileRestore},
+		{"POST /files/{id}/shares", w, nil, u.shareCreate},
+		{"POST /shares/{id}/revoke", w, nil, u.shareRevoke},
 
-		{"GET /admin/files", a, false, u.adminList},
-		{"GET /admin/files/{id}/hold", a, false, u.holdForm},
-		{"POST /admin/files/{id}/hold", a, false, u.holdSet},
-		{"GET /admin/erasure", a, false, u.eraseForm},
-		{"POST /admin/erasure", a, false, u.erasePost},
+		{"GET /admin/files", a, nil, u.adminList},
+		{"GET /admin/files/{id}/hold", a, nil, u.holdForm},
+		{"POST /admin/files/{id}/hold", a, nil, u.holdSet},
+		{"GET /admin/erasure", a, nil, u.eraseForm},
+		{"POST /admin/erasure", a, nil, u.erasePost},
 	}
 }
 
@@ -279,15 +287,40 @@ func setUIHeaders(w http.ResponseWriter) {
 	h.Set("Cache-Control", "no-store")
 }
 
-// uiCtx is what a handler gets: the session, the resolved caller and the request. parts is set on
-// upload routes: the rest of the multipart body after the CSRF field.
+// uiCtx is what a handler gets: the session, the resolved caller and the request. On upload routes
+// parts is the rest of the multipart body after the CSRF field, head the limit on what is read of it
+// before the file, and upload the context that carries the Store's upload slot.
 type uiCtx struct {
-	u     *UI
-	ss    *uiSession
-	p     *Principal
-	r     *http.Request
-	w     http.ResponseWriter
-	parts *multipart.Reader
+	u      *UI
+	ss     *uiSession
+	p      *Principal
+	r      *http.Request
+	w      http.ResponseWriter
+	parts  *multipart.Reader
+	head   *headLimit
+	upload context.Context
+}
+
+// headLimit bounds what is read of a request body until it is lifted.
+type headLimit struct {
+	io.ReadCloser
+	left             int
+	lifted, exceeded bool
+}
+
+var errHeadTooLong = errors.New("too much before the file")
+
+func (h *headLimit) Read(p []byte) (int, error) {
+	if h.lifted {
+		return h.ReadCloser.Read(p)
+	}
+	if h.left <= 0 {
+		h.exceeded = true
+		return 0, errHeadTooLong
+	}
+	n, err := h.ReadCloser.Read(p[:min(len(p), h.left)])
+	h.left -= n
+	return n, err
 }
 
 type uiHandler func(c *uiCtx) error
@@ -330,24 +363,8 @@ func (u *UI) authed(rt uiRoute) http.HandlerFunc {
 			return
 		}
 		u.perUser.fail(ss.subject) // counts every request of the subject
-		unsafe := r.Method != http.MethodGet && r.Method != http.MethodHead
-		switch {
-		case unsafe && rt.upload:
-			limit := u.Store.cfg.Limits.MaxFileBytes + uiUploadOverhead
-			if r.ContentLength > limit {
-				// refused on the declared length, before a byte is read
-				u.fail(c, ErrTooLarge)
-				return
-			}
-			r.Body = http.MaxBytesReader(w, r.Body, limit)
-			uploadDeadlines(w, u.Store.cfg)
-			mr, err := r.MultipartReader()
-			if err != nil || !csrfPart(mr, ss.csrf) {
-				u.renderError(w, r, c, http.StatusForbidden, "err.csrf_title", "err.csrf")
-				return
-			}
-			c.parts = mr
-		case unsafe:
+		upload := rt.reserve != nil
+		if unsafe := r.Method != http.MethodGet && r.Method != http.MethodHead; unsafe && !upload {
 			r.Body = http.MaxBytesReader(w, r.Body, uiMaxFormBytes)
 			if err := r.ParseForm(); err != nil || !constEq(r.PostForm.Get("csrf"), ss.csrf) {
 				u.renderError(w, r, c, http.StatusForbidden, "err.csrf_title", "err.csrf")
@@ -367,14 +384,59 @@ func (u *UI) authed(rt uiRoute) http.HandlerFunc {
 			}
 			c.p.Groups = gs
 		}
+		if upload {
+			u.receive(c, rt)
+			return
+		}
 		if err := rt.h(c); err != nil {
-			if rt.upload {
-				// Read what the browser is still sending (bounded by the limit and the upload
-				// deadline), or it reports a broken connection instead of showing the page.
-				_, _ = io.Copy(io.Discard, r.Body)
-			}
 			u.fail(c, err)
 		}
+	}
+}
+
+// receive serves an upload route. Nothing of the body is read until the Store has said the caller
+// may upload there and given a slot; then at most uiMaxHeadBytes are read before the file, the CSRF
+// token first of all.
+func (u *UI) receive(c *uiCtx, rt uiRoute) {
+	w, r := c.w, c.r
+	limit := u.Store.cfg.Limits.MaxFileBytes + uiUploadOverhead
+	if r.ContentLength > limit {
+		// refused on the declared length, before a byte is read
+		u.fail(c, ErrTooLarge)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	body := r.Body
+	// A refusal still reads (and discards) what the browser is sending, bounded by the limit and the
+	// server's deadlines, or the browser reports a broken connection instead of showing the page.
+	refuse := func(err error) {
+		_, _ = io.Copy(io.Discard, body)
+		u.fail(c, err)
+	}
+	ctx, free, err := rt.reserve(c)
+	if err != nil {
+		refuse(err)
+		return
+	}
+	release := sync.OnceFunc(free) // also called early, before a refused body is discarded
+	defer release()
+	uploadDeadlines(w, u.Store.cfg)
+	c.upload = ctx
+	c.head = &headLimit{ReadCloser: body, left: uiMaxHeadBytes}
+	r.Body = c.head
+	mr, err := r.MultipartReader()
+	if err != nil || !csrfPart(mr, c.ss.csrf) {
+		if c.head.exceeded {
+			u.fail(c, errHeadTooLong)
+			return
+		}
+		u.renderError(w, r, c, http.StatusForbidden, "err.csrf_title", "err.csrf")
+		return
+	}
+	c.parts = mr
+	if err := rt.h(c); err != nil {
+		release() // the slot is not held while the rest is thrown away
+		refuse(err)
 	}
 }
 
@@ -398,7 +460,7 @@ func uiStatus(err error) int {
 	var mbe *http.MaxBytesError
 	var fe formError
 	switch {
-	case errors.As(err, &mbe), errors.Is(err, ErrTooLarge), errors.Is(err, ErrQuota):
+	case errors.As(err, &mbe), errors.Is(err, errHeadTooLong), errors.Is(err, ErrTooLarge), errors.Is(err, ErrQuota):
 		return http.StatusRequestEntityTooLarge
 	case errors.As(err, &fe), errors.Is(err, ErrInvalid), errors.Is(err, ErrInfected):
 		return http.StatusUnprocessableEntity
@@ -429,6 +491,8 @@ func (u *UI) fail(c *uiCtx, err error) {
 		show("err.infected_title", u.msg("err.infected"))
 	case errors.Is(err, ErrQuota):
 		show("err.quota_title", publicMsg(err))
+	case errors.Is(err, errHeadTooLong):
+		show("err.too_large_title", u.msg("err.head_too_large"))
 	case st == http.StatusRequestEntityTooLarge:
 		show("err.too_large_title", u.msg("err.too_large")+" "+humanSize(u.Store.cfg.Limits.MaxFileBytes)+".")
 	case st == http.StatusNotFound:
