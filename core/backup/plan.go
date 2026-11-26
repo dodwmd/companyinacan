@@ -147,7 +147,7 @@ func BuildPlan(co *config.Company, mods map[string]*config.Module, s Settings) (
 			p.Dumps = append(p.Dumps, Dump{Module: id, Hook: m.Hooks.Backup, File: "modules/" + id + "/"})
 		}
 		if why := m.BackupHookUnrunnable(); why != "" {
-			p.Warnings = append(p.Warnings, fmt.Sprintf("module %q has a backup hook that cannot run (%s): while it is enabled (or recorded as failed) every dump run fails and NOTHING is backed up. %s", id, why, DisableAdvice(m.Requires.Database)))
+			p.Warnings = append(p.Warnings, fmt.Sprintf("module %q has a backup hook that cannot run (%s): while it is enabled (or recorded as failed after it once ran) every dump run fails and NOTHING is backed up. %s", id, why, DisableAdvice(m.Requires.Database)))
 		}
 		if m.Requires.Database == "sqlite" && !hasDump {
 			p.Warnings = append(p.Warnings, fmt.Sprintf("module %q keeps SQLite on a PVC but has no backup hook: raw database files are backed up and may be inconsistent", id))

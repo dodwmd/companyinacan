@@ -6,7 +6,7 @@ backup timer and its recovery kit. It is a thin wrapper over `can up|down|status
 Run it in the directory that holds `company.yaml`, or pass the directory: `make up ARGS=./my-company`.
 
 ```sh
-make images                       # once, from a source checkout: build the three images into build/images
+make images                       # once, from a source checkout: build every image into build/images
 make up ARGS=--plan IMAGES_FROM=build/images     # show every phase, change nothing
 make up IMAGES_FROM=build/images  # provision, deploy, print the summary
 make status                       # exit 0 only when the server and the stack are up
@@ -20,13 +20,24 @@ creates or pays for anything.
 
 ## Getting the images
 
-The three images (`can-core`, `can-static`, `can-forms`) are built and pinned at release time. A source
-checkout has two ways to get them; pass exactly one:
+Every module runs its own image. The in-house ones (`can-core`, `can-static`, one per in-house module, and
+`can-hooks` for the wrapped apps' backup scripts; the list is `core/modimages/images.txt`) are built and pinned at
+release time, and **no release has run yet**, so none is published. A source
+checkout has two ways to get them to the server:
 
 | Way | Command | What happens |
 |---|---|---|
-| Build locally, ship over SSH | `make images` then `make up IMAGES_FROM=build/images` | `scripts/build-images.sh` builds with podman or docker (`ENGINE=`), writes `build/images/*.tar` and `images.json` with the sha256 of each. `can up` re-checks the checksums, uploads over SSH, checks them again on the server with `sha256sum` and imports them into k3s (`k3s ctr -n k8s.io images import`; the tarballs stay in `/var/lib/rancher/k3s/agent/images`). No registry is involved. Local tags are used (`can-core:dev`), the forms image gets the tag its chart expects. |
-| Pull by digest from a release | `can up --release-manifest deploy/release-images.json` (also the default when that file exists) | `deploy/release-images.json` lists every image as `repository@sha256:<digest>`; the server pulls them from GHCR. A tag, a placeholder or a malformed digest is refused. The file is produced by the release pipeline with `scripts/gen-release-images.sh`. |
+| Build locally, ship over SSH | `make images` then `make up IMAGES_FROM=build/images` | `scripts/build-images.sh` builds with podman or docker (`ENGINE=`), writes `build/images/*.tar` and `images.json` with the sha256 of each. `can up` re-checks the checksums, uploads over SSH, checks them again on the server with `sha256sum` and imports them into k3s (`k3s ctr -n k8s.io images import`; the tarballs stay in `/var/lib/rancher/k3s/agent/images`). No registry is involved. `can-core` and `can-static` get local tags (`can-core:dev`); the others get the name and version their charts pull (`ghcr.io/dodwmd/can-work:X.Y.Z`). Only `can-core`, `can-static` and the images of the modules `company.yaml` enables (and of the default bundle) are shipped. `ONLY="can-core can-static can-forms"` builds a subset. |
+| Pull by digest from a release | `can up --release-manifest deploy/release-images.json` (also the default when that file exists) | `deploy/release-images.json` names the images `can up` deploys itself (`can-core`, `can-static`, `can-forms`) as `repository@sha256:<digest>`; a tag, a placeholder or a malformed digest is refused. Module images are pulled from GHCR by the version their charts name. `scripts/gen-release-images.sh` writes the file; the release workflow does not run it yet. |
+
+**The image check.** Before anything is provisioned or changed, `can up` makes sure that every image of every
+enabled module is in the images directory or can be pulled anonymously from its registry (it asks the registry,
+sending only the image name). `can apply` does the same against the cluster: the image must be on a node already,
+or pullable. A module that fails the check is named with its image. `--skip-image-check` turns the check off for a
+server that gets images another way. To enable another module later on a server fed from `make images`, add it to
+`company.yaml` and run `make up IMAGES_FROM=build/images` again (it ships the new set); then `can apply` works too.
+Enabling a module in the **admin UI** does not run this check: its image must already be on the server. A first
+install that fails for want of an image does not stop backups ([backup-restore.md](backup-restore.md)).
 
 With neither, `can up` stops before provisioning and says so. `make images` builds your working tree on the
 base-image digests the registry serves today (the Dockerfiles keep their release placeholders); it is a
@@ -268,7 +279,8 @@ Do not run this from CI. With a fresh Hetzner account:
 - **Backups** work as described in [backup-restore.md](backup-restore.md) and are verified on k3d with a local
   restic repository only. Not verified: a real S3 bucket, a real server (systemd timer, k3s paths) and a restore
   onto a blank host (`can restore` has only been run on k3d in CI). wiki, crm and status stop every backup while
-  enabled or recorded as failed, because the `can-hooks` image is not published. Disabling the module brings backups
+  enabled if the unpublished `can-hooks` image is not on the server (`make images` builds it, `can up --images-from`
+  ships it). Disabling the module brings backups
   back, without a dump of it: wiki and status are then covered by raw volume files only, and the database of crm is
   not backed up. analytics, support and newsletter are dumped by can-core and need no such image.
   `--allow-broken-backup` is a deprecated no-op.

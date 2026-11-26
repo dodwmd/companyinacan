@@ -41,6 +41,10 @@ type Dumper struct {
 	// ("" if it can). A disabled module never stops backups: it is skipped and reported.
 	Disabled   func(ctx context.Context, module string) bool
 	Unrunnable func(ctx context.Context, module string) string
+	// NeverInstalled reports a module whose first install failed. It was never opened to anyone,
+	// and its image may be the very thing that is missing: like a disabled one it never stops
+	// backups, as long as no dump of it was ever published.
+	NeverInstalled func(ctx context.Context, module string) bool
 	// CompanyFile is the applied company.yaml, copied into every run ("" skips).
 	CompanyFile string
 	Now         func() time.Time // default time.Now
@@ -125,8 +129,9 @@ func newRunID(t time.Time) string {
 // place (so a failed run has already replaced those two), then runs each module's backup hook
 // into a staging directory. Only if every enabled or failed module with data uploaded is the new
 // set swapped in and the marker written; otherwise the previous module dumps stay, without a
-// marker, so the host script backs up nothing. A disabled module never fails the run: if its hook
-// cannot run or fails it is skipped, reported, and its raw volume files stay in the backup.
+// marker, so the host script backs up nothing. A disabled module, and one whose first install never
+// succeeded, never fails the run: if its hook cannot run or fails it is skipped, reported, and its
+// raw volume files stay in the backup.
 func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if !d.begin() {
 		return Result{}, ErrBusy
@@ -205,10 +210,17 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 		return nil
 	}
 	for _, m := range mods {
-		disabled := d.Disabled != nil && d.Disabled(ctx, m)
-		if disabled && d.Unrunnable != nil {
+		// Why a failing hook of this module does not fail the run ("" when it does).
+		tolerated := ""
+		switch {
+		case d.Disabled != nil && d.Disabled(ctx, m):
+			tolerated = "it is disabled"
+		case d.NeverInstalled != nil && d.NeverInstalled(ctx, m) && !d.published(m):
+			tolerated = "its first install never succeeded"
+		}
+		if tolerated != "" && d.Unrunnable != nil {
 			if why := d.Unrunnable(ctx, m); why != "" {
-				if err := skip(m, "it is disabled and its backup hook cannot run ("+why+")", false); err != nil {
+				if err := skip(m, tolerated+" and its backup hook cannot run ("+why+")", false); err != nil {
 					return Result{}, err
 				}
 				continue
@@ -234,8 +246,8 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 		if err == nil && n == 0 {
 			err = errors.New("the backup hook succeeded but uploaded nothing")
 		}
-		if err != nil && disabled && ctx.Err() == nil {
-			if serr := skip(m, "it is disabled and its backup hook failed: "+err.Error(), false); serr != nil {
+		if err != nil && tolerated != "" && ctx.Err() == nil {
+			if serr := skip(m, tolerated+" and its backup hook failed: "+err.Error(), false); serr != nil {
 				return Result{}, serr
 			}
 			continue

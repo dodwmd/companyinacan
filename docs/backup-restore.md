@@ -24,7 +24,7 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      `can-smtp-relay`, `sso-client` and `can-postgres-admin` of `can-system` (a restore re-creates them). The first two are replaced in place, so after a **failed** run they are newer
      than the module dumps beside them; without a marker the set is not backed up either way;
    - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
-     data is still there), as a Job in `mod-<id>`. For the in-house modules the Job is `<binary> backup` in the
+     data is still there; see below for the two that never stop a run), as a Job in `mod-<id>`. For the in-house modules the Job is `<binary> backup` in the
      module's own image within the module's memory limit (see [In-house modules](#in-house-modules)). analytics,
      support and newsletter are dumped by can-core itself (see [Wrapped modules](#wrapped-modules)). For
      wiki, status and crm it is a shell script in the `can-hooks` image: restricted pod, projected audience-`can` token, the module's
@@ -36,11 +36,15 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      files and 8 GiB per module and run, 4 GiB per file), into a staging directory. A hook that succeeds without
      uploading anything counts as failed;
    - when every hook succeeded: swaps the staged set in, writes `DUMPED` (which modules, and their database kind),
-     flushes everything to disk, then writes `COMPLETE` (run id, finish time). One failing hook therefore stops
-     backups until it is fixed: `can backup status` and the admin status page show the last failure
+     flushes everything to disk, then writes `COMPLETE` (run id, finish time). One failing hook (apart from the two
+     cases below) therefore stops backups until it is fixed: `can backup status` and the admin status page show the last failure
      (`LAST-RUN`).
    - A run that leaves a database (or vanished data) out is announced: `dump-request --wait` prints it, and the
      host script logs a warning and POSTs it to the failure webhook after each backup (the run still exits 0).
+   - **A module whose first install failed never stops backups either** (recorded as failed, no `can-release`
+     Secret in its namespace because no rollout ever succeeded, and no earlier dump): its volume may exist while its
+     image cannot be pulled, so the hook Job cannot start. It is tried, then skipped and reported like a disabled
+     module. It was never routed, so nobody has used it. Once an install succeeds its dump is mandatory.
    - **A disabled module never stops backups.** If its hook cannot run (the unpublished `can-hooks` image: wiki, status, crm) or fails,
      it is skipped and reported by `can backup status`, the admin status page and `can up`. Only its raw volume
      files are then backed up; for a MariaDB or PostgreSQL module **the database is not backed up**. A module that
@@ -152,7 +156,9 @@ module's own database role, and can-core's image uploads and downloads.
 - Databases are dumped from and restored into Postgres **17** only (see [The shared Postgres](#the-shared-postgres)).
 - A restore replaces the whole schema `public` of the module's database and the whole content of its volume.
 - A server installed before this is covered from the next dump run; no module upgrade is needed.
-- wiki, status and crm still need the unpublished `can-hooks` image: enabling one stops every backup.
+- wiki, status and crm need the `can-hooks` image, which is not published: enabling one stops every backup
+  unless the image is on the server (`make images` builds it and `can up --images-from` ships it; none of these
+  hooks has run against its application).
 
 ## Retention and erasure of dumps
 
@@ -372,9 +378,10 @@ server, and restores them with can-core's restore operations (not through restic
   `--repo` with a local copy), a restore through restic of database modules, purge replay of `equity`, `board`,
   `files` and `jobs` on a cluster, `--confirm-overwrite` on a cluster, and disk use and duration with real data sizes.
 - The shipped script hooks (wiki, crm, status): CI builds the `can-hooks` image and
-  parses them in it, but the image is not published, so while one of these modules is enabled the dump run fails (and
-  no marker is written); disabled, it is skipped. None of these hooks has run against its application. A release
-  publishes the image (docs/releasing.md); until then there is nothing to pull.
+  parses them in it, but the image is not published. A source checkout ships it (`make images`, `can up
+  --images-from`); without it `can up` and `can apply` refuse to enable these modules, and one enabled anyway fails
+  the dump run (no marker is written) until disabled. None of these hooks has run against its application. A release
+  publishes the image (docs/releasing.md).
 - In-house hooks on a cluster: backup of forms, work and files (`module-backup` in CI), backup and restore through
   `can restore` of forms, work and people (`restore-e2e`). jobs, finance and provisioning are covered by unit tests;
   equity, board and entity cannot be installed by can-core yet.
