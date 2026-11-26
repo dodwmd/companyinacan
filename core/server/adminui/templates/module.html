@@ -22,6 +22,17 @@
 </dl>
 </section>
 
+{{with .Data.Access}}<section aria-labelledby="h-exposure">
+<h2 id="h-exposure">{{t "exp.title"}}</h2>
+{{if .Unavailable}}<p class="muted">{{t "exp.unavailable"}}</p>{{else if not .Rows}}<p class="muted">{{t "exp.none"}}</p>{{else}}
+{{if .Disabled}}<p class="muted">{{t "exp.disabled"}}</p>{{end}}{{if .NoDomain}}<p class="muted">{{t "exp.no_domain"}}</p>{{end}}
+<div class="table-wrap" role="region" aria-labelledby="h-exposure" tabindex="0"><table>
+<thead><tr><th scope="col">{{t "exp.what"}}</th><th scope="col">{{t "exp.state"}}</th><th scope="col">{{t "exp.url"}}</th></tr></thead>
+<tbody>{{range .Rows}}<tr><th scope="row">{{.Label}}</th><td><span class="badge {{.StateClass}}">{{.State}}</span></td><td>{{if .URL}}<code>{{.URL}}</code>{{end}}</td></tr>{{end}}</tbody>
+</table></div>
+<p class="hint">{{t "exp.how"}}</p>{{end}}
+</section>{{end}}
+
 <section aria-labelledby="h-contracts">
 <h2 id="h-contracts">{{t "mod.contracts"}}</h2>
 <h3>{{t "mod.provides"}}</h3>

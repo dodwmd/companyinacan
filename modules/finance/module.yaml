@@ -22,8 +22,8 @@ version: 0.1.0
 # web UI (E15b, specs/031-finance-ui) ships in the same binary, off by default (ui.enabled), built offline
 # and not browser- or cluster-verified; the web UI is routed only with expose.ui.
 # can-core generates the secrets, introspects personal access tokens, routes events and decides
-# invoice approvals (tested with fakes, not on a cluster). The public invoice link is not routed
-# (no subdomain). See specs/014-finance-basics/tasks.md.
+# invoice approvals (tested with fakes, not on a cluster). The public invoice link is routed
+# only with expose.public: true. See specs/014-finance-basics/tasks.md.
 status: experimental
 provider:
   type: inhouse
@@ -43,6 +43,15 @@ runtime:
     config:
       trust_proxy: true
       ui: { enabled: true, force_secure: true }
+  # Signed invoice links on https://finance.<domain>/public/invoices/ and nothing else, only when
+  # company.yaml says modules.finance.expose.public: true (specs/045-public-access).
+  public_link:
+    service: finance
+    port: 8080
+    prefix: /public/invoices/
+    config:
+      trust_proxy: true # failed links count against the client, not against Traefik
+    base_url_key: public_base_url
 requires:
   database: sqlite
   sso: none

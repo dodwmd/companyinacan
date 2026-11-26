@@ -263,6 +263,20 @@ func (c *Cloudflare) remember(rec DNSRecordState) error {
 	})
 }
 
+// lastWrote is the content can last wrote to the record, when the state remembers it.
+func (c *Cloudflare) lastWrote(id string) (string, bool) {
+	state, err := c.st.Load()
+	if err != nil {
+		return "", false
+	}
+	for _, r := range state.DNSRecords {
+		if r.Plugin == "cloudflare" && r.ID == id && r.Content != "" {
+			return r.Content, true
+		}
+	}
+	return "", false
+}
+
 // Preflight implements DNSChecker: resolve the token and find the zone,
 // changing nothing.
 func (c *Cloudflare) Preflight(ctx context.Context, domain string) error {
@@ -298,6 +312,14 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 		if err != nil {
 			return err
 		}
+		// A module's name that someone else already points somewhere is theirs: not changed, not
+		// adopted, and no record of another type is put next to it.
+		if r.NoAdopt {
+			if other := foreignAddress(existing); other != nil {
+				fmt.Fprintf(w, "dns: skipped %s %s: a %s record there (-> %s) was not created by can; point it at %s yourself, or remove it and run `can up` again\n", r.Type, r.Name, other.Type, other.Content, r.Value)
+				continue
+			}
+		}
 		var owned, foreign *cfRec
 		for i := range existing {
 			e := &existing[i]
@@ -311,6 +333,12 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 				}
 			case foreign == nil:
 				foreign = e
+			}
+		}
+		if r.NoAdopt && owned != nil && owned.Content != want.Content {
+			if wrote, ok := c.lastWrote(owned.ID); ok && wrote != owned.Content {
+				fmt.Fprintf(w, "dns: skipped %s %s: it was changed after can wrote it (now -> %s); left in place\n", r.Type, r.Name, owned.Content)
+				continue
 			}
 		}
 		base := DNSRecordState{Plugin: "cloudflare", Zone: zone, Type: r.Type, Name: r.Name, Content: r.Value, Proxied: want.Proxied}
@@ -360,6 +388,22 @@ func (c *Cloudflare) Apply(ctx context.Context, domain string, recs []Record, w 
 	}
 	fmt.Fprintln(w, "\nDNS changes are made; they can take a while to reach resolvers (not part of the five-minute budget).")
 	return nil
+}
+
+// foreignAddress returns a record that decides where the name points and does not carry can's
+// comment, when no record there does.
+func foreignAddress(rs []cfRec) *cfRec {
+	var other *cfRec
+	for i := range rs {
+		switch e := &rs[i]; e.Type {
+		case "A", "AAAA", "CNAME":
+			if e.Comment == cfOwnerComment {
+				return nil
+			}
+			other = e
+		}
+	}
+	return other
 }
 
 func sameTypeCount(rs []cfRec, typ string) int {

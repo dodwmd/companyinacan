@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/routing"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 )
 
@@ -475,9 +476,16 @@ func (s *Service) DNS(ctx context.Context) (DNSPlan, error) {
 	}
 	hosts := []struct{ name, purpose string }{{c.Domain, "site"}, {"admin." + c.Domain, "admin"}}
 	if cat, err := s.Catalogue(); err == nil {
-		for _, id := range sortedSelected(enabledSet(c), cat) {
-			if sd := cat.Get(id).Manifest.Runtime.Subdomain; sd != "" {
-				hosts = append(hosts, struct{ name, purpose string }{sd + "." + c.Domain, id})
+		// Every hostname a module puts on the internet (specs/045-public-access).
+		surfaces, _ := routing.CompanySurfaces(c, func(id string) *config.Module {
+			if e := cat.Get(id); e != nil {
+				return e.Manifest
+			}
+			return nil
+		})
+		for _, h := range routing.DNSHosts(c.Domain, surfaces) {
+			if h.Host != "admin."+c.Domain {
+				hosts = append(hosts, struct{ name, purpose string }{h.Host, h.Purpose})
 			}
 		}
 	}

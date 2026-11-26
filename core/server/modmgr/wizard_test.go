@@ -206,7 +206,7 @@ func TestDNSPlanListsRecordsAndInstantURL(t *testing.T) {
 	must(t, err)
 	want := map[string]bool{
 		"A acme.example 203.0.113.7": false, "AAAA acme.example 2001:db8::7": false,
-		"A admin.acme.example 203.0.113.7": false, "A forms.acme.example 203.0.113.7": false,
+		"A admin.acme.example 203.0.113.7": false, "A web.acme.example 203.0.113.7": false,
 	}
 	for _, rec := range d.Records {
 		k := rec.Type + " " + rec.Name + " " + rec.Value

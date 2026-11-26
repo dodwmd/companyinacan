@@ -106,7 +106,9 @@ same states from `draft`.
   anything internal in `notes`. Every failure (forged, expired, revoked, unknown) is the same 404.
   `POST .../link/revoke` invalidates every link issued for the invoice. Bad links count against the
   caller's address and are throttled; valid links are never throttled. Views are audited (one entry
-  per invoice per ten minutes). Route **only** `/public/invoices/` to the internet.
+  per invoice per ten minutes). In a cluster, `modules.finance.expose.public: true` routes
+  `https://finance.<domain>/public/invoices/` and nothing else and sets `public_base_url` to it
+  ([`module-routing.md`](module-routing.md)); elsewhere route **only** that path to the internet.
 * **Payment provider adapter**: `PaymentProvider` (Stripe-like: create a checkout, verify a signed
   webhook). The shipped `fake` provider never opens a socket (checkout URLs use the reserved
   `.invalid` TLD) and signs webhooks like Stripe (`t=...,v1=<HMAC>`), so a real Stripe adapter only

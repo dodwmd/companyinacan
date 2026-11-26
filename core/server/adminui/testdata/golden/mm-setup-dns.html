@@ -57,6 +57,7 @@
 
 
 <p>Create these records at your DNS provider so your domain and modules reach this server.</p>
+<p class="hint">Module addresses are listed once company.yaml puts them on the internet. With dns.provider: cloudflare, can up creates these records; otherwise add them yourself.</p>
 <div class="table-wrap" role="region" aria-labelledby="cap-dns" tabindex="0">
 <table>
 <caption id="cap-dns" class="sr">DNS</caption>
@@ -64,7 +65,7 @@
 <tbody>
 <tr><th scope="row"><code>acme.example</code></th><td>A</td><td><code>203.0.113.7</code></td><td>site</td></tr>
 <tr><th scope="row"><code>admin.acme.example</code></th><td>A</td><td><code>203.0.113.7</code></td><td>admin</td></tr>
-<tr><th scope="row"><code>forms.acme.example</code></th><td>A</td><td><code>203.0.113.7</code></td><td>web</td></tr>
+<tr><th scope="row"><code>web.acme.example</code></th><td>A</td><td><code>203.0.113.7</code></td><td>web pages</td></tr>
 </tbody>
 </table>
 </div>

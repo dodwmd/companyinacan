@@ -118,6 +118,9 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 				add("semantic.module-ui-paths", "/modules/"+id, fmt.Sprintf("module %q: runtime.public_ui: %v", id, err))
 			}
 		}
+		if l := m.Runtime.PublicLink; l != nil && routing.LinkPrefixes[id] != l.Prefix {
+			add("semantic.module-public-link", "/modules/"+id, fmt.Sprintf("module %q may not publish %s", id, l.Prefix))
+		}
 		if r := m.Runtime.SiteRoute; r != nil && routing.SitePrefixes[id] != r.Path {
 			add("semantic.module-site-route", "/modules/"+id, fmt.Sprintf("module %q may not claim %s on the public site", id, r.Path))
 		}
