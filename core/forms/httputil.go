@@ -62,7 +62,7 @@ func writeHTMLPage(w http.ResponseWriter, status int, title string, lines ...str
 		b.WriteString(html.EscapeString(l))
 		b.WriteString("</p>")
 	}
-	b.WriteString("</main></body></html>")
+	b.WriteString(homeLink + "</main></body></html>")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)

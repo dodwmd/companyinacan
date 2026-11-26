@@ -35,7 +35,7 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 
 | URL | What |
 |---|---|
-| <http://localhost:8080> | the example site (`examples/acme-co`, built with `can site build`); `/contact/` is a dev-only page linking to the contact form |
+| <http://localhost:8080> | the example site (`examples/acme-co`, built with `can site build`); its contact section links to the form below |
 | <http://localhost:8080/_forms/contact/form> | the contact form, served by can-forms |
 | <http://localhost:8080/_forms/contact/token> | forms gateway, same origin as the site (prefix stripped by the edge) |
 | <http://admin.localhost:8080> | can-core admin UI (and `/api/v1/...` admin API) |

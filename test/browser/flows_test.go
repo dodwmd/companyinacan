@@ -609,9 +609,8 @@ func filesFlow(t *testing.T, r *run) {
 func leadForm(t *testing.T, r *run) {
 	c := newSession(t, r.vp)
 	c.goTo("http://localhost:" + env.Port + "/")
-	c.goTo("http://localhost:" + env.Port + "/contact/")
-	// The site runs no script, so its contact page links to the form the gateway serves.
-	c.click(`a[href="/_forms/contact/form"]`)
+	// The site runs no script, so its contact section links to the form the gateway serves.
+	c.click(`#contact a[href="/_forms/contact/form"]`)
 	email := "lead-" + r.u + "@visitor.example"
 	c.fill(`input[name="name"]`, "Browser Lead")
 	c.fill(`input[name="email"]`, email)
@@ -624,6 +623,16 @@ func leadForm(t *testing.T, r *run) {
 	leads := harness.API{C: web, Host: "forms.localhost", Token: env.Secret(t, "forms", "CAN_FORMS_API_TOKEN")}
 	if got := leads.Get(t, "/v1/leads?form=contact").Expect(t, "leads API", 200).String(); !strings.Contains(got, email) {
 		t.Fatalf("the lead is not stored")
+	}
+	// With a trailing slash the page's relative links would break: the gateway redirects.
+	c.goTo("http://localhost:" + env.Port + "/_forms/contact/form/")
+	if c.path() != "/_forms/contact/form" {
+		t.Fatalf("with a trailing slash the browser is at %s", c.path())
+	}
+	// And back to the site from the form.
+	c.click(`a[href="/"]`)
+	if c.path() != "/" {
+		t.Fatalf("the way back leads to %s", c.path())
 	}
 }
 

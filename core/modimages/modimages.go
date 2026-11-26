@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
+	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -69,11 +69,16 @@ func Ref(name string) string {
 // backup hook runs in. A module without chart templates installs nothing and needs nothing.
 // Modules whose manifest or values cannot be read are returned in unknown.
 func Required(modulesDir string, ids []string) (refs map[string][]string, unknown []string) {
+	return RequiredFS(os.DirFS(modulesDir), ids)
+}
+
+// RequiredFS is Required over a modules directory given as a file system.
+func RequiredFS(modules fs.FS, ids []string) (refs map[string][]string, unknown []string) {
 	refs = map[string][]string{}
 	ids = slices.Clone(ids)
 	sort.Strings(ids)
 	for _, id := range ids {
-		list, err := ForModule(modulesDir, id)
+		list, err := forModule(modules, id)
 		if err != nil {
 			unknown = append(unknown, fmt.Sprintf("module %q: %v", id, err))
 			continue
@@ -87,11 +92,20 @@ func Required(modulesDir string, ids []string) (refs map[string][]string, unknow
 
 // ForModule lists the images of one module (see Required).
 func ForModule(modulesDir, id string) ([]string, error) {
-	dir := filepath.Join(modulesDir, id)
-	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
-		dir = filepath.Join(modulesDir, "_"+id) // `_id` directories are examples
+	return forModule(os.DirFS(modulesDir), id)
+}
+
+func forModule(modules fs.FS, id string) ([]string, error) {
+	dir := path.Clean("/" + id)[1:]
+	if _, err := fs.Stat(modules, dir); errors.Is(err, fs.ErrNotExist) {
+		dir = "_" + dir // `_id` directories are examples
 	}
-	doc, ps := config.Load(filepath.Join(dir, "module.yaml"))
+	manifest := path.Join(dir, "module.yaml")
+	data, err := fs.ReadFile(modules, manifest)
+	if err != nil {
+		return nil, fmt.Errorf("module.yaml cannot be read: %w", err)
+	}
+	doc, ps := config.LoadBytes(manifest, data)
 	if doc == nil {
 		return nil, fmt.Errorf("module.yaml cannot be read: %v", ps)
 	}
@@ -99,15 +113,16 @@ func ForModule(modulesDir, id string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("module.yaml: %w", err)
 	}
-	chart := filepath.Join(dir, filepath.Clean("/"+m.Runtime.Chart))
-	if _, err := os.Stat(filepath.Join(chart, "templates")); err != nil {
+	inside := func(p string) string { return path.Join(dir, path.Clean("/"+p)) }
+	chart := inside(m.Runtime.Chart)
+	if _, err := fs.Stat(modules, path.Join(chart, "templates")); err != nil {
 		return nil, nil
 	}
-	values := filepath.Join(chart, "values.yaml")
+	values := path.Join(chart, "values.yaml")
 	if m.Runtime.Values != "" {
-		values = filepath.Join(dir, filepath.Clean("/"+m.Runtime.Values))
+		values = inside(m.Runtime.Values)
 	}
-	b, err := os.ReadFile(values) //nolint:gosec // inside the modules directory
+	b, err := fs.ReadFile(modules, values)
 	if err != nil {
 		return nil, fmt.Errorf("chart values: %w", err)
 	}

@@ -383,7 +383,7 @@ func newBackupInstallCmd(g *globalOpts) *cobra.Command {
 				if !ok {
 					return failure("module %q has no manifest in %s", id, md)
 				}
-				doc, ps := config.Load(p)
+				doc, ps := validate.LoadManifest(p)
 				if problem.HasErrors(ps) {
 					return failure("%s", ps[0].String())
 				}
@@ -469,7 +469,7 @@ func newBackupInstallCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&root, "root", "/", "filesystem root to install under (for testing/chroot)")
 	cmd.Flags().StringVar(&dir, "dir", ".", "company directory (company.yaml)")
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "modules directory (default: ./modules, else the manifests built into can)")
 	cmd.Flags().StringVar(&kitPath, "kit", "", "recovery kit file, or - for stdin")
 	cmd.Flags().StringVar(&passFile, "passphrase-file", "", "passphrase file for an encrypted kit")
 	cmd.Flags().BoolVar(&enable, "enable", false, "systemctl daemon-reload and enable --now the timer")

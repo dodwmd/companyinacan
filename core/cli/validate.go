@@ -10,9 +10,15 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/validate"
+	"github.com/dodwmd/companyinacan/modules"
 )
 
-// resolveModulesDir picks the modules directory: flag, $CAN_MODULES_DIR, <dir>/modules, ./modules.
+// A release archive and `go install` have no modules directory.
+func init() { validate.UseShipped(modules.Shipped) }
+
+// resolveModulesDir picks the modules directory: flag, $CAN_MODULES_DIR, <dir>/modules, ./modules,
+// else the manifests built into can. A flag or the variable is taken as given; a directory found by
+// its name only counts when it holds a module (a project may keep other things in modules/).
 func resolveModulesDir(flag, dir string) string {
 	if flag != "" {
 		return flag
@@ -21,11 +27,24 @@ func resolveModulesDir(flag, dir string) string {
 		return env
 	}
 	for _, c := range []string{filepath.Join(dir, "modules"), "modules"} {
-		if st, err := os.Stat(c); err == nil && st.IsDir() {
+		if holdsModules(c) {
 			return c
 		}
 	}
-	return "modules"
+	return validate.BuiltinModules
+}
+
+func holdsModules(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(dir, e.Name(), "module.yaml")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func printProblems(cmd *cobra.Command, g *globalOpts, ps []problem.Problem) error {
@@ -70,6 +89,6 @@ func newValidateCmd(g *globalOpts) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "directory containing module manifests (default $CAN_MODULES_DIR, ./modules)")
+	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "directory containing module manifests (default $CAN_MODULES_DIR, ./modules, else the ones built into can)")
 	return cmd
 }

@@ -88,6 +88,13 @@ func newInitCmd(_ *globalOpts) *cobra.Command {
 				return err
 			}
 			content := append([]byte("# Company description. Validate with `can validate`.\n"), body...)
+			// A static host runs no forms gateway, so it gets no contact form.
+			if providerType != "static" {
+				content = append(content, fmt.Sprintf(initContactForm, c.Domain)...)
+				if doc, ps := config.LoadBytes(target, content); doc == nil || problem.HasErrors(append(ps, schema.Validate(schema.Company, doc)...)) {
+					return failure("the generated company.yaml is invalid; this is a bug")
+				}
+			}
 			if err := os.WriteFile(target, content, 0o600); err != nil {
 				return err
 			}
@@ -108,6 +115,23 @@ func newInitCmd(_ *globalOpts) *cobra.Command {
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt; require flags")
 	return cmd
 }
+
+// initContactForm is the working contact form of a new company (docs/site-contact.md): the forms
+// module and the section that links to it. Mail needs a relay, which only the operator knows, so
+// that part is commented out. %[1]s is the company domain.
+const initContactForm = `modules:
+  forms: {}
+  # To be emailed about every new message, use this line instead of the one above, and set the relay
+  # under email: below.
+  # forms: { settings: { notify_email: [hello@%[1]s] } }
+# email:
+#   relay: { host: smtp.example.com, from: no-reply@%[1]s }
+# SMTP credentials never go in this file: make up SMTP_CREDENTIALS=smtp.env (docs/email.md)
+site:
+  contact:
+    title: Contact us
+    text: Send us a message and we will get back to you.
+`
 
 func ask(in *bufio.Reader, out io.Writer, label, def string) string {
 	if def != "" {
