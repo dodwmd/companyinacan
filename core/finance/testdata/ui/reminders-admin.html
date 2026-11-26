@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Payment reminders - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/approvals">Approvals</a></li>
+<li><a href="/parties">Customers and vendors</a></li>
+<li><a href="/invoices">Invoices</a></li>
+<li><a href="/recurring">Recurring</a></li>
+<li><a href="/contracts">Contracts</a></li>
+<li><a href="/purchase-orders">Purchase orders</a></li>
+<li><a href="/timesheets">Timesheets</a></li>
+<li><a href="/expenses">Expenses</a></li>
+<li><a href="/reports/aging">Reports</a></li>
+<li><a href="/settings" aria-current="page">Settings</a></li>
+<li><a href="/ledger/accounts">Accounting</a></li>
+<li><a href="/bank/reconciliation">Bank</a></li>
+
+<li><a href="http://admin.localhost/notifications">Notifications</a></li>
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Payment reminders</h1>
+<p>Reminders are emailed to customers about sent invoices that are overdue and not fully paid. Never about paid, void, disputed or stopped invoices.</p>
+<p class="notice">Emailing is off: it needs can-core&#39;s email service and a published public invoice link (docs/finance.md).</p>
+
+<form method="post" action="/settings/reminders" class="card">
+<input type="hidden" name="csrf" value="CSRF">
+<p><label for="rem-enabled">Send reminders</label>
+<select id="rem-enabled" name="enabled"><option value="0">No</option><option value="1">Yes</option></select></p>
+<p><label for="rem-days">Days after the due date</label>
+<input id="rem-days" name="days" required maxlength="40" value="7, 14, 30" aria-describedby="rem-days-hint"></p>
+<p id="rem-days-hint" class="hint">Up to five increasing numbers, for example 7, 14, 30. One reminder for each, at least three days apart.</p>
+<p><label for="rem-max">Stop chasing after (days overdue)</label>
+<input id="rem-max" name="max_overdue_days" inputmode="numeric" maxlength="4" value="90" aria-describedby="rem-max-hint"></p>
+<p id="rem-max-hint" class="hint">Older debts get no automatic reminder.</p>
+<p><button type="submit">Save</button></p>
+</form>
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

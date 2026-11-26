@@ -59,7 +59,8 @@ type Store struct {
 	sealer        *Sealer
 	importing     sync.Mutex // one CSV import at a time (specs/047-csv-import)
 	importTimeout time.Duration
-	sign          signing // contract signing by emailed link (specs/049-contract-esign)
+	sign          signing    // contract signing by emailed link (specs/049-contract-esign)
+	docs          docMailing // invoices, statements and reminders by email (specs/062-invoice-email)
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.

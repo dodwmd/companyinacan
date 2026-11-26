@@ -275,6 +275,10 @@ type partyData struct {
 	More     bool
 	CanEdit  bool
 	CanErase bool
+
+	CanRemind, CanStatement, MailReady bool
+	Mails                              []DocumentMail
+	Reminders                          *ReminderState
 }
 
 func (u *UI) party(c *uiCtx) error {
@@ -291,7 +295,17 @@ func (u *UI) party(c *uiCtx) error {
 		return err
 	}
 	cp := capsOf(c.p)
-	u.render(c.w, c.r, c, http.StatusOK, "party.html", "party.title", partyData{P: *p, Invoices: invs, More: next > 0, CanEdit: cp.Write && !p.Erased, CanErase: cp.Admin})
+	d := partyData{P: *p, Invoices: invs, More: next > 0, CanEdit: cp.Write && !p.Erased, CanErase: cp.Admin, MailReady: u.Store.MailReady()}
+	// A token limited to some projects sees only part of a party, so it gets none of this.
+	switch d.Mails, d.Reminders, err = u.Store.ListPartyMails(c.ctx(), c.p, id); {
+	case errors.Is(err, ErrForbidden):
+	case err != nil:
+		return err
+	default:
+		d.CanRemind = cp.Write && !p.Erased
+		d.CanStatement = d.CanRemind && p.Email != ""
+	}
+	u.render(c.w, c.r, c, http.StatusOK, "party.html", "party.title", d)
 	return nil
 }
 

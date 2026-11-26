@@ -35,6 +35,7 @@
 </div>
 <p class="actions">
 <a href="/invoices/{{.Data.V.ID}}/html">{{t "invoice.print"}}</a>
+<a href="/invoices/{{.Data.V.ID}}/pdf">{{t "mail.pdf"}}</a>
 {{if .Data.CanEdit}}<a href="/invoices/{{.Data.V.ID}}/edit">{{t "common.edit"}}</a>{{end}}
 {{if .Data.CanCredit}}<a href="/invoices/{{.Data.V.ID}}/credit-note">{{t "credit.title"}}</a>{{end}}
 </p>
@@ -78,6 +79,41 @@
 <button type="submit">{{t "invoice.send"}}</button>
 </form>
 <p class="hint">{{t "invoice.send_hint"}}</p>
+</section>
+{{end}}
+
+{{if or .Data.CanEmail .Data.Mails}}
+<section aria-labelledby="h-mail">
+<h2 id="h-mail">{{t "mail.title"}}</h2>
+{{if .Data.CanEmail}}
+{{if .Data.MailReady}}
+<form method="post" action="/invoices/{{.Data.V.ID}}/email" class="inline">
+{{template "csrf" .}}
+<button type="submit">{{t "mail.send"}}</button>
+</form>
+<p class="hint">{{t "mail.send_hint"}}</p>
+{{else}}<p class="hint">{{t "mail.off"}}</p>{{end}}
+{{end}}
+{{if .Data.Mails}}{{template "maillog" .Data.Mails}}{{end}}
+</section>
+{{end}}
+{{if .Data.CanRemind}}
+<section aria-labelledby="h-remind">
+<h2 id="h-remind">{{t "remind.title"}}</h2>
+<p>{{st "hold" .Data.Reminders.Hold}}</p>
+{{if .Data.Reminders.PartyStopped}}<p class="notice">{{t "remind.party_stopped"}}</p>{{end}}
+{{if not .Data.Reminders.Enabled}}<p class="hint">{{t "remind.schedule_off"}}</p>{{end}}
+<form method="post" action="/invoices/{{.Data.V.ID}}/reminders" class="inline">
+{{template "csrf" .}}
+<label for="hold-state">{{t "remind.set"}}</label>
+<select id="hold-state" name="state">
+{{$hold := .Data.Reminders.Hold}}<option value="on"{{if eq $hold "on"}} selected{{end}}>{{t "hold.on"}}</option>
+<option value="stopped"{{if eq $hold "stopped"}} selected{{end}}>{{t "hold.stopped"}}</option>
+<option value="disputed"{{if eq $hold "disputed"}} selected{{end}}>{{t "hold.disputed"}}</option>
+</select>
+<button type="submit">{{t "common.save"}}</button>
+</form>
+<p><a href="/settings/reminders">{{t "remind.schedule"}}</a></p>
 </section>
 {{end}}
 

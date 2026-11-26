@@ -127,6 +127,10 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			if err := exec(&rep.PurchaseOrders, `DELETE FROM purchase_orders WHERE status IN ('received', 'cancelled') AND date(created_at, 'unixepoch') < ?`, cutoff); err != nil {
 				return err
 			}
+			// Records of mailed statements (those of invoices go with their invoice).
+			if err := exec(&ignore, `DELETE FROM document_mails WHERE invoice_id IS NULL AND date(created_at, 'unixepoch') < ?`, cutoff); err != nil {
+				return err
+			}
 			// The ids they were imported under stay behind as hashes (specs/047-csv-import).
 			if err := s.keepErasedIDs(ctx, tx); err != nil {
 				return err
