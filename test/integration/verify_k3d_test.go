@@ -21,11 +21,16 @@ import (
 
 type nodeRunner struct{}
 
+// nodeShim makes the node image answer as a server does: there `k3s kubectl` is how kubectl is run,
+// while in the k3d image that spelling fails (unknown command "kubectl") and kubectl is its own name.
+const nodeShim = `k3s() { if [ "$1" = kubectl ]; then shift; kubectl "$@"; else command k3s "$@"; fi; }
+`
+
 func (nodeRunner) Run(ctx context.Context, script string) (string, error) {
 	// k3d writes the node's kubeconfig where K3S_KUBECONFIG_OUTPUT says, not at the path a server has.
 	const shell = `export KUBECONFIG="${K3S_KUBECONFIG_OUTPUT:-/etc/rancher/k3s/k3s.yaml}"; exec sh -s`
 	cmd := exec.CommandContext(ctx, "docker", "exec", "-i", nodeName(), "sh", "-c", shell) //nolint:gosec // test helper
-	cmd.Stdin = strings.NewReader(script)
+	cmd.Stdin = strings.NewReader(nodeShim + script)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -38,10 +43,12 @@ func verifyOnK3d(t *testing.T, domain string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	diag, _ := nodeRunner{}.Run(ctx, "echo KUBECONFIG=$KUBECONFIG; ls -l /etc/rancher/k3s /output 2>&1; command -v k3s kubectl; k3s kubectl get nodes 2>&1 | head -5")
-	t.Logf("verify: the node's kubectl:\n%s", diag)
 	checks, facts := verify.CollectServer(ctx, nodeRunner{}, verify.ServerOptions{})
 	routes := facts.Routes()
+	if len(routes) == 0 {
+		diag, _ := nodeRunner{}.Run(ctx, "k3s kubectl get nodes,ingressroutes.traefik.io -A 2>&1 | head -20")
+		t.Logf("verify: no routes seen; the node's kubectl says:\n%s", diag)
+	}
 	edgeNet := verify.Net{Now: time.Now, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 		_, port, err := net.SplitHostPort(address)
 		if err != nil || port != "80" {
