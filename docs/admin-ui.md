@@ -106,7 +106,7 @@ users into its web UI, or a changed data class. Until then the running release a
 opt-out or new credentials, and settings do not reach it, because can-core does not rebuild the installed
 release without its chart. `can apply` names each requested change as NOT APPLIED and exits non-zero when
 exposure or access was to be taken away (or when it cannot tell, for a module installed before this was
-recorded); `can status`, `secrets rotate` and the admin UI's preview and result say the same. **Two ways out:**
+recorded); `can up` does the same once the stack is up, for the `company.yaml` it pushed; `can status`, `secrets rotate` and the admin UI's preview and result say the same. **Two ways out:**
 approve the upgrade, or disable the module in `company.yaml`, which takes it offline (enabling it again installs
 the new version without asking). Backups of a waiting module use the hooks of what is installed (a
 module installed before hook scripts were recorded uses the shipped script). Approve on the catalogue page, with

@@ -94,4 +94,28 @@ func TestWideningUpgradeIsShownAndApproved(t *testing.T) {
 	if page := m.do("GET", "/catalogue", nil, ops.cookie).body; strings.Contains(page, "/upgrades/web/approve") {
 		t.Fatal("still shown as waiting")
 	}
+
+	// Enabling a module again asks for no approval, so its preview says what that brings.
+	d, ps := reconcile.LoadDesired(m.store.Path, m.svc.ModulesDir)
+	if d.Company == nil {
+		t.Fatal(ps)
+	}
+	solo := filepath.Join(m.svc.ModulesDir, "solo", "module.yaml")
+	enableSolo := modmgr.Patch{Ops: []modmgr.Op{modmgr.SetEnabled("solo", true)}}
+	next, err := m.svc.Propose(ctx, "ops", modmgr.Proposal{Patch: enableSolo})
+	must(t, err)
+	_, err = m.svc.Apply(ctx, "ops", next.ID)
+	must(t, err)
+	off, err := m.svc.Propose(ctx, "ops", modmgr.Proposal{Patch: modmgr.Patch{Ops: []modmgr.Op{modmgr.SetEnabled("solo", false)}}})
+	must(t, err)
+	_, err = m.svc.Apply(ctx, "ops", off.ID)
+	must(t, err)
+	sb, err := os.ReadFile(solo)
+	must(t, err)
+	must(t, os.WriteFile(solo, append(sb, "permissions: [solo.admin]\n"...), 0o600))
+	again, err := m.svc.Propose(ctx, "ops", modmgr.Proposal{Patch: enableSolo})
+	must(t, err)
+	if body := m.do("GET", "/changes/"+again.ID, nil, ops.cookie).body; !strings.Contains(body, "newly allowed: new permission solo.admin") {
+		t.Fatal("the preview of enabling does not list what is newly allowed")
+	}
 }

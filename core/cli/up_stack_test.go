@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -497,5 +498,50 @@ func TestDownRemovesTheBackupTimerOnTheSSHServer(t *testing.T) {
 	}
 	if !removed {
 		t.Fatal("down must remove the backup timer and its credentials from the server")
+	}
+}
+
+// planKube answers the plan can-core is asked for after the stack is up.
+type planKube struct {
+	nopKube
+	plan  string
+	asked *[]string
+}
+
+func (k planKube) Run(_ context.Context, _ []byte, args ...string) (string, error) {
+	if strings.Contains(strings.Join(args, " "), "/can-core modules plan") {
+		*k.asked = args
+		return k.plan, nil
+	}
+	return "", nil
+}
+
+// `can up` pushes company.yaml: what a waiting module does not get of it is said, and it fails when
+// exposure or access was to be taken away.
+func TestUpNamesWhatAHeldModuleDoesNotGet(t *testing.T) {
+	for _, urgent := range []bool{true, false} {
+		dir, _ := setup(t)
+		res := stackResult()
+		res.CompanyYAML = []byte("schema: 1\nname: pushed\n")
+		useStack(t, false, res, nil)
+		var asked []string
+		plan := `{"actions":[{"kind":"upgrade","module":"forms","reason":"manifest changed","widens":["new permission leads.erase"],"held":"approval","approval":"0123456789abcdef","not_applied":["switching off the public routes (they stay public)"],"urgent":` + map[bool]string{true: "true", false: "false"}[urgent] + `}]}`
+		lifecycle.kube = func(string, string) launch.Kube { return planKube{plan: plan, asked: &asked} }
+		code, out, errs := run(t, stackArgs(dir)...)
+		for _, want := range []string{"waiting for approval: upgrade: forms", "NOT APPLIED: switching off the public routes", "takes it offline", "newly allowed: new permission leads.erase"} {
+			if !strings.Contains(out+errs, want) {
+				t.Errorf("urgent=%v: lacks %q:\n%s\n%s", urgent, want, out, errs)
+			}
+		}
+		if len(asked) == 0 || asked[len(asked)-1] != base64.StdEncoding.EncodeToString(res.CompanyYAML) {
+			t.Fatalf("not planned against the pushed company.yaml: %v", asked)
+		}
+		if (code == ExitFailure) != urgent || (urgent && !strings.Contains(errs, "module forms: NOT APPLIED")) {
+			t.Fatalf("urgent=%v: code=%d err=%q", urgent, code, errs)
+		}
+		// The one-time summary is printed before the failure.
+		if !strings.Contains(out, "NOT shown") {
+			t.Fatalf("the summary was lost:\n%s", out)
+		}
 	}
 }

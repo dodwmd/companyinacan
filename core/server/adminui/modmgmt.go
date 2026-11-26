@@ -549,7 +549,11 @@ func (s *Server) previewData(pv *modmgr.Preview) changeData {
 		}
 	}
 	for _, a := range pv.Actions {
-		d.Actions = append(d.Actions, actionView{Kind: string(a.Kind), KindLabel: s.msg(actionLabels[a.Kind]), Module: a.Module, Reason: modmgr.Sanitise(a.Reason)})
+		reason := a.Reason
+		if len(a.Widens) > 0 { // enabling again, or an approved upgrade: say what it brings
+			reason += "; newly allowed: " + strings.Join(a.Widens, ", ")
+		}
+		d.Actions = append(d.Actions, actionView{Kind: string(a.Kind), KindLabel: s.msg(actionLabels[a.Kind]), Module: a.Module, Reason: modmgr.Sanitise(reason)})
 	}
 	for _, a := range pv.Held {
 		h := heldView{Module: a.Module, Reason: modmgr.Sanitise(a.Reason)}

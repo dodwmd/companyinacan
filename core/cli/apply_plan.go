@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dodwmd/companyinacan/core/cluster"
+	"github.com/dodwmd/companyinacan/core/launch"
 	"github.com/dodwmd/companyinacan/core/server/reconcile"
 )
 
@@ -36,6 +37,46 @@ func printActions(w io.Writer, verb string, actions []reconcile.Action) {
 			fmt.Fprintf(w, "    %s gets no change until you approve what is listed (can apply --approve %s=%s) or disable it in company.yaml, which takes it offline\n", a.Module, a.Module, a.Approval)
 		}
 	}
+}
+
+// parsePlan reads the answer of `can-core modules plan`.
+func parsePlan(out string) (reconcile.Result, error) {
+	var res reconcile.Result
+	if !strings.HasPrefix(strings.TrimSpace(out), "{") {
+		return res, fmt.Errorf("unexpected answer")
+	}
+	err := json.Unmarshal([]byte(out), &res)
+	return res, err
+}
+
+func planArgs(company []byte) []string {
+	return []string{"-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "modules", "plan", "--company-b64", base64.StdEncoding.EncodeToString(company)}
+}
+
+// heldAfterUp asks the can-core that `can up` just deployed what it makes of the company.yaml that
+// was pushed, as `can apply` does before it syncs: the modules waiting for approval are listed on w
+// and in warnings, and notApplied is notAppliedError of them.
+func heldAfterUp(ctx context.Context, kube launch.Kube, company []byte, w io.Writer) (warnings []string, notApplied error) {
+	out, err := kube.Run(ctx, nil, planArgs(company)...)
+	var res reconcile.Result
+	if err == nil {
+		res, err = parsePlan(out)
+	}
+	if err != nil {
+		return []string{fmt.Sprintf("can-core could not be asked which modules wait for approval (%v). No change reaches a waiting module, exposure removal included: check `can status`.", err)}, nil
+	}
+	_, held := reconcile.SplitHeld(res.Actions)
+	printActions(w, "planned", held)
+	for _, a := range held {
+		if a.Held != reconcile.HeldApproval {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf("module %q waits for approval and no change reaches it. Two ways out: %s", a.Module, reconcile.WaysOut))
+		for _, x := range a.NotApplied {
+			warnings = append(warnings, fmt.Sprintf("module %q: NOT APPLIED: %s", a.Module, x))
+		}
+	}
+	return warnings, notAppliedError(held)
 }
 
 // notAppliedError fails an apply that leaves exposure or access in place which the operator asked
@@ -83,8 +124,7 @@ func approvalCodes(planned []reconcile.Action, args []string) (map[string]string
 // or too old) is only warned about. notApplied is what the apply that follows cannot deliver (see
 // notAppliedError); the caller fails with it once the rest is applied.
 func clusterPreview(cmd *cobra.Command, companyFile, kubeContext string, approve []string, required bool) (notApplied, err error) {
-	exec := func(args ...string) (string, error) {
-		full := append([]string{"-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "modules"}, args...)
+	exec := func(full ...string) (string, error) {
 		if kubeContext != "" {
 			full = append([]string{"--context", kubeContext}, full...)
 		}
@@ -95,11 +135,9 @@ func clusterPreview(cmd *cobra.Command, companyFile, kubeContext string, approve
 		return nil, err
 	}
 	var res reconcile.Result
-	out, err := exec("plan", "--company-b64", base64.StdEncoding.EncodeToString(data))
-	if err == nil && strings.HasPrefix(strings.TrimSpace(out), "{") {
-		err = json.Unmarshal([]byte(out), &res)
-	} else if err == nil {
-		err = fmt.Errorf("unexpected answer")
+	out, err := exec(planArgs(data)...)
+	if err == nil {
+		res, err = parsePlan(out)
 	}
 	if err != nil {
 		if required || len(approve) > 0 {
@@ -125,7 +163,7 @@ func clusterPreview(cmd *cobra.Command, companyFile, kubeContext string, approve
 		return nil, nil // --plan changes nothing, so it records no approval either
 	}
 	for id, code := range codes {
-		if _, err := exec("approve", id, code); err != nil {
+		if _, err := exec("-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "modules", "approve", id, code); err != nil {
 			return nil, fmt.Errorf("approving the upgrade of %s: %w", id, err)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "approved the upgrade of %s\n", id)
