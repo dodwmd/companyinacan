@@ -75,6 +75,18 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
+	// .can/state.json is the laptop's memory; the server may be another one (replaced, restored
+	// from a backup, or overwritten by a restore that stopped the timer). Only the server itself
+	// can say whether it is being backed up.
+	onHost := false
+	if installed {
+		if onHost, err = r.timerOnHost(ctx, s); err != nil {
+			return false, "", err
+		}
+		if !onHost {
+			r.res.Warnings = append(r.res.Warnings, "the server had no working backup timer although this directory recorded one (a replaced or restored server): installing it now")
+		}
+	}
 	// Does the operator's kit still match what the server will use?
 	changed := false
 	if installed {
@@ -102,7 +114,7 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 		}
 		r.res.Warnings = append(r.res.Warnings, "the restic password, repository or bucket credentials differ from the recovery kit you hold: store the NEW kit")
 	}
-	if installed && !changed && st.Launch.BackupVersion >= BackupInstallVersion {
+	if installed && onHost && !changed && st.Launch.BackupVersion >= BackupInstallVersion {
 		// The credentials file follows the flags even when nothing else is redone.
 		if want := backup.HostEnvFile(kit); strings.TrimSpace(hostEnv) != strings.TrimSpace(want) {
 			if err := r.verifyCredentials(ctx, s, kit, want); err != nil {
@@ -181,6 +193,16 @@ echo CAN_BACKUP_OK
 		return false, "", err
 	}
 	return false, "", nil
+}
+
+// timerOnHost reports whether the server has the backup script and an enabled, running timer.
+// Anything but a clear yes counts as no: installing again is harmless.
+func (r *runner) timerOnHost(ctx context.Context, s backup.Settings) (bool, error) {
+	out, err := r.d.Host.Run(ctx, fmt.Sprintf("if [ -x %s ] && systemctl is-enabled --quiet can-backup.timer && systemctl is-active --quiet can-backup.timer; then echo CAN_TIMER_OK; else echo CAN_TIMER_MISSING; fi\n", shq(s.ScriptPath)))
+	if err != nil {
+		return false, fmt.Errorf("check the backup timer on the server: %w", err)
+	}
+	return strings.Contains(out, "CAN_TIMER_OK"), nil
 }
 
 // envValue reads one value from the content of a restic.env written by backup.HostEnvFile.

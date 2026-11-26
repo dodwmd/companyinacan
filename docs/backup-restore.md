@@ -220,11 +220,21 @@ Overrides, each separate and each printed when used:
 | `--confirm-overwrite "<company name>"` | restoring over a server that is not blank. Its dumps, can-core state, Secrets and volumes of restored modules are **replaced**; the old state database is kept as `state.db.pre-restore`; modules not in the backup are left alone |
 | `--snapshot ID`, `--force-older` | choosing another snapshot; skipping a newer one that fails its consistency check |
 | `--without-secrets` | a snapshot made before the Secrets export: modules get new keys, sealed data is unreadable |
-| `--accept-unrestored <module or namespace/claim>` | a dump or volume that cannot be brought back (no restore hook, database not backed up, a database server's volume) |
+| `--accept-unrestored <module or namespace/claim>` | a dump or volume that cannot be brought back (no restore hook, database not backed up, a database server's volume). **It is not in the new server's backups either, and the old snapshots that hold it are deleted after 35 days: recover it before then or it is gone** |
 | `--accept-unerased <module:class>` | a tombstone no module can replay, or whose purge keeps failing (`*:<class>` when no installed module holds the class). **You must erase that data by hand** |
 | `--allow-no-ledger` | no ledger in the bucket: only if no erasure was ever requested |
 | `--accept-ledger-behind` | the bucket ledger lacks entries the snapshot's copy has: erasures may be lost |
+| `--accept-company "<name>"` | a snapshot whose `company.yaml` names another company than the kit (renamed since the kit was made) |
 | `--repo /path/restic` | a local copy of the repository instead of the bucket (its ledger is read from `/path/ledger`) |
+
+A resume must use the same choices: a different `--snapshot`, `--repo`, `--dir`, `--force-older` or
+`--confirm-overwrite` is refused, and so is running a restore that already finished. An unfinished restore's claim on the
+server expires after 72 hours without a run, or as soon as can-core there is no longer in that restore; the next run
+starts over with the blank-server check (so it needs `--confirm-overwrite`).
+
+Afterwards the server is **not** backed up until `can up` has run with the `--backup-*` flags (it checks the server
+itself, not what the laptop remembers). Module erasures made after the snapshot and not added to the ledger by hand are
+back: repeat them.
 
 Snapshot choice: snapshots are walked newest first and every decision is printed. One tagged `inconsistent` is skipped,
 one not tagged `can` is ignored, a newer `can` snapshot that fails its marker check stops the restore, and a transient
@@ -238,8 +248,10 @@ database names are missing, and those files were destroyed after the backup's du
 
 ## Erasure tombstone ledger
 
-can-core appends `(subject id, data class, date)` to `/var/lib/can/erasure-ledger.jsonl` using `backup.Ledger.Append`
-(`can backup ledger-add` does the same by hand). Subject ids must be opaque (no email or name; the tool rejects them).
+**Nothing writes the ledger by itself.** Neither can-core nor any module records an erasure in it: after every
+erasure, add the entry on the server with `can backup ledger-add --subject <id> --class <data class>`, which appends
+`(subject id, data class, date)` to `/var/lib/can/erasure-ledger.jsonl`. An erasure that was not added is **undone**
+by a restore from a snapshot made before it. Subject ids must be opaque (no email or name; the tool rejects them).
 The file is hash-chained, so editing, reordering or removing early entries is detected. After each backup the script
 runs `can backup ledger-sync`, which merges it into the encrypted object `ledger/erasure-ledger.v1.enc` in the bucket,
 outside the `restic/` prefix. The key is derived from the restic password. Sync never shrinks the remote ledger and
@@ -320,6 +332,6 @@ a module backup hook Job. `restore-e2e` backs up a company, destroys the cluster
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
   directory and a run holds the old and the new set at once. Hooks retry with `--retry` only, which does not cover
   a connection refused while a new pod's network rules are still being programmed.
-- The erasure ledger upload (can-core does not write the ledger yet; `can backup ledger-add` does by hand).
+- The erasure ledger upload. Nothing writes the ledger automatically; `can backup ledger-add` does by hand.
 - The restore-time target (15 minutes) and the effect of data size on dump and backup time.
 - Whether the 35-day retention fits your legal obligations is for you to decide.

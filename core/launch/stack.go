@@ -471,6 +471,11 @@ func (r *runner) hostDumpsDir(ctx context.Context) error {
 		return err
 	}
 	if r.o.Backup == nil && st.Launch != nil && st.Launch.BackupInstalled {
+		if ok, err := r.timerOnHost(ctx, backup.DefaultSettings()); err != nil {
+			return err
+		} else if !ok {
+			r.res.Warnings = append(r.res.Warnings, "THIS SERVER IS NOT BEING BACKED UP: it has no working backup timer, although this directory installed one (a replaced or restored server). Run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file")
+		}
 		if st.Launch.BackupVersion < BackupInstallVersion {
 			r.res.Warnings = append(r.res.Warnings, "the backup script on the server was installed by an older version: run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file to update it")
 		}

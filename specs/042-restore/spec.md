@@ -53,7 +53,9 @@ Before this feature `can restore` stopped at its first step: neither the cluster
   `--accept-unerased`, `--allow-no-ledger`, `--accept-ledger-behind`, `--force-older`.
 - **FR-008** `can backup verify` applies the FR-002 checks of the snapshot.
 - **FR-009** The ledger and the repository credentials are written back to the server; `can up` afterwards keeps the
-  restored admin account.
+  restored admin account and installs the backup timer when the server lacks it, whatever the laptop's state says.
+- **FR-009a** A resume skips volumes already copied and refuses changed choices; a finished restore is refused; go-live
+  restarts can-core and checks that the new process serves normally; the snapshot's company name must match the kit's.
 - **FR-010** (#49 follow-ups) A database module that was never provisioned does not block backups; a re-run keeps the
   backup region; rotated credentials are tried before they replace `restic.env`; alerts lead with
   `DATABASE IS NOT BACKED UP` and warnings are not worded as failures.
@@ -76,7 +78,8 @@ erasure promise.
 |---|---|---|
 | The Secrets export leaks | written 0600 into a directory only can-core (uid 65532) and root read; leaves the server only inside the encrypted repository; never printed (parse errors do not echo it) | root on the server, or a compromised can-core, reads it; both could already read every module Secret |
 | Someone with the kit reads everything | none added: the kit has always been the key to the repository | the kit is now also enough to reconstruct all module keys. Guard it as the company's master key |
-| Restore overwrites a working server | root required; blank check before fetching and again before the first change; confirmation by company name; refused restores leave no state; the old timer and can-core are stopped first, and a volume is not written while a pod uses it | the check looks for what this platform creates; unrelated services on the host are not detected |
+| Restore overwrites a working server | root required; blank check before fetching and again before the first change; a claim expires (72 h idle, or can-core no longer in this restore); a finished restore is refused; confirmation by company name; refused restores leave no state; the old timer and can-core are stopped first, and a volume is not written while a pod uses it | the check looks for what this platform creates; unrelated services on the host are not detected |
+| Erased data comes back (unrecorded erasures) | said at the erasure step and at the end of the restore | **nothing records erasures automatically** |
 | Erased data comes back | ledger read before changes and again at replay; union with the snapshot and local copies; fail closed; no routes or replicas before replay; purged modules' dumps removed | erasures never written to the ledger are unknown. **can-core does not write the ledger yet** (`can backup ledger-add` by hand). A consistent roll-back of the whole bucket is undetectable (specs/008 R12) |
 | Restore sends mail or webhooks again | workers not started in restore mode; module email and events refused; queued mail discarded at go-live | undelivered events to modules are delivered after go-live (consumers de-duplicate by event id). `files` and `jobs` run during their purge and may attempt outbound calls of their own |
 | Restore mode ends early | latched on disk; only `restore complete` removes it | an operator with cluster-admin can delete the latch |

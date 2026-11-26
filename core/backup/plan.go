@@ -31,7 +31,7 @@ type Settings struct {
 	MaxMarkerAge  time.Duration
 	Schedule      string // systemd OnCalendar expression
 	RandomDelay   string // systemd RandomizedDelaySec
-	LedgerSource  string // erasure ledger file written by can-core
+	LedgerSource  string // erasure ledger file (written by `can backup ledger-add` and restore only)
 	CanBin        string // can binary used for ledger upload
 }
 
