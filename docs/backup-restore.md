@@ -279,8 +279,9 @@ restic error while checking also stops it. The chosen snapshot is pinned for res
 
 Which modules lose what, today: every shipped in-house module is restored from its own consistent dump, by
 `<binary> restore -replace`; `forms` replays lead erasures over `/v1/purge` ([erasure requests](../modules/forms/README.md#erasure-requests));
-`finance`, `work` and `provisioning` have no purge by subject and class, so tombstones of their classes need
-`--accept-unerased`. If `files` or `jobs` refuse to restore because files their
+`finance` and `work` replay theirs with their own `purge` command
+([specs/056](../specs/056-erasure-finance-work/spec.md)); `provisioning` has no purge by subject and class, so
+tombstones of its classes need `--accept-unerased`. If `files` or `jobs` refuse to restore because files their
 database names are missing, and those files were destroyed after the backup's dump was taken,
 `--allow-missing-blobs <module>` goes on without them; otherwise it means the volume was not restored.
 
@@ -300,6 +301,9 @@ reported it, and a restore applies it to that module alone. One module's feed is
 after 1,000 refused tombstones. Each module has a bounded share of the ledger (8 MiB,
 about 30,000 erasures, 5,000 new a minute; 56 MiB in all). A full share is reported like an unreadable feed. The
 ledger is never compacted, so a very large company would reach this after years.
+
+`finance` records a party erasure as `party-<id>-<creation time>` (class `finance-party-contact`) and `work` a
+person erasure as a hash of the identifier (class `work-issue`); the erase call returns that subject.
 
 **What a restore replays.** Each entry says when the data was erased. A module dump taken after that already
 reflects the erasure and may hold data created since for the same subject, so **nothing is purged from it**; only
@@ -326,7 +330,7 @@ run fails with exit 22.
 
 **What is not covered:**
 
-- **Modules without an erasure feed record nothing**: `finance`, `work`, `provisioning` and the wrapped apps
+- **Modules without an erasure feed record nothing**: `provisioning` and the wrapped apps
   (`crm`, `wiki`, `support`, `newsletter`, `status`, `analytics`). Each run of `ledger-import` names the installed ones
   that hold data classes. Something erased in them is **back** after a restore of an older backup. If a purge hook can
   replay it, erase there and record it: `can backup ledger-add --subject <id> --class <data class>`.
