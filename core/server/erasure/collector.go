@@ -194,12 +194,13 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 			c.log().Warn("erasure feed: tombstones refused: a subject that is not an opaque id, or a data class the module does not declare", "module", m.ID, "count", rejected)
 		}
 		// A module recorded as failed may well have run, and erased, before: not being able to
-		// ask it is reported like any other. Not so one whose first install never succeeded: a
-		// report would fail the erasure step of every backup over data that cannot exist.
+		// ask it is reported like any other. Not so one whose first install never succeeded and
+		// that never had a dump: a report would fail the erasure step of every backup over data
+		// that cannot exist.
 		switch {
 		case err == nil:
 			st.Collected = append(st.Collected, m.ID)
-		case c.NeverInstalled != nil && c.NeverInstalled(ctx, m.ID):
+		case c.NeverInstalled != nil && c.NeverInstalled(ctx, m.ID) && !c.published(m.ID):
 			st.NotAsked = append(st.NotAsked, m.ID)
 		default:
 			st.Failed[m.ID] = err.Error()
@@ -213,6 +214,13 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 	}
 	st.At = c.now().UTC()
 	return st, writeStatus(filepath.Join(dir, backup.CollectedStatusFile), st)
+}
+
+// published reports a dump of the module in the dumps directory: it has held data (a module
+// restored from a backup, then failing, looks never installed). The dumper asks the same.
+func (c *Collector) published(module string) bool {
+	ents, err := os.ReadDir(filepath.Join(c.Dir, "modules", module))
+	return err == nil && len(ents) > 0
 }
 
 func writeStatus(p string, st backup.CollectStatus) error {

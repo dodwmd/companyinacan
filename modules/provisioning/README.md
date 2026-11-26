@@ -7,9 +7,8 @@ image `deploy/provisioning`. It provides the `identity.provision` capability and
 
 **Status: experimental.** Built and tested offline against fakes and measured locally (14 MiB idle,
 19 MiB after 600 requests). No connector has talked to a real service, no identity provider has used
-the SCIM server, the chart installs through can-core's installer in unit tests only, and the default
-module-namespace NetworkPolicy does not yet allow the module to reach the people module or any
-downstream host. Everything unverified is listed in [`docs/provisioning.md`](../../docs/provisioning.md).
+the SCIM server. can-core connects it to the people module (specs/057-module-capability-wiring);
+connector credentials cannot be supplied yet. Everything unverified is listed in [`docs/provisioning.md`](../../docs/provisioning.md).
 
 **Installed under can-core** (see [`docs/module-wiring.md`](../../docs/module-wiring.md)): can-core
 generates the API token once; personal access tokens with `provision.read`, `provision.write` or

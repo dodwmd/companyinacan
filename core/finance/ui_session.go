@@ -90,8 +90,8 @@ func (u *UI) checkToken(r *http.Request, token string, check func(*http.Request)
 	return p, nil
 }
 
-// recheckFor is how often a session re-authenticates: every minute for a session that can approve
-// or administer, RecheckEvery for everyone else.
+// recheckFor is how often a session re-authenticates: every minute for a session that can write,
+// approve or administer, RecheckEvery for a reader.
 func (u *UI) recheckFor(p *Principal) time.Duration {
-	return session.Interval(u.RecheckEvery, p.Can(PermApprove) || p.Can(PermAdmin) || p.Can(PermLedgerApprove) || p.Can(PermLedgerAdmin))
+	return session.Interval(u.RecheckEvery, p.Can(PermWrite) || p.Can(PermLedgerWrite) || p.Can(PermApprove) || p.Can(PermAdmin) || p.Can(PermLedgerApprove) || p.Can(PermLedgerAdmin))
 }

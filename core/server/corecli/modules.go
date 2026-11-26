@@ -24,6 +24,9 @@ type moduleProblem struct {
 	NotApplied string `json:"not_applied,omitempty"`
 }
 
+// planModules is a seam for tests: planning needs the installer of a cluster.
+var planModules = runtime.PlanModules
+
 const statePendingApproval = "pending-approval"
 
 var approvalRE = regexp.MustCompile(`^[0-9a-f]{16}$`)
@@ -46,7 +49,7 @@ func modulesPlanCmd(getenv func(string) string) *cobra.Command {
 			return err
 		}
 		defer func() { _ = d.Close() }()
-		actions, err := runtime.PlanModules(c.Context(), getenv, d, data)
+		actions, err := planModules(c.Context(), getenv, d, data)
 		if err != nil {
 			return fail("%v", err)
 		}
@@ -59,10 +62,12 @@ func modulesPlanCmd(getenv func(string) string) *cobra.Command {
 }
 
 func modulesApproveCmd(getenv func(string) string) *cobra.Command {
+	var company string
 	cmd := &cobra.Command{
 		Use: "approve <module> <approval>", Short: "Approve an upgrade that widens what a module may do", Args: cobra.ExactArgs(2),
 	}
 	db := dbFlag(cmd, getenv)
+	cmd.Flags().StringVar(&company, "company-b64", "", "the company.yaml about to be applied, base64 (the code may come from its plan)")
 	cmd.RunE = func(c *cobra.Command, args []string) error {
 		if !approvalRE.MatchString(args[1]) {
 			return fail("not an approval code: take it from `can-core modules plan` or the admin UI")
@@ -78,7 +83,22 @@ func modulesApproveCmd(getenv func(string) string) *cobra.Command {
 		} else if err != nil {
 			return fail("%v", err)
 		}
-		if p, ok := reconcile.ParsePending(m.Pending); !ok || p.Approval != args[1] {
+		p, ok := reconcile.ParsePending(m.Pending)
+		known := ok && p.Approval == args[1]
+		if !known && company != "" {
+			data, err := base64.StdEncoding.DecodeString(company)
+			if err != nil {
+				return fail("--company-b64 is not base64")
+			}
+			planned, err := planModules(c.Context(), getenv, d, data)
+			if err != nil {
+				return fail("%v", err)
+			}
+			for _, a := range planned {
+				known = known || (a.Module == args[0] && a.Held == reconcile.HeldApproval && a.Approval == args[1])
+			}
+		}
+		if !known {
 			return fail("no upgrade of %s is waiting with that code (can-core records a waiting upgrade at its next reconcile; read the plan again)", args[0])
 		}
 		if _, err := audit.New(d).Append(c.Context(), audit.Entry{Actor: "cli", Action: "module.upgrade-approve", Target: args[0], Detail: map[string]any{"approval": args[1]}}); err != nil {

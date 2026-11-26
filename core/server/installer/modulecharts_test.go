@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/board"
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/equity"
 	"github.com/dodwmd/companyinacan/core/files"
 	"github.com/dodwmd/companyinacan/core/finance"
@@ -54,9 +55,17 @@ func (m inhouse) configEnv() string {
 // seedPeople is what installing the people module leaves behind that provisioning needs.
 func seedPeople(t *testing.T, api *kube.Fake) {
 	t.Helper()
-	if _, err := api.Create(context.Background(), secret("mod-people", secretModule, "people", map[string]string{modsecrets.PeopleDirectoryKey: strings.Repeat("0123456789abcdef", 4)})); err != nil {
+	if _, err := api.Create(context.Background(), secret("mod-people", secretModule, "people", map[string]string{modsecrets.PeopleDirectoryKey: strings.Repeat("0123456789abcdef", 4), modsecrets.PeopleLookupKey: strings.Repeat("fedcba9876543210", 4)})); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// testLinks is what the reconciler would connect the module to with people enabled.
+func testLinks(id string) []config.Link {
+	if _, ok := modsecrets.GrantFor(id, "people"); !ok {
+		return nil
+	}
+	return []config.Link{{Capability: "directory", Provider: "people", Service: "people-api", Port: 8081}}
 }
 
 // subdomains of the modules that have public routes.
@@ -103,7 +112,7 @@ func enableInhouse(t *testing.T, id string, mutate func(*Installer)) (*Installer
 	}
 	spec.ID, spec.Namespace, spec.ServiceAccount = id, "mod-"+id, id
 	spec.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
-	spec.Manifest.Requires.Database = "none"
+	spec.Manifest.Requires.Database, spec.Links = "none", testLinks(id)
 	if sub, ok := inhouseSubdomains[id]; ok {
 		spec.Manifest.Runtime.Subdomain = sub
 	}

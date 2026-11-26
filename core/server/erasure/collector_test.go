@@ -142,3 +142,24 @@ func TestCollectDoesNotReportANeverInstalledModule(t *testing.T) {
 		t.Fatalf("not asked %v, failed %v", st.NotAsked, st.Failed)
 	}
 }
+
+// A module that has a published dump has held data, whatever its record says now.
+func TestCollectReportsAFailedModuleThatHasADump(t *testing.T) {
+	mods := []store.Module{module(t, "people", store.StateFailed)}
+	c := &Collector{API: kube.NewFake(), Dir: t.TempDir(), Modules: func(context.Context) ([]store.Module, error) { return mods, nil },
+		NeverInstalled: func(context.Context, string) bool { return true }}
+	dir := filepath.Join(c.Dir, "modules", "people")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Failed["people"] == "" || len(st.NotAsked) != 0 {
+		t.Fatalf("not asked %v, failed %v", st.NotAsked, st.Failed)
+	}
+}

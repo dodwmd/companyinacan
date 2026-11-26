@@ -85,7 +85,7 @@ func TestReplayDoesWhatTheLiveErasureDid(t *testing.T) {
 		t.Fatalf("feed %+v report %+v", feed, live)
 	}
 
-	replayed, err := restored.PurgeSubject(t.Context(), live.Subject, ClassPartyContact, 7)
+	replayed, err := restored.PurgeSubject(t.Context(), live.Subject, ClassPartyContact, 7, time.Time{})
 	if err != nil || replayed == nil {
 		t.Fatalf("replay: %v %v", replayed, err)
 	}
@@ -103,7 +103,7 @@ func TestReplayDoesWhatTheLiveErasureDid(t *testing.T) {
 	// Again, later: nothing more is removed and the tombstone keeps its time.
 	before := rows(t, restored.db)
 	e.advance(time.Hour)
-	if again, err := restored.PurgeSubject(t.Context(), live.Subject, ClassPartyContact, 7); err != nil || again.DeletedDrafts != 0 || !again.AlreadyErased {
+	if again, err := restored.PurgeSubject(t.Context(), live.Subject, ClassPartyContact, 7, time.Time{}); err != nil || again.DeletedDrafts != 0 || !again.AlreadyErased {
 		t.Fatalf("repeat: %+v %v", again, err)
 	}
 	if !slices.Equal(before, rows(t, restored.db)) {
@@ -124,19 +124,19 @@ func TestReplayLeavesOtherData(t *testing.T) {
 		"the same id given to a later party": erasureSubject(gone, time.Unix(created-5, 0)),
 		"a party not in this database":       erasureSubject(999, time.Unix(created, 0)),
 	} {
-		rep, err := e.app.store.PurgeSubject(ctx, subject, ClassPartyContact, 7)
+		rep, err := e.app.store.PurgeSubject(ctx, subject, ClassPartyContact, 7, time.Time{})
 		if err != nil || rep != nil {
 			t.Errorf("%s: %+v %v", name, rep, err)
 		}
 	}
 	real := erasureSubject(gone, time.Unix(created, 0))
 	for _, class := range []string{"finance-invoice", "finance-bank", "all", ""} {
-		if _, err := e.app.store.PurgeSubject(ctx, real, class, 7); err == nil {
+		if _, err := e.app.store.PurgeSubject(ctx, real, class, 7, time.Time{}); err == nil {
 			t.Errorf("class %q was accepted", class)
 		}
 	}
 	for _, subject := range []string{"", id(gone), "party-1", "party-1-2 OR 1", "Erase Me Fake"} {
-		if _, err := e.app.store.PurgeSubject(ctx, subject, ClassPartyContact, 7); err == nil {
+		if _, err := e.app.store.PurgeSubject(ctx, subject, ClassPartyContact, 7, time.Time{}); err == nil {
 			t.Errorf("subject %q was accepted", subject)
 		}
 	}
@@ -197,7 +197,9 @@ func TestPurgeCommand(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("db_path: "+path+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := map[string]string{"CAN_FINANCE_CONFIG": cfg, "CAN_FINANCE_ADMIN_TOKEN": adminTok, "CAN_FINANCE_LINK_SECRET": linkSec}
+	// Replayed with the time of the erasure, which the tombstone keeps: not the time of the restore.
+	const first = "2026-01-02T03:04:05Z"
+	env := map[string]string{"CAN_FINANCE_CONFIG": cfg, "CAN_FINANCE_ADMIN_TOKEN": adminTok, "CAN_FINANCE_LINK_SECRET": linkSec, "CAN_PURGE_AT": first}
 	run := func(args ...string) (int, string) {
 		var out, errOut bytes.Buffer
 		code := Main(args, func(k string) string { return env[k] }, &out, &errOut)
@@ -210,6 +212,9 @@ func TestPurgeCommand(t *testing.T) {
 	var erased int
 	if err := st.db.QueryRow(`SELECT COUNT(*) FROM parties WHERE id = ? AND erased_at IS NOT NULL AND email = ''`, gone).Scan(&erased); err != nil || erased != 1 {
 		t.Fatalf("not erased: %d %v", erased, err)
+	}
+	if es, err := st.ListErasures(t.Context(), 0); err != nil || len(es) != 1 || es[0].At != first {
+		t.Fatalf("tombstone of the replay: %+v %v", es, err)
 	}
 	if code, _ := run("purge", "-subject", rep.Subject, "-class", "finance-invoice"); code != 1 {
 		t.Fatalf("class: %d", code)

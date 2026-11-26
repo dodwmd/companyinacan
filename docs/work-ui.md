@@ -131,7 +131,7 @@ interpreted: `<script>` is shown as the characters it is.
   404 with the same page as a missing one.
 * **CSRF**: every post carries the session's token in a hidden `csrf` field and must also come from
   the same origin (`Sec-Fetch-Site`, `Origin`). The login form uses a double-submit cookie. Cookies
-  are `SameSite=Strict`.
+  are `SameSite=Strict`. A browser that does not send `Sec-Fetch-Site` (for example Safari before 16.4) cannot sign in or submit forms.
 * **Session fixation**: every login issues a new id; a cookie sent with the login is ignored.
 * **Headers**: `Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self';
   manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'` (scripts are

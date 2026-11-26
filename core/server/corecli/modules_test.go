@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/server/reconcile"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -103,5 +104,34 @@ func TestSecretsRotateOfAHeldModuleSaysItIsNotApplied(t *testing.T) {
 	code := Execute([]string{"admin", "secrets", "rotate", "forms", "CAN_WEBHOOK_SECRET", "--db", path}, strings.NewReader(""), &out, &errs, func(string) string { return "" })
 	if code == exitOK || !strings.Contains(errs.String(), "NOT APPLIED") || !strings.Contains(errs.String(), "disable the module") {
 		t.Fatal(code, out.String(), errs.String())
+	}
+}
+
+// A code can come from the plan of a company.yaml that is not synced yet (a new connection).
+func TestModulesApproveAcceptsTheCodeOfThePlannedCompany(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	db, err := store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertModule(ctx, store.Module{ID: "equity", Version: "1", Namespace: "mod-equity", ServiceAccount: "equity", State: store.StateEnabled}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	old := planModules
+	defer func() { planModules = old }()
+	planModules = func(_ context.Context, _ func(string) string, _ *store.DB, company []byte) ([]reconcile.Action, error) {
+		if string(company) != "next" {
+			t.Errorf("planned against %q", company)
+		}
+		return []reconcile.Action{{Kind: reconcile.Upgrade, Module: "equity", Held: reconcile.HeldApproval, Approval: "0123456789abcdef"}}, nil
+	}
+	run := func(code string) int {
+		var out, errs bytes.Buffer
+		return Execute([]string{"modules", "approve", "equity", code, "--company-b64", "bmV4dA==", "--db", path}, strings.NewReader(""), &out, &errs, func(string) string { return "" })
+	}
+	if run("ffffffffffffffff") == exitOK || run("0123456789abcdef") != exitOK {
+		t.Fatal("only the code of the plan approves")
 	}
 }

@@ -55,6 +55,8 @@ type Spec struct {
 	Rotate []string
 	// Expose is company.yaml's modules.<id>.expose (specs/040-module-routing).
 	Expose config.Expose
+	// Links are the capabilities the module is to be connected to (see links).
+	Links []config.Link
 	// Values are chart value overrides the installer derives itself; the reconciler leaves it empty.
 	Values map[string]any
 }
@@ -294,7 +296,9 @@ func companyRevision(c *config.Company, id string) string {
 	switch id {
 	case "jobs", "files":
 		return "1\x00" + c.Name + "\x00" + c.Domain
-	case "people", "provisioning":
+	case "people":
+		return "2" // 2: the read-only lookup token
+	case "provisioning":
 		return "1"
 	}
 	return ""
@@ -339,17 +343,17 @@ func specHash(c *config.Company, id string, man *config.Module, routes, relay st
 }
 
 // WiringAware is implemented by installers that copy a credential of one module into another: the
-// fingerprint changes when the source does (the people module installed afresh), so that the copy
-// is made again.
+// fingerprint of Spec.Links changes when a source does (the people module installed afresh), so
+// that the copy is made again.
 type WiringAware interface {
 	WiringFingerprint(ctx context.Context, s Spec) (string, error)
 }
 
 // relay is the fingerprint of what is written into the module from outside its own settings: the
 // SMTP relay, or another module's credential.
-func (r *Reconciler) relay(ctx context.Context, d Desired, id, hmacSecret string) (string, error) {
-	if wa, ok := r.Installer.(WiringAware); ok && id == "provisioning" {
-		return wa.WiringFingerprint(ctx, Spec{ID: id, Manifest: d.Manifests[id], HMACSecret: hmacSecret})
+func (r *Reconciler) relay(ctx context.Context, d Desired, id, hmacSecret string, ls []config.Link) (string, error) {
+	if wa, ok := r.Installer.(WiringAware); ok && len(ls) > 0 {
+		return wa.WiringFingerprint(ctx, Spec{ID: id, Manifest: d.Manifests[id], HMACSecret: hmacSecret, Links: ls})
 	}
 	ra, ok := r.Installer.(RelayAware)
 	if !ok || !modsecrets.WantsRelay(id) || !RelayOptIn(d.Company.Email, id) {
@@ -418,8 +422,9 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 		// A routing read that fails must not stop the plan (disables above all): the hash is then
 		// unknown and is not compared.
 		rt, rerr := r.routing(ctx, d, id)
-		relay, lerr := r.relay(ctx, d, id, rec.HMACSecret)
-		hash := specHash(d.Company, id, man, rt.Fingerprint, relay)
+		wanted := links(d, have, id, true)
+		relay, lerr := r.relay(ctx, d, id, rec.HMACSecret, wanted)
+		hash := linkedHash(specHash(d.Company, id, man, rt.Fingerprint, relay), wanted)
 		var a *Action
 		switch {
 		case !ok:
@@ -460,17 +465,22 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 			continue
 		}
 		a.Module = id
+		// Say what the step does to the module's connections: the operator reads this.
+		if n := linkNote(id, rec.Manifest.Runtime.Wired, wanted); n != "" {
+			a.Reason = n + " (" + a.Reason + ")"
+		}
 		if ok && a.Kind != Install {
 			a.Widens = Widening(&rec.Manifest, man)
 			if newInternetAccess(rec.Content, man) {
 				a.Widens = append(a.Widens, "internet access")
 			}
+			a.Widens = append(a.Widens, linkWidening(d, id, rec, wanted)...)
 		}
 		if a.Kind == Upgrade {
 			r.hold(a, rec)
 		}
 		if a.Held == HeldApproval {
-			if err := r.notApplied(ctx, d, a, rec, relay, rerr, lerr); err != nil {
+			if err := r.notApplied(ctx, d, a, rec, wanted, relay, rerr, lerr); err != nil {
 				return nil, err
 			}
 		}
@@ -555,7 +565,7 @@ func (r *Reconciler) recordHeld(ctx context.Context, held []Action) error {
 	return nil
 }
 
-// installOrder sorts module ids so providers of a required capability come before their
+// installOrder sorts module ids so providers of a required or wired capability come before their
 // consumers; ties and cycles fall back to id order.
 func installOrder(ms map[string]*config.Module) []string {
 	ids := make([]string, 0, len(ms))
@@ -580,7 +590,13 @@ func installOrder(ms map[string]*config.Module) []string {
 			return
 		}
 		visiting[id] = true
-		for _, c := range ms[id].Requires.Capabilities {
+		needs := slices.Clone(ms[id].Requires.Capabilities)
+		for _, g := range modsecrets.Grants() {
+			if g.Consumer == id && uses(ms[id], g.Capability) {
+				needs = append(needs, g.Capability)
+			}
+		}
+		for _, c := range needs {
 			for _, p := range provider[c] {
 				if p != id {
 					visit(p)
@@ -675,18 +691,24 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	if rerr != nil {
 		rt = Routing{}
 	}
+	// The providers installed before this one are recorded by now.
+	recorded, err := r.db.ListModules(ctx)
+	if err != nil {
+		return err
+	}
+	wired := links(d, byID(recorded), a.Module, false)
 	// Read before the installer does: a relay that changes in between differs from this and is
 	// applied by the next run. An unreadable one fails in the installer.
-	relay, lerr := r.relay(ctx, d, a.Module, secret)
+	relay, lerr := r.relay(ctx, d, a.Module, secret, wired)
 	if lerr != nil {
 		relay = ""
 	}
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
-		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man, rt.Fingerprint, relay), HMACSecret: secret, Manifest: *man,
-		Content: d.content(a.Module).encode(), Applied: appliedOf(d, a.Module, relay).encode(),
+		State: store.StateEnabled, SettingsHash: linkedHash(specHash(d.Company, a.Module, man, rt.Fingerprint, relay), wired), HMACSecret: secret, Manifest: *man,
+		Content: d.content(a.Module).encode(), Applied: appliedOf(d, a.Module, relay, wired).encode(),
 	}
-	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, RecordSecret: prev.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
+	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, RecordSecret: prev.HMACSecret, Domain: d.Company.Domain, CompanyName: d.Company.Name, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure(), Links: wired})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
 		// `helm upgrade --atomic` rolled back, so the previous release is still running: keep its
 		// recorded state (token identity, capabilities, subscriptions) and only note the error.
@@ -707,6 +729,7 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 		}
 	} else {
 		rec.Manifest.Runtime.RoutedUIHost = rt.UIHost
+		rec.Manifest.Runtime.Wired = wired
 	}
 	if err := r.reg.Register(ctx, rec); err != nil {
 		return err

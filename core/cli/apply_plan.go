@@ -163,7 +163,7 @@ func clusterPreview(cmd *cobra.Command, companyFile, kubeContext string, approve
 		return nil, nil // --plan changes nothing, so it records no approval either
 	}
 	for id, code := range codes {
-		if _, err := exec("-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "modules", "approve", id, code); err != nil {
+		if _, err := exec("-n", "can-system", "exec", "deploy/can-core", "--", "/can-core", "modules", "approve", id, code, "--company-b64", base64.StdEncoding.EncodeToString(data)); err != nil {
 			return nil, fmt.Errorf("approving the upgrade of %s: %w", id, err)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "approved the upgrade of %s\n", id)

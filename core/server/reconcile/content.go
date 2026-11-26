@@ -146,8 +146,8 @@ func digest(parts ...[]byte) string {
 // manifestContent is the Content of a manifest held in memory only.
 func manifestContent(m *config.Module) Content {
 	c := *m
-	c.Runtime.RoutedUIHost = "" // can-core's own addition to the recorded copy
-	b, _ := json.Marshal(&c)    // struct order and sorted map keys: stable
+	c.Runtime.RoutedUIHost, c.Runtime.Wired = "", nil // can-core's own additions to the recorded copy
+	b, _ := json.Marshal(&c)                          // struct order and sorted map keys: stable
 	return Content{Manifest: digest(b), Egress: egressOf(m)}
 }
 

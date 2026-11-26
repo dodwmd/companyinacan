@@ -5,7 +5,7 @@
 #   scripts/gen-release-images.sh vX.Y.Z ghcr.io/dodwmd can-core=sha256:<64 hex> can-static=sha256:... can-forms=sha256:...
 #
 # The release pipeline calls this after publish-images, with the digests the registry reported for
-# the images it pushed and signed, and attaches the result to the release. A hand-edited or
+# the images it pushed and signed, and attaches the result to the release as release-images.json. A hand-edited or
 # tag-only manifest is refused by `can up`, so this script refuses the same inputs early.
 set -eu
 version="${1:-}"

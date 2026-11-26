@@ -40,14 +40,17 @@ func (in *Installer) verifyAdopted(ctx context.Context, want kube.Object, s reco
 
 // checkAdmission verifies, when RequireAdmission is set, that the can-core admission policies and
 // Deny bindings exist. Without them can-core's standing RBAC lets it bind into any namespace, and,
-// for a module with routes, claim any host.
-func (in *Installer) checkAdmission(ctx context.Context, routed bool) error {
+// for a module with routes, claim any host, and, for a connected module, write any NetworkPolicy.
+func (in *Installer) checkAdmission(ctx context.Context, routed, wired bool) error {
 	if !in.cfg.RequireAdmission {
 		return nil
 	}
 	names := []string{"can-core-rolebindings", "can-core-namespaces"}
 	if routed {
 		names = append(names, "can-core-routes", "can-core-routing-config", "can-core-services")
+	}
+	if wired {
+		names = append(names, "can-core-networkpolicies")
 	}
 	for _, n := range names {
 		if _, err := in.cfg.API.Get(ctx, "ValidatingAdmissionPolicy", "", n); err != nil {

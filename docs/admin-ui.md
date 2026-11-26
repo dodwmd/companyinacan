@@ -101,7 +101,8 @@ An upgrade of a running module that would let it **do more than before** waits f
 permission or role grant, an event it may publish or receives, a capability it serves or uses, a database, a
 public host or path, internet access (not for a module installed before manifests declared it: every module had
 it), a shorter approval chain, a new notification recipient, a new hook, hook command or hook image, signing
-users into its web UI, or a changed data class. Until then the running release and its recorded manifest stay.
+users into its web UI, a changed data class, a new connection to another module, leaving equity's directory
+mode, or a new break-glass window. Until then the running release and its recorded manifest stay.
 **Limitation: a waiting module gets no change at all.** Switching exposure off, secret rotation, mail relay
 opt-out or new credentials, and settings do not reach it, because can-core does not rebuild the installed
 release without its chart. `can apply` names each requested change as NOT APPLIED and exits non-zero when

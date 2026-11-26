@@ -26,8 +26,8 @@ the timing check, the rate limit and the same-origin check apply as to any submi
 
 Two settings, both in company.yaml:
 
-- `modules.forms.settings.notify_email`: the recipients. Without it, messages are only kept (admin UI,
-  `/leads`).
+- `modules.forms.settings.notify_email`: the recipients. Without it, messages are only kept: nobody is
+  told ([reading them](#reading-the-messages)).
 - `email.relay`: the SMTP relay they are sent through. The credentials are not in company.yaml:
   `make up SMTP_CREDENTIALS=smtp.env`, or without a checkout
   `can up --smtp-credentials-file smtp.env` ([email.md](email.md)).

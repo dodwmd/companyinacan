@@ -25,7 +25,9 @@ tag starts `.github/workflows/release.yml`, which, in order:
 4. **publish-images** and **publish-release** (only for a real release, only these two jobs hold write
    permissions, behind the `release` environment, which must have required reviewers: the publish jobs abort before any login or push if it does not): push to GHCR, sign each image by digest with keyless cosign,
    attach a build-provenance attestation to each image and to the archives/SBOMs, sign `SHA256SUMS`, and create
-   the GitHub release with everything attached.
+   the GitHub release with everything attached. That includes `release-images.json`, the digests of `can-core`,
+   `can-static` and `can-forms` for `can up --release-manifest` (listed in `SHA256SUMS`). A dry run pushes nothing,
+   so it writes none.
 
 `can version` reports the tag, the short commit and the commit date (the build date is the commit time, which is
 what makes the build reproducible).

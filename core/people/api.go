@@ -135,6 +135,10 @@ func (a *API) wrap(fn handlerFn) http.HandlerFunc {
 			tooMany(w)
 			return
 		}
+		if p.Lookup {
+			a.serveLookup(w, r)
+			return
+		}
 		actor, err := a.Svc.ResolveActor(r.Context(), p)
 		if err != nil {
 			a.fail(w, err)

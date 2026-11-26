@@ -100,7 +100,7 @@ func TestProvisioningGetsThePeopleDirectoryToken(t *testing.T) {
 		s := spec
 		s.ID, s.Namespace, s.ServiceAccount = id, "mod-"+id, id
 		s.Manifest = loadManifest(t, "../../../modules/"+id+"/module.yaml")
-		s.Manifest.Requires.Database = "none"
+		s.Manifest.Requires.Database, s.Links = "none", testLinks(id)
 		return in.Enable(context.Background(), s)
 	}
 	if err := enable("provisioning"); err == nil || !strings.Contains(err.Error(), "enable the people module") {

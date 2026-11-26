@@ -32,6 +32,9 @@ configMountPath: /etc/can-equity-config
 config:
   keyring_file: /etc/can-equity/keys/keyring
   retention: {}            # override per data class, see modules/equity/settings.schema.json (the ledger and audit trail stay `legal`)
+# End of a break-glass window (YYYY-MM-DD inclusive, UTC, or RFC 3339; at most 7 days ahead), empty
+# for none. can-core sets it from company.yaml modules.equity.settings.break_glass_until.
+breakGlassUntil: ""
 keyring:
   enabled: true            # can-core generates it once into the can-module Secret (key `keyring`)
   mountPath: /etc/can-equity/keys/keyring

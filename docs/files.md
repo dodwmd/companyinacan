@@ -239,6 +239,8 @@ API, with the same checks, audit entries and answers ([`specs/050-files-ui`](../
 - **Signing in.** From **Apps** (a one-time launch ticket, [sso.md](sso.md)), or with a pasted personal access
   token where `ui.token_login` allows it (routing the UI turns it off unless `expose.token_login` is set). The
   token form accepts what the API accepts, the service token included, except the restore-only credential.
+  A browser that does not send `Sec-Fetch-Site` (for example Safari before 16.4) cannot sign in or submit forms.
+  A session that can write is re-checked every minute, a reader every five.
 - **Uploads** are one file at a time with no progress bar, and follow every rule under [Uploads](#uploads).
   Without a virus scanner they are refused, as on the API.
 - **Share links** are shown once. When `share.base_url` is empty the link is built from the address you used

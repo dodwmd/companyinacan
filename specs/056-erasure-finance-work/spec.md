@@ -20,7 +20,11 @@ restore of an older backup, and the tracker had no way to erase a person at all.
    identifier in the body only).
 7. Erasures are audited without personal data and the database files and write-ahead log are scrubbed; a
    scrub that did not finish is finished later.
-8. An erasure ledger line left whole but without its newline by a crash is not joined to the next one.
+8. A replay records its tombstone with the time of the first erasure (`CAN_PURGE_AT`, set by the restore on
+   the purge Job), not the time of the restore: otherwise a second restore would replay it into data copied
+   after the real erasure.
+9. A scrub that failed is said in the work erase response (`scrub_pending`).
+10. An erasure ledger line left whole but without its newline by a crash is not joined to the next one.
 
 ## Personal data in work
 

@@ -70,11 +70,11 @@ func TestRunPurgeCLI(t *testing.T) {
 	h, api, _ := hookFixture(t)
 	deployment(t, api)
 	created := finishJob(api, "succeeded")
-	if err := h.RunPurgeCLI(deadline(t), "wiki", "pers_1", "directory-basic"); err != nil {
+	if err := h.RunPurgeCLI(deadline(t), "wiki", "pers_1", "directory-basic", time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
 	job := asJSON(t, <-created)
-	for _, want := range []string{`"args":["purge","-subject","pers_1","-class","directory-basic"]`, `"image":"img:1"`, `"restartPolicy":"Never"`, `"claimName":"wiki-data"`} {
+	for _, want := range []string{`"args":["purge","-subject","pers_1","-class","directory-basic"]`, `"image":"img:1"`, `"restartPolicy":"Never"`, `"claimName":"wiki-data"`, `{"name":"CAN_PURGE_AT","value":"2026-11-20T09:00:00Z"}`} {
 		if !strings.Contains(job, want) {
 			t.Errorf("missing %s in %s", want, job)
 		}

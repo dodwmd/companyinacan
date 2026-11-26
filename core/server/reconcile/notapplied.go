@@ -24,12 +24,15 @@ type Applied struct {
 	// Relay identifies the relay settings and credential the module was given.
 	Relay    string `json:"relay,omitempty"`
 	Settings string `json:"settings"`
+	// Links are the connections to other modules; BreakGlass is equity's break-glass window.
+	Links      []config.Link `json:"links,omitempty"`
+	BreakGlass string        `json:"break_glass,omitempty"`
 }
 
-func appliedOf(d Desired, id, relay string) Applied {
+func appliedOf(d Desired, id, relay string, links []config.Link) Applied {
 	entry := d.Company.Modules[id]
 	settings, _ := json.Marshal(entry.Settings) // sorted keys
-	a := Applied{Expose: entry.Exposure(), Settings: digest(settings)}
+	a := Applied{Expose: entry.Exposure(), Settings: digest(settings), Links: links, BreakGlass: breakGlass(d, id)}
 	var mail []byte
 	if modsecrets.WantsRelay(id) && RelayOptIn(d.Company.Email, id) {
 		a.RelayOptIn = true
@@ -64,12 +67,25 @@ func differences(was, now Applied) (out []string, urgent bool) {
 		(!w.TokenLogin && n.TokenLogin) || (w.EdgeLimitOn() && !n.EdgeLimitOn()) {
 		out = append(out, "new exposure settings")
 	}
+	linksChanged := false
+	for _, l := range was.Links {
+		if !linksTo(now.Links, l.Provider) {
+			linksChanged = true
+			away(true, "removing the connection to "+l.Provider+" (it stays connected)")
+		}
+	}
+	for _, l := range now.Links {
+		if !linksTo(was.Links, l.Provider) {
+			linksChanged = true
+			out = append(out, "connecting to "+l.Provider)
+		}
+	}
 	switch {
 	case was.RelayOptIn && !now.RelayOptIn:
 		away(true, "mail relay opt-out (the module keeps the credential)")
 	case !was.RelayOptIn && now.RelayOptIn:
 		out = append(out, "mail relay opt-in")
-	case was.Relay != now.Relay:
+	case was.Relay != now.Relay && (!linksChanged || now.RelayOptIn):
 		away(true, "new mail relay or wired credentials (the module keeps the old ones)")
 	}
 	if was.Settings != now.Settings {
@@ -79,7 +95,7 @@ func differences(was, now Applied) (out []string, urgent bool) {
 }
 
 // notApplied fills in what a held step keeps from its module.
-func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec store.Module, relay string, routesErr, relayErr error) error {
+func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec store.Module, wanted []config.Link, relay string, routesErr, relayErr error) error {
 	rotate, err := r.db.PendingRotations(ctx, a.Module)
 	if err != nil {
 		return err
@@ -87,7 +103,7 @@ func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec s
 	if len(rotate) > 0 {
 		a.NotApplied, a.Urgent = append(a.NotApplied, "secret rotation of "+strings.Join(rotate, ", ")+" (the old values stay valid)"), true
 	}
-	now := appliedOf(d, a.Module, relay)
+	now := appliedOf(d, a.Module, relay, wanted)
 	var was Applied
 	known := rec.Applied != "" && json.Unmarshal([]byte(rec.Applied), &was) == nil
 	if relayErr != nil {
@@ -98,7 +114,7 @@ func (r *Reconciler) notApplied(ctx context.Context, d Desired, a *Action, rec s
 		// A record from before Applied: its hash says whether company.yaml still asks for what
 		// was installed. If it does, that is the baseline from here on.
 		old := Desired{Company: d.Company, Manifests: map[string]*config.Module{a.Module: &rec.Manifest}}
-		if rt, err := r.routing(ctx, old, a.Module); err == nil && specHash(d.Company, a.Module, &rec.Manifest, rt.Fingerprint, relay) == rec.SettingsHash {
+		if rt, err := r.routing(ctx, old, a.Module); err == nil && linkedHash(specHash(d.Company, a.Module, &rec.Manifest, rt.Fingerprint, relay), wanted) == rec.SettingsHash {
 			was, known, a.baseline = now, true, now.encode()
 		}
 	}

@@ -86,6 +86,7 @@ removes the paste-a-token form. Not verified in a browser or on a cluster.
 - Every response is `Cache-Control: no-store` without `ETag` or `Last-Modified`.
 - All text is escaped; the content security policy forbids scripts, inline styles and other origins.
 - Forms carry a CSRF token; the browser's `Sec-Fetch-Site` must be same-origin when sent.
+  A browser that does not send `Sec-Fetch-Site` (for example Safari before 16.4) cannot sign in or submit forms.
 - Authentication always runs first, so a flood of bad tokens still costs one check each. After ten
   failures from one address, further failures get a 429 page instead of 401 (the failure message
   changes; it does not stop the check). A valid token is never refused because of failures.

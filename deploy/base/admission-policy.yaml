@@ -232,3 +232,107 @@ metadata:
 spec:
   policyName: can-core-services
   validationActions: [Deny]
+---
+# The NetworkPolicies can-core may write in a module namespace (specs/057-module-capability-wiring).
+# The ones every module gets admit the platform only (DNS and Traefik, can-core, the databases, the
+# internet without the cluster's own ranges) or pods of the same namespace. A policy can-core creates
+# or changes may open one module to another only if it is named can-wire-*, for a pair and port listed
+# here. It bounds CREATE and UPDATE only: can-core can still delete policies, default-deny included.
+# What it allows: the consumer's pods to the
+# provider's pods, and nothing else. The pairs mirror core/server/modsecrets.Grants and the
+# providers' manifests; test/contract keeps them in step.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: can-core-networkpolicies
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels: {can.dev/namespace-kind: module}
+    resourceRules:
+      - apiGroups: [networking.k8s.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [networkpolicies]
+  matchConditions:
+    - name: requester-is-can-core
+      expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
+  variables:
+    # consumer>provider:port
+    - name: pairs
+      expression: "['equity>people:8081', 'provisioning>people:8081']"
+    - name: id
+      expression: "request.namespace.startsWith('mod-') ? request.namespace.substring(4) : ''"
+    - name: wiring
+      expression: "object.metadata.name.startsWith('can-wire-')"
+    - name: platform
+      expression: "['kube-system', 'can-system', 'can-data']"
+  validations:
+    - expression: |-
+        variables.wiring || !has(object.spec.ingress) || object.spec.ingress.all(r,
+          has(r.from) && r.from.size() > 0 && r.from.all(p,
+            has(p.ipBlock)
+              ? has(p.ipBlock.except) && '10.42.0.0/16' in p.ipBlock.except
+              : !has(p.namespaceSelector) || (!has(p.namespaceSelector.matchExpressions) && has(p.namespaceSelector.matchLabels)
+                  && 'kubernetes.io/metadata.name' in p.namespaceSelector.matchLabels
+                  && p.namespaceSelector.matchLabels['kubernetes.io/metadata.name'] in variables.platform)))
+      message: "a module may only admit the platform namespaces and its own pods; another module only through a can-wire-* policy"
+    - expression: |-
+        variables.wiring || !has(object.spec.egress) || object.spec.egress.all(r,
+          has(r.to) && r.to.size() > 0 && r.to.all(p,
+            has(p.ipBlock)
+              ? has(p.ipBlock.except) && '10.42.0.0/16' in p.ipBlock.except
+              : !has(p.namespaceSelector) || (!has(p.namespaceSelector.matchExpressions) && has(p.namespaceSelector.matchLabels)
+                  && 'kubernetes.io/metadata.name' in p.namespaceSelector.matchLabels
+                  && p.namespaceSelector.matchLabels['kubernetes.io/metadata.name'] in variables.platform)))
+      message: "a module may only reach the platform namespaces, its own pods and the internet; another module only through a can-wire-* policy"
+    # A connection selects the owner's own pods and has exactly one rule, in one direction.
+    - expression: |-
+        !variables.wiring || (
+          has(object.spec.podSelector.matchLabels) && !has(object.spec.podSelector.matchExpressions)
+          && object.spec.podSelector.matchLabels == {'app.kubernetes.io/name': variables.id}
+          && (has(object.spec.egress) && object.spec.egress.size() > 0) != (has(object.spec.ingress) && object.spec.ingress.size() > 0))
+      message: "a can-wire-* policy selects the module's own pods and has rules in one direction only"
+    # The consumer's side: egress to the pods of a listed provider, on its port.
+    - expression: |-
+        !variables.wiring || !has(object.spec.egress) || object.spec.egress.size() == 0 || (
+          object.spec.egress.size() == 1
+          && has(object.spec.egress[0].to) && object.spec.egress[0].to.size() == 1
+          && has(object.spec.egress[0].ports) && object.spec.egress[0].ports.size() == 1
+          && has(object.spec.egress[0].ports[0].port) && !has(object.spec.egress[0].ports[0].endPort)
+          && !has(object.spec.egress[0].to[0].ipBlock)
+          && has(object.spec.egress[0].to[0].namespaceSelector) && has(object.spec.egress[0].to[0].podSelector)
+          && has(object.spec.egress[0].to[0].namespaceSelector.matchLabels) && !has(object.spec.egress[0].to[0].namespaceSelector.matchExpressions)
+          && has(object.spec.egress[0].to[0].podSelector.matchLabels) && !has(object.spec.egress[0].to[0].podSelector.matchExpressions)
+          && variables.pairs.exists(x,
+            x.startsWith(variables.id + '>')
+            && object.spec.egress[0].to[0].namespaceSelector.matchLabels == {'kubernetes.io/metadata.name': 'mod-' + x.substring(x.indexOf('>') + 1, x.indexOf(':'))}
+            && object.spec.egress[0].to[0].podSelector.matchLabels == {'app.kubernetes.io/name': x.substring(x.indexOf('>') + 1, x.indexOf(':'))}
+            && string(object.spec.egress[0].ports[0].port) == x.substring(x.indexOf(':') + 1)))
+      message: "can-core may only connect a module to the pods and port of a provider it is granted (specs/057)"
+    # The provider's side: ingress from the pods of a listed consumer, on the same port.
+    - expression: |-
+        !variables.wiring || !has(object.spec.ingress) || object.spec.ingress.size() == 0 || (
+          object.spec.ingress.size() == 1
+          && has(object.spec.ingress[0].from) && object.spec.ingress[0].from.size() == 1
+          && has(object.spec.ingress[0].ports) && object.spec.ingress[0].ports.size() == 1
+          && has(object.spec.ingress[0].ports[0].port) && !has(object.spec.ingress[0].ports[0].endPort)
+          && !has(object.spec.ingress[0].from[0].ipBlock)
+          && has(object.spec.ingress[0].from[0].namespaceSelector) && has(object.spec.ingress[0].from[0].podSelector)
+          && has(object.spec.ingress[0].from[0].namespaceSelector.matchLabels) && !has(object.spec.ingress[0].from[0].namespaceSelector.matchExpressions)
+          && has(object.spec.ingress[0].from[0].podSelector.matchLabels) && !has(object.spec.ingress[0].from[0].podSelector.matchExpressions)
+          && variables.pairs.exists(x,
+            x.substring(x.indexOf('>') + 1, x.indexOf(':')) == variables.id
+            && object.spec.ingress[0].from[0].namespaceSelector.matchLabels == {'kubernetes.io/metadata.name': 'mod-' + x.substring(0, x.indexOf('>'))}
+            && object.spec.ingress[0].from[0].podSelector.matchLabels == {'app.kubernetes.io/name': x.substring(0, x.indexOf('>'))}
+            && string(object.spec.ingress[0].ports[0].port) == x.substring(x.indexOf(':') + 1)))
+      message: "can-core may only admit to a provider the pods of a consumer it is granted, on its port (specs/057)"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: can-core-networkpolicies
+spec:
+  policyName: can-core-networkpolicies
+  validationActions: [Deny]

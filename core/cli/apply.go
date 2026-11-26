@@ -74,6 +74,10 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				if note != "" {
 					fmt.Fprintln(cmd.OutOrStdout(), note)
 				}
+				// What the change does to how modules behave, before it is made.
+				for _, n := range reconcile.ModeNotes(companyInForce(cmd, kubeContext), desired.Company) {
+					fmt.Fprintln(cmd.OutOrStdout(), "note:", n)
+				}
 				out, err := syncCompany(cmd, filepath.Join(dir, "company.yaml"), kubeContext)
 				if err != nil {
 					return failure("%v", err)

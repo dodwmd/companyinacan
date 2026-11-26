@@ -302,3 +302,57 @@ data_classes: [{class: contact, retention: 1y, sensitivity: sensitive}]
 		t.Fatalf("a new tag of the hooks image is an update: %q", got)
 	}
 }
+
+// A new connection between installed modules, leaving equity's directory mode and a break-glass
+// window wait for approval; the connections are part of what is recorded and compared.
+func TestConnectionsAndEquityModesNeedApproval(t *testing.T) {
+	ctx := context.Background()
+	g := newRig(t)
+	g.r.RequireApproval = true
+	equity, people := shipped(t, "equity"), shipped(t, "people")
+	approve := func(d Desired, want ...string) {
+		t.Helper()
+		res := apply(t, g, d)
+		var a *Action
+		for i := range res.Held {
+			if res.Held[i].Module == "equity" {
+				a = &res.Held[i]
+			}
+		}
+		if a == nil {
+			t.Fatalf("not held: %+v", res)
+		}
+		for _, w := range want {
+			if !strings.Contains(strings.Join(a.Widens, "\n"), w) {
+				t.Errorf("widens lacks %q: %q", w, a.Widens)
+			}
+		}
+		if err := g.db.ApproveUpgrade(ctx, "equity", a.Approval); err != nil {
+			t.Fatal(err)
+		}
+		apply(t, g, d)
+		if res := apply(t, g, d); len(res.Actions)+len(res.Held) != 0 {
+			t.Fatalf("not settled: %+v", res)
+		}
+	}
+	apply(t, g, desired(nil, nil, equity, people))
+	approve(directory(desired(nil, nil, equity, people)), "connects to people: equity verifies holders")
+	rec, _ := g.db.GetModule(ctx, "equity")
+	if providers(rec.Manifest.Runtime.Wired) != "people" || !strings.Contains(rec.Applied, `"provider":"people"`) {
+		t.Fatalf("%+v %s", rec.Manifest.Runtime.Wired, rec.Applied)
+	}
+
+	// Leaving directory mode is held, and says that the connection stays: exit non-zero.
+	attest := desired(nil, nil, equity, people)
+	res := apply(t, g, attest)
+	if len(res.Held) != 1 || !res.Held[0].Urgent || !strings.Contains(strings.Join(res.Held[0].NotApplied, "\n"), "removing the connection to people") {
+		t.Fatalf("%+v", res)
+	}
+	approve(attest, "disconnects from people: equity returns to attestation mode")
+
+	glass := desired(nil, nil, equity, people)
+	e := glass.Company.Modules["equity"]
+	e.Settings = map[string]any{"break_glass_until": "2026-12-01"}
+	glass.Company.Modules["equity"] = e
+	approve(glass, "break-glass until 2026-12-01")
+}

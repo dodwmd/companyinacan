@@ -40,6 +40,10 @@ func TestEraseFinanceAndWorkRespectTheDumpTime(t *testing.T) {
 	if got := strings.Join(h.calls, ","); got != "cli finance party-2-10 finance-party-contact,cli work person-new work-issue" {
 		t.Error(got)
 	}
+	// The command is told when the erasure was made, so its tombstone does not move to now.
+	if h.at["party-2-10"] != "2026-11-25T09:00:00Z" || h.at["person-new"] != "2026-11-25T09:00:00Z" {
+		t.Error(h.at)
+	}
 	if rep.Reflected != 2 || len(rep.Purged) != 2 {
 		t.Errorf("%+v", rep)
 	}
