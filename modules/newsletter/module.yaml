@@ -2,7 +2,7 @@
 schema: 1
 id: newsletter
 name: Newsletter
-description: Mailing lists, double opt-in, campaigns and subscriber management. Wraps Listmonk; an adapter exposes the newsletter capability, publishes subscriber.added.v1 and subscribes people who opt in on a form (lead.created.v1). Sends through a bulk relay (docs/email-policy.md).
+description: Mailing lists, double opt-in, campaigns and subscriber management. Wraps Listmonk. can-core subscribes people who tick the consent box on a website form (double opt-in). The adapter for the newsletter capability and subscriber.added.v1 is planned. Sends through a bulk relay (docs/email-policy.md).
 category: marketing
 # Experimental: installed through can-core on k3d by the advisory CI job (specs/041-wrapped-modules-live);
 # never on a real server or relay, the capability

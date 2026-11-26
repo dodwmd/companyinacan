@@ -24,6 +24,25 @@ provides the `tickets` capability and publishes `ticket.created.v1`.
 | Backup | can-core: a `pg_dump` of the database and an archive of the volume (attachments) ([specs/046](../../specs/046-wrapped-backups/spec.md)) |
 | Data classes | `support-conversation`, `support-attachment`: 3 years, standard sensitivity |
 
+## Website leads
+
+```yaml
+modules:
+  support:
+    settings:
+      support_address: support@acme.example
+      tickets_from_forms: [contact]
+```
+
+Each lead of a named form becomes a conversation in that mailbox, from the address the visitor typed (**not
+verified**; no automatic reply is sent). can-core hands it over ([specs/067](../../specs/067-lead-adapters/spec.md)):
+failures are retried and listed in the admin UI under Events, where a dead one can be requeued. FreeScout has no API
+here, so the chart runs a listener inside the pod (port 8081, in-cluster only, requests signed by can-core).
+
+**Erasing a lead does not delete its conversation.** The conversation gets an internal note and is reopened; delete
+it and the customer record in FreeScout if the request covers them. An installation of 0.2.0 that is upgraded by
+itself **waits for your approval**.
+
 ## Set up mail
 
 You need a mailbox you can fetch over IMAP with TLS (the support address itself, or one it forwards to) and an SMTP
