@@ -6,11 +6,11 @@ written; **it has not yet run for real** (see "Status" at the end).
 
 ## What a release is
 
-A git tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on `main`. The module charts pull the in-house images by version, so one
-file says which: [core/modimages/version.txt](../core/modimages/version.txt) (the image names are in
-`images.txt` next to it). `scripts/set-image-version.sh` writes it into the charts, the manifests and the
-workflows, `test/contract/module_images_test.go` fails when one disagrees, and the release refuses to publish a
-tag that differs from it. The binaries take their version from the tag. The
+A git tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on `main`. The tag is the version of the release and of the binaries.
+The module images have versions of their own, which the module charts pull:
+[core/modimages/images.txt](../core/modimages/images.txt) is the one place they are set. The release pushes each
+image under the release tag (`:vX.Y.Z`) and under its own version, which it never moves once published; a
+pre-release does not publish the plain versions. The
 tag starts `.github/workflows/release.yml`, which, in order:
 
 1. **verify**: strict semver check, tag is an ancestor of `main`, `make test` (lint, unit, contract, licences),
@@ -40,28 +40,30 @@ what makes the build reproducible).
 - [ ] Dependency graph, secret scanning and private vulnerability reporting enabled.
 - [ ] A dry run of this workflow succeeded and its artifacts were inspected.
 
-## Cutting a release
+## Image versions
 
-First bump the image version with a pull request (a pre-release needs its full version, `X.Y.Z-rc.N`):
+Before releasing, bump the version of **every image whose code changed** since the last release (shared code
+under `core/` counts); otherwise the release keeps the old image under that version and only warns. In the pull
+request that changes the service:
 
 ```sh
-scripts/bump-version.sh minor              # dry run: prints current and next version
-scripts/set-image-version.sh X.Y.Z         # the next version, without the "v"; commit, review, merge
+scripts/set-image-version.sh can-work X.Y.Z    # the list, the charts and the workflows
 ```
 
-Then, from the merged `main`:
+and bump `version` in the module's `module.yaml`: can-core upgrades an installed module when that or its
+settings change, not when only the image does. `test/contract/module_images_test.go` fails when a chart, a
+manifest or a workflow disagrees with the list.
+
+## Cutting a release
 
 ```sh
 git checkout main && git pull --ff-only
 make test                                  # must be green
+scripts/bump-version.sh minor              # dry run: prints current and next version
 scripts/bump-version.sh minor --tag        # creates the annotated tag LOCALLY (SIGN=1 for a signed tag)
-scripts/release-notes.sh vX.Y.Z            # preview the notes
-git push origin vX.Y.Z                     # THIS starts the release workflow
+scripts/release-notes.sh v0.2.0            # preview the notes
+git push origin v0.2.0                     # THIS starts the release workflow
 ```
-
-The images are pushed as `ghcr.io/<owner>/can-<name>:X.Y.Z` (and `:vX.Y.Z`). A changed image version alone does
-not upgrade a module that is already installed: can-core upgrades a module when the `version` in its
-`module.yaml` or its settings change, so bump that for every module whose service changed.
 
 Before pushing, rehearse: **Actions > release > Run workflow** on `main` with `dry_run` left true. It does all
 the building and checking and publishes nothing; download the `release-out` artifact and look. Check

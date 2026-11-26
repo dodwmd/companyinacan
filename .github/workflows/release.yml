@@ -77,11 +77,6 @@ jobs:
         if: steps.v.outputs.publish == 'true'
         run: |
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "the release tag is not an ancestor of main" >&2; exit 1; }
-      - name: The charts name the images this tag will publish
-        if: steps.v.outputs.publish == 'true'
-        env:
-          VERSION: ${{ steps.v.outputs.version }}
-        run: sh scripts/check-image-version.sh "$VERSION"
       - name: Full test suite (lint, unit, contract, licences check)
         run: make test
       - name: can licences --check (THIRD_PARTY_LICENSES is current and every wrapped licence is accepted)
@@ -238,9 +233,24 @@ jobs:
           args=$(grep "^$IMAGE " check/base-digests.txt | cut -d' ' -f2- | sed 's/^/--build-arg /' | tr '\n' ' ')
           [ -n "$args" ] || { echo "no resolved base digests for $IMAGE" >&2; exit 1; }
           context=.; [ "$dir" = deploy/hooks ] && context=deploy/hooks
-          # Charts and hooks.image name the version without the "v" (X.Y.Z): push both forms.
-          tags="-t $repo:$VERSION -t $repo:${VERSION#v}"
-          case "$VERSION" in *-*) ;; *) tags="$tags -t $repo:latest" ;; esac
+          # Charts and hooks.image pull each image by its own version (core/modimages/images.txt), "-" for
+          # can-core and can-static, which go by the release's. A published version tag is never moved,
+          # and a pre-release does not publish the version a final release is to publish.
+          own=$(awk -v n="$IMAGE" '$1 == n {print $4}' core/modimages/images.txt)
+          [ -n "$own" ] || { echo "no version for $IMAGE in core/modimages/images.txt" >&2; exit 1; }
+          [ "$own" != - ] || own=${VERSION#v}
+          tags="-t $repo:$VERSION"
+          case "$VERSION" in *-*) final=false ;; *) final=true; tags="$tags -t $repo:latest" ;; esac
+          case "$own" in *-*) wanted=true ;; *) wanted=$final ;; esac
+          if [ "$wanted" = true ]; then
+            if seen=$(docker buildx imagetools inspect "$repo:$own" 2>&1); then
+              echo "::warning::$repo:$own is already published and is not moved. If $IMAGE changed since, bump its version (docs/releasing.md)."
+            elif echo "$seen" | grep -qi 'not found'; then
+              tags="$tags -t $repo:$own"
+            else
+              echo "cannot tell whether $repo:$own exists: $seen" >&2; exit 1
+            fi
+          fi
           # shellcheck disable=SC2086
           docker buildx build --platform linux/amd64 --provenance=false \
             -f "$dir/Dockerfile" $args --build-arg "VERSION=$VERSION" $tags \

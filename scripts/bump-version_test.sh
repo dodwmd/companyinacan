@@ -31,12 +31,4 @@ if sh "$here/bump-version.sh" patch --tag >/dev/null 2>&1; then echo "FAIL: tagg
 git checkout -q main
 echo x >dirty.txt
 if sh "$here/bump-version.sh" patch --tag >/dev/null 2>&1; then echo "FAIL: tagged a dirty tree"; exit 1; fi
-rm dirty.txt
-# with an image version file, only that version can be tagged
-mkdir -p core/modimages
-echo 3.0.0 >core/modimages/version.txt
-git add core && git commit -q -m "image version"
-if sh "$here/bump-version.sh" v3.1.0 --tag >/dev/null 2>&1; then echo "FAIL: tagged a version the charts do not name"; exit 1; fi
-sh "$here/bump-version.sh" v3.0.0 --tag >/dev/null
-git rev-parse -q --verify refs/tags/v3.0.0 >/dev/null || { echo "FAIL: matching tag not created"; exit 1; }
 echo "bump-version_test: ok"

@@ -170,7 +170,7 @@ func (n *nodeExec) Run(ctx context.Context, c cluster.Cmd) (string, error) {
 }
 
 func TestApplyRefusesAModuleWhoseImageTheClusterCannotGet(t *testing.T) {
-	f := &nodeExec{images: "docker.io/library/can-core:dev\nghcr.io/dodwmd/can-forms:" + modimages.Version() + "\n"}
+	f := &nodeExec{images: "docker.io/library/can-core:dev\n" + modimages.Ref("can-forms") + "\n"}
 	old := newExecutor
 	t.Cleanup(func() { newExecutor = old })
 	newExecutor = func(*cobra.Command) cluster.Executor { return f }

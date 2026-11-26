@@ -26,10 +26,8 @@ if [ -z "$engine" ]; then
 fi
 command -v "$engine" >/dev/null 2>&1 || { echo "build-images: $engine is not installed" >&2; exit 1; }
 
-# The module images get the tag their charts name.
+# The module images get the tag their charts name: the version column of the list.
 list="$root/core/modimages/images.txt"
-version=$(cat "$root/core/modimages/version.txt")
-[ -n "$version" ] || { echo "build-images: core/modimages/version.txt is empty" >&2; exit 1; }
 
 mkdir -p "$out"
 rm -f "$out/images.json"
@@ -49,15 +47,15 @@ trap 'rm -f "$resolver"' EXIT
 index='{"schema":1,"images":{'
 first=1
 built=""
-while read -r name dockerfile context; do
+while read -r name dockerfile context version; do
 	case "$name" in '' | '#'*) continue ;; esac
 	if [ -n "${ONLY:-}" ]; then
 		case " $ONLY " in *" $name "*) ;; *) continue ;; esac
 	fi
 	# The tarball carries the full reference: podman would file a short name under localhost/, which
 	# the cluster does not match to the name the manifests use.
-	case "$name" in
-	can-core | can-static) tag="$name:dev" full="docker.io/library/$name:dev" ;;
+	case "$version" in
+	-) tag="$name:dev" full="docker.io/library/$name:dev" version=dev ;;
 	*) tag="ghcr.io/dodwmd/$name:$version" full="ghcr.io/dodwmd/$name:$version" ;;
 	esac
 	echo "build-images: $name -> $tag"

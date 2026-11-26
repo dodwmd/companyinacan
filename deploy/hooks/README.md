@@ -29,5 +29,5 @@ versions in each published image are the record.
 CI builds this image on pull requests that touch it or a module (`.github/workflows/module-backup.yml`), with the
 base digest resolved at that moment, checks that the tools are present and parses every `hooks/*.sh` in it. Nothing
 is pushed. `make images` builds it from a source checkout and `can up --images-from` ships it when company.yaml
-enables a module with script hooks. Not yet done: publishing (no release has run; the manifests name the version of
-`core/modimages/version.txt`), and running any hook against the application it dumps.
+enables a module with script hooks. Not yet done: publishing (no release has run; the manifests name its version
+in `core/modimages/images.txt`), and running any hook against the application it dumps.

@@ -1,10 +1,10 @@
 // Package modimages knows the container images a company needs: the in-house images this
-// repository builds (images.txt, version.txt: the one source of their names and version) and the
+// repository builds (images.txt: the one source of their names and versions) and the
 // images the charts and hooks of the enabled modules name.
 package modimages
 
 import (
-	_ "embed" // images.txt and version.txt
+	_ "embed" // images.txt
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,24 +22,19 @@ import (
 //go:embed images.txt
 var imagesTxt string
 
-//go:embed version.txt
-var versionTxt string
-
 // Registry is where the release workflow publishes the in-house images and where the charts expect them.
 const Registry = "ghcr.io/dodwmd"
 
-// Image is one in-house image.
-type Image struct{ Name, Dockerfile, Context string }
-
-// Version is the version of the in-house images: the tag the charts and hooks name.
-func Version() string { return strings.TrimSpace(versionTxt) }
+// Image is one in-house image. Version is the tag the charts and hooks pull it by, "-" for the
+// images no chart pulls.
+type Image struct{ Name, Dockerfile, Context, Version string }
 
 // All lists the in-house images in the order of images.txt.
 func All() []Image {
 	var out []Image
 	for _, l := range strings.Split(imagesTxt, "\n") {
-		if f := strings.Fields(l); len(f) == 3 && !strings.HasPrefix(l, "#") {
-			out = append(out, Image{Name: f[0], Dockerfile: f[1], Context: f[2]})
+		if f := strings.Fields(l); len(f) == 4 && !strings.HasPrefix(l, "#") {
+			out = append(out, Image{Name: f[0], Dockerfile: f[1], Context: f[2], Version: f[3]})
 		}
 	}
 	return out
@@ -54,13 +49,19 @@ func Names() []string {
 	return out
 }
 
-// Ref is the reference `make images` records for the image. can-core and can-static are deployed
-// by the reference in the images index, so they keep a local one; the others are what charts name.
+// Ref is the reference `make images` records for the image: what its chart pulls, or a local one
+// for an image deployed by the reference in the images index. "" for a name that is not built.
 func Ref(name string) string {
-	if name == "can-core" || name == "can-static" {
-		return name + ":dev"
+	for _, i := range All() {
+		switch {
+		case i.Name != name:
+		case i.Version == "-":
+			return name + ":dev"
+		default:
+			return Registry + "/" + name + ":" + i.Version
+		}
 	}
-	return Registry + "/" + name + ":" + Version()
+	return ""
 }
 
 // Required maps each image the enabled modules need to the ids that need it: every image of the

@@ -87,31 +87,42 @@ func TestReleaseWorkflowBuildsTheImageList(t *testing.T) {
 	if got := w.Jobs["publish-images"].Strategy.Matrix.Image; !slices.Equal(got, modimages.Names()) {
 		t.Errorf("release.yml publishes %v, want %v", got, modimages.Names())
 	}
-	if !strings.Contains(raw, `sh scripts/check-image-version.sh "$VERSION"`) {
-		t.Error("release.yml must refuse to publish a tag the charts do not name")
-	}
-	// the images are pushed under the tag without the "v" too: what the charts name
-	if !strings.Contains(raw, `-t $repo:${VERSION#v}`) {
-		t.Error("release.yml no longer pushes the X.Y.Z tag the charts name")
+	// each image is pushed under the version its chart pulls, and a published one is never moved
+	for _, want := range []string{`core/modimages/images.txt`, `tags="$tags -t $repo:$own"`, "is already published and is not moved"} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("release.yml lacks %q", want)
+		}
 	}
 	doc := readRepo(t, root, "docs/releasing.md")
-	for _, s := range []string{"core/modimages/version.txt", "scripts/set-image-version.sh"} {
+	for _, s := range []string{"core/modimages/images.txt", "scripts/set-image-version.sh"} {
 		if !strings.Contains(doc, s) {
 			t.Errorf("docs/releasing.md does not mention %s", s)
 		}
 	}
 }
 
-// versionProblems lists every place under base that names another version than want.
-func versionProblems(t *testing.T, base, want string) []string {
+// listedVersions reads the version column of the list under base.
+func listedVersions(t *testing.T, base string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, l := range strings.Split(readRepo(t, base, "core/modimages/images.txt"), "\n") {
+		if f := strings.Fields(l); len(f) == 4 && !strings.HasPrefix(l, "#") {
+			out[f[0]] = f[3]
+		}
+	}
+	return out
+}
+
+// versionProblems lists every place under base that names another version of an image than the list.
+func versionProblems(t *testing.T, base string) []string {
 	t.Helper()
 	var bad []string
-	names := modimages.Names()
-	ref := regexp.MustCompile(`ghcr\.io/dodwmd/((?:` + strings.Join(names, "|") + `)|\$[a-z]+):([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?)`)
+	want := listedVersions(t, base)
+	ref := regexp.MustCompile(`ghcr\.io/dodwmd/(can-[a-z]+):([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?)`)
 	for _, f := range glob(t, base, "modules/*/module.yaml", "modules/*/*.md", "modules/*/chart/*.md", "deploy/*/Dockerfile", "deploy/*/README.md", "docs/*.md", "*.md", ".github/workflows/*.yml") {
 		for _, m := range ref.FindAllStringSubmatch(readRepo(t, base, f), -1) {
-			if m[2] != want {
-				bad = append(bad, f+": "+m[0])
+			if v, ours := want[m[1]]; ours && m[2] != v {
+				bad = append(bad, f+": "+m[0]+", the list says "+v)
 			}
 		}
 	}
@@ -126,31 +137,36 @@ func versionProblems(t *testing.T, base, want string) []string {
 		if !ours {
 			continue
 		}
-		if !slices.Contains(names, name) {
-			bad = append(bad, f+": "+name+" is not built (core/modimages/images.txt)")
+		version, listed := want[name]
+		if !listed || version == "-" {
+			bad = append(bad, f+": "+name+" has no version in core/modimages/images.txt")
+			continue
 		}
 		// A chart without templates installs nothing yet; once it has them it needs the tag.
 		_, err := os.Stat(filepath.Join(base, filepath.Dir(f), "templates"))
-		if (err == nil || v.Image.Tag != "") && v.Image.Tag != want {
-			bad = append(bad, f+": tag "+v.Image.Tag)
+		if (err == nil || v.Image.Tag != "") && v.Image.Tag != version {
+			bad = append(bad, f+": tag "+v.Image.Tag+", the list says "+version)
 		}
 		chart := filepath.Join(filepath.Dir(f), "Chart.yaml")
 		if _, err := os.Stat(filepath.Join(base, chart)); err != nil {
 			continue
 		}
-		if c := readRepo(t, base, chart); !strings.Contains(c, `appVersion: "`+want+`"`) {
-			bad = append(bad, chart+": appVersion")
+		if c := readRepo(t, base, chart); !strings.Contains(c, `appVersion: "`+version+`"`) {
+			bad = append(bad, chart+": appVersion is not "+version)
 		}
 	}
 	return bad
 }
 
-func TestEveryImageVersionIsTheSame(t *testing.T) {
-	if !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`).MatchString(modimages.Version()) {
-		t.Fatalf("core/modimages/version.txt: %q", modimages.Version())
+func TestEveryImageVersionAgreesWithTheList(t *testing.T) {
+	for name, v := range listedVersions(t, root) {
+		local := name == "can-core" || name == "can-static"
+		if local != (v == "-") || (!local && !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`).MatchString(v)) {
+			t.Errorf("core/modimages/images.txt: %s has version %q", name, v)
+		}
 	}
-	if bad := versionProblems(t, root, modimages.Version()); len(bad) != 0 {
-		t.Fatalf("not version %s (scripts/set-image-version.sh %[1]s):\n%s", modimages.Version(), strings.Join(bad, "\n"))
+	if bad := versionProblems(t, root); len(bad) != 0 {
+		t.Fatalf("(scripts/set-image-version.sh):\n%s", strings.Join(bad, "\n"))
 	}
 }
 
@@ -159,7 +175,7 @@ func TestSetImageVersionChangesEveryPlace(t *testing.T) {
 		t.Skip("no sh")
 	}
 	tmp := t.TempDir()
-	for _, f := range glob(t, root, "core/modimages/*.txt", "modules/*/module.yaml", "modules/*/chart/*.yaml", "modules/*/chart/templates/_helpers.tpl", ".github/workflows/*.yml") {
+	for _, f := range glob(t, root, "core/modimages/images.txt", "modules/*/module.yaml", "modules/*/chart/*.yaml", "modules/*/chart/templates/_helpers.tpl", ".github/workflows/*.yml") {
 		dst := filepath.Join(tmp, f)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 			t.Fatal(err)
@@ -169,28 +185,27 @@ func TestSetImageVersionChangesEveryPlace(t *testing.T) {
 		}
 	}
 	script := filepath.Join(root, "scripts", "set-image-version.sh")
-	if out, err := exec.Command("sh", script, "9.8.7-rc.1", tmp).CombinedOutput(); err != nil { //nolint:gosec // repository script
-		t.Fatalf("%v: %s", err, out)
+	for _, name := range []string{"can-forms", "can-work", "can-hooks", "can-board"} {
+		if out, err := exec.Command("sh", script, name, "9.8.7-rc.1", tmp).CombinedOutput(); err != nil { //nolint:gosec // repository script
+			t.Fatalf("%s: %v: %s", name, err, out)
+		}
+		if got := listedVersions(t, tmp)[name]; got != "9.8.7-rc.1" {
+			t.Fatalf("%s: the list says %s", name, got)
+		}
 	}
-	if got := strings.TrimSpace(readRepo(t, tmp, "core/modimages/version.txt")); got != "9.8.7-rc.1" {
-		t.Fatal(got)
-	}
-	if bad := versionProblems(t, tmp, "9.8.7-rc.1"); len(bad) != 0 {
+	if bad := versionProblems(t, tmp); len(bad) != 0 {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
-	// upstream images keep their versions
+	if got := listedVersions(t, tmp)["can-people"]; got != listedVersions(t, root)["can-people"] {
+		t.Errorf("another image changed: %s", got)
+	}
 	if got := readRepo(t, tmp, "modules/analytics/chart/values.yaml"); got != readRepo(t, root, "modules/analytics/chart/values.yaml") {
 		t.Error("an upstream or adapter tag was changed")
 	}
-	check := filepath.Join(root, "scripts", "check-image-version.sh")
-	if out, err := exec.Command("sh", check, "v9.8.7-rc.1", tmp).CombinedOutput(); err != nil { //nolint:gosec // repository script
-		t.Fatalf("%v: %s", err, out)
-	}
-	if out, err := exec.Command("sh", check, "v9.8.7", tmp).CombinedOutput(); err == nil { //nolint:gosec // repository script
-		t.Fatalf("a different tag was accepted: %s", out)
-	}
-	if err := exec.Command("sh", script, "v1.0.0", tmp).Run(); err == nil { //nolint:gosec // repository script
-		t.Error("a leading v was accepted")
+	for _, args := range [][]string{{"can-work", "v1.0.0"}, {"can-core", "1.0.0"}, {"can-nothing", "1.0.0"}} {
+		if err := exec.Command("sh", script, args[0], args[1], tmp).Run(); err == nil { //nolint:gosec // repository script
+			t.Errorf("%v was accepted", args)
+		}
 	}
 }
 

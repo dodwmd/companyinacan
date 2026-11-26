@@ -1,20 +1,21 @@
 #!/bin/sh
-# Sets the version of the in-house images everywhere it is written (epic E06d): the source of truth
-# core/modimages/version.txt, the module charts, the hooks image the manifests name and the image
+# Sets the version of one in-house image everywhere it is written (epic E06d): the source of truth
+# core/modimages/images.txt, the charts that pull it, the hooks image the manifests name and the
 # references in the workflows. test/contract/module_images_test.go fails when one disagrees.
 #
-#   scripts/set-image-version.sh X.Y.Z[-pre] [repository root]
+#   scripts/set-image-version.sh can-work X.Y.Z[-pre] [repository root]
 #
-# Run it, review the diff and merge it BEFORE tagging vX.Y.Z: the release workflow refuses to publish
-# a tag that differs, because the charts would name images that do not exist (docs/releasing.md).
+# Also bump the `version` in the module's module.yaml, so that an installed module is upgraded
+# (docs/releasing.md).
 set -eu
-v="${1:-}"
-root="${2:-$(cd "$(dirname "$0")/.." && pwd)}"
-echo "$v" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$' || { echo "usage: set-image-version.sh X.Y.Z[-pre] (no leading v)" >&2; exit 2; }
-
+name="${1:-}"
+v="${2:-}"
+root="${3:-$(cd "$(dirname "$0")/.." && pwd)}"
 list="$root/core/modimages/images.txt"
-names=$(awk '!/^#/ && NF == 3 {print $1}' "$list" | tr '\n' ' ')
-echo "$v" >"$root/core/modimages/version.txt"
+usage() { echo "usage: set-image-version.sh <image of $list with a version> X.Y.Z[-pre] (no leading v)" >&2; exit 2; }
+echo "$v" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.]+)?$' || usage
+# shellcheck disable=SC2016 # $1 and $4 are awk's
+awk -v n="$name" '!/^#/ && $1 == n && $4 != "-" {found = 1} END {exit !found}' "$list" || usage
 
 edit() { # file, then a command that writes the new content to stdout
 	f=$1
@@ -24,28 +25,25 @@ edit() { # file, then a command that writes the new content to stdout
 	rm -f "$f.new"
 }
 
+# shellcheck disable=SC2016 # $1 and $4 are awk's
+edit "$list" awk -v n="$name" -v v="$v" '!/^#/ && $1 == n {$4 = v} {print}'
+
 for values in "$root"/modules/*/chart/values.yaml; do
-	# The `tag:` that follows an in-house `repository:`.
-	# shellcheck disable=SC2016 # $2 and $0 are awk's
-	edit "$values" awk -v v="$v" -v names="$names" '
-		BEGIN { n = split(names, a, " "); for (i = 1; i <= n; i++) ours["ghcr.io/dodwmd/" a[i]] = 1 }
-		/^[ \t]*repository:/ { mine = ($2 in ours) }
+	grep -Eq "repository:[ \t]*ghcr\.io/dodwmd/${name}[ \t]*\$" "$values" || continue
+	# The `tag:` that follows the image's `repository:`.
+	# shellcheck disable=SC2016 # $2 is awk's
+	edit "$values" awk -v v="$v" -v repo="ghcr.io/dodwmd/$name" '
+		/^[ \t]*repository:/ { mine = ($2 == repo) }
 		/^[ \t]*tag:/ && mine { sub(/tag:[ \t]*[^ \t#]+/, "tag: " v); mine = 0 }
 		{ print }'
 	chart="${values%values.yaml}Chart.yaml"
-	for n in $names; do
-		if grep -Eq "repository:[ \t]*ghcr\.io/dodwmd/${n}[ \t]*\$" "$values" && [ -f "$chart" ]; then
-			edit "$chart" sed -E "s/^appVersion:.*/appVersion: \"$v\"/"
-		fi
-	done
+	[ ! -f "$chart" ] || edit "$chart" sed -E "s/^appVersion:.*/appVersion: \"$v\"/"
 done
 
-# `ghcr.io/dodwmd/can-x:X.Y.Z` (or `$name:X.Y.Z` in a workflow). Adapter images are not built here.
-alternatives=$(printf '%s' "$names" | tr ' ' '\n' | grep . | tr '\n' '|')
-re="(ghcr\.io/dodwmd/(${alternatives}\\\$[a-z]+)):[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?"
+re="(ghcr\.io/dodwmd/${name}):[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?"
 for f in "$root"/modules/*/module.yaml "$root"/.github/workflows/*.yml; do
 	[ -f "$f" ] || continue
 	grep -Eq "$re" "$f" || continue
 	edit "$f" sed -E "s#$re#\1:$v#g"
 done
-echo "image version is $v"
+echo "$name is version $v; bump the module's version in module.yaml too"
