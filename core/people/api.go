@@ -83,9 +83,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func (a *API) fail(w http.ResponseWriter, err error) {
-	if importFailure(w, err) {
-		return
-	}
 	var inv *InvalidError
 	switch {
 	case errors.As(err, &inv):

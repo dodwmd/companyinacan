@@ -1,6 +1,9 @@
 package csvimport
 
-import "errors"
+import (
+	"errors"
+	"net/http"
+)
 
 // What a row does.
 const (
@@ -113,6 +116,29 @@ func (it *Item) Update(id string, changed []string) {
 	if len(changed) > 0 {
 		it.Action = ActionUpdate
 	}
+}
+
+// Status is the HTTP status of a report: 422 when an apply wrote nothing because of row errors.
+func (r *Report) Status() int {
+	if !r.DryRun && r.HasErrors() {
+		return http.StatusUnprocessableEntity
+	}
+	return http.StatusOK
+}
+
+// Failure maps the errors that concern a request as a whole to an HTTP status and error
+// code, so every module answers alike. The message is err.Error().
+func Failure(err error) (status int, code string, ok bool) {
+	var fe *FileError
+	switch {
+	case errors.As(err, &fe) && fe.TooLarge:
+		return http.StatusRequestEntityTooLarge, "too_large", true
+	case errors.As(err, &fe):
+		return http.StatusBadRequest, "invalid", true
+	case errors.Is(err, ErrBusy):
+		return http.StatusConflict, "busy", true
+	}
+	return 0, "", false
 }
 
 // HasErrors reports whether anything failed.
