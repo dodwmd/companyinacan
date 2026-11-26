@@ -111,6 +111,7 @@ func TestAdmissionPolicyRoutes(t *testing.T) {
 		{"jobs' alias", "mod-jobs", host("careers."+routeDomain) + " && PathPrefix(`/careers`)"},
 		{"jobs' own host", "mod-jobs", host("jobs."+routeDomain) + " && PathPrefix(`/login`)"},
 		{"forms on the site", "mod-forms", host(routeDomain) + " && PathPrefix(`/_forms`)"},
+		{"a signed-link rule", "mod-work", host("work."+routeDomain) + " && PathPrefix(`/public/invoices/`) && Method(`GET`)"},
 	}
 	for _, c := range allowed {
 		eventually(t, 30*time.Second, c.name+" to be allowed", func() (bool, string) {
@@ -419,6 +420,8 @@ func TestModuleRoutingThroughTheIngress(t *testing.T) {
 		t.Error("the leads API answers on the site host")
 	}
 
+	publicAccessThroughTheIngress(t, browser, base, hdr)
+
 	// 6. switching the UI off removes the route; the module keeps running and leaves Apps.
 	canApplyModules(t, routingCompany(false))
 	eventually(t, 180*time.Second, "the work route to be removed", func() (bool, string) {
@@ -432,5 +435,5 @@ func TestModuleRoutingThroughTheIngress(t *testing.T) {
 	if got := mustKubectl(t, "-n", "mod-work", "get", "networkpolicy", "allow-ingress-from-traefik", "-o", "jsonpath={.spec.ingress}"); got != "" && got != "[]" {
 		t.Errorf("an unrouted module still admits the ingress controller: %s", got)
 	}
-	canApplyModules(t, fmt.Sprintf("schema: 1\nname: Route Co\ndomain: %s\nprovider:\n  type: local\nmodules:\n  work: {enabled: false}\n  forms: {enabled: false}\n", routeDomain))
+	canApplyModules(t, fmt.Sprintf("schema: 1\nname: Route Co\ndomain: %s\nprovider:\n  type: local\nmodules:\n  work: {enabled: false}\n  forms: {enabled: false}\n  finance: {enabled: false}\n  jobs: {enabled: false}\n", routeDomain))
 }

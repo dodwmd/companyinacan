@@ -13,8 +13,7 @@ ports:
 services:                  # ClusterIP only; the `invoices`, `contracts` and `timesheets` capabilities
   - { name: finance, portName: http, port: 8080 }
 ingress:
-  # The signed, expiring invoice view (/public/invoices/) could be routed from the internet, but
-  # finance declares no runtime.subdomain, so can-core supplies no host and nothing is routed.
+  # Off for good: can-core routes the signed invoice view itself (module.yaml runtime.public_link).
   enabled: false
   host: ""
   tls: true
