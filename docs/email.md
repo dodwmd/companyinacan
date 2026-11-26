@@ -14,7 +14,8 @@ Spec: [specs/039-email-send](../specs/039-email-send/spec.md).
 | Other modules | `POST /v1/email`, if they declare `email.send` | their allow-list |
 
 SMTP-speaking third-party apps (FreeScout, Listmonk) cannot call this API and are **not** served by
-it; see [email-policy.md](email-policy.md).
+it. `support` is handed the relay itself, so the rules below do not apply to its mail; see
+[email-policy.md](email-policy.md).
 
 ## Set up the relay
 

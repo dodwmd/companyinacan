@@ -34,14 +34,17 @@ provision's), not listed by the admin or module API and cannot be a `primary`.
 The chart of each wrapped module is checked offline: manifest validation, `helm template` assertions
 (restricted pod security, ClusterIP, one PVC, same-namespace NetworkPolicy shape, `Host(...)` route),
 the installer's allowlist through its fakes, hook scripts parsed with `sh -n`, capability fixtures.
-**None has been pulled, started or measured**; images carry `REPLACE_WITH_DIGEST` placeholders and
-`make release-check` fails until they are resolved. Every adapter is `planned`.
+`analytics`, `support` and `newsletter` are also installed through can-core on k3d by the advisory
+`wrapped-modules` CI job, from upstream images pinned by digest ([specs/041](../specs/041-wrapped-modules-live/spec.md)).
+`wiki`, `crm` and `status` have **never been pulled, started or measured**: their images carry
+`REPLACE_WITH_DIGEST` placeholders. Every adapter is `planned`, and `make release-check` fails while
+any placeholder remains.
 
 | Module | Wraps | Status | RAM (MB) | Licence | Capability | Notes |
 |---|---|---|---|---|---|---|
-| `support` | FreeScout | not-deployable | 250 | AGPL-3.0-only | `tickets` | Community image needs root; tag unresolved; MariaDB |
-| `newsletter` | Listmonk | experimental | 50 | AGPL-3.0-only | `newsletter` | Postgres; SMTP relay settings manual until the adapter exists |
-| `analytics` | GoatCounter | experimental | 20 | EUPL-1.2 | `analytics` | SQLite; first site created by hand |
+| `support` | FreeScout | experimental | 192 | AGPL-3.0-only | `tickets` | Third-party non-root image (PikaPods); Postgres; admin password generated; relay applied to system mail only, mailboxes (in and out) configured by hand; idle memory in specs/041 research |
+| `newsletter` | Listmonk | experimental | 50 | AGPL-3.0-only | `newsletter` | Upstream image; Postgres; admin password generated; SMTP settings manual |
+| `analytics` | GoatCounter | experimental | 64 | EUPL-1.2 | `analytics` | Upstream image; SQLite; first site and user created with a generated password |
 | `wiki` | DokuWiki | experimental | 64 | GPL-2.0-only | `wiki` | No database (flat files); upstream documents a non-root uid; "only" vs "or later" unverified; heavier alternative BookStack (MIT) |
 | `crm` | EspoCRM | not-deployable | 350 | AGPL-3.0-only | `crm` | MariaDB; official image serves port 80 and names no non-root user; `lead.created.v1` subscription planned; personal data, erasure documented |
 | `status` | Uptime Kuma | experimental | 128 | MIT | `status` | SQLite; rootless image tag seen on Docker Hub, not run; only public status paths are routed, admin not exposed |
@@ -53,8 +56,8 @@ the installer's allowlist through its fakes, hook scripts parsed with `sh -n`, c
 3. Backup and restore hooks exercised against real data and a restore verified.
 4. The adapter for its capability built, or the capability accepted as not offered.
 
-Open verification work is tracked per spec: `specs/007-starter-modules/tasks.md` (Phase 7) and
-`specs/019-wiki-crm-status/tasks.md` (Phase 7).
+Open verification work is tracked per spec: `specs/041-wrapped-modules-live/tasks.md`,
+`specs/007-starter-modules/tasks.md` (Phase 7) and `specs/019-wiki-crm-status/tasks.md` (Phase 7).
 
 ## Not modules yet
 
