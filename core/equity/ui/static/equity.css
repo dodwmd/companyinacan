@@ -1,0 +1,121 @@
+/* Company in a Can equity. One stylesheet, no build step, no JavaScript.
+   Mobile first: the base rules are the phone layout, wider screens add to them.
+   Colour pairs that carry text are declared in "contrast:" comments; a test checks each pair
+   against WCAG AA (4.5:1) in both colour schemes. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;        /* contrast: #1a1a1a #ffffff */
+  --fg: #1a1a1a;
+  --muted: #4d4d4d;     /* contrast: #4d4d4d #ffffff */
+  --accent: #1f4e79;    /* contrast: #ffffff #1f4e79 */
+  --accent-fg: #ffffff;
+  --link: #14507f;      /* contrast: #14507f #ffffff */
+  --card: #f3f5f7;      /* contrast: #1a1a1a #f3f5f7 */
+  --line: #8a949e;
+  --err: #8f1d1d;       /* contrast: #8f1d1d #ffffff */
+  --warn-bg: #fff4d6;   /* contrast: #1a1a1a #fff4d6 */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181c;      /* contrast: #eceff1 #14181c */
+    --fg: #eceff1;
+    --muted: #b4bdc4;   /* contrast: #b4bdc4 #14181c */
+    --accent: #7fb2e0;  /* contrast: #0b1722 #7fb2e0 */
+    --accent-fg: #0b1722;
+    --link: #8fc0ec;    /* contrast: #8fc0ec #14181c */
+    --card: #1e252b;    /* contrast: #eceff1 #1e252b */
+    --line: #6c7882;
+    --err: #ff9e9e;     /* contrast: #ff9e9e #14181c */
+    --warn-bg: #3b3314; /* contrast: #eceff1 #3b3314 */
+  }
+}
+
+* { box-sizing: border-box; }
+html { font-size: 100%; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--link); }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--link); outline-offset: 2px;
+}
+.skip { position: absolute; left: -999px; top: 0; background: var(--accent); color: var(--accent-fg); padding: .5rem 1rem; z-index: 10; }
+.skip:focus { left: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+header.top { background: var(--accent); color: var(--accent-fg); padding: .5rem 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+header.top a { color: var(--accent-fg); }
+.brand { margin: 0; font-weight: 700; }
+header nav { flex: 1 1 100%; overflow-x: auto; }
+header nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: .25rem 1rem; flex-wrap: wrap; }
+header nav a { display: inline-block; padding: .5rem .25rem; min-height: 2.75rem; }
+header nav a[aria-current="page"] { font-weight: 700; text-decoration: underline; }
+.logout { margin: 0; }
+.logout button { background: transparent; color: var(--accent-fg); border: 1px solid var(--accent-fg); }
+
+main { max-width: 60rem; margin: 0 auto; padding: 1rem; }
+footer { max-width: 60rem; margin: 0 auto; padding: 1rem; color: var(--muted); font-size: .875rem; }
+h1 { font-size: 1.5rem; margin: .5rem 0 1rem; }
+h2 { font-size: 1.2rem; margin: 1.5rem 0 .5rem; }
+h3 { font-size: 1.05rem; }
+.muted, .hint { color: var(--muted); }
+.hint { font-size: .9rem; }
+.error { color: var(--err); border-left: 4px solid var(--err); padding-left: .75rem; }
+.flash { background: var(--card); border-left: 4px solid var(--accent); padding: .5rem .75rem; }
+.notice { background: var(--warn-bg); padding: .75rem; border-left: 4px solid var(--line); }
+.prose { white-space: pre-wrap; }
+
+.card { background: var(--card); padding: 1rem; border-radius: .5rem; max-width: 40rem; }
+label { display: block; font-weight: 600; margin-bottom: .25rem; }
+input, select, textarea, button { font: inherit; }
+input:not([type="hidden"]), select, textarea { width: 100%; max-width: 100%; padding: .5rem; min-height: 2.75rem; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: .25rem; }
+button { min-height: 2.75rem; padding: .5rem 1rem; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); border-radius: .25rem; cursor: pointer; }
+form.inline { display: inline-flex; flex-wrap: wrap; gap: .25rem; align-items: center; margin: 0; }
+form.inline input:not([type="hidden"]), form.inline select { width: auto; }
+
+ul.list { list-style: none; padding: 0; margin: 0; }
+ul.list li { padding: .5rem 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: .25rem .75rem; align-items: center; }
+.actions a { margin-right: 1rem; display: inline-block; padding: .5rem 0; }
+.badge { display: inline-block; padding: 0 .5rem; border: 1px solid var(--line); border-radius: 1rem; font-size: .85rem; }
+
+dl.facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+dl.facts dt { color: var(--muted); font-size: .9rem; margin-top: .5rem; }
+dl.facts dd { margin: 0; }
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+caption { text-align: left; font-weight: 600; padding: .5rem 0; }
+th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+@media (min-width: 40rem) {
+  header nav { flex: 1 1 auto; }
+  dl.facts { grid-template-columns: 12rem minmax(0, 1fr); gap: .25rem 1rem; }
+  dl.facts dt { margin-top: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Phones (specs/054-browser-e2e): long names, addresses and file names wrap instead of widening the
+   page, and a checkbox is at least 24 pixels, the WCAG 2.2 minimum target. */
+body { overflow-wrap: break-word; }
+dl.facts dd { overflow-wrap: anywhere; }
+fieldset { min-width: 0; }
+input[type="checkbox"]:not([hidden]), input[type="radio"]:not([hidden]) { width: 1.5rem; height: 1.5rem; min-height: 1.5rem; vertical-align: middle; }
+
+/* Figures line up and are never broken in the middle of a number. Wide tables scroll in their own
+   region, which the keyboard can focus. */
+.num { font-variant-numeric: tabular-nums; }
+th.num, td.num { text-align: right; white-space: nowrap; }
+.nowrap { white-space: nowrap; display: inline-block; }
+.scroll:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+section.card { margin-bottom: 1rem; }
+ul.plain { list-style: none; margin: 0; padding: 0; }
+label.check { display: inline; font-weight: 400; }
+code { overflow-wrap: anywhere; }
+
+@media print {
+  header.top, footer, .noprint, .skip { display: none; }
+  body { background: #ffffff; color: #000000; }
+}

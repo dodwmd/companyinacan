@@ -11,7 +11,9 @@ not implemented; they are data fields and documented limits. Compliance with sec
 data-protection law is the operator's responsibility.
 
 **Status: experimental.** Tested offline (unit, race, fuzz, contract); can-core installs the chart and CI waits
-for Ready on k3d; no admin UI or portal. It runs in the Docker Compose stack and its end-to-end suite (grant approval by a
+for Ready on k3d. A web UI for holders and for administration and finance
+([`specs/066-equity-ui`](../../specs/066-equity-ui/spec.md), [`docs/equity.md`](../../docs/equity.md#web-ui)) is off unless
+`ui.enabled` is set or `modules.equity.expose.ui` routes it. It runs in the Docker Compose stack and its end-to-end suite (grant approval by a
 board identity from a fake introspection service, [`docs/local-compose.md`](../../docs/local-compose.md)). `can validate` warns accordingly.
 
 Why in-house: equity is a sensitive data class (shareholder identities, holdings, valuations, strike
@@ -20,7 +22,7 @@ rejects a non-in-house module that declares a sensitive class (Constitution V, S
 
 | | |
 |---|---|
-| Listener | `:8081`, ClusterIP only (the capability); no public route |
+| Listener | `:8081`, ClusterIP (the capability); the web UI's paths are routed only with `expose.ui` |
 | Data | `/data/equity.db` (SQLite, WAL), one persistent volume; sensitive columns sealed |
 | Secrets | `CAN_EQUITY_API_TOKEN`, `CAN_EQUITY_WEBHOOK_SECRET`, `CAN_EQUITY_INTROSPECT_TOKEN`; encryption keyring file from a mounted Secret |
 | Footprint | 16 MB requested, 64 MB limit; measured idle RSS: see `specs/018-equity/measurements.md` |

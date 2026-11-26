@@ -1,10 +1,11 @@
 # Values for the equity module chart (in-house can-equity, SQLite). Rendered by can-core's installer.
 # Secrets are not values: can-core puts the tokens named below and the sealed-field `keyring` (all
 # generated once) and the can-core API settings into the can-module Secret, which every container
-# receives as environment. No public listener and no ingress.
+# receives as environment. No ingress of its own: can-core routes the web UI's paths only with
+# company.yaml modules.equity.expose.ui.
 image:
   repository: ghcr.io/dodwmd/can-equity
-  tag: 0.1.0
+  tag: 0.2.0
   # Set to a sha256 digest at release time; empty = the tag.
   digest: ""
   pullPolicy: IfNotPresent
@@ -31,6 +32,7 @@ configMountPath: /etc/can-equity-config
 # service has no can-core client yet, so its events stay in its outbox.
 config:
   keyring_file: /etc/can-equity/keys/keyring
+  # The web UI (specs/066-equity-ui) is off; can-core switches it on (ui.enabled) while it is routed.
   retention: {}            # override per data class, see modules/equity/settings.schema.json (the ledger and audit trail stay `legal`)
 # End of a break-glass window (YYYY-MM-DD inclusive, UTC, or RFC 3339; at most 7 days ahead), empty
 # for none. can-core sets it from company.yaml modules.equity.settings.break_glass_until.

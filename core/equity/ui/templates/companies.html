@@ -1,0 +1,8 @@
+{{define "content"}}
+<h1>{{t "company.title"}}</h1>
+{{if .Data.Entities}}
+<ul class="list">
+{{range .Data.Entities}}<li><a href="/company/entities/{{.ID}}">{{.Name}}</a> <span class="muted">{{.Currency}}</span></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "company.none"}}</p>{{end}}
+{{end}}

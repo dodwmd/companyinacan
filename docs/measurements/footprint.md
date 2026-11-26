@@ -109,6 +109,12 @@ finance 16.0, people 15.5, jobs 14.9, work 14.5, equity 12.6, board 12.6, files 
 11.8, can-static 6.7. Unchanged by this work. The largest single part of can-core is the SQLite library (about
 1.9 MiB of code), then the Go function tables, runtime, TLS and HTTP.
 
+**Later: the equity web UI** ([specs/066](../../specs/066-equity-ui/spec.md)). `can-equity` went from 12.95 to
+15.67 MiB with the same flags (`html/template`, which also stops the linker dropping unused methods, and the
+pages); its binary budget went from 14 to 17. Its memory budgets are unchanged: run alone on a developer machine
+with an empty database, idle `RssAnon` was 5.2 MiB before and 5.2 with the UI on, 7.6 after serving the sign-in
+page twenty times, and peak RSS rose from 16.0 to 17.8 MiB idle.
+
 ## Tried and not adopted
 
 | Idea | Result |

@@ -65,7 +65,11 @@ http://localhost:8185 {
 	reverse_proxy files:8095
 }
 
-http://:8180, http://:8181, http://:8182, http://:8183, http://:8184, http://:8185 {
+http://localhost:8186 {
+	reverse_proxy equity:8081
+}
+
+http://:8180, http://:8181, http://:8182, http://:8183, http://:8184, http://:8185, http://:8186 {
 	respond "unknown host" 421
 }
 

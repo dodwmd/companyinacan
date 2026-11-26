@@ -1,0 +1,54 @@
+{{define "content"}}
+{{$d := .Data}}{{$x := .Data.Exercise}}
+<h1>{{t "ex.title"}}</h1>
+<p><a href="/company/entities/{{$d.Entity.ID}}/exercises">{{$d.Entity.Name}}</a></p>
+<dl class="facts">
+<dt>{{t "grant.holder"}}</dt><dd><a href="/company/stakeholders/{{$x.StakeholderID}}">{{if $d.Holder}}{{$d.Holder}}{{else}}<code>{{$x.StakeholderID}}</code>{{end}}</a></dd>
+<dt>{{t "grant.title"}}</dt><dd><a href="/company/grants/{{$x.GrantID}}"><code>{{$x.GrantID}}</code></a></dd>
+<dt>{{t "grant.status"}}</dt><dd><span class="badge">{{label "xstatus" $x.Status}}</span> {{label "xnext" $x.Status}}</dd>
+<dt>{{t "ex.quantity"}}</dt><dd class="num">{{qty $x.Quantity}}</dd>
+<dt>{{t "ex.due"}}</dt><dd class="num">{{money $x.DueMinor $x.Currency}}</dd>
+{{with $x.PaidOn}}<dt>{{t "ex.paid_on"}}</dt><dd>{{date .}}</dd>{{end}}
+{{with $x.PaymentReference}}<dt>{{t "ex.reference"}}</dt><dd>{{.}}</dd>{{end}}
+{{with $x.IssuedOn}}<dt>{{t "ex.issued_on"}}</dt><dd>{{date .}}</dd>{{end}}
+{{with $x.LedgerID}}<dt>{{t "ex.ledger"}}</dt><dd><code>{{.}}</code></dd>{{end}}
+</dl>
+{{if .Caps.NeedsPerson}}<p class="notice">{{t "home.needs_person"}}</p>{{end}}
+{{if eq $x.Status "requested"}}{{if .Caps.ExerciseApprove}}
+<form method="post" action="/company/exercises/{{$x.ID}}/approve" class="card">
+{{template "csrf" .}}
+<p>{{t "ex.approve_what"}}</p>
+<p><button type="submit">{{t "ex.approve"}}</button></p>
+</form>
+<form method="post" action="/company/exercises/{{$x.ID}}/reject" class="card">
+{{template "csrf" .}}
+<p><button type="submit">{{t "ex.reject"}}</button></p>
+</form>
+{{end}}{{end}}
+{{if eq $x.Status "approved"}}{{if .Caps.ExercisePay}}
+<h2>{{t "ex.payment_title"}}</h2>
+<form method="post" action="/company/exercises/{{$x.ID}}/payment" class="card">
+{{template "csrf" .}}
+<p><label for="amount">{{t "ex.amount" $x.Currency}}</label><input id="amount" name="amount" inputmode="decimal" required value="{{$d.Due}}" autocomplete="off"></p>
+<p><label for="paid_on">{{t "ex.paid_on"}}</label><input id="paid_on" type="date" name="paid_on" required value="{{$d.Today}}"></p>
+<p><label for="reference">{{t "ex.reference"}}</label><input id="reference" name="reference" maxlength="200" autocomplete="off"></p>
+{{template "stepup" .}}
+<p><button type="submit">{{t "ex.record_payment"}}</button></p>
+</form>
+{{end}}{{end}}
+{{if eq $x.Status "payment_recorded"}}{{if .Caps.ExerciseIssue}}
+<h2>{{t "ex.issue_title"}}</h2>
+<form method="post" action="/company/exercises/{{$x.ID}}/issue" class="card">
+{{template "csrf" .}}
+<p>{{t "ex.issue_what"}}</p>
+{{template "stepup" .}}
+<p><button type="submit">{{t "ex.issue"}}</button></p>
+</form>
+{{end}}{{end}}
+{{if or (eq $x.Status "requested") (eq $x.Status "approved")}}{{if .Caps.ExerciseRequest}}
+<form method="post" action="/company/exercises/{{$x.ID}}/cancel" class="card">
+{{template "csrf" .}}
+<p><button type="submit">{{t "ex.withdraw"}}</button></p>
+</form>
+{{end}}{{end}}
+{{end}}

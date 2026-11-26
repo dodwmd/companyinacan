@@ -1,6 +1,7 @@
 package equity
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"slices"
@@ -46,17 +47,36 @@ type CanAuth struct{ In *modclient.Introspector }
 
 // Authenticate implements Authenticator.
 func (a *CanAuth) Authenticate(r *http.Request) (*Principal, error) {
+	return a.authenticate(r, a.In.Lookup)
+}
+
+// AuthenticateFresh is introspection without the cache.
+func (a *CanAuth) AuthenticateFresh(r *http.Request) (*Principal, error) {
+	return a.authenticate(r, a.In.Fresh)
+}
+
+func (a *CanAuth) authenticate(r *http.Request, lookup func(context.Context, string) (modclient.Identity, error)) (*Principal, error) {
 	tok, ok := bearer(r)
 	if !ok {
 		return nil, ErrUnauthenticated
 	}
-	id, err := a.In.Lookup(r.Context(), tok)
+	id, err := lookup(r.Context(), tok)
 	if err != nil || !id.Active || id.Kind != "user" || !canSubjectRe.MatchString(id.Subject) {
 		return nil, ErrUnauthenticated
 	}
-	roles := rolesFromPermissions(id.Permissions)
-	if len(roles) == 0 {
+	p, ok := personalPrincipal(id.Subject, id.Permissions)
+	if !ok {
 		return nil, ErrUnauthenticated
 	}
-	return &Principal{Subject: id.Subject, Roles: roles, CanCore: true}, nil
+	return p, nil
+}
+
+// personalPrincipal maps what can-core says about a person (a personal access token or a launch
+// ticket session of the web UI) to a Principal. Such a principal is never the board (canRoles).
+func personalPrincipal(subject string, perms []string) (*Principal, bool) {
+	roles := rolesFromPermissions(perms)
+	if len(roles) == 0 || !canSubjectRe.MatchString(subject) {
+		return nil, false
+	}
+	return &Principal{Subject: subject, Roles: roles, CanCore: true}, true
 }
