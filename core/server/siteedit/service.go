@@ -360,11 +360,13 @@ func (s *Service) Publish(ctx context.Context, actor, id string) (warnings []str
 	}
 	// A browser that gives up does not stop a publish half way.
 	ctx = context.WithoutCancel(ctx)
-	if err := s.remember(ctx, "company.yaml", KindExternal, cur.c.Site); err != nil {
-		return nil, err
-	}
 	if cur.hash != next {
+		// What is about to be replaced stays in the history, wherever it came from.
+		if err := s.remember(ctx, "company.yaml", KindExternal, cur.c.Site); err != nil {
+			return nil, err
+		}
 		if _, err := s.Company.Put(ctx, doc, cur.snap.Version); err != nil {
+			_ = s.record(ctx, actor, "site.publish_failed", id, map[string]any{"to": next})
 			if errors.Is(err, modmgr.ErrConflict) {
 				return nil, ErrStale
 			}

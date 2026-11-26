@@ -362,6 +362,11 @@ func TestSitePublishCanBeRetried(t *testing.T) {
 	if r := h.publish(s, id); r.StatusCode != http.StatusSeeOther || !strings.Contains(h.public("index.html"), "second try") {
 		t.Fatalf("retry: %d %s", r.StatusCode, r.body)
 	}
+	revs, err := h.ui.Site.History(context.Background())
+	must(t, err)
+	if len(revs) != 2 || revs[0].Actor != "ops" || !revs[0].Current || revs[1].Kind != siteedit.KindExternal {
+		t.Errorf("history after a retried publish: %+v", revs)
+	}
 }
 
 func TestSiteRoutesAreGatedAndNeedCSRF(t *testing.T) {
