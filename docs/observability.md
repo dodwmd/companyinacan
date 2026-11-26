@@ -167,7 +167,12 @@ Everything passes a scrubber (bearer tokens, URL credentials, `key=value` secret
 well-known key prefixes, long random-looking tokens, email addresses) plus the provider redactor seeded with
 the values of every secret-looking environment variable. The database is opened read-only; `hmac_secret`,
 password hashes, TOTP secrets and session tokens are never selected, and no people, finance or lead rows are
-read. Scrubbing is a safety net, not a guarantee: names and phone numbers in free text or under keys it does not recognise can survive, so skim the bundle before you attach it to a public issue.
+read. `can diagnose` also replaces, by value and in every file, what company.yaml and `.can/state.json` say
+identifies the installation (company name, domain, server address and name, a non-root SSH user, key paths, home
+directory, identity provider issuer, tenant, client id, groups and email domains, mail relay) and any other public
+IPv4 address; a company.yaml that is not valid YAML is left out. `can-core admin diagnose` does **not** do this.
+Scrubbing is a safety net, not a guarantee: other hostnames, IPv6 addresses, names and phone numbers in free text or
+under keys it does not recognise can survive, so send a bundle privately, never in a public issue.
 
 `can doctor` additionally reports whether the Docker daemon, the `companyinacan` compose stack and the
 Kubernetes API answer (`ok`, `unreachable`, `not-running`). These never change its exit code.

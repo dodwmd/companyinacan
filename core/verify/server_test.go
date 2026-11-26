@@ -29,9 +29,11 @@ oom_kernel=0
 disk_used_pct=30
 ntp_synced=yes
 ufw=active
-ufw_open=22/tcp
-ufw_open=80/tcp
-ufw_open=443/tcp
+ufw_default_incoming=deny
+ufw_rule=22/tcp
+ufw_rule=80/tcp
+ufw_rule=443/tcp (v6)
+ufw_rule=Anywhere on cni0
 secrets_encryption=Enabled
 traefik_policy=Local
 traefik_pvc=Bound
@@ -53,7 +55,7 @@ backup_result=success
 backup_exit=0
 backup_finished=1799996000
 marker_finished=1799995000
-last_dump=ok
+last_run={"run_id":"r1","at":"2027-01-15T00:00:00Z","ok":true}
 mode_restic.env=600:0
 mode_restic.password=600:0
 end=ok
@@ -88,7 +90,20 @@ func TestEvalFailures(t *testing.T) {
 		{"disk_used_pct=30", "disk_used_pct=91", "server.disk"},
 		{"ntp_synced=yes", "ntp_synced=no", "server.clock"},
 		{"ufw=active", "ufw=inactive", "firewall.ufw"},
-		{"ufw_open=80/tcp", "ufw_open=6443/tcp", "firewall.ufw"},
+		{"ufw_rule=80/tcp", "ufw_rule=22/tcp", "firewall.ufw"},
+		{"ufw_rule=22/tcp", "ufw_rule=6000:7000/tcp", "firewall.ufw"},
+		{"ufw_rule=22/tcp", "ufw_rule=10000:10300/tcp", "firewall.ufw"},
+		{"ufw_rule=22/tcp", "ufw_rule=22,6443/tcp", "firewall.ufw"},
+		{"ufw_rule=22/tcp", "ufw_rule=203.0.113.7 6443/tcp on eth0", "firewall.ufw"},
+		{"ufw_rule=22/tcp", "ufw_rule=Anywhere", "firewall.ufw"},
+		{"ufw_rule=22/tcp", "ufw_rule=Anywhere on eth0", "firewall.ufw"},
+		{"ufw_default_incoming=deny", "ufw_default_incoming=allow", "firewall.ufw"},
+		{"workload=can-system/can-core 1 1", "workload=can-system/can-core 0 ", "cluster.workloads"},
+		{"workload=mod-forms/forms 1 1", "workload=kube-system/svclb-traefik 1 0", "cluster.workloads"},
+		{`"ok":true}`, `"ok":false,"error":"x"}`, "backup.dump"},
+		{`"ok":true}`, `"ok":true,"skipped":[{"id":"crm","reason":"no image","database":"mariadb"}]}`, "backup.dump"},
+		{`"ok":true}`, `"ok":true,"skipped":[{"id":"wiki","reason":"gone","no_data":true}]}`, "backup.dump"},
+		{`"ok":true}`, `"ok":true,"warnings":["secrets of mod-x could not be read"]}`, "backup.dump"},
 		{"secrets_encryption=Enabled", "secrets_encryption=Disabled", "cluster.secrets-encryption"},
 		{"workload=mod-forms/forms 1 1", "workload=mod-forms/forms 1 ", "cluster.workloads"},
 		{"workload=can-system/can-core 1 1\n", "", "cluster.workloads"},
@@ -99,7 +114,6 @@ func TestEvalFailures(t *testing.T) {
 		{"acme_errors=0", "acme_errors=4", "tls.acme-errors"},
 		{"timer_active=active", "timer_active=inactive", "backup.timer"},
 		{"marker_finished=1799995000", "marker_finished=1799000000", "backup.dump"},
-		{"last_dump=ok", "last_dump=failed", "backup.dump"},
 		{"backup_finished=1799996000", "backup_finished=", "backup.last-run"},
 		{"backup_result=success", "backup_result=exit-code", "backup.last-run"},
 		{"mode_restic.password=600:0", "mode_restic.password=644:0", "backup.credential-files"},
@@ -141,6 +155,31 @@ func TestEvalNoVerdictFromUnreadableLogs(t *testing.T) {
 		if got[id].Status != Skip {
 			t.Errorf("%s: %s %q", id, got[id].Status, got[id].Detail)
 		}
+	}
+}
+
+func TestEvalDumpRecord(t *testing.T) {
+	const record = `{"run_id":"r1","at":"2027-01-15T00:00:00Z","ok":true}`
+	raw := strings.Replace(healthy, `"ok":true}`, `"ok":true,"skipped":[{"id":"secretmodule","reason":"hunter2 broke"}]}`, 1)
+	c := byID(EvalServer(ParseFacts(raw), allOn, true))["backup.dump"]
+	if c.Status != Pass || !strings.Contains(c.Detail, "1 on raw files only") || strings.Contains(c.Detail, "secretmodule") || strings.Contains(c.Detail, "hunter2") {
+		t.Errorf("raw files only: %+v", c)
+	}
+	for _, bad := range []string{`{"run_id":"r1"`, ""} {
+		in := strings.Replace(healthy, record, bad, 1)
+		if c := byID(EvalServer(ParseFacts(in), allOn, true))["backup.dump"]; c.Status != Skip {
+			t.Errorf("unreadable record %q: %+v", bad, c)
+		}
+	}
+}
+
+func TestScrubberHidesRoutesOfAnEarlierDomain(t *testing.T) {
+	s := NewScrubber("new.example", "203.0.113.7")
+	s.Routed("new.example", "203.0.113.7", []Route{{Host: "old.example"}, {Host: "admin.old.example"}, {Host: "work.old.example"},
+		{Host: "admin.new.example"}, {Host: "admin.203-0-113-7.sslip.io"}})
+	got := s.Text("work.old.example: x; admin.old.example: y; old.example; admin.new.example; admin.203-0-113-7.sslip.io")
+	if want := "<other-host>: x; admin.<other-host>: y; <other-host>; admin.<domain>; admin.<server-dashed>.sslip.io"; got != want {
+		t.Errorf("%s", got)
 	}
 }
 
@@ -220,7 +259,7 @@ case "$*" in
   *"get ingressroutes"*) echo 'route=can-system/site|["websecure"]|Host(`+"`acme.example`"+`) ' ;;
   *"get middlewares"*) echo middleware.traefik.io/can-login-rate ;;
   *"get secrets"*) echo secret/can-smtp-relay ;;
-  *logs*) echo "level=error msg=\"Unable to obtain ACME certificate for domains\"" ;;
+  *logs*) printf '%s\n' "ERR Unable to obtain ACME certificate for domains" "ERR Error renewing certificate from LE: x" "ERR The ACME resolve is skipped from the resolvers list" "INF fine" ;;
 esac`)
 	fake("systemctl", `case "$*" in
   "is-active k3s"|"is-active can-backup.timer") echo active ;;
@@ -228,7 +267,7 @@ esac`)
   *Result*) echo success ;;
   *ExecMainStatus*) echo 0 ;;
 esac`)
-	fake("ufw", `printf 'Status: active\n\nTo Action From\n-- ------ ----\n22/tcp ALLOW 198.51.100.9\n80/tcp ALLOW Anywhere\n443/tcp ALLOW IN Anywhere\nAnywhere ALLOW 10.42.0.0/16\n80/tcp (v6) ALLOW Anywhere (v6)\n'`)
+	fake("ufw", `printf 'Status: active\nDefault: deny (incoming), allow (outgoing), allow (routed)\n\nTo Action From\n-- ------ ----\n22/tcp ALLOW IN 198.51.100.9\n80/tcp ALLOW IN Anywhere\n443/tcp LIMIT IN Anywhere\nAnywhere ALLOW IN 10.42.0.0/16\nAnywhere on cni0 ALLOW IN Anywhere\n80/tcp (v6) ALLOW IN Anywhere (v6)\nAnywhere ALLOW FWD Anywhere on flannel.1\n'`)
 	fake("timedatectl", "echo yes")
 	fake("journalctl", "echo nothing")
 	write("var/lib/can/bootstrap.done", "v1.33.5+k3s1\n", 0o600)
@@ -253,16 +292,16 @@ esac`)
 	f := ParseFacts(string(out))
 	for k, want := range map[string]string{
 		"end": "ok", "bootstrapped": "v1.33.5+k3s1", "k3s_version": "v1.33.5+k3s1", "k3s_active": "active", "nodes": "1", "nodes_ready": "1",
-		"ufw": "active", "secrets_encryption": "Enabled", "traefik_policy": "Local", "acme_certs": "1", "acme_mode": "600", "acme_errors": "1",
+		"ufw": "active", "secrets_encryption": "Enabled", "traefik_policy": "Local", "acme_certs": "1", "acme_mode": "600", "acme_errors": "3",
 		"timer_enabled": "enabled", "backup_result": "success", "backup_finished": "1799996000", "marker_finished": "1799995000",
-		"last_dump": "ok", "oom_kernel": "0", "ntp_synced": "yes",
+		"ufw_default_incoming": "deny", "last_run": `{"run_id":"x","ok":true}`, "oom_kernel": "0", "ntp_synced": "yes",
 	} {
 		if f.str(k) != want {
 			t.Errorf("%s = %q, want %q", k, f.str(k), want)
 		}
 	}
-	if got := strings.Join(f["ufw_open"], ","); got != "80/tcp,443/tcp,80/tcp" {
-		t.Errorf("ufw_open = %q", got)
+	if got := strings.Join(f["ufw_rule"], ","); got != "80/tcp,443/tcp,Anywhere on cni0,80/tcp (v6)" {
+		t.Errorf("ufw_rule = %q", got)
 	}
 	if !strings.HasPrefix(f.str("mode_restic.env"), "600:") || len(f.Routes()) != 1 || f.str("mem_total_mb") == "" || f.str("boot") == "" {
 		t.Errorf("facts: %v", f)

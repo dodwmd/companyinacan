@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/provider"
 )
 
@@ -45,9 +46,11 @@ kv disk_used_pct "$(df -P "$R/var/lib" 2>/dev/null | awk 'NR==2 {sub("%","",$5);
 if have timedatectl; then kv ntp_synced "$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)"; fi
 
 if have ufw; then
-  st=$(ufw status 2>/dev/null)
+  st=$(ufw status verbose 2>/dev/null)
   case "$st" in *"Status: active"*) kv ufw active ;; *) kv ufw inactive ;; esac
-  printf '%s\n' "$st" | awk '/ALLOW( IN)? +Anywhere/ {print "ufw_open=" $1}'
+  kv ufw_default_incoming "$(printf '%s\n' "$st" | sed -n 's/^Default: *\([a-z]*\) (incoming).*/\1/p')"
+  # Only what is allowed from anywhere is printed: other sources can be the operator's own address.
+  printf '%s\n' "$st" | awk 'match($0, / +(ALLOW|LIMIT)( IN)? +Anywhere/) {print "ufw_rule=" substr($0, 1, RSTART-1)}'
 else
   kv ufw absent
 fi
@@ -61,10 +64,13 @@ if [ -n "$acme" ]; then
   kv acme_mode "$(stat -c %a "$acme")"
   kv acme_certs "$(grep -o '"certificate"' "$acme" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-if log=$(k -n kube-system logs deploy/traefik --since=24h); then kv acme_errors "$(printf '%s\n' "$log" | grep -ci 'unable to obtain acme certificate')"; fi
+# The wordings of Traefik v3's ACME provider (pkg/provider/acme/provider.go, cmd/traefik/traefik.go).
+acme_error='unable to obtain acme certificate|error renewing certificate|renew certificate with no value|acme resolver? is skipped|error adding certificate for domain|failed to (load|parse) tls key pair from acme'
+if log=$(k -n kube-system logs deploy/traefik --since=24h); then kv acme_errors "$(printf '%s\n' "$log" | grep -ciE "$acme_error")"; fi
 log=
 
 k get deploy,statefulset -A -o jsonpath='{range .items[*]}{"workload="}{.metadata.namespace}{"/"}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{"\n"}{end}'
+k get daemonset -A -o jsonpath='{range .items[*]}{"workload="}{.metadata.namespace}{"/"}{.metadata.name}{" "}{.status.desiredNumberScheduled}{" "}{.status.numberReady}{"\n"}{end}'
 k get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{"container="}{.restartCount}{" "}{.lastState.terminated.reason}{"\n"}{end}{end}'
 k get ingressroutes.traefik.io -A -o jsonpath='{range .items[*]}{"route="}{.metadata.namespace}{"/"}{.metadata.name}{"|"}{.spec.entryPoints}{"|"}{range .spec.routes[*]}{.match}{" "}{end}{"\n"}{end}'
 kv login_limit "$(k -n can-system get middlewares.traefik.io can-login-rate -o name)"
@@ -78,9 +84,8 @@ if have systemctl; then
 fi
 kv backup_finished "$(sed -n 's/^finished_at=//p' "$R/var/lib/can/backup-status" 2>/dev/null | head -n 1)"
 kv marker_finished "$(sed -n 's/^finished_at=//p' "$R/var/lib/can/dumps/COMPLETE" 2>/dev/null | head -n 1)"
-if [ -f "$R/var/lib/can/dumps/LAST-RUN" ]; then
-  if grep -q '"ok": *true' "$R/var/lib/can/dumps/LAST-RUN"; then kv last_dump ok; else kv last_dump failed; fi
-fi
+# Judged in Go, which reports counts only: the record names modules and quotes their errors.
+if [ -f "$R/var/lib/can/dumps/LAST-RUN" ]; then kv last_run "$(head -c 262144 "$R/var/lib/can/dumps/LAST-RUN" | tr -d '\n')"; fi
 for f in restic.env restic.password; do
   if [ -f "$R/etc/can/backup.d/$f" ]; then kv "mode_$f" "$(stat -c '%a:%u' "$R/etc/can/backup.d/$f")"; fi
 done
@@ -281,29 +286,7 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 			"rebooted since the bootstrap, and the node is not ready or isolation is not enforced"))
 	}
 
-	switch f.str("ufw") {
-	case "active":
-		open := map[string]bool{}
-		for _, to := range f["ufw_open"] {
-			open[strings.TrimSuffix(to, "/tcp")] = true
-		}
-		var bad []string
-		for _, p := range []string{"80", "443"} {
-			if !open[p] {
-				bad = append(bad, p+" is not allowed")
-			}
-		}
-		for _, p := range []string{"6443", "10250"} {
-			if open[p] {
-				bad = append(bad, p+" is open to everyone")
-			}
-		}
-		add(verdict("firewall.ufw", len(bad) == 0, "active; 80 and 443 allowed, 6443 and 10250 not opened to everyone", strings.Join(bad, "; ")))
-	case "inactive":
-		add(fail("firewall.ufw", "ufw is installed but not active"))
-	default:
-		add(skip("firewall.ufw", "ufw is not installed: check your own host or cloud firewall"))
-	}
+	add(evalUFW(f))
 
 	add(verdict("cluster.secrets-encryption", f.str("secrets_encryption") == "Enabled", "k3s encrypts Secrets at rest", "k3s secrets encryption is not enabled"))
 	add(evalWorkloads(f))
@@ -329,10 +312,96 @@ func EvalServer(f Facts, o ServerOptions, firewallOK bool) []Check {
 	return cs
 }
 
+// ufwRule is what the "To" column of a rule that allows traffic from anywhere opens.
+type ufwRule struct {
+	every  bool     // no port named: all of them
+	ranges [][2]int // TCP ports
+}
+
+var (
+	reUFWApp  = regexp.MustCompile(`\([^)]*\)`)
+	reUFWOn   = regexp.MustCompile(` on ([^ ]+)$`)
+	reUFWPort = regexp.MustCompile(`^([0-9]+)(?::([0-9]+))?$`)
+)
+
+// parseUFWTo reads "22/tcp", "80,443/tcp", "6000:7000/tcp", "Anywhere", "203.0.113.7 6443/tcp",
+// each possibly with "(v6)", an application name or "on <interface>". Rules on the pod interfaces
+// or loopback, and UDP-only rules, open nothing from outside over TCP.
+func parseUFWTo(to string) (r ufwRule) {
+	to = strings.TrimSpace(reUFWApp.ReplaceAllString(to, ""))
+	if m := reUFWOn.FindStringSubmatch(to); m != nil {
+		if m[1] == "cni0" || m[1] == "flannel.1" || m[1] == "lo" {
+			return r
+		}
+		to = strings.TrimSpace(strings.TrimSuffix(to, m[0]))
+	}
+	words := strings.Fields(to)
+	if len(words) == 0 {
+		return r
+	}
+	spec, proto, _ := strings.Cut(words[len(words)-1], "/")
+	if proto == "udp" {
+		return r
+	}
+	for _, part := range strings.Split(spec, ",") {
+		m := reUFWPort.FindStringSubmatch(part)
+		if m == nil { // "Anywhere", or an address with no port
+			return ufwRule{every: true}
+		}
+		lo, _ := strconv.Atoi(m[1])
+		hi := lo
+		if m[2] != "" {
+			hi, _ = strconv.Atoi(m[2])
+		}
+		r.ranges = append(r.ranges, [2]int{lo, hi})
+	}
+	return r
+}
+
+func evalUFW(f Facts) Check {
+	const id = "firewall.ufw"
+	switch f.str("ufw") {
+	case "active":
+	case "inactive":
+		return fail(id, "ufw is installed but not active")
+	default:
+		return skip(id, "ufw is not installed: check your own host or cloud firewall")
+	}
+	var rules []ufwRule
+	every := false
+	for _, to := range f["ufw_rule"] {
+		r := parseUFWTo(to)
+		rules, every = append(rules, r), every || r.every
+	}
+	open := func(port int) bool {
+		return every || slices.ContainsFunc(rules, func(r ufwRule) bool {
+			return slices.ContainsFunc(r.ranges, func(p [2]int) bool { return p[0] <= port && port <= p[1] })
+		})
+	}
+	var bad []string
+	if d := f.str("ufw_default_incoming"); d != "deny" && d != "reject" {
+		bad = append(bad, fmt.Sprintf("the default for incoming traffic is %q, not deny", d))
+	}
+	if every {
+		bad = append(bad, "a rule allows every port from anywhere")
+	}
+	for _, p := range []int{80, 443} {
+		if !open(p) {
+			bad = append(bad, fmt.Sprintf("%d is not allowed", p))
+		}
+	}
+	for _, p := range []int{6443, 10250} {
+		if !every && open(p) {
+			bad = append(bad, fmt.Sprintf("%d is open to everyone", p))
+		}
+	}
+	return verdict(id, len(bad) == 0, "active, incoming denied by default; 80 and 443 allowed, 6443 and 10250 not opened to everyone", strings.Join(bad, "; "))
+}
+
 func evalWorkloads(f Facts) Check {
 	var seen, down int
 	var names []string
-	core := false
+	core, coreRuns := false, false
 	for _, w := range f["workload"] {
 		p := strings.Fields(w)
 		if len(p) < 2 || !reWorkload.MatchString(p[0]) {
@@ -348,7 +417,9 @@ func evalWorkloads(f Facts) Check {
 			have, _ = strconv.Atoi(p[2])
 		}
 		seen++
-		core = core || p[0] == "can-system/can-core"
+		if p[0] == "can-system/can-core" {
+			core, coreRuns = true, want > 0 && have >= want
+		}
 		if have < want {
 			down++
 			if len(names) < 10 {
@@ -359,6 +430,8 @@ func evalWorkloads(f Facts) Check {
 	switch {
 	case !core:
 		return fail("cluster.workloads", "can-core is not deployed or the cluster could not be queried")
+	case !coreRuns && down == 0:
+		return fail("cluster.workloads", "can-core is scaled to 0: nothing is serving (an unfinished restore, or scaled down by hand)")
 	case down > 0:
 		return fail("cluster.workloads", fmt.Sprintf("%d of %d workloads are not ready: %s", down, seen, strings.Join(names, ", ")))
 	}
@@ -410,12 +483,7 @@ func evalBackup(f Facts, o ServerOptions) []Check {
 	cs := []Check{verdict("backup.timer", enabled == "enabled" && f.str("timer_active") == "active",
 		"can-backup.timer is enabled and active", fmt.Sprintf("can-backup.timer is %q and %q", enabled, f.str("timer_active")))}
 
-	if a, ok := age("marker_finished"); !ok {
-		cs = append(cs, fail("backup.dump", "no completed dump run (the first is about 10 minutes after can-core starts)"))
-	} else {
-		d := fmt.Sprintf("last completed dump run %d h ago, last run %s", int(a.Hours()), orUnknown(f.str("last_dump")))
-		cs = append(cs, verdict("backup.dump", a <= maxBackupAge && f.str("last_dump") != "failed", d, d))
-	}
+	cs = append(cs, evalDump(f, age))
 
 	result, code := f.str("backup_result"), f.str("backup_exit")
 	if a, ok := age("backup_finished"); !ok {
@@ -429,6 +497,35 @@ func evalBackup(f Facts, o ServerOptions) []Check {
 	cs = append(cs, verdict("backup.credential-files", env == "600:0" && pw == "600:0",
 		"restic credential files are root-only", "restic.env or restic.password is missing, or not mode 600 and owned by root"))
 	return cs
+}
+
+// evalDump holds the last dump run to the rule of backup.Status: a failed run, a database or
+// vanished data left out, and any warning are problems; a module left to its raw files is not.
+func evalDump(f Facts, age func(string) (time.Duration, bool)) Check {
+	const id = "backup.dump"
+	a, ok := age("marker_finished")
+	if !ok {
+		return fail(id, "no completed dump run (the first is about 10 minutes after can-core starts)")
+	}
+	d := fmt.Sprintf("last completed dump run %d h ago", int(a.Hours()))
+	run, err := backup.ParseDumpRun([]byte(f.str("last_run")))
+	if err != nil {
+		if a > maxBackupAge {
+			return fail(id, d)
+		}
+		return skip(id, d+"; the record of the last run (LAST-RUN) could not be read")
+	}
+	missing, raw := 0, 0
+	for _, s := range run.Skipped {
+		if s.DatabaseServer() || s.NoData {
+			missing++
+		} else {
+			raw++
+		}
+	}
+	d += fmt.Sprintf("; last run ok=%t, %d modules with a database or data NOT backed up, %d warnings, %d on raw files only (`can backup status` on the server names them)",
+		run.OK, missing, len(run.Warnings), raw)
+	return verdict(id, a <= maxBackupAge && run.OK && missing == 0 && len(run.Warnings) == 0, d, d)
 }
 
 func orUnknown(s string) string {

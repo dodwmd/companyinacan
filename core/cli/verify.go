@@ -180,7 +180,9 @@ func runVerify(cmd *cobra.Command, g *globalOpts, f *verifyFlags) error {
 	if u, err := url.Parse(issuer); err == nil {
 		issuerHost = u.Hostname()
 	}
-	rep.Finish(verify.NewScrubber(co.Domain, addr, co.Name, relayHost, issuerHost, state.Server.Name))
+	scrub := verify.NewScrubber(co.Domain, addr, co.Name, relayHost, issuerHost, state.Server.Name)
+	scrub.Routed(co.Domain, addr, routes)
+	rep.Finish(scrub)
 
 	if out != nil {
 		if err := writeReport(out, rep); err != nil {

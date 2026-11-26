@@ -7,6 +7,7 @@ package verify
 import (
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -86,6 +87,29 @@ func NewScrubber(domain, addr string, other ...string) *Scrubber {
 		add(o, "<redacted>")
 	}
 	return s
+}
+
+// Routed also replaces hostnames Traefik serves that are not under the current domain or the
+// instant address: routes of an earlier domain survive a change of company.yaml.
+func (s *Scrubber) Routed(domain, addr string, routes []Route) {
+	dashed := strings.NewReplacer(".", "-", ":", "-").Replace(addr)
+	var hosts []string
+	for _, r := range routes {
+		if !underDomain(r.Host, domain) && (dashed == "" || !strings.Contains(r.Host, dashed)) {
+			hosts = append(hosts, r.Host)
+		}
+	}
+	// Longest first, and before the other pairs: the replacer takes the first that matches.
+	slices.SortFunc(hosts, func(a, b string) int { return len(b) - len(a) })
+	var pairs []string
+	for _, h := range hosts {
+		with := "<other-host>"
+		if sub, _, ok := strings.Cut(h, "."); ok && (sub == "admin" || sub == "help") {
+			with = sub + ".<other-host>"
+		}
+		pairs = append(pairs, h, with)
+	}
+	s.pairs = append(pairs, s.pairs...)
 }
 
 // Text scrubs one string.
