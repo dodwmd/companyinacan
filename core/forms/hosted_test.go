@@ -81,3 +81,20 @@ func TestHTMLErrorPageIsAccessible(t *testing.T) {
 		t.Errorf("CSP blocks the empty icon: %q", rec.Header().Get("Content-Security-Policy"))
 	}
 }
+
+// The page is assembled by hand: text from the configuration must not become markup.
+func TestHostedFormPageEscapesConfiguration(t *testing.T) {
+	hostile := `"><script>alert(1)</script>`
+	page := hostedPage(&Form{ID: "contact", Name: hostile, Honeypot: "website", Fields: []Field{
+		{Name: "topic", Type: TypeSelect, Options: []string{hostile}},
+		{Name: "message", Type: TypeText, Multiline: true, Required: true, MaxLength: 10},
+	}}, "tok")
+	if strings.Contains(page, "<script") || !strings.Contains(page, "&#34;&gt;&lt;script&gt;") {
+		t.Fatalf("not escaped:\n%s", page)
+	}
+	for _, want := range []string{`<select id="f-topic" name="topic">`, `Topic (optional)`, `<textarea id="f-message" name="message" required rows="6" maxlength="10">`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("lacks %q:\n%s", want, page)
+		}
+	}
+}

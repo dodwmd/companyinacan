@@ -236,7 +236,7 @@ footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
   header nav a { min-height: 2.75rem; }
 }
 
-input[type="email"], input[type="time"] {
+input[type="email"], input[type="time"], input[type="date"], textarea {
   width: 100%; max-width: 28rem; min-height: 2.75rem; padding: 0.5rem 0.625rem; font: inherit;
   color: var(--text); background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius);
 }
