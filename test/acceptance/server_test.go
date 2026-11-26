@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +20,8 @@ import (
 )
 
 const manifestsDir = "/var/lib/rancher/k3s/server/manifests"
+
+var reTerminal = regexp.MustCompile("\x1b\\[[0-9;]*[A-Za-z]")
 
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 
@@ -161,6 +164,7 @@ func (e *env) memory(t *testing.T, label string, settle time.Duration, budgetMiB
 	time.Sleep(settle)
 	out := e.mustSSH(t, time.Minute, memoryScript)
 	head, detail, _ := strings.Cut(out, "---\n")
+	detail = reTerminal.ReplaceAllString(detail, "") // crictl clears the screen
 	v := map[string]int{}
 	for _, l := range strings.Split(head, "\n") {
 		if k, n, ok := strings.Cut(l, "="); ok {
