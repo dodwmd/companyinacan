@@ -59,6 +59,55 @@ func TestCheckMemory(t *testing.T) {
 	}
 }
 
+func TestLoadedNeedsTheSameContainers(t *testing.T) {
+	run := Instance{ID: "a1", PID: 10, Started: "t0"}
+	before := map[string]Instance{"core": run, "work": run}
+	same := []Sample{{Service: "core", Run: run}, {Service: "work", Run: run}}
+	if got := replaced(before, same); len(got) != 0 {
+		t.Fatalf("unchanged: %v", got)
+	}
+	for name, c := range map[string]struct {
+		now  Instance
+		want string
+	}{
+		"recreated":     {Instance{ID: "b2", PID: 11, Started: "t1"}, "recreated"},
+		"restarted":     {Instance{ID: "a1", PID: 11, Started: "t1"}, "restarted"},
+		"restart count": {Instance{ID: "a1", PID: 10, Restarts: 1, Started: "t0"}, "restarted"},
+		"pid reused":    {Instance{ID: "a1", PID: 10, Started: "t1"}, "restarted"},
+	} {
+		got := replaced(before, []Sample{{Service: "core", Run: c.now}, {Service: "work", Run: run}})
+		if len(got) != 1 || !strings.Contains(got[0], "core was "+c.want) {
+			t.Errorf("%s: %v", name, got)
+		}
+	}
+	if got := replaced(before, same[:1]); len(got) != 1 || !strings.Contains(got[0], "work is no longer running") {
+		t.Errorf("gone: %v", got)
+	}
+	path := filepath.Join(t.TempDir(), "state.json")
+	if _, err := loadState(path); err == nil {
+		t.Error("a missing state file must be an error")
+	}
+	if err := saveState(path, same); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadState(path)
+	if err != nil || len(replaced(got, same)) != 0 {
+		t.Fatalf("round trip: %v %v", got, err)
+	}
+}
+
+func TestParseInspect(t *testing.T) {
+	name, run, err := parseInspect("core\tabc\t42\t0\t2026-01-01 10:00:00.5 +0000 UTC")
+	if err != nil || name != "core" || run != (Instance{ID: "abc", PID: 42, Started: "2026-01-01 10:00:00.5 +0000 UTC"}) {
+		t.Fatalf("%s %+v %v", name, run, err)
+	}
+	for _, bad := range []string{"core abc", "core\tabc\t0\t0\tt", "core\tabc\t1\tx\tt"} {
+		if _, _, err := parseInspect(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
 func TestSampleWalksUpToTheMemoryCgroup(t *testing.T) {
 	proc, cg := t.TempDir(), t.TempDir()
 	write := func(path, body string) {

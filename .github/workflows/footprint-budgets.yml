@@ -56,15 +56,19 @@ jobs:
         run: |
           set -o pipefail
           sleep 30
-          go run ./dev/footprint/composecheck -project can-e2e -phase idle | tee out/idle.txt
+          go run ./dev/footprint/composecheck -project can-e2e -phase idle -state out/containers.json | tee out/idle.txt
       - name: End-to-end suite (the load)
         if: success() || failure()
+        # No restart test here: it recreates every container, and "loaded" would then describe fresh
+        # processes (composecheck fails if that happens). e2e.yml still runs the restart test.
+        env:
+          E2E_RESTART: "0"
         run: make e2e
       - name: Memory after load against budgets
         if: success() || failure()
         run: |
           set -o pipefail
-          go run ./dev/footprint/composecheck -project can-e2e -phase loaded | tee out/loaded.txt
+          go run ./dev/footprint/composecheck -project can-e2e -phase loaded -state out/containers.json | tee out/loaded.txt
       - name: Summary
         if: always()
         run: |

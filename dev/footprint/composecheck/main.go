@@ -1,8 +1,14 @@
 // Command composecheck compares the memory of a running Docker Compose stack, and the sizes of the
 // service binaries, with the budgets of dev/footprint/budgets.json (docs/measurements/footprint.md).
 //
-//	composecheck -project can-e2e -phase idle|loaded   # memory of the running containers
+//	composecheck -project can-e2e -phase idle -state FILE     # memory before the load; records the containers
+//	composecheck -project can-e2e -phase loaded -state FILE   # after it; fails if any container is another run
 //	composecheck -bin-dir DIR                          # sizes of DIR/<binary>
+//
+// A "loaded" figure only means something for the processes that took the load. A container that was
+// restarted or recreated in between (the e2e suite's restart test does that: run it with
+// E2E_RESTART=0 here) would show a fresh process, so the loaded phase compares each container's id,
+// process, start time and restart count with those the idle phase recorded, and fails otherwise.
 //
 // It exits 1 when something is over budget or missing, naming each offender. Linux with cgroup v2
 // only; it reads /proc/<pid> and the container's cgroup, which need no root.
@@ -51,6 +57,15 @@ type Budgets struct {
 type Sample struct {
 	Service                       string
 	Current, Anon, File, RSS, HWM int64 // Anon: RssAnon of the main process
+	Run                           Instance
+}
+
+// Instance identifies one run of one container.
+type Instance struct {
+	ID       string `json:"id"`
+	PID      int    `json:"pid"`
+	Restarts int    `json:"restarts"`
+	Started  string `json:"started_at"`
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -61,6 +76,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	file := fs.String("budgets", "dev/footprint/budgets.json", "budget file")
 	project := fs.String("project", "", "compose project whose containers are measured")
 	phase := fs.String("phase", "idle", "idle or loaded")
+	state := fs.String("state", "", "file the idle phase writes and the loaded phase requires: which containers were measured")
 	binDir := fs.String("bin-dir", "", "check the sizes of the binaries in this directory instead")
 	engine := fs.String("engine", "docker", "container CLI (docker or podman)")
 	if err := fs.Parse(args); err != nil {
@@ -75,30 +91,103 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case *binDir != "":
 		over = checkBinaries(stdout, b, *binDir)
-	case *project != "" && (*phase == "idle" || *phase == "loaded"):
+	case *project != "" && *state != "" && (*phase == "idle" || *phase == "loaded"):
 		samples, err := collect(*engine, *project)
 		if err != nil {
 			fmt.Fprintln(stderr, "composecheck:", err)
 			return 2
 		}
+		if *phase == "idle" {
+			if err := saveState(*state, samples); err != nil {
+				fmt.Fprintln(stderr, "composecheck:", err)
+				return 2
+			}
+		} else {
+			before, err := loadState(*state)
+			if err != nil {
+				fmt.Fprintln(stderr, "composecheck: the loaded phase needs the idle phase's state file:", err)
+				return 2
+			}
+			if changed := replaced(before, samples); len(changed) > 0 {
+				// Nothing else is worth reporting: the figures do not describe a loaded stack.
+				return fail(stdout, stderr, "FOOTPRINT NOT MEASURED", changed,
+					"The containers sampled are not the ones that took the load (run the suite with E2E_RESTART=0).")
+			}
+		}
 		over = checkMemory(stdout, b, samples, *phase)
 	default:
-		fmt.Fprintln(stderr, "composecheck: need -bin-dir, or -project with -phase idle|loaded")
+		fmt.Fprintln(stderr, "composecheck: need -bin-dir, or -project and -state with -phase idle|loaded")
 		return 2
 	}
 	if len(over) > 0 {
-		fmt.Fprintf(stderr, "FOOTPRINT BUDGET EXCEEDED (%d):\n", len(over))
-		for _, o := range over {
-			fmt.Fprintln(stderr, "  - "+o)
-			if os.Getenv("GITHUB_ACTIONS") == "true" { // shows on the pull request although the job is advisory
-				fmt.Fprintln(stdout, "::error title=Footprint budget::"+o)
-			}
-		}
-		fmt.Fprintln(stderr, "Reduce the memory, or change "+*file+" and say why in docs/measurements/footprint.md.")
-		return 1
+		return fail(stdout, stderr, "FOOTPRINT BUDGET EXCEEDED", over,
+			"Reduce the memory, or change "+*file+" and say why in docs/measurements/footprint.md.")
 	}
 	fmt.Fprintln(stdout, "footprint: within budget")
 	return 0
+}
+
+func fail(stdout, stderr io.Writer, heading string, problems []string, advice string) int {
+	fmt.Fprintf(stderr, "%s (%d):\n", heading, len(problems))
+	for _, p := range problems {
+		fmt.Fprintln(stderr, "  - "+p)
+		if os.Getenv("GITHUB_ACTIONS") == "true" { // shows on the pull request although the job is advisory
+			fmt.Fprintln(stdout, "::error title=Footprint budget::"+p)
+		}
+	}
+	fmt.Fprintln(stderr, advice)
+	return 1
+}
+
+func saveState(path string, samples []Sample) error {
+	m := map[string]Instance{}
+	for _, s := range samples {
+		m[s.Service] = s.Run
+	}
+	raw, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, raw, 0o600)
+}
+
+func loadState(path string) (map[string]Instance, error) {
+	raw, err := os.ReadFile(path) //nolint:gosec // developer tool, path from the command line
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]Instance
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(m) == 0 {
+		return nil, fmt.Errorf("%s: no containers recorded", path)
+	}
+	return m, nil
+}
+
+// replaced names the services whose container is not the same run as before the load.
+func replaced(before map[string]Instance, now []Sample) (out []string) {
+	seen := map[string]bool{}
+	for _, s := range now {
+		seen[s.Service] = true
+		was, ok := before[s.Service]
+		switch {
+		case !ok:
+			out = append(out, s.Service+" was not running before the load")
+		case was.ID != s.Run.ID:
+			out = append(out, s.Service+" was recreated since before the load")
+		case was != s.Run:
+			out = append(out, s.Service+" was restarted since before the load")
+		}
+	}
+	for _, name := range sortedKeys(before) {
+		if !seen[name] {
+			out = append(out, name+" is no longer running")
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func load(path string) (*Budgets, error) {
@@ -218,28 +307,43 @@ func collect(engine, project string) ([]Sample, error) {
 	if len(strings.Fields(string(ids))) == 0 {
 		return nil, errors.New("no running containers in project " + project)
 	}
-	args := append([]string{"inspect", "--format", `{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}}`}, strings.Fields(string(ids))...)
+	format := `{{index .Config.Labels "com.docker.compose.service"}}{{"\t"}}{{.Id}}{{"\t"}}{{.State.Pid}}{{"\t"}}{{.RestartCount}}{{"\t"}}{{.State.StartedAt}}`
+	args := append([]string{"inspect", "--format", format}, strings.Fields(string(ids))...)
 	out, err := exec.Command(engine, args...).Output() //nolint:gosec // developer tool
 	if err != nil {
 		return nil, fmt.Errorf("%s inspect: %w", engine, err)
 	}
 	var samples []Sample
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		f := strings.Fields(line)
-		if len(f) != 2 {
-			return nil, fmt.Errorf("unexpected inspect line %q", line)
-		}
-		pid, err := strconv.Atoi(f[1])
-		if err != nil || pid <= 0 {
-			return nil, fmt.Errorf("%s is not running", f[0])
-		}
-		s, err := sample("/proc", "/sys/fs/cgroup", f[0], pid)
+		name, run, err := parseInspect(line)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", f[0], err)
+			return nil, err
 		}
+		s, err := sample("/proc", "/sys/fs/cgroup", name, run.PID)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		s.Run = run
 		samples = append(samples, s)
 	}
 	return samples, nil
+}
+
+// parseInspect reads one line of the inspect format used by collect.
+func parseInspect(line string) (string, Instance, error) {
+	f := strings.Split(line, "\t")
+	if len(f) != 5 || f[0] == "" || f[1] == "" || f[4] == "" {
+		return "", Instance{}, fmt.Errorf("unexpected inspect line %q", line)
+	}
+	pid, err := strconv.Atoi(f[2])
+	if err != nil || pid <= 0 {
+		return "", Instance{}, fmt.Errorf("%s is not running", f[0])
+	}
+	restarts, err := strconv.Atoi(f[3])
+	if err != nil {
+		return "", Instance{}, fmt.Errorf("unexpected inspect line %q", line)
+	}
+	return f[0], Instance{ID: f[1], PID: pid, Restarts: restarts, Started: f[4]}, nil
 }
 
 // sample reads one process and its cgroup (v2).
