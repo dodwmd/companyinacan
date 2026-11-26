@@ -46,7 +46,7 @@ func newScriptEnv(t *testing.T, resticExit string) *scriptEnv {
 	write(s.ConfigDir+"/"+EnvFileName, "AWS_ACCESS_KEY_ID=fake\n", 0o600)
 	write(s.ConfigDir+"/"+PasswordFileName, "pw\n", 0o600)
 	write(dir+"/bin/restic", fmt.Sprintf("#!/bin/sh\necho \"restic $*\" >> %s\ncase \"$1\" in backup) [ -x %s/on-backup ] && %s/on-backup; exit %s;; esac\nexit 0\n", e.calls, dir, dir, resticExit), 0o755)
-	write(dir+"/bin/can", fmt.Sprintf("#!/bin/sh\necho \"can $*\" >> %s\nexit $(cat %s/can-rc 2>/dev/null || echo 0)\n", e.calls, dir), 0o755)
+	write(dir+"/bin/can", fmt.Sprintf("#!/bin/sh\n[ \"$*\" = \"backup --help\" ] && { cat %s/can-help 2>/dev/null || echo ledger-import; exit 0; }\necho \"can $*\" >> %s\nexit $(cat %s/can-rc 2>/dev/null || echo 0)\n", dir, e.calls, dir), 0o755)
 	write(dir+"/bin/curl", fmt.Sprintf("#!/bin/sh\necho \"curl $*\" >> %s\ncat >> %s/curl.stdin\n", e.calls, dir), 0o755)
 	write(dir+"/bin/logger", "#!/bin/sh\nexit 0\n", 0o755)
 	p, _ := testPlan()

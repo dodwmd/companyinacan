@@ -7,9 +7,8 @@ package integration
 // rejects takes the router down), the HTTPS redirect `can up` applies, the sign-in limit with
 // spoofed forwarding headers, no limit on signed-in traffic and finance's signed-link path.
 //
-// NOT covered: the headers on the careers pages (jobs does not start when can-core installs it: it
-// requires company.name and company.base_url, which nothing sets; the installer tests cover the
-// route),  ACME with the redirect in place (no public name), the client address as ServiceLB
+// NOT covered: the headers on the careers pages (jobs is not installed by this test; the installer
+// tests cover the route), ACME with the redirect in place (no public name), the client address as ServiceLB
 // delivers it on a real server (k3d's load balancer hides it), a real invoice link.
 
 import (

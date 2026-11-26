@@ -101,9 +101,9 @@ func TestLeadErasurePages(t *testing.T) {
 	if r.StatusCode != 303 || r.Header.Get("Location") != "/lead-erasure/7" || len(f.erased) != 1 {
 		t.Fatalf("erase: %d %s %v", r.StatusCode, r.Header.Get("Location"), f.erased)
 	}
-	command := "sudo can backup ledger-add --subject 7 --class lead-submission"
+	record := "records the erasure for restores by itself"
 	done := h.do("GET", "/lead-erasure/7", nil, s.with()...)
-	if done.StatusCode != 200 || !strings.Contains(done.body, command) {
+	if done.StatusCode != 200 || !strings.Contains(done.body, record) || strings.Contains(done.body, "ledger-add") {
 		t.Fatalf("after the erasure: %d %s", done.StatusCode, done.body)
 	}
 	for _, p := range a11yProblems(done.body) {
@@ -124,7 +124,7 @@ func TestLeadErasurePages(t *testing.T) {
 	// The answer is lost after the lead was erased: still reported and audited as erased.
 	f.leads = append(f.leads, Lead{ID: "9", FormID: "contact", Status: "new", CreatedAt: fixedNow, UpdatedAt: fixedNow})
 	confirm := h.do("GET", "/leads/9/erase", nil, s.with()...)
-	if !strings.Contains(confirm.body, "ledger-add --subject 9 --class lead-submission") || strings.Contains(confirm.body, "erases the lead again") {
+	if !strings.Contains(confirm.body, "records the erasure for restores by itself") || strings.Contains(confirm.body, "erases the lead again") {
 		t.Errorf("confirm page: %s", confirm.body)
 	}
 	if r := h.do("GET", "/lead-erasure/9", nil, s.with()...); r.StatusCode != 303 || r.Header.Get("Location") != "/leads/9" {

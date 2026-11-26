@@ -1,49 +1,67 @@
-# Default values for the equity module chart. The chart templates are delivered with the module deployment
-# epic (E03); this file fixes the contract the service expects, as for people and finance.
+# Values for the equity module chart (in-house can-equity, SQLite). Rendered by can-core's installer.
+# Secrets are not values: can-core puts the tokens named below and the sealed-field `keyring` (all
+# generated once) and the can-core API settings into the can-module Secret, which every container
+# receives as environment. No public listener and no ingress.
 image:
   repository: ghcr.io/dodwmd/can-equity
-  # Pinned by digest at release time; see deploy/equity/README.md.
+  tag: 0.1.0
+  # Set to a sha256 digest at release time; empty = the tag.
   digest: ""
-service:
-  api: { name: equity-api, port: 8081 }  # ClusterIP only: the `equity` capability. No public listener, no ingress.
+  pullPolicy: IfNotPresent
+ports:
+  - { name: api, port: 8081 }
+services:                  # ClusterIP only; the `equity` capability
+  - { name: equity-api, portName: api, port: 8081 }
+ingress:                   # never routed
+  enabled: false
+  host: ""
+  tls: true
+  certResolver: letsencrypt
+  service: equity-api
+  port: 8081
+  pathPrefixes: []
+  paths: []
 persistence:
+  enabled: true
   size: 200Mi
+  storageClass: ""
   mountPath: /data
-resources:
-  requests: { memory: 16Mi, cpu: 5m }
-  limits: { memory: 64Mi }
+configMountPath: /etc/can-equity-config
+# Written verbatim to equity.yaml; only keys the can-equity config accepts. webhook.url stays unset: this
+# service has no can-core client yet, so its events stay in its outbox.
 config:
-  # Mounted at /etc/can-equity/equity.yaml. keyring_file points at the mounted Secret below.
   keyring_file: /etc/can-equity/keys/keyring
-  retention: {}   # override per data class, see modules/equity/settings.schema.json (the ledger and audit trail stay `legal`)
-  introspect:
-    url: ""       # can-core token introspection (resolves user tokens to subject, roles and person id); empty = service account only. https or loopback unless:
-    allow_insecure_http: false
-  webhook:
-    url: ""       # can-core event endpoint for the outbox; empty = events stay in the outbox
+  retention: {}            # override per data class, see modules/equity/settings.schema.json (the ledger and audit trail stay `legal`)
+keyring:
+  enabled: true            # can-core generates it once into the can-module Secret (key `keyring`)
+  mountPath: /etc/can-equity/keys/keyring
+  # 0440 with fsGroup: kubelet makes the file root:65532 group-readable.
+  mode: 288
 secrets:
   # Names only; the values are created by can-core and never appear in values or git.
   env:
     - CAN_EQUITY_API_TOKEN          # service account (hr, finance, admin; never board) used by can-core
-    - CAN_EQUITY_WEBHOOK_SECRET
-    - CAN_EQUITY_INTROSPECT_TOKEN
   keyring:
-    secretName: can-equity-keys     # one key `keyring`: lines of `<key-id> <64 hex>`, newest first; mounted 0400
+    secretName: can-module
     key: keyring
     mountPath: /etc/can-equity/keys
-    subPath: keyring                # mount the single key with subPath: the loader refuses symlinks (Secret volumes use ..data links)
-probes:
-  readiness: { path: /readyz, port: 8081 }
-  liveness: { exec: [/can-equity, healthcheck, -addr, "127.0.0.1:8081"] }
+    subPath: keyring       # a single key mounted with subPath: the loader refuses symlinks
+resources:
+  requests: { memory: 16Mi, cpu: 5m }
+  limits: { memory: 64Mi }
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
   seccompProfile: { type: RuntimeDefault }
 securityContext:
   runAsNonRoot: true
-  readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities: { drop: [ALL] }
+probes:
+  readiness: { path: /readyz, port: api }
+  liveness: { exec: [/can-equity, healthcheck, -addr, "127.0.0.1:8081"] }
 networkPolicy:
-  # Default deny; ingress only from can-core and from the modules that consume the equity capability
-  # (labelled by can-core when they declare it). Egress only to can-core.
-  ingressFromCapabilityConsumers: true
+  intraNamespace: false

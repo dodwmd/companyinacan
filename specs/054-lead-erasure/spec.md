@@ -17,8 +17,8 @@ editing the database.
    module declares (`lead-submission`), the time of the erasure. `POST /v1/purge` is the idempotent replay
    hook of `can restore`. Lead ids are never reused, so a replay cannot destroy later data.
 7. Retention purges make no tombstone: restored data keeps its `retention_until`.
-8. Until a collector reads the feed, every answer, `can leads erase` and the admin UI show the
-   `can backup ledger-add` command, and none of them says a restore will apply the erasure by itself.
+8. Installed under can-core the feed is collected (specs/048-erasure-collection): answers say so and give the
+   conditions. Run on its own, they show the `can backup ledger-add` command.
 9. The module version is 0.2.0: installations record a manifest again only when the version changes.
 
 **Limits.** In [modules/forms/README.md](../../modules/forms/README.md#erasure-requests): mail already handed

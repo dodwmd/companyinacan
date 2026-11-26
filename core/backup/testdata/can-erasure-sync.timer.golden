@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy erasures to the backup bucket
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=1min
+Persistent=true
+Unit=can-erasure-sync.service
+
+[Install]
+WantedBy=timers.target

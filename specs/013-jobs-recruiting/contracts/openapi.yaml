@@ -764,7 +764,7 @@ components:
     LegalHoldRequest: { type: object, required: [hold], properties: { hold: { type: boolean } } }
     PurgeRequest: { type: object, required: [subject, class], properties: { subject: { type: string, pattern: "^cand_[0-9a-f]{16}$" }, class: { enum: [candidate-pii, candidate-resumes, candidate-evaluations] } } }
     Erasure: { type: object, properties: { subject: { type: string }, classes: { type: array, items: { type: string } }, date: { type: string } } }
-    ErasureList: { type: object, properties: { items: { type: array, items: { type: object, properties: { seq: { type: integer }, subject: { type: string }, class: { type: string }, date: { type: string } } } } } }
+    ErasureList: { type: object, properties: { items: { type: array, items: { type: object, properties: { seq: { type: integer }, subject: { type: string }, class: { type: string }, date: { type: string }, at: { type: string, format: date-time } } } } } }
     RetentionReport: { type: object, properties: { candidates_purged: { type: integer }, skipped_legal_hold: { type: integer }, jobs_expired: { type: integer }, jobs_deleted: { type: integer }, eeo_deleted: { type: integer } } }
     EEOReport: { type: object, description: "Counts per answer; count is null when the cell has fewer than min_cell responses.", properties: { job_id: { type: string }, responses: { type: [integer, "null"] }, min_cell: { type: integer }, fields: { type: object } } }
     NewToken: { type: object, required: [kind, subject, name, role], properties: { kind: { enum: [personal, service] }, subject: { type: string }, name: { type: string }, role: { enum: [admin, recruiter, hiring_manager, interviewer] }, jobs: { type: array, items: { type: string } }, expires_at: { type: [string, "null"] } } }

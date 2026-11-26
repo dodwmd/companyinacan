@@ -248,6 +248,7 @@ func TestAFailedUpgradeKeepsTheMiddlewaresTheRunningRouteNames(t *testing.T) {
 
 func TestAuthenticatedChartEndpointsAreNotLimited(t *testing.T) {
 	in, api, spec := routed(t, "provisioning", config.Expose{})
+	seedPeople(t, api)
 	enable(t, in, spec)
 	mws, _ := routeRules(t, api, spec.Namespace, "provisioning")
 	for m, got := range mws {
