@@ -366,29 +366,6 @@
             }
           }
         },
-        "careers": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "A link to the careers pages the jobs module serves at careers.<domain>. Left out when jobs is off or not public.",
-          "properties": {
-            "label": { "type": "string", "maxLength": 40, "description": "Default: Careers." }
-          }
-        },
-        "pages": {
-          "type": "array",
-          "maxItems": 12,
-          "description": "Extra text pages (privacy, terms, ...), served at /<slug> and linked in the footer (docs/site-editor.md).",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["slug", "title", "body"],
-            "properties": {
-              "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$" },
-              "title": { "type": "string", "minLength": 1, "maxLength": 80 },
-              "body": { "type": "string", "minLength": 1, "maxLength": 20000, "description": "Plain text: blank lines separate paragraphs, '## ' starts a heading, '- ' a list item." }
-            }
-          }
-        },
         "footer": {
           "type": "object",
           "additionalProperties": false,
