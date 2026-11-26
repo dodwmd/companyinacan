@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dodwmd/companyinacan/core/canbin"
 	"github.com/dodwmd/companyinacan/core/cluster"
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/launch"
@@ -239,6 +240,7 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		}
 		acts = append(acts, provider.Action{ID: "dns", Description: "print DNS records for " + strings.Join(names, ", ") + " (" + dns.Name() + " plugin)"})
 	}
+	acts = append(acts, provider.Action{ID: "server.can", Description: "install this can on the server as /usr/local/bin/can (matching its architecture, sha256 verified, replaced atomically)"})
 	if !sf.provisionOnly {
 		acts = append(acts, stackPlanActions(sf)...)
 	}
@@ -268,6 +270,7 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		}
 	}
 	var prep *stackPrep
+	var provisionCLI canSource
 	if sf.allowBrokenBackup {
 		fmt.Fprintln(cmd.ErrOrStderr(), "note: --allow-broken-backup is deprecated and does nothing: backups no longer need an override")
 	}
@@ -276,6 +279,8 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		if prep, err = t.stackPreflight(ctx, cmd.ErrOrStderr(), sf); err != nil {
 			return t.fail(err)
 		}
+	} else if provisionCLI, err = provisionCanSource(sf, cmd.ErrOrStderr()); err != nil {
+		return t.fail(fmt.Errorf("%w (nothing has been provisioned yet)", err))
 	}
 	if err := t.prov.Create(ctx, t.spec, t.store, out); err != nil {
 		return t.fail(err)
@@ -342,6 +347,9 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		// DNS is applied inside finishStack, after the stack is up, so a Cloudflare record never
 		// points at a server that cannot answer yet.
 		return t.finishStack(ctx, cmd, g, out, &res, prep, sf, dns, tgt, instant, addr)
+	}
+	if err := t.installProvisioned(ctx, runner(tgt), provisionCLI, out, &res); err != nil {
+		return t.fail(err)
 	}
 	if len(recs) > 0 {
 		if err := dns.Apply(ctx, t.company.Domain, recs, out); err != nil {
@@ -497,6 +505,8 @@ type statusResult struct {
 	Checks   []provider.Check `json:"checks,omitempty"`
 	Warnings []string         `json:"warnings,omitempty"`
 	DNS      []dnsStatus      `json:"dns_records,omitempty"`
+	// ServerCLI is the `can` on the server.
+	ServerCLI *serverCLIStatus `json:"server_cli,omitempty"`
 }
 
 func newStatusCmd(g *globalOpts) *cobra.Command {
@@ -554,6 +564,10 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 					if w := firewallWarning(ctx, runner(tgt)); w != "" {
 						res.Warnings = append(res.Warnings, w)
 					}
+					var w string
+					if res.ServerCLI, w = t.serverCLI(ctx, runner(tgt)); w != "" {
+						res.Warnings = append(res.Warnings, w)
+					}
 				}
 			}
 			if g.json() {
@@ -565,6 +579,11 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 				fmt.Fprintf(w, "provider: %s\nstatus:   %s\n", res.Provider, res.Phase)
 				if res.Address != "" {
 					fmt.Fprintf(w, "address:  %s\n", res.Address)
+				}
+				if c := res.ServerCLI; c != nil && c.Version != "" {
+					fmt.Fprintf(w, "server can: %s linux/%s\n", canbin.Build{Version: c.Version, Commit: c.Commit}, c.Arch)
+				} else if c != nil && !c.Installed {
+					fmt.Fprintln(w, "server can: not installed")
 				}
 				for _, c := range res.Checks {
 					mark := "ok  "

@@ -28,7 +28,7 @@ checkout has two ways to get them to the server:
 | Way | Command | What happens |
 |---|---|---|
 | Build locally, ship over SSH | `make images` then `make up IMAGES_FROM=build/images` | `scripts/build-images.sh` builds with podman or docker (`ENGINE=`), writes `build/images/*.tar` and `images.json` with the sha256 of each. `can up` re-checks the checksums, uploads over SSH, checks them again on the server with `sha256sum` and imports them into k3s (`k3s ctr -n k8s.io images import`; the tarballs stay in `/var/lib/rancher/k3s/agent/images`). No registry is involved. `can-core` and `can-static` get local tags (`can-core:dev`); the others get the name and version their charts pull (`ghcr.io/dodwmd/can-work:X.Y.Z`, per image in `core/modimages/images.txt`). Only `can-core`, `can-static` and the images of the modules `company.yaml` enables (and of the default bundle) are shipped. `ONLY="can-core can-static can-forms"` builds a subset. |
-| Pull by digest from a release | `can up --release-manifest deploy/release-images.json` (also the default when that file exists) | `deploy/release-images.json` names the images `can up` deploys itself (`can-core`, `can-static`, `can-forms`) as `repository@sha256:<digest>`; a tag, a placeholder or a malformed digest is refused. Module images are pulled from GHCR by the version their charts name. The release workflow writes the file with `scripts/gen-release-images.sh` from the digests it pushed, lists it in the signed `SHA256SUMS` and attaches it to the release as `release-images.json`: download it, verify it, and pass its path (or save it as `deploy/release-images.json`). No release has run this step yet. |
+| Pull by digest from a release | `can up --release-manifest deploy/release-images.json` (also the default when that file exists) | `deploy/release-images.json` names the images `can up` deploys itself (`can-core`, `can-static`, `can-forms`) as `repository@sha256:<digest>`; a tag, a placeholder or a malformed digest is refused. Module images are pulled from GHCR by the version their charts name. The release workflow writes the file with `scripts/gen-release-images.sh` from the digests it pushed, lists it in the signed `SHA256SUMS` and attaches it to the release as `release-images.json`: download it, verify it, and pass its path (or save it as `deploy/release-images.json`). Its `cli` section pins the release's `can` archives for linux/amd64 and linux/arm64, from which `can up` installs `can` on the server ([backup-restore.md](backup-restore.md#the-can-on-the-server)). No release has run this step yet. |
 
 **The image check.** Before anything is provisioned or changed, `can up` makes sure that every image of every
 enabled module is in the images directory or can be pulled anonymously from its registry (it asks the registry,
@@ -61,7 +61,8 @@ development path, not a supply-chain guarantee. Release images are signed and at
  7 admin      -- kubectl exec ... admin bootstrap ------> admin account; password on stdin, never argv
  8 site       -- build locally, ConfigMap site-content -> site pod (can-static) unpacks it
  9 routes     -- IngressRoutes -------------------------> site, admin, same-origin /_forms (forms module installed by can-core)
-10 backup     -- files over ssh (only with --backup-*) -> pinned restic, dumps dir, timer, repository initialised
+10 backup     -- can over ssh, sha256 checked ---------> /usr/local/bin/can   (phase "cli" without backups)
+              -- files over ssh (only with --backup-*) -> pinned restic, dumps dir, timer, repository initialised
 11 ready      -- kubectl wait Available ----------------> can-core, site, forms
 12 dns / probe / summary   Cloudflare records or printed records; URL probe; credentials and kit shown once
 ```
@@ -130,6 +131,7 @@ once are refused (`another can up or can down is already running`).
 | admin, created but the credentials were never shown | issues a new password and TOTP secret (nobody has the old ones) and shows them |
 | admin, credentials already shown | leaves the account alone and says so; lost them: `kubectl -n can-system exec -i deploy/can-core -- /can-core admin reset-password --rotate-totp` (new password on stdin) |
 | backup, timer installed, kit not shown | rebuilds the kit from the password already on the server and shows it |
+| `can` on the server | uploaded only when the file differs (sha256), replaced atomically; a newer `can` upgrades it, with or without `--backup-*`. With backups configured a failure fails the `backup` phase |
 | backup, kit already shown | nothing, unless the repository, the bucket credentials or the password on the server differ from that kit: then the install is redone and the new kit is shown (rotated bucket keys are written to the server) |
 | backup installed, password file on the server missing or unreadable | stops without changing anything; put the password from your kit back |
 | ready / dns / summary | repeated |

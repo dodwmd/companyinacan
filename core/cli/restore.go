@@ -45,6 +45,8 @@ Nothing is sent and nothing is public until the last step. A server that is not 
 unless you name the company with --confirm-overwrite. Progress is recorded in --state: after a
 failure fix the cause and run the same command again. --plan prints the steps and changes nothing.
 
+When it succeeds it installs the running can as /usr/local/bin/can, which backups need.
+
 It does not create the server, publish the site, route the admin UI or install the backup timer:
 run ` + "`can up`" + ` afterwards. docs/backup-restore.md lists what has not been verified.`,
 		Args: cobra.NoArgs,
@@ -183,6 +185,12 @@ func runRestore(cmd *cobra.Command, g *globalOpts, f *restoreFlags) error {
 	if err := o.Run(ctx); err != nil {
 		return mapErr(err)
 	}
+	// The restored server's backup script and erasure sync run /usr/local/bin/can: put this one
+	// there. The company is restored either way, so a failure is reported, not fatal.
+	canLine, canErr := installSelf(f.root)
+	if canErr == nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), canLine)
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), `restore complete.
 THIS SERVER IS NOT BEING BACKED UP YET.
 Next, from a machine that reaches this server: run `+"`can up`"+` in %s (site, admin and module routes, DNS),
@@ -191,6 +199,9 @@ Check that the old server is really gone: two servers backing up to one reposito
 Erasures: only those in the erasure ledger were replayed (people, equity, board, entity, files, finance, forms, jobs and work record theirs;
 other modules do not). See the warning above and repeat any erasure it may have missed.
 `, f.dir)
+	if canErr != nil {
+		fmt.Fprintf(cmd.OutOrStdout(), "NOT INSTALLED: /usr/local/bin/can (%v). `can up` installs it; until then erasures do not reach the bucket.\n", canErr)
+	}
 	if len(f.acceptUnrestored) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "NOT restored (%s): it is not in later backups, and the snapshots holding it are deleted after %d days.\n",
 			strings.Join(f.acceptUnrestored, ", "), backup.DefaultSettings().RetentionDays)

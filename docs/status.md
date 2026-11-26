@@ -48,8 +48,8 @@ Columns:
 
 Limits of the erasure column ([backup-restore.md](backup-restore.md#erasure-tombstone-ledger) has all of them):
 
-- The ledger reaches the backup bucket only if the `can` binary is at `/usr/local/bin/can` on the server.
-  `can up` does not copy it.
+- The ledger reaches the backup bucket only through the `can` binary at `/usr/local/bin/can` on the server.
+  `can up` installs it; that has been run against fakes and a k3d node, not a real server over SSH.
 - An erasure made in about the last quarter hour before a server is lost may be missing.
 - `finance` erases customers and vendors only, not what it holds about staff (timesheets, expenses). `work`
   replaces the identifier a person appears under, not mentions in texts
@@ -113,8 +113,6 @@ Apart from `ci`, `security`, `e2e` and `flaky-hunt`, nothing runs again after a 
   real release yet.
 - The admin UI's Leads page has no credential on an install. Messages arrive by notification email (needs a relay)
   or are read through the forms API.
-- `make up` does not copy the `can` binary to the server; without it erasures never reach the backup bucket
-  ([backup-restore.md](backup-restore.md#commands)).
 - `company.yaml` module `settings` are generally not mapped onto module configuration
   ([module-wiring.md](module-wiring.md)).
 - Security weaknesses are listed in [security-model.md](security-model.md#known-residual-risks).

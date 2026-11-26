@@ -148,6 +148,7 @@ func newStack(t *testing.T, k *fakeKube, l *fakeLoader) (Options, Deps, *bytes.B
 		Dir: dir, Company: co, CompanyYAML: src, Images: set, DefaultBundle: true,
 		Routes:   RouteOptions{SiteHosts: []string{"acme.example"}, AdminHosts: []string{"admin.acme.example"}},
 		Timeouts: Timeouts{Rollout: time.Minute, CRD: time.Minute, Module: time.Minute},
+		CLI:      &fakeCLI{version: "v1.0.0"},
 	}
 	d := Deps{
 		Kube: k, Loader: l, Store: provider.NewStore(dir), Redactor: red, Rand: &counterRand{},
@@ -430,12 +431,18 @@ type hostFake struct {
 	copied   map[string][]byte
 	out      map[string]string
 	streamed []string
+	// the server's can (cli_test.go): `uname -m`, and whether the upload arrives damaged
+	uname   string
+	corrupt bool
 }
 
 func (h *hostFake) Run(_ context.Context, script string) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.ran = append(h.ran, script)
+	if out, handled, err := h.cli(script); handled {
+		return out, err
+	}
 	for k, v := range h.out {
 		if strings.Contains(script, k) {
 			return v, nil
@@ -655,7 +662,7 @@ func TestBackupResumeRebuildsKitFromHostWhenNotShown(t *testing.T) {
 		t.Fatalf("an interrupted run must hand over the same kit the host already uses: %+v", res.Kit)
 	}
 	for p := range h.copied {
-		if p != "/etc/can/backup.d/restic.env" && p != "/etc/can/backup.d/restic.env.new" { // the credentials file follows the flags, tried first
+		if p != "/etc/can/backup.d/restic.env" && p != "/etc/can/backup.d/restic.env.new" && p != cliPath { // the credentials file and the can follow every run
 			t.Fatalf("nothing is reinstalled: %s", p)
 		}
 	}

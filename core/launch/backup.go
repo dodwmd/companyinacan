@@ -34,6 +34,11 @@ func (r *runner) backup(ctx context.Context) (bool, string, error) {
 	if r.d.Host == nil {
 		return false, "", errors.New("backup was requested but there is no server to install the timer on")
 	}
+	// Before anything else, and on every run: the script and the erasure sync need this binary,
+	// and a backup whose erasures never reach the bucket is not set up.
+	if _, _, err := r.cli(ctx, true); err != nil {
+		return false, "", err
+	}
 	st, err := r.d.Store.Load()
 	if err != nil {
 		return false, "", err
@@ -182,15 +187,11 @@ restic cat config >/dev/null 2>&1 || restic init
 systemctl daemon-reload
 systemctl enable --now can-backup.timer
 systemctl enable --now can-erasure-sync.timer
-[ -x %[4]s ] || echo CAN_NO_CAN_BINARY
 echo CAN_BACKUP_OK
-`, shq(envPath), shq(kit.Restic.Repository), shq(pwPath), shq(s.CanBin))
+`, shq(envPath), shq(kit.Restic.Repository), shq(pwPath))
 	out, err = r.d.Host.Run(ctx, script)
 	if err != nil || !strings.Contains(out, "CAN_BACKUP_OK") {
 		return false, "", fmt.Errorf("enable the backup timer: %v: %s", err, strings.TrimSpace(out))
-	}
-	if strings.Contains(out, "CAN_NO_CAN_BINARY") {
-		r.res.Warnings = append(r.res.Warnings, fmt.Sprintf("%s is not on the server: erasures are NOT copied to the bucket until you put the Linux release binary there, and a restore would bring erased data back", s.CanBin))
 	}
 	if err := r.d.Store.Mutate(func(s *provider.State) error {
 		launchOf(s).BackupInstalled, launchOf(s).BackupVersion = true, BackupInstallVersion

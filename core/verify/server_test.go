@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/dodwmd/companyinacan/core/canbin"
 )
 
 // healthy is a host where every server check passes.
@@ -58,10 +60,11 @@ marker_finished=1799995000
 last_run={"run_id":"r1","at":"2027-01-15T00:00:00Z","ok":true}
 mode_restic.env=600:0
 mode_restic.password=600:0
+can_cli={"version":"v1.2.3","commit":"abcdef012345","date":"2027-01-01T00:00:00Z","arch":"arm64"}
 end=ok
 `
 
-var allOn = ServerOptions{BackupInstalled: true, EmailRelay: true, SSOSecret: "sso-client"}
+var allOn = ServerOptions{BackupInstalled: true, EmailRelay: true, SSOSecret: "sso-client", CLI: canbin.Build{Version: "v1.2.3", Commit: "abcdef0"}}
 
 func byID(cs []Check) map[string]Check {
 	m := map[string]Check{}
@@ -277,6 +280,7 @@ esac`)
 	write("var/lib/rancher/k3s/storage/pvc-1_kube-system_traefik/acme.json", "{\n \"certificate\": \"AAAA\",\n \"key\": \"SECRETKEY\"\n}\n", 0o600)
 	write("etc/can/backup.d/restic.env", "AWS_SECRET_ACCESS_KEY='SECRETKEY'\n", 0o600)
 	write("etc/can/backup.d/restic.password", "SECRETKEY", 0o600)
+	write("usr/local/bin/can", "#!/bin/sh\n[ \"$*\" = \"version --output json\" ] && echo '{\"version\":\"v1.2.3\",\"commit\":\"abcdef012345\"}'\n", 0o700)
 
 	script := strings.Replace(ServerScript(), "\nR=''\n", "\nR='"+root+"'\n", 1)
 	cmd := exec.Command(bash, "-s") //nolint:gosec // test
