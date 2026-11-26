@@ -305,7 +305,12 @@ type RouteOptions struct {
 }
 
 // sitePriority is the site's catch-all; can-core's /_forms route outranks it (routing.SitePriority).
-const sitePriority = 1
+// adminPriority is above it: on the plain-HTTP address with --domain-live the catch-all also matches
+// the admin host, and at equal priority Traefik may serve the site there instead of the admin UI.
+const (
+	sitePriority  = 1
+	adminPriority = 10
+)
 
 func (o RouteOptions) validate() error {
 	if len(o.SiteHosts) == 0 && !o.CatchAll {
@@ -385,7 +390,7 @@ func SiteRoutes(o RouteOptions) ([]byte, error) {
 	if len(o.AdminHosts) > 0 {
 		var admin []any
 		for _, h := range o.AdminHosts {
-			admin = append(admin, rule("Host(`"+h+"`)", sitePriority, "can-core", 8080))
+			admin = append(admin, rule("Host(`"+h+"`)", adminPriority, "can-core", 8080))
 			// The rest of the admin UI and its API need a session and are not limited here.
 			if len(loginLimit) > 0 {
 				for _, p := range adminLoginRules {

@@ -118,12 +118,16 @@ flock -w 600 8 || fail 12 "another run holds the erasure ledger lock"
 # What can-core collected from the modules goes into the ledger first. Not when the ledger vanished:
 # making a new one would hide that.
 COLLECTED="$DUMPS/.erasure-ledger"
+# 1 only when this run read a complete, current collection into the ledger.
+IMPORTED=0
 if [ -e "$COLLECTED" ] && [ ! -L "$LEDGER" ] && { [ -e "$LEDGER" ] || [ ! -s "$HOSTSTATE/erasure-ledger.jsonl" ]; }; then
   if [ -x '/usr/local/bin/can' ]; then
     if ! '/usr/local/bin/can' backup --help 2>/dev/null | grep ledger-import >/dev/null; then
       ledger_rc=22
       report 22 "/usr/local/bin/can is too old (it has no ledger-import): update it to this release; erasures do NOT reach the bucket"
-    elif ! '/usr/local/bin/can' backup ledger-import --from "$COLLECTED" --ledger "$LEDGER"; then
+    elif '/usr/local/bin/can' backup ledger-import --from "$COLLECTED" --ledger "$LEDGER"; then
+      IMPORTED=1
+    else
       ledger_rc=22
       report 22 "erasures collected by can-core are missing from the ledger (journalctl -t can-backup and the unit's journal say why)"
     fi
@@ -135,11 +139,19 @@ if [ -e "$COLLECTED" ] && [ ! -L "$LEDGER" ] && { [ -e "$LEDGER" ] || [ ! -s "$H
   fi
 fi
 
+# A company that never erased anything still gets a ledger in the bucket, an empty one: a restore
+# refuses a bucket without a ledger, so that a deleted one is noticed. An empty ledger says that
+# nothing was erased, so it is made and uploaded only when this run's import succeeded. Never when
+# erasures were seen before (the copy): a vanished ledger is reported below.
+if [ "$IMPORTED" -eq 1 ] && [ ! -e "$LEDGER" ] && [ ! -L "$LEDGER" ] && [ ! -s "$HOSTSTATE/erasure-ledger.jsonl" ]; then
+  : >"$LEDGER"
+fi
+
 if [ -L "$LEDGER" ]; then
   fail 13 "erasure ledger $LEDGER is a symlink"
 elif [ -f "$LEDGER" ]; then
   cp -f -- "$LEDGER" "$HOSTSTATE/erasure-ledger.jsonl"
-  if [ -s "$LEDGER" ] && ! '/usr/local/bin/can' backup ledger-sync --ledger "$LEDGER" --repo "$RESTIC_REPOSITORY" --password-file "$RESTIC_PASSWORD_FILE" --env-file "$ENVFILE"; then
+  if { [ -s "$LEDGER" ] || [ "$IMPORTED" -eq 1 ]; } && ! '/usr/local/bin/can' backup ledger-sync --ledger "$LEDGER" --repo "$RESTIC_REPOSITORY" --password-file "$RESTIC_PASSWORD_FILE" --env-file "$ENVFILE"; then
     ledger_rc=22
     report 22 "erasure ledger upload failed"
   fi
