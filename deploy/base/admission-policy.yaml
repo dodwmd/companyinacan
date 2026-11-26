@@ -336,3 +336,88 @@ metadata:
 spec:
   policyName: can-core-networkpolicies
   validationActions: [Deny]
+---
+# The website editor of the admin UI (specs/064-site-editor). can-core's RoleBinding in can-system
+# lets it manage workloads and ConfigMaps there; publishing needs far less, and these two policies
+# hold it to that: it may roll the site (the digest annotation of the pod template, nothing else)
+# and rewrite the one key of ConfigMap site-content. It creates and deletes no workload here.
+# can-core refuses to publish while either is missing. Proven by test/integration/site_publish_test.go.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: can-core-site
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels: {kubernetes.io/metadata.name: can-system}
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [deployments, statefulsets, daemonsets]
+  matchConditions:
+    - name: requester-is-can-core
+      expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
+  validations:
+    - expression: "request.operation == 'UPDATE' && request.resource.resource == 'deployments' && object.metadata.name == 'site'"
+      message: "in can-system can-core may only update Deployment site"
+    - expression: >-
+        request.operation != 'UPDATE' || request.resource.resource != 'deployments' || (
+        object.spec.replicas == oldObject.spec.replicas && object.spec.selector == oldObject.spec.selector
+        && object.spec.strategy == oldObject.spec.strategy && object.spec.template.spec == oldObject.spec.template.spec
+        && object.spec.template.metadata.labels == oldObject.spec.template.metadata.labels
+        && (has(object.spec.paused) && object.spec.paused) == (has(oldObject.spec.paused) && oldObject.spec.paused))
+      message: "can-core may not change what the site runs"
+    - expression: >-
+        request.operation != 'UPDATE' || request.resource.resource != 'deployments' || (
+        has(object.spec.template.metadata.annotations)
+        && object.spec.template.metadata.annotations.all(k, k == 'can.dev/site-sha256'
+          || (has(oldObject.spec.template.metadata.annotations) && k in oldObject.spec.template.metadata.annotations
+              && oldObject.spec.template.metadata.annotations[k] == object.spec.template.metadata.annotations[k]))
+        && (!has(oldObject.spec.template.metadata.annotations)
+          || oldObject.spec.template.metadata.annotations.all(k, k in object.spec.template.metadata.annotations)))
+      message: "can-core may only change the can.dev/site-sha256 annotation of the site's pods"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: can-core-site
+spec:
+  policyName: can-core-site
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: can-core-site-content
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels: {kubernetes.io/metadata.name: can-system}
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [configmaps]
+  matchConditions:
+    - name: requester-is-can-core
+      expression: "request.userInfo.username == 'system:serviceaccount:can-system:can-core'"
+    - name: is-the-site-content
+      expression: "(request.operation == 'DELETE' ? oldObject.metadata.name : object.metadata.name) == 'site-content'"
+  validations:
+    - expression: "request.operation == 'UPDATE'"
+      message: "can-core may only update ConfigMap site-content (`can up` creates it)"
+    - expression: >-
+        request.operation != 'UPDATE' || ((!has(object.data) || object.data.size() == 0)
+        && has(object.binaryData) && object.binaryData.size() == 1 && 'site.tar.gz' in object.binaryData)
+      message: "ConfigMap site-content holds the site archive and nothing else"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: can-core-site-content
+spec:
+  policyName: can-core-site-content
+  validationActions: [Deny]

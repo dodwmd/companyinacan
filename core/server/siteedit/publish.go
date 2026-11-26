@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/dodwmd/companyinacan/core/server/kube"
@@ -47,16 +48,17 @@ type Publisher interface {
 	Publish(ctx context.Context, prev Published, r Release) error
 }
 
-// The objects of deploy/site that publishing touches, and the admission policy that limits can-core
-// to exactly that (deploy/base/admission-policy.yaml).
+// The objects of deploy/site that publishing touches.
 const (
 	siteNamespace  = "can-system"
 	siteConfigMap  = "site-content"
 	siteDeployment = "site"
 	archiveKey     = "site.tar.gz"
-	// AdmissionPolicy is the policy that must be in force before can-core publishes.
-	AdmissionPolicy = "can-core-site"
 )
+
+// AdmissionPolicies must be in force before can-core publishes: they hold it to exactly those two
+// writes (deploy/base/admission-policy.yaml).
+var AdmissionPolicies = []string{"can-core-site", "can-core-site-content"}
 
 // KubePublisher publishes the way `can up` does: the archive into ConfigMap can-system/site-content,
 // then its digest onto the site Deployment's pod template, which rolls the pod. Nothing else.
@@ -99,20 +101,18 @@ func (k KubePublisher) Ready(ctx context.Context) error {
 	notReady := func(what string, err error) error {
 		return fmt.Errorf("%w: %s (%w); run `can up` to update the server", ErrNotReady, what, err)
 	}
-	if _, err := k.API.Get(ctx, "ValidatingAdmissionPolicy", "", AdmissionPolicy); err != nil {
-		return notReady("the admission policy "+AdmissionPolicy+" is missing", err)
-	}
-	b, err := k.API.Get(ctx, "ValidatingAdmissionPolicyBinding", "", AdmissionPolicy)
-	if err != nil {
-		return notReady("the admission policy "+AdmissionPolicy+" is not bound", err)
-	}
-	actions, _ := asMap(b["spec"])["validationActions"].([]any)
-	deny := false
-	for _, a := range actions {
-		deny = deny || a == "Deny"
-	}
-	if !deny {
-		return notReady("the admission policy "+AdmissionPolicy+" does not deny", errors.New("binding"))
+	for _, name := range AdmissionPolicies {
+		if _, err := k.API.Get(ctx, "ValidatingAdmissionPolicy", "", name); err != nil {
+			return notReady("the admission policy "+name+" is missing", err)
+		}
+		b, err := k.API.Get(ctx, "ValidatingAdmissionPolicyBinding", "", name)
+		if err != nil {
+			return notReady("the admission policy "+name+" is not bound", err)
+		}
+		actions, _ := asMap(b["spec"])["validationActions"].([]any)
+		if !slices.Contains(actions, any("Deny")) {
+			return notReady("the admission policy "+name+" does not deny", errors.New("check its binding"))
+		}
 	}
 	if _, err := k.API.Get(ctx, "Deployment", siteNamespace, siteDeployment); err != nil {
 		return notReady("the site is not deployed", err)

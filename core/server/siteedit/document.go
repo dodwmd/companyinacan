@@ -11,6 +11,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/site"
 )
 
 // ErrDocument means company.yaml cannot be edited here.
@@ -19,6 +20,13 @@ var ErrDocument = errors.New("company.yaml cannot be edited in the admin UI: it 
 // Merge returns doc with its `site:` section replaced by s. Comments, ordering and formatting of
 // everything the change does not touch are kept.
 func Merge(doc []byte, s config.Site) ([]byte, error) {
+	// Nothing changed: the document stays byte for byte.
+	var have struct {
+		Site config.Site `yaml:"site"`
+	}
+	if yaml.Unmarshal(doc, &have) == nil && site.SectionHash(have.Site) == site.SectionHash(s) {
+		return doc, nil
+	}
 	var root yaml.Node
 	if err := yaml.Unmarshal(doc, &root); err != nil || len(root.Content) == 0 || root.Content[0].Kind != yaml.MappingNode || hasAlias(root.Content[0]) {
 		return nil, ErrDocument

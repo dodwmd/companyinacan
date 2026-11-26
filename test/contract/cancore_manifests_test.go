@@ -21,7 +21,7 @@ func TestAdmissionPoliciesAreBoundAndDeny(t *testing.T) {
 	for _, d := range ofKind(docs, "ValidatingAdmissionPolicyBinding") {
 		bound[d.str("spec", "policyName")] = d
 	}
-	for _, name := range []string{"can-core-rolebindings", "can-core-namespaces"} {
+	for _, name := range []string{"can-core-rolebindings", "can-core-namespaces", "can-core-site", "can-core-site-content"} {
 		p, ok := pol[name]
 		if !ok {
 			t.Errorf("policy %s missing", name)
