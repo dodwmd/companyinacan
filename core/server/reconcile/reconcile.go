@@ -14,6 +14,9 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
@@ -95,12 +98,48 @@ type Action struct {
 	Kind   Kind   `json:"kind"`
 	Module string `json:"module"`
 	Reason string `json:"reason"`
+	// Widens is what the module may newly do after this step (see Widening).
+	Widens []string `json:"widens,omitempty"`
+	// Held, when set, says why Apply will not run this step now: HeldApproval or HeldRetry.
+	Held string `json:"held,omitempty"`
+	// Approval is what approves a step held for HeldApproval.
+	Approval string `json:"approval,omitempty"`
+
+	target string // identifies what is wanted, for the retry delay
+}
+
+// Why a planned step is held.
+const (
+	HeldApproval = "approval" // it widens what the module may do and nobody approved that
+	HeldRetry    = "retry"    // the same upgrade failed; it is tried again later
+)
+
+// SplitHeld separates the steps that run from those that are held.
+func SplitHeld(actions []Action) (run, held []Action) {
+	for _, a := range actions {
+		if a.Held == "" {
+			run = append(run, a)
+		} else {
+			held = append(held, a)
+		}
+	}
+	return run, held
 }
 
 // Desired is the validated desired state.
 type Desired struct {
 	Company   *config.Company
 	Manifests map[string]*config.Module // enabled modules only
+	// Content is what each module is installed from; a module missing here is compared by its
+	// manifest alone.
+	Content map[string]Content
+}
+
+func (d Desired) content(id string) Content {
+	if c, ok := d.Content[id]; ok {
+		return c
+	}
+	return manifestContent(d.Manifests[id])
 }
 
 // enabled returns the manifests of modules that company.yaml actually enables.
@@ -120,7 +159,9 @@ type Options struct{ DryRun bool }
 // Result of Apply.
 type Result struct {
 	Actions []Action `json:"actions"`
-	Failed  []string `json:"failed,omitempty"`
+	// Held are the planned steps that were not run.
+	Held   []Action `json:"held,omitempty"`
+	Failed []string `json:"failed,omitempty"`
 }
 
 // Reconciler reconciles desired with recorded state.
@@ -137,8 +178,22 @@ type Reconciler struct {
 	// Keep, when set, names recorded modules that are not company.yaml's to disable. Only can-core's
 	// development stack sets it, for the identities CAN_DEV_MODULE_TOKENS registers.
 	Keep func(store.Module) bool
+	// RequireApproval holds an upgrade of a running module that widens what it may do until it is
+	// approved (store.ApproveUpgrade). The running release and its record stay as they are.
+	RequireApproval bool
+	// Backoff delays the retry of an upgrade that failed, so that a release that cannot start does
+	// not restart the module on every reconcile.
+	Backoff bool
+	mu      sync.Mutex
+	failed  map[string]failure
 	// getModule reads the recorded module (db.GetModule; a seam for tests).
 	getModule func(ctx context.Context, id string) (store.Module, error)
+}
+
+type failure struct {
+	target string
+	count  int
+	next   time.Time
 }
 
 // Appender is the audit write interface.
@@ -177,7 +232,7 @@ func LoadDesiredBytes(name string, data []byte, modulesDir string) (Desired, []p
 	if err != nil {
 		return Desired{}, []problem.Problem{{File: companyFile, Rule: "parse.decode", Severity: problem.Error, Message: err.Error()}}
 	}
-	d := Desired{Company: c, Manifests: map[string]*config.Module{}}
+	d := Desired{Company: c, Manifests: map[string]*config.Module{}, Content: map[string]Content{}}
 	for id, e := range c.Modules {
 		if !e.IsEnabled() {
 			continue
@@ -195,6 +250,11 @@ func LoadDesiredBytes(name string, data []byte, modulesDir string) (Desired, []p
 			return Desired{}, []problem.Problem{{File: path, Rule: "parse.decode", Severity: problem.Error, Message: err.Error()}}
 		}
 		d.Manifests[id] = m
+		content, err := ContentOf(path, m)
+		if err != nil {
+			return Desired{}, []problem.Problem{{File: path, Rule: "parse.read", Severity: problem.Error, Message: err.Error()}}
+		}
+		d.Content[id] = content
 	}
 	return d, ps // ps may carry warnings
 }
@@ -297,7 +357,7 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 	for _, m := range recorded { // ordered by id
 		if _, wanted := want[m.ID]; !wanted && (m.State == store.StateEnabled || m.State == store.StateFailed) && (r.Keep == nil || !r.Keep(m)) {
 			reason := "no longer enabled in company.yaml"
-			disables = append(disables, Action{Disable, m.ID, reason})
+			disables = append(disables, Action{Kind: Disable, Module: m.ID, Reason: reason})
 		}
 	}
 	for _, id := range installOrder(want) {
@@ -308,28 +368,123 @@ func (r *Reconciler) Plan(ctx context.Context, d Desired) ([]Action, error) {
 		rt, rerr := r.routing(ctx, d, id)
 		relay, lerr := r.relay(ctx, d, id, rec.HMACSecret)
 		hash := specHash(d.Company, id, man, rt.Fingerprint, relay)
+		var a *Action
 		switch {
 		case !ok:
-			enables = append(enables, Action{Install, id, "not installed"})
+			a = &Action{Kind: Install, Reason: "not installed"}
 		case rec.State == store.StateFailed:
-			enables = append(enables, Action{Install, id, "retrying after failure: " + rec.LastError})
+			a = &Action{Kind: Install, Reason: "retrying after failure: " + rec.LastError}
 		case rec.State == store.StateDisabled:
-			enables = append(enables, Action{Enable, id, "enabled in company.yaml"})
-		case rec.Version != man.Version:
-			enables = append(enables, Action{Upgrade, id, fmt.Sprintf("version %s -> %s", rec.Version, man.Version)})
-		case rerr == nil && lerr == nil && rec.SettingsHash != hash:
-			enables = append(enables, Action{Upgrade, id, "settings changed"})
+			a = &Action{Kind: Enable, Reason: "enabled in company.yaml"}
 		default:
+			var why []string
+			if rec.Version != man.Version {
+				why = append(why, fmt.Sprintf("version %s -> %s", rec.Version, man.Version))
+			} else if rerr == nil && lerr == nil && rec.SettingsHash != hash {
+				why = append(why, "settings changed")
+			}
+			var was Content
+			if rec.Content == "" || json.Unmarshal([]byte(rec.Content), &was) != nil {
+				why = append(why, "recording the installed manifest and chart (once)")
+			} else {
+				why = append(why, d.content(id).changes(was)...)
+			}
 			pend, err := r.db.PendingRotations(ctx, id)
 			if err != nil {
 				return nil, err
 			}
-			if len(pend) > 0 {
-				enables = append(enables, Action{Upgrade, id, "secret rotation requested"})
+			if len(why) == 0 && len(pend) > 0 {
+				why = []string{"secret rotation requested"}
+			}
+			if len(why) > 0 {
+				a = &Action{Kind: Upgrade, Reason: strings.Join(why, "; ")}
+				a.target = digest([]byte(man.Version), []byte(hash), []byte(d.content(id).key()), []byte(strings.Join(pend, ",")))
 			}
 		}
+		if a == nil {
+			continue
+		}
+		a.Module = id
+		if ok && a.Kind != Install {
+			a.Widens = Widening(&rec.Manifest, man)
+		}
+		if a.Kind == Upgrade {
+			r.hold(a, rec)
+		}
+		enables = append(enables, *a)
 	}
 	return append(disables, enables...), nil
+}
+
+// hold marks an upgrade of a running module that must not run now.
+func (r *Reconciler) hold(a *Action, rec store.Module) {
+	if r.RequireApproval && len(a.Widens) > 0 {
+		approval := approvalOf(a.Widens)
+		if rec.ApprovedUpgrade != approval && rec.ApprovedUpgrade != "*" {
+			a.Held, a.Approval = HeldApproval, approval
+			return
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if f, ok := r.failed[a.Module]; r.Backoff && ok && f.target == a.target && r.db.Now().Before(f.next) {
+		a.Held = HeldRetry
+		a.Reason += fmt.Sprintf("; failed %d times, next try after %s", f.count, f.next.UTC().Format("15:04:05 UTC"))
+	}
+}
+
+// outcome remembers a failed upgrade: 1, 2, 4 ... minutes up to an hour until the next try of the
+// same thing. It is kept in memory: a restarted can-core tries at once.
+func (r *Reconciler) outcome(a Action, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err == nil || a.Kind != Upgrade {
+		delete(r.failed, a.Module)
+		return
+	}
+	f := r.failed[a.Module]
+	if f.target != a.target {
+		f = failure{target: a.target}
+	}
+	f.count++
+	f.next = r.db.Now().Add(min(time.Minute<<min(f.count-1, 6), time.Hour))
+	if r.failed == nil {
+		r.failed = map[string]failure{}
+	}
+	r.failed[a.Module] = f
+}
+
+// recordHeld keeps store.Module.Pending in step with the plan, so that the admin UI and `can status`
+// can show what waits for approval.
+func (r *Reconciler) recordHeld(ctx context.Context, held []Action) error {
+	want := map[string]Action{}
+	for _, a := range held {
+		if a.Held == HeldApproval {
+			want[a.Module] = a
+		}
+	}
+	mods, err := r.db.ListModules(ctx)
+	if err != nil {
+		return err
+	}
+	for _, m := range mods {
+		pending := ""
+		a, ok := want[m.ID]
+		if ok {
+			b, _ := json.Marshal(Pending{Approval: a.Approval, Widens: a.Widens})
+			pending = string(b)
+		}
+		if pending == m.Pending {
+			continue
+		}
+		if err := r.db.SetPendingUpgrade(ctx, m.ID, pending); err != nil {
+			return err
+		}
+		if ok {
+			r.log(ctx, "module.upgrade-held", a, map[string]any{"widens": a.Widens})
+		}
+	}
+	return nil
 }
 
 // installOrder sorts module ids so providers of a required capability come before their
@@ -381,17 +536,22 @@ func (r *Reconciler) Apply(ctx context.Context, d Desired, opt Options) (Result,
 	if err != nil {
 		return Result{}, err
 	}
-	res := Result{Actions: actions}
+	run, held := SplitHeld(actions)
+	res := Result{Actions: run, Held: held}
 	if opt.DryRun {
 		return res, nil
 	}
 	var errs []error
-	for _, a := range actions {
+	if err := r.recordHeld(ctx, held); err != nil {
+		errs = append(errs, err)
+	}
+	for _, a := range run {
 		var err error
 		if a.Kind == Disable {
 			err = r.disable(ctx, a)
 		} else {
 			err = r.enable(ctx, d, a)
+			r.outcome(a, err)
 		}
 		if err != nil {
 			res.Failed = append(res.Failed, a.Module)
@@ -456,6 +616,7 @@ func (r *Reconciler) enable(ctx context.Context, d Desired, a Action) error {
 	rec := store.Module{
 		ID: a.Module, Version: man.Version, Namespace: "mod-" + a.Module, ServiceAccount: a.Module,
 		State: store.StateEnabled, SettingsHash: specHash(d.Company, a.Module, man, rt.Fingerprint, relay), HMACSecret: secret, Manifest: *man,
+		Content: d.content(a.Module).encode(),
 	}
 	ierr := r.Installer.Enable(ctx, Spec{ID: a.Module, Version: man.Version, Namespace: rec.Namespace, ServiceAccount: rec.ServiceAccount, Settings: settings, Manifest: man, HMACSecret: secret, Domain: d.Company.Domain, Email: d.Company.Email, Rotate: rotate, Expose: d.Company.Modules[a.Module].Exposure()})
 	if ierr != nil && a.Kind == Upgrade && perr == nil && prev.State == store.StateEnabled {
