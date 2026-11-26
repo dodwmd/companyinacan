@@ -170,6 +170,10 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 	company := fmt.Sprintf("schema: 1\nname: Wrapped Co\ndomain: %s\nprovider:\n  type: local\nmodules:\n"+
 		"  analytics: {enabled: true}\n  support: {enabled: true}\n  newsletter: {enabled: true}\n", wrappedDomain)
 	canApplyModules(t, company)
+	// The dumps copy the mounted ConfigMap, which the kubelet fills only a minute or two after it is
+	// first created: restart, as a server that was set up with its company has it from the start.
+	mustKubectl(t, "-n", "can-system", "rollout", "restart", "deploy/can-core")
+	mustKubectl(t, "-n", "can-system", "rollout", "status", "deploy/can-core", "--timeout=240s")
 	for _, id := range []string{"support", "analytics", "newsletter"} {
 		eventually(t, 15*time.Minute, id+" to be rolled out", func() (bool, string) {
 			o, err := kubectl("-n", "mod-"+id, "rollout", "status", "deploy/"+id, "--timeout=5s")
@@ -197,9 +201,8 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 	if got := onNode(t, "cat "+dumpsOnNode+"/LAST-RUN"); strings.Contains(got, `"skipped"`) {
 		t.Errorf("something was skipped: %s", got)
 	}
-	t.Log("PROBE company:\n" + onNode(t, "ls -lAR /var/lib/kubelet/pods/*/volumes/kubernetes.io~configmap/company") + "\n" +
-		mustKubectl(t, "-n", "can-system", "get", "deploy", "can-core", "-o", "yaml") + "\n" +
-		mustKubectl(t, "-n", "can-system", "logs", "deploy/can-core", "--tail=80"))
+	// A restore needs the company.yaml of the set.
+	onNode(t, "test -s "+dumpsOnNode+"/company.yaml")
 	t.Log("MEASURE dump set sizes:\n" + onNode(t, "cd "+dumpsOnNode+"/modules && ls -l */ | cat"))
 
 	work := t.TempDir()
