@@ -42,9 +42,10 @@ func edgeMiddlewares(group string, l routing.Limit) (docs []map[string]any, name
 // the `web` entry point of the lowest priority, not a setting of the entry point: certificates are
 // validated with TLS-ALPN on 443 and are not touched, and removing the route brings plain HTTP
 // back. The redirect is temporary, so no browser remembers it if the server falls back to plain
-// HTTP. It must only be applied on a TLS install.
+// HTTP. It must only be applied on a TLS install. A route needs a Service even though the
+// Middleware answers first; it names can-core's, which every installation has.
 func RedirectManifests() ([]byte, error) {
-	r := rule(redirectMatch, sitePriority, "site", 8081, redirectMW)
+	r := rule(redirectMatch, sitePriority, "can-core", 8080, redirectMW)
 	return marshalDocs([]map[string]any{
 		middlewareDoc(redirectMW, map[string]any{"redirectScheme": map[string]any{"scheme": "https", "permanent": false}}),
 		ingressRoute(redirectName, SystemNS, []any{r}, RouteOptions{}),
