@@ -187,6 +187,11 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 			t.Errorf("%s: archived file holds %q", id, got)
 		}
 	}
+	// FreeScout links its storage, modules and .env (the key it encrypts mail passwords with) into
+	// the volume: they are in the archive.
+	if got := tarEntry(t, set("support", "files.tar.gz"), "config"); !strings.Contains(got, "APP_KEY") {
+		t.Error("support: the archived volume lacks FreeScout's application key")
+	}
 	q := restorePostgres(t, "mod_support", set("support", "database.pgdump"))
 	if got := q("select email from mailboxes where name = 'CI mailbox'"); got != "help@"+wrappedDomain {
 		t.Errorf("support: the mailbox is not in the restored database: %q", got)
