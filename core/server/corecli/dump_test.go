@@ -58,3 +58,22 @@ func TestDumpRequestWaitsForANewMarker(t *testing.T) {
 		t.Fatalf("%d %q %q", code, out, errb)
 	}
 }
+
+// E08b QA3 4: a run that left a database out says so in `dump-request --wait`.
+func TestDumpRequestWaitPrintsSkippedModules(t *testing.T) {
+	dir := t.TempDir()
+	dumpsDir := filepath.Join(dir, "dumps")
+	if err := os.MkdirAll(dumpsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"CAN_DB_PATH": filepath.Join(dir, "state.db"), "CAN_DUMPS_DIR": dumpsDir}
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		_ = backup.WriteDumpRun(dumpsDir, backup.DumpRun{RunID: "new", OK: true, Skipped: []backup.SkippedModule{{ID: "crm", Reason: "disabled", Database: "mariadb"}}})
+		_ = backup.WriteMarker(filepath.Join(dumpsDir, backup.MarkerName), backup.Marker{RunID: "new", FinishedAt: time.Now()})
+	}()
+	code, out, errb := dumpCLI(env, "dump-request", "--wait", "10s")
+	if code != 0 || !strings.Contains(out, "WARNING:") || !strings.Contains(out, "DATABASE IS NOT BACKED UP") {
+		t.Fatalf("%d %q %q", code, out, errb)
+	}
+}

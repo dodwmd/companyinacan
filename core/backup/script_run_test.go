@@ -429,3 +429,23 @@ func TestScriptRunWithoutDumpedListExcludesNoModule(t *testing.T) {
 		t.Errorf("exclusions without a dump list:\n%s", e.calledRestic())
 	}
 }
+
+// E08b QA3 4: a database left out of the dumps fires the failure webhook, although the backup
+// of everything else succeeds.
+func TestScriptRunAnnouncesSkippedDatabases(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	if err := os.WriteFile(e.s.ConfigDir+"/"+WebhookFileName, []byte("https://hooks.example/x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(e.s.DumpsDir+"/"+AlertsName, []byte("module \"crm\" was NOT dumped. Its DATABASE IS NOT BACKED UP.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := e.run(t)
+	if code != 0 || !strings.Contains(out, "WARNING") || !strings.Contains(out, "DATABASE IS NOT BACKED UP") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if !strings.Contains(e.calledRestic(), "curl ") || !strings.Contains(e.calledRestic(), "DATABASE IS NOT BACKED UP") {
+		t.Errorf("webhook not fired:\n%s", e.calledRestic())
+	}
+}

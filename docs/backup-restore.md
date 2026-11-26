@@ -36,6 +36,8 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      flushes everything to disk, then writes `COMPLETE` (run id, finish time). One failing hook therefore stops
      backups until it is fixed: `can backup status` and the admin status page show the last failure
      (`LAST-RUN`).
+   - A run that leaves a database (or vanished data) out is announced: `dump-request --wait` prints it, and the
+     host script logs a warning and POSTs it to the failure webhook after each backup (the run still exits 0).
    - **A disabled module never stops backups.** If its hook cannot run (the unpublished `can-hooks` image) or fails,
      it is skipped and reported by `can backup status`, the admin status page and `can up`. Only its raw volume
      files are then backed up; for a MariaDB or PostgreSQL module **the database is not backed up**. A module that

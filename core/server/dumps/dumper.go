@@ -142,7 +142,7 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 		return Result{}, err
 	}
 	marker := filepath.Join(d.Store.Dir, COMPLETE)
-	for _, p := range []string{marker, filepath.Join(d.Store.Dir, DumpedList)} {
+	for _, p := range []string{marker, filepath.Join(d.Store.Dir, DumpedList), filepath.Join(d.Store.Dir, backup.AlertsName)} {
 		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return Result{}, fmt.Errorf("remove the completion marker: %w", err)
 		}
@@ -244,7 +244,13 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 	if err := d.Store.writeAtomic(d.Store.Dir, DumpedList, strings.NewReader(dumped.String())); err != nil {
 		return Result{}, fmt.Errorf("write the list of dumped modules: %w", err)
 	}
-	if err := backup.WriteDumpRun(d.Store.Dir, backup.DumpRun{RunID: runID, At: d.now(), OK: true, Skipped: skipped}); err != nil {
+	record := backup.DumpRun{RunID: runID, At: d.now(), OK: true, Skipped: skipped}
+	if alerts := record.Alerts(); len(alerts) > 0 {
+		if err := d.Store.writeAtomic(d.Store.Dir, backup.AlertsName, strings.NewReader(strings.Join(alerts, "\n")+"\n")); err != nil {
+			return Result{}, fmt.Errorf("write the alerts: %w", err)
+		}
+	}
+	if err := backup.WriteDumpRun(d.Store.Dir, record); err != nil {
 		return Result{}, fmt.Errorf("record the run: %w", err)
 	}
 	// The marker claims the set is complete: it must not reach the disk before the set does.

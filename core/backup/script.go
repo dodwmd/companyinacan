@@ -72,6 +72,13 @@ notify() {
       --data "{\"text\":\"can-backup failed: $(json_escape "$1")\"}" >/dev/null 2>&1 || true
 }
 
+# A warning does not fail the run: it is logged and sent to the same webhook.
+warn() {
+  logger -t can-backup -p user.warning -- "WARNING: $1" || true
+  echo "can-backup: WARNING: $1" >&2
+  notify "$1"
+}
+
 report() {
   logger -t can-backup -p user.err -- "FAILED($1): $2" || true
   echo "can-backup: FAILED($1): $2" >&2
@@ -188,6 +195,9 @@ if [ -f "$DUMPS/{{.DumpedList}}" ]; then
   done <"$DUMPS/{{.DumpedList}}"
 fi
 
+rm -f "$HOSTSTATE/{{.AlertsName}}"
+if [ -f "$DUMPS/{{.AlertsName}}" ]; then cp -f -- "$DUMPS/{{.AlertsName}}" "$HOSTSTATE/{{.AlertsName}}"; fi
+
 # Remove only stale restic locks (restic refuses to remove a live one).
 restic unlock || log "restic unlock failed (continuing)"
 
@@ -218,6 +228,12 @@ restic forget --group-by '' --keep-within {{.RetentionDays}}d --prune --tag can 
 
 printf 'run_id=%s\nfinished_at=%s\n' "$RUN_ID" "$(date +%s)" >"$STATE/backup-status.tmp"
 mv "$STATE/backup-status.tmp" "$STATE/backup-status"
+# Databases (or vanished data) that this backup does not hold, as can-core reported them.
+if [ -f "$HOSTSTATE/{{.AlertsName}}" ]; then
+  while IFS= read -r alert; do
+    [ -n "$alert" ] && warn "$alert"
+  done < <(head -n 20 "$HOSTSTATE/{{.AlertsName}}" | cut -c1-400)
+fi
 log "backup complete (run $RUN_ID)"
 finish
 `))
@@ -228,7 +244,7 @@ type scriptData struct {
 	Webhook, EnvPath, PasswordPath, Marker string
 	Manifest, LedgerCopy, MarkerCopy       string
 	Excludes, Sources, SQLite              []string
-	DumpedList                             string
+	DumpedList, AlertsName                 string
 }
 
 // GenerateScript renders the host backup script for plan p.
@@ -237,7 +253,7 @@ func GenerateScript(p *Plan, s Settings) string {
 		Settings: s, MaxAge: int(s.MaxMarkerAge.Seconds()),
 		Webhook: s.ConfigDir + "/" + WebhookFileName, EnvPath: s.ConfigDir + "/" + EnvFileName, PasswordPath: s.ConfigDir + "/" + PasswordFileName,
 		Marker: MarkerName, Manifest: ManifestName, LedgerCopy: LedgerCopy, MarkerCopy: MarkerCopy,
-		Excludes: p.Excludes, Sources: p.Sources, SQLite: sqliteExcludes, DumpedList: DumpedList,
+		Excludes: p.Excludes, Sources: p.Sources, SQLite: sqliteExcludes, DumpedList: DumpedList, AlertsName: AlertsName,
 	}
 	var b bytes.Buffer
 	if err := scriptTmpl.Execute(&b, d); err != nil {

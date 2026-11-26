@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/backup"
@@ -69,5 +70,27 @@ func TestFailedRollbackKeepsThePreviousSet(t *testing.T) {
 	_, _ = d.Run(context.Background())
 	if got := read(t, filepath.Join(d.Store.Dir, "modules", "wiki", "a")); got != "v1" {
 		t.Fatalf("%q", got)
+	}
+}
+
+// E08b QA3 4: skips that lose data are listed for the host script to announce.
+func TestSkippedDatabaseIsListedForTheHostScript(t *testing.T) {
+	d, _ := newDumper(t, []string{"crm", "wiki"}, &fakeHooks{})
+	d.Disabled = func(context.Context, string) bool { return true }
+	d.Unrunnable = func(context.Context, string) string { return "no image" }
+	d.Database = func(_ context.Context, m string) string {
+		return map[string]string{"crm": "mariadb", "wiki": "none"}[m]
+	}
+	if _, err := d.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, filepath.Join(d.Store.Dir, backup.AlertsName))
+	if !strings.Contains(got, `"crm"`) || strings.Contains(got, `"wiki"`) || strings.Count(got, "\n") != 1 {
+		t.Fatalf("%q", got)
+	}
+	d.Disabled = func(context.Context, string) bool { return false }
+	_, _ = d.Run(context.Background())
+	if exists(filepath.Join(d.Store.Dir, backup.AlertsName)) {
+		t.Fatal("stale alerts")
 	}
 }

@@ -13,6 +13,22 @@ import (
 // DumpRunName is the file in the dumps directory recording how the last dump run ended.
 const DumpRunName = "LAST-RUN"
 
+// AlertsName is the file in the dumps directory with one line per module that a successful run
+// left without a usable backup (a database, or data that vanished). The host script announces
+// each line.
+const AlertsName = "ALERTS"
+
+// Alerts are the lines of the AlertsName file for the run's skipped modules.
+func (r DumpRun) Alerts() []string {
+	var out []string
+	for _, s := range r.Skipped {
+		if s.DatabaseServer() || s.NoData {
+			out = append(out, oneLine(s.Message(), 400))
+		}
+	}
+	return out
+}
+
 // DumpRun is the outcome of one dump run.
 type DumpRun struct {
 	RunID string    `json:"run_id"`

@@ -40,6 +40,11 @@ func dumpRequestCmd(getenv func(string) string) *cobra.Command {
 			for {
 				if m, err := backup.ReadMarker(marker); err == nil && m.RunID != before.RunID {
 					fmt.Fprintf(cmd.OutOrStdout(), "dump run %s complete\n", m.RunID)
+					if run, err := backup.ReadDumpRun(cfg.DumpsDir); err == nil {
+						for _, s := range run.Skipped {
+							fmt.Fprintln(cmd.OutOrStdout(), "WARNING:", s.Message())
+						}
+					}
 					return nil
 				}
 				if time.Now().After(deadline) {

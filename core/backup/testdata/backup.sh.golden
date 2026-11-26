@@ -37,6 +37,13 @@ notify() {
       --data "{\"text\":\"can-backup failed: $(json_escape "$1")\"}" >/dev/null 2>&1 || true
 }
 
+# A warning does not fail the run: it is logged and sent to the same webhook.
+warn() {
+  logger -t can-backup -p user.warning -- "WARNING: $1" || true
+  echo "can-backup: WARNING: $1" >&2
+  notify "$1"
+}
+
 report() {
   logger -t can-backup -p user.err -- "FAILED($1): $2" || true
   echo "can-backup: FAILED($1): $2" >&2
@@ -153,6 +160,9 @@ if [ -f "$DUMPS/DUMPED" ]; then
   done <"$DUMPS/DUMPED"
 fi
 
+rm -f "$HOSTSTATE/ALERTS"
+if [ -f "$DUMPS/ALERTS" ]; then cp -f -- "$DUMPS/ALERTS" "$HOSTSTATE/ALERTS"; fi
+
 # Remove only stale restic locks (restic refuses to remove a live one).
 restic unlock || log "restic unlock failed (continuing)"
 
@@ -181,5 +191,11 @@ restic forget --group-by '' --keep-within 35d --prune --tag can || fail 21 "rest
 
 printf 'run_id=%s\nfinished_at=%s\n' "$RUN_ID" "$(date +%s)" >"$STATE/backup-status.tmp"
 mv "$STATE/backup-status.tmp" "$STATE/backup-status"
+# Databases (or vanished data) that this backup does not hold, as can-core reported them.
+if [ -f "$HOSTSTATE/ALERTS" ]; then
+  while IFS= read -r alert; do
+    [ -n "$alert" ] && warn "$alert"
+  done < <(head -n 20 "$HOSTSTATE/ALERTS" | cut -c1-400)
+fi
 log "backup complete (run $RUN_ID)"
 finish
