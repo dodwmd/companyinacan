@@ -39,7 +39,13 @@
 {{else}}<p class="muted">{{t "hs.no_certs"}}</p>{{end}}
 </section>
 
-<section aria-labelledby="h-disk">
+{{with .Data.Dump}}<section aria-labelledby="h-backup">
+<h2 id="h-backup">{{t "hs.backup"}}</h2>
+{{if .OK}}<p>{{t "hs.backup_ok" (.At.UTC.Format "2006-01-02 15:04 MST")}}</p>{{else}}<p class="alert err" role="alert">{{t "hs.backup_failed" (.At.UTC.Format "2006-01-02 15:04 MST") .Error}}</p>{{end}}
+{{if .Skipped}}<p class="alert warn" role="alert">{{t "hs.backup_skip"}}</p><ul>{{range .Skipped}}<li>{{.Message}}</li>{{end}}</ul>{{end}}
+</section>
+
+{{end}}<section aria-labelledby="h-disk">
 <h2 id="h-disk">{{t "hs.disk"}}</h2>
 {{if .Data.DiskNote}}<p class="alert warn">{{t "hs.unavailable"}}</p>
 {{else if .Data.Disk}}<ul>{{range .Data.Disk}}<li><strong>{{.Name}}</strong>: <meter min="0" max="100" value="{{.UsedPercent}}" aria-label="{{.Name}}">{{.UsedPercent}}%</meter> {{t "hs.disk_used" .UsedPercent}}</li>

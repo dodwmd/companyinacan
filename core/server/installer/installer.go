@@ -41,7 +41,7 @@ import (
 // Names of the objects can-core owns in every module namespace. A chart may not define them.
 const (
 	secretModule  = "can-module"
-	secretDB      = "can-db"
+	secretDB      = reconcile.DatabaseSecret
 	secretRelease = "can-release"
 
 	labelModule  = "can.dev/module"

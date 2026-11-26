@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,14 +23,33 @@ type Marker struct {
 // clockSkew is how far into the future a marker may be dated.
 const clockSkew = 5 * time.Minute
 
-// WriteMarker writes the marker atomically with mode 0600.
+// WriteMarker writes the marker atomically with mode 0600, and flushes it and its directory.
 func WriteMarker(path string, m Marker) error {
 	body := fmt.Sprintf("run_id=%s\nfinished_at=%d\n", m.RunID, m.FinishedAt.Unix())
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // operator-chosen path
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	_, err = f.WriteString(body)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path)) //nolint:gosec // operator-chosen path
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	return dir.Sync()
 }
 
 // ReadMarker parses a marker file.

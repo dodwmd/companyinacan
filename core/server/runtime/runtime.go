@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/backup"
 	"github.com/dodwmd/companyinacan/core/obs"
 	obslog "github.com/dodwmd/companyinacan/core/obs/log"
 	"github.com/dodwmd/companyinacan/core/obs/obssql"
@@ -29,6 +30,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
+	"github.com/dodwmd/companyinacan/core/server/dumps"
 	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/events"
 	"github.com/dodwmd/companyinacan/core/server/identity"
@@ -83,6 +85,13 @@ type Config struct {
 	DevStack           bool              // CAN_DEV_STACK: the Docker Compose development mode (devstack.go); refused by release builds
 	DevModuleTokenDir  string            // CAN_DEV_MODULE_TOKEN_DIR: one module token per file, for CAN_DEV_STACK only
 	DevWebhookSecret   string            // CAN_DEV_WEBHOOK_SECRET: signs events to every module, for CAN_DEV_STACK only
+
+	// Backup dumps (epic E08b, dumps.go): CAN_DUMPS_DIR, CAN_DUMP_AT (UTC), CAN_DUMP_START_DELAY_SECONDS,
+	// CAN_DUMP_REQUEST_FILE.
+	DumpsDir             string
+	DumpHour, DumpMinute int
+	DumpStartDelay       time.Duration
+	DumpRequestFile      string
 
 	Version, Commit string // build identity for can_build_info
 	// Env reads settings Run needs after FromEnv (CAN_METRICS_*, CAN_RAM_DECLARED_*); nil means os.Getenv.
@@ -184,6 +193,9 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 	if c.AdminAddr == c.ModuleAddr {
 		return c, errors.New("CAN_ADMIN_ADDR and CAN_MODULE_ADDR must differ: the admin and module APIs are separate listeners")
+	}
+	if err := c.dumpEnv(getenv); err != nil {
+		return c, err
 	}
 	return c, nil
 }
@@ -331,6 +343,14 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	moduleSrv := &moduleapi.Server{Auth: modauth.New(rev, db), Registry: reg, Bus: bus, Log: log, RBAC: rb, Approvals: eng, Notify: ntf, PATs: pats, Identity: idSvc, Tickets: tickets, Email: mail}
 	uiSrv.Email = mail
 
+	var dumper *dumps.Dumper
+	if cfg.DumpsDir != "" {
+		if dumper, err = cfg.newDumper(db, log); err != nil {
+			return fmt.Errorf("backup dumps: %w", err)
+		}
+		moduleSrv.Dumps = dumper
+	}
+
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
 	if err != nil {
 		return err
@@ -384,6 +404,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 			return fmt.Errorf("module management: %w", merr)
 		}
 		uiSrv.Mod, adminSrv.Mod = svc, svc
+		if dumper != nil {
+			svc.OnPurged = dumper.Forget
+			svc.LastDump = func() (backup.DumpRun, error) { return backup.ReadDumpRun(cfg.DumpsDir) }
+		}
 		if rerr := svc.Recover(workCtx); rerr != nil {
 			log.Error("could not close interrupted applies", "error", rerr)
 		}
@@ -395,6 +419,13 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 				rm.observe(err, time.Now())
 				return err
 			})
+		}()
+	}
+	if dumper != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dumper.Loop(workCtx, cfg.DumpHour, cfg.DumpMinute, cfg.DumpStartDelay, cfg.DumpRequestFile)
 		}()
 	}
 	wg.Add(1)

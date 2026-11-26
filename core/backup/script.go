@@ -72,6 +72,13 @@ notify() {
       --data "{\"text\":\"can-backup failed: $(json_escape "$1")\"}" >/dev/null 2>&1 || true
 }
 
+# A warning does not fail the run: it is logged and sent to the same webhook.
+warn() {
+  logger -t can-backup -p user.warning -- "WARNING: $1" || true
+  echo "can-backup: WARNING: $1" >&2
+  notify "$1"
+}
+
 report() {
   logger -t can-backup -p user.err -- "FAILED($1): $2" || true
   echo "can-backup: FAILED($1): $2" >&2
@@ -171,8 +178,25 @@ for f in server/token server/cred/encryption-config.json; do
 done
 
 # Manifest of every dump file, so 'can backup verify' and restore can compare hashes.
-(cd "$DUMPS" && find . -type f ! -name {{q .Marker}} -print0 | sort -z | xargs -0 -r sha256sum) >"$HOSTSTATE/{{.Manifest}}.tmp"
+# Dot entries are can-core's staging directories and temporaries: not part of the dumps.
+(cd "$DUMPS" && find . -mindepth 1 -name '.*' -prune -o -type f ! -name {{q .Marker}} -print0 | sort -z | xargs -0 -r sha256sum) >"$HOSTSTATE/{{.Manifest}}.tmp"
 mv "$HOSTSTATE/{{.Manifest}}.tmp" "$HOSTSTATE/{{.Manifest}}"
+
+# Raw SQLite files are left out only for modules whose dump is in this run; a module that was
+# not dumped (added later, or without data then) keeps its raw files.
+PVCROOT={{q .PVCRoot}}
+EXCLUDES=()
+if [ -f "$DUMPS/{{.DumpedList}}" ]; then
+  while read -r mod db; do
+    [[ "$mod" =~ ^[a-z][a-z0-9-]*$ && "$db" == sqlite ]] || continue
+    for pat in {{range .SQLite}}{{q .}} {{end}}; do
+      EXCLUDES+=(--exclude "$PVCROOT/pvc-*_mod-${mod}_*/**/$pat")
+    done
+  done <"$DUMPS/{{.DumpedList}}"
+fi
+
+rm -f "$HOSTSTATE/{{.AlertsName}}"
+if [ -f "$DUMPS/{{.AlertsName}}" ]; then cp -f -- "$DUMPS/{{.AlertsName}}" "$HOSTSTATE/{{.AlertsName}}"; fi
 
 # Remove only stale restic locks (restic refuses to remove a live one).
 restic unlock || log "restic unlock failed (continuing)"
@@ -181,6 +205,8 @@ ATTEMPT="$(date +%s)-$$"
 log "backup starting (run $RUN_ID, attempt $ATTEMPT)"
 brc=0
 restic backup --tag can --tag "run-$RUN_ID" --tag "attempt-$ATTEMPT" \
+  --exclude "$DUMPS/.*" --exclude "$DUMPS/**/.*" \
+  ${EXCLUDES[@]+"${EXCLUDES[@]}"} \
 {{- range .Excludes}}
   --exclude {{q .}} \
 {{- end}}
@@ -202,6 +228,12 @@ restic forget --group-by '' --keep-within {{.RetentionDays}}d --prune --tag can 
 
 printf 'run_id=%s\nfinished_at=%s\n' "$RUN_ID" "$(date +%s)" >"$STATE/backup-status.tmp"
 mv "$STATE/backup-status.tmp" "$STATE/backup-status"
+# Databases (or vanished data) that this backup does not hold, as can-core reported them.
+if [ -f "$HOSTSTATE/{{.AlertsName}}" ]; then
+  while IFS= read -r alert; do
+    [ -n "$alert" ] && warn "$alert"
+  done < <(head -n 20 "$HOSTSTATE/{{.AlertsName}}" | cut -c1-400)
+fi
 log "backup complete (run $RUN_ID)"
 finish
 `))
@@ -211,7 +243,8 @@ type scriptData struct {
 	MaxAge                                 int
 	Webhook, EnvPath, PasswordPath, Marker string
 	Manifest, LedgerCopy, MarkerCopy       string
-	Excludes, Sources                      []string
+	Excludes, Sources, SQLite              []string
+	DumpedList, AlertsName                 string
 }
 
 // GenerateScript renders the host backup script for plan p.
@@ -220,7 +253,7 @@ func GenerateScript(p *Plan, s Settings) string {
 		Settings: s, MaxAge: int(s.MaxMarkerAge.Seconds()),
 		Webhook: s.ConfigDir + "/" + WebhookFileName, EnvPath: s.ConfigDir + "/" + EnvFileName, PasswordPath: s.ConfigDir + "/" + PasswordFileName,
 		Marker: MarkerName, Manifest: ManifestName, LedgerCopy: LedgerCopy, MarkerCopy: MarkerCopy,
-		Excludes: p.Excludes, Sources: p.Sources,
+		Excludes: p.Excludes, Sources: p.Sources, SQLite: sqliteExcludes, DumpedList: DumpedList, AlertsName: AlertsName,
 	}
 	var b bytes.Buffer
 	if err := scriptTmpl.Execute(&b, d); err != nil {

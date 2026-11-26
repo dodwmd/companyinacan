@@ -3,8 +3,7 @@
 # into the host dumps directory. Runs as a Job in this module's namespace with the hooks image
 # (deploy/hooks) and these variables, injected by can-core:
 #   CAN_API_URL  CAN_MODULE  [CAN_TOKEN_FILE]   module API and projected audience-`can` token
-#   DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD  from the module's `can-database` Secret
-# The dump endpoint path is provisional until epic E08 fixes it (contracts/hooks.md).
+#   DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD  from the module's `can-db` Secret
 set -eu
 
 : "${CAN_API_URL:?}" "${CAN_MODULE:?}" "${DB_HOST:?}" "${DB_NAME:?}" "${DB_USER:?}" "${DB_PASSWORD:?}"
@@ -30,6 +29,6 @@ gzip -t "$tmp/dump.sql.gz"
 
 curl --fail --silent --show-error --retry 3 \
 	-X PUT -H @"$tmp/auth" --connect-timeout 10 --max-time 600 \
-	--data-binary @"$tmp/dump.sql.gz" \
+	-T "$tmp/dump.sql.gz" \
 	"$CAN_API_URL/v1/dumps/$CAN_MODULE/database.sql.gz"
 echo "backup: $CAN_MODULE database dumped"

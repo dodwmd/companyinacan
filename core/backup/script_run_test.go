@@ -123,6 +123,31 @@ func TestScriptRunSuccess(t *testing.T) {
 	}
 }
 
+// Staging directories and temporaries (dot entries) are neither listed in the manifest nor backed up.
+func TestScriptRunLeavesTemporariesOut(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	for _, p := range []string{".run-x/tmp/.upload-1", "can-core/.state.db.tmp", "modules/wiki/.upload-2"} {
+		full := e.s.DumpsDir + "/" + p
+		_ = os.MkdirAll(full[:strings.LastIndex(full, "/")], 0o700)
+		if err := os.WriteFile(full, []byte("half"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	m, _ := os.ReadFile(e.s.HostStateDir + "/" + ManifestName)
+	if !strings.Contains(string(m), "./a.dump") || strings.Contains(string(m), "/.") {
+		t.Errorf("manifest: %q", m)
+	}
+	for _, want := range []string{"--exclude " + e.s.DumpsDir + "/.*", "--exclude " + e.s.DumpsDir + "/**/.*"} {
+		if !strings.Contains(e.calledRestic(), want) {
+			t.Errorf("restic not told %q:\n%s", want, e.calledRestic())
+		}
+	}
+}
+
 func TestScriptRunResticFailure(t *testing.T) {
 	e := newScriptEnv(t, "1")
 	_ = WriteMarker(e.s.DumpsDir+"/"+MarkerName, Marker{RunID: "r", FinishedAt: time.Now()})
@@ -367,5 +392,60 @@ func TestScriptRunRefusesSymlinkedStateDir(t *testing.T) {
 	_ = os.Symlink(e.dir+"/elsewhere", e.s.HostStateDir)
 	if code, _ := e.run(t); code != ExitUnsafeDumps {
 		t.Fatalf("code %d", code)
+	}
+}
+
+// QA 2: raw SQLite files are left out only for modules can-core says it dumped in this run.
+func TestScriptRunExcludesOnlyDumpedSQLite(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	list := "forms sqlite\nwiki none\n../evil sqlite\nbad;rm sqlite\n"
+	if err := os.WriteFile(e.s.DumpsDir+"/DUMPED", []byte(list), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	calls := e.calledRestic()
+	for _, want := range []string{"/pvc-*_mod-forms_*/**/*.db ", "/pvc-*_mod-forms_*/**/*-wal "} {
+		if !strings.Contains(calls, "--exclude "+e.s.PVCRoot+want) {
+			t.Errorf("missing exclusion %s:\n%s", want, calls)
+		}
+	}
+	for _, bad := range []string{"mod-wiki", "evil", "bad;rm"} {
+		if strings.Contains(calls, bad) {
+			t.Errorf("unexpected exclusion for %s:\n%s", bad, calls)
+		}
+	}
+}
+
+func TestScriptRunWithoutDumpedListExcludesNoModule(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	if code, out := e.run(t); code != 0 {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if strings.Contains(e.calledRestic(), "_mod-") {
+		t.Errorf("exclusions without a dump list:\n%s", e.calledRestic())
+	}
+}
+
+// E08b QA3 4: a database left out of the dumps fires the failure webhook, although the backup
+// of everything else succeeds.
+func TestScriptRunAnnouncesSkippedDatabases(t *testing.T) {
+	e := newScriptEnv(t, "0")
+	e.fresh(t)
+	if err := os.WriteFile(e.s.ConfigDir+"/"+WebhookFileName, []byte("https://hooks.example/x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(e.s.DumpsDir+"/"+AlertsName, []byte("module \"crm\" was NOT dumped. Its DATABASE IS NOT BACKED UP.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := e.run(t)
+	if code != 0 || !strings.Contains(out, "WARNING") || !strings.Contains(out, "DATABASE IS NOT BACKED UP") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if !strings.Contains(e.calledRestic(), "curl ") || !strings.Contains(e.calledRestic(), "DATABASE IS NOT BACKED UP") {
+		t.Errorf("webhook not fired:\n%s", e.calledRestic())
 	}
 }
