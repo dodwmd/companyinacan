@@ -19,6 +19,7 @@ wrote the erasure tombstone ledger that a restore replays.
 - **FR-5** What is not covered is said: modules with data classes and no feed, feeds that could not be read,
   and a collection that is old.
 - **FR-6** A restore merges, and never overwrites, the erasures already on the server.
+- **FR-7** A dump run without the applied company.yaml fails and writes no completion marker: `can restore` needs it.
 
 ## Design decisions
 
