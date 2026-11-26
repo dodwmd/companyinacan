@@ -73,7 +73,7 @@ A business owner cannot manage people's access from the admin UI. Local accounts
   role, session or token changes. A disabled SSO owner no longer counts toward turning local login off.
 - **Audit** entries commit in the same transaction as the change; none holds a password, secret, token or
   email address.
-- **Throttling.** Nothing here throttles valid credentials at sign-in. Wrong step-up
+- **Throttling.** Sign-in is unchanged: valid credentials are never throttled by anything here. Wrong step-up
   attempts are counted per session and end that session after five. Wrong current passwords on a
   code-reset link delete that link after five.
 - **Counting before checking.** Every limit this epic adds takes the attempt atomically before the secret is
@@ -81,9 +81,9 @@ A business owner cannot manage people's access from the admin UI. Local accounts
   exhausted link answers the same for any password) and the step-up (per session). The older account-change
   throttle already did. The code typed on a set-up link is not limited: its secret is on the page, so there is
   nothing to guess.
-- **Sign-in** (`specs/005`) now counts before checking too, and has a per-account limit on codes that only someone
-  with the password can reach (research R5 there).
-- **Limits not changed here.** Personal access tokens, launch tickets, session handles, SCIM tokens, share links and
+- **Limits not changed here.** Behind the trusted proxy (`CAN_TRUST_PROXY`, as shipped) sign-in (`specs/005`) now
+  counts before checking, per address. Without it there is no lock at all, by design, and the back-off delay does not
+  bound parallel guesses; the password is only compared when the code is already right. Personal access tokens, launch tickets, session handles, SCIM tokens, share links and
   set-up link tokens are 256-bit random values: their failure counters only slow and protect no guessable
   secret.
 
@@ -108,7 +108,7 @@ Assets: accounts, roles, sessions, tokens, set-up links, the owner's control of 
 | Forged requests | CSRF token and same-site check on every change; double-submit cookie on the public page; CSP with no scripts and `form-action 'self'`; `SameSite=Strict` session cookie | None known |
 | A stolen or unattended session changes access | Step-up for sensitive changes; five wrong confirmations end the session | Within 10 minutes of a sign-in the session can act. Revoking one session or token needs no step-up, being protective |
 | Account enumeration | Invited and reset accounts fail sign-in exactly like unknown ones; one answer for every unusable link; user pages need `rbac.manage` | Administrators who may manage users learn which names exist, by design |
-| Locking the owner out | Last-owner rule on every path inside the transaction (two owners cannot reset each other away); valid sign-in is refused only while someone with the password guesses codes (`specs/005`); `can-core admin` break-glass | An owner whose only credential is a lost device and who is the only owner needs the CLI |
+| Locking the owner out | Last-owner rule on every path inside the transaction (two owners cannot reset each other away); no throttle on valid sign-in; `can-core admin` break-glass | An owner whose only credential is a lost device and who is the only owner needs the CLI |
 | Access outlives a disable, deletion or role removal | Sessions, tickets, module sessions and tokens end in the same transaction | A module session ends at its next revalidation (at most 5 minutes, `specs/036`); module-issued service tokens are the module's own and are not revoked |
 | A deleted person's data passes to a new person with the same name | Names of deleted accounts are refused, case-insensitively | Single sign-on usernames are derived from (issuer, subject): deleting an SSO user does not block their next sign-in. Disable them, or remove them at the provider |
 | Change without a trace | Same-transaction audit; a failing audit rolls the change back | Issuing a token (specs/016, unchanged here) still audits after the insert |

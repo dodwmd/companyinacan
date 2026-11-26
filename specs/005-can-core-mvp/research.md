@@ -53,18 +53,17 @@ Versions were resolved with `go get` on 2026-11-25 (`modernc.org/sqlite` v1.63.0
   junk logins cost no memory, and every login takes at least 150 ms so the failing step is not observable.
   Tests simulate all clients on one address while 500 junk logins for the admin's own username run, and require the
   admin to still log in. See [deployment.md](deployment.md).
-- **Per-account guard** (`auth/guard.go`, both modes). The back-off did not bound guesses sent side by side: someone
-  who knew the password could try about 128 codes a second without the proxy. Attempts per username are counted before
-  checking; above 10 in 24 hours the password is checked before the code, and only right-password attempts count toward
-  a 15-minute code lock (5 in 24 hours). Only a password holder can cause that refusal. The day-long window is so that
-  waiting between guesses gains little.
-  The attempt that is refused answers like any other, so the lock confirms nothing. Alternatives rejected: a cap on
-  all attempts per account (anyone could lock the owner out); verifying the password for every attempt (junk would
-  always cost argon2); queueing password-first checks for the argon2 slot (a flood on any name starved valid sign-ins);
-  letting a valid code skip the one-at-a-time gate (wrong codes turned away would be unlimited, uncounted guesses).
-  Hence the gate plus the in-memory MAC of verified passwords (`auth/passwordfirst.go`); the MAC is a fast verifier,
-  accepted because whoever can read can-core's memory already sees passwords as they arrive. With the proxy, the (username, address) and address counters are also taken before checking and
-  given back on success or when nothing was compared.
+- **Known limit, open**: in the shared-address mode an attacker who knows the password can guess TOTP codes at about
+  128 a second or more, which defeats the second factor within hours. `CAN_TRUST_PROXY=true` plus the Traefik IP
+  allowlist (SPEC 3.1) is the control; its locks are per address. Failed sign-ins per account are only reported
+  (`admin.login.many_failures`, `auth/throttle.go`).
+- **Per-account limit: tried and dropped.** Checking the password first once an account had many failures bounded the
+  guesses, but each variant opened something worse: argon2 reachable without a valid code (a flood starves sign-in and
+  keeps the owner out), and, to avoid that, a way to confirm a password without a code. A limit here needs something
+  that tells the owner from a guesser before the password is checked (a known-device credential, say).
+- **Counting before checking** (with the proxy): the (username, address) and address counters are taken before the
+  credentials are compared, so requests sent together get no more than the limit, and given back on success, refusal or
+  when nothing was compared.
 - **Limits of the back-off (documented, accepted)**:
   - `maxSleepers` (256) bounds logins waiting out a back-off, not a burst of concurrent junk logins that all start at zero failure counters; those are bounded only by the HTTP server timeouts and connection limits.
   - `ErrBusy` (503) returns immediately and is not padded to the 150 ms floor; the timing difference reveals only that the server is saturated, a negligible oracle.

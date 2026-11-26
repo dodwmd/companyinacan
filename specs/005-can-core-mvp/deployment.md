@@ -29,31 +29,26 @@ address. can-core therefore has two throttling modes and picks one from `CAN_TRU
   `externalTrafficPolicy: Local` (already set in `deploy/base/traefik-config.yaml`) so the real source address
   reaches Traefik.
 - **`CAN_TRUST_PROXY=false` (the binary's default, correct when addresses cannot be trusted).** Nothing is ever
-  refused for failures by address, because a shared address would let an anonymous attacker lock the real admin out
-  (can-core logs a warning at start). Failures by address only add an increasing delay (250 ms doubling to 2 s) and at most 256 logins wait at once (more get 503). The admin
-  with valid credentials and TOTP code gets in, only slower, unless the 256-waiter cap is saturated by a sustained flood (503 while it lasts; no persistent lockout; existing sessions are unaffected).
+  refused for failures, because a shared address would let an anonymous attacker lock the real admin out. Failures
+  only add an increasing delay (250 ms doubling to 2 s) and at most 256 logins wait at once (more get 503). The admin
+  with valid credentials and TOTP code gets in, only slower, unless the 256-waiter cap is saturated by a sustained flood (503 while it lasts; no persistent lockout; existing sessions are unaffected). can-core logs a warning at start in this mode.
 
 In both modes: the TOTP code is checked before the password, so junk logins never run the 19 MiB argon2 step (a
 guess passes the code check with probability about 3 in a million); argon2 runs under a concurrency cap; every login
 takes at least 150 ms regardless of which check failed. The IP allowlist (SPEC 3.1) is also the availability
-mitigation against a sustained flood saturating the waiter cap or the hashing slot.
+mitigation against a sustained flood saturating the waiter cap.
 
-**Per-account limit (both modes).** Checking the code first would let someone who knows the password try codes as fast
-as requests arrive. So every attempt on a username is counted before it is checked, and after 10 attempts (in flight or
-failed) in 24 hours without a successful sign-in the password is checked first. A wrong password then changes nothing
-else, so **nobody without the password can lock the owner out**. With the right password the code attempt is counted
-before its outcome is used, and after 5 in 24 hours the account takes no code for 15 minutes. The answer stays the
-ordinary 401; the audit log records `admin.login.code_locked` and can-core logs a warning. This lock means someone has
-the password (or the owner's authenticator is wrong): change the password. `can-core admin unlock` lifts it, and so
-does a new password. Someone who has the password can keep the owner locked out until it is changed. Staying under both
-limits they get about 14 codes a day; guessing on through the locks, a few hundred a day, each lock audited.
+**Residual risk: guessing the authentication code.** With `CAN_TRUST_PROXY=false` nothing limits how many codes someone
+who already knows a password can try. The back-off delays each attempt but attempts sent side by side wait side by side:
+about 128 a second (256 waiters, 2 s each), plus a burst each time the counters start again. Three codes in a
+million are valid at any moment, so such an attacker can expect to get in within about an hour. The password is then the
+only real factor. Turn on `CAN_TRUST_PROXY` (and add the Traefik IP allowlist). With it, one address gets 10 attempts a
+minute and is locked for 15 minutes after 5 failures on a name (about 480 guesses a day), but the locks are per
+address: an attacker with many addresses gets that allowance for each.
 
-Password-first checks must not take the single argon2 slot from everyone else. At most one of them holds or waits for
-it; the others are refused at once, so a valid sign-in, a step-up, a password change or a set-up link waits for at most
-two hashes. A password that has been verified since can-core started is recognised by a keyed MAC kept in memory only
-(random key per process), without argon2, so a flood on the owner's own name does not keep the owner out. The remaining
-case: right after a restart, before the owner's first sign-in, a flood on the owner's name that is still running can
-have the owner's attempts refused until it stops.
+**Detection, both modes.** Twenty failed sign-ins on one account within 24 hours write the audit entry
+`admin.login.many_failures` and a log warning, once per 24 hours. Nothing is refused because of it. The usual cause of a
+real alert is somebody who has the password or is guessing it: change the password.
 
 Recovery from inside the pod: `can-core admin unlock [--username]` and `can-core admin reset-password
 [--rotate-totp]`.

@@ -240,9 +240,9 @@ Do not run this from CI. With a fresh Hetzner account:
   TOTP and login throttling. Behind Traefik can-core throttles per client address (`CAN_TRUST_PROXY=true`, the
   last `X-Forwarded-For` entry Traefik appends): repeated failures lock that (username, address) pair, so an
   attacker can lock out the admin only from their own address. Add an IP allowlist (SPEC.md section 3.1) if the
-  admin works from fixed addresses. Someone who has the password and guesses codes makes the account take no
-  code for 15 minutes (`admin.login.code_locked` in the audit log): change the password, `can-core admin unlock`
-  lifts the lock. In the plain-HTTP fallback the admin UI is not routed at all.
+  admin works from fixed addresses. These locks are per address: someone who has the password and many
+  addresses can still guess codes. Twenty failed sign-ins on an account within a day are recorded as
+  `admin.login.many_failures`. In the plain-HTTP fallback the admin UI is not routed at all.
 - **HTTP to HTTPS.** In https mode a route on the `web` entry point (`can-system/https-redirect`)
   redirects `GET` and `HEAD` with a temporary redirect; other methods get 404, so a client that sends a
   password or token over plain HTTP fails instead of carrying on. Certificates use TLS-ALPN on 443 and are

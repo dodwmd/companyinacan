@@ -309,9 +309,8 @@ func (db *DB) DeleteAccount(ctx context.Context, tx *sql.Tx, a Account) error {
 			return err
 		}
 	}
-	name := strings.ToLower(a.Username)
-	if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE key LIKE ? ESCAPE '\' OR key IN (?, ?, ?)`,
-		escapeLike("user:"+name+"|")+"%", "acct:"+a.Username, LoginAccountKey+name, LoginCodeKey+name); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE key LIKE ? ESCAPE '\' OR key=?`,
+		escapeLike("user:"+strings.ToLower(a.Username)+"|")+"%", "acct:"+a.Username); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM admin_users WHERE id=?`, a.ID); err != nil {
