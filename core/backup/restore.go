@@ -248,12 +248,14 @@ type PlanStep struct {
 	Done   bool   `json:"done"`
 }
 
+// fingerprint tells repositories apart in the state file. The password is deliberately not part
+// of it: a fast hash of it has no place on disk, and a wrong one cannot open the repository.
 func (o *Restore) fingerprint() string {
 	repo := o.Kit.Restic.Repository
 	if o.Source != "" {
 		repo = o.Source
 	}
-	h := sha256.Sum256([]byte(repo + "\x00" + o.Kit.Restic.Password))
+	h := sha256.Sum256([]byte(repo))
 	return hex.EncodeToString(h[:8])
 }
 
