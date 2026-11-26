@@ -129,9 +129,22 @@ func TestBuiltinRestoreJob(t *testing.T) {
 	}
 	raw, j := runBuiltinJob(t, api, func(ctx context.Context) error { return h.RunRestore(ctx, "wiki", false) })
 	spec := j.Spec.Template.Spec
-	if len(spec.InitContainers) != 1 || spec.InitContainers[0].Command[2] != "restore" || spec.InitContainers[0].mounts() != "work tmp can-token:ro data" ||
+	if len(spec.InitContainers) != 2 || spec.InitContainers[1].Command[2] != "restore" || spec.InitContainers[1].mounts() != "work tmp can-token:ro data" ||
 		len(spec.Containers) != 1 || !strings.Contains(spec.Containers[0].Command[2], "pg_restore") {
-		t.Error(raw)
+		t.Fatal(raw)
+	}
+	// QA: the server is checked before the files are replaced (init containers run in order, and
+	// one that fails stops the pod). The check has the database password but no volume or token.
+	check := spec.InitContainers[0]
+	if check.Name != "database-check" || check.Image != spec.Containers[0].Image || check.Command[2] != pgCheckScript ||
+		len(check.EnvFrom) != 1 || check.mounts() != "tmp" {
+		t.Errorf("check container %+v", check)
+	}
+	if out, ran, err := runPGScript(t, check.Command[2], "170006"); err != nil || ran {
+		t.Errorf("check on 17 (ran %v): %v %s", ran, err, out)
+	}
+	if out, _, err := runPGScript(t, check.Command[2], "160004"); err == nil || !strings.Contains(out, "unsupported Postgres server") {
+		t.Errorf("check on 16: %v %s", err, out)
 	}
 }
 

@@ -49,6 +49,10 @@ case "$v" in
 esac
 `
 
+// pgCheckScript is a restore's first container: a server that does not answer, or is of another
+// major, stops it before anything has been downloaded or replaced.
+const pgCheckScript = "set -eu\n" + pgWait
+
 // pgDumpScript writes one consistent snapshot (a single transaction) of the module's database.
 const pgDumpScript = "set -eu\numask 027\n" + pgWait + "pg_dump --format=custom --no-owner --no-privileges >" + pgDumpFile + "\n"
 
@@ -271,7 +275,11 @@ func (h *KubeHooks) builtinSpec(ctx context.Context, p builtinParams) kube.Objec
 			[]any{obj{"name": "HOME", "value": "/tmp"}},
 			[]any{obj{"secretRef": obj{"name": reconcile.DatabaseSecret}}}, []any{work, tmp})
 		if restore {
-			init, main = []any{data}, client // download and verify, then load
+			check := container("database-check", p.pg, pgLimit, pgUID, []any{"/bin/sh", "-c", pgCheckScript},
+				[]any{obj{"name": "HOME", "value": "/tmp"}},
+				[]any{obj{"secretRef": obj{"name": reconcile.DatabaseSecret}}}, []any{tmp})
+			// check the server, then download, verify and replace the files, then load
+			init, main = []any{check, data}, client
 		} else {
 			init = []any{client} // dump first, then upload it and archive the files
 		}
