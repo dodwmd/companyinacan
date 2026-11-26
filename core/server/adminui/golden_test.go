@@ -51,7 +51,7 @@ func renderAll(t *testing.T) (map[string]string, []page) {
 	id := itoa(dead)
 	pages := []page{
 		{name: "login", method: "GET", path: "/login", status: 200, anon: true},
-		{name: "dashboard", method: "GET", path: "/", status: 200},
+		{name: "dashboard", method: "GET", path: "/dashboard", status: 200},
 		{name: "modules", method: "GET", path: "/modules", status: 200},
 		{name: "module-forms", method: "GET", path: "/modules/forms", status: 200},
 		{name: "module-wiki", method: "GET", path: "/modules/wiki", status: 200},
@@ -84,7 +84,7 @@ func renderAll(t *testing.T) (map[string]string, []page) {
 		}
 	}
 	// pages that need other fixture states
-	out["dashboard-after-requeue"] = normalise(h.do("GET", "/", nil, s.with()...).body)
+	out["dashboard-after-requeue"] = normalise(h.do("GET", "/dashboard", nil, s.with()...).body)
 	h.leads.err = ErrLeadsUnavailable
 	out["leads-unavailable"] = normalise(h.do("GET", "/leads", nil, s.with()...).body)
 	h.leads.err = errors.New("boom")
@@ -92,7 +92,7 @@ func renderAll(t *testing.T) (map[string]string, []page) {
 	// a clean database: empty states
 	e := newHarness(t)
 	es := e.login()
-	out["dashboard-empty"] = normalise(e.do("GET", "/", nil, es.with()...).body)
+	out["dashboard-empty"] = normalise(e.do("GET", "/dashboard", nil, es.with()...).body)
 	out["modules-empty"] = normalise(e.do("GET", "/modules", nil, es.with()...).body)
 	out["events-empty"] = normalise(e.do("GET", "/events", nil, es.with()...).body)
 	out["login-failed"] = func() string {

@@ -88,11 +88,17 @@ func (db *DB) AdminByID(ctx context.Context, id int64) (AdminUser, error) {
 // AdminDisabled reports whether the account is disabled (the person left). Unknown ids count as
 // disabled: fail closed.
 func (db *DB) AdminDisabled(ctx context.Context, id int64) bool {
+	disabled, err := db.AdminDisabledState(ctx, id)
+	return disabled || err != nil
+}
+
+// AdminDisabledState is AdminDisabled for callers that must tell "disabled" from "cannot tell".
+func (db *DB) AdminDisabledState(ctx context.Context, id int64) (bool, error) {
 	var d int64
 	if err := db.QueryRowContext(ctx, `SELECT disabled_at FROM admin_users WHERE id=?`, id).Scan(&d); err != nil {
-		return true
+		return false, err
 	}
-	return d != 0
+	return d != 0, nil
 }
 
 // SetPasswordHash replaces the stored hash (password change or rehash).

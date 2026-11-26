@@ -72,7 +72,12 @@ func TestAdminLoginTOTPAndPages(t *testing.T) {
 
 	adminLogin(t, s)
 
-	dash := s.Do(t, harness.Req{Host: host, Path: "/"}).Expect(t, "dashboard", 200)
+	// Sign-in lands on the business overview; the technical dashboard is one link away.
+	home := s.Do(t, harness.Req{Host: host, Path: "/"}).Expect(t, "the root after sign-in", 303)
+	if home.Header.Get("Location") != "/overview" {
+		t.Fatalf("sign-in lands on %q", home.Header.Get("Location"))
+	}
+	dash := s.Do(t, harness.Req{Host: host, Path: "/dashboard"}).Expect(t, "dashboard", 200)
 	if !strings.Contains(dash.String(), "Dashboard") || !strings.Contains(dash.String(), "Acme Co") {
 		t.Fatalf("dashboard does not show the company: %.300s", dash.String())
 	}

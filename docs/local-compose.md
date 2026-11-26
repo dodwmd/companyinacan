@@ -241,10 +241,10 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
   starts the containers. So:
   - purge, Secret rotation and the wizard's email relay credentials are not available;
   - `board` and `entity` are not wired to can-core; the admin UI's leads view says leads are
-    not available (no `leads` provider is registered, no leads token file is configured);
-  - forms sends its lead notification through can-core's `email.send` with a fixed development identity, to an SMTP
-    sink that keeps the mail (http://mail.localhost:8080/messages, [email.md](email.md)); it is not otherwise wired
-    to can-core and posts no webhook;
+    not available (no leads token file is configured; the overview's count of new leads does not need one);
+  - forms sends its lead notification through can-core's `email.send` to an SMTP sink that keeps the mail
+    (http://mail.localhost:8080/messages, [email.md](email.md)). A stack whose volumes predate E17f keeps its old
+    `company.yaml` without forms: recreate it (`down -v`);
   - `equity` is introspected only: it publishes no events through can-core and takes no board decisions from it;
   - no reporting-line (`directory`) credential is configured, so approval chains that need a manager use their
     fallback;

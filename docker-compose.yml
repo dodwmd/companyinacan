@@ -29,7 +29,7 @@ x-metrics-env: &metrics-env
 # also carry the in-cluster names can-core delivers to as network aliases.
 x-webhook-secret: &webhook-secret dev-only-webhook-secret-0123456789abcdef
 
-# work, people, jobs, finance, equity and files ask can-core (CAN_API_URL) who a personal access token or a launch
+# forms, work, people, jobs, finance, equity and files ask can-core (CAN_API_URL) who a personal access token or a launch
 # ticket belongs to, presenting the random token the `init` job wrote for each (CAN_TOKEN_FILE). Each module
 # mounts only its own token volume.
 services:
@@ -41,6 +41,7 @@ services:
     volumes:
       - dev-secrets:/secrets
       - core-data:/var/lib/can
+      - token-forms:/tokens/forms
       - token-work:/tokens/work
       - token-people:/tokens/people
       - token-jobs:/tokens/jobs
@@ -63,12 +64,20 @@ services:
   forms:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: forms, args: *build-args }
     container_name: can-forms
+    networks: { default: { aliases: [forms-api.mod-forms.svc.cluster.local] } }
     env_file: [dev/compose/secrets/forms.env]
     environment:
       <<: *metrics-env
+      CAN_API_URL: "http://core:8090"
+      CAN_MODULE_ID: forms
+      CAN_TOKEN_FILE: /tokens/token
       CAN_RAM_DECLARED_MB: "15"
     volumes:
       - forms-data:/data
+      - token-forms:/tokens:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/can-forms", "healthcheck", "-addr", "127.0.0.1:8080"]
       interval: 15s
@@ -98,12 +107,12 @@ services:
       <<: *metrics-env
       CAN_RAM_DECLARED_MB: "48"
       # email.send (docs/email.md): the sink below is a private address without TLS, both refused unless
-      # these DEV ONLY switches are set. core-email.env registers the forms identity.
+      # these DEV ONLY switches are set.
       CAN_SMTP_ALLOW_INSECURE: "true"
       CAN_SMTP_ALLOW_PRIVATE: "true"
-    env_file: [dev/compose/secrets/core-email.env]
     volumes:
       - core-data:/var/lib/can
+      - token-forms:/tokens/forms:ro
       - token-work:/tokens/work:ro
       - token-people:/tokens/people:ro
       - token-jobs:/tokens/jobs:ro
@@ -231,6 +240,7 @@ services:
   equity:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: equity, args: *build-args }
     container_name: can-equity
+    networks: { default: { aliases: [equity-api.mod-equity.svc.cluster.local] } }
     env_file: [dev/compose/secrets/equity.env]
     environment:
       <<: *metrics-env
@@ -255,6 +265,7 @@ services:
   files:
     build: { context: ., dockerfile: dev/compose/Dockerfile, target: files, args: *build-args }
     container_name: can-files
+    networks: { default: { aliases: [files.mod-files.svc.cluster.local] } }
     env_file: [dev/compose/secrets/files.env]
     environment:
       <<: *metrics-env
@@ -334,6 +345,7 @@ services:
 # Named volumes: `down` keeps them, `down -v` deletes them.
 volumes:
   dev-secrets:
+  token-forms:
   token-work:
   token-people:
   token-jobs:

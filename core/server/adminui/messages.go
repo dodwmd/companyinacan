@@ -39,7 +39,7 @@ var messagesEN = map[string]string{
 	"flash.logged_out":       "You have been signed out.",
 
 	"err.request_id":           "Request id:",
-	"err.home":                 "Back to the dashboard",
+	"err.home":                 "Back to the overview",
 	"err.login":                "Back to sign in",
 	"err.not_found_title":      "Page not found",
 	"err.not_found":            "The page you asked for does not exist.",

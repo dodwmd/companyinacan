@@ -23,6 +23,16 @@ const backupStale = 36 * time.Hour
 // maxWaiting bounds the approvals counted.
 const maxWaiting = 200
 
+// home is where sign-in lands (the root of the site): the business overview, which every signed-in
+// person may open. The technical dashboard is at /dashboard.
+func (s *Server) home(w http.ResponseWriter, r *http.Request, _ *sessionCtx) {
+	flash := r.URL.Query().Get("flash")
+	if _, ok := messagesEN[flash]; !ok || !strings.HasPrefix(flash, "flash.") {
+		flash = ""
+	}
+	s.redirect(w, r, "/overview", flash)
+}
+
 func (s *Server) overviewRoutes() []route {
 	return []route{{"GET /overview", s.authed(s.overviewPage)}}
 }
@@ -51,41 +61,44 @@ type overviewSection struct {
 type overviewData struct {
 	Attention []overviewRow
 	Sections  []overviewSection
-	// Failed means the modules could not be listed at all.
+	// Failed means the modules could not be listed, or the person's rights could not be read.
 	Failed bool
+	// Incomplete means something that may need attention is missing from the page.
+	Incomplete bool
 }
 
 func (s *Server) overviewPage(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
 	ctx, me := r.Context(), subjectOf(sc)
 	d := overviewData{}
+	// A part that cannot be read is said to be unavailable, never left out as if there were nothing.
 	platform, err := s.allowed(r, sc, rbac.PermView)
 	if err != nil {
-		s.internal(w, r, sc, err)
-		return
+		s.Log.Error("overview: cannot read the person's rights", "error", err)
+		platform, d.Failed = false, true
 	}
 
 	// What can-core itself knows.
 	if s.Approvals != nil {
-		waiting, err := s.Approvals.Waiting(ctx, me, maxWaiting)
-		if err != nil {
-			s.internal(w, r, sc, err)
-			return
+		sec := overviewSection{ID: "approvals", Name: s.msg("nav.approvals")}
+		if waiting, err := s.Approvals.Waiting(ctx, me, maxWaiting); err != nil {
+			s.Log.Error("overview: cannot read approvals", "error", err)
+			sec.Unavailable = true
+		} else {
+			n := strconv.Itoa(len(waiting))
+			if len(waiting) >= maxWaiting {
+				n += "+"
+			}
+			sec.Rows = []overviewRow{{Label: s.msg("ov.approvals"), Value: n, Attention: len(waiting) > 0, Link: &overviewLink{Href: "/approvals", Name: s.msg("nav.approvals")}}}
 		}
-		n := strconv.Itoa(len(waiting))
-		if len(waiting) >= maxWaiting {
-			n += "+"
-		}
-		row := overviewRow{Label: s.msg("ov.approvals"), Value: n, Attention: len(waiting) > 0, Link: &overviewLink{Href: "/approvals", Name: s.msg("nav.approvals")}}
-		d.Sections = append(d.Sections, overviewSection{ID: "approvals", Name: s.msg("nav.approvals"), Rows: []overviewRow{row}})
+		d.Sections = append(d.Sections, sec)
 	}
 
 	if s.Overview != nil {
 		apps := map[string]string{}
 		if s.Tickets != nil {
 			list, err := s.Tickets.Apps(ctx, me)
-			if err != nil {
-				s.internal(w, r, sc, err)
-				return
+			if err != nil { // only the links are lost
+				s.Log.Error("overview: cannot list the apps", "error", err)
 			}
 			for _, a := range list {
 				apps[a.ID] = a.Name
@@ -109,7 +122,9 @@ func (s *Server) overviewPage(w http.ResponseWriter, r *http.Request, sc *sessio
 		d.Sections = append(d.Sections, s.backupSection(s.Mod.LastDump))
 	}
 
+	d.Incomplete = d.Failed
 	for _, sec := range d.Sections {
+		d.Incomplete = d.Incomplete || sec.Unavailable
 		for _, row := range sec.Rows {
 			if row.Attention {
 				row.Module = sec.Name
@@ -122,6 +137,9 @@ func (s *Server) overviewPage(w http.ResponseWriter, r *http.Request, sc *sessio
 
 func (s *Server) overviewRow(m overview.Module, v overview.Value, apps map[string]string, platform bool, csrf string) overviewRow {
 	row := overviewRow{Label: s.msg("ov." + "fig_" + strings.ReplaceAll(v.Key, ".", "_")), Value: strconv.FormatInt(v.Count, 10), Attention: v.Attention && v.Count > 0}
+	if v.Unit != "" {
+		row.Value += " " + v.Unit
+	}
 	for _, a := range v.Amounts {
 		row.Amounts = append(row.Amounts, overview.FormatMoney(a.Currency, a.Minor))
 	}
