@@ -35,6 +35,9 @@ type EmailModule struct {
 	// NotificationText lets notification mail caused by this module carry the module's own title and
 	// text. Off: a fixed text with the notification type and a link to the inbox.
 	NotificationText bool `yaml:"notification_text"`
+	// ExternalRecipients lets the module's own mail go to any address. Only finance may set it: it
+	// mails contract signers (specs/049-contract-esign).
+	ExternalRecipients bool `yaml:"external_recipients"`
 }
 
 // EmailIssue is one validation finding with the path of the offending field.
@@ -66,6 +69,10 @@ func ValidateEmail(e *Email) []EmailIssue {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
+		if e.Modules[id].ExternalRecipients && id != "finance" {
+			out = append(out, EmailIssue{"/email/modules/" + id + "/external_recipients", "semantic.email-recipient",
+				"external_recipients is only for finance (contract signers)"})
+		}
 		for i, rule := range e.Modules[id].Recipients {
 			if !ValidRecipientRule(rule) {
 				out = append(out, EmailIssue{"/email/modules/" + id + "/recipients/" + strconv.Itoa(i), "semantic.email-recipient",

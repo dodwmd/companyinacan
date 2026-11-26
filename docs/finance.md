@@ -15,7 +15,8 @@ library `core/finance`) with a REST API and SQLite storage, and it backs the `in
 Status: **experimental**. The service is built and tested offline and its idle memory is measured;
 the image has not been built or run on a cluster, the web UI ([`finance-ui.md`](finance-ui.md)) is
 built offline and not browser-verified, and the payment and
-e-signature adapters are fakes (the real ones are separate, later work). See
+e-signature adapters are fakes (the real ones are separate, later work). Contracts can also be signed
+by emailed link (a *simple* electronic signature, [below](#signing-by-emailed-link)). See
 `specs/014-finance-basics/tasks.md` for the known gaps.
 
 ## Build versus wrap
@@ -136,6 +137,49 @@ itself contains `{{x}}` is not expanded again. Each version is immutable and sto
   activates signed contracts when their start date arrives, expires them after their end date, and
   emits one `contract.expiring.v1` per renewal date inside the lead time (changing the date re-arms it).
 
+### Signing by emailed link
+
+Send a draft to its signers; each reads the exact text on a public page and signs by typing their
+name, or declines. **This is a simple electronic signature, not an advanced or qualified one**: a
+signer is identified only by access to the mailbox you typed, nothing is cryptographically signed,
+and whether that is enough depends on the document and the law that applies. Read
+[the spec](../specs/049-contract-esign/spec.md) (decision, legal limits, threat model) first.
+Experimental: not run on a cluster or against a real mail relay.
+
+Set up (all in `company.yaml`, then `can apply`; the DNS record for `finance.<domain>` comes from
+`can up`):
+
+```yaml
+email:
+  relay: { host: smtp.example.com }          # docs/email.md
+  modules:
+    finance:
+      external_recipients: true              # or list counterparties under recipients:
+modules:
+  finance:
+    expose:
+      signing: true                          # off unless written
+```
+
+Then, on a draft contract's page (or `POST /v1/contracts/{id}/signing` with
+`{"signers": [{"name", "email", "role": "counterparty|company"}], "ordered": true,
+"expires_in_days": 7}`):
+
+* the current version is frozen (its SHA-256); each invited signer gets a link that works once and
+  expires. You never see the link. The page shows whether each invitation was accepted by the mail
+  service; "refused" means the address is outside finance's allow-list;
+* **ordered** invites one at a time in the order listed (put the company's countersigner last);
+* **send a new link** replaces a lost or expired one; **withdraw** kills them all and returns the
+  contract to draft, as does a new version of the text or a refusal by any signer;
+* when all have signed, the contract is signed or active, `contract.signed.v1` is published, each
+  signer is mailed a certificate (the contract page shows whether each was accepted by the mail
+  service and can send it again), and you can read the full one (with addresses, shortened client
+  addresses and the evidence chain). Nothing about the signed text can change afterwards;
+* `GET /v1/contracts/{id}/verify` checks the records against their hash chain. Keep the certificates:
+  they are the copy of the chain's end held outside the database.
+
+Signers are not mailed the document itself: the page asks them to keep a copy before answering.
+
 ## Timesheets
 
 A person's week (a Monday) holds entries: day, project key, optional task key, minutes, billable
@@ -207,6 +251,8 @@ names or addresses.
   contract that was sent and then given a new version keeps the versions it was sent with;
 * pseudonymises the party record: the name becomes `Erased party #<id>`; contact name, email,
   phone, address, tax id and notes are emptied; the party can no longer be used;
+* revokes open signing requests of the party's contracts and removes the signers' names, addresses and
+  reasons from requests that did not complete (completed ones are kept with the signed contract);
 * **keeps** issued invoices and credit notes, their payments and the frozen snapshot of name,
   address and tax id they were issued with, and sent or signed contracts and approved purchase
   orders, until the retention period ends;

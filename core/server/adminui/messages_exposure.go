@@ -11,6 +11,7 @@ func init() {
 		"exp.api":          "API",
 		"exp.pages":        "Public pages",
 		"exp.invoice_link": "Invoice links",
+		"exp.signing":      "Contract signing pages",
 		"exp.forms":        "Form intake",
 		"exp.on":           "On",
 		"exp.off":          "Off",

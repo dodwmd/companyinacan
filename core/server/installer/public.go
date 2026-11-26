@@ -15,6 +15,7 @@ import (
 
 const (
 	middlewareLink  = "can-link-headers"
+	middlewareSign  = "can-sign-headers"
 	middlewareChart = "can-chart-headers"
 	// loginPriority outranks the UI's own rules, whose priority is their length.
 	loginPriority = 1000
@@ -78,6 +79,38 @@ func (in *Installer) planLink(s reconcile.Spec, p *routePlan, domain string, lim
 	p.values = deepMerge(p.values, map[string]any{"config": values})
 	p.backends = append(p.backends, backend{l.Service, l.Port})
 	p.objects = append(p.objects, ingressRoute(s, routeLink, true, routes))
+	return nil
+}
+
+// planSign routes the signing pages of runtime.public_sign (specs/049-contract-esign): one path
+// prefix, GET, HEAD and the form's POST, TLS, with the same headers as signed links. The module
+// authenticates each request by the single-use token in the path.
+func (in *Installer) planSign(s reconcile.Spec, p *routePlan, domain string, limit bool) error {
+	l := s.Manifest.Runtime.PublicSign
+	if routing.SignPrefixes[s.ID] != l.Prefix || !routing.MayClaim(s.ID, s.ID) {
+		return fmt.Errorf("module %s may not publish %s", s.ID, l.Prefix)
+	}
+	host := s.ID + "." + domain
+	mws := []string{middlewareSign}
+	p.objects = append(p.objects, middleware(s, middlewareSign, map[string]any{"headers": map[string]any{
+		"stsSeconds": 31536000, "contentTypeNosniff": true, "frameDeny": true, "referrerPolicy": "no-referrer",
+		"customResponseHeaders": map[string]any{"X-Robots-Tag": "noindex, nofollow"},
+	}}))
+	if limit {
+		mws = append(mws, p.limit(s, "public", routing.PublicLimit)...)
+	}
+	var routes []any
+	for _, method := range []string{"GET", "HEAD", "POST"} {
+		match := "Host(`" + host + "`) && PathPrefix(`" + l.Prefix + "`) && Method(`" + method + "`)"
+		routes = append(routes, routeRule(match, 0, l.Service, l.Port, mws...))
+	}
+	values := deepMerge(nil, l.Config)
+	if l.BaseURLKey != "" {
+		values = deepMerge(values, map[string]any{l.BaseURLKey: "https://" + host})
+	}
+	p.values = deepMerge(p.values, map[string]any{"config": values})
+	p.backends = append(p.backends, backend{l.Service, l.Port})
+	p.objects = append(p.objects, ingressRoute(s, routeSign, true, routes))
 	return nil
 }
 

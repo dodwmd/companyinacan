@@ -146,7 +146,7 @@ func (s *Service) stillAllowed(ctx context.Context, p Policy, d due) (bool, erro
 	case d.notice:
 		return s.noticeAllowed(ctx, p, d.forUser, d.recipient)
 	default:
-		return config.RecipientAllowed(d.recipient, rules.Recipients), nil
+		return rules.AnyRecipient || config.RecipientAllowed(d.recipient, rules.Recipients), nil
 	}
 }
 

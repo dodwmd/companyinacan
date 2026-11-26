@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -61,6 +62,7 @@ type Options struct {
 	Approver  Approver      // replaces the finance.approve rule (reporting-line approvals)
 	Payments  PaymentProvider
 	ESign     ESigner
+	Mailer    Mailer // replaces can-core's email.send for signing links
 	Logger    *slog.Logger
 	Now       func() time.Time
 	Client    *http.Client
@@ -123,6 +125,17 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	store.events = cfg.Webhook.URL != "" || opt.Can != nil
 	store.base = cfg.BaseCurrency
 	store.payInstr = cfg.PaymentInstructions
+	store.sign.log, store.sign.baseURL, store.sign.company = log, cfg.SignBaseURL, cfg.Seller.Name
+	if u, err := url.Parse(cfg.SignBaseURL); err == nil && store.sign.company == "" {
+		store.sign.company = u.Host // a mail that names nobody looks like phishing
+	}
+	if cfg.SigningRecordIP != "" {
+		store.sign.ipMode = cfg.SigningRecordIP
+	}
+	store.sign.mailer = opt.Mailer
+	if store.sign.mailer == nil && opt.Can != nil {
+		store.sign.mailer = opt.Can
+	}
 	if opt.Can != nil {
 		store.core = opt.Can
 		store.approver = &CoreApprover{store: store} // invoices are approved through can-core's engine
@@ -177,7 +190,11 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		top.Handle("/", ui.Handler())
 		h = top
 	}
-	app.handler = withMiddleware(log, h)
+	// The signing pages are served beside everything else: the link alone authenticates them.
+	signMux := http.NewServeMux()
+	signMux.Handle(signPathPrefix, newSignSite(a))
+	signMux.Handle("/", h)
+	app.handler = withMiddleware(log, signMux)
 	return app, nil
 }
 

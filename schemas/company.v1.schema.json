@@ -52,6 +52,7 @@
               "ui": { "type": "boolean", "description": "Route the web UI on https://<module id>.<domain>. Default false." },
               "api": { "type": "boolean", "description": "Route the module API (/v1) on the same host. Default false." },
               "public": { "type": "boolean", "description": "Route the module's anonymous surface (careers pages, /_forms). Default true. finance publishes its invoice links only when this is written as true." },
+              "signing": { "type": "boolean", "description": "finance: route the single-use contract signing pages (/public/sign/) on https://finance.<domain>. Default false." },
               "edge_limit": { "type": "boolean", "description": "Rate-limit sign-in and anonymous routes at the ingress, per client address. Default true; set false behind a proxy or CDN." },
               "token_login": { "type": "boolean", "description": "Keep the paste-a-token sign-in on a routed web UI. Default false." }
             }
@@ -394,6 +395,7 @@
               "recipients": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 254 }, "description": "Addresses (a@b.example) or whole domains (@b.example) the module may mail. Replaces the default (the company domain and the module's notify_email setting)." },
               "per_hour": { "type": "integer", "minimum": 1, "maximum": 10000 },
               "per_day": { "type": "integer", "minimum": 1, "maximum": 100000 },
+              "external_recipients": { "type": "boolean", "description": "finance only: let it mail contract signers at any address, not only those under recipients (docs/email.md). Default false." },
               "notification_text": { "type": "boolean", "description": "Let notification mail caused by this module carry the module's own title and text. Default false: a fixed text with the type and a link to the admin inbox." }
             }
           }

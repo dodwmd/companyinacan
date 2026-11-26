@@ -37,6 +37,63 @@
 </form>
 </section>
 {{end}}
+{{if and .Data.CanSend .Data.CanLink}}
+<section aria-labelledby="h-link">
+<h2 id="h-link">{{t "signing.send"}}</h2>
+<form method="post" action="/contracts/{{.Data.C.ID}}/signing" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="version" value="{{.Data.C.Version}}">
+<p><label for="l-other">{{t "signing.counterparty"}}</label>
+<textarea id="l-other" name="counterparty" rows="3" maxlength="3000"></textarea></p>
+<p><label for="l-company">{{t "signing.company"}}</label>
+<textarea id="l-company" name="company" rows="2" maxlength="3000"></textarea></p>
+<p class="hint">{{t "signing.lines_hint"}}</p>
+<p><label class="check"><input type="checkbox" name="ordered" value="yes"> {{t "signing.ordered"}}</label></p>
+<p><label for="l-days">{{t "signing.days"}}</label>
+<input id="l-days" name="days" inputmode="numeric" maxlength="2" value="7"></p>
+<p class="hint">{{t "signing.hint"}}</p>
+<p><button type="submit">{{t "signing.send_btn"}}</button></p>
+</form>
+</section>
+{{end}}
+{{with .Data.Signing}}
+<section aria-labelledby="h-signing">
+<h2 id="h-signing">{{t "signing.title"}}</h2>
+<dl class="facts">
+<dt>{{t "signing.status"}}</dt><dd><span class="badge">{{st "env" .Status}}</span></dd>
+<dt>{{t "signing.hash"}}</dt><dd><code>{{.SHA256}}</code></dd>
+</dl>
+<div class="scroll">
+<table>
+<caption>{{t "signing.caption"}}</caption>
+<thead><tr><th scope="col">{{t "signing.signer"}}</th><th scope="col">{{t "signing.role"}}</th><th scope="col">{{t "signing.state"}}</th><th scope="col">{{t "signing.mail"}}</th><th scope="col">{{t "signing.expires"}}</th></tr></thead>
+<tbody>
+{{$env := .}}{{range .Signers}}<tr>
+<td>{{.Name}}<br>{{.Email}}{{with .TypedName}}<br>{{t "signing.signed_as"}}: {{.}}{{end}}{{with .DeclineReason}}<br>{{t "signing.reason"}}: {{.}}{{end}}</td>
+<td>{{st "role" .Role}}</td>
+<td>{{st "signer" .Status}}{{if .SignedAt}} {{whenp .SignedAt}}{{end}}{{if .DeclinedAt}} {{whenp .DeclinedAt}}{{end}}</td>
+<td>{{if .MailStatus}}{{st "mailst" .MailStatus}}{{end}}{{if .CertificateStatus}}<br>{{t "signing.cert_mail"}}: {{st "mailst" .CertificateStatus}}
+{{if $.Data.Write}}<form method="post" action="/contracts/{{$.Data.C.ID}}/signing/signers/{{.ID}}/resend" class="inline">
+{{template "csrf" $}}
+<button type="submit">{{t "signing.cert_resend"}}</button>
+</form>{{end}}{{end}}</td>
+<td>{{if and (eq $env.Status "pending") (eq .Status "invited")}}{{whenp .ExpiresAt}} {{if .Expired}}{{t "signing.expired"}}{{end}}
+{{if and $.Data.Write $.Data.CanLink}}<form method="post" action="/contracts/{{$.Data.C.ID}}/signing/signers/{{.ID}}/resend" class="inline">
+{{template "csrf" $}}
+<button type="submit">{{t "signing.resend"}}</button>
+</form>{{end}}{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{if and $.Data.Write (eq .Status "pending")}}<form method="post" action="/contracts/{{$.Data.C.ID}}/signing/revoke" class="inline">
+{{template "csrf" $}}
+<button type="submit">{{t "signing.revoke"}}</button>
+</form>{{end}}
+{{if eq .Status "completed"}}<p class="actions"><a href="/contracts/{{$.Data.C.ID}}/signing/certificate">{{t "signing.certificate"}}</a></p>{{end}}
+</section>
+{{end}}
 {{if .Data.CanDates}}
 <section aria-labelledby="h-dates">
 <h2 id="h-dates">{{t "contract.dates"}}</h2>

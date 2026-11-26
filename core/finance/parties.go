@@ -359,6 +359,9 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 		}
 		n, _ = res.RowsAffected()
 		rep.DeletedDrafts += int(n)
+		if err := s.eraseSigning(ctx, tx, a.Subject, id); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE retention_gate SET open = 0, audit_before = 0`); err != nil {
 			return err
 		}

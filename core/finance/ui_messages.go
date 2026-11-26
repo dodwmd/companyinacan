@@ -64,7 +64,7 @@ var uiMessagesEN = map[string]string{
 	"flash.deleted":   "The draft was deleted.",
 	"flash.approved":  "Approved.",
 	"flash.rejected":  "Rejected.",
-	"flash.sent":      "Marked as sent.",
+	"flash.withdrawn": "The signing request was withdrawn: its links no longer work.", "flash.invited": "Request saved. Check the invitation status below.", "flash.sent": "Marked as sent.",
 	"flash.paid":      "Payment recorded.",
 	"flash.voided":    "The invoice was voided. Its number stays used.",
 	"flash.revoked":   "Every public link of this invoice was revoked.",
@@ -231,6 +231,21 @@ var uiMessagesEN = map[string]string{
 	"contract.send_hint": "Sending freezes the text. Signer addresses go to the provider and are not stored here.",
 	"contract.dates":     "Dates and reminders", "contract.terminate": "Terminate",
 
+	"signing.send": "Send a signing link by email", "signing.send_btn": "Send the links",
+	"signing.counterparty": "Who signs for the other side", "signing.company": "Who countersigns for the company (optional)",
+	"signing.lines_hint": "One person per line, written as: Full Name <address@example.com>",
+	"signing.ordered":    "Invite one after another, in the order written (the company last)", "signing.days": "Days each link works (1 to 30)",
+	"signing.hint":  "Sending freezes the text. Each person gets a link that only they receive and that works once. A signature is identified by access to that mailbox only.",
+	"signing.title": "Signature by link", "signing.status": "Request", "signing.caption": "Signers", "signing.signer": "Signer", "signing.role": "Role",
+	"signing.state": "Status", "signing.mail": "Invitation email", "signing.expires": "Link expires", "signing.expired": "(expired)",
+	"signing.signed_as": "Signed as", "signing.reason": "Reason given", "signing.resend": "Send a new link", "signing.revoke": "Withdraw the request",
+	"signing.certificate": "Completion certificate", "signing.cert_mail": "Certificate email", "signing.cert_resend": "Email the certificate again", "signing.hash": "Document sent (SHA-256)",
+	"env.pending": "Waiting for signatures", "env.completed": "Completed", "env.declined": "Declined", "env.revoked": "Withdrawn",
+	"role.counterparty": "Other side", "role.company": "Company",
+	"signer.waiting": "Not invited yet", "signer.invited": "Invited", "signer.signed": "Signed", "signer.declined": "Declined",
+	"mailst.pending": "Not confirmed", "mailst.queued": "Handed to the mail service",
+	"mailst.not_allowed": "Refused: this address is not allowed (company.yaml email.modules.finance)", "mailst.failed": "Not sent: try again",
+
 	"ts.title": "Week of %s", "ts.week": "Week starting", "ts.week_start": "Week starting (a Monday)", "ts.monday_hint": "Opening a week that already exists returns it.",
 	"ts.open": "Open a week", "ts.open_btn": "Open", "ts.own_only": "This token shows your own timesheets only.", "ts.caption": "Timesheets", "ts.none": "No timesheet yet.",
 	"ts.total": "Total", "ts.billable": "Billable", "ts.task": "Task", "ts.grid_caption": "Hours per day",
@@ -288,7 +303,7 @@ func (u *UI) msgOr(key, fallback string) string {
 
 // flashKeys are the only flash messages the "ok" query parameter can select, so a crafted link
 // cannot put text of its choosing on the page.
-var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted"}
+var flashKeys = []string{"flash.saved", "flash.deleted", "flash.approved", "flash.rejected", "flash.sent", "flash.paid", "flash.voided", "flash.revoked", "flash.requested", "flash.submitted", "flash.invited", "flash.withdrawn"}
 
 func flashMsg(u *UI, key string) string {
 	for _, k := range flashKeys {

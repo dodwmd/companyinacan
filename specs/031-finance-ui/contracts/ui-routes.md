@@ -75,11 +75,15 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `GET /contracts` | yes | read | `ListContracts`, `PartyNames` | Contracts with status and renewal dates |
 | `GET /contracts/new` | yes | write | `ListTemplates`, `ListParties` | Choose a template, then fill its variables |
 | `POST /contracts` | yes | write | `CreateContract` | Create from a template with variables (`var_<name>`) |
-| `GET /contracts/{id}` | yes | read | `GetContract`, `GetVersion`, `PartyNames` | Contract, status, signature, hashes, versions list (read-only) |
+| `GET /contracts/{id}` | yes | read | `GetContract`, `GetVersion`, `PartyNames`, `Signing` | Contract, status, signature, hashes, versions list (read-only) |
 | `GET /contracts/{id}/versions/{n}` | yes | read | `GetContract`, `GetVersion` | One version, read-only |
 | `POST /contracts/{id}/send` | yes | write | `SendContract` | Send for signature (manual or through the configured provider) |
 | `POST /contracts/{id}/terminate` | yes | write | `TerminateContract` | Terminate a signed or active contract |
 | `POST /contracts/{id}/dates` | yes | write | `UpdateContractDates` | Start, end, renewal, reminder |
+| `POST /contracts/{id}/signing` | yes | write | `SendForSigning` | Send for signature by emailed link (specs/049-contract-esign) |
+| `POST /contracts/{id}/signing/revoke` | yes | write | `RevokeSigning` | Withdraw the open signing request |
+| `POST /contracts/{id}/signing/signers/{signer}/resend` | yes | write | `Resend` | Mail a signer a new link, or the certificate once completed |
+| `GET /contracts/{id}/signing/certificate` | yes | read | `Certificate` | Completion certificate (plain text, audited) |
 | `GET /timesheets` | yes | read+own | `ListTimesheets` | My timesheets (an own-only token sees only its own) |
 | `POST /timesheets` | yes | write+own | `CreateTimesheet` | Open a week (a Monday) |
 | `GET /timesheets/{id}` | yes | read+own | `GetTimesheet`, `PeriodLock` | Weekly grid form, or read-only when submitted, approved or locked |

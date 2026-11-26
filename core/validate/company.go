@@ -121,6 +121,12 @@ func CompanyDoc(doc *config.Doc, modulesDir string) []problem.Problem {
 		if l := m.Runtime.PublicLink; l != nil && routing.LinkPrefixes[id] != l.Prefix {
 			add("semantic.module-public-link", "/modules/"+id, fmt.Sprintf("module %q may not publish %s", id, l.Prefix))
 		}
+		if x.Signing && m.Runtime.PublicSign == nil {
+			add("semantic.module-not-exposable", "/modules/"+id+"/expose", fmt.Sprintf("module %q has no signing pages (no runtime.public_sign in its manifest)", id))
+		}
+		if l := m.Runtime.PublicSign; l != nil && routing.SignPrefixes[id] != l.Prefix {
+			add("semantic.module-public-sign", "/modules/"+id, fmt.Sprintf("module %q may not publish %s", id, l.Prefix))
+		}
 		if r := m.Runtime.SiteRoute; r != nil && routing.SitePrefixes[id] != r.Path {
 			add("semantic.module-site-route", "/modules/"+id, fmt.Sprintf("module %q may not claim %s on the public site", id, r.Path))
 		}

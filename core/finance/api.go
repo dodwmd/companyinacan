@@ -98,6 +98,12 @@ func (a *api) handler() http.Handler {
 	mux.HandleFunc("POST /v1/contracts/{id}/terminate", a.guard(write, biz, a.terminateContract))
 	mux.HandleFunc("GET /v1/contracts/{id}/verify", a.guard(read, biz, a.verifyContract))
 
+	mux.HandleFunc("GET /v1/contracts/{id}/signing", a.guard(read, biz, a.getSigning))
+	mux.HandleFunc("POST /v1/contracts/{id}/signing", a.guard(write, biz, a.sendForSigning))
+	mux.HandleFunc("POST /v1/contracts/{id}/signing/revoke", a.guard(write, biz, a.revokeSigning))
+	mux.HandleFunc("POST /v1/contracts/{id}/signing/signers/{signer}/resend", a.guard(write, biz, a.resendSigning))
+	mux.HandleFunc("GET /v1/contracts/{id}/signing/certificate", a.guard(read, biz, a.signingCertificate))
+
 	mux.HandleFunc("GET /v1/timesheets", a.guard(read, own, a.listTimesheets))
 	mux.HandleFunc("POST /v1/timesheets", a.guard(write, own, a.createTimesheet))
 	mux.HandleFunc("POST /v1/timesheets/billing-draft", a.guard(write, biz, a.billTime))
