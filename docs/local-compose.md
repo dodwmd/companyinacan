@@ -34,7 +34,8 @@ prints the admin credentials in a banner (find it again with `docker compose -p 
 
 | URL | What |
 |---|---|
-| <http://localhost:8080> | the example site (`examples/acme-co`, built with `can site build`); `/contact/` is a dev-only page with a working form |
+| <http://localhost:8080> | the example site (`examples/acme-co`, built with `can site build`); `/contact/` is a dev-only page linking to the contact form |
+| <http://localhost:8080/_forms/contact/form> | the contact form, served by can-forms |
 | <http://localhost:8080/_forms/contact/token> | forms gateway, same origin as the site (prefix stripped by the edge) |
 | <http://admin.localhost:8080> | can-core admin UI (and `/api/v1/...` admin API) |
 | <http://work.localhost:8080> | work tracker API (`/v1/...`, bearer token) |
@@ -212,6 +213,18 @@ TOTP: the suite reads the secret from `can-core admin reset-password --rotate-to
 with `bootstrap-admin.sh` if you were using an authenticator. The CI job is advisory
 (`.github/workflows/e2e.yml`: pull requests touching the stack, nightly, manual); it uploads the service logs when
 it fails. The harness (`test/e2e/harness`) has its own unit tests (RFC 6238 vectors).
+
+## The browser suite
+
+```sh
+make e2e-up
+make e2e-browser   # E2E_CHROME=/path/to/chrome if none is found
+make e2e-down
+```
+
+`test/browser` drives headless Chrome or Chromium through the same stack at desktop and Android phone
+sizes and fails on console and Content-Security-Policy messages, horizontal overflow and basic accessibility
+problems ([specs/054-browser-e2e](../specs/054-browser-e2e/spec.md), advisory CI job `browser-e2e`).
 
 ## Metrics and the optional monitoring profile
 

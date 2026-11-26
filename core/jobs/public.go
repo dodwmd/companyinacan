@@ -72,6 +72,7 @@ var pageTmpl = template.Must(template.New("page").Funcs(template.FuncMap{
 }).Parse(`{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
+<link rel="icon" href="data:,">
 {{if .NoIndex}}<meta name="robots" content="noindex, nofollow">{{end}}
 <link rel="stylesheet" href="/careers/assets/careers.css">
 {{if .LD}}<script type="application/ld+json">{{.LD}}</script>{{end}}
@@ -324,6 +325,7 @@ header a{font-weight:600;text-decoration:none;color:inherit}
 .jobs{list-style:none;padding:0}.jobs li{padding:.75rem 0;border-bottom:1px solid #ddd}.jobs span{display:block;color:#555;font-size:.9rem}
 .meta,.pay{color:#555}.notice{background:#fff4d6;padding:.5rem .75rem;border-radius:4px}
 form label{display:block;margin:.75rem 0}input[type=text],input[type=email],input[type=tel],input[type=search],textarea,select{display:block;width:100%;max-width:30rem;padding:.4rem;box-sizing:border-box}
+input[type=file]{display:block;max-width:100%;min-height:2.75rem;font:inherit}
 .check{display:flex;gap:.5rem}.hp{position:absolute;left:-9999px}button{padding:.5rem 1rem;font:inherit}
 .filters label{display:inline-block;margin-right:.75rem}footer{margin-top:2rem;color:#555;font-size:.85rem}`
 

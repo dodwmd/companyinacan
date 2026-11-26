@@ -38,7 +38,8 @@ func (g *publicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	segs := strings.Split(path, "/")
-	if path == "" || len(segs) > 2 || (len(segs) == 2 && segs[1] != "token") {
+	hosted := len(segs) == 2 && (segs[1] == pageSegment || segs[1] == cssSegment)
+	if path == "" || len(segs) > 2 || (len(segs) == 2 && segs[1] != "token" && !hosted) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")
 		return
 	}
@@ -48,6 +49,10 @@ func (g *publicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !g.checkOrigin(w, r) {
+		return
+	}
+	if hosted {
+		g.serveHosted(w, r, form, segs[1])
 		return
 	}
 	isToken := len(segs) == 2

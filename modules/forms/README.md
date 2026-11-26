@@ -14,13 +14,20 @@ browser --POST /_forms/contact--> Traefik (prefix stripped) --> :8080 can-forms
    -> async: email.send notification, signed webhook (retries), delivery outcome recorded
 ```
 
-The site fetches a signed timestamp with `GET /_forms/<id>/token` when the page loads and
+There are two ways to put a form on a site. The simple one is to link to `/_forms/<id>/form`, a page
+the gateway renders itself with the timing token in it; it needs no script. It is not offered for a form
+with a CAPTCHA.
+
+A page of your own instead fetches a signed timestamp with `GET /_forms/<id>/token` when the page loads and
 submits it as the hidden field `_t`. A submission that arrives sooner than `min_fill_seconds`
 after that, or with a missing, forged, other-form or expired (24 h) token, is rejected.
 The honeypot field (default `website`) must stay empty; bots that fill it get a normal-looking
 success and nothing is stored.
 
 ### Embedding
+
+This needs a page that is allowed to run the script. The site served by `can-static` is not: its
+Content-Security-Policy blocks every script, so link to `/_forms/<id>/form` there.
 
 ```html
 <form method="post" action="/_forms/contact">
