@@ -83,6 +83,17 @@ func (s *Service) cancelPendingExercises(ctx context.Context, q querier, grantID
 	return err
 }
 
+// authorizeRequest is authorize for requesting or withdrawing an exercise: a caller who may not
+// gets not found, except staff refused only for want of a person, who are told so.
+func (s *Service) authorizeRequest(ctx context.Context, a Actor, f Fact, resource string) error {
+	err := s.authorize(ctx, a, ActExerciseRequest, f, resource)
+	switch {
+	case errors.Is(err, ErrForbidden), !a.any() && (errors.Is(err, ErrIdentityRequired) || errors.Is(err, ErrIdentityUnavailable)):
+		return ErrNotFound
+	}
+	return err
+}
+
 // RequestExercise asks to exercise quantity of a grant. The holder may request for themself;
 // hr and finance may request on behalf. The quantity must fit what has vested, is not yet
 // exercised or reserved by another request, within the exercise window. The amount due is
@@ -96,9 +107,12 @@ func (s *Service) RequestExercise(ctx context.Context, a Actor, grantID string, 
 	if err != nil {
 		return "", false, err
 	}
-	if !Decide(a, ActExerciseRequest, f) || (!a.any() && (g.Status == GrantDraft || g.Status == GrantPending)) {
+	if !a.any() && (g.Status == GrantDraft || g.Status == GrantPending) {
 		s.auditDeny(ctx, a, string(ActExerciseRequest), "grant:"+grantID, nil)
 		return "", false, ErrNotFound
+	}
+	if err := s.authorizeRequest(ctx, a, f, "grant:"+grantID); err != nil {
+		return "", false, err
 	}
 	return s.idempotent(ctx, a, "exercise.create:"+grantID, idemKey, body, func(ctx context.Context) (string, error) {
 		if qty <= 0 || qty > MaxQty {
@@ -343,9 +357,8 @@ func (s *Service) CancelExercise(ctx context.Context, a Actor, id string) (*Exer
 	if err != nil {
 		return nil, err
 	}
-	if !Decide(a, ActExerciseRequest, f) {
-		s.auditDeny(ctx, a, "exercise.cancel", "exercise:"+id, nil)
-		return nil, ErrNotFound
+	if err := s.authorizeRequest(ctx, a, f, "exercise:"+id); err != nil {
+		return nil, err
 	}
 	err = s.txAudit(ctx, a, "exercise.cancel", "exercise:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		e, err := s.loadExercise(ctx, tx, id)
