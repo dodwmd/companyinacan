@@ -133,9 +133,15 @@ func loopbackHost(h string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// diagStart is set only by a -tags canpprof build (pprof_diag.go).
+var diagStart func(getenv func(string) string, log Logger)
+
 // Setup is the one call a service's main makes: it registers the process and footprint metrics on
 // the Default registry and starts the metrics listener when CAN_METRICS_ADDR is set.
 func Setup(ctx context.Context, getenv func(string) string, bi BuildInfo, log Logger) error {
+	if diagStart != nil {
+		diagStart(getenv, log)
+	}
 	RegisterProcess(Default, bi, getenv)
 	_, err := StartMetrics(ctx, getenv, Default, log)
 	return err

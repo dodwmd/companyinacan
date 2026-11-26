@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,7 @@ func (d *Dumper) Run(ctx context.Context) (res Result, rerr error) {
 		return Result{}, ErrBusy
 	}
 	defer d.end()
+	defer debug.FreeOSMemory() // give the run's copy and upload buffers back to the system
 	start := d.now()
 	runID := newRunID(start)
 	defer func() {
@@ -338,6 +340,7 @@ func fsync(p string) error {
 		return err
 	}
 	err = f.Sync()
+	dropPageCache(f)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

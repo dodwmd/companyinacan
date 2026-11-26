@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -22,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/lazytmpl"
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
@@ -59,7 +59,7 @@ type UI struct {
 
 	once     sync.Once
 	sessions sessionStore
-	tpl      map[string]*template.Template
+	tpl      *lazytmpl.Set // pages are parsed on first use
 	failIP   *rateLimiter
 	perUser  *rateLimiter
 	reveals  *rateLimiter // reveals of candidate data, per subject
@@ -148,21 +148,7 @@ func (u *UI) init() {
 		"money": fmtMoney,
 		"human": human,
 	}
-	u.tpl = map[string]*template.Template{}
-	entries, err := fs.ReadDir(uiAssets, "ui/templates")
-	if err != nil {
-		panic(err)
-	}
-	for _, e := range entries {
-		if e.Name() == "layout.html" || e.Name() == "partials.html" {
-			continue
-		}
-		t, err := template.New(e.Name()).Funcs(funcs).ParseFS(uiAssets, "ui/templates/layout.html", "ui/templates/partials.html", "ui/templates/"+e.Name())
-		if err != nil {
-			panic("jobs ui: " + err.Error())
-		}
-		u.tpl[e.Name()] = t
-	}
+	u.tpl = &lazytmpl.Set{FS: uiAssets, Dir: "ui/templates", Funcs: funcs}
 }
 
 // Handler returns the UI handler.
@@ -343,9 +329,9 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, c *uiCtx, status int
 		}
 		pg.Flash = flashMsg(u, r.URL.Query().Get("ok"))
 	}
-	t := u.tpl[name]
-	if t == nil {
-		panic("jobs ui: no template " + name)
+	t, err := u.tpl.Get(name)
+	if err != nil {
+		panic("jobs ui: template " + name + ": " + err.Error())
 	}
 	var buf bytes.Buffer
 	if err := t.ExecuteTemplate(&buf, "layout", pg); err != nil {

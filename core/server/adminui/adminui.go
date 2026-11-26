@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/lazytmpl"
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
@@ -86,7 +87,7 @@ type Server struct {
 	// connection for as long as the log is long. A second request while one runs is refused.
 	heavy sync.Mutex
 	once  sync.Once
-	tpl   map[string]*template.Template
+	tpl   *lazytmpl.Set // pages are parsed on first use
 }
 
 type route struct {
@@ -172,24 +173,7 @@ func (s *Server) init() {
 		"iso":       func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 		"staticURL": assetURL,
 	}
-	s.tpl = map[string]*template.Template{}
-	entries, err := fs.ReadDir(assets, "templates")
-	if err != nil {
-		panic(err)
-	}
-	for _, e := range entries {
-		if e.Name() == "layout.html" {
-			continue
-		}
-		if e.Name() == "partials.html" {
-			continue
-		}
-		t, err := template.New(e.Name()).Funcs(funcs).ParseFS(assets, "templates/layout.html", "templates/partials.html", "templates/"+e.Name())
-		if err != nil {
-			panic("adminui: " + err.Error())
-		}
-		s.tpl[e.Name()] = t
-	}
+	s.tpl = &lazytmpl.Set{FS: assets, Dir: "templates", Funcs: funcs}
 }
 
 // setHeaders applies the security headers of every UI response. There is no script of any kind, so
@@ -255,9 +239,9 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 
 // render executes a page into a buffer first so a template error never sends half a page.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, name string, p *Page) {
-	t := s.tpl[name]
+	t, err := s.tpl.Get(name)
 	var buf bytes.Buffer
-	if t == nil || t.ExecuteTemplate(&buf, "layout", p) != nil {
+	if err != nil || t.ExecuteTemplate(&buf, "layout", p) != nil {
 		s.Log.Error("template failed", "request_id", httpx.RequestID(r.Context()), "template", name)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
