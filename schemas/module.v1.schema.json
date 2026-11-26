@@ -215,6 +215,15 @@
       "properties": {
         "image": { "type": "string", "minLength": 1, "description": "Image used to run hook scripts when the upstream image lacks a shell." },
         "command": { "type": "string", "pattern": "^/can-[a-z]+$", "description": "In-house modules: the binary in the module's own image. backup and restore are then subcommand names, not script paths, and no hooks.image is needed." },
+        "builtin": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Wrapped modules: can-core dumps and restores the module itself (its database in the shared Postgres, and what is named here). No hooks.image or scripts; backup and restore are then the words backup and restore.",
+          "properties": {
+            "sqlite": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", "description": "SQLite database file at the top of the module's volume." },
+            "files": { "type": "boolean", "description": "Archive the whole volume." }
+          }
+        },
         "install": { "$ref": "#/$defs/relPath" },
         "configure": { "$ref": "#/$defs/relPath" },
         "backup": { "$ref": "#/$defs/relPath" },

@@ -84,3 +84,21 @@ func TestRecordedManifestGainsShippedSubcommands(t *testing.T) {
 		t.Fatalf("script hooks are not added: %+v", got.Hooks)
 	}
 }
+
+// A wrapped module recorded with the scripts of the unpublished hooks image is dumped by
+// can-core (specs/046-wrapped-backups); another provider's record is left as it was.
+func TestRecordedWrappedModuleGainsBuiltinBackup(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "modules")
+	old := config.Module{ID: "support"}
+	old.Provider.Name = "FreeScout"
+	old.Requires.Database = "postgres"
+	old.Hooks.Image, old.Hooks.Backup, old.Hooks.Restore = "ghcr.io/dodwmd/can-hooks:0.1.0", "./hooks/backup.sh", "./hooks/restore.sh"
+	got := recordedManifest(dir, store.Module{ID: "support", Manifest: old})
+	if got.Hooks.Builtin == nil || !got.Hooks.Builtin.Files || got.Hooks.Image != "" || got.BackupHookUnrunnable() != "" {
+		t.Fatalf("%+v", got.Hooks)
+	}
+	old.Provider.Name = "something-else"
+	if got := recordedManifest(dir, store.Module{ID: "support", Manifest: old}); got.Hooks.Builtin != nil || got.BackupHookUnrunnable() == "" {
+		t.Fatalf("another provider: %+v", got.Hooks)
+	}
+}

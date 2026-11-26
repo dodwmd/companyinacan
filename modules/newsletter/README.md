@@ -1,14 +1,13 @@
 # newsletter
 
 > **Status: experimental.** Installed through can-core on k3d in the advisory `wrapped-modules` CI job
-> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or mail relay. Backups are not run; the `newsletter`
+> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server or mail relay. The `newsletter`
 > capability and the `lead.created.v1` subscription are marked `planned` (adapter not built, T031). The
 > **SMTP/bulk-relay settings are manual**: enter the relay in Listmonk Settings, SMTP. can-core gives
 > this module no mail credentials.
 
-> **Backups: enabling this module stops them for the whole company.** Its hook needs the `can-hooks`
-> image, which is not published, and while such a module is enabled every dump run fails and nothing is
-> backed up (`can validate` warns; [docs/backup-restore.md](../../docs/backup-restore.md)).
+> **Backups:** can-core takes a `pg_dump` of the database and an archive of the volume (uploads) in every dump run, and no unpublished image is needed
+> ([docs/backup-restore.md](../../docs/backup-restore.md#wrapped-modules)). Verified on k3d only.
 
 Mailing lists, double opt-in and campaigns. Wraps [Listmonk](https://github.com/knadh/listmonk)
 (Go), provides the `newsletter` capability, publishes `subscriber.added.v1`, and optionally
@@ -24,7 +23,7 @@ subscribes people who tick a newsletter box on a form (consumes `leads`, subscri
 | Public host | `newsletter.<domain>` (admin UI, subscription and unsubscribe pages) |
 | Email | needs `email.send`. A separate bulk relay is recommended: [docs/email-policy.md](../../docs/email-policy.md) |
 | Capability | `newsletter` (`schemas/capabilities/newsletter.v1.json`), served by `newsletter-adapter` (:8081, off until the adapter image exists) |
-| Backup | `hooks/backup.sh` (`pg_dump`) and `hooks/restore.sh` through the can-core dump endpoint; uploads on the PVC are covered by the raw PVC backup |
+| Backup | can-core: a `pg_dump` of the database and an archive of the volume (uploads) ([specs/046](../../specs/046-wrapped-backups/spec.md)) |
 | Data classes | `newsletter-subscriber` 3 years after last activity, `campaign-engagement` 2 years, standard sensitivity |
 
 ## Consent

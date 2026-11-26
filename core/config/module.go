@@ -76,12 +76,16 @@ type Module struct {
 		// (in-house modules, specs/043-module-backup-hooks); Backup and Restore are then
 		// subcommand names, run without a shell.
 		Command string `yaml:"command"`
-		Install string `yaml:"install"`
-		Backup  string `yaml:"backup"`
-		Restore string `yaml:"restore"`
-		Purge   string `yaml:"purge"`
-		Export  string `yaml:"export"`
-		Import  string `yaml:"import"`
+		// Builtin says that can-core itself dumps and restores the module, a wrapped app
+		// (specs/046-wrapped-backups): no hook image or script is involved. A database in the
+		// shared Postgres (requires.database) is dumped too.
+		Builtin *BuiltinBackup `yaml:"builtin" json:",omitempty"`
+		Install string         `yaml:"install"`
+		Backup  string         `yaml:"backup"`
+		Restore string         `yaml:"restore"`
+		Purge   string         `yaml:"purge"`
+		Export  string         `yaml:"export"`
+		Import  string         `yaml:"import"`
 	} `yaml:"hooks"`
 	Permissions []string `yaml:"permissions"`
 	// SettingsSchema is the relative path of the module's settings JSON Schema (rendered by the
@@ -96,6 +100,14 @@ type Module struct {
 		Retention   string `yaml:"retention"`
 		Sensitivity string `yaml:"sensitivity"`
 	} `yaml:"data_classes"`
+}
+
+// BuiltinBackup is module.yaml `hooks.builtin`: what the module keeps on its volume.
+type BuiltinBackup struct {
+	// SQLite is the database file at the top of the volume ("" for none).
+	SQLite string `yaml:"sqlite"`
+	// Files archives the whole volume.
+	Files bool `yaml:"files"`
 }
 
 // WebLogin is module.yaml `runtime.web_login`.

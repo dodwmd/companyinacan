@@ -42,6 +42,9 @@ func (h *KubeHooks) native(module string) (*config.Module, error) {
 
 // HasSubcommandRestore reports whether the module is restored by a subcommand of its own binary.
 func (h *KubeHooks) HasSubcommandRestore(module string) bool {
+	if m, err := h.builtin(module); err == nil && m != nil {
+		return true // can-core restores it itself (specs/046-wrapped-backups)
+	}
 	m, err := h.native(module)
 	return err == nil && m != nil && m.Hooks.Restore != ""
 }

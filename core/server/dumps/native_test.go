@@ -69,7 +69,7 @@ func play(t *testing.T, api *kube.Fake, status string, exit int, message string)
 			if exit >= 0 {
 				_ = api.Apply(context.Background(), kube.Object{"apiVersion": "v1", "kind": "Pod",
 					"metadata": map[string]any{"name": name + "-x", "namespace": "mod-forms", "labels": map[string]any{"job-name": name}},
-					"status": map[string]any{"containerStatuses": []any{map[string]any{"state": map[string]any{
+					"status": map[string]any{"containerStatuses": []any{map[string]any{"name": "hook", "state": map[string]any{
 						"terminated": map[string]any{"exitCode": exit, "reason": "Error", "message": message}}}}}})
 			}
 			_ = api.MergePatch(context.Background(), "Job", "mod-forms", name, kube.Object{"status": map[string]any{status: 1}})

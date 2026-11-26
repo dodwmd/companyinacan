@@ -152,7 +152,17 @@ func TestStarterManifests(t *testing.T) {
 				}
 			}
 			hooks := asMap(m["hooks"])
+			if hooks["builtin"] != nil {
+				// can-core dumps and restores it itself (specs/046-wrapped-backups): no scripts, no image.
+				if asStr(hooks["backup"]) != "backup" || asStr(hooks["restore"]) != "restore" || hooks["image"] != nil {
+					t.Errorf("hooks = %v", hooks)
+				}
+				hooks = nil
+			}
 			for _, h := range []string{"backup", "restore"} {
+				if hooks == nil {
+					break
+				}
 				p := asStr(hooks[h])
 				if p == "" {
 					t.Errorf("hooks.%s missing", h)
@@ -178,7 +188,7 @@ func TestStarterManifests(t *testing.T) {
 					t.Errorf("%s must move the dump through the can-core dump endpoint with the projected token", p)
 				}
 			}
-			if asStr(hooks["image"]) == "" {
+			if hooks != nil && asStr(hooks["image"]) == "" {
 				t.Error("hooks.image is required: upstream images carry neither curl nor the database clients")
 			}
 			if s.event != "" {

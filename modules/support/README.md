@@ -1,12 +1,11 @@
 # support
 
 > **Status: experimental.** Installed through can-core on k3d in the advisory `wrapped-modules` CI job
-> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server, domain or mail relay. Backups are not run, and the
+> ([specs/041](../../specs/041-wrapped-modules-live/spec.md)); never on a real server, domain or mail relay. The
 > `tickets` capability is marked `planned` (no adapter yet).
 
-> **Backups: enabling this module stops them for the whole company.** Its hook needs the `can-hooks`
-> image, which is not published, and while such a module is enabled every dump run fails and nothing is
-> backed up (`can validate` warns; [docs/backup-restore.md](../../docs/backup-restore.md)).
+> **Backups:** can-core takes a `pg_dump` of the database and an archive of the volume (attachments) in every dump run, and no unpublished image is needed
+> ([docs/backup-restore.md](../../docs/backup-restore.md#wrapped-modules)). Verified on k3d only.
 
 Shared support inbox. Wraps [FreeScout](https://github.com/freescout-help-desk/freescout) (PHP),
 provides the `tickets` capability and publishes `ticket.created.v1`.
@@ -21,7 +20,7 @@ provides the `tickets` capability and publishes `ticket.created.v1`.
 | Sign in | `admin@<domain>` (setting `admin_email`, used on the first start only); password below |
 | Email | opt-in: the company relay is written into FreeScout's **system** mail settings; mailboxes are configured by hand: [docs/email-policy.md](../../docs/email-policy.md) |
 | Capability | `tickets` (`schemas/capabilities/tickets.v1.json`), served by `support-adapter` (:8081, off until the adapter image exists) |
-| Backup | `hooks/backup.sh` (`pg_dump`) and `hooks/restore.sh`; **not run yet** (the hooks image is not published). Attachments live on the PVC |
+| Backup | can-core: a `pg_dump` of the database and an archive of the volume (attachments) ([specs/046](../../specs/046-wrapped-backups/spec.md)) |
 | Data classes | `support-conversation`, `support-attachment`: 3 years, standard sensitivity |
 
 The password is generated for each installation:

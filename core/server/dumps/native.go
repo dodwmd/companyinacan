@@ -188,8 +188,8 @@ func (h *KubeHooks) nativeJob(ctx context.Context, name, ns, module, image, clai
 	}
 }
 
-// explain turns a failed Job into what its container said: exit code 3 is "no data", anything
-// else keeps the reason (for example OOMKilled) and the last lines of the log.
+// explain turns a failed Job into what its container said: exit code 3 of the hook container is
+// "no data", anything else keeps the reason (for example OOMKilled) and the last lines of the log.
 func (h *KubeHooks) explain(ctx context.Context, ns, job string, cause error) error {
 	pods, err := h.API.List(ctx, "Pod", ns, "job-name="+job)
 	if err != nil {
@@ -197,16 +197,18 @@ func (h *KubeHooks) explain(ctx context.Context, ns, job string, cause error) er
 	}
 	for _, p := range pods {
 		st, _ := p["status"].(obj)
-		cs, _ := st["containerStatuses"].([]any)
-		for _, c := range cs {
+		for _, c := range containerStatuses(st) {
 			m, _ := c.(obj)
 			state, _ := m["state"].(obj)
 			t, ok := state["terminated"].(obj)
-			if !ok {
+			if !ok || count(t["exitCode"]) == 0 { // a finished init container is not the cause
 				continue
 			}
 			code := count(t["exitCode"])
-			if code == nativeNoData {
+			// Only can-core's and the modules' own subcommand, in the container "hook", means "no
+			// data" with this code: psql, for one, exits with it after an SQL error.
+			name, _ := m["name"].(string)
+			if code == nativeNoData && name == "hook" {
 				return ErrNoData
 			}
 			reason, _ := t["reason"].(string)
