@@ -1,0 +1,15 @@
+# Every in-house container image: name, Dockerfile, build context. One list for `make images`
+# (scripts/build-images.sh), `can up` and the release workflow (test/contract/module_images_test.go
+# keeps them in step). Their version is version.txt, next to this file.
+can-core deploy/can-core/Dockerfile .
+can-static deploy/can-static/Dockerfile .
+can-forms deploy/forms/Dockerfile .
+can-work deploy/work/Dockerfile .
+can-people deploy/people/Dockerfile .
+can-jobs deploy/jobs/Dockerfile .
+can-finance deploy/finance/Dockerfile .
+can-equity deploy/equity/Dockerfile .
+can-board deploy/board/Dockerfile .
+can-provision deploy/provisioning/Dockerfile .
+can-files deploy/files/Dockerfile .
+can-hooks deploy/hooks/Dockerfile deploy/hooks
