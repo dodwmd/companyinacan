@@ -21,6 +21,9 @@ type Cmd struct {
 	Args  []string
 	Env   []string
 	Stdin io.Reader
+	// CleanEnv runs the command with Env, PATH and the temporary directory only, nothing else
+	// this process inherited.
+	CleanEnv bool
 }
 
 // Runner executes external commands. restic only ever runs behind it, so tests
@@ -47,7 +50,9 @@ type ExecRunner struct{}
 // Run implements Runner.
 func (ExecRunner) Run(ctx context.Context, c Cmd) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, c.Name, c.Args...) //nolint:gosec // argv is built by this package from validated values
-	if len(c.Env) > 0 {
+	if c.CleanEnv {
+		cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "TMPDIR=" + os.TempDir()}, c.Env...)
+	} else if len(c.Env) > 0 {
 		cmd.Env = append(os.Environ(), c.Env...)
 	}
 	cmd.Stdin = c.Stdin
@@ -144,6 +149,9 @@ type Restic struct {
 	R    Runner
 	Repo Repo
 	Bin  string // default "restic"
+	// KitOnly lists with what Repo says and nothing from the environment, without a lock or a
+	// cache (`can backup snapshots`).
+	KitOnly bool
 }
 
 var _ ResticAPI = (*Restic)(nil)
@@ -154,7 +162,10 @@ func (r *Restic) run(ctx context.Context, args ...string) ([]byte, error) {
 		bin = "restic"
 	}
 	env := append([]string{"RESTIC_REPOSITORY=" + r.Repo.Repository, "RESTIC_PASSWORD_FILE=" + r.Repo.PasswordFile}, r.Repo.Env...)
-	return r.R.Run(ctx, Cmd{Name: bin, Args: args, Env: env})
+	if r.KitOnly {
+		args = append(args, "--no-lock", "--no-cache")
+	}
+	return r.R.Run(ctx, Cmd{Name: bin, Args: args, Env: env, CleanEnv: r.KitOnly})
 }
 
 // EnsureInit creates the repository when (and only when) restic reports that

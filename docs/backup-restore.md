@@ -178,6 +178,7 @@ Linux release binary at `/usr/local/bin/can` there first (the erasure ledger upl
 | `can backup run` | run the script now |
 | `can backup verify` | `restic check`, restore a sample of dump files into a temp dir, compare SHA-256 with the manifest, then the checks a restore makes of the snapshot (marker, state database, company.yaml, Secrets export, every dump loadable) |
 | `can backup kit` | generate the recovery kit (see below) |
+| `can backup snapshots --kit <file>` | list the snapshots, and read the erasure ledger, with the kit alone (not the installed credential files or the shell's variables); no lock, nothing written. Run it before destroying a server |
 | `can restore --kit <file or -> [--plan]` | restore onto a blank server, run on that server as root |
 
 ## Recovery kit
