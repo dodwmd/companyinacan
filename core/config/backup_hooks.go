@@ -9,8 +9,8 @@ const UnpublishedHooksImage = "ghcr.io/dodwmd/can-hooks:"
 // BackupHookUnrunnable says why the module's backup hook cannot run as shipped, or "".
 func (m *Module) BackupHookUnrunnable() string {
 	switch {
-	case m.Hooks.Backup == "":
-		return ""
+	case m.Hooks.Backup == "", m.Hooks.Command != "":
+		return "" // a subcommand runs in the module's own image
 	case m.Hooks.Image == "":
 		return "it names no hooks.image to run in"
 	case strings.HasPrefix(m.Hooks.Image, UnpublishedHooksImage):

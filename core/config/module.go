@@ -66,7 +66,11 @@ type Module struct {
 	} `yaml:"subscribes"`
 	// Hooks are the lifecycle scripts the module ships (schema module.v1 hooks).
 	Hooks struct {
-		Image   string `yaml:"image"`
+		Image string `yaml:"image"`
+		// Command is the binary in the module's own image whose subcommands the hooks are
+		// (in-house modules, specs/043-module-backup-hooks); Backup and Restore are then
+		// subcommand names, run without a shell.
+		Command string `yaml:"command"`
 		Install string `yaml:"install"`
 		Backup  string `yaml:"backup"`
 		Restore string `yaml:"restore"`

@@ -203,7 +203,16 @@ func hostBackup(t *testing.T, installed map[string][]byte) {
 			t.Errorf("the snapshot lacks %s:\n%s", want, ls)
 		}
 	}
+	// E08d: forms has its own dump in the snapshot, so its live database is not copied raw.
+	for _, want := range []string{"/var/lib/can/dumps/modules/forms/manifest.json", "/var/lib/can/dumps/modules/forms/database.sqlite3.gz"} {
+		if !strings.Contains(ls, want) {
+			t.Errorf("the snapshot lacks %s:\n%s", want, ls)
+		}
+	}
 	for _, l := range strings.Split(ls, "\n") {
+		if strings.Contains(l, "_mod-forms_") && (strings.HasSuffix(l, "/forms.db") || strings.HasSuffix(l, "/forms.db-wal")) {
+			t.Errorf("the live forms database is in the snapshot: %s", l)
+		}
 		if strings.Contains(l, "_can-system_can-core-data/state.db") {
 			t.Errorf("can-core's live database is in the snapshot: %s", l)
 		}

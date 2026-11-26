@@ -275,8 +275,9 @@ the chart through the installer.
   refuses every upload.
 - Blobs are **not encrypted at rest by the module**; use an encrypted volume or bucket. A stolen volume
   exposes file content (names are sealed).
-- No backup or restore hook is declared: the database and the blobs are covered only by whatever backs up
-  the PVC, and the per-module dump flow does not know them.
+- Backup: `can-files backup` dumps the database and lists every referenced blob; the bytes are covered by the
+  volume backup (local backend only, **not** an S3 bucket). A restore needs the same `keyring`
+  ([backup-restore.md](backup-restore.md#in-house-modules)).
 - No e-sign path: signed PDFs can be stored, but nothing here sends a document for signature or
   purges it from an e-sign app.
 - No resumable or chunked upload, no folder moves, no per-folder access lists, no web UI, no search, no

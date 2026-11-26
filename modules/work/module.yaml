@@ -66,4 +66,9 @@ data_classes:
   # Attachment metadata only (name, size, hash, link); the tracker stores no file bytes yet.
   - { class: work-attachment-metadata, retention: 5y, sensitivity: standard }
 settings_schema: ./settings.schema.json
+# `can-work backup` and `restore`, run by can-core in this module's own image (specs/043-module-backup-hooks).
+hooks:
+  command: /can-work
+  backup: backup
+  restore: restore
 healthcheck: /healthz
