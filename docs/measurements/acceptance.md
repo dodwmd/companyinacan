@@ -14,17 +14,17 @@ or a 2 GB server, and VM creation and the image build are not included.
 | Step | Seconds | Budget | Notes |
 |---|---|---|---|
 | `can init` and the operator's edits | 0.1 | 30 | |
-| **`make up`** on a machine without k3s | **65 to 76** (5 runs) | 600 | the promise is 300; k3s install, platform, site, forms, admin, backup timer |
+| **`make up`** on a machine without k3s | **59 to 76** (6 runs) | 600 | the promise is 300; k3s install, platform, site, forms, admin, backup timer |
 | contact form submitted, from the site's link | 4 | 60 | the form refuses anything faster than 3 s |
 | notification at the relay | under 1 | 180 | STARTTLS and AUTH |
-| enable `work` and `support` (`make up` again) | 59 | 900 | `can up` returns after 13 to 16 s; the modules are ready about 45 s later |
-| SSO launch and an issue in `work` | 13 to 29 | 180 | mostly waiting for a fresh TOTP step |
+| enable `work` and `support` (`make up` again) | 47 to 59 | 900 | `can up` returns after 12 to 16 s; the modules are ready 35 to 45 s later |
+| SSO launch and an issue in `work` | 12 to 29 | 180 | mostly waiting for a fresh TOTP step |
 | backup: dump, restic, verify, kit check | 23 to 30 | 900 | about 11 MiB of data |
 | `can down` | 3 to 8 | 300 | |
 | `can up --provision-only` on the "new" server | 27 | 480 | |
-| `can restore` | **106** (404 before the fix below) | 1200 | `support` and its Postgres take most of it |
+| `can restore` | **85 to 106** (404 before the fix below) | 1200 | `support` and its Postgres take most of it |
 | `make up` after the restore | 24 to 42 | 600 | |
-| **sum of the steps** | **390** | | the CI job takes about 15 minutes with the build and the idle waits |
+| **sum of the steps** | **312 to 390** | | the CI job takes about 15 minutes with the build and the idle waits |
 
 Phases of the first `make up` (one run, seconds): base 9, images 5, company 0.3, core 6, admin 1, site 3,
 routes 3, backup 9, ready 0.6; the rest is the k3s bootstrap over ssh.
@@ -33,13 +33,13 @@ routes 3, backup 9, ready 0.6; the rest is the k3s bootstrap over ssh.
 
 | Moment | k3s and containerd | pods | together | budget |
 |---|---|---|---|---|
-| after `make up`: site, forms, can-core, Traefik; idle | 564 to 596 | 68 to 71 | **633 to 667** | 1400 |
-| with `work`, `support` and Postgres; idle | 735 to 743 | 180 to 183 | **916 to 926** | 2400 |
+| after `make up`: site, forms, can-core, Traefik; idle | 564 to 608 | 68 to 71 | **633 to 678** | 1400 |
+| with `work`, `support` and Postgres; idle | 735 to 743 | 180 to 183 | **915 to 926** | 2400 |
 | after the restore; idle | 732 to 766 | 182 to 185 | 917 to 948 | 2400 |
 
-The operating system is not in these figures. The whole machine used about 270 MiB more after `make up`
-than before k3s was installed, and 400 MiB more with the two modules (`MemTotal - MemAvailable`, which
-includes the stand-ins and lets the kernel reclaim caches). The SMTP sink counts as a pod.
+The operating system is not in these figures. The report also gives `MemTotal - MemAvailable` of the whole
+machine, which holds the runner and the stand-ins and moved by anything from 20 to 400 MiB between the same
+moments of different runs: it says nothing about what a small server would need. The SMTP sink counts as a pod.
 
 ## What the journey found
 
