@@ -148,7 +148,7 @@ ends `failed`.
 
 | `type` | What it is |
 |---|---|
-| `scim-client` | pushes to a downstream SCIM 2.0 server: looks the user up by `userName` before creating (so a retry adopts), treats "already gone" as success for disable and delete, never creates a missing group |
+| `scim-client` | pushes to a downstream SCIM 2.0 server: looks the user up by `userName` before creating (so a retry adopts), treats "already gone" as success for disable and delete, never creates a missing group; a lookup answer without `totalResults` (or with a count but no `Resources`) is a failure, not "no account" |
 | `webhook` | one signed JSON POST per operation: headers `Idempotency-Key`, `X-Provision-Timestamp`, `X-Provision-Signature: v1=HMAC-SHA256(secret, "<ts>." + body)`; it may answer `{"external_id": "..."}` |
 | `google-workspace`, `github`, `slack` | **stubs**: no network, every operation fails permanently with `unimplemented`. They exist so the interface and the dead-letter behaviour are real; a workflow that names one fails loudly instead of pretending access was changed |
 

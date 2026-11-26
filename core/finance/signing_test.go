@@ -515,6 +515,7 @@ func TestSigningMailFailure(t *testing.T) {
 		t.Fatalf("%+v", env.Signers[0])
 	}
 	for i := 2; i < maxSends; i++ {
+		e.advance(resendCooldown)
 		e.must(200, adminTok, "POST", e.path("/signing/signers/"+id(env.Signers[0].ID)+"/resend"), nil, nil)
 	}
 	e.must(409, adminTok, "POST", e.path("/signing/signers/"+id(env.Signers[0].ID)+"/resend"), nil, nil)
@@ -668,8 +669,8 @@ func TestUISigning(t *testing.T) {
 	if m1 == nil {
 		t.Fatal("no resend button")
 	}
-	if w := c.post(page+"/signing/signers/"+m1[1]+"/resend", url.Values{}); w.Code != 303 {
-		t.Fatalf("%d", w.Code)
+	if w := c.post(page+"/signing/signers/"+m1[1]+"/resend", url.Values{}); w.Code != 303 || !strings.Contains(w.Header().Get("Location"), "ok=flash.link_resent") {
+		t.Fatalf("%d %s", w.Code, w.Header().Get("Location"))
 	}
 	link = env.link("ann@customer.example")
 	// With the UI on, the public pages are still the signer's, with no session.
@@ -688,6 +689,9 @@ func TestUISigning(t *testing.T) {
 	}
 	if w := c.get(page + "/signing/certificate"); w.Code != 200 || !strings.HasPrefix(w.Body.String(), "CERTIFICATE OF COMPLETION") {
 		t.Fatalf("%d", w.Code)
+	}
+	if w := c.post(page+"/signing/signers/"+m1[1]+"/resend", url.Values{}); w.Code != 303 || !strings.Contains(w.Header().Get("Location"), "ok=flash.cert_resent") {
+		t.Fatalf("%d %s", w.Code, w.Header().Get("Location"))
 	}
 	if w := c.post(page+"/signing/revoke", url.Values{}); w.Code != 409 {
 		t.Fatalf("revoking a completed request: %d", w.Code)
@@ -744,6 +748,7 @@ func TestSigningLostCertificate(t *testing.T) {
 	// Still possible when the public path has been switched off since; bounded; stopped by erasure.
 	e.app.store.sign.baseURL = ""
 	for i := 2; i < maxSends; i++ {
+		e.advance(resendCooldown)
 		e.must(200, adminTok, "POST", resend, nil, nil)
 	}
 	e.must(409, adminTok, "POST", resend, nil, nil)

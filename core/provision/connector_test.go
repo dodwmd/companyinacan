@@ -58,7 +58,7 @@ func (f *fakeSCIMServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				res = append(res, map[string]any{"id": id, "userName": u["userName"], "externalId": u["externalId"]})
 			}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"Resources": res})
+		_ = json.NewEncoder(w).Encode(map[string]any{"totalResults": len(res), "Resources": res})
 	case r.Method == "POST" && r.URL.Path == "/scim/v2/Users":
 		if f.conflic {
 			w.WriteHeader(409)
@@ -101,7 +101,7 @@ func (f *fakeSCIMServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				res = append(res, map[string]any{"id": id})
 			}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"Resources": res})
+		_ = json.NewEncoder(w).Encode(map[string]any{"totalResults": len(res), "Resources": res})
 	case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/scim/v2/Groups/"):
 		id := strings.TrimPrefix(r.URL.Path, "/scim/v2/Groups/")
 		var p struct{ Operations []map[string]any }

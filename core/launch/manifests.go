@@ -283,6 +283,8 @@ type RouteOptions struct {
 	// NoEdgeLimit leaves the edge limits off, here and (through the routing facts) on module
 	// routes: behind a proxy or CDN every client shares its addresses.
 	NoEdgeLimit bool
+	// NoEdgeLimitReason is recorded in the routing facts (routing.ReasonFlag, ReasonProxied).
+	NoEdgeLimitReason string
 }
 
 // sitePriority is the site's catch-all; can-core's /_forms route outranks it (routing.SitePriority).

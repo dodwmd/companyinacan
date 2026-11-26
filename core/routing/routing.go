@@ -97,6 +97,28 @@ type Config struct {
 	// NoEdgeLimit switches the edge limits off: a proxy or CDN in front of the server makes every
 	// client share its addresses (specs/045-public-access).
 	NoEdgeLimit bool
+	// NoEdgeLimitReason says what switched them off (ReasonFlag, ReasonProxied), so that `can
+	// apply` knows what a change of company.yaml may undo. "" with NoEdgeLimit: written before
+	// this was recorded.
+	NoEdgeLimitReason string
+}
+
+// Why the edge limits are off.
+const (
+	ReasonFlag    = "flag"    // `can up --no-edge-limits`
+	ReasonProxied = "proxied" // dns.proxied
+)
+
+// EdgeLimits decides the two fields: the flag outlasts company.yaml, dns.proxied lasts as long
+// as it is set.
+func EdgeLimits(flag, proxied bool) (off bool, reason string) {
+	switch {
+	case flag:
+		return true, ReasonFlag
+	case proxied:
+		return true, ReasonProxied
+	}
+	return false, ""
 }
 
 // Default is what applies before anything was written: TLS, the site on the company domain.
@@ -179,7 +201,7 @@ func (c Config) Data() map[string]string {
 	return map[string]string{
 		"domain": c.Domain, "tls": strconv.FormatBool(c.TLS),
 		"siteHosts": strings.Join(c.SiteHosts, ","), "catchAll": strconv.FormatBool(c.CatchAll),
-		"edgeLimit": edgeLimitValue(c.NoEdgeLimit),
+		"edgeLimit": edgeLimitValue(c.NoEdgeLimit), "edgeLimitReason": c.NoEdgeLimitReason,
 	}
 }
 
@@ -204,7 +226,7 @@ func (c Config) Manifest() ([]byte, error) {
 
 // Parse reads the ConfigMap data.
 func Parse(data map[string]string) (Config, error) {
-	c := Config{Domain: data["domain"], TLS: data["tls"] == "true", CatchAll: data["catchAll"] == "true", NoEdgeLimit: data["edgeLimit"] == "off"}
+	c := Config{Domain: data["domain"], TLS: data["tls"] == "true", CatchAll: data["catchAll"] == "true", NoEdgeLimit: data["edgeLimit"] == "off", NoEdgeLimitReason: data["edgeLimitReason"]}
 	for _, h := range strings.Split(data["siteHosts"], ",") {
 		if h = strings.TrimSpace(h); h != "" {
 			c.SiteHosts = append(c.SiteHosts, h)

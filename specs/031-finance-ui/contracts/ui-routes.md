@@ -47,7 +47,7 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `GET /parties/{id}/edit` | yes | write | `GetParty` | Edit form (not for an erased party) |
 | `POST /parties/{id}` | yes | write | `UpdateParty` | Update with `version` |
 | `GET /parties/{id}/erase` | yes | admin | `GetParty` | Explanation of erasure and of legal retention; confirmation form |
-| `POST /parties/{id}/erase` | yes | admin | `ErasePartyData` | Fields `confirm` = `ERASE` and `token` (the sign-in token again, compared with the session's); shows the service's report: erased fields, deleted drafts, what is retained and until when |
+| `POST /parties/{id}/erase` | yes | admin | `ErasePartyData` | Fields `confirm` = `ERASE` and `token` (the sign-in token again: the session's, and still accepted for `finance.admin` when asked now, past the introspection cache); shows the service's report: erased fields, deleted drafts, what is retained and until when |
 | `GET /invoices` | yes | read | `ListInvoices` | Filters `status`, `kind`, `party`, `project`, `from`, `to`, `overdue=1`; 50 per page, cursor paged |
 | `GET /invoices/new` | yes | write | `ListParties`, `ListTaxRates` | Create form with repeated line rows |
 | `POST /invoices` | yes | write | `CreateInvoice` | Create a draft, idempotent on `idem` |

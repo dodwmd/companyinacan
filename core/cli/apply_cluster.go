@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -24,24 +25,81 @@ func companyConfigMap(content string) (string, error) {
 	return string(b), err
 }
 
-// syncRouting keeps ConfigMap can-system/can-routing (core/routing). `can up` writes it; here it is
-// only written when it is missing or names another domain, and then from what the site's own route
-// (also made by `can up`) says, never from assumptions: TLS and the hosts differ between a domain,
-// sslip.io names and plain HTTP on the address. Without a site route nothing is written, and the
-// returned note says so.
-func syncRouting(cmd *cobra.Command, domain, kubeContext string, noEdgeLimit bool) (note string, err error) {
+// syncRouting keeps ConfigMap can-system/can-routing (core/routing). `can up` writes it; here its
+// hosts are only written when it is missing or names another domain, and then from what the site's
+// own route (also made by `can up`) says, never from assumptions: TLS and the hosts differ between
+// a domain, sslip.io names and plain HTTP on the address. Without a site route nothing is written,
+// and the returned note says so. The edge limits follow dns.proxied, and stay off when `can up
+// --no-edge-limits` switched them off: the ConfigMap says so (remembered, from this directory's
+// state, only counts when the ConfigMap is gone).
+func syncRouting(cmd *cobra.Command, domain, kubeContext string, proxied, remembered bool) (note string, err error) {
 	kubectl := func(args ...string) (string, error) {
 		if kubeContext != "" {
 			args = append([]string{"--context", kubeContext}, args...)
 		}
 		return newExecutor(cmd).Run(context.Background(), cluster.Cmd{Name: "kubectl", Args: args})
 	}
-	have, err := kubectl("-n", routing.Namespace, "get", "configmap", routing.ConfigMapName, "--ignore-not-found", "-o", "jsonpath={.data.domain}")
+	raw, err := kubectl("-n", routing.Namespace, "get", "configmap", routing.ConfigMapName, "--ignore-not-found", "-o", "json")
 	if err != nil {
 		return "", fmt.Errorf("kubectl get configmap %s: %w", routing.ConfigMapName, err)
 	}
-	if strings.TrimSpace(have) == domain {
-		return "", nil
+	var have struct {
+		Data map[string]string `json:"data"`
+	}
+	exists := strings.TrimSpace(raw) != ""
+	if exists {
+		if err := json.Unmarshal([]byte(raw), &have); err != nil {
+			return "", fmt.Errorf("ConfigMap %s/%s is not readable: %w", routing.Namespace, routing.ConfigMapName, err)
+		}
+	}
+	reason := have.Data["edgeLimitReason"]
+	off, why := routing.EdgeLimits(reason == routing.ReasonFlag || (!exists && remembered), proxied)
+	// Off for a reason nobody recorded (an older can, which may have had the flag as well as
+	// dns.proxied): it stays off and unrecorded, so that removing dns.proxied does not switch it on.
+	if reason == "" && have.Data["edgeLimit"] == "off" {
+		off, why = true, ""
+	}
+	write := func(facts routing.Config, note string) (string, error) {
+		facts.NoEdgeLimit, facts.NoEdgeLimitReason = off, why
+		manifest, err := facts.Manifest()
+		if err != nil {
+			return "", err
+		}
+		tmp, err := os.CreateTemp("", "can-routing-*.yaml")
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = os.Remove(tmp.Name()) }()
+		if _, err := tmp.Write(manifest); err != nil {
+			_ = tmp.Close()
+			return "", err
+		}
+		if err := tmp.Close(); err != nil {
+			return "", err
+		}
+		if _, err := kubectl("apply", "-f", tmp.Name(), "--server-side", "--field-manager=can-cli", "--force-conflicts"); err != nil {
+			return "", fmt.Errorf("kubectl apply: %w", err)
+		}
+		return note, nil
+	}
+	if exists && have.Data["domain"] == domain {
+		wasOff := have.Data["edgeLimit"] == "off"
+		if wasOff == off && reason == why {
+			return "", nil
+		}
+		facts, err := routing.Parse(have.Data)
+		if err != nil {
+			return "", fmt.Errorf("%w; run `can up` to write ConfigMap %s/%s", err, routing.Namespace, routing.ConfigMapName)
+		}
+		note := ""
+		if wasOff != off {
+			word := "on"
+			if off {
+				word = "off"
+			}
+			note = "edge limits are now " + word + " for module routes; the site and admin routes follow on the next `can up`"
+		}
+		return write(facts, note)
 	}
 	site, err := kubectl("-n", routing.Namespace, "get", "ingressroutes.traefik.io", "site", "--ignore-not-found", "-o", "json")
 	if err != nil {
@@ -54,27 +112,7 @@ func syncRouting(cmd *cobra.Command, domain, kubeContext string, noEdgeLimit boo
 	if err != nil {
 		return "", fmt.Errorf("%w; run `can up` to write ConfigMap %s/%s", err, routing.Namespace, routing.ConfigMapName)
 	}
-	facts.NoEdgeLimit = noEdgeLimit
-	manifest, err := facts.Manifest()
-	if err != nil {
-		return "", err
-	}
-	tmp, err := os.CreateTemp("", "can-routing-*.yaml")
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = os.Remove(tmp.Name()) }()
-	if _, err := tmp.Write(manifest); err != nil {
-		_ = tmp.Close()
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		return "", err
-	}
-	if _, err := kubectl("apply", "-f", tmp.Name(), "--server-side", "--field-manager=can-cli", "--force-conflicts"); err != nil {
-		return "", fmt.Errorf("kubectl apply: %w", err)
-	}
-	return "wrote ConfigMap can-system/can-routing from the site route", nil
+	return write(facts, "wrote ConfigMap can-system/can-routing from the site route")
 }
 
 // syncCompany writes the (already validated) company.yaml into the cluster as a ConfigMap with

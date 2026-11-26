@@ -26,7 +26,9 @@ Closes the gaps listed by [`040-module-routing`](../040-module-routing/spec.md).
 - **FR-002** A DNS plugin that creates records MUST NOT change, adopt or add to a module name that
   has an address or CNAME record it did not create, and MUST delete only records it created. A
   conflict on a module name MUST NOT fail the run. A record can created that someone since pointed
-  elsewhere MUST be left.
+  elsewhere MUST be left. A record of the wanted type that can did not create MUST be skipped even
+  when can owns a record of another type there. On any name, an existing record's proxy setting and
+  TTL MUST change only when `dns.proxied` or `dns.ttl` is written.
 - **FR-003** On a TLS install, plain-HTTP `GET` and `HEAD` MUST redirect to HTTPS. Other methods MUST
   NOT. The redirect MUST NOT affect TLS-ALPN issuance and MUST be absent in the plain-HTTP fallback,
   including after an earlier TLS run.
@@ -45,7 +47,8 @@ Closes the gaps listed by [`040-module-routing`](../040-module-routing/spec.md).
 - **FR-009** The module page MUST show each public surface, whether it is on and its address, and
   MUST NOT change it.
 - **FR-010** The limits MUST be switchable off for installs behind a proxy (`--no-edge-limits`,
-  `dns.proxied`, `expose.edge_limit: false`).
+  `dns.proxied`, `expose.edge_limit: false`). `--no-edge-limits` MUST be remembered by later `can up`
+  runs and kept by `can apply`.
 
 ## Decisions, and why
 

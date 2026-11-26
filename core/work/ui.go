@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/lazytmpl"
+	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
 // The web UI (specs/023-work-ui) is server-rendered HTML served by can-work itself under /ui/. It
@@ -269,10 +270,14 @@ func (u *webUI) wrap(rt uiRoute) http.HandlerFunc {
 			if u.a.maxBody > 0 && u.a.maxBody < limit {
 				limit = u.a.maxBody
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			if rt.Session {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			} else {
+				modclient.LimitPublicForm(w, r) // anyone can post here
+			}
 			if err := r.ParseForm(); err != nil {
 				var mb *http.MaxBytesError
-				if errors.As(err, &mb) {
+				if errors.As(err, &mb) || errors.Is(err, modclient.ErrPublicForm) {
 					c.errorPage(http.StatusRequestEntityTooLarge, "err.too_large", "err.too_large_msg")
 				} else {
 					c.errorPage(http.StatusBadRequest, "err.bad_request", "err.bad_request_msg")

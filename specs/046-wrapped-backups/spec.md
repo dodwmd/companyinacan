@@ -66,13 +66,17 @@ restored before it is replaced by the archive, which belongs to the database dum
 Server major **17** only, the major of the pinned image, for the managed server and for an external one
 (`CAN_POSTGRES_ADMIN_URL`). `pg_dump` 17 refuses a newer server; what `pg_restore` 17 writes does not load into 16 or
 older (`SET transaction_timeout`), and replacing the schema `public` needs 15's ownership. The dump and the restore
-check `server_version_num` first and fail with the reason. So a company on an external 15 or 16 server has **no**
+check `server_version_num` first and fail with the reason. A restore does it in a first init container
+(`database-check`), before the files are downloaded or replaced. So a company on an external 15 or 16 server has **no**
 backup while such a module is enabled, and is told so by every dump run.
 
 ## Disk
 
 The work volume (`emptyDir`, node disk) is bounded at 9 GiB: the dump store's 8 GiB per module plus a margin. A restore
-downloads the whole set into it, so the server needs that much free disk on top of the volume it restores into.
+downloads the whole set into it (compressed, as stored). It then unpacks files or the SQLite database beside the old
+content on the module's volume before swapping, so that volume holds both, the new one uncompressed; and the Postgres
+load is one transaction, so the database server holds old and new together plus its write-ahead log. The node needs
+free disk for all of it at once. Eviction and Unschedulable reasons are part of the hook's error.
 
 ## Design choices
 

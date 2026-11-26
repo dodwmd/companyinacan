@@ -140,8 +140,17 @@ module's own database role, and can-core's image uploads and downloads.
   the set although the dumped database refers to it. The application is not stopped.
 - The files are in the dumps directory as well as on their volume, so they take disk twice, and a set is limited to
   4 GiB per file and 8 GiB per module. A bigger module fails the dump run (and then nothing is backed up).
-- A restore downloads the whole set before changing anything: it needs up to 8 GiB of free disk for that, besides the
-  space on the module's volume.
+- A restore of a module with a database first checks that the server answers and is Postgres 17, before anything on
+  the volume is replaced.
+- Disk a restore needs on the server, all at the same time and besides what is there already:
+  - the downloaded set, as stored (compressed), in the Job's work volume: up to 8 GiB (the volume is capped at 9 GiB);
+  - a complete **uncompressed** second copy of the data on the module's volume: files (or the SQLite database) are
+    unpacked beside the old content and swapped in afterwards. This can be far more than the size of the set;
+  - for a Postgres module, room in the database server for the old and the new data together (the load is one
+    transaction), plus its write-ahead log.
+
+  The 8 GiB limit is on the stored set, so it bounds neither of the last two. When the node evicts the restore pod
+  (disk pressure, work volume over its limit) or cannot schedule it, the error says so.
 - Databases are dumped from and restored into Postgres **17** only (see [The shared Postgres](#the-shared-postgres)).
 - A restore replaces the whole schema `public` of the module's database and the whole content of its volume.
 - A server installed before this is covered from the next dump run; no module upgrade is needed.
