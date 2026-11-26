@@ -74,6 +74,7 @@
 
 {{else if eq .Data.Step "dns"}}
 <p>{{t "wz.dns_help"}}</p>
+<p class="hint">{{t "wz.dns_modules"}}</p>
 {{if .Data.DNS.NoAddress}}<p class="alert warn">{{t "wz.dns_no_address"}}</p>
 {{else}}<div class="table-wrap" role="region" aria-labelledby="cap-dns" tabindex="0">
 <table>

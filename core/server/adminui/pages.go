@@ -270,6 +270,7 @@ type moduleDetail struct {
 	RAMLimitMB, DiskMB                                                                                int
 	Provides                                                                                          []provide
 	Requires, Consumes, Publishes, Subscribes, Permissions, DataClasses                               []string
+	Access                                                                                            *exposureView
 }
 
 func (s *Server) module(w http.ResponseWriter, r *http.Request, sc *sessionCtx) {
@@ -299,6 +300,7 @@ func (s *Server) module(w http.ResponseWriter, r *http.Request, sc *sessionCtx) 
 	for _, c := range mf.DataClasses {
 		d.DataClasses = append(d.DataClasses, strings.TrimSpace(fmt.Sprintf("%s %s %s", c.Class, c.Sensitivity, c.Retention)))
 	}
+	d.Access = s.exposure(r.Context(), m.ID, &mf)
 	s.render(w, r, http.StatusOK, "module.html", s.page(r, sc, "modules", d.Name, d))
 }
 
