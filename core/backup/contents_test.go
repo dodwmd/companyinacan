@@ -37,6 +37,14 @@ func TestCheckContentsComplete(t *testing.T) {
 	if p := c.Problems(); len(p) != 0 {
 		t.Fatal(p)
 	}
+	// an in-house subcommand dump set is loadable even if the record predates the hook
+	if err := os.WriteFile(filepath.Join(dir, StateDump), backuptest.StateDB(t, backuptest.Module{ID: "stub", State: "enabled", Database: "sqlite"}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err = CheckContents(context.Background(), dir, []string{StateDump, SecretsDump, CompanyDump, DumpedList, "modules/stub/manifest.json", "modules/stub/database.sqlite3.gz"})
+	if err != nil || len(c.NoRestoreHook) != 0 {
+		t.Fatal(c.NoRestoreHook, err)
+	}
 	if _, err := CheckContents(context.Background(), dir, []string{StateDump, CompanyDump, DumpedList}); err == nil {
 		t.Fatal("DUMPED names a module whose files are not in the set")
 	}

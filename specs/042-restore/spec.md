@@ -45,6 +45,9 @@ Before this feature `can restore` stopped at its first step: neither the cluster
   in a Job from their own Deployment; `files` and `jobs` are started without routes and called on `/v1/purge`.
   can-core removes its queued events, notifications and mail that name an erased subject, and the dumps of purged
   modules.
+- **FR-006a** In-house modules with subcommand hooks (specs/043-module-backup-hooks, in progress in parallel) are
+  restored by `<command> restore -replace` in the module's own image, in the Job shape of that spec's contract. Unit
+  tests only until both changes are on `main`.
 - **FR-007** No incomplete restore without a named override: `--without-secrets`, `--accept-unrestored`,
   `--accept-unerased`, `--allow-no-ledger`, `--accept-ledger-behind`, `--force-older`.
 - **FR-008** `can backup verify` applies the FR-002 checks of the snapshot.

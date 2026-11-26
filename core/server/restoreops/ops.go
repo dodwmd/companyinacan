@@ -30,6 +30,9 @@ import (
 // Hooks runs the module restore and purge Jobs (*dumps.KubeHooks).
 type Hooks interface {
 	RunRestore(ctx context.Context, module string) error
+	// HasSubcommandRestore: the shipped module restores with its own binary, whatever the
+	// recorded manifest says (specs/043-module-backup-hooks).
+	HasSubcommandRestore(module string) bool
 	RunPurgeScript(ctx context.Context, module, subject, class string) error
 	RunPurgeCLI(ctx context.Context, module, subject, class string) error
 }
@@ -262,13 +265,14 @@ func (o *Ops) RunHooks(ctx context.Context, accept []string) (backup.HookReport,
 	for _, m := range mods {
 		recorded[m.ID] = true
 		man := &m.Manifest
+		loadable := man.Hooks.Restore != "" || o.Hooks.HasSubcommandRestore(m.ID)
 		if !dumped[m.ID] {
 			if man.Hooks.Backup != "" {
 				rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q has no dump in this snapshot; only its volume files (if any) are restored", m.ID))
 			}
 			continue
 		}
-		if slices.Contains(accept, m.ID) && man.Hooks.Restore == "" {
+		if slices.Contains(accept, m.ID) && !loadable {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("module %q: its dump is NOT loaded (no restore hook)", m.ID))
 			continue
 		}

@@ -67,7 +67,9 @@ type Contents struct {
 	Admins  int
 	// HasSecrets is false for sets made before can-core exported Secrets.
 	HasSecrets bool
-	// NoRestoreHook are modules with a dump but no way to load it.
+	// NoRestoreHook are modules with a dump but no way to load it. A dump set of the in-house
+	// subcommands (specs/043-module-backup-hooks: manifest.json and database.sqlite3.gz) is loaded
+	// by the module's own binary, whether or not its record names the hook yet.
 	NoRestoreHook []string
 	// NotBackedUp are database-server modules whose database is not in the set.
 	NotBackedUp []string
@@ -155,7 +157,7 @@ func CheckContents(ctx context.Context, dir string, files []string) (*Contents, 
 		db := m.Manifest.Requires.Database
 		server := db == "postgres" || db == "mariadb"
 		switch {
-		case withDump[m.ID] && m.Manifest.Hooks.Restore == "":
+		case withDump[m.ID] && m.Manifest.Hooks.Restore == "" && !subcommandSet(have, m.ID):
 			c.NoRestoreHook = append(c.NoRestoreHook, m.ID)
 		case !withDump[m.ID] && server && exported["mod-"+m.ID]:
 			// A database that was provisioned (its Secret names a server) but has no dump.
@@ -198,4 +200,9 @@ func (c *Contents) readState(ctx context.Context, p string) error {
 		c.Modules = append(c.Modules, m)
 	}
 	return rows.Err()
+}
+
+// subcommandSet reports whether the files hold a dump set of the in-house backup subcommands.
+func subcommandSet(have map[string]bool, id string) bool {
+	return have["modules/"+id+"/manifest.json"] && have["modules/"+id+"/database.sqlite3.gz"]
 }

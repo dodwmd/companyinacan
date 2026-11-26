@@ -17,6 +17,11 @@ import (
 
 // RunRestore runs the module's replace-all restore hook as a Job, with its volume writable.
 func (h *KubeHooks) RunRestore(ctx context.Context, module string) error {
+	if s, err := h.native(module); err != nil {
+		return err
+	} else if s != nil {
+		return h.runNativeRestore(ctx, module, s)
+	}
 	return h.runScript(ctx, module, "restore", func(m *config.Module) string { return m.Hooks.Restore }, nil)
 }
 

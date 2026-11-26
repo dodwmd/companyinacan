@@ -123,6 +123,7 @@ func (f *fakeHooks) RunRestore(_ context.Context, m string) error {
 	f.calls = append(f.calls, "restore "+m)
 	return f.fail[m]
 }
+func (f *fakeHooks) HasSubcommandRestore(m string) bool { return m == "forms" }
 func (f *fakeHooks) RunPurgeScript(_ context.Context, m, s, c string) error {
 	f.calls = append(f.calls, "script "+m+" "+s+" "+c)
 	return f.fail[m]
