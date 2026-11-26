@@ -2,8 +2,8 @@
 # DEV ONLY. One-shot init for docker-compose.yml (runs as root in the `init` image).
 #  1. generates random dev keyrings for can-people, can-jobs, can-equity and can-files into the dev-secrets volume
 #     (only if absent, so data stays readable across restarts);
-#  2. generates one random identity token per module that can-core knows (CAN_DEV_STACK) into the
-#     module-tokens volume, and seeds can-core's company.yaml (both only if absent);
+#  2. generates one random identity token per module that can-core knows (CAN_DEV_STACK), each into a
+#     volume of its own (token-<module>), and seeds can-core's company.yaml (both only if absent);
 #  3. bootstraps the can-core admin account once and prints its TOTP secret.
 # Idempotent: safe to run on every `compose up`.
 set -eu
@@ -22,15 +22,15 @@ done
 
 TOKENS=/tokens
 for svc in work people jobs finance equity; do
-  f="$TOKENS/$svc"
+  f="$TOKENS/$svc/token"
   if [ ! -s "$f" ]; then
     echo "init: generating dev module token for $svc"
     printf 'dev-module-%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" > "$f"
   fi
   chown 65532:65532 "$f"
   chmod 0400 "$f"
+  chmod 0755 "$TOKENS/$svc"
 done
-chmod 0755 "$TOKENS"
 # The directory is handed to can-core below: the admin UI replaces the file by renaming over it.
 mkdir -p /var/lib/can/company
 [ -s /var/lib/can/company/company.yaml ] || cp /company.seed.yaml /var/lib/can/company/company.yaml

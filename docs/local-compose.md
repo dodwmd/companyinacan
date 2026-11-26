@@ -131,13 +131,20 @@ curl -X POST http://people.localhost:8080/v1/people -H "Authorization: Bearer de
   -d '{"kind":"employee","status":"active","given_name":"Ada","family_name":"Admin","work_email":"ada@acme.example","sso_subject":"user:admin"}'
 ```
 
-Every `localhost` port shares one cookie jar in the browser. The cookie names differ per service, so signing in
-to one does not sign you out of another.
+**Cookies are not separated by port: this is weaker than a real installation.** The browser keeps one cookie
+jar for `localhost`, so every server on any `localhost` port receives the cookies of all the others, including the
+admin UI's `can_session` once you sign in at `localhost:8180`: the module UIs, the site on `localhost:8080`,
+and **any unrelated program you run on a `localhost` port** and visit. Whoever receives that cookie can act as you
+in the admin UI until the session ends, and any of them can overwrite or plant cookies for the others. The cookie
+names differ, so signing in to one does not sign you into another, but that is no protection against the above.
+Use a separate browser profile for this stack, do not run untrusted software on localhost while signed in, and
+log out when done. A cluster puts each service on its own host name over https.
 
 **How it works, and why it cannot be switched on in production.** `CAN_DEV_STACK=true` makes can-core build
 module management without a cluster: the "installer" only records, `company.yaml` is a file in the
 `core-data` volume (seeded from `dev/compose/config/company.yaml`), and the fake token review accepts the
-random per-module tokens the `init` job writes to the `module-tokens` volume. Events are signed with the public
+random per-module tokens the `init` job writes, each to a volume of its own (`token-<module>`) that only that
+module and can-core mount. Events are signed with the public
 `x-webhook-secret` of `docker-compose.yml`. The mode exists only in a binary built with `-tags candevstack`
 (`dev/compose/Dockerfile`); a release build refuses to start when asked for it, as does any build inside
 Kubernetes, with an installer, with real token review or with secure cookies (`core/server/runtime/devstack.go`,
@@ -165,7 +172,7 @@ docker compose -p companyinacan up -d --build site    # rebuild one service (e.g
 ```
 
 SQLite data lives in named volumes (`companyinacan_core-data`, `forms-data`, `work-data`, `people-data`,
-`jobs-data`, `finance-data`, plus `dev-secrets` and `module-tokens`), so `down` without `-v` keeps it. Config files and
+`jobs-data`, `finance-data`, plus `dev-secrets` and the `token-*` volumes), so `down` without `-v` keeps it. Config files and
 `secrets/*.env` are baked into / read at container creation: after editing one, recreate the service
 (`docker compose -p companyinacan up -d --build --force-recreate <service>`). podman-compose does not
 always notice an `env_file` change, or a rebuilt image, on its own: `up -d --build edge` left the old edge
@@ -225,8 +232,8 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
 
 - **No Kubernetes.** No k3s/k3d, no NetworkPolicies, no admission policy, no Helm, no `TokenReview`
   (can-core runs with `CAN_TOKEN_REVIEW=fake`; module identities are files), no Traefik, no TLS,
-  no cert-manager. Resource limits and read-only root filesystems are not applied. Every module container can
-  read the other modules' identity tokens, which a cluster does not allow.
+  no cert-manager. Resource limits and read-only root filesystems are not applied. The modules share one event
+  signing secret, so one could forge events to another, which a cluster does not allow.
 - **can-core does not install modules.** It records them (`CAN_INSTALLER=none` with `CAN_DEV_STACK`); Compose
   starts the containers. So:
   - purge, Secret rotation and the wizard's email relay credentials are not available;

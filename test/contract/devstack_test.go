@@ -21,7 +21,7 @@ import (
 // Kubernetes. It is compiled in only with `-tags candevstack`. Nothing that builds, renders or ships a
 // production installation may mention the tag or the settings that ask for the mode.
 func TestNothingProductionCanEnableTheDevStack(t *testing.T) {
-	words := []string{"candevstack", "CAN_DEV_STACK", "CAN_DEV_MODULE_TOKEN_DIR"}
+	words := []string{"candevstack", "CAN_DEV_STACK", "CAN_DEV_MODULE_TOKEN", "CAN_DEV_WEBHOOK_SECRET"}
 	shipped := []string{"deploy", "scripts", ".github", "modules", "templates", "schemas", "cmd", "examples", "Makefile",
 		"core/cli", "core/launch", "core/provider", "core/cluster", "core/config", "core/server/installer", "core/server/modmgr"}
 	for _, dir := range shipped {
@@ -56,6 +56,7 @@ func TestComposeDevStackStaysOnLoopbackAndIsUsable(t *testing.T) {
 		Services map[string]struct {
 			Ports       []string       `yaml:"ports"`
 			Environment map[string]any `yaml:"environment"`
+			Volumes     []string       `yaml:"volumes"`
 			Networks    map[string]struct {
 				Aliases []string `yaml:"aliases"`
 			} `yaml:"networks"`
@@ -110,8 +111,20 @@ func TestComposeDevStackStaysOnLoopbackAndIsUsable(t *testing.T) {
 	}
 	for id := range company.Modules {
 		e := compose.Services[id].Environment
-		if e["CAN_MODULE_ID"] != id || e["CAN_TOKEN_FILE"] != "/tokens/"+id || e["CAN_API_URL"] != "http://core:8090" {
+		if e["CAN_MODULE_ID"] != id || e["CAN_TOKEN_FILE"] != "/tokens/token" || e["CAN_API_URL"] != "http://core:8090" {
 			t.Errorf("service %s is not wired to can-core: %v", id, e)
+		}
+		if !slices.Contains(compose.Services[id].Volumes, "token-"+id+":/tokens:ro") ||
+			!slices.Contains(compose.Services["core"].Volumes, "token-"+id+":/tokens/"+id+":ro") {
+			t.Errorf("service %s and core do not share token-%s", id, id)
+		}
+		// A module sees no other module's identity.
+		for name, s := range compose.Services {
+			for _, v := range s.Volumes {
+				if strings.HasPrefix(v, "token-"+id+":") && name != id && name != "core" && name != "init" {
+					t.Errorf("service %s mounts the identity token of %s", name, id)
+				}
+			}
 		}
 		if !strings.Contains(string(init), " "+id) {
 			t.Errorf("init.sh generates no token for %s", id)

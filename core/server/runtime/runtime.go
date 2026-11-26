@@ -83,7 +83,7 @@ type Config struct {
 	PublicIPs          []string          // CAN_PUBLIC_IPS: the server's public addresses, listed in the setup wizard's DNS step
 	SSOSecretDir       string            // CAN_SSO_SECRET_DIR: directory with the SSO client secret as <name>/<key> files, a mounted Secret (default /etc/can/sso)
 	DevStack           bool              // CAN_DEV_STACK: the Docker Compose development mode (devstack.go); refused by release builds
-	DevModuleTokenDir  string            // CAN_DEV_MODULE_TOKEN_DIR: one module token per file, for CAN_DEV_STACK only
+	DevModuleTokenDir  string            // CAN_DEV_MODULE_TOKEN_DIR: <module id>/token files, for CAN_DEV_STACK only
 	DevWebhookSecret   string            // CAN_DEV_WEBHOOK_SECRET: signs events to every module, for CAN_DEV_STACK only
 
 	// Backup dumps (epic E08b, dumps.go): CAN_DUMPS_DIR, CAN_DUMP_AT (UTC), CAN_DUMP_START_DELAY_SECONDS,

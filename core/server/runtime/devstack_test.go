@@ -84,7 +84,10 @@ func TestDevStackTokenFiles(t *testing.T) {
 	write := func(files map[string]string) string {
 		dir := t.TempDir()
 		for n, v := range files {
-			if err := os.WriteFile(filepath.Join(dir, n), []byte(v), 0o600); err != nil {
+			if err := os.Mkdir(filepath.Join(dir, n), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, n, "token"), []byte(v), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -119,6 +122,7 @@ func TestDevStackTokenFiles(t *testing.T) {
 // The identity forms uses for email.send is not in company.yaml: the periodic reconcile of the
 // development stack must not disable it.
 func TestDevStackReconcileKeepsDevIdentities(t *testing.T) {
+	asDevBuild(t)
 	ctx := context.Background()
 	db, err := store.Open(ctx, ":memory:")
 	if err != nil {
@@ -143,5 +147,15 @@ func TestDevStackReconcileKeepsDevIdentities(t *testing.T) {
 	rec.Keep = isDevModule
 	if plan, err := rec.Plan(ctx, desired); err != nil || len(plan) != 0 {
 		t.Fatalf("%v %v", plan, err)
+	}
+}
+
+func TestDevModuleTokensAreRefusedInsideKubernetes(t *testing.T) {
+	asDevBuild(t)
+	c := Config{TokenReview: "fake", Installer: "none", Env: func(k string) string {
+		return map[string]string{"CAN_DEV_MODULE_TOKENS": "forms:" + strings.Repeat("f", 40), "KUBERNETES_SERVICE_HOST": "10.43.0.1"}[k]
+	}}
+	if err := c.devModules(context.Background(), nil, tokenreview.NewFake(), slog.Default()); err == nil || !strings.Contains(err.Error(), "Kubernetes") {
+		t.Fatalf("%v", err)
 	}
 }

@@ -12,6 +12,7 @@ import (
 )
 
 func TestDevModuleIdentities(t *testing.T) {
+	asDevBuild(t)
 	ctx := context.Background()
 	db, err := store.Open(ctx, ":memory:")
 	if err != nil {

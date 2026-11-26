@@ -60,12 +60,19 @@ func isDevModule(m store.Module) bool {
 }
 
 // devModules registers fixed module identities for a stack without Kubernetes (docker-compose.yml):
-// CAN_DEV_MODULE_TOKENS="forms:<token>". It works only with the fake token review and no installer,
+// CAN_DEV_MODULE_TOKENS="forms:<token>". It works only in a binary built with -tags candevstack, outside
+// Kubernetes, with the fake token review and no installer,
 // so it cannot exist next to real module identities, and the only capability it grants is
 // email.send. Records of identities no longer asked for are removed at start.
 func (c Config) devModules(ctx context.Context, db *store.DB, rev tokenreview.Reviewer, log *slog.Logger) error {
 	want := map[string]string{} // module id -> token
 	if spec := c.env("CAN_DEV_MODULE_TOKENS"); spec != "" {
+		if !devBuild {
+			return errors.New("CAN_DEV_MODULE_TOKENS: this can-core was not built for development and cannot use it")
+		}
+		if c.env("KUBERNETES_SERVICE_HOST") != "" {
+			return errors.New("CAN_DEV_MODULE_TOKENS: refused inside Kubernetes")
+		}
 		if c.TokenReview != "fake" || c.Installer != "none" {
 			return errors.New("CAN_DEV_MODULE_TOKENS needs CAN_TOKEN_REVIEW=fake and CAN_INSTALLER=none (development only)")
 		}

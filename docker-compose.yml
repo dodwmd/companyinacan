@@ -30,7 +30,8 @@ x-metrics-env: &metrics-env
 x-webhook-secret: &webhook-secret dev-only-webhook-secret-0123456789abcdef
 
 # work, people, jobs, finance and equity ask can-core (CAN_API_URL) who a personal access token or a launch
-# ticket belongs to, presenting the random token the `init` job wrote for each (CAN_TOKEN_FILE).
+# ticket belongs to, presenting the random token the `init` job wrote for each (CAN_TOKEN_FILE). Each module
+# mounts only its own token volume.
 services:
   # One-shot: dev keyrings for people/jobs/files and the can-core admin account. Prints the TOTP secret.
   init:
@@ -40,7 +41,11 @@ services:
     volumes:
       - dev-secrets:/secrets
       - core-data:/var/lib/can
-      - module-tokens:/tokens
+      - token-work:/tokens/work
+      - token-people:/tokens/people
+      - token-jobs:/tokens/jobs
+      - token-finance:/tokens/finance
+      - token-equity:/tokens/equity
     restart: "no"
 
   site:
@@ -98,7 +103,11 @@ services:
     env_file: [dev/compose/secrets/core-email.env]
     volumes:
       - core-data:/var/lib/can
-      - module-tokens:/tokens:ro
+      - token-work:/tokens/work:ro
+      - token-people:/tokens/people:ro
+      - token-jobs:/tokens/jobs:ro
+      - token-finance:/tokens/finance:ro
+      - token-equity:/tokens/equity:ro
     depends_on:
       init:
         condition: service_completed_successfully
@@ -124,11 +133,11 @@ services:
       <<: *metrics-env
       CAN_API_URL: "http://core:8090"
       CAN_MODULE_ID: work
-      CAN_TOKEN_FILE: /tokens/work
+      CAN_TOKEN_FILE: /tokens/token
       CAN_RAM_DECLARED_MB: "20"
     volumes:
       - work-data:/data
-      - module-tokens:/tokens:ro
+      - token-work:/tokens:ro
     depends_on:
       init:
         condition: service_completed_successfully
@@ -148,12 +157,12 @@ services:
       <<: *metrics-env
       CAN_API_URL: "http://core:8090"
       CAN_MODULE_ID: people
-      CAN_TOKEN_FILE: /tokens/people
+      CAN_TOKEN_FILE: /tokens/token
       CAN_WEBHOOK_SECRET: *webhook-secret
       CAN_RAM_DECLARED_MB: "30"
     volumes:
       - people-data:/data
-      - module-tokens:/tokens:ro
+      - token-people:/tokens:ro
       - dev-secrets:/secrets:ro
     depends_on:
       init:
@@ -174,12 +183,12 @@ services:
       <<: *metrics-env
       CAN_API_URL: "http://core:8090"
       CAN_MODULE_ID: jobs
-      CAN_TOKEN_FILE: /tokens/jobs
+      CAN_TOKEN_FILE: /tokens/token
       CAN_WEBHOOK_SECRET: *webhook-secret
       CAN_RAM_DECLARED_MB: "30"
     volumes:
       - jobs-data:/data
-      - module-tokens:/tokens:ro
+      - token-jobs:/tokens:ro
       - dev-secrets:/secrets:ro
     depends_on:
       init:
@@ -200,12 +209,12 @@ services:
       <<: *metrics-env
       CAN_API_URL: "http://core:8090"
       CAN_MODULE_ID: finance
-      CAN_TOKEN_FILE: /tokens/finance
+      CAN_TOKEN_FILE: /tokens/token
       CAN_WEBHOOK_SECRET: *webhook-secret
       CAN_RAM_DECLARED_MB: "20"
     volumes:
       - finance-data:/data
-      - module-tokens:/tokens:ro
+      - token-finance:/tokens:ro
     depends_on:
       init:
         condition: service_completed_successfully
@@ -224,11 +233,11 @@ services:
       <<: *metrics-env
       CAN_API_URL: "http://core:8090"
       CAN_MODULE_ID: equity
-      CAN_TOKEN_FILE: /tokens/equity
+      CAN_TOKEN_FILE: /tokens/token
       CAN_RAM_DECLARED_MB: "16"
     volumes:
       - equity-data:/data
-      - module-tokens:/tokens:ro
+      - token-equity:/tokens:ro
       - dev-secrets:/secrets:ro
     depends_on:
       init:
@@ -317,7 +326,11 @@ services:
 # Named volumes: `down` keeps them, `down -v` deletes them.
 volumes:
   dev-secrets:
-  module-tokens:
+  token-work:
+  token-people:
+  token-jobs:
+  token-finance:
+  token-equity:
   core-data:
   forms-data:
   work-data:

@@ -63,8 +63,12 @@ func (c Config) checkDevStack() error {
 	return nil
 }
 
-// devReviewer is a fake token review that knows one token per file of dir; the file name is the module
-// id, and the identity is the one the reconciler records for that module.
+// devTokenFile is the name of the token inside a module's directory.
+const devTokenFile = "token"
+
+// devReviewer is a fake token review that knows one token per directory of dir: <dir>/<module id>/token.
+// Each module gets a directory of its own so compose can give it that one and no other. The identity is
+// the one the reconciler records for that module.
 func devReviewer(dir string, log *slog.Logger) (*tokenreview.Fake, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -73,10 +77,10 @@ func devReviewer(dir string, log *slog.Logger) (*tokenreview.Fake, error) {
 	fake, seen := tokenreview.NewFake(), map[string]string{}
 	for _, e := range entries {
 		id := e.Name()
-		if !devModuleIDRe.MatchString(id) {
-			continue // lost+found, editor droppings
+		if !e.IsDir() || !devModuleIDRe.MatchString(id) {
+			continue // lost+found, stray files
 		}
-		b, err := os.ReadFile(filepath.Join(dir, id)) //nolint:gosec // operator-configured directory, name checked above
+		b, err := os.ReadFile(filepath.Join(dir, id, devTokenFile)) //nolint:gosec // operator-configured directory, name checked above
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", envDevTokenDir, err)
 		}
