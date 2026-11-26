@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/modclient"
@@ -49,7 +50,8 @@ type Store struct {
 	downloads    chan struct{}
 	downloadWait time.Duration
 	// sealer seals bank account numbers (nil when CAN_FINANCE_SEAL_KEY is not set).
-	sealer *Sealer
+	sealer    *Sealer
+	importing sync.Mutex // one CSV import at a time (specs/047-csv-import)
 }
 
 // OpenStore opens (creating if needed) the database at path and applies migrations.
