@@ -17,4 +17,7 @@ data:
     {{- with .notify_email }}
     notify_email: {{ toJson . }}
     {{- end }}
+    {{- with .newsletter_consent }}
+    newsletter_consent: {{ toJson . }}
+    {{- end }}
     {{- end }}

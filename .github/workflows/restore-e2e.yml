@@ -74,7 +74,7 @@ jobs:
         id: e2e
         env:
           CAN_IT_RESTORE: "1"
-          CAN_IT_RESTORE_IMAGES: "can-core:dev ghcr.io/dodwmd/can-finance:0.3.0 ghcr.io/dodwmd/can-forms:0.3.0 ghcr.io/dodwmd/can-people:0.2.0 ghcr.io/dodwmd/can-work:0.3.0"
+          CAN_IT_RESTORE_IMAGES: "can-core:dev ghcr.io/dodwmd/can-finance:0.3.0 ghcr.io/dodwmd/can-forms:0.4.0 ghcr.io/dodwmd/can-people:0.2.0 ghcr.io/dodwmd/can-work:0.3.0"
         run: go test -tags integration -count=1 -v -timeout 30m -run '^TestRestoreOnK3d$' ./test/integration/...
       - name: Cluster state on failure
         if: failure()

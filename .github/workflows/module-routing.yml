@@ -64,7 +64,7 @@ jobs:
               --build-arg VERSION=ci \
               -t "ghcr.io/dodwmd/can-$m:$tag" .
           done
-          k3d image import can-core:dev ghcr.io/dodwmd/can-work:0.3.0 ghcr.io/dodwmd/can-forms:0.3.0 \
+          k3d image import can-core:dev ghcr.io/dodwmd/can-work:0.3.0 ghcr.io/dodwmd/can-forms:0.4.0 \
             ghcr.io/dodwmd/can-finance:0.3.0 -c companyinacan-dev
       - name: Deploy can-core
         run: |
