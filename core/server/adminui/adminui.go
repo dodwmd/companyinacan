@@ -30,6 +30,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
 	"github.com/dodwmd/companyinacan/core/server/notify"
+	"github.com/dodwmd/companyinacan/core/server/overview"
 	"github.com/dodwmd/companyinacan/core/server/pat"
 	"github.com/dodwmd/companyinacan/core/server/rbac"
 	"github.com/dodwmd/companyinacan/core/server/registry"
@@ -77,6 +78,9 @@ type Server struct {
 	Users *users.Service
 	// Email is the email.send outbox (E03d, email.go); nil hides the delivery page.
 	Email *email.Service
+	// Overview collects the modules' figures for the business overview (overview.go); nil is built
+	// from Tickets, Registry and DB, and without Tickets the page shows only what can-core knows.
+	Overview *overview.Service
 	// Leads reads leads through the `leads` capability; nil means "not configured".
 	Leads   LeadsClient
 	Company Company
@@ -100,7 +104,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(append(s.appRoutes(), s.emailRoutes()...), s.userRoutes()...)...)
+	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(append(s.appRoutes(), s.emailRoutes()...), append(s.userRoutes(), s.overviewRoutes()...)...)...)
 }
 
 func (s *Server) coreRoutes() []route {
@@ -171,6 +175,9 @@ func (s *Server) init() {
 	if s.Log == nil {
 		s.Log = slog.Default()
 	}
+	if s.Overview == nil && s.Tickets != nil && s.Registry != nil {
+		s.Overview = &overview.Service{Registry: s.Registry, DB: s.DB, Grants: s.Tickets, Log: s.Log, Now: s.Now}
+	}
 	funcs := template.FuncMap{
 		"t":         s.msg,
 		"ts":        func(t time.Time) string { return t.UTC().Format("2006-01-02 15:04:05") },
@@ -228,7 +235,7 @@ func (s *Server) page(r *http.Request, sc *sessionCtx, active, title string, dat
 	if sc != nil {
 		p.User, p.CSRF = sc.User.Username, sc.Session.CSRF
 		for _, n := range []struct{ key, label, href string }{
-			{"dashboard", "nav.dashboard", "/"}, {"modules", "nav.modules", "/modules"}, {"audit", "nav.audit", "/audit"},
+			{"overview", "nav.overview", "/overview"}, {"dashboard", "nav.dashboard", "/"}, {"modules", "nav.modules", "/modules"}, {"audit", "nav.audit", "/audit"},
 			{"events", "nav.events", "/events"}, {"leads", "nav.leads", "/leads"}, {"settings", "nav.settings", "/settings"},
 		} {
 			p.Nav = append(p.Nav, navItem{Href: n.href, Label: s.msg(n.label), Current: n.key == active})
