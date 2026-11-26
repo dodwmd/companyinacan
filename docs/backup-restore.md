@@ -3,10 +3,8 @@
 Implements the offline-verifiable part of epic E08 (SPEC.md section 6.5). This is a tool, not legal or
 compliance advice; the 35-day horizon below is a default you must review against your own obligations.
 
-> **`can restore` is not functional yet.** The provisioning and can-core adapters (epic E03) do not exist in this
-> release. A real run stops at step 1 with exit code 3; only `can restore --plan`, kit parsing and the state
-> machine itself (tested against fakes) work. Do not rely on a restore until those adapters ship and the
-> measurement below has been done.
+> **`can restore` has only been run on throwaway k3d clusters in CI**, with a local restic repository. It has not
+> been run on a real server or against a real bucket. Rehearse it on a spare server before you rely on it.
 
 ## How a backup works
 
@@ -22,14 +20,16 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
    - puts the previous set back if an earlier run died while swapping it, deletes `COMPLETE` and removes what an
      earlier run left behind;
    - writes `can-core/state.db` (`VACUUM INTO` over a read-only connection of its own, then `integrity_check`) and
-     a copy of the applied `company.yaml`. These two are replaced in place, so after a **failed** run they are newer
+     a copy of the applied `company.yaml`, and `can-core/secrets.json`: the Secrets of every module namespace plus
+     `can-smtp-relay`, `sso-client` and `can-postgres-admin` of `can-system` (a restore re-creates them). The first two are replaced in place, so after a **failed** run they are newer
      than the module dumps beside them; without a marker the set is not backed up either way;
    - runs the `backup` hook of every recorded module that has one, **including disabled and failed modules** (their
      data is still there), as a Job in `mod-<id>`. For the in-house modules the Job is `<binary> backup` in the
      module's own image within the module's memory limit (see [In-house modules](#in-house-modules)). For the
      wrapped modules it is a shell script in the `can-hooks` image: restricted pod, projected audience-`can` token, the module's
      volume at `/data`, `/storage` and `/app/data` (read-only unless SQLite; none for MariaDB/PostgreSQL modules).
-     A module with neither a volume nor a database is skipped. A hook pod that cannot start (image pull, config)
+     A module with neither a volume nor a database is skipped, and so is a database module whose database was never
+     provisioned (its `can-db` Secret has no `DB_HOST`). A hook pod that cannot start (image pull, config)
      is given up after 2 minutes, a hook after 15;
    - accepts `PUT /v1/dumps/<module>/<name>` only from the module whose hook is running right now (at most 16
      files and 8 GiB per module and run, 4 GiB per file), into a staging directory. A hook that succeeds without
@@ -44,7 +44,7 @@ against a real server or bucket. Design and rejected alternatives: [specs/037-ba
      it is skipped and reported by `can backup status`, the admin status page and `can up`. Only its raw volume
      files are then backed up; for a MariaDB or PostgreSQL module **the database is not backed up**. A module that
      had a dump and suddenly reports no data is reported the same way, and its earlier dump is kept. To get backups
-     back after enabling a module whose hook cannot run, disable it. Downloads (`GET /v1/dumps/...`) are refused: there is no restore mode yet.
+     back after enabling a module whose hook cannot run, disable it. Downloads (`GET /v1/dumps/...`) are refused except while the server is being restored.
 2. The host timer `can-backup.timer` (default 03:30 plus up to 15 min) starts `can-backup.service`, which runs
    `/usr/local/sbin/can-backup`. The script, in order:
    - syncs the erasure ledger (a symlinked ledger is refused with exit 13; a ledger that vanished after an earlier run, or is not a
@@ -145,9 +145,9 @@ Linux release binary at `/usr/local/bin/can` there first (the erasure ledger upl
 |---|---|
 | `can backup status` | marker age, latest usable snapshot (tagged `can`, not `inconsistent`), problems; exit 1 on any problem |
 | `can backup run` | run the script now |
-| `can backup verify` | `restic check`, restore a sample of dump files into a temp dir, compare SHA-256 with the manifest |
+| `can backup verify` | `restic check`, restore a sample of dump files into a temp dir, compare SHA-256 with the manifest, then the checks a restore makes of the snapshot (marker, state database, company.yaml, Secrets export, every dump loadable) |
 | `can backup kit` | generate the recovery kit (see below) |
-| `can restore --kit <file or -> [--plan]` | restore onto a blank host |
+| `can restore --kit <file or -> [--plan]` | restore onto a blank server, run on that server as root |
 
 ## Recovery kit
 
@@ -168,32 +168,64 @@ non-secret options. Nothing else is needed; everything else is in the snapshot.
 
 ## Restore (`can restore --kit`)
 
-The six steps of SPEC.md section 6.5; progress is saved in `<dir>/.can/restore.json`, so after a failure you fix the
-cause and run the same command again. `--plan` shows the steps and which are done without touching anything.
+`can restore` runs **on the new server**, as root. It does not create the server.
 
-1. Provision, k3s, can-core in restore mode.
-2. The host must be blank: the dumps and host-state directories must be absent or empty (else refuse; `--force-host` overrides).
-   Snapshots are walked newest first and every decision is printed. A snapshot tagged `inconsistent` is skipped (the backup flagged
-   it); one not tagged `can` is ignored. For a newer `can` snapshot that fails its check (marker missing or different from the copy the
-   backup ran under) the restore stops and asks for `--snapshot ID` or `--force-older`; it never falls back to an older snapshot silently. A
-   transient restic error while checking a snapshot also stops the restore (retry); it is never treated as "inconsistent". The chosen
-   snapshot id and time are printed. Dumps and host state are restored, every
-   restored dump is hashed against the manifest, then can-core imports its state and re-creates the exported Secrets.
-3. `company.yaml` is written back into `--dir` (an existing different file is never overwritten) and a restore
-   apply runs.
-4. Module `restore` hooks (replace-all) load the database dumps; modules stay scaled to 0.
-5. PVC data is restored to a staging directory (absolute, at least 3 path components, empty or created by `can restore`; it
-   is never deleted otherwise) and copied into the new volumes matched on `<namespace>_<claim>` (ownership and modes
-   preserved). A volume that already holds data is not overwritten without `--force-volumes`. A backed-up volume with no matching claim
-   fails the step.
-6. The erasure ledger is fetched and decrypted and united with the copy stored inside the snapshot; `purge(subject, class)`
-   hooks re-run (progress is tracked per subject and class), tombstones are re-applied to can-core's state, and only then
-   workloads scale up. No ledger in the bucket blocks going live unless you pass `--allow-no-ledger` (only appropriate if no
-   erasure was ever requested, and never enough when the snapshot holds a ledger copy). A ledger that cannot be fetched always
-   blocks, and a bucket ledger that lacks entries the snapshot's copy has (rollback or truncation) blocks too
-   (`--accept-ledger-behind` applies the union anyway and prints a warning; erasures newer than the snapshot are then not applied).
+1. From your laptop, in your company repository (or a directory holding a `company.yaml` with the same name, domain and
+   provider as the kit), make the new server with k3s and nothing else: `can up --provision-only`. Do **not** run a full
+   `can up` first: the restore refuses a server that is not blank.
+2. On the server, put the `can` release binary and restic 0.17 or newer in `/usr/local/bin`, and the recovery kit in a
+   root-only file. Use the same `can` release the backup was made with: it carries the module charts.
+3. Restore: `sudo can restore --kit /root/kit.enc --release-manifest release-images.json --dir /root/company`
+   (from a source checkout use `--images-from <make images output>`). `--plan` shows the steps and what is done.
+4. From the laptop, run `can up` with your usual flags: it publishes the site (from your company repository, which is
+   **not** in the backup), applies the routes and DNS and installs the backup timer. It keeps the restored admin
+   account.
+5. Check that the old server is gone, and review users, roles and API tokens: they are those of the backup, so anything
+   revoked since then is valid again.
 
-The snapshot is pinned on the first run (`--snapshot` to choose one) so a resume never mixes snapshots.
+The steps `can restore` runs (progress is kept in `/var/lib/can/restore-state.json`; after a failure fix the cause and
+run the same command again):
+
+1. **Check and fetch.** The server must be blank. The newest snapshot is chosen (rules below), restored into
+   `--staging` (default `/var/lib/can/restore-staging`; it needs room for the whole snapshot, and the volumes need it
+   again), every dump is hashed against the manifest, and the state database, company.yaml, Secrets export and ledger
+   are checked. Anything that would leave the restore incomplete stops it here, before the server is changed.
+2. **Dumps** are put in `/var/lib/can/dumps`, without a completion marker; company.yaml is written to `--dir`.
+3. **Platform**, with can-core in **restore mode**: it imports its state (admin password and TOTP seed preserved).
+   In restore mode there is no email, webhook delivery, dump run, module reconcile or admin UI (503). The mode is
+   latched on can-core's volume: re-applying manifests or restarting does not end it.
+4. **Secrets and modules.** The exported Secrets are re-created and every recorded module (disabled ones too) is
+   installed with 0 replicas, no seeding Jobs and no public routes.
+5. **Volume files** are copied into the new volumes (matched on `<namespace>_<claim>`, ownership preserved).
+6. **Restore hooks** load the module dumps (replace-all).
+7. **Erasure replay.** The ledger is read again, united with the copy in the snapshot, and each tombstone is applied by
+   the module that declares its data class: its `hooks.purge` script; `people`, `equity` and `board` by their own
+   `purge` command; `files` and `jobs` over `/v1/purge` while running without a route. can-core drops its queued
+   events, notifications and mail that name the subject.
+8. **Go live.** The ledger and the repository credentials are written to the server, queued mail is discarded (it may
+   already have been sent), sessions are deleted, can-core restarts normally and puts the modules' workloads and routes
+   back. A module that does not come up is reported; can-core keeps retrying it.
+
+Overrides, each separate and each printed when used:
+
+| Flag | Accepts |
+|---|---|
+| `--confirm-overwrite "<company name>"` | restoring over a server that is not blank. Its dumps, can-core state, Secrets and volumes of restored modules are **replaced**; the old state database is kept as `state.db.pre-restore`; modules not in the backup are left alone |
+| `--snapshot ID`, `--force-older` | choosing another snapshot; skipping a newer one that fails its consistency check |
+| `--without-secrets` | a snapshot made before the Secrets export: modules get new keys, sealed data is unreadable |
+| `--accept-unrestored <module or namespace/claim>` | a dump or volume that cannot be brought back (no restore hook, database not backed up, a database server's volume) |
+| `--accept-unerased <module:class>` | a tombstone no module can replay (`*:<class>` when no installed module holds the class). **You must erase that data by hand** |
+| `--allow-no-ledger` | no ledger in the bucket: only if no erasure was ever requested |
+| `--accept-ledger-behind` | the bucket ledger lacks entries the snapshot's copy has: erasures may be lost |
+| `--repo /path/restic` | a local copy of the repository instead of the bucket (its ledger is read from `/path/ledger`) |
+
+Snapshot choice: snapshots are walked newest first and every decision is printed. One tagged `inconsistent` is skipped,
+one not tagged `can` is ignored, a newer `can` snapshot that fails its marker check stops the restore, and a transient
+restic error while checking also stops it. The chosen snapshot is pinned for resumes.
+
+Which modules lose what, today: in-house modules without a backup hook come back from the raw copy of their SQLite files
+(which may be inconsistent if they were being written); `forms` and `finance` have no purge by subject and class, so
+tombstones of their classes need `--accept-unerased`.
 
 ## Erasure tombstone ledger
 
@@ -225,34 +257,32 @@ snapshot id and ledger length somewhere else (for example when you print the kit
 SPEC.md targets a restore onto a blank server in 15 minutes or less. This repository does not claim that number; it is
 measured by a person:
 
-1. Use a throwaway account and a company with realistic data (for example the seed from E02) and a bucket you may delete.
+1. Use a throwaway account, a company with realistic data and a bucket you may delete.
 2. Take a backup (`can backup run`), then `can backup verify`; note the repository size.
-3. Destroy the server (`can down --yes`) and, with a stopwatch running, start from the recovery kit on a laptop with only
-   the `can` binary: `can restore --kit kit.enc --passphrase-file p --dir ./restored`.
+3. Destroy the server (`can down --yes`). With a stopwatch running, follow the five points under "Restore".
 4. Stop at the first successful load of `https://<domain>/` and an admin login. Record wall-clock per step (the command
-   prints `[n/6]` lines to stderr) and the total.
+   prints `[n/8]` lines) and the total.
 5. Repeat three times, once with an empty ledger and once with at least one erasure, and note the provider, region, server
    type, data size and `can`/k3s/restic versions.
-6. Record the results in `specs/008-backup-restore/measurements.md` and update SPEC.md section 6.5 and section 10 with the
-   measured number. Until then the claim stays unproven.
+6. Record the results in `specs/042-restore/measurements.md` and update SPEC.md sections 6.5 and 10. Until then the
+   claim stays unproven.
 
 ## What is and is not in a snapshot
 
-- In: `can-core/state.db`, `company.yaml`, each module hook's dump, the local-path volumes (except can-core's
+- In: `can-core/state.db`, `can-core/secrets.json`, `company.yaml`, each module hook's dump, the local-path volumes (except can-core's
   live database and the SQLite files of the modules dumped in that run), a copy of the k3s datastore, node
   token and encryption key, the erasure ledger copy.
 - A module without a backup hook that keeps SQLite on a volume is covered only by the raw copy of live files, which
   may be inconsistent. `can backup install` warns. Every shipped module has a hook.
-- Not there: a separate export of Kubernetes Secrets (SPEC 6.5). Module keys exist only inside the k3s datastore
-  copy, so recovering them needs a raw datastore restore. Without them the sealed data of people, jobs, files,
-  finance, equity and board cannot be read.
-- Not there: the content of an S3 bucket used by files.
+- Not there: the site's content (it is built from your company repository), database servers' files, the content of an
+  S3 bucket used by files, and anything outside the platform's directories.
 
 ## Measured (k3d in CI)
 
 Workflow `make-up-e2e` (advisory) runs: dump request, the installed backup script against a local restic
 repository, `can backup status` and `verify`, and a restore of the dumps directory. `dev-cluster` (advisory) runs
-a module backup hook Job. The numbers are in
+a module backup hook Job. `restore-e2e` backs up a company, destroys the cluster and restores it onto a new one
+([specs/042-restore](../specs/042-restore/spec.md)). The numbers are in
 [specs/037-backup-dumps/measurements.md](../specs/037-backup-dumps/measurements.md).
 
 ## Not verified (honest list)
@@ -264,16 +294,18 @@ a module backup hook Job. The numbers are in
 - A real server: the systemd unit and timer (`ProtectSystem=strict`, `ReadWritePaths`), bootstrap's directory
   ownership, `apt` installing `sqlite3`, and the script reading the live k3s paths. CI runs the script on the
   runner against copies of the k3d node's directories.
-- **Restore.** `can restore` is not functional (the provisioning and can-core adapters return exit 3). Restoring
-  onto a blank host, importing can-core state, module `restore` hooks and PVC data have never run. can-core has no
-  restore mode: whoever implements it must keep dump runs off until the import is done.
+- **Restore on a real server**: creating the server, systemd (stopping an installed timer on an overwrite),
+  `--release-manifest` and `--images-from` image loading, a real k3s from the bootstrap script, a real bucket (CI uses
+  `--repo` with a local copy), database modules and their database server, restore hooks of the shipped wrapped
+  modules, purge replay of `equity`, `board`, `files` and `jobs` on a cluster, `--confirm-overwrite` on a cluster, and
+  disk use and duration with real data sizes.
 - The shipped script hooks (wiki, support, newsletter, analytics, crm, status): CI builds the `can-hooks` image and
   parses them in it, but the image is not published, so while one of these modules is enabled the dump run fails (and
   no marker is written); disabled, it is skipped. None of these hooks has run against its application. A release
   publishes the image (docs/releasing.md); until then there is nothing to pull.
-- In-house hooks on a cluster: forms, work and files only (`module-backup` in CI). jobs, people, finance and
-  provisioning are covered by unit tests; equity, board and entity cannot be installed by can-core yet. Restore ran
-  by hand on fresh instances (docker), not through can-core.
+- In-house hooks on a cluster: backup of forms, work and files (`module-backup` in CI), backup and restore through
+  `can restore` of forms, work and people (`restore-e2e`). jobs, finance and provisioning are covered by unit tests;
+  equity, board and entity cannot be installed by can-core yet.
 - `can-hooks` Jobs against a database module (DB credentials come from the `can-db` Secret). The wrapped
   database charts themselves still name a `can-database` Secret that can-core does not write.
 - Disk use: uploads are capped per file and per module and run, but there is no total quota on the dumps
