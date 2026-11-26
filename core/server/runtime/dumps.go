@@ -133,6 +133,20 @@ func (c Config) kubeHooks(api kube.API, db *store.DB) *dumps.KubeHooks {
 		}}
 }
 
+// neverInstalled reports a module that is recorded as failed and has no release record: can-core
+// writes Secret can-release only after a rollout succeeded, and opens routes only after that. Any
+// doubt (a read error) is "installed", so that the dump stays mandatory.
+func neverInstalled(api kube.API, db *store.DB) func(context.Context, string) bool {
+	return func(ctx context.Context, id string) bool {
+		m, err := db.GetModule(ctx, id)
+		if err != nil || m.State != store.StateFailed || !moduleDirRe.MatchString(id) {
+			return false
+		}
+		_, err = api.Get(ctx, "Secret", "mod-"+id, dumps.ReleaseSecret)
+		return kube.IsNotFound(err)
+	}
+}
+
 // newDumper builds the dump runner; hooks can only run (as Jobs) with the Kubernetes installer.
 func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error) {
 	record := func(ctx context.Context, id string) (store.Module, bool) {
@@ -166,6 +180,7 @@ func (c Config) newDumper(db *store.DB, log *slog.Logger) (*dumps.Dumper, error)
 			return nil, err
 		}
 		d.Hooks = c.kubeHooks(api, db)
+		d.NeverInstalled = neverInstalled(api, db)
 		d.Secrets = func(ctx context.Context) (*backup.SecretsExport, []string, error) {
 			mods, err := db.ListModules(ctx)
 			if err != nil {

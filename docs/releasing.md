@@ -6,7 +6,11 @@ written; **it has not yet run for real** (see "Status" at the end).
 
 ## What a release is
 
-A git tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on `main`. The tag is the only version: there is no version file. The
+A git tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on `main`. The tag is the version of the release and of the binaries.
+The module images have versions of their own, which the module charts pull:
+[core/modimages/images.txt](../core/modimages/images.txt) is the one place they are set. The release pushes each
+image under the release tag (`:vX.Y.Z`) and under its own version, which it never moves once published (and the release fails if the sources changed since); a
+pre-release does not publish the plain versions. The
 tag starts `.github/workflows/release.yml`, which, in order:
 
 1. **verify**: strict semver check, tag is an ancestor of `main`, `make test` (lint, unit, contract, licences),
@@ -35,6 +39,32 @@ what makes the build reproducible).
 - [ ] Branch protection on `main` applied; the five required checks are green on `main`.
 - [ ] Dependency graph, secret scanning and private vulnerability reporting enabled.
 - [ ] A dry run of this workflow succeeded and its artifacts were inspected.
+- [ ] After the first push of each image, make its GHCR package **public** (package settings > visibility). New
+      packages are private; servers pull anonymously, and `can up` / `can apply` refuse a module whose image
+      they cannot pull anonymously.
+
+## Image versions
+
+Before releasing, bump the version of **every image whose sources changed** since its version was published
+(shared code under `core/` and linked dependencies count). The release **fails before pushing** otherwise:
+`scripts/check-image-versions.sh` compares `scripts/image-source-digest.sh` (the linked files of this
+repository, module versions, the go directive, the Dockerfile) with the digest recorded as a label on the
+published image. Base images are not compared: a rebuild on a newer base does not need a new version, and does
+not reach the module charts without one. In the pull request that changes the service:
+
+```sh
+scripts/set-image-version.sh can-work X.Y.Z    # the list, the charts and the workflows
+```
+
+and bump `version` in the module's `module.yaml`: can-core upgrades an installed module when that or its
+settings change, not when only the image does. `test/contract/module_images_test.go` fails when a chart, a
+manifest or a workflow disagrees with the list.
+
+## Upgrade note: module internet access
+
+Modules reach the internet only when their manifest sets `runtime.internet_egress` (`support`, `newsletter`,
+`crm`, `status`, `provisioning`). Say so in the release notes of the first release that has this: a company's
+**own modules** that connect outside the cluster must add the flag, and `wiki` can no longer download plugins.
 
 ## Upgrade note: module upgrades and the leads view
 

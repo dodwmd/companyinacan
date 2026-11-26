@@ -270,7 +270,7 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	}
 	if !sf.provisionOnly {
 		// Everything that can be checked offline is checked before a server exists or is paid for.
-		if prep, err = t.stackPreflight(sf); err != nil {
+		if prep, err = t.stackPreflight(ctx, cmd.ErrOrStderr(), sf); err != nil {
 			return t.fail(err)
 		}
 	}

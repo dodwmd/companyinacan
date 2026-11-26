@@ -20,7 +20,7 @@ func (c Config) erasureCollector(db *store.DB, log *slog.Logger) (*erasure.Colle
 	if err != nil {
 		return nil, err
 	}
-	return &erasure.Collector{Modules: db.ListModules, API: api, Dir: c.DumpsDir, Log: log}, nil
+	return &erasure.Collector{Modules: db.ListModules, API: api, Dir: c.DumpsDir, Log: log, NeverInstalled: neverInstalled(api, db)}, nil
 }
 
 // erasureInterval is CAN_ERASURE_INTERVAL_SECONDS, default one minute.

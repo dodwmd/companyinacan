@@ -61,6 +61,8 @@ type Collector struct {
 	HTTP       *http.Client
 	Now        func() time.Time
 	Log        *slog.Logger
+	// NeverInstalled reports a module whose first install failed (see dumps.Dumper); nil: none.
+	NeverInstalled func(ctx context.Context, module string) bool
 }
 
 func (c *Collector) now() time.Time {
@@ -190,10 +192,14 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 			c.log().Warn("erasure feed: tombstones refused: a subject that is not an opaque id, or a data class the module does not declare", "module", m.ID, "count", rejected)
 		}
 		// A module recorded as failed may well have run, and erased, before: not being able to
-		// ask it is reported like any other.
-		if err == nil {
+		// ask it is reported like any other. Not so one whose first install never succeeded: a
+		// report would fail the erasure step of every backup over data that cannot exist.
+		switch {
+		case err == nil:
 			st.Collected = append(st.Collected, m.ID)
-		} else {
+		case c.NeverInstalled != nil && c.NeverInstalled(ctx, m.ID):
+			st.NotAsked = append(st.NotAsked, m.ID)
+		default:
 			st.Failed[m.ID] = err.Error()
 		}
 	}

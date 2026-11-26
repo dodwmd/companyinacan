@@ -53,7 +53,7 @@ ARGS ?=
 IMAGES_DIR ?= build/images
 IMAGES_FROM ?=
 
-images: ## build the can-core, can-static and can-forms images locally (podman or docker) into build/images
+images: ## build every in-house image and can-hooks locally (podman or docker) into build/images
 	sh scripts/build-images.sh $(IMAGES_DIR)
 
 up: ## make a live company: provision, k3s, can-core, site, forms, backup, DNS (IMAGES_FROM=build/images, SMTP_CREDENTIALS=file, ARGS=--plan to preview)

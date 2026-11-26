@@ -3,6 +3,13 @@
 A status-by-status overview of every module is in [docs/modules-catalogue.md](../docs/modules-catalogue.md).
 
 One directory per module: `module.yaml`, a Helm chart, hooks, and settings schema (see SPEC.md §4).
+
+**A module of your own that connects outside the cluster must set `runtime.internet_egress: true`.** Earlier
+releases allowed every module the internet; without the flag the module is applied once more and loses it.
+
+Two rules `test/contract` enforces: a module gets internet egress only when its manifest sets
+`runtime.internet_egress` (say why next to it), and an in-house chart names its image's version in
+`core/modimages/images.txt` (`scripts/set-image-version.sh`).
 Directories starting with `_` are examples and are not enabled or listed in THIRD_PARTY_LICENSES.
 
 | Module | Wraps | Licence | Idle RAM (manifest) | Database | Capability |

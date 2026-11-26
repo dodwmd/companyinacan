@@ -18,7 +18,7 @@ import (
 
 func newApplyCmd(g *globalOpts) *cobra.Command {
 	var modulesDir, statePath string
-	var dryRun, recordOnly, planOnly bool
+	var dryRun, recordOnly, planOnly, skipImageCheck bool
 	var approve []string
 	var kubeContext string
 	cmd := &cobra.Command{
@@ -47,6 +47,12 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "warning:", p.String())
 			}
 			if !dryRun && !recordOnly {
+				// Before anything changes: can the cluster get every enabled module's images?
+				if !skipImageCheck && !planOnly {
+					if err := applyImageCheck(cmd, resolveModulesDir(modulesDir, dir), kubeContext, desired.Company); err != nil {
+						return failure("%v", err)
+					}
+				}
 				// What can-core would do, before anything changes; approvals are recorded here.
 				notApplied, err := clusterPreview(cmd, filepath.Join(dir, "company.yaml"), kubeContext, approve, planOnly)
 				if err != nil {
@@ -147,6 +153,7 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&modulesDir, "modules-dir", "", "directory containing module manifests (default $CAN_MODULES_DIR, ./modules)")
 	cmd.Flags().StringVar(&statePath, "state", "", "recorded-state database (default <dir>/.can/state.db)")
+	cmd.Flags().BoolVar(&skipImageCheck, "skip-image-check", false, skipImageCheckHelp)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan and change nothing")
 	cmd.Flags().BoolVar(&recordOnly, "record-only", false, "update recorded state without deploying (development)")
 	cmd.Flags().BoolVar(&planOnly, "plan", false, "print what can-core in the cluster would do and change nothing")

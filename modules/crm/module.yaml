@@ -20,6 +20,8 @@ provider:
   upstream: https://github.com/espocrm/espocrm
   upstream_version: "10.x"
 runtime:
+  # Internet egress: sends its own mail and fetches mailboxes.
+  internet_egress: true
   chart: ./chart
   values: ./chart/values.yaml
   subdomain: crm

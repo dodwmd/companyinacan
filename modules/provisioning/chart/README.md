@@ -20,8 +20,9 @@ renderer (not Helm) and applied by its installer. Same templates as the other in
   `CAN_PROVISIONING_DIRECTORY_TOKEN`; without the people module the install is refused. Connector
   credentials are not generated and the installer refuses a reference to any other Secret, so there is
   no supported way yet to provide them.
-- **Egress.** The module namespace allows egress to DNS, can-core, Traefik and the databases only. The
-  module also needs the people module's API and its connectors' hosts.
+- **Egress.** The module namespace allows egress to DNS, can-core, Traefik, the databases and, because the
+  manifest sets `runtime.internet_egress`, the internet (the connectors' hosts). It does not allow the people
+  module's API, which this module also needs.
 
 ## What is verified
 

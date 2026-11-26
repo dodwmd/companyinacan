@@ -100,7 +100,8 @@ sender -> MX (provider) --POST /inbound--> Traefik --> support-adapter :8081
 ## What is verified offline
 
 The chart renders the credential `secretKeyRef`s as `optional`; the chart adds no NetworkPolicy
-beyond the same-namespace allow (so SMTP and IMAP egress rest on the base namespace policy); and
+beyond the same-namespace allow (SMTP and IMAP egress come from the module namespace policy, which allows the
+internet only because the module's manifest sets `runtime.internet_egress`); and
 the `/inbound` route exists only with the adapter (`test/contract/starter_modules_test.go`). Actual delivery, signature verification and DNS alignment are not
 verifiable without a relay and a domain and are listed as gaps in
 `specs/007-starter-modules/research.md`.

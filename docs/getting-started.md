@@ -78,7 +78,7 @@ creates the admin account and prints how to sign in ([make-up.md](make-up.md)). 
 make build
 bin/can init my-company --name "My Co" --domain myco.example --non-interactive   # writes my-company/company.yaml
 # edit my-company/company.yaml: provider type ssh, hetzner or digitalocean, with its options (providers.md)
-make images                                                  # builds can-core, can-static and can-forms
+make images                                                  # builds every in-house image; make up ships what is enabled
 make up ARGS="my-company --plan" IMAGES_FROM=build/images    # show every phase, change nothing
 make up ARGS=my-company IMAGES_FROM=build/images             # do it
 make status ARGS=my-company                                  # exit 0 only when the server and stack are up
@@ -94,9 +94,9 @@ Read these caveats first; they are the honest state of this path:
   k3s are exercised on k3d in CI. Server creation, the bootstrap script on a fresh OS, ACME and the five-minute
   target are unverified. If you try it, follow [real-server-verification.md](real-server-verification.md):
   `bin/can verify --server --company-dir my-company` runs the read-only checks.
-- **You get the site, the contact form and the admin UI, not the business modules.** Their images are not published
-  until a release. **Do not enable them yet**: a module whose image cannot be pulled stops every backup until you
-  disable it ([status.md](status.md#known-defects-an-operator-would-hit)).
+- **By default you get the site, the contact form and the admin UI.** To add a business module, list it under
+  `modules:` in `company.yaml` and run `make up` with `IMAGES_FROM=build/images` again. No image is published yet, and
+  no business module has run on a real server ([status.md](status.md)).
 - **The contact form is not on the generated pages.** It is at `https://<your site>/_forms/contact/form`; link to it
   yourself. The admin UI's Leads page has no credential on an install, so read messages through the notification
   email (needs a relay, [email.md](email.md)) or the forms API.

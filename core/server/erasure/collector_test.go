@@ -127,3 +127,18 @@ func TestFeedCredentialsAreGenerated(t *testing.T) {
 		}
 	}
 }
+
+// E06d: a module whose first install never succeeded is asked, but not being able to is no failure:
+// a failure would fail the erasure step of every backup.
+func TestCollectDoesNotReportANeverInstalledModule(t *testing.T) {
+	mods := []store.Module{module(t, "people", store.StateFailed), module(t, "jobs", store.StateFailed)}
+	c := &Collector{API: kube.NewFake(), Dir: t.TempDir(), Modules: func(context.Context) ([]store.Module, error) { return mods, nil },
+		NeverInstalled: func(_ context.Context, id string) bool { return id == "people" }}
+	st, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(st.NotAsked, []string{"people"}) || len(st.Failed) != 1 || st.Failed["jobs"] == "" {
+		t.Fatalf("not asked %v, failed %v", st.NotAsked, st.Failed)
+	}
+}
