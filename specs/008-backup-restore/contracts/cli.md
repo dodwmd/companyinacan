@@ -9,7 +9,7 @@ Exit codes follow `specs/001-project-foundation/contracts/cli.md`: 0 ok, 1 failu
 | `can backup verify [--sample N --read-data]` | `restic check`, restore sample to a temp dir, hash compare, temp dir removed |
 | `can backup kit --endpoint --bucket --credentials-file [--out F --passphrase-file F --dir D]` | Generate; print once after `show`/`saved`, or write an encrypted file; refuses git working trees |
 | `can backup install [--root R --kit F --passphrase-file F --enable --plan]` | Writes script, units, credential files; `restic init` only if no repository exists; `--enable` runs `systemctl daemon-reload` and `enable --now can-backup.timer` |
-| `can backup ledger-add --subject S --class C [--ledger F]` | Append a tombstone (opaque id, no PII) |
+| `can backup ledger-add --subject S --class C [--erased-at T] [--ledger F]` | Record that data has already been erased (opaque id, no PII); erases nothing |
 | `can backup ledger-import [--from D] [--ledger F]` | Add the erasures can-core collected to the host ledger; exit 1 when the collection is incomplete or old (specs/048-erasure-collection) |
 | `can backup ledger-sync [--ledger F --repo R ...]` | Merge the local ledger into the sealed bucket object (called by the script) |
 | `can restore --kit (not functional until the E03 adapters exist) <file\|-> [--plan --dir D --snapshot ID --force-older --force-host --force-volumes --accept-ledger-behind --allow-no-ledger --state F --root R --dumps-dir --pvc-root --staging --passphrase-file]` | Six-step restore, resumable; `--plan` is read-only |

@@ -497,21 +497,34 @@ func readKit(cmd *cobra.Command, path, passFile string) (*backup.Kit, error) {
 }
 
 func newLedgerAddCmd() *cobra.Command {
-	var ledger, subject, class string
+	var ledger, subject, class, erasedAt string
 	cmd := &cobra.Command{
 		Use:   "ledger-add",
-		Short: "Record an erasure tombstone in the local ledger (subject id and data class only; no PII)",
-		Args:  cobra.NoArgs,
+		Short: "Record in the local ledger that data has ALREADY BEEN erased (subject id and data class only; no PII)",
+		Long: `Record in the local erasure ledger that data has ALREADY BEEN erased. It erases nothing now: erase the
+data first. A restore applies the entry only to a backup whose data was copied before the time of erasure
+(--erased-at, default now); a later backup is taken to reflect it and nothing is purged from it.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			l := &backup.Ledger{Path: ledger}
-			e, added, err := l.Append(subject, class)
+			when := time.Now()
+			if erasedAt != "" {
+				t, err := time.Parse(time.RFC3339, erasedAt)
+				if err != nil || t.After(when) {
+					return usage("--erased-at is a past time such as 2026-03-04T15:00:00Z")
+				}
+				when = t
+			}
+			e, added, err := l.AppendAt(subject, class, when)
 			if err != nil {
 				return failure("%v", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "entry %d (%s, %s, %s) added=%v\n", e.Seq, e.Subject, e.Class, e.Date, added)
+			fmt.Fprintf(cmd.OutOrStdout(), "recorded as ALREADY ERASED at %s: a restore applies it only to data backed up before then\n", e.At)
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&erasedAt, "erased-at", "", "when the data was erased (RFC 3339; default now)")
 	cmd.Flags().StringVar(&ledger, "ledger", backup.DefaultSettings().LedgerSource, "ledger file")
 	cmd.Flags().StringVar(&subject, "subject", "", "opaque subject id")
 	cmd.Flags().StringVar(&class, "class", "", "data class")

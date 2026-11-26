@@ -184,6 +184,25 @@ func parseLedger(raw []byte) ([]Entry, int, error) {
 	return es, valid, VerifyChain(es)
 }
 
+// CheckEntry reports why the ledger would refuse e.
+func CheckEntry(e Entry) error {
+	switch {
+	case !subjectRe.MatchString(e.Subject):
+		return fmt.Errorf("erasure ledger: subject %q is not an opaque id (letters, digits, . _ : -; no PII)", e.Subject)
+	case !classRe.MatchString(e.Class):
+		return fmt.Errorf("erasure ledger: bad data class %q", e.Class)
+	case e.Module != "" && !moduleRe.MatchString(e.Module):
+		return fmt.Errorf("erasure ledger: bad module %q", e.Module)
+	}
+	if d, err := time.Parse("2006-01-02", e.Date); err != nil || d.Year() < 1970 {
+		return fmt.Errorf("erasure ledger: bad date %q", e.Date)
+	}
+	if at, ok := e.Erased(); e.At != "" && (!ok || at.UTC().Year() < 1970 || at.UTC().Year() > 9999) {
+		return fmt.Errorf("erasure ledger: bad time %q", e.At)
+	}
+	return nil
+}
+
 // Append records an erasure. Subject ids are only checked against a character
 // pattern: the ledger cannot know that an id is not personal data, so callers
 // must pass opaque ids.
@@ -194,7 +213,13 @@ func (l *Ledger) Append(subject, class string) (e Entry, added bool, err error) 
 	if l.Now != nil {
 		now = l.Now
 	}
-	t := now().UTC()
+	return l.AppendAt(subject, class, now())
+}
+
+// AppendAt records by hand that the data was erased at the given time: a restore replays it only
+// into data copied before then.
+func (l *Ledger) AppendAt(subject, class string, erased time.Time) (e Entry, added bool, err error) {
+	t := erased.UTC()
 	out, n, err := l.append([]Entry{{Subject: subject, Class: class, Date: t.Format("2006-01-02"), At: t.Format(time.RFC3339)}})
 	if err != nil {
 		return e, false, err
@@ -216,20 +241,8 @@ func (l *Ledger) AppendMany(in []Entry) (int, error) {
 // locked, so two processes (a timer and an operator) cannot fork the hash chain.
 func (l *Ledger) append(in []Entry) ([]Entry, int, error) {
 	for _, e := range in {
-		if !subjectRe.MatchString(e.Subject) {
-			return nil, 0, fmt.Errorf("erasure ledger: subject %q is not an opaque id (letters, digits, . _ : -; no PII)", e.Subject)
-		}
-		if !classRe.MatchString(e.Class) {
-			return nil, 0, fmt.Errorf("erasure ledger: bad data class %q", e.Class)
-		}
-		if _, err := time.Parse("2006-01-02", e.Date); err != nil {
-			return nil, 0, fmt.Errorf("erasure ledger: bad date %q", e.Date)
-		}
-		if _, ok := e.Erased(); e.At != "" && !ok {
-			return nil, 0, fmt.Errorf("erasure ledger: bad time %q", e.At)
-		}
-		if e.Module != "" && !moduleRe.MatchString(e.Module) {
-			return nil, 0, fmt.Errorf("erasure ledger: bad module %q", e.Module)
+		if err := CheckEntry(e); err != nil {
+			return nil, 0, err
 		}
 	}
 	l.mu.Lock()

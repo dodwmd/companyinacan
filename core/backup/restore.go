@@ -73,6 +73,8 @@ type EraseReport struct {
 	// Reflected counts the erasures older than the dump they would apply to: the dump already
 	// reflects them, so they are not replayed into it.
 	Reflected int `json:"reflected,omitempty"`
+	// SkippedByHand lists the entries made by hand among them.
+	SkippedByHand []string `json:"skipped_by_hand,omitempty"`
 	// Unapplied are "module:class" pairs ("*:class" when no installed module holds the class)
 	// for which tombstones exist but there is no way to replay them.
 	Unapplied []string `json:"unapplied,omitempty"`
@@ -1129,6 +1131,9 @@ func (o *Restore) stepErasure(ctx context.Context, st *restoreState) error {
 	}
 	if err != nil {
 		return err
+	}
+	for _, s := range rep.SkippedByHand {
+		o.say("NOT replayed, the backup was made after the time recorded: %s. If that data was not really erased by then, erase it by hand now", s)
 	}
 	for _, u := range rep.Unapplied {
 		o.say("WARNING: --accept-unerased: tombstones of %s were NOT replayed; erase that data by hand", u)

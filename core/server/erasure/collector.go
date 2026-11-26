@@ -46,6 +46,8 @@ var (
 	maxNewPerRun   = 5000            // entries added for one module in one run; the rest follow
 	maxModuleBytes = int64(8 << 20)  // of the ledger, for one module (about 30,000 erasures)
 	maxTotalBytes  = int64(56 << 20) // of the ledger, for all of them
+	maxRejected    = 1000            // refused tombstones after which a feed is given up
+	moduleDeadline = time.Minute     // for reading one module's feed, so that a slow one starves no other
 )
 
 // Collector reads the feeds and appends to the ledger under Dir (the dumps directory).
@@ -129,7 +131,9 @@ func (c *Collector) accept(m store.Module, t tombstone) (backup.Entry, bool) {
 		at = now
 	}
 	at = at.UTC()
-	return backup.Entry{Module: m.ID, Subject: t.Subject, Class: t.Class, Date: at.Format("2006-01-02"), At: at.Format(time.RFC3339)}, true
+	e := backup.Entry{Module: m.ID, Subject: t.Subject, Class: t.Class, Date: at.Format("2006-01-02"), At: at.Format(time.RFC3339)}
+	// One entry the ledger would refuse must not take the others down with it.
+	return e, backup.CheckEntry(e) == nil
 }
 
 // Collect reads every feed from the start (a restored module numbers its tombstones afresh, so no
@@ -150,7 +154,14 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 	for _, e := range have {
 		h.add(e)
 	}
-	var found []backup.Entry
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return st, err
+	}
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
+		return st, fmt.Errorf("%s is not a plain directory", dir)
+	}
+	ledger := &backup.Ledger{Path: filepath.Join(dir, backup.CollectedLedger), Now: c.Now}
+	total := 0
 	for _, m := range mods {
 		key, ok := feeds[m.ID]
 		switch {
@@ -163,9 +174,16 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 			st.NotAsked = append(st.NotAsked, m.ID)
 			continue
 		}
-		es, rejected, err := c.feed(ctx, m, key, h)
-		// What was read before a failure is still an erasure.
-		found = append(found, es...)
+		mctx, cancel := context.WithTimeout(ctx, moduleDeadline)
+		es, rejected, err := c.feed(mctx, m, key, h)
+		cancel()
+		// What was read before a failure is still an erasure; it is written before the next module
+		// is asked.
+		added, werr := ledger.AppendMany(es)
+		if werr != nil {
+			return st, werr
+		}
+		total += added
 		st.Rejected += rejected
 		if rejected > 0 {
 			c.log().Warn("erasure feed: tombstones refused: a subject that is not an opaque id, or a data class the module does not declare", "module", m.ID, "count", rejected)
@@ -181,18 +199,8 @@ func (c *Collector) Collect(ctx context.Context) (backup.CollectStatus, error) {
 	sort.Strings(st.Collected)
 	sort.Strings(st.NoFeed)
 	sort.Strings(st.NotAsked)
-	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return st, err
-	}
-	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
-		return st, fmt.Errorf("%s is not a plain directory", dir)
-	}
-	added, err := (&backup.Ledger{Path: filepath.Join(dir, backup.CollectedLedger), Now: c.Now}).AppendMany(found)
-	if err != nil {
-		return st, err
-	}
-	if added > 0 {
-		c.log().Info("erasures added to the ledger", "count", added)
+	if total > 0 {
+		c.log().Info("erasures added to the ledger", "count", total)
 	}
 	st.At = c.now().UTC()
 	return st, writeStatus(filepath.Join(dir, backup.CollectedStatusFile), st)
@@ -251,10 +259,14 @@ func (c *Collector) feed(ctx context.Context, m store.Module, tokenKey string, h
 			next = max(next, t.Seq)
 			e, ok := c.accept(m, t)
 			if !ok {
-				rejected++
+				if rejected++; rejected >= maxRejected {
+					return out, rejected, errors.New("too many refused tombstones: the rest of its feed was not read")
+				}
 				continue
 			}
-			if latest, ok := h.latest[target(e.Module, e.Subject, e.Class)]; ok && e.At <= latest {
+			latest, seen := h.latest[target(e.Module, e.Subject, e.Class)]
+			// A feed that gives no time must not add the same erasure again every run.
+			if seen && (e.At <= latest || (t.At == "" && len(latest) >= 10 && e.Date <= latest[:10])) {
 				continue
 			}
 			if len(out) >= maxNewPerRun {

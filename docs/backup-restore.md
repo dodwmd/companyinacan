@@ -285,16 +285,22 @@ refused, counted and reported with exit 22, never written or logged.
 
 **What a module may order.** Its feed is taken only for the data classes its manifest declares (`board` and
 `entity` also for `board-private` and `entity-person`, which one binary writes), each entry names the module that
-reported it, and a restore applies it to that module alone. Each module has a bounded share of the ledger (8 MiB,
+reported it, and a restore applies it to that module alone. One module's feed is read for at most a minute, and given up
+after 1,000 refused tombstones. Each module has a bounded share of the ledger (8 MiB,
 about 30,000 erasures, 5,000 new a minute; 56 MiB in all). A full share is reported like an unreadable feed. The
 ledger is never compacted, so a very large company would reach this after years.
 
 **What a restore replays.** Each entry says when the data was erased. A module dump taken after that already
 reflects the erasure and may hold data created since for the same subject, so **nothing is purged from it**; only
-erasures made after the dump (its `manifest.json`, else the start of the dump run) are replayed. `files` records the
-ids of the erased files, never the data subject. An entry added by hand is dated when it was added: a snapshot made
-after that is left alone. Entries without a time (added by an earlier release) are always replayed. Two limits:
-an erasure made while a module's own database was being copied is replayed although the copy reflects it; and if a
+erasures made after the dump (its `manifest.json`, else the start of the dump run), or less than a minute before
+it, are replayed. A dump carried over from an earlier run without a `manifest.json` (a script hook's) is of unknown
+age: the restore stops for it (`--accept-unerased`) rather than guess. can-core's own derived copies (queued events,
+notifications, mail) are removed whenever the subject was erased. `files` records the
+ids of the erased files, never the data subject. **`can backup ledger-add` records data that has already been erased** (it
+erases nothing): dated now, or `--erased-at <RFC 3339 time>`. A snapshot made after that time is left alone, and
+the restore lists each such entry as `NOT replayed`: erase the data by hand if it was not really gone. Entries without a time (added by an earlier release) are always replayed. Two limits:
+an erasure made in the minute before, or while, a module's database was copied is replayed although the copy may
+reflect it, which takes data created for the same subject in between; and if a
 restore was told `--accept-unerased`, later backups are taken as reflecting those erasures, so they are not asked
 again: erase that data by hand.
 
@@ -312,7 +318,7 @@ run fails with exit 22.
 - **Modules without an erasure feed record nothing**: `finance`, `work`, `forms`, `provisioning` and the wrapped apps
   (`crm`, `wiki`, `support`, `newsletter`, `status`, `analytics`). Each run of `ledger-import` names the installed ones
   that hold data classes. Something erased in them is **back** after a restore of an older backup. If a purge hook can
-  replay it, record it by hand: `can backup ledger-add --subject <id> --class <data class>`.
+  replay it, erase there and record it: `can backup ledger-add --subject <id> --class <data class>`.
 - **The window.** An erasure made less than about a quarter of an hour before the server is lost may not have reached
   the bucket. A failing collection or upload (exit 22, journal, webhook) makes the window as long as it lasts.
 - A module that is disabled is not asked; what was collected while it ran stays. An erasure made in the last minute

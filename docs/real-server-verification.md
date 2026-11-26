@@ -153,6 +153,10 @@ Put a `can` built from the same commit on the server (the erasure ledger upload 
 form twice, with names you will recognise: `keep-me` and `erase-me`. In the admin UI, Leads, open `erase-me` and
 note the id in its address (`/leads/<id>`).
 
+The forms module cannot erase one lead, so this is a drill: `ledger-add` records an erasure as **already done**
+(it erases nothing), and here it is not. It is only there to show that the ledger comes back from the bucket and
+that a restore refuses to go live over an entry it cannot replay.
+
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o can-linux ./cmd/can
 scp can-linux $S:/usr/local/bin/can
@@ -183,6 +187,14 @@ Do not go on until every line is true:
 - `can backup status` and `can backup verify` on the server both exit 0, **today**, after the last change.
 - The recovery kit is saved in your password manager, and you have written it to a file `kit.txt` (mode 0600,
   outside any repository). Without it the backup cannot be read.
+- You have recorded the drill's entry **again, after the last dump run**, and backed up without a new dump:
+
+  ```sh
+  ssh $S 'can backup ledger-add --subject LEAD_ID --class lead-submission && systemctl start can-backup.service'
+  ```
+
+  A restore applies an entry only to data backed up before the time recorded. The nightly dump run (02:30) after
+  4.1 made a dump newer than the first entry, which a restore would list as `NOT replayed` and go on.
 - You have copied what the new server needs: `scp $S:/usr/local/bin/restic restic-linux` (Ubuntu's packaged
   restic is too old), and you still have `can-linux`, `build/images` and your company directory.
 
@@ -224,10 +236,11 @@ contact-form entry cannot be honoured after (or before) a restore except by edit
 Certificates are not in the backup: new ones are issued. Any other module with data you enabled must have come
 back too.
 
-**What this does not test:** that a purge is actually replayed. Only people, equity, board, files and jobs can
-replay one, and their images are not built by `make images`. If you have release images, enable `people`, create
-and erase a former person (`POST /v1/people/{id}/erasure`), add each returned class with `ledger-add` before the
-backup, and check the person is still erased after the restore ([people.md](people.md)).
+**What this does not test:** that a purge is actually replayed. Only people, equity, board, entity, files and jobs
+can replay one, and their images are not built by `make images`. If you have release images, enable `people`, take
+a backup holding a former person, then erase them (`POST /v1/people/{id}/erasure`): do **not** add them with
+`ledger-add`, can-core records it. Wait for `systemctl start can-erasure-sync.service` (or 15 minutes), restore
+the snapshot made before the erasure, and check the person is still erased ([people.md](people.md)).
 
 **From here on, "the server" is the restored one**: `$S` is the new address, the `sslip.io` names have changed,
 and `.can/state.json` points at it. Run `bin/can verify --server --company-dir ../verify-co --probe-public` now;

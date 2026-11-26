@@ -92,9 +92,9 @@ func TestReplayGoesToTheReportingModuleOnly(t *testing.T) {
 	}
 }
 
-// can-core's derived copies are only dropped for what its own dump does not reflect, and a module's
-// report reaches only what that module sent.
-func TestCoreCleanupIsBounded(t *testing.T) {
+// can-core's derived copies go whenever the subject was erased (nothing removed them from its dump),
+// and a module's report reaches only what that module sent.
+func TestCoreCleanupIgnoresTimeButNotTheSource(t *testing.T) {
 	ctx := context.Background()
 	o, _, _ := ops(t, module("people", "enabled", classes("directory-basic")), module("equity", "enabled", classes("equity-grants")))
 	if err := backup.WriteDumpRun(o.DumpsDir, backup.DumpRun{RunID: "20260610T023000Z-abcd", OK: true}); err != nil {
@@ -108,7 +108,7 @@ func TestCoreCleanupIsBounded(t *testing.T) {
 		erasedAt("people", "pers_old", "directory-basic", "2026-06-01T10:00:00Z"),
 		erasedAt("equity", "stk_1", "equity-grants", "2026-06-11T10:00:00Z"),
 	}, nil)
-	if err != nil || rep.CoreRows != 1 {
+	if err != nil || rep.CoreRows != 2 {
 		t.Fatalf("%v %+v", err, rep)
 	}
 }
