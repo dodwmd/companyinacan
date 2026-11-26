@@ -15,7 +15,7 @@ help: ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
 build: ## build bin/can, bin/can-static and bin/can-core
-	$(GO) build -ldflags '$(LDFLAGS)' -o bin/can ./cmd/can
+	CGO_ENABLED=0 $(GO) build -ldflags '$(LDFLAGS)' -o bin/can ./cmd/can
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-static ./cmd/can-static
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '-s -w' -o bin/can-core ./cmd/can-core
 
