@@ -38,6 +38,8 @@ func verifyOnK3d(t *testing.T, domain string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+	diag, _ := nodeRunner{}.Run(ctx, "echo KUBECONFIG=$KUBECONFIG; ls -l /etc/rancher/k3s /output 2>&1; command -v k3s kubectl; k3s kubectl get nodes 2>&1 | head -5")
+	t.Logf("verify: the node's kubectl:\n%s", diag)
 	checks, facts := verify.CollectServer(ctx, nodeRunner{}, verify.ServerOptions{})
 	routes := facts.Routes()
 	edgeNet := verify.Net{Now: time.Now, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {

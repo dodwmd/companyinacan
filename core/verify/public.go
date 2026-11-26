@@ -149,34 +149,31 @@ func (n Net) certificate(ctx context.Context, addr, host string) string {
 		return "cannot connect to 443"
 	}
 	defer func() { _ = raw.Close() }()
-	// Verification is done below, to say why it failed.
-	c := tls.Client(raw, &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}) //nolint:gosec // verified below
+	c := tls.Client(raw, &tls.Config{ServerName: host, RootCAs: n.Roots, Time: n.Now, MinVersion: tls.VersionTLS12})
 	if err := c.HandshakeContext(ctx); err != nil {
-		return "TLS handshake failed"
+		return whyUntrusted(err)
 	}
-	peers := c.ConnectionState().PeerCertificates
-	if len(peers) == 0 {
-		return "no certificate"
-	}
-	leaf := peers[0]
-	if leaf.Subject.CommonName == "TRAEFIK DEFAULT CERT" {
-		return "Traefik's default certificate: none was issued (kubectl -n kube-system logs deploy/traefik)"
-	}
-	inter := x509.NewCertPool()
-	for _, p := range peers[1:] {
-		inter.AddCert(p)
-	}
-	if _, err := leaf.Verify(x509.VerifyOptions{DNSName: host, Roots: n.Roots, Intermediates: inter, CurrentTime: n.Now()}); err != nil {
-		var unknown x509.UnknownAuthorityError
-		if errors.As(err, &unknown) {
-			return "not signed by a trusted authority (a staging certificate?)"
-		}
-		return "not valid for this name or expired"
-	}
+	leaf := c.ConnectionState().PeerCertificates[0]
 	if left := leaf.NotAfter.Sub(n.Now()); left < minCertLife {
 		return fmt.Sprintf("expires in %d days: renewal is not working", int(left.Hours()/24))
 	}
 	return ""
+}
+
+// whyUntrusted says why a verified handshake failed, without repeating names from the certificate.
+func whyUntrusted(err error) string {
+	var refused *tls.CertificateVerificationError
+	if !errors.As(err, &refused) {
+		return "TLS handshake failed"
+	}
+	if len(refused.UnverifiedCertificates) > 0 && refused.UnverifiedCertificates[0].Subject.CommonName == "TRAEFIK DEFAULT CERT" {
+		return "Traefik's default certificate: none was issued (kubectl -n kube-system logs deploy/traefik)"
+	}
+	var unknown x509.UnknownAuthorityError
+	if errors.As(err, &unknown) {
+		return "not signed by a trusted authority (a staging certificate?)"
+	}
+	return "not valid for this name or expired"
 }
 
 // siteRoute is the first public-site host (not the admin UI, not a module).
