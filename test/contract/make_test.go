@@ -45,3 +45,23 @@ func TestMakeDevTargets(t *testing.T) {
 		}
 	}
 }
+
+// `can up` puts the running binary on the server only if it is static (specs/061-can-on-server);
+// outside a checkout there is no other source, so `make build` must build it like a release.
+func TestMakeBuildsAStaticCan(t *testing.T) {
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make not installed")
+	}
+	cmd := exec.Command("make", "-n", "build")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("make -n build: %v %s", err, out)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "-o bin/can ") && strings.HasPrefix(line, "CGO_ENABLED=0 ") {
+			return
+		}
+	}
+	t.Fatalf("bin/can is not built with CGO_ENABLED=0:\n%s", out)
+}

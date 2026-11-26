@@ -115,6 +115,41 @@ func TestRestoreClusterCompleteVerifiesNormalMode(t *testing.T) {
 	}
 }
 
+// An exposed module cannot start before `can up` writes the routing facts: the restore says so
+// instead of waiting for it, and still waits for a module that is stopped for another reason.
+func TestRestoreClusterCompleteDoesNotWaitForRoutes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		problem, want string
+		polls         int
+	}{
+		"routes":  {`[{"id":"work","state":"enabled","error":"ConfigMap can-system/can-routing does not exist, so nothing can be routed: run can up"}]`, `module "work" is restored and starts when`, 1},
+		"another": {`[{"id":"work","state":"failed","error":"image not found"}]`, `module "work" has not come up yet`, 3},
+	} {
+		// can-core says "restoring" until it is told to complete and restarted.
+		k := &fakeKube{rules: []kubeRule{
+			{contains: "restore status", out: "restoring r1\n", times: 1},
+			{contains: "restore status", out: "normal restored r1\n"},
+			{contains: "restore complete", out: `{"modules":["work"]}`},
+			{contains: "restore serving", out: "normal\n"},
+			{contains: "get configmap company", out: "name: A\ndomain: a.example\n"},
+			{contains: "modules problems", out: tc.problem},
+			{contains: "get deployments,statefulsets", out: "0/\n"},
+		}}
+		c := restoreCluster(k)
+		var out bytes.Buffer
+		c.Out = &out
+		if err := c.Complete(context.Background()); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !strings.Contains(out.String(), tc.want) {
+			t.Errorf("%s: %q not in\n%s", name, tc.want, out.String())
+		}
+		if n := strings.Count(k.joined(), "get deployments,statefulsets"); n != tc.polls {
+			t.Errorf("%s: %d polls, want %d", name, n, tc.polls)
+		}
+	}
+}
+
 func TestRestoreClusterMode(t *testing.T) {
 	for want, rules := range map[string][]kubeRule{
 		"":             {{contains: "get deployment can-core", out: ""}},

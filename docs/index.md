@@ -68,6 +68,7 @@ and the code is the truth.
 | [../SECURITY.md](../SECURITY.md) | Reporting a vulnerability |
 | [../specs/](../specs/) | One directory per feature: spec, plan, research, data model, contracts, tasks |
 | [measurements/phase0-ci.md](measurements/phase0-ci.md) | The measured idle memory of k3s and the first two services, and the network-policy proofs |
+| [measurements/acceptance.md](measurements/acceptance.md) | The whole journey in CI, from `can init` to a restored company: timings, node memory, what it found |
 | [measurements/footprint.md](measurements/footprint.md) | Per-service memory before and after, method, CI budgets, and the 2 GB question |
 
 ## Checking the docs
