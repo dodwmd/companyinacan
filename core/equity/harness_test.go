@@ -89,6 +89,7 @@ func (e *env) base() *env {
 	e.plan = m(e.s.CreatePlan(e.ctx, e.board, e.ent.ID, PlanInput{Name: "2026 Plan", ClassID: e.class.ID, Authorised: q(1_000_000), AdoptedOn: "2026-01-01"}))
 	e.eveStk = m(e.s.CreateStakeholder(e.ctx, e.hr, e.ent.ID, StakeholderInput{Kind: "employee", PersonID: personEve, Identity: Identity{Name: "Eve Example", Email: "eve@example.test"}}))
 	e.founder = m(e.s.CreateStakeholder(e.ctx, e.fin, e.ent.ID, StakeholderInput{Kind: "founder", Identity: Identity{Name: "Fran Founder"}}))
+	e.founder = m(e.s.AttestExternal(e.ctx, e.hr, e.founder.ID)) // shares go only to a linked or attested holder
 	return e
 }
 

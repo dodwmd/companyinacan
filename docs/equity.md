@@ -107,7 +107,16 @@ variant are one person.
   directory person id is that of a holder in the entry (either side of a transfer). That is the **only** holder
   check on ledger writes, and it can apply only to a caller that carries a `person_id`: for every other caller
   (the service accounts, every can-core personal access token, an introspected token without the claim) there is
-  **no** holder separation-of-duties check at all. No ledger write needs a second person.
+  **no** holder separation-of-duties check at all. A refused entry is audited.
+- Shares are issued or transferred by a manual entry only to a recipient the service can tie to a person: with a
+  directory `person_id`, or attested external by someone other than who created the record (the rule for grants
+  below; 409 otherwise). So a second, unlinked record of one's own cannot receive shares unnoticed; founders
+  and investors without a link need that attestation before their first issuance. It relies on the attester's
+  honesty, and rows already in the ledger are not affected. Apart from that attestation, no manual ledger
+  write needs a second person, and cancellations and the sending side of a transfer need no link.
+- Nobody erases their own stakeholder record (`separation_of_duties`, audited): erasure removes the
+  `person_id` these checks compare. After another administrator has erased it, the record has no link and the
+  former holder is not recognised on it. Like the rest, this needs a caller with a `person_id`.
 - Facts that change what has vested (milestones, acceleration triggers, termination) need a second
   actor: not the person who created, edited, submitted or approved the grant. They are refused if dated
   before the grant's approval date, in the future, or more than 90 days back.
@@ -266,7 +275,8 @@ be configured as `legal`.
 legal record and are kept. Erasure therefore pseudonymises: the stakeholder's name, email, tax id and
 person link are removed and the row stays as an opaque id (`[erased]`); free-form grant notes and payment
 references are cleared; draft grants and cached idempotency keys are deleted; open exercise requests are
-cancelled. The response lists what was retained and why. Erasure is refused while a legal hold is set
+cancelled. The response lists what was retained and why. Erasure is refused to the holder themself (see
+separation of duties), while a legal hold is set
 (admin sets and lifts holds) and while the stakeholder has pending, approved or active grants (cancel or
 end them first). It writes tombstones (`stk_` subject, classes `equity-stakeholder` and `equity-grants`)
 that can-core pulls into the E08 erasure ledger so a restore re-applies the erasure, then checkpoints and
@@ -346,7 +356,8 @@ The table stores resource ids only, so a replay re-reads the record under the ca
   exercise actions above. Share ledger writes are different: they are refused only when the caller's `person_id`
   is a holder's, so no caller without a `person_id` gets any holder separation-of-duties check on them, whether a
   personal access token, a service account or a human token. Do not give ledger permissions to such a caller
-  when its owner also holds equity.
+  when its owner also holds equity. The same goes for erasure: a caller without a `person_id` is not recognised
+  as the holder.
 - **One human, two subjects.** Subjects are compared after folding, but two different subjects for the
   same human (a personal and an admin account) are two people to the service unless both carry the same
   `person_id`.

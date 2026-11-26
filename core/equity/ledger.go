@@ -152,6 +152,11 @@ func (s *Service) ledgerWrite(ctx context.Context, a Actor, entityID, route, ide
 			return s.auditIn(ctx, tx, a, route, "ledger:"+id, []string{FieldHoldings})
 		})
 		if err != nil {
+			// A refused entry is on record like other refusals; the transaction is already gone.
+			var refused *ConflictError
+			if errors.Is(err, ErrSeparation) || errors.As(err, &refused) {
+				s.auditDeny(ctx, a, route, "entity:"+entityID, []string{FieldHoldings})
+			}
 			return "", err
 		}
 		return id, nil
@@ -178,6 +183,22 @@ func guardHolders(ctx context.Context, q querier, a Actor, stakeholderIDs ...str
 	return nil
 }
 
+// requireHolderLink is the grant rule (holderLink) for whoever receives shares by a manual entry:
+// the stakeholder must be tied to a directory person, which guardHolders can compare, or have been
+// attested as external by a second actor. Otherwise a holder could be issued shares through a
+// second record of their own that nothing links to them. Call it after appendLedger, which refuses
+// unknown, foreign and erased holders.
+func requireHolderLink(ctx context.Context, q querier, stakeholderID string) error {
+	var person, attester string
+	if err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), IFNULL(external_attested_by, '') FROM stakeholders WHERE id = ?`, stakeholderID).Scan(&person, &attester); err != nil {
+		return err
+	}
+	if person == "" && attester == "" {
+		return conflict("the recipient is not linked to a directory person: set person_id, or have a second person attest the holder as external (not a director or approver) before shares can be issued or transferred to them")
+	}
+	return nil
+}
+
 // IssueNewShares records an issuance of shares to a holder. finance or admin. The returned
 // id is the ledger entry.
 func (s *Service) IssueNewShares(ctx context.Context, a Actor, entityID string, in LedgerInput, idemKey string, body []byte) (string, bool, error) {
@@ -188,8 +209,12 @@ func (s *Service) IssueNewShares(ctx context.Context, a Actor, entityID string, 
 		if err := guardHolders(ctx, tx, a, in.StakeholderID); err != nil {
 			return "", err
 		}
-		return s.appendLedger(ctx, tx, ledgerRow{entityID: entityID, classID: in.ClassID, stakeholderID: in.StakeholderID, kind: "issuance", date: in.EffectiveDate,
+		id, err := s.appendLedger(ctx, tx, ledgerRow{entityID: entityID, classID: in.ClassID, stakeholderID: in.StakeholderID, kind: "issuance", date: in.EffectiveDate,
 			qty: in.Quantity, priceMinor: in.PriceMinor, currency: in.Currency, by: canonSubject(a.Subject)})
+		if err != nil {
+			return "", err
+		}
+		return id, requireHolderLink(ctx, tx, in.StakeholderID)
 	})
 }
 
@@ -215,7 +240,7 @@ func (s *Service) TransferShares(ctx context.Context, a Actor, entityID string, 
 			qty: in.Quantity, priceMinor: in.PriceMinor, currency: in.Currency, groupID: group, by: canonSubject(a.Subject)}); err != nil {
 			return "", err
 		}
-		return out, nil
+		return out, requireHolderLink(ctx, tx, in.ToID)
 	})
 }
 

@@ -20,7 +20,8 @@ func (txFailAuditor) RecordTx(context.Context, *sql.Tx, []AuditEvent) error {
 
 func TestUnlinkedHolderCannotBeUsedToSidestepTheBoardCheck(t *testing.T) {
 	e := newEnv(t).base()
-	// a stakeholder with no directory person: the founder created by finance
+	// a stakeholder with no directory person, not yet attested, created by finance
+	e.founder = m(e.s.CreateStakeholder(e.ctx, e.fin, e.ent.ID, StakeholderInput{Kind: "founder", Identity: Identity{Name: "Una Linked"}}))
 	id := e.draft(e.hr, e.founder.ID, q(10))
 	if _, err := e.s.SubmitGrant(e.ctx, e.hr, id); !isErr(err, ErrConflict) {
 		t.Fatalf("submitting a grant for an unlinked holder: %v", err)
