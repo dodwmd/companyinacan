@@ -57,10 +57,11 @@ func (s SkippedModule) DatabaseServer() bool {
 
 // Message says what the skip means for the operator.
 func (s SkippedModule) Message() string {
+	// What is at stake comes first: alerts are cut to a fixed length and the reason can be long.
 	m := fmt.Sprintf("module %q was NOT dumped: %s.", s.ID, s.Reason)
 	switch {
 	case s.DatabaseServer():
-		m += " Its DATABASE IS NOT BACKED UP (copies of a running database server's files are not a usable backup)."
+		m = fmt.Sprintf("module %q: DATABASE IS NOT BACKED UP (copies of a running database server's files are not a usable backup). It was NOT dumped: %s.", s.ID, s.Reason)
 	case s.NoData:
 		m += " Nothing new of it is backed up."
 	default:

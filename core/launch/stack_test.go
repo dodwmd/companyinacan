@@ -448,7 +448,7 @@ func (h *hostFake) Run(_ context.Context, script string) (string, error) {
 		}
 		return "", nil
 	}
-	return "CAN_BACKUP_OK\nCAN_IMAGE_OK\n", nil
+	return "CAN_BACKUP_OK\nCAN_IMAGE_OK\nCAN_CREDS_OK\n", nil
 }
 
 func (h *hostFake) Copy(_ context.Context, p string, b []byte, _ string) error {
@@ -649,7 +649,7 @@ func TestBackupResumeRebuildsKitFromHostWhenNotShown(t *testing.T) {
 		t.Fatalf("an interrupted run must hand over the same kit the host already uses: %+v", res.Kit)
 	}
 	for p := range h.copied {
-		if p != "/etc/can/backup.d/restic.env" { // the credentials file follows the flags
+		if p != "/etc/can/backup.d/restic.env" && p != "/etc/can/backup.d/restic.env.new" { // the credentials file follows the flags, tried first
 			t.Fatalf("nothing is reinstalled: %s", p)
 		}
 	}

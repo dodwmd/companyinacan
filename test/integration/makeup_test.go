@@ -83,7 +83,7 @@ func (h *recHost) Run(_ context.Context, script string) (string, error) {
 		}
 		return body, nil
 	}
-	return "CAN_BACKUP_OK\n", nil
+	return "CAN_BACKUP_OK\nCAN_CREDS_OK\n", nil
 }
 
 func (h *recHost) Copy(_ context.Context, p string, b []byte, _ string) error {
