@@ -44,6 +44,10 @@ type Store struct {
 	approver Approver
 	// core is can-core's approvals engine when the module runs installed (nil standalone).
 	core modclient.Approvals
+	// downloads holds the slots for export downloads, each of which holds one batch file in memory; a request
+	// waits downloadWait for one.
+	downloads    chan struct{}
+	downloadWait time.Duration
 	// sealer seals bank account numbers (nil when CAN_FINANCE_SEAL_KEY is not set).
 	sealer *Sealer
 }
@@ -63,7 +67,8 @@ func OpenStore(path string) (*Store, error) {
 	// One connection: serialises writes (so counters and rank neighbours cannot race) and
 	// keeps idle memory minimal.
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db, now: time.Now, kick: make(chan struct{}, 1), base: "USD", approver: ScopeApprover{}}
+	s := &Store{db: db, now: time.Now, kick: make(chan struct{}, 1), base: "USD", approver: ScopeApprover{},
+		downloads: make(chan struct{}, exportDownloads), downloadWait: exportDownloadWait}
 	if err := s.migrate(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)

@@ -1,10 +1,10 @@
 package finance
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Handlers of the accounting API (E15c). Every route is registered in api.go with a finance.ledger.*
@@ -308,12 +308,17 @@ func (a *api) downloadExport(w http.ResponseWriter, r *http.Request, p *Principa
 	if !ok {
 		return
 	}
+	wait := time.NewTimer(a.store.downloadWait)
+	defer wait.Stop()
 	select {
-	case a.downloads <- struct{}{}:
-		defer func() { <-a.downloads }()
-	case <-r.Context().Done():
-		a.fail(w, context.DeadlineExceeded)
+	case a.store.downloads <- struct{}{}:
+		defer func() { <-a.store.downloads }()
+	case <-wait.C:
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusServiceUnavailable, "busy", "other exports are being downloaded; try again shortly")
 		return
+	case <-r.Context().Done():
+		return // the client has gone
 	}
 	b, content, err := a.store.ExportContent(r.Context(), p, id)
 	if err != nil {

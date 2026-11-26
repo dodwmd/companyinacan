@@ -41,4 +41,4 @@ whatever the permission, and the same `403` for an id that exists or not).
 ## Errors
 
 The finance conventions: `400` malformed, `401`, `403` scope or separation of duties (`separation_of_duties`), `404`, `409` conflict (`period_locked` for a closed ledger), `412`, `413` body over
-`max_body_bytes`, `422` invalid fields (a rejected statement file is `422` with `file` and a message that never quotes the file or an account number), `429`, `501` adapter stub, `503` not configured or timed out.
+`max_body_bytes`, `422` invalid fields (a rejected statement file is `422` with `file` and a message that never quotes the file or an account number), `429`, `501` adapter stub, `503` not configured, timed out, or (export download) busy with `Retry-After`.

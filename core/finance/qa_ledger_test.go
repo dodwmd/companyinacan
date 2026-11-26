@@ -803,3 +803,25 @@ func TestQA3ForceWithAnotherMappingIsRefused(t *testing.T) {
 		t.Errorf("%+v, %d rows", r, e.bankRows())
 	}
 }
+
+// QA round 3, 4: with every download slot taken, a request is told to come back instead of outliving the server's
+// write timeout.
+func TestQA3DownloadWaitIsBounded(t *testing.T) {
+	e := newEnv(t)
+	if exportDownloadWait >= newServer(nil).WriteTimeout/2 {
+		t.Errorf("the wait %s is too close to the write timeout", exportDownloadWait)
+	}
+	s := e.app.store
+	s.downloadWait = 20 * time.Millisecond
+	for range exportDownloads {
+		s.downloads <- struct{}{}
+	}
+	code, hdr, body := e.req(adminTok, "GET", "/v1/ledger/exports/1/download", nil)
+	if code != 503 || hdr.Get("Retry-After") == "" {
+		t.Fatalf("busy = %d %q %s", code, hdr.Get("Retry-After"), body)
+	}
+	<-s.downloads
+	if code, _, _ := e.req(adminTok, "GET", "/v1/ledger/exports/1/download", nil); code != 404 {
+		t.Errorf("with a free slot = %d, want 404 for a batch that does not exist", code)
+	}
+}

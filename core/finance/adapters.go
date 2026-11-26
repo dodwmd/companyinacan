@@ -30,6 +30,9 @@ const (
 	exportMaxBytes  = 2 << 20
 	// exportDownloads is how many batch files may be in memory for downloading at once; others wait.
 	exportDownloads = 2
+	// exportDownloadWait bounds the wait for a slot. It is well under the server's 30 s write timeout, so a
+	// waiter gets an answer it can act on instead of a dropped connection.
+	exportDownloadWait = 5 * time.Second
 )
 
 // PayrollDisclaimer is returned with every payroll import and printed in docs/accounting.md.
