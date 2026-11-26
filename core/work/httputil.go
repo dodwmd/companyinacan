@@ -202,7 +202,9 @@ func (l *rateLimiter) allow(key string) (bool, time.Duration) {
 // (appended by that proxy) is used, never a client-supplied left-most one.
 func clientIP(r *http.Request, trustProxy bool) string {
 	if trustProxy {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Header lines, not Get: Get returns the first line, which the client may have sent.
+		if vs := r.Header.Values("X-Forwarded-For"); len(vs) > 0 {
+			xff := vs[len(vs)-1]
 			parts := strings.Split(xff, ",")
 			if ip := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(ip) != nil {
 				return ip

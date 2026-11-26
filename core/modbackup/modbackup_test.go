@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +28,12 @@ import (
 )
 
 var keyring = "k1 " + strings.Repeat("0123456789abcdef", 4) + "\n"
+
+var migrations = map[string]func() fs.FS{
+	"can-forms": forms.Migrations, "can-work": work.Migrations, "can-people": people.Migrations, "can-finance": finance.Migrations,
+	"can-equity": equity.Migrations, "can-board": board.Migrations, "can-provision": provision.Migrations, "can-jobs": jobs.Migrations,
+	"can-files": files.Migrations,
+}
 
 // instance is one service's data directory and a config file pointing at it.
 type instance struct {
@@ -53,7 +60,7 @@ func newInstance(t *testing.T, dbName string) instance {
 func run(t *testing.T, binary string, env map[string]string, args ...string) (int, string) {
 	t.Helper()
 	var out bytes.Buffer
-	code := modbackup.Main(binary, args, func(k string) string { return env[k] }, &out, &out)
+	code := modbackup.Main(binary, migrations[binary](), args, func(k string) string { return env[k] }, &out, &out)
 	return code, out.String()
 }
 

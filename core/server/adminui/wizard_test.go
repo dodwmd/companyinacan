@@ -171,7 +171,7 @@ func TestDNSAndAccountSteps(t *testing.T) {
 	m := newMM(t)
 	root := m.loginAs("root")
 	d := m.do("GET", "/setup/dns", nil, root.with()...)
-	for _, want := range []string{"acme.example", "admin.acme.example", "forms.acme.example", "203.0.113.7", "https://203-0-113-7.sslip.io", "Answering", "volunteer-run"} {
+	for _, want := range []string{"acme.example", "admin.acme.example", "web.acme.example", "203.0.113.7", "https://203-0-113-7.sslip.io", "Answering", "volunteer-run"} {
 		if !strings.Contains(d.body, want) {
 			t.Errorf("dns step lacks %q", want)
 		}

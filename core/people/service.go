@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/mail"
 	"net/url"
 	"regexp"
@@ -34,6 +35,10 @@ import (
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+// Migrations is the embedded schema history ("migrations/NNN_name.sql"), for the backup and
+// restore subcommands (core/modbackup).
+func Migrations() fs.FS { return migrationFS }
 
 // Errors mapped to HTTP statuses by the API layer.
 var (

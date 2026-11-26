@@ -258,7 +258,8 @@ whole integration suite including the `work` install): can-core RSS 49.0 MiB, hi
 * **forms** is routed at `/_forms` by can-core ([`module-routing.md`](module-routing.md)) but has no
   durable event outbox: if can-core is down for the four attempts the lead is stored but the
   `lead.created.v1` event is dropped.
-* **finance** wires invoices only. Its public invoice link is not routed.
+* **finance** wires invoices only. Its public invoice link is routed only with
+  `expose.public: true` ([`module-routing.md`](module-routing.md)).
 * **people** does not fetch the new hire's name and contact details from the `ats` capability; HR
   completes the placeholder record.
 * **Manager and reporting-line facts** cannot ride on a personal access token (see the people mapping).

@@ -46,7 +46,8 @@ func newApplyCmd(g *globalOpts) *cobra.Command {
 			}
 			if !dryRun && !recordOnly {
 				// The routing facts first: can-core reads them when it sees the new company.yaml.
-				note, err := syncRouting(cmd, desired.Company.Domain, kubeContext)
+				proxied, _ := desired.Company.DNS["proxied"].(bool)
+				note, err := syncRouting(cmd, desired.Company.Domain, kubeContext, proxied)
 				if err != nil {
 					return failure("%v", err)
 				}

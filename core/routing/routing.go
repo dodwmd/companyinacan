@@ -94,6 +94,9 @@ type Config struct {
 	// SiteHosts serve the public site; CatchAll serves it for any host.
 	SiteHosts []string
 	CatchAll  bool
+	// NoEdgeLimit switches the edge limits off: a proxy or CDN in front of the server makes every
+	// client share its addresses (specs/045-public-access).
+	NoEdgeLimit bool
 }
 
 // Default is what applies before anything was written: TLS, the site on the company domain.
@@ -176,7 +179,15 @@ func (c Config) Data() map[string]string {
 	return map[string]string{
 		"domain": c.Domain, "tls": strconv.FormatBool(c.TLS),
 		"siteHosts": strings.Join(c.SiteHosts, ","), "catchAll": strconv.FormatBool(c.CatchAll),
+		"edgeLimit": edgeLimitValue(c.NoEdgeLimit),
 	}
+}
+
+func edgeLimitValue(off bool) string {
+	if off {
+		return "off"
+	}
+	return "on"
 }
 
 // Manifest renders the ConfigMap.
@@ -193,7 +204,7 @@ func (c Config) Manifest() ([]byte, error) {
 
 // Parse reads the ConfigMap data.
 func Parse(data map[string]string) (Config, error) {
-	c := Config{Domain: data["domain"], TLS: data["tls"] == "true", CatchAll: data["catchAll"] == "true"}
+	c := Config{Domain: data["domain"], TLS: data["tls"] == "true", CatchAll: data["catchAll"] == "true", NoEdgeLimit: data["edgeLimit"] == "off"}
 	for _, h := range strings.Split(data["siteHosts"], ",") {
 		if h = strings.TrimSpace(h); h != "" {
 			c.SiteHosts = append(c.SiteHosts, h)

@@ -439,7 +439,7 @@ func (r *runner) company(ctx context.Context, body []byte) error {
 }
 
 func (r *runner) facts() routing.Config {
-	return routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll}
+	return routing.Config{Domain: r.o.Company.Domain, TLS: r.o.Routes.TLS, SiteHosts: r.o.Routes.SiteHosts, CatchAll: r.o.Routes.CatchAll, NoEdgeLimit: r.o.Routes.NoEdgeLimit}
 }
 
 // routingFacts writes which hosts serve the site, and whether over TLS, as ConfigMap
@@ -471,6 +471,11 @@ func (r *runner) hostDumpsDir(ctx context.Context) error {
 		return err
 	}
 	if r.o.Backup == nil && st.Launch != nil && st.Launch.BackupInstalled {
+		if ok, err := r.timerOnHost(ctx, backup.DefaultSettings()); err != nil {
+			return err
+		} else if !ok {
+			r.res.Warnings = append(r.res.Warnings, "THIS SERVER IS NOT BEING BACKED UP: it has no working backup timer, although this directory installed one (a replaced or restored server). Run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file")
+		}
 		if st.Launch.BackupVersion < BackupInstallVersion {
 			r.res.Warnings = append(r.res.Warnings, "the backup script on the server was installed by an older version: run `can up` again with --backup-endpoint, --backup-bucket and --backup-credentials-file to update it")
 		}
@@ -536,6 +541,18 @@ func (r *runner) admin(ctx context.Context) (bool, string, error) {
 	if st.Launch != nil && st.Launch.AdminCreated && st.Launch.AdminCredsShown {
 		r.res.AdminNote = "the admin account was created by an earlier run and its credentials were shown then"
 		return true, "credentials already handed over", nil
+	}
+	if st.Launch == nil || !st.Launch.AdminCreated {
+		// A server restored from a backup has the accounts it had before, whatever they are
+		// called: never create or reset one there.
+		s, serr := r.kube(ctx, nil, "-n", SystemNS, "exec", "deploy/can-core", "--", "/can-core", "restore", "status")
+		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "normal restored ") {
+			r.res.AdminNote = "this server was restored from a backup: the admin logins are the ones from before the restore"
+			return true, "restored accounts kept", nil
+		}
+		if serr == nil && strings.HasPrefix(strings.TrimSpace(s), "restoring ") {
+			return false, "", errors.New("this server is in the middle of a restore: finish `can restore` on it first")
+		}
 	}
 	pw, err := NewPassword(r.d.Rand, 24)
 	if err != nil {
@@ -620,6 +637,9 @@ func (r *runner) routes(ctx context.Context) error {
 		mode = "https"
 	}
 	if err := r.d.Store.Mutate(func(s *provider.State) error { launchOf(s).Mode = mode; return nil }); err != nil {
+		return err
+	}
+	if err := r.redirect(ctx); err != nil {
 		return err
 	}
 	if !r.formsWanted() || !r.o.Company.Modules["forms"].Exposure().PublicOn() {

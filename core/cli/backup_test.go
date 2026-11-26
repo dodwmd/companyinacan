@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/dodwmd/companyinacan/core/backup"
+	"github.com/dodwmd/companyinacan/core/backup/backuptest"
 )
 
 func runIn(t *testing.T, stdin string, args ...string) (int, string, string) {
@@ -101,11 +102,12 @@ func TestRestorePlan(t *testing.T) {
 	kit, pass, company := makeKit(t)
 	fr := &backup.FakeRunner{}
 	seams(t, fr)
-	code, out, errs := runIn(t, "", "restore", "--kit", kit, "--passphrase-file", pass, "--plan", "--dir", company)
+	state := filepath.Join(t.TempDir(), "restore.json")
+	code, out, errs := runIn(t, "", "restore", "--kit", kit, "--passphrase-file", pass, "--plan", "--dir", company, "--state", state)
 	if code != ExitOK {
 		t.Fatalf("code=%d %s", code, errs)
 	}
-	for i := 1; i <= 6; i++ {
+	for i := 1; i <= 8; i++ {
 		if !strings.Contains(out, fmt.Sprintf("%d. ", i)) {
 			t.Errorf("step %d missing:\n%s", i, out)
 		}
@@ -113,7 +115,7 @@ func TestRestorePlan(t *testing.T) {
 	if len(fr.Calls) != 0 {
 		t.Errorf("--plan ran commands: %v", fr.Calls)
 	}
-	if _, err := os.Stat(filepath.Join(company, ".can", "restore.json")); err == nil {
+	if _, err := os.Stat(state); err == nil {
 		t.Error("--plan wrote state")
 	}
 }
@@ -128,16 +130,32 @@ func TestRestoreWrongPassphrase(t *testing.T) {
 	}
 }
 
-func TestRestoreWithoutCoreIsNotImplemented(t *testing.T) {
+// can restore rewrites host directories: without root it does nothing at all.
+func TestRestoreNeedsRoot(t *testing.T) {
 	kit, pass, company := makeKit(t)
-	seams(t, &backup.FakeRunner{})
-	code, _, errs := runIn(t, "", "restore", "--kit", kit, "--passphrase-file", pass, "--dir", company)
-	if code != ExitNotImplemented || !strings.Contains(errs, "E03") {
+	fr := &backup.FakeRunner{}
+	seams(t, fr)
+	backupSeams.euid = func() int { return 1000 }
+	root := t.TempDir()
+	code, _, errs := runIn(t, "", "restore", "--kit", kit, "--passphrase-file", pass, "--dir", company, "--root", root, "--core-image", "can-core:dev")
+	if code != ExitFailure || !strings.Contains(errs, "root") || len(fr.Calls) != 0 {
+		t.Fatalf("code=%d %s %v", code, errs, fr.Calls)
+	}
+}
+
+// A repository that holds nothing usable fails before anything is claimed or changed.
+func TestRestoreEmptyRepositoryChangesNothing(t *testing.T) {
+	kit, pass, company := makeKit(t)
+	seams(t, &backup.FakeRunner{Handle: func(c backup.Cmd) ([]byte, error) { return []byte("[]"), nil }})
+	backupSeams.euid = func() int { return 0 }
+	root := t.TempDir()
+	code, _, errs := runIn(t, "", "restore", "--kit", kit, "--passphrase-file", pass, "--dir", company, "--root", root,
+		"--core-image", "can-core:dev", "--staging", filepath.Join(root, "var/lib/can/staging"))
+	if code != ExitFailure || !strings.Contains(errs, "no usable snapshot") {
 		t.Fatalf("code=%d %s", code, errs)
 	}
-	// Progress is recorded so the restore can resume once can-core exists.
-	if _, err := os.Stat(filepath.Join(company, ".can", "restore.json")); err != nil {
-		t.Errorf("state not written: %v", err)
+	if ents, _ := os.ReadDir(root); len(ents) != 0 {
+		t.Errorf("something was written: %v", ents)
 	}
 }
 
@@ -165,30 +183,40 @@ func TestBackupStatusOff(t *testing.T) {
 
 func TestBackupVerifyWithFakeRestic(t *testing.T) {
 	dumps := "/var/lib/can/dumps"
-	content := []byte("dump-data")
-	sum := fmt.Sprintf("%x", sha256.Sum256(content))
+	marker := []byte("run_id=r1\nfinished_at=1800000000\n")
+	files := map[string][]byte{
+		dumps + "/can-core/state.db":     backuptest.StateDB(t),
+		dumps + "/can-core/secrets.json": []byte(`{"version":1}`),
+		dumps + "/company.yaml":          []byte(testCompany),
+	}
+	var man strings.Builder
+	for p, c := range files {
+		fmt.Fprintf(&man, "%x  .%s\n", sha256.Sum256(c), strings.TrimPrefix(p, dumps))
+	}
+	files["/var/lib/can/host-state/"+backup.ManifestName] = []byte(man.String())
+	files["/var/lib/can/host-state/"+backup.MarkerCopy] = marker
+	files[dumps+"/"+backup.MarkerName] = marker
 	fr := &backup.FakeRunner{Handle: func(c backup.Cmd) ([]byte, error) {
 		switch c.Args[0] {
 		case "snapshots":
 			return []byte(`[{"id":"s1","time":"2026-11-25T03:30:00Z","tags":["can"]}]`), nil
 		case "restore":
 			var target string
-			var incs []string
 			for i, a := range c.Args {
 				if a == "--target" {
 					target = c.Args[i+1]
 				}
-				if a == "--include" {
-					incs = append(incs, c.Args[i+1])
-				}
 			}
-			for _, inc := range incs {
-				p := filepath.Join(target, inc)
-				_ = os.MkdirAll(filepath.Dir(p), 0o755)
-				body := content
-				if strings.HasSuffix(inc, backup.ManifestName) {
-					body = []byte(sum + "  ./modules/a.dump\n")
+			for i, a := range c.Args {
+				if a != "--include" {
+					continue
 				}
+				body, ok := files[c.Args[i+1]]
+				if !ok {
+					continue
+				}
+				p := filepath.Join(target, c.Args[i+1])
+				_ = os.MkdirAll(filepath.Dir(p), 0o755)
 				_ = os.WriteFile(p, body, 0o600)
 			}
 		}
@@ -373,10 +401,12 @@ func TestBackupKitPassphraseConfirmation(t *testing.T) {
 	}
 }
 
-func TestRestoreHelpSaysNotFunctional(t *testing.T) {
+func TestRestoreHelpSaysWhatItDoesNotDo(t *testing.T) {
 	_, out, _ := runIn(t, "", "restore", "--help")
-	if !strings.Contains(out, "NOT FUNCTIONAL") {
-		t.Errorf("help must state restore is not functional yet:\n%s", out)
+	for _, want := range []string{"new server, as root", "can up", "--confirm-overwrite", "has not been verified"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help lacks %q:\n%s", want, out)
+		}
 	}
 }
 

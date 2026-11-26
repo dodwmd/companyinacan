@@ -23,6 +23,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
+	"github.com/dodwmd/companyinacan/core/routing"
 	"github.com/dodwmd/companyinacan/core/schema"
 	"github.com/dodwmd/companyinacan/core/site"
 )
@@ -162,6 +163,9 @@ type CoreOptions struct {
 	Domain      string
 	// CookieSecure must be true whenever the admin UI is reached over HTTPS.
 	CookieSecure bool
+	// RestoreID deploys can-core in restore mode (specs/042-restore); RestoreOverwrite, the same
+	// id, lets it replace an existing state database.
+	RestoreID, RestoreOverwrite string
 }
 
 func setEnv(c map[string]any, name, value string) {
@@ -217,6 +221,14 @@ func CoreManifests(o CoreOptions) ([]byte, error) {
 			if o.Domain != "" {
 				setEnv(cm, "CAN_COMPANY_DOMAIN", o.Domain)
 			}
+			if o.RestoreID != "" {
+				setEnv(cm, "CAN_RESTORE", o.RestoreID)
+				if o.RestoreOverwrite != "" {
+					setEnv(cm, "CAN_RESTORE_OVERWRITE", o.RestoreOverwrite)
+				}
+				// The restore operations run as a second process in the pod (chart rendering).
+				cm["resources"] = map[string]any{"requests": map[string]any{"memory": "48Mi", "cpu": "20m"}, "limits": map[string]any{"memory": "384Mi"}}
+			}
 			patched = true
 		}
 	}
@@ -268,6 +280,9 @@ type RouteOptions struct {
 	TLS      bool
 	// CertResolver defaults to letsencrypt, the resolver deploy/base configures.
 	CertResolver string
+	// NoEdgeLimit leaves the edge limits off, here and (through the routing facts) on module
+	// routes: behind a proxy or CDN every client shares its addresses.
+	NoEdgeLimit bool
 }
 
 // sitePriority is the site's catch-all; can-core's /_forms route outranks it (routing.SitePriority).
@@ -329,18 +344,35 @@ func SiteRoutes(o RouteOptions) ([]byte, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
+	var docs []map[string]any
+	var siteLimit, loginLimit []string
+	if !o.NoEdgeLimit {
+		var m []map[string]any
+		m, siteLimit = edgeMiddlewares("public", routing.PublicLimit)
+		docs = append(docs, m...)
+		if len(o.AdminHosts) > 0 {
+			m, loginLimit = edgeMiddlewares("login", routing.LoginLimit)
+			docs = append(docs, m...)
+		}
+	}
 	var site []any
 	for _, h := range o.SiteHosts {
-		site = append(site, rule("Host(`"+h+"`)", sitePriority, "site", 8081))
+		site = append(site, rule("Host(`"+h+"`)", sitePriority, "site", 8081, siteLimit...))
 	}
 	if o.CatchAll {
-		site = append(site, rule("PathPrefix(`/`)", sitePriority, "site", 8081))
+		site = append(site, rule("PathPrefix(`/`)", sitePriority, "site", 8081, siteLimit...))
 	}
-	docs := []map[string]any{ingressRoute("site", SystemNS, site, o)}
+	docs = append(docs, ingressRoute("site", SystemNS, site, o))
 	if len(o.AdminHosts) > 0 {
 		var admin []any
 		for _, h := range o.AdminHosts {
 			admin = append(admin, rule("Host(`"+h+"`)", sitePriority, "can-core", 8080))
+			// The rest of the admin UI and its API need a session and are not limited here.
+			if len(loginLimit) > 0 {
+				for _, p := range adminLoginRules {
+					admin = append(admin, rule("Host(`"+h+"`) && "+p, loginPriority, "can-core", 8080, loginLimit...))
+				}
+			}
 		}
 		docs = append(docs, ingressRoute("admin", SystemNS, admin, o))
 	}

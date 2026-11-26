@@ -41,30 +41,30 @@ command `[<command>, backup]`, the module's uid (65532), claim `<id>-data` read-
 writes the shared index), optional ConfigMap `<id>-config` at `/etc/can-hook-config`, `emptyDir` at `/tmp`
 (needs room for the copy of the database), projected token audience `can`, memory limit `ram_limit_mb`.
 
-## What `can restore` has to do
+## What `can restore` does with this
+
+Implemented in specs/042-restore.
 
 1. **Secrets first.** Put each module's keys back **before** the apply that would create them: can-core keeps an
    existing `can-module` Secret and generates new values otherwise, and new keys cannot open the old data.
 2. Keep the module at 0 replicas.
-3. **Volume data before the hook.** Copy the backed-up volume into the new claim first (it holds blobs and resumes;
-   the dumped SQLite files are not in it), then run the hook. This swaps steps 4 and 5 of the order in
-   `core/backup/restore.go` for these modules. The alternative is `-blobs <staged volume>/blobs` (files) or
-   `/resumes` (jobs), which copies only what the database refers to.
+3. **Volume data before the hook.** The backed-up volume is copied into the new claim first (it holds blobs and
+   resumes; the dumped SQLite files are not in it), then the hook runs. `-blobs` is therefore not used.
 4. Run `[<command>, restore, -replace]` in the same Job shape as backup (module scaled to 0, claim `<id>-data`),
-   with the same environment. It downloads the set from `GET /v1/dumps`, which needs can-core's restore mode
-   (still to be built), or reads `-from DIR`.
+   with the same environment. It downloads the set from `GET /v1/dumps`, which only a can-core in restore mode
+   serves, or reads `-from DIR`.
 5. Run the erasure replay (`purge`) after the hooks and before scaling up.
-6. Use the module version that made the dump, or a newer one: the service migrates on start, and nothing refuses a
-   database from a newer schema.
+6. Use the module version that made the dump, or a newer one: the service migrates on start, and `restore` refuses a
+   dump whose `schema_version` is newer than the binary knows.
 
-`-allow-missing-blobs` is only right for files destroyed after the dump was taken; otherwise it means the volume
+`-allow-missing-blobs` (`can restore --allow-missing-blobs <module>`) is only right for files destroyed after the dump was taken; otherwise it means the volume
 was not restored. A `restore` of files with the s3 backend checks nothing in the bucket.
 
 ## Keys a restore needs
 
-None of these is in a dump. Today they exist only in the k3s datastore copy inside the restic snapshot
-(`host-state`), readable with the secrets-encryption key stored beside it, or wherever the operator exported them
-(`sudo k3s kubectl -n mod-<id> get secret can-module -o yaml`, kept with the recovery kit).
+None of these is in a module's dump. can-core exports every Secret of each module namespace into the backup
+(`can-core/secrets.json`, specs/042-restore) and `can restore` re-creates them before the modules. Snapshots made
+before that export hold them only inside the k3s datastore copy (`host-state`).
 
 | Module | Secret (in `mod-<id>`) | Without the original |
 |---|---|---|

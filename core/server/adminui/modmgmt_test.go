@@ -66,7 +66,7 @@ func mmModules(t *testing.T) string {
 		}
 	}
 	w("web", mmManifest("web", "Web forms", `provider: {type: inhouse, name: can}
-runtime: {chart: ./chart, subdomain: forms}
+runtime: {chart: ./chart, subdomain: web}
 requires: {database: sqlite, capabilities: [email.send]}
 resources: {ram_mb: 20, ram_limit_mb: 40, disk_mb: 100}
 provides:

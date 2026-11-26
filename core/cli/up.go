@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -223,7 +224,7 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		provider.Action{ID: "instant-url", Description: "decide the instant URL: https on <ip>.sslip.io, or plain-http fallback (sslip.io check + ACME rate limits)"},
 	)
 	if pl, ok := dns.(provider.DNSPlanner); ok {
-		recs, _ := provider.Records(t.company.Domain, "192.0.2.1", instantSubdomains)
+		recs, _, _ := t.companyRecords("192.0.2.1", sf.modulesDir)
 		for i := range recs {
 			recs[i].Value = "<server IP>"
 		}
@@ -231,7 +232,12 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 			acts = append(acts, provider.Action{ID: "dns", Description: line})
 		}
 	} else {
-		acts = append(acts, provider.Action{ID: "dns", Description: "print DNS records for " + t.company.Domain + " (" + dns.Name() + " plugin)"})
+		recs, _, _ := t.companyRecords("192.0.2.1", sf.modulesDir)
+		var names []string
+		for _, r := range recs {
+			names = append(names, r.Name)
+		}
+		acts = append(acts, provider.Action{ID: "dns", Description: "print DNS records for " + strings.Join(names, ", ") + " (" + dns.Name() + " plugin)"})
 	}
 	if !sf.provisionOnly {
 		acts = append(acts, stackPlanActions(sf)...)
@@ -298,7 +304,11 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 	instant := provider.PlanInstant(ctx, addr, instantSubdomains, lifecycle.now(), state.Issued, lifecycle.resolver)
 	res.Instant = &instant
 
-	recs, err := provider.Records(t.company.Domain, addr, instantSubdomains)
+	recs, dnsWarnings, err := t.companyRecords(addr, sf.modulesDir)
+	for _, w := range dnsWarnings {
+		fmt.Fprintf(out, "warning: %s\n", w)
+		res.Warnings = append(res.Warnings, w)
+	}
 	if err != nil {
 		// a hostname instead of an IP: records are CNAMEs the operator adds by hand
 		fmt.Fprintf(out, "note: server address %q is not an IP, so no A records are generated\n", addr)
@@ -483,6 +493,7 @@ type statusResult struct {
 	Address  string           `json:"address,omitempty"`
 	Checks   []provider.Check `json:"checks,omitempty"`
 	Warnings []string         `json:"warnings,omitempty"`
+	DNS      []dnsStatus      `json:"dns_records,omitempty"`
 }
 
 func newStatusCmd(g *globalOpts) *cobra.Command {
@@ -490,7 +501,7 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [dir]",
 		Short: "Show the state of the server",
-		Long:  "Exit codes: 0 ready, 1 anything else (absent, provisioning, degraded), 3 provider not implemented.",
+		Long:  "Show the server and stack checks, and the DNS records the company needs with where each name points now\n(informational: it does not change the exit code).\nExit codes: 0 ready, 1 anything else (absent, provisioning, degraded), 3 provider not implemented.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -522,6 +533,13 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 			if a, err := t.prov.Address(t.store); err == nil {
 				res.Address = a
 			}
+			if st.Phase != provider.PhaseAbsent && t.company.Domain != "" {
+				// a server known by name has no address records to list
+				if recs, warnings, err := t.companyRecords(res.Address, modulesDir); err == nil {
+					res.DNS = resolveRecords(ctx, lifecycle.resolver, recs)
+					res.Warnings = append(res.Warnings, warnings...)
+				}
+			}
 			// While the server is still being set up the bootstrap has not reached the firewall yet.
 			if st.Phase != provider.PhaseAbsent && st.Phase != provider.PhaseProvisioning {
 				if tgt, terr := provider.TargetFor(t.spec, t.store, t.deps); terr == nil {
@@ -550,6 +568,19 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 						mark = "FAIL"
 					}
 					fmt.Fprintf(w, "  [%s] %s %s\n", mark, c.Name, c.Detail)
+				}
+				if len(res.DNS) > 0 {
+					fmt.Fprintln(w, "dns records needed:")
+					for _, d := range res.DNS {
+						state := d.State
+						if d.State == dnsElsewhere {
+							state = "points to " + strings.Join(d.Seen, ", ")
+							if t.dnsCfg.Proxied {
+								state = "behind the proxy (" + strings.Join(d.Seen, ", ") + ")"
+							}
+						}
+						fmt.Fprintf(w, "  %-4s %s -> %s  (%s): %s\n", d.Type, d.Name, d.Value, d.Purpose, state)
+					}
 				}
 				for _, m := range res.Warnings {
 					fmt.Fprintf(w, "warning: %s\n", m)

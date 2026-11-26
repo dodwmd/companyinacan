@@ -37,6 +37,9 @@ runtime:
       ui: { enabled: true }
   # The careers pages and feeds are the only public routes (see chart/templates/ingressroute.yaml).
   subdomain: careers
+  # While the careers pages are routed: the per-address limit on applications has to count the
+  # client Traefik names, or all applicants share one allowance.
+  public_config: { trust_proxy: true }
 requires:
   database: sqlite
   sso: none

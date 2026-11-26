@@ -76,6 +76,15 @@ func runRestore(ctx context.Context, s spec, l layout, module string, api *clien
 	if err := os.MkdirAll(filepath.Dir(l.db), 0o700); err != nil {
 		return err
 	}
+	if m.SchemaVersion > s.latest {
+		return newerSchema(m.SchemaVersion, s)
+	}
+	// Held until the new database is in place: nothing may be using the old one.
+	release, err := lockDatabase(ctx, l.db)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	// Unpacked next to the target, so the final rename is atomic.
 	staged := l.db + ".restoring"
@@ -87,14 +96,27 @@ func runRestore(ctx context.Context, s spec, l layout, module string, api *clien
 	if err := integrity(ctx, staged); err != nil {
 		return fmt.Errorf("the restored database: %w", err)
 	}
+	if v, err := schemaVersion(ctx, staged); err != nil {
+		return fmt.Errorf("the dumped database: %w", err)
+	} else if v > s.latest {
+		return newerSchema(v, s)
+	}
 
 	missing, copied, err := restoreBlobs(ctx, s, l, m, dir, o)
 	if err != nil {
 		return err
 	}
-	if len(missing) > 0 && !o.allowMissing {
-		return fmt.Errorf("%d of %d referenced file(s) are missing or damaged (first: %s): restore the volume first or name it with -blobs; "+
-			"-allow-missing-blobs continues without them (files destroyed after the dump was taken are expected to be missing)", len(missing), m.Blobs.Count, missing[0])
+	guidance := ""
+	if len(missing) > 0 {
+		refs, err := listBlobs(ctx, staged, s.blobs.query)
+		if err != nil {
+			return fmt.Errorf("list the files the database refers to: %w", err)
+		}
+		guidance = s.blobs.missingFiles(missing, records(refs))
+		if !o.allowMissing {
+			return fmt.Errorf("%d of %d referenced file(s) are missing or damaged: restore the volume first or name it with -blobs; "+
+				"-allow-missing-blobs continues without them (only right for files destroyed after the dump was taken). First: %s", len(missing), m.Blobs.Count, guidance)
+		}
 	}
 
 	// A journal left over from the old database must not be applied to the new one.
@@ -116,7 +138,14 @@ func runRestore(ctx context.Context, s spec, l layout, module string, api *clien
 		fmt.Fprintf(stdout, ", %d file(s) are in the %s bucket and were NOT checked", m.Blobs.Count, m.Blobs.Backend)
 	}
 	fmt.Fprintln(stdout)
+	if guidance != "" {
+		fmt.Fprintf(stdout, "WARNING: the restored database still refers to %d missing file(s), and every backup of this module FAILS until each record is purged or its file is back. First: %s\n", len(missing), guidance)
+	}
 	return nil
+}
+
+func newerSchema(v int, s spec) error {
+	return fmt.Errorf("the dump has schema version %d, this %s knows up to %d: restore with the module version that made the dump, or a newer one", v, s.binary, s.latest)
 }
 
 func readManifest(path string) (*Manifest, error) {

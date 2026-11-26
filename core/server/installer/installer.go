@@ -32,6 +32,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/dbprov"
 	"github.com/dodwmd/companyinacan/core/server/kube"
 	"github.com/dodwmd/companyinacan/core/server/modsecrets"
@@ -81,6 +82,13 @@ type Config struct {
 	RolloutTimeout time.Duration // default 5m
 	Poll           time.Duration // default 2s
 	RBACWait       time.Duration // how long to wait for a fresh RoleBinding to take effect, default 30s
+	// Quiesce is the restore install (specs/042-restore): everything is created, but workloads
+	// have no replicas, CronJobs are suspended, there are no public routes and no Jobs, and
+	// nothing is waited for.
+	Quiesce bool
+	// Seed, if set, runs once the namespace exists and before Secrets are generated, so that
+	// restored Secrets are there to be kept.
+	Seed func(ctx context.Context, s reconcile.Spec) error
 }
 
 // SMTPRelay is what a wrapped app needs to speak SMTP itself.
@@ -145,6 +153,10 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err := in.checkRotations(s); err != nil {
 		return err
 	}
+	if in.cfg.Quiesce { // a restore install renders and routes as if nothing were exposed
+		off := false
+		s.Expose = config.Expose{Public: &off}
+	}
 	// 1. Plan the routes, render and validate before touching the cluster.
 	plan, err := in.planRoutes(ctx, s)
 	if err != nil {
@@ -162,10 +174,18 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 	if err := in.checkAdmission(ctx, len(ports) > 0); err != nil {
 		return err
 	}
+	if err := in.guardChartRoutes(ctx, s, objs, &plan); err != nil {
+		return err
+	}
 	// 2. Namespace, RBAC, policies, quota.
 	policy, err := in.ensureNamespace(ctx, s)
 	if err != nil {
 		return err
+	}
+	if in.cfg.Seed != nil {
+		if err := in.retryForbidden(ctx, func() error { return in.cfg.Seed(ctx, s) }); err != nil {
+			return fmt.Errorf("restoring Secrets: %w", err)
+		}
 	}
 	// 3. Database and Secrets.
 	version, err := in.ensureSecrets(ctx, s)
@@ -173,9 +193,23 @@ func (in *Installer) Enable(ctx context.Context, s reconcile.Spec) error {
 		return err
 	}
 	stampSecretVersion(objs, version)
+	if in.cfg.Quiesce {
+		// A restore: nothing public, nothing running. The next normal apply plans the routes.
+		if err := in.closeRoutes(ctx, s.ID); err != nil {
+			return err
+		}
+		if err := in.closePublic(ctx, s); err != nil {
+			return err
+		}
+		return in.rollout(ctx, s, quiesce(objs))
+	}
 	stampExposure(objs, plan.values)
-	// 4. Routes that are no longer wanted go first.
-	if err := in.pruneRoutes(ctx, s.ID, plan.objects); err != nil {
+	// 4. Routes that are no longer wanted go first; the Middlewares routes refer to are there
+	// before the routes are (Traefik drops a router whose middleware is missing).
+	if err := in.pruneRoutes(ctx, s.ID, plan.objects, "IngressRoute"); err != nil {
+		return err
+	}
+	if err := in.applyMiddlewares(ctx, plan); err != nil {
 		return err
 	}
 	if !s.Expose.PublicOn() {
@@ -686,7 +720,7 @@ func (in *Installer) reserved(s reconcile.Spec) map[string]bool {
 		"Secret/" + secretModule: true, "Secret/" + secretDB: true, "Secret/" + secretRelease: true, "Secret/" + secretSMTP: true,
 		"ServiceAccount/" + s.ServiceAccount: true,
 		"ResourceQuota/ceiling":              true, "LimitRange/defaults": true,
-		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true,
+		"IngressRoute/" + routeWeb: true, "IngressRoute/" + siteRouteName(s.ID): true, "IngressRoute/" + routeLink: true,
 	}
 	for _, n := range []string{"default-deny", "allow-ingress-from-traefik", "allow-ingress-from-can-core", "module-egress"} {
 		r["NetworkPolicy/"+n] = true
@@ -771,6 +805,14 @@ func key(o kube.Object) string { return fmt.Sprint(o["kind"]) + "/" + nameOf(o) 
 
 func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.Object) error {
 	prev, err := in.loadRelease(ctx, s)
+	if in.cfg.Quiesce {
+		// A restore over an existing server: what ran there is neither rolled back to nor trusted
+		// (its record is signed with that server's secrets), but its public routes must go.
+		prev, err = nil, in.removeRoutes(ctx, s.Namespace)
+		if err != nil {
+			return fmt.Errorf("removing public routes: %w", err)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("the recorded release in Secret %s is unreadable or fails its HMAC check (%w); inspect it or delete it to reinstall", secretRelease, err)
 	}
@@ -782,7 +824,11 @@ func (in *Installer) rollout(ctx context.Context, s reconcile.Spec, objs []kube.
 		in.restore(ctx, s, prev, objs)
 		return fmt.Errorf("applying chart (rolled back): %w", err)
 	}
-	if err := in.waitReady(ctx, s.Namespace, objs); err != nil {
+	wait := in.waitReady
+	if in.cfg.Quiesce { // nothing runs, so there is nothing to become ready
+		wait = func(context.Context, string, []kube.Object) error { return nil }
+	}
+	if err := wait(ctx, s.Namespace, objs); err != nil {
 		in.restore(ctx, s, prev, objs)
 		if prev != nil {
 			return fmt.Errorf("%w; rolled back to the previous release", err)
