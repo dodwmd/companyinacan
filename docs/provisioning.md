@@ -24,12 +24,38 @@ forged `person.offboarded.v1` for an active person starts nothing.
 | Trigger | Workflow | What it does |
 |---|---|---|
 | `person.created.v1` with status `onboarding` or `active`; `person.status_changed.v1` to `onboarding` or `active`; a completed checklist task with action `identity.provision` | **joiner** | per connector: create the account (adopting one that exists), add default groups and the person's SCIM groups; then create the manager and IT checklist from the people template |
-| `POST /v1/provision/runs` (`mover`), or a SCIM group membership change for a person who has accounts | **mover** | per connector with an account: update the account, add the groups gained, remove the groups lost (only groups this module added) |
+| `POST /v1/provision/runs` (`mover`), or a SCIM group membership change (except while the person's joiner is still running and has recorded no account) | **mover** | per connector with an account: update the account, add the groups gained, remove the groups lost (only groups this module added); [other connectors are reported](#accounts-provisioning-did-not-create) |
 | `person.status_changed.v1` to `offboarding`; to `former`; `person.offboarded.v1`; a completed task with action `identity.deprovision` or `identity.disable` | **leaver** | per connector: remove group memberships, disable the account; optionally delete it N days later; revoke the person's can-core tokens and sessions; create the offboarding checklist |
 
 `candidate.hired.v1` is deliberately **not** subscribed. It carries a candidate id, not a person id; the
 hire hand-off makes the people module create the person, and `person.created.v1` is what starts the
 joiner. Subscribing to both would start two joiners.
+
+### Accounts provisioning did not create
+
+Provisioning records the accounts it creates, and those an administrator links
+(`PUT /v1/provision/people/{id}/accounts/{connector}`). A person may have others: staff imported from CSV
+publish no joiner event, a connector may be added later, someone may have made an account by hand. A leaver
+or mover **never skips such a connector and reports success**. The step is marked `unlinked` and:
+
+| Case | Leaver | Mover |
+|---|---|---|
+| `scim-client`: exactly one user with the work email as `userName` | disabled and recorded (never deleted, no group changes) | dead: `account_not_linked` |
+| `scim-client`: no user with that `userName` or email | step skipped, `no_account_found` | same |
+| `scim-client`: two matches, another person's `externalId` or recorded account, or the address only among another user's emails | dead: `ambiguous` or `identity_mismatch` | same |
+| another current person has the same work email | dead: `shared_login` | same |
+| `webhook` and the stubs (they cannot look up), or no work email | dead: `manual_check_required` | same |
+| can-core, when the directory links no `user:...` `sso_subject` | dead: `no_core_account` | not applicable |
+
+A dead step is the manual task: the run ends `failed`, `provision.failed.v1` is published, and
+`GET /v1/provision/dead-letters` names the connector. Check that system (for `no_core_account`, the Users
+page of the admin UI) and remove the access. To have provisioning do it, link the account (or set the
+person's `sso_subject`) and `POST /v1/provision/runs/{id}/retry`. Where there really is no account the run
+stays `failed` as the record that someone had to check.
+
+**Limits.** The lookup knows only the current work email: an account under another login or an old address is
+reported as not found, and the run can succeed. Dry runs look nothing up. Standalone (no can-core) there is
+no can-core step to flag. Verified against a fake SCIM server only.
 
 ### Effective dating
 
@@ -114,8 +140,9 @@ administrator account (a disabled account cannot start a session, by password or
 their push subscriptions, in the same transaction. The caller must be the resolved provider of
 `identity.provision` and enabled. can-core rebuilds its offboarding facts from the stored events at
 start. It cannot revoke anyone else. The person's `sso_subject` must be
-the can-core subject (`user:<name>`, for SSO users `user:sso-...`) for the revocation to apply; a
-person with any other `sso_subject` is skipped.
+the can-core subject (`user:<name>`, for SSO users `user:sso-...`) for the revocation to apply; for a
+person with any other `sso_subject`, or none, the step is dead-lettered (`no_core_account`) and the run
+ends `failed`.
 
 ## Connectors
 
@@ -195,8 +222,8 @@ Base path `/scim/v2` (public through the `scim` subdomain). It implements `/Serv
   connector has `sync_groups: true`; the default is `false` (only the connector's `default_groups` are
   applied), so give `sync_groups` only to connectors whose groups you want the IdP to drive.
   Groups are this module's access groups (up to 500, up to 1000 members each; members must be
-  visible directory users). A membership change starts a mover run for the people affected who already
-  have a downstream account.
+  visible directory users). A membership change starts a mover run for the people affected (not while
+  their first joiner is still running).
 
 ### Setting up an identity provider (illustrative, not tested against any real one)
 

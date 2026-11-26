@@ -209,6 +209,15 @@ Creates carry an idempotency key (random per run unless you pass one), and the c
 create after a network error or 5xx only because of that key. Exit codes: 0 ok, 1 server or
 network error (the message includes the API's code and field problems), 2 usage.
 
+## Importing from CSV
+
+`can import issues backlog.csv --project ACME` previews and `--apply` writes the whole file or nothing
+(`CAN_WORK_URL`, `CAN_WORK_TOKEN`). Each row needs `external_id` and `title`; `parent_external_id` links
+rows, in any order. Running the same file again changes nothing, and never moves an issue's status. It needs
+`work.admin` (the file sets the status of new issues) on a token that is not limited to projects. Every new
+issue publishes `issue.created.v1`. There is no web page for this yet. See
+[specs/047-csv-import](../specs/047-csv-import/spec.md).
+
 ## Events and webhooks
 
 Set `webhook.url` (and `CAN_WORK_WEBHOOK_SECRET`) and every change is queued in a transactional

@@ -37,7 +37,7 @@ func TestRestrictedAdminRoleNeedsTheAdminPermissionForAdminActions(t *testing.T)
 			t.Errorf("people.admin must allow %s", act)
 		}
 	}
-	for _, act := range []Action{ActDirCreate, ActDirUpdate, ActDirOrg, ActDirStatus, ActTemplateManage} {
+	for _, act := range []Action{ActDirCreate, ActDirUpdate, ActDirImport, ActDirOrg, ActDirStatus, ActTemplateManage} {
 		if Decide(adminOnly, act, Fact{}) {
 			t.Errorf("people.admin without people.write allowed %s", act)
 		}

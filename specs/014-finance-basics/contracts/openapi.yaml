@@ -36,6 +36,30 @@ paths:
         "412": { description: "If-Match version is stale" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
+  /v1/import/parties:
+    post:
+      summary: "Preview or apply a CSV of customers and vendors (specs/047-csv-import)"
+      operationId: POST_v1_import_parties
+      x-scope: finance.write
+      description: "Not for tokens limited to parties, projects or own records. All or nothing; at most 1 MiB and 2000 rows."
+      parameters:
+        - { name: apply, in: query, required: false, schema: { type: boolean }, description: "Write; without it nothing is written" }
+        - { name: map, in: query, required: false, schema: { type: array, items: { type: string } }, description: "<field>=<column header>" }
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+      responses:
+        "200": { description: "The report of a preview, or of an applied import" }
+        "400": { description: "The file or a query parameter is unusable" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or a limited token" }
+        "409": { description: "Another import is running" }
+        "413": { description: "Over the size or row limit" }
+        "422": { description: "apply=true and a row has an error: the report; nothing was written" }
+        "429": { description: "Rate limited" }
   /v1/parties:
     get:
       summary: "List customers and vendors in scope (audited read)"
