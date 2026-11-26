@@ -394,7 +394,8 @@ func (j *journey) enableModules(t *testing.T) string {
 	j.editCompany(t, func(c map[string]any) {
 		m := mapAt(c, "modules")
 		m["work"] = map[string]any{"expose": map[string]any{"ui": true, "api": true}}
-		m["support"] = map[string]any{"expose": map[string]any{"ui": true}}
+		// support is routed by its own chart on support.<domain>; it takes no expose.
+		m["support"] = map[string]any{}
 	})
 	_, took := j.up(t, "enabling work and support", "kit-2.enc", budgetModules)
 	returned := time.Now()
