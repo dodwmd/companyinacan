@@ -88,7 +88,7 @@ func (s *Service) noticeAllowed(ctx context.Context, p Policy, user, addr string
 		return false, nil
 	}
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sso_identities i JOIN admin_users u ON u.id=i.user_id WHERE u.username=? AND lower(i.email)=lower(?)`, name, addr).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sso_identities i JOIN admin_users u ON u.id=i.user_id WHERE u.username=? AND lower(i.email)=lower(?) AND i.email_verified=1`, name, addr).Scan(&n)
 	return n > 0, err
 }
 
@@ -105,6 +105,7 @@ type Service struct {
 	// belongs to the single worker.
 	pausedUntil atomic.Int64
 	failures    int
+	stalled     map[string]bool // messages left without an answer since the relay last gave one
 }
 
 // New returns the service. transport nil means SMTP with its safe defaults.

@@ -73,7 +73,7 @@ type Policy struct {
 	modules  map[string]config.EmailModule
 	notify   map[string][]string // module id -> its notify_email setting
 	notices  []string            // email.notification_recipients; nil = the company domain
-	// ssoVerified: single sign-on is configured to accept only verified email claims.
+	// ssoVerified: single sign-on is on and configured to accept only verified email claims.
 	ssoVerified bool
 }
 
@@ -174,7 +174,7 @@ func (s Source) Load() (Policy, error) {
 				}
 			}
 		}
-		p.ssoVerified = co.SSO != nil && co.SSO.EmailVerifiedRequired()
+		p.ssoVerified = co.SSO != nil && co.SSO.Enabled && co.SSO.EmailVerifiedRequired()
 		if co.Email != nil {
 			p.modules, p.notices = co.Email.Modules, co.Email.NotificationRecipients
 			if co.Email.Relay != nil {

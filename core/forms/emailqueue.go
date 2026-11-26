@@ -114,9 +114,6 @@ func (d *Dispatcher) deliverEmail(ctx context.Context, l *Lead, f *Form) (unavai
 	// The outcome is written even if ctx ends now.
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), outcomeTimeout)
 	defer cancel()
-	if alreadyQueued(sendErr) {
-		sendErr = nil
-	}
 	if sendErr != nil {
 		unavailable, wait = errors.Is(sendErr, modclient.ErrUnavailable), modclient.RetryAfter(sendErr)
 	}
@@ -162,7 +159,13 @@ func (d *Dispatcher) RetryEmails(ctx context.Context) error {
 		}
 		lead, err := d.store.Get(ctx, p.leadID)
 		if err != nil {
-			return err
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if err := d.postponeUnreadable(ctx, p, err); err != nil {
+				return err
+			}
+			continue
 		}
 		form := d.forms(lead.FormID)
 		if form == nil || len(form.NotifyEmail) == 0 {
@@ -176,6 +179,23 @@ func (d *Dispatcher) RetryEmails(ctx context.Context) error {
 			d.emailPausedUntil = d.now().Add(wait)
 			return nil
 		}
+	}
+	return nil
+}
+
+// postponeUnreadable treats a lead that cannot be read like any failed round, so it does not stand first in the
+// queue for ever and hold back every other notification.
+func (d *Dispatcher) postponeUnreadable(ctx context.Context, p pendingEmail, cause error) error {
+	d.log.Error("reading a lead to notify about", "lead", p.leadID, "error", cause)
+	now, rounds, state := d.now(), p.attempts+1, "pending"
+	if now.Sub(p.created) >= giveUpAfter {
+		state = "failed"
+	}
+	if err := d.store.setEmail(ctx, p.leadID, state, rounds, now.Add(retryPause(rounds))); err != nil {
+		return err
+	}
+	if rounds == 1 || state != "pending" {
+		d.record(ctx, p.leadID, "email", 0, errors.New("the stored lead cannot be read"))
 	}
 	return nil
 }

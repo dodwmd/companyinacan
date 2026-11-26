@@ -30,7 +30,8 @@ offline (epic E11a). Email goes through the `email.send` outbox of [email.md](em
    data member holding a subject such as `user:alice`), `channel:<name>` (an outbound webhook channel).
    At most 50 recipients per rule. Only enabled modules' rules apply (cached 30 s).
 3. **Modules directly**: `POST /v1/notifications` (module API; the module lists `notify` under
-   `requires.capabilities`). The type must start with the module id and a dot, `dedupe_key` makes a
+   `requires.capabilities`). The type must start with the module id and a dot (so module ids that name the platform, such as
+   `can-core`, `platform` or `approvals`, are refused), `dedupe_key` makes a
    reminder idempotent (keys are per module), `link` must be a site-relative path, `data` holds up to 20 short strings
    (`title` and `body` are shown for module-defined types).
 
