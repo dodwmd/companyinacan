@@ -250,17 +250,21 @@ func (j *journey) up(t *testing.T, label, kit string, timeout time.Duration) (up
 	return r, took
 }
 
+// status waits for `can status` to say ready with no module that failed to install or upgrade
+// (right after a change can-core may still be retrying one), and records the warnings that stay.
 func (j *journey) status(t *testing.T) {
 	t.Helper()
-	eventually(t, 2*time.Minute, "`can status` to say ready", func() (bool, string) {
+	var last string
+	eventually(t, 3*time.Minute, "`can status` to say ready, with no failed module", func() (bool, string) {
 		out, errOut, err := j.can(2*time.Minute, "status", ".")
-		for _, l := range strings.Split(out, "\n") {
-			if strings.HasPrefix(l, "warning:") {
-				j.rep.Note("`can status` warns: %s", strings.TrimPrefix(l, "warning: "))
-			}
-		}
-		return err == nil, out + errOut
+		last = out
+		return err == nil && !strings.Contains(out, "warning: module "), out + errOut
 	})
+	for _, l := range strings.Split(last, "\n") {
+		if w, ok := strings.CutPrefix(l, "warning: "); ok {
+			j.rep.Note("`can status` warns: %s", w)
+		}
+	}
 }
 
 func (j *journey) firstUp(t *testing.T) string {
@@ -622,6 +626,9 @@ can restore --kit /root/restore/kit.enc --passphrase-file /root/restore/pass --i
 	var restored map[string]any
 	if err := yaml.Unmarshal([]byte(j.mustSSH(t, time.Minute, "cat /root/restore/company/company.yaml")), &restored); err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(out, "has not come up yet") {
+		t.Errorf("the restore gave up on a module")
 	}
 	if !reflect.DeepEqual(before, restored) {
 		t.Errorf("the restored company.yaml differs from the operator's: %v / %v", restored, before)
