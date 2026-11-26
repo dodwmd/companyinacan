@@ -339,7 +339,8 @@ can-core runs a Postgres in `can-data` for modules that need one (today `support
 
 Workflow `make-up-e2e` (advisory) runs: dump request, the installed backup script against a local restic
 repository, `can backup status` and `verify`, and a restore of the dumps directory. `dev-cluster` (advisory) runs
-a module backup hook Job. `restore-e2e` backs up a company, destroys the cluster and restores it onto a new one
+a module backup hook Job. `wrapped-backup` dumps analytics, support and newsletter, deletes them and the database
+server, and restores them with can-core's restore operations (not through restic). `restore-e2e` backs up a company, destroys the cluster and restores it onto a new one
 ([specs/042-restore](../specs/042-restore/spec.md)). The numbers are in
 [specs/037-backup-dumps/measurements.md](../specs/037-backup-dumps/measurements.md).
 

@@ -80,6 +80,15 @@ restored before it is replaced by the archive, which belongs to the database dum
 - **SC-002** On k3d in CI (`wrapped-backup`): data made in analytics, support and newsletter is dumped, removed, restored
   onto nothing (module namespaces and database server deleted) by can-core's restore operations, and read back.
 
+Measured by that job (run 45758426280, GitHub runner, data of a few hundred KB): dump run with the three modules
+22.7 s, their restore hooks 24 s. No figure for large data.
+
+## Known limit found here
+
+A dump run made before the kubelet has mounted a newly created `company` ConfigMap leaves `company.yaml` out and still
+completes; `can restore` then cannot use the set. This is the dump run's behaviour, not changed here. The k3d test
+restarts can-core after creating the ConfigMap.
+
 ## Not verified / out of scope
 
 - A real server, large databases or volumes, an external Postgres (`CAN_POSTGRES_ADMIN_URL`; its major version must
