@@ -51,12 +51,12 @@ sudo systemctl start ssh || sudo systemctl start sshd
 ssh -i id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$USER@$ip" sudo -n true
 
 echo "--- a test CA, trusted by this machine only"
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 -subj "/CN=acceptance test CA" \
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 120 -subj "/CN=acceptance test CA" \
 	-addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" -keyout ca.key -out ca.crt
 openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -subj "/CN=$DOMAIN" -keyout tls.key -out tls.csr
 printf 'subjectAltName=DNS:%s,DNS:*.%s,DNS:%s,IP:%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n' \
 	"$DOMAIN" "$DOMAIN" "$SINK_HOST" "$ip" >tls.ext
-openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -extfile tls.ext -out tls.crt
+openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 90 -extfile tls.ext -out tls.crt
 sudo install -m 0644 ca.crt /usr/local/share/ca-certificates/can-acceptance.crt
 sudo update-ca-certificates >/dev/null
 

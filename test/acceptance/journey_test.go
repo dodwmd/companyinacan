@@ -550,21 +550,35 @@ install -m 0755 "$(command -v restic)" %s`, j.kit, filepath.Join(j.standins, "ki
 	return "dump run, can-backup.service, status, verify, snapshots with the kit alone"
 }
 
+// Checks of `can verify --server` that cannot pass with the stand-ins, and why.
+var expectedVerifyFailures = map[string]string{
+	"tls.acme-persistence": "no certificate authority: the stand-in certificate is not from ACME",
+	"public.closed-ports":  "the probe runs on the server itself, which its firewall does not filter",
+}
+
 // verifyServer records what `can verify --server` says about the install. It is not a step of the
 // journey: a failed check is reported, the journey goes on.
 func (j *journey) verifyServer(t *testing.T) {
 	out, errOut, err := j.can(10*time.Minute, "verify", "--server", "--probe-public", "--probe-backup-repo")
 	j.save("verify", out+errOut)
+	unexpected := 0
 	for _, l := range strings.Split(out, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(l)), "FAIL") {
-			j.rep.Note("`can verify --server`: %s", strings.Join(strings.Fields(l), " "))
+		f := strings.Fields(l)
+		if len(f) < 2 || f[0] != "FAIL" {
+			continue
 		}
+		why, ok := expectedVerifyFailures[f[1]]
+		if !ok {
+			unexpected++
+			why = "UNEXPECTED"
+		}
+		j.rep.Note("`can verify --server`: %s (%s)", strings.Join(f, " "), why)
 	}
 	result := "no check failed"
 	if err != nil {
-		result = "exit " + err.Error()
+		result = err.Error()
 	}
-	j.rep.Note("`can verify --server --probe-public --probe-backup-repo`: %s", result)
+	j.rep.Note("`can verify --server --probe-public --probe-backup-repo`: %s; %d unexpected failure(s)", result, unexpected)
 	t.Log(j.redact(out))
 }
 
