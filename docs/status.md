@@ -77,6 +77,7 @@ applications are not in it.
 | Outbound email | fake relays and the compose sink | a real relay, deliverability |
 | `make up` phases, backup script, `can verify --server` | `make-up-e2e` on k3d with a fake host and a local restic repository | creating a server, cloud-init, k3s install on a fresh OS, ACME certificates, the five-minute target, `can verify` against a real server |
 | Hetzner, DigitalOcean, Cloudflare DNS | fake HTTP APIs | any real account |
+| The whole journey with the `can` binary: `make up`, form and mail, modules, backup, destroy, restore | `acceptance`: a CI runner VM as the server over ssh, with stand-ins for certificate, DNS, relay and bucket ([measurements](measurements/acceptance.md)) | a fresh cloud server, ACME, real DNS and mail, a restore onto a second machine, 2 GB |
 | Restore onto a new cluster | `restore-e2e` (forms, work, people, finance, with erasures) | a real server or bucket, systemd, restore time, large data |
 | Module routing, TLS redirect, edge rate limits | `module-routing` on k3d with Traefik's self-signed certificate | real DNS and certificates, client addresses through ServiceLB |
 | Pod-to-node isolation | `node-isolation`: network namespaces, a runner's systemd, k3d | `ufw` on a real server, a reboot, a cloud metadata service |
@@ -95,6 +96,7 @@ gaps, with `can verify --server` for the automatic checks.
 | `security` | pull requests, `main`, weekly | red (not required); `dependency-review` is informational |
 | `modules-k3d`, `module-backup`, `restore-e2e`, `wrapped-backup`, `node-isolation`, `make-up-e2e` | pull requests touching their paths, on demand. **Not scheduled** | red (not required) |
 | `dev-cluster`, `module-routing`, `wrapped-modules` | pull requests touching their paths, on demand. **Not scheduled** | job marked `continue-on-error`: the run can look green while the job failed |
+| `acceptance` | pull requests touching its paths, on demand, weekly | red (not required) |
 | `e2e` (jobs `e2e` and `browser-e2e`) | pull requests touching their paths, on demand, nightly | same `continue-on-error` caveat |
 | `footprint`, `footprint-budgets` | pull requests touching their paths, on demand. Not scheduled | same `continue-on-error` caveat |
 | `flaky-hunt` | nightly and on demand, never on pull requests | red (not required): the unit suite repeated under load to find unreliable tests |
