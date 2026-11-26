@@ -65,8 +65,9 @@ runtime:
 requires:
   database: sqlite
   sso: none
-  # Signing invitations and completion notes (specs/049-contract-esign). Signers outside the company
-  # domain need company.yaml email.modules.finance.external_recipients: true (docs/email.md).
+  # Signing invitations and completion notes (specs/049-contract-esign), and invoices, statements and
+  # payment reminders (specs/062-invoice-email). Recipients outside the company domain need company.yaml
+  # email.modules.finance.external_recipients: true (docs/email.md).
   capabilities: [email.send]
 resources:
   # E15c re-measured (specs/035-accounting/research.md R9): 18.5 MB idle, 31.7 MiB (32460 kB) at the peak of a load that adds
@@ -122,6 +123,7 @@ data_classes:
   # issued invoice are kept under finance-invoice until that period ends. A party erasure writes a
   # tombstone of this class (GET /v1/erasures), which a restore replays with `can-finance purge`.
   - { class: finance-party-contact, retention: legal, sensitivity: sensitive }
+  # Records of mailed documents hold ids, states and times only (no address or text) and follow them.
   # Issued invoices, credit notes, payments and their frozen buyer snapshot. Legal retention overrides
   # erasure: kept 7 years from the issue date (core/finance Config.RetentionYears), then deleted.
   - { class: finance-invoice, retention: 7y, sensitivity: standard }

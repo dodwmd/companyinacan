@@ -12,6 +12,7 @@ Spec: [specs/039-email-send](../specs/039-email-send/spec.md).
 | Forms gateway: new lead | `POST /v1/email` on the module API | the form's `notify_email` only |
 | Notifications and approvals | can-core's own e-mail channel ([notifications.md](notifications.md)) | the address a person set, if it is vouched for (below) |
 | Finance: contract signing invitations and certificates | `POST /v1/email` | the signers, within its allow-list or `external_recipients` |
+| Finance: invoices, credit notes, statements and payment reminders ([finance.md](finance.md#emailing-documents-and-payment-reminders)) | `POST /v1/email` | the customer's address on the party record, same rules |
 | Other modules | `POST /v1/email`, if they declare `email.send` | their allow-list |
 
 SMTP-speaking third-party apps (FreeScout, Listmonk) cannot call this API and are **not** served by
@@ -112,6 +113,8 @@ email:
   modules:
     finance: { external_recipients: true }   # finance only; default false
 ```
+
+Customers who are emailed invoices, statements and payment reminders fall under the same rule.
 
 With it, the finance module may mail **any** address (still within its quota). The default is the
 allow-list. A queued invitation contains the signing link until it has been sent.
