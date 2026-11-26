@@ -40,3 +40,8 @@ What is unverified or not built is listed under "What is verified and what is no
 
 Not legal advice: what has to be kept, for how long and when it has to be erased is the operator's
 responsibility.
+
+## Business overview
+
+The module provides `summary` (`GET /v1/summary`, single-use grants from can-core only): storage used and files whose retention date ends within 30 days (administrators: everything; others: the spaces they manage).
+Counts only. See [`specs/053-business-overview/`](../../specs/053-business-overview/spec.md).

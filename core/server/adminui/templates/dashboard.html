@@ -38,7 +38,7 @@
 <tbody>
 {{range .Data.Health.DeadRows}}<tr>
 <th scope="row"><a href="/events/{{.ID}}">{{.ID}}</a></th><td>{{.Type}}</td><td>{{.Module}}</td><td>{{.Attempts}}</td>
-<td><form method="post" action="/events/{{.ID}}/requeue"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="/"><button type="submit">{{t "ev.requeue"}}</button></form></td>
+<td><form method="post" action="/events/{{.ID}}/requeue"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="/dashboard"><button type="submit">{{t "ev.requeue"}}</button></form></td>
 </tr>
 {{end}}</tbody>
 </table>

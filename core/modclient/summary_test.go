@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type fakeIntrospect struct {
@@ -52,7 +55,7 @@ func TestSummaryHandler(t *testing.T) {
 	} {
 		built = 0
 		api := &fakeIntrospect{id: c.id, err: c.err}
-		h := SummaryHandler(api, slog.New(slog.DiscardHandler), build)
+		h := SummaryHandler(api, slog.New(slog.DiscardHandler), SummaryLimit{}, build)
 		method := c.method
 		if method == "" {
 			method = http.MethodGet
@@ -76,4 +79,80 @@ func TestSummaryHandler(t *testing.T) {
 			t.Errorf("%s: %s", name, w.Body)
 		}
 	}
+}
+
+// grantIntrospect knows one grant; junk is inactive, and "stuck" holds its caller until released.
+type grantIntrospect struct {
+	good, stuck string
+	release     chan struct{}
+	inFlight    atomic.Int32
+}
+
+func (f *grantIntrospect) Introspect(ctx context.Context, tok string) (Identity, error) {
+	switch tok {
+	case f.good:
+		return Identity{Active: true, Kind: SummaryKind, Subject: "user:alice"}, nil
+	case f.stuck:
+		f.inFlight.Add(1)
+		select {
+		case <-f.release:
+		case <-ctx.Done():
+		}
+	}
+	return Identity{}, nil
+}
+
+func TestSummaryFailuresAreLimitedAndValidGrantsAreNot(t *testing.T) {
+	grant := func(c string) string { return SummaryTokenPrefix + strings.Repeat(c, 43) }
+	api := &grantIntrospect{good: grant("g"), stuck: grant("s"), release: make(chan struct{})}
+	var mu sync.Mutex
+	failed := map[string]int{}
+	limit := SummaryLimit{
+		Client: func(r *http.Request) string { return r.RemoteAddr },
+		Failed: func(c string) bool { mu.Lock(); defer mu.Unlock(); failed[c]++; return failed[c] <= 3 },
+	}
+	h := SummaryHandler(api, slog.New(slog.DiscardHandler), limit,
+		func(context.Context, string, []string) ([]SummaryFigure, error) { return nil, nil })
+	get := func(addr, tok string) int {
+		r := httptest.NewRequest(http.MethodGet, SummaryPath, nil)
+		r.RemoteAddr = addr
+		r.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i, tok := range []string{"junk", grant("x"), "junk", "junk", grant("x")} {
+		want := http.StatusUnauthorized
+		if i >= 3 {
+			want = http.StatusTooManyRequests
+		}
+		if got := get("attacker", tok); got != want {
+			t.Errorf("failure %d: %d, want %d", i+1, got, want)
+		}
+	}
+	// A valid grant is answered, from the very address over the limit too.
+	for _, addr := range []string{"attacker", "can-core"} {
+		if got := get(addr, api.good); got != http.StatusOK {
+			t.Errorf("a valid grant from %s: %d", addr, got)
+		}
+	}
+	// An address over the limit has one request introspected at a time, so its flood cannot take
+	// the slots a valid grant from elsewhere needs.
+	var wg sync.WaitGroup
+	for range 2 * maxSummaryRedemptions {
+		wg.Add(1)
+		go func() { defer wg.Done(); get("attacker", api.stuck) }()
+	}
+	for api.inFlight.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := get("can-core", api.good); got != http.StatusOK {
+		t.Errorf("a valid grant during a flood: %d", got)
+	}
+	if n := api.inFlight.Load(); n != 1 {
+		t.Errorf("%d requests of the address over the limit were introspected at once", n)
+	}
+	close(api.release)
+	wg.Wait()
 }

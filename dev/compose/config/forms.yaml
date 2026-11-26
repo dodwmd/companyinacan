@@ -5,9 +5,8 @@ db_path: /data/forms.db
 path_prefix: /_forms
 trust_proxy: true            # only reachable through the Caddy edge in this stack
 rate_limit: { per_minute: 60, max_tracked_ips: 1000 }
-# Lead notifications go to can-core's email.send with CAN_FORMS_EMAIL_TOKEN (compose has no
-# Kubernetes, so there is no projected token); can-core delivers them to the in-repo SMTP sink.
-email: { url: "http://core:8090/v1/email" }
+# Installed under can-core (CAN_API_URL): lead notifications go to its email.send, lead.created.v1 is
+# published through it, and it answers the business overview.
 forms:
   - id: contact
     name: Contact

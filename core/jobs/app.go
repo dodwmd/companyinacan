@@ -163,6 +163,8 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	if opt.Can != nil {
 		// can-core's signed webhooks (approval decisions). Authenticated by the HMAC signature, not by a token.
 		mux.Handle("POST /v1/can/events", &modclient.Receiver{Secret: sec.CanSecret, Handle: store.CanEventHandler(), Now: now})
+		// The business overview (specs/053-business-overview).
+		mux.Handle(modclient.SummaryPath, modclient.SummaryHandler(opt.Can, log, a.summaryLimit(), summaryBuilder(store)))
 	}
 	var uiHandler http.Handler
 	if cfg.UI.Enabled {

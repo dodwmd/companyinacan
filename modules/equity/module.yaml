@@ -31,6 +31,7 @@ resources:
   disk_mb: 200
 provides:
   - { capability: equity, schema: equity.v1, service: equity-api, port: 8081 }
+  - { capability: summary, schema: summary.v1, service: equity-api, port: 8081 }   # aggregates for the business overview
 publishes:
   # ids and dates only: never names, quantities or prices
   - { event: equity.grant.approved.v1, schema: ./events/equity.grant.approved.v1.json }

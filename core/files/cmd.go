@@ -230,7 +230,11 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	if can != nil {
 		sessions = can
 	}
-	srv := newServer(newHandler(api, sessions))
+	handler := newHandler(api, sessions)
+	if can != nil {
+		handler = withSummary(handler, can, api, log) // the business overview (specs/053-business-overview)
+	}
+	srv := newServer(handler)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {

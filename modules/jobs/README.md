@@ -27,3 +27,8 @@ The full guide, including roles, privacy, retention and the honest limits of job
 the stable cross-module subset is `schemas/capabilities/jobs.v1.json` and `ats.v1.json`.
 
 Not legal advice: candidate data is personal data and the operator is responsible for compliance.
+
+## Business overview
+
+The module provides `summary` (`GET /v1/summary`, single-use grants from can-core only): open requisitions, new applications and the caller's interviews awaiting a scorecard.
+Counts only. See [`specs/053-business-overview/`](../../specs/053-business-overview/spec.md).

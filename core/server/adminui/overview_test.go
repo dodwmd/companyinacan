@@ -2,6 +2,7 @@ package adminui
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -138,5 +139,62 @@ func TestEveryOverviewFigureHasALabel(t *testing.T) {
 		if _, ok := messagesEN["ov.fig_"+strings.ReplaceAll(f.Key, ".", "_")]; !ok {
 			t.Errorf("no label for %s", f.Key)
 		}
+	}
+}
+
+func TestSignInLandsOnTheOverview(t *testing.T) {
+	h := newHarness(t)
+	s := h.login()
+	r := h.do("GET", "/", nil, s.with()...)
+	if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != "/overview" {
+		t.Fatalf("%d %s", r.StatusCode, r.Header.Get("Location"))
+	}
+	// A known flash message follows; anything else in the query does not.
+	if r := h.do("GET", "/?flash=flash.wizard_done", nil, s.with()...); r.Header.Get("Location") != "/overview?flash=flash.wizard_done" {
+		t.Errorf("%s", r.Header.Get("Location"))
+	}
+	if r := h.do("GET", "/?flash=//evil.example", nil, s.with()...); r.Header.Get("Location") != "/overview" {
+		t.Errorf("%s", r.Header.Get("Location"))
+	}
+	page := h.do("GET", "/overview", nil, s.with()...)
+	if !strings.Contains(page.body, `href="/dashboard"`) {
+		t.Error("the dashboard is not reachable from the overview")
+	}
+	if r := h.do("GET", "/dashboard", nil, s.with()...); r.StatusCode != http.StatusOK {
+		t.Errorf("dashboard: %d", r.StatusCode)
+	}
+}
+
+func TestNothingNeedsAttentionOnlyWhenEverythingWasRead(t *testing.T) {
+	p, _ := newOverviewUI(t)
+	// alice may see work only, and work is down.
+	alice := p.loginAs("alice")
+	body := p.do("GET", "/overview", nil, alice.with()...).body
+	if strings.Contains(body, "Nothing needs your attention") || !strings.Contains(body, "may be incomplete") {
+		t.Errorf("with a module unavailable:\n%s", body)
+	}
+	// dave has nothing to see and nothing is missing.
+	dave := p.loginAs("dave")
+	body = p.do("GET", "/overview", nil, dave.with()...).body
+	if !strings.Contains(body, "Nothing needs your attention") || strings.Contains(body, "may be incomplete") {
+		t.Errorf("with nothing missing:\n%s", body)
+	}
+}
+
+func TestUnreadableRightsShowUnavailableOnTheOverview(t *testing.T) {
+	p, asked := newOverviewUI(t)
+	carol := p.loginAs("carol")
+	p.ui.Tickets.Holds = func(context.Context, string, string) (bool, error) { return false, errors.New("database is locked") }
+	r := p.do("GET", "/overview", nil, carol.with()...)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("%d", r.StatusCode)
+	}
+	for _, want := range []string{"Finance is unavailable", "Work is unavailable", "may be incomplete"} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("lacks %q", want)
+		}
+	}
+	if *asked != 0 {
+		t.Error("a module was asked without knowing the person's rights")
 	}
 }

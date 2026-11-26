@@ -341,6 +341,9 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatalf("the admin password changed across a re-run: %d %s", st, body)
 	}
 
+	// --- `can verify --server` agrees (its rate limit probe throttles sign-in for a moment) -----
+	verifyOnK3d(t, co.Domain)
+
 	// --- backups work: dump, marker, restic snapshot, status, verify, restore of the dumps -------
 	if withBackup {
 		hostBackup(t, host.copied)

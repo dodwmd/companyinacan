@@ -71,6 +71,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		newValidateCmd(g),
 		newSiteCmd(g),
 		newDoctorCmd(g),
+		newVerifyCmd(g),
 		newDiagnoseCmd(g),
 		newApplyCmd(g),
 		newDevCmd(g),
