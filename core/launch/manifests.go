@@ -455,12 +455,15 @@ type SiteArchive struct {
 	TarGz  []byte
 	SHA256 string
 	Files  int
+	// Warnings of the site build, for the operator.
+	Warnings []string
 }
 
 // BuildSiteArchive validates <dir>/company.yaml, renders its site (`can site build`) and packs the
 // output as a deterministic tar.gz: sorted names, zero timestamps, a fixed gzip header, so an
-// unchanged company yields the same digest and a re-run does not restart the site pod.
-func BuildSiteArchive(dir, baseURL string, maxBytes int) (SiteArchive, error) {
+// unchanged company yields the same digest and a re-run does not restart the site pod. opts carries
+// what the renderer needs besides the company directory (BaseURL, Forms, AbsentForms).
+func BuildSiteArchive(dir string, opts site.Options, maxBytes int) (SiteArchive, error) {
 	doc, ps := config.Load(filepath.Join(dir, "company.yaml"))
 	if doc == nil {
 		return SiteArchive{}, fmt.Errorf("cannot read %s/company.yaml", dir)
@@ -479,7 +482,8 @@ func BuildSiteArchive(dir, baseURL string, maxBytes int) (SiteArchive, error) {
 		return SiteArchive{}, err
 	}
 	defer func() { _ = root.Close() }()
-	out, err := site.Render(c, site.Options{BaseURL: baseURL, Assets: root.FS()})
+	opts.Assets = root.FS()
+	out, err := site.Render(c, opts)
 	if err != nil {
 		return SiteArchive{}, fmt.Errorf("render site: %w", err)
 	}
@@ -529,7 +533,7 @@ func BuildSiteArchive(dir, baseURL string, maxBytes int) (SiteArchive, error) {
 		return SiteArchive{}, fmt.Errorf("the built site is %d KiB compressed, over the %d KiB that fits in a Kubernetes ConfigMap; shrink the logo or other assets in company.yaml's site section (or serve large assets from elsewhere)", buf.Len()>>10, maxBytes>>10)
 	}
 	h := sha256.Sum256(buf.Bytes())
-	return SiteArchive{TarGz: buf.Bytes(), SHA256: hex.EncodeToString(h[:]), Files: len(names)}, nil
+	return SiteArchive{TarGz: buf.Bytes(), SHA256: hex.EncodeToString(h[:]), Files: len(names), Warnings: out.Warnings}, nil
 }
 
 // SiteContentConfigMap renders the ConfigMap the site pod unpacks.

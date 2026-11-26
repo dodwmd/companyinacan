@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -137,8 +138,8 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatal("CAN_IT_IMAGES must name the directory written by scripts/build-images.sh")
 	}
 
-	// The company: the shipped example, on an ssh provider (never contacted here), with the work
-	// module; the default bundle adds the forms module.
+	// The company: the shipped example, on an ssh provider (never contacted here), with the forms
+	// module, its contact section, a mail relay that does not exist, and the work module.
 	dir := t.TempDir()
 	src, err := os.ReadFile(filepath.Join(root, "examples", "acme-co", "company.yaml"))
 	if err != nil {
@@ -256,6 +257,10 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	if !strings.Contains(strings.Join(hdr.Values("Set-Cookie"), ";"), auth.CookieName) {
 		t.Fatalf("no session cookie: %v", hdr)
 	}
+	var session []string
+	for _, c := range (&http.Response{Header: hdr}).Cookies() {
+		session = append(session, c.Name+"="+c.Value)
+	}
 	badBody, _ := json.Marshal(map[string]string{"username": res.Admin.Username, "password": res.Admin.Password + "x", "totp": auth.Code(key, auth.SHA1, 6, 30, time.Now())})
 	if st, _, _ := edge(t, "POST", "http://"+adminHost+"/api/v1/login", map[string]string{"Content-Type": "application/json"}, bytes.NewReader(badBody)); st == 200 {
 		t.Fatal("a wrong password must not log in")
@@ -273,29 +278,11 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 		t.Fatalf("robots.txt: %d", st)
 	}
 
-	// --- a form post through the same-origin /_forms path creates a lead ---------------------
+	// --- a visitor sends the form the landing page links to ---------------------------------
 	if !res.FormsRouted {
 		t.Fatal("the forms route was not applied")
 	}
-	// Traefik loads a new route a moment after it is applied: wait for it, not for a fixed time.
-	eventually(t, 45*time.Second, "the /_forms route to be live in Traefik", func() (bool, string) {
-		st, body, _ = edge(t, "GET", "http://"+siteHost+"/_forms/contact/token", nil, nil)
-		if st == 200 {
-			return true, ""
-		}
-		ir, _ := kubectl("-n", "mod-forms", "get", "ingressroute,middleware", "-o", "yaml")
-		return false, fmt.Sprintf("status %d %.120s\n%s", st, body, ir)
-	})
-	var tok struct {
-		Token string `json:"token"`
-	}
-	_ = json.Unmarshal([]byte(body), &tok)
-	time.Sleep(4 * time.Second) // the gateway rejects a submit faster than min_fill_seconds (3)
-	form := url.Values{"name": {"E2E Tester"}, "email": {"e2e@acme.example"}, "message": {"hello from the make-up e2e"}, "_t": {tok.Token}}
-	st, body, _ = edge(t, "POST", "http://"+siteHost+"/_forms/contact", map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}, strings.NewReader(form.Encode()))
-	if st != 201 && st != 200 {
-		t.Fatalf("form post: %d %s", st, body)
-	}
+	sendContactForm(t, siteHost, "e2e@acme.example")
 	readTok := mustKubectl(t, "-n", "mod-forms", "get", "secret", "can-module", "-o", "go-template={{index .data \"CAN_FORMS_API_READ_TOKEN\" | base64decode}}")
 	api := portForward(t, "mod-forms", "forms-api", 8081)
 	st2, leads := apiGet(t, api+"/v1/leads", readTok)
@@ -333,6 +320,14 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	if !strings.Contains(strings.Join(host.ran, "\n"), "install -d -o 65532 -g 65532 -m 0700 '/var/lib/can/dumps'") {
 		t.Fatal("the host was not told to hand the dumps directory to can-core")
 	}
+
+	// --- the lead notification of company.yaml reached can-core's outbox ------------------------
+	// The example's relay does not exist, so the message waits there: forms accepted it for the
+	// notify_email recipient (the list masks addresses).
+	eventually(t, 90*time.Second, "the lead notification in the e-mail outbox", func() (bool, string) {
+		st, page, _ := edge(t, "GET", "http://"+adminHost+"/email", map[string]string{"Cookie": strings.Join(session, "; ")}, nil)
+		return st == 200 && strings.Contains(page, "<td>forms</td><td>s***@acme.example</td>"), fmt.Sprintf("status %d %.3000s", st, page)
+	})
 
 	// --- nothing secret on disk or in the progress log -----------------------------------------
 	raw, _ := os.ReadFile(provider.StatePath(dir))
@@ -379,6 +374,52 @@ func TestMakeUpPhasesOnK3d(t *testing.T) {
 	if withBackup {
 		failedInstallOnK3d(t, res2.CompanyYAML)
 		hostBackup(t, host.copied)
+	}
+}
+
+var (
+	reFormLink   = regexp.MustCompile(`href="(/_forms/[a-z0-9-]+/form)"`)
+	reFormAction = regexp.MustCompile(`<form method="post" action="([^"]+)"`)
+	reFormToken  = regexp.MustCompile(`name="_t" value="([^"]+)"`)
+)
+
+// sendContactForm does what a visitor's browser does, without script: follow the landing page's
+// link, take the form page's hidden token and post to the form's (relative) action.
+func sendContactForm(t *testing.T, siteHost, email string) {
+	t.Helper()
+	st, landing, _ := edge(t, "GET", "http://"+siteHost+"/", nil, nil)
+	link := reFormLink.FindStringSubmatch(landing)
+	if st != 200 || link == nil {
+		t.Fatalf("the landing page links to no form: %d %.2000s", st, landing)
+	}
+	pageURL := "http://" + siteHost + link[1]
+	var page string
+	// Traefik loads a new route a moment after it is applied: wait for it, not for a fixed time.
+	eventually(t, 45*time.Second, "the /_forms route to be live in Traefik", func() (bool, string) {
+		st, page, _ = edge(t, "GET", pageURL, nil, nil)
+		if st == 200 {
+			return true, ""
+		}
+		ir, _ := kubectl("-n", "mod-forms", "get", "ingressroute,middleware", "-o", "yaml")
+		return false, fmt.Sprintf("status %d %.120s\n%s", st, page, ir)
+	})
+	action, token := reFormAction.FindStringSubmatch(page), reFormToken.FindStringSubmatch(page)
+	if action == nil || token == nil {
+		t.Fatalf("not a form page: %.2000s", page)
+	}
+	base, err := url.Parse(pageURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := base.Parse(action[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(4 * time.Second) // the gateway rejects a submit faster than min_fill_seconds (3)
+	form := url.Values{"name": {"E2E Tester"}, "email": {email}, "message": {"hello from the make-up e2e"}, "website": {""}, "_t": {token[1]}}
+	st, body, _ := edge(t, "POST", target.String(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://" + siteHost}, strings.NewReader(form.Encode()))
+	if st != 200 || !strings.Contains(body, "Thank you") {
+		t.Fatalf("form post to %s: %d %s", target, st, body)
 	}
 }
 

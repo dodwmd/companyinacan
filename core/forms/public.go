@@ -32,6 +32,9 @@ func (g *publicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if pre := g.cfg.PathPrefix; path == pre || strings.HasPrefix(path, pre+"/") {
 		path = strings.TrimPrefix(path, pre)
 	}
+	// The hosted page's links are relative, so a trailing slash would break them.
+	slashed := strings.HasSuffix(path, "/"+pageSegment+"/") && !strings.HasSuffix(path, "//"+pageSegment+"/")
+	trailing := strings.HasSuffix(path, "/")
 	path = strings.Trim(path, "/")
 	if path == "healthz" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -39,7 +42,7 @@ func (g *publicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	segs := strings.Split(path, "/")
 	hosted := len(segs) == 2 && (segs[1] == pageSegment || segs[1] == cssSegment)
-	if path == "" || len(segs) > 2 || (len(segs) == 2 && segs[1] != "token" && !hosted) {
+	if path == "" || len(segs) > 2 || (len(segs) == 2 && segs[1] != "token" && !hosted) || (hosted && trailing && !slashed) {
 		writeError(w, http.StatusNotFound, "not_found", "no such endpoint")
 		return
 	}
@@ -52,6 +55,12 @@ func (g *publicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hosted {
+		if slashed {
+			// Relative, and not through http.Redirect: the browser's path has the prefix the proxy stripped.
+			w.Header().Set("Location", "../"+pageSegment)
+			w.WriteHeader(http.StatusPermanentRedirect)
+			return
+		}
 		g.serveHosted(w, r, form, segs[1])
 		return
 	}

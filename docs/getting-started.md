@@ -37,7 +37,7 @@ Things you can do by hand:
 1. `docker compose -p can-e2e exec -T -e CAN_ADMIN_PASSWORD=dev-only-admin-password core /can-core admin reset-password --rotate-totp`
    prints a TOTP secret; add it to an authenticator (or compute a code with any RFC 6238 tool), then sign in at
    <http://admin.localhost:8080> as `admin` with the dev password.
-2. Fill in the contact form at <http://localhost:8080/contact/>; the lead appears with the dev leads token
+2. Open <http://localhost:8080>, press **Contact sales** and send the form; the lead appears with the dev leads token
    (`curl -H "Authorization: Bearer dev-only-forms-api-token-0123456789abcdef" http://forms.localhost:8080/v1/leads`).
 3. Sign in to the tracker at <http://work.localhost:8080/ui/> with the dev work token, create a project and an
    issue, and look at the board.
@@ -97,9 +97,10 @@ Read these caveats first; they are the honest state of this path:
 - **By default you get the site, the contact form and the admin UI.** To add a business module, list it under
   `modules:` in `company.yaml` and run `make up` with `IMAGES_FROM=build/images` again. No image is published yet, and
   no business module has run on a real server ([status.md](status.md)).
-- **The contact form is not on the generated pages.** It is at `https://<your site>/_forms/contact/form`; link to it
-  yourself. The admin UI's Leads page has no credential on an install, so read messages through the notification
-  email (needs a relay, [email.md](email.md)) or the forms API.
+- **Set who is emailed about messages.** `can init` puts a contact section on the site
+  ([site-contact.md](site-contact.md)) but cannot know your address or relay. The admin UI's Leads page has no
+  credential on an install, so read messages through the notification email (needs a relay, [email.md](email.md))
+  or the forms API.
 - Backups are optional (`--backup-endpoint`, `--backup-bucket`, `--backup-credentials-file`, passed in `ARGS`) and
   print a recovery kit once. `can restore` runs on a new server and has been exercised on k3d only. `make up` does
   not copy the `can` binary to the server: put it at `/usr/local/bin/can`, or erasures never reach the bucket

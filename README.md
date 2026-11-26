@@ -31,7 +31,7 @@ k3d cluster, a real server) are in [docs/getting-started.md](docs/getting-starte
 | Module | What it is | Status | Declared RAM | Notes |
 |---|---|---|---|---|
 | can-core | Control plane: admin UI (password + TOTP, optional OIDC SSO), users and roles, module catalogue, approvals, notifications, events, audit log, personal access tokens, business overview | experimental | 48 MB (soft limit 64) | Installed on k3d in CI; in compose it records modules but does not install them |
-| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: no status marker (treated as ready); the site is rendered by `can` | 15 MB (forms) | What `make up` deploys; run on k3d in CI and in compose. The form is at `/_forms/contact/form`; the generated site does not link to it by itself |
+| site + forms | Static company site from `company.yaml`, lead-capture gateway (`leads`) | forms: no status marker (treated as ready); the site is rendered by `can` | 15 MB (forms) | What `make up` deploys; run on k3d in CI and in compose. A `contact` section in `company.yaml` links the site to the form ([docs/site-contact.md](docs/site-contact.md)) |
 | `work` | Jira-like tracker with API, CLI and web UI | experimental | 28 MB | Installed through can-core on k3d in CI |
 | `people` | Directory, org, 1:1s, goals, reviews, time off, web UI | experimental | 30 MB | Sensitive fields sealed; backup and restore run on k3d |
 | `jobs` | Requisitions, careers page with JobPosting data, feeds, ATS, recruiter UI | experimental | 30 MB | Installs on k3d in CI. Resume uploads need a virus scanner. Board connectors are stubs |
@@ -129,6 +129,7 @@ make docs-check                # offline check of every relative Markdown link
 make build                     # builds bin/can, bin/can-static, bin/can-core
 bin/can init my-company --name "My Co" --domain myco.example --non-interactive
 bin/can validate my-company --modules-dir modules
+make up ARGS="./my-company --plan" IMAGES_FROM=build/images   # real server: docs/getting-started.md (make images first)
 ```
 
 The project is developed spec-first with [GitHub Spec Kit](https://github.com/github/spec-kit).

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -13,6 +14,8 @@ import (
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/problem"
 	"github.com/dodwmd/companyinacan/core/server/store"
+	"github.com/dodwmd/companyinacan/core/validate"
+	"github.com/dodwmd/companyinacan/modules"
 )
 
 // copyModules copies the shipped modules named, so that a test can edit them.
@@ -63,6 +66,59 @@ func apply(t *testing.T, g *rig, d Desired) Result {
 	return res
 }
 
+// shippedFormsTag is the image tag the shipped forms chart names.
+func shippedFormsTag(t *testing.T) string {
+	t.Helper()
+	c, err := ContentOf("../../../modules/forms/module.yaml", &config.Module{ID: "forms", Runtime: loadModules(t, "../../../modules", "forms").Manifests["forms"].Runtime})
+	if err != nil || len(c.Images) != 1 {
+		t.Fatalf("%v %v", c.Images, err)
+	}
+	_, tag, _ := strings.Cut(c.Images[0], ":")
+	return tag
+}
+
+// The modules built into `can` hash as the directories can-core has: otherwise a company without a
+// modules directory would plan an upgrade of everything, or miss one.
+func TestBuiltInAndOnDiskModulesHaveTheSameContent(t *testing.T) {
+	validate.UseShipped(modules.Shipped)
+	paths, err := filepath.Glob("../../../modules/*/module.yaml")
+	if err != nil || len(paths) < 10 {
+		t.Fatal(paths, err)
+	}
+	for _, p := range paths {
+		id := filepath.Base(filepath.Dir(p))
+		doc, ps := config.Load(p)
+		if doc == nil {
+			t.Fatal(ps)
+		}
+		m, err := config.DecodeModule(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		disk, err := ContentOf(p, m)
+		if err != nil {
+			t.Fatal(id, err)
+		}
+		builtinPath, ok := validate.ManifestPath(validate.BuiltinModules, strings.TrimPrefix(id, "_"))
+		if !ok {
+			if strings.HasPrefix(id, "_") {
+				continue // go:embed leaves the example out
+			}
+			t.Fatalf("%s is not built in", id)
+		}
+		builtin, err := ContentOf(builtinPath, m)
+		if err != nil {
+			t.Fatal(id, err)
+		}
+		if !reflect.DeepEqual(disk, builtin) {
+			t.Errorf("%s: on disk %+v, built in %+v", id, disk, builtin)
+		}
+		if m.Runtime.Chart != "" && builtin.Chart == "" {
+			t.Errorf("%s: the chart was not hashed", id)
+		}
+	}
+}
+
 // Applying the shipped modules twice, each time read afresh from disk, leaves nothing to do.
 func TestASecondApplyOfShippedModulesPlansNothing(t *testing.T) {
 	ids := []string{"forms", "status", "jobs"}
@@ -110,8 +166,9 @@ func TestContentChangesAreUpgradesWithoutAVersionBump(t *testing.T) {
 	check("the manifest", "manifest changed")
 	replaceIn(t, filepath.Join(dir, "forms", "chart", "templates", "deployment.yaml"), "terminationGracePeriodSeconds: 30", "terminationGracePeriodSeconds: 31")
 	check("a template", "chart changed")
-	replaceIn(t, values, "tag: 0.2.0", "tag: 0.2.1")
-	check("the image", "image ghcr.io/dodwmd/can-forms:0.2.0 -> ghcr.io/dodwmd/can-forms:0.2.1")
+	tag := "tag: " + shippedFormsTag(t)
+	replaceIn(t, values, tag, tag+"1")
+	check("the image", "image ghcr.io/dodwmd/can-forms:"+shippedFormsTag(t)+" -> ghcr.io/dodwmd/can-forms:"+shippedFormsTag(t)+"1")
 	rec, err := g.db.GetModule(context.Background(), "forms")
 	if err != nil || rec.Manifest.Category != "marketing" {
 		t.Fatalf("the manifest was not recorded again: %q %v", rec.Manifest.Category, err)

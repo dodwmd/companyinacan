@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -18,6 +18,7 @@ import (
 
 	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/modsecrets"
+	"github.com/dodwmd/companyinacan/core/validate"
 	"github.com/dodwmd/companyinacan/deploy"
 )
 
@@ -69,8 +70,40 @@ func newInternetAccess(recorded string, next *config.Module) bool {
 	return recorded != "" && json.Unmarshal([]byte(recorded), &was) == nil && was.Egress != nil && !*was.Egress
 }
 
+// inModule is a manifest's relative path as a name in the module's file system; it cannot leave it.
+func inModule(rel string) string {
+	if p := strings.TrimPrefix(path.Clean("/"+rel), "/"); p != "" {
+		return p
+	}
+	return "."
+}
+
+// readRegular reads a file of at most limit bytes; ok is false for anything else (a symlink is not
+// followed: the renderer refuses them).
+func readRegular(module fs.FS, name string, limit int64) (b []byte, ok bool, err error) {
+	entries, err := fs.ReadDir(module, path.Dir(name))
+	if err != nil {
+		return nil, false, nil //nolint:nilerr // no such directory: no such file
+	}
+	for _, e := range entries {
+		if e.Name() != path.Base(name) || !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			return nil, false, err
+		}
+		if fi.Size() > limit {
+			return nil, false, fmt.Errorf("%s is larger than %d bytes", name, limit)
+		}
+		b, err := fs.ReadFile(module, name)
+		return b, err == nil, err
+	}
+	return nil, false, nil
+}
+
 // hookScripts reads the script files module.yaml's hooks name, keyed by the path as written.
-func hookScripts(dir string, m *config.Module) map[string]string {
+func hookScripts(module fs.FS, m *config.Module) map[string]string {
 	if m.Hooks.Command != "" {
 		return nil // subcommands of the module's own image
 	}
@@ -79,11 +112,7 @@ func hookScripts(dir string, m *config.Module) map[string]string {
 		if rel == "" {
 			continue
 		}
-		p := filepath.Join(dir, filepath.Clean("/"+rel))
-		if fi, err := os.Lstat(p); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxScriptBytes {
-			continue
-		}
-		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // inside the module directory
+		if b, ok, err := readRegular(module, inModule(rel), maxScriptBytes); ok && err == nil {
 			out[rel] = string(b)
 		}
 	}
@@ -122,9 +151,16 @@ func manifestContent(m *config.Module) Content {
 	return Content{Manifest: digest(b), Egress: egressOf(m)}
 }
 
-// ContentOf reads the Content of the module whose manifest file is manifestPath.
+// ContentOf reads the Content of the module whose manifest is at manifestPath, as
+// validate.ManifestPath returns it: a file on disk, or one of the modules built into `can`. Both
+// hash the same files (modules/embed.go embeds everything that is hashed), so a company without a
+// modules directory sees what can-core, which has the full one, sees.
 func ContentOf(manifestPath string, m *config.Module) (Content, error) {
-	raw, err := os.ReadFile(manifestPath) //nolint:gosec // inside the modules directory
+	module, err := validate.ModuleFS(manifestPath)
+	if err != nil {
+		return Content{}, err
+	}
+	raw, err := fs.ReadFile(module, path.Base(filepath.ToSlash(manifestPath)))
 	if err != nil {
 		return Content{}, err
 	}
@@ -136,63 +172,56 @@ func ContentOf(manifestPath string, m *config.Module) (Content, error) {
 	if err != nil { // a mapping with non-string keys: the bytes themselves
 		canonical = raw
 	}
-	dir := filepath.Dir(manifestPath)
-	c := Content{Manifest: digest(canonical), Platform: platformContent(m.ID), Scripts: hookScripts(dir, m), Egress: egressOf(m)}
+	c := Content{Manifest: digest(canonical), Platform: platformContent(m.ID), Scripts: hookScripts(module, m), Egress: egressOf(m)}
 	if m.Runtime.Chart == "" {
 		return c, nil
 	}
-	inside := func(rel string) string { return filepath.Join(dir, filepath.Clean("/"+rel)) }
-	chart := inside(m.Runtime.Chart)
+	chart := inModule(m.Runtime.Chart)
 	h := sha256.New()
 	files := 0
-	add := func(path string) error {
-		fi, err := os.Lstat(path)
-		if err != nil || !fi.Mode().IsRegular() {
-			return err // symlinks are not followed; the renderer refuses them
-		}
-		if files++; files > maxContentFiles || fi.Size() > maxContentBytes {
-			return fmt.Errorf("module %s: the chart is too large", m.ID)
-		}
-		b, err := os.ReadFile(path) //nolint:gosec // inside the module directory
-		if err != nil {
+	add := func(name string) error {
+		b, ok, err := readRegular(module, name, maxContentBytes)
+		if err != nil || !ok {
 			return err
 		}
-		rel, _ := filepath.Rel(dir, path)
-		writePart(h, []byte(filepath.ToSlash(rel)))
+		if files++; files > maxContentFiles {
+			return fmt.Errorf("module %s: the chart has too many files", m.ID)
+		}
+		writePart(h, []byte(name))
 		writePart(h, b)
 		return nil
 	}
-	if _, err := os.Stat(chart); err == nil {
+	if _, err := fs.Stat(module, chart); err == nil {
 		// WalkDir visits in lexical order, so the hash does not depend on the filesystem.
-		err := filepath.WalkDir(chart, func(path string, d fs.DirEntry, err error) error {
+		err := fs.WalkDir(module, chart, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 			name := d.Name()
-			if path != chart && strings.HasPrefix(name, ".") {
+			if p != chart && strings.HasPrefix(name, ".") {
 				if d.IsDir() {
-					return filepath.SkipDir
+					return fs.SkipDir
 				}
 				return nil
 			}
 			if d.IsDir() || strings.HasSuffix(name, ".md") || strings.HasSuffix(name, "~") {
 				return nil
 			}
-			return add(path)
+			return add(p)
 		})
 		if err != nil {
 			return Content{}, err
 		}
 	}
 	if m.Runtime.Values != "" {
-		if v := inside(m.Runtime.Values); !strings.HasPrefix(v, chart+string(filepath.Separator)) {
-			if err := add(v); err != nil && !os.IsNotExist(err) {
+		if v := inModule(m.Runtime.Values); !strings.HasPrefix(v, chart+"/") {
+			if err := add(v); err != nil {
 				return Content{}, err
 			}
 		}
 	}
 	c.Chart = hex.EncodeToString(h.Sum(nil))
-	c.Images = chartImages(filepath.Join(chart, "values.yaml"))
+	c.Images = chartImages(module, path.Join(chart, "values.yaml"))
 	return c, nil
 }
 
@@ -204,8 +233,8 @@ func platformContent(id string) string {
 
 // chartImages lists the `{repository, tag, digest}` sections of a values file, skipping sections
 // that are switched off and the application's own `config`.
-func chartImages(path string) []string {
-	b, err := os.ReadFile(path) //nolint:gosec // inside the module directory
+func chartImages(module fs.FS, name string) []string {
+	b, err := fs.ReadFile(module, name)
 	if err != nil {
 		return nil
 	}

@@ -84,6 +84,7 @@ type stackPrep struct {
 	companyYAML []byte
 	mods        map[string]*config.Module
 	smtp        *launch.SMTPRelay
+	siteForms   []config.HostedForm
 }
 
 // stackPlanActions lists the phases after the server exists, for --plan.
@@ -126,6 +127,9 @@ func (t *target) stackPreflight(ctx context.Context, warn io.Writer, f *stackFla
 		return nil, err
 	}
 	md := resolveModulesDir(f.modulesDir, t.dir)
+	if p.siteForms, err = config.FormsOfModules(md); err != nil {
+		return nil, fmt.Errorf("%w (nothing has been provisioned yet)", err)
+	}
 	if p.images, err = t.preflightImages(ctx, warn, md, set, raw, f); err != nil {
 		return nil, fmt.Errorf("%w (nothing has been provisioned yet)", err)
 	}
@@ -179,6 +183,24 @@ func (t *target) stackPreflight(ctx context.Context, warn io.Writer, f *stackFla
 	return p, nil
 }
 
+// warnContact prints what the site phase would say about site.contact.
+func (t *target) warnContact(w io.Writer, f *stackFlags) {
+	forms, err := config.FormsOfModules(resolveModulesDir(f.modulesDir, t.dir))
+	if err != nil {
+		fmt.Fprintln(w, "warning:", err)
+		return
+	}
+	absent := config.AbsentAdded
+	if f.noDefaultBundle {
+		absent = config.AbsentOff
+	}
+	for _, is := range config.CheckContact(t.company, forms, absent).Issues {
+		if is.Warning {
+			fmt.Fprintln(w, "warning:", is.Message)
+		}
+	}
+}
+
 // preflightImages refuses a company whose module images the server cannot get, and narrows a local
 // images directory to what the company needs: that is what is shipped.
 func (t *target) preflightImages(ctx context.Context, warn io.Writer, modulesDir string, set launch.ImageSet, company []byte, f *stackFlags) (launch.ImageSet, error) {
@@ -214,7 +236,7 @@ func loadModule(md, id string) (*config.Module, error) {
 	if !ok {
 		return nil, fmt.Errorf("module %q has no manifest in %s", id, md)
 	}
-	doc, ps := config.Load(mp)
+	doc, ps := validate.LoadManifest(mp)
 	if problem.HasErrors(ps) {
 		return nil, errors.New(ps[0].String())
 	}
@@ -308,7 +330,7 @@ func (t *target) finishStack(ctx context.Context, cmd *cobra.Command, g *globalO
 	}
 	o := launch.Options{
 		Dir: t.dir, Company: t.company, CompanyYAML: prep.companyYAML, Images: prep.images, Routes: routes,
-		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, Backup: prep.backup, Mods: prep.mods, SMTP: prep.smtp,
+		ACMEEmail: f.acmeEmail, DefaultBundle: !f.noDefaultBundle, ForceCompany: f.forceCompany, SiteBaseURL: base, SiteForms: prep.siteForms, Backup: prep.backup, Mods: prep.mods, SMTP: prep.smtp,
 	}
 	d := launch.Deps{
 		Kube: lifecycle.kube(provider.KubeconfigPath(t.dir), kubeName(t.company.Name)), Loader: launch.SSHImageLoader{Host: host}, Host: host,

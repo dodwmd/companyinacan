@@ -322,6 +322,17 @@
             }
           }
         },
+        "contact": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Contact section: a button to the form the forms module serves at /_forms/<form>/form on the site's origin (docs/site-contact.md).",
+          "properties": {
+            "title": { "type": "string", "maxLength": 80, "description": "Default: Contact us." },
+            "text": { "type": "string", "maxLength": 300 },
+            "form": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}$", "description": "Id of a form the forms module serves. Default: contact." },
+            "button": { "type": "string", "maxLength": 40, "description": "Default: Send us a message." }
+          }
+        },
         "footer": {
           "type": "object",
           "additionalProperties": false,

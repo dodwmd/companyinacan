@@ -9,7 +9,7 @@ https site has been tried in a browser.** Do not put real company data in it yet
 | If you want to | Today |
 |---|---|
 | Try it on your own computer | Works: the Docker Compose stack ([getting-started.md](getting-started.md)). Insecure on purpose |
-| Put a company website and a contact form on a server | Built (`make up`) and exercised on a local test cluster; never run on a real server or provider account. The form has its own page that the generated site does not link to by itself |
+| Put a company website and a contact form on a server | Built (`make up`) and exercised on a local test cluster; never run on a real server or provider account. The site's `contact` section links to the form's own page ([site-contact.md](site-contact.md)) |
 | Run the business modules (tracker, people, finance, ...) on a server | Unverified. No image is published; from a source checkout `make images` builds them all and `make up` ships what `company.yaml` enables. Shown on a test cluster (`work`), never on a real server |
 | Rely on backups | No. Backup and restore have passed on a local test cluster only, never against a real server or bucket |
 
@@ -109,7 +109,6 @@ Apart from `ci`, `security`, `e2e` and `flaky-hunt`, nothing runs again after a 
 - The release workflow does not generate `deploy/release-images.json` ([make-up.md](make-up.md#getting-the-images)).
 - The admin UI's Leads page has no credential on an install. Messages arrive by notification email (needs a relay)
   or are read through the forms API.
-- The generated website has no link to the contact form (`/_forms/contact/form`).
 - `make up` does not copy the `can` binary to the server; without it erasures never reach the backup bucket
   ([backup-restore.md](backup-restore.md#commands)).
 - `company.yaml` module `settings` are generally not mapped onto module configuration

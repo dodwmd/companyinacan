@@ -24,7 +24,7 @@ application stored; see [email-policy.md](email-policy.md).
 1. In `company.yaml`:
 
    ```yaml
-   email:
+   email:                     # the relay; who is emailed about a new lead is notify_email below
      relay:
        host: email-smtp.eu-west-1.amazonaws.com
        port: 587              # default 587; 465 selects implicit TLS
@@ -192,6 +192,6 @@ The compose stack runs a **development-only** SMTP sink that keeps mail instead 
 
 ```sh
 make compose-up
-# submit the form at http://localhost:8080/contact/, then:
+# submit the form linked from http://localhost:8080, then:
 curl --resolve mail.localhost:8080:127.0.0.1 http://mail.localhost:8080/messages
 ```
