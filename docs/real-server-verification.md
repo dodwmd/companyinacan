@@ -36,7 +36,9 @@ finish with [section 13](#13-providers-resume-and-teardown).
 
 ## Safety
 
-- Run `can down --yes` only against the throwaway. It destroys the server on Hetzner and DigitalOcean.
+- Run `can down --yes` only against the throwaway. It destroys the server on Hetzner and DigitalOcean, with all
+  its data. This happens **twice**: in the middle of [section 4](#4-backup-and-restore) (the restore test) and at
+  the end.
 - Do not put `operator_ip` on the first run unless your address is fixed: it can lock you out
   ([providers.md](providers.md)).
 - Let's Encrypt allows few certificates for the same names per week, and `sslip.io` limits are shared with
@@ -106,17 +108,26 @@ No flag sends mail, signs in, or deletes anything. The server checks run from th
 
 Risk: a compromised module reaches the node, the kubelet or the cloud's metadata service.
 
+A "blocked" result means something only if the same probe can succeed. So first show that the targets exist
+(from the server and from your machine), then probe them from a pod. Replace `SERVER_IP`:
+
 ```sh
 S=root@SERVER_IP
 ssh $S 'ufw status verbose; can-firewall check; nft list table inet can_isolation'
+ssh $S 'ss -ltn | grep -E ":(22|6443|10250) "; nc -zvw5 169.254.169.254 80'   # on the node: all four answer
+nc -zvw5 SERVER_IP 22                                                          # from your machine: answers
 ssh $S 'k3s kubectl run probe --rm -i --restart=Never --image=busybox:1.36 -- sh -c "
+  nslookup kubernetes.default >/dev/null && echo CONTROL-DNS; nc -zw5 1.1.1.1 443 && echo CONTROL-NET;
   nc -zw5 SERVER_IP 10250 && echo KUBELET-OPEN; nc -zw5 SERVER_IP 22 && echo SSH-OPEN;
-  wget -qO- -T5 http://169.254.169.254/ && echo METADATA-OPEN; nslookup kubernetes.default; echo done"'
+  nc -zw5 SERVER_IP 6443 && echo API-OPEN; nc -zw5 10.43.0.1 443 && echo API-SERVICE-OPEN;
+  nc -zw5 169.254.169.254 80 && echo METADATA-OPEN; echo done"'
 nc -zvw5 SERVER_IP 6443; nc -zvw5 SERVER_IP 10250     # from your machine
 ```
 
-Expected: ufw active with default deny incoming; `status=ok`; the pod prints a DNS answer and `done` and
-**none** of the `*-OPEN` lines; both `nc` from outside time out or are refused.
+Expected: ufw active with default deny incoming; `status=ok`; the node and your machine reach what the comments
+say; the pod prints `CONTROL-DNS`, `CONTROL-NET` and `done` and **none** of the `*-OPEN` lines; the last two `nc`
+from outside time out or are refused. Without both `CONTROL-` lines the pod test proves nothing. If the node
+itself cannot reach 169.254.169.254, your provider has no metadata service there and that line proves nothing.
 
 Then reboot and repeat everything above:
 
@@ -134,37 +145,93 @@ pcpu,rss,cmd | grep -i can-firewall'`. More: [node-isolation.md](node-isolation.
 ## 4. Backup and restore
 
 Risk: you find out the backups do not restore when you need them. A passing `can verify` proves only that a
-backup ran, **not** that it restores.
+backup ran, **not** that it restores. This section **destroys the first server** and continues on a new one.
 
-Put a release-style `can` on the server (the erasure ledger upload needs it) and take a backup now:
+### 4.1 Make a backup that holds something to check
+
+Put a `can` built from the same commit on the server (the erasure ledger upload needs it). Submit the contact
+form twice, with names you will recognise: `keep-me` and `erase-me`. In the admin UI, Leads, open `erase-me` and
+note the id in its address (`/leads/<id>`).
 
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o can-linux ./cmd/can
 scp can-linux $S:/usr/local/bin/can
 ssh $S 'k3s kubectl -n can-system exec deploy/can-core -- /can-core dump-request --wait 5m'
+ssh $S 'can backup ledger-add --subject LEAD_ID --class lead-submission'
 ssh $S 'systemctl start can-backup.service; journalctl -u can-backup --no-pager | tail -20'
-ssh $S 'can backup status; set -a; . /etc/can/backup.d/restic.env; set +a; eval "$(grep ^export.RESTIC_REPOSITORY= /usr/local/sbin/can-backup)"; can backup verify'
+ssh $S 'can backup status && can backup verify'
+bin/can verify --server --company-dir ../verify-co --probe-backup-repo
 ```
 
-Expected: `backup complete (run ...)`; `status` and `verify` exit 0. A real bucket, the systemd sandbox
-(`ProtectSystem=strict`) and the script reading live k3s paths are all untried.
+Expected: `backup complete (run ...)` with no `FAILED(22)` (that is the ledger upload); `status` and `verify` exit
+0; `PASS backup.dump`, `backup.last-run` and `backup.repository`. The ledger is uploaded by the backup run, so it
+must be added **before** it. A real bucket, the systemd sandbox (`ProtectSystem=strict`) and the script reading
+live k3s paths are all untried.
 
-Create data you can recognise first (submit the contact form), and one erasure
-(`ssh $S 'can backup ledger-add --subject test-subject-1 --class <a data class>'`). Next morning:
-`ssh $S 'systemctl list-timers can-backup.timer; journalctl -u can-backup --since yesterday'` should show the
-03:30 run. To test the failure path, write a webhook URL to `/etc/can/backup.d/webhook.url`, rename
-`restic.password`, start the service, expect a message and a failed unit, rename it back.
-
-**Restore onto a second, blank server** with a stopwatch (target 15 minutes, unmeasured). Follow
-[backup-restore.md](backup-restore.md#restore-can-restore---kit): `can down` the first server (keep the kit and
-bucket), `can up --provision-only`, copy `can-linux`, the kit, `build/images` and restic 0.17 or newer to the new
-server, `sudo can restore --kit KIT --images-from images --dir /root/company`, then `can up` with the backup
-flags again. Expected: eight `[n/8]` steps; the same admin password and TOTP work; the lead you submitted is
-there; the erased subject is not; `can verify` passes again. Certificates are not in the backup: new ones are
-issued.
+Next morning, `ssh $S 'systemctl list-timers can-backup.timer; journalctl -u can-backup --since yesterday'`
+should show the 03:30 run. To test the failure path, write a webhook URL to `/etc/can/backup.d/webhook.url`,
+rename `restic.password`, start the service, expect a message and a failed unit, rename it back and run one
+successful backup again.
 
 Also in the bucket: turn on versioning or object lock on `ledger/`, and check what 35-day retention does with
 your provider.
+
+### 4.2 Before destroying anything
+
+Do not go on until every line is true:
+
+- `can backup status` and `can backup verify` on the server both exit 0, **today**, after the last change.
+- The recovery kit is saved in your password manager, and you have written it to a file `kit.txt` (mode 0600,
+  outside any repository). Without it the backup cannot be read.
+- You have copied what the new server needs: `scp $S:/usr/local/bin/restic restic-linux` (Ubuntu's packaged
+  restic is too old), and you still have `can-linux`, `build/images` and your company directory.
+
+### 4.3 Destroy the first server and restore onto a new one
+
+**DESTRUCTIVE: `can down --yes` deletes the first server and everything on it. After this the bucket and the kit
+are the only copy.** (With the `ssh` provider, `can down` leaves the machine: use a second, blank machine and
+point `provider.options.host` at it.) Run it with a stopwatch (target 15 minutes, unmeasured), following
+[backup-restore.md](backup-restore.md#restore-can-restore---kit):
+
+```sh
+bin/can down ../verify-co --plan
+bin/can down ../verify-co --yes                       # DESTROYS the first server
+bin/can up ../verify-co --provision-only
+S=root@NEW_SERVER_IP                                  # `make status ARGS=../verify-co` prints it
+scp can-linux $S:/usr/local/bin/can
+scp restic-linux $S:/usr/local/bin/restic
+scp kit.txt $S:/root/kit.txt
+scp -r build/images $S:/root/images
+ssh $S 'chmod 600 /root/kit.txt; can restore --kit /root/kit.txt --images-from /root/images --dir /root/company'
+```
+
+Expected: this **first attempt stops at the erasure step** (`[7/8]`) saying tombstones cannot be replayed for
+`forms:lead-submission`. That is correct: the forms module has no purge by subject, and the refusal shows that
+the ledger came back from the bucket and was matched. Run the same command again with the entry accepted:
+
+```sh
+ssh $S 'can restore --kit /root/kit.txt --images-from /root/images --dir /root/company \
+  --accept-unerased forms:lead-submission'
+make up ARGS="../verify-co --backup-endpoint https://ENDPOINT --backup-bucket NAME \
+  --backup-credentials-file $HOME/verify-bucket.env" IMAGES_FROM=build/images
+ssh $S 'rm /root/kit.txt'
+```
+
+Expected: a `WARNING` that those tombstones were not replayed; the restore finishes; `can up` keeps the restored
+admin account (same password and TOTP) and installs the timer; **both leads are there**, `erase-me` included.
+It was not erased: there is no replay for forms, and no API deletes a single lead, so an erasure request for a
+contact-form entry cannot be honoured after (or before) a restore except by editing the database. Record that.
+Certificates are not in the backup: new ones are issued. Any other module with data you enabled must have come
+back too.
+
+**What this does not test:** that a purge is actually replayed. Only people, equity, board, files and jobs can
+replay one, and their images are not built by `make images`. If you have release images, enable `people`, create
+and erase a former person (`POST /v1/people/{id}/erasure`), add each returned class with `ledger-add` before the
+backup, and check the person is still erased after the restore ([people.md](people.md)).
+
+**From here on, "the server" is the restored one**: `$S` is the new address, the `sslip.io` names have changed,
+and `.can/state.json` points at it. Run `bin/can verify --server --company-dir ../verify-co --probe-public` now;
+repeat the reboot of section 3 once on it.
 
 ## 5. Sign-in, client addresses and limits
 
@@ -286,14 +353,19 @@ stays, with ufw and swap.
 ## Reporting results
 
 Open an issue with the "bug" template, one per failure, titled `real-server: <check id or section>`, and one
-summary issue listing every section as pass, fail or not tried. Attach the `can verify` JSON files, and for
-failures a `can diagnose --server --company-dir ../verify-co` bundle. Add the commit, provider, server type, OS
-image and versions from section 0.
+summary issue listing every section as pass, fail or not tried. The repository is **public**: attach only the
+`can verify` JSON files and your own description. Add the commit, provider, server type, OS image and versions
+from section 0.
 
-The report is built to carry no secrets, addresses, domain or user names (module names and counts are in it).
-**Read it, and anything else you attach, before posting**: the repository is public. Never paste command output
-from this runbook without removing addresses, domains, tokens and the recovery kit. Security problems go through
-[SECURITY.md](../SECURITY.md), not a public issue.
+**Never put a `can diagnose` bundle, command output or logs from this runbook in a public issue.** If a maintainer
+needs a bundle, make it with `can diagnose --server --company-dir ../verify-co` and send it **privately** (the
+private channel in [SECURITY.md](../SECURITY.md)). `can diagnose` replaces the company name, domain, server
+address, SSH user, key paths, identity provider and relay it knows about, but it cannot know every hostname or
+name in a log line.
+
+The `can verify` report is built to carry no secrets, addresses, domain or user names (module names and counts are
+in it). Read it before posting all the same. Security problems go through [SECURITY.md](../SECURITY.md), not a
+public issue.
 
 Report format (`can-verify/v1`): `generated_at`, `can_version`, `provider`, `probes`, `checks` (`id`, `status`
 of `pass`, `fail` or `skip`, `detail`) and `summary`.
@@ -323,6 +395,7 @@ this runbook covers it.
 | SMTP relay, pod egress, deliverability, SPF/DKIM/DMARC, inbound mail | [email.md](email.md), epics E03d, E07b | 8, 11 (inbound mail: not built) |
 | Real identity provider, mounted Secret and reload, browser redirect flow | [sso.md](sso.md), specs/021, 036 | 2, 10 |
 | Modules never installed on a cluster (forms events, people, jobs, finance, equity, board, entity, files, provisioning, wrapped apps) | module READMEs and docs, epics E05, E13-E17 | 11 |
+| Purge replay of a tombstone on a restored server; erasing a single contact-form lead (no way to) | [backup-restore.md](backup-restore.md), specs/042 | 4 (replay only with release images; lead erasure: a gap, not testable) |
 | Real S3 and ClamAV for files; SCIM and SaaS connectors; e-sign, payment, accounting, bank and job board adapters | [files.md](files.md), [provisioning.md](provisioning.md), [finance.md](finance.md), [accounting.md](accounting.md), [recruiting.md](recruiting.md) | not covered: stubs or not wired on a cluster; test against each vendor separately |
 | Certificate, disk, DNS and installer probes behind the admin UI | [admin-ui.md](admin-ui.md) | 12 |
 | Browsers, screen readers, phones, PWA install, real push services, Lighthouse | [pwa.md](pwa.md), [security-model.md](security-model.md), specs/010, 023, 026, 027, 031, 044 | 12 |

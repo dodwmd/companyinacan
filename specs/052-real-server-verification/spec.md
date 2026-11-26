@@ -34,6 +34,14 @@ must find as much as it can, safely. SPEC.md references: 3.2, 3.4, 6.5, 10.
 - **FR-008** A check that cannot be decided is `skip`; a server that cannot be asked is `fail`, and nothing else is
   then probed.
 
+- **FR-009** `backup.dump` follows the rule of `can backup status`: a failed run, a database or vanished data left
+  out, and any warning fail it; only counts are reported. `cluster.workloads` fails when can-core runs no replica.
+- **FR-010** `can diagnose` removes what company.yaml and `.can/` say identifies the installation. A bundle is
+  still only for private sending: it cannot know every name. `can-core admin diagnose` is unchanged.
+
+The certificate-error check matches the messages in Traefik's `pkg/provider/acme/provider.go` and
+`cmd/traefik/traefik.go` (read at v3.3.6 and v3.5.3), not messages seen from a real failure.
+
 ## Design
 
 `core/verify` holds the checks; `core/cli/verify.go` loads the company and picks them. One POSIX script prints
