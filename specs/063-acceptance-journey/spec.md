@@ -1,4 +1,4 @@
-# Spec 059: one test of the whole journey (epic E00b)
+# Spec 063: one test of the whole journey (epic E00b)
 
 Status: built. Results: [docs/measurements/acceptance.md](../../docs/measurements/acceptance.md).
 
@@ -27,6 +27,13 @@ Go code with fakes for the parts around it. Nothing walked the journey with the 
 | `ssh` provider onto the CI runner VM itself (chosen) | the shipped path unchanged: preflight, bootstrap script, k3s, ufw, node firewall, image upload over ssh, SSH tunnel, systemd backup timer, `can restore` on the server, `can down` |
 | k3d | `can up` has no k3d provider (`local` is not implemented), so the binary cannot drive it; `make-up-e2e` and `restore-e2e` already run the in-cluster phases on k3d through Go seams |
 | a privileged systemd container as the server | k3s, nftables and swap in a container differ from a server; more moving parts than the VM that is already there |
+
+## A step the product does not do
+
+`can up` does not copy `can` to the server, so after the first `can up` the journey installs it by hand, as
+docs/backup-restore.md tells the operator to. The erasure ledger, including the empty one that lets a company
+without erasures be restored, needs it there. The report lists this with the stand-ins. When `can up` installs it,
+the manual step becomes an assertion.
 
 ## Stand-ins
 

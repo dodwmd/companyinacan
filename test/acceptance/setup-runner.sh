@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares a THROWAWAY machine (a CI runner VM) for the acceptance journey (specs/059-acceptance-journey):
+# Prepares a THROWAWAY machine (a CI runner VM) for the acceptance journey (specs/063-acceptance-journey):
 # the machine is both the operator's computer and, over ssh, the server `can up` installs onto.
 #
 # IT CHANGES THE MACHINE: root ssh-reachable key, a test CA in the system trust store, /etc/hosts,

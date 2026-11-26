@@ -2,7 +2,7 @@
 
 package acceptance
 
-// The journey of specs/059-acceptance-journey, in order. Every step is timed; a step that fails ends
+// The journey of specs/063-acceptance-journey, in order. Every step is timed; a step that fails ends
 // the journey, a budget that is exceeded fails it at the end. The product is driven the way a person
 // drives it: the `can` binary, ssh to the server, the web pages. What stands in for the internet
 // (certificate, DNS, mail relay, bucket) is listed in standIns and in the report.
@@ -52,6 +52,7 @@ const (
 )
 
 var standIns = []string{
+	"The journey puts `can` on the server by hand after the first `can up`, which does not do it. A stock install does not have it: its erasures never reach the bucket, no empty ledger is uploaded either, and its restore stops without --allow-no-ledger. The restore shown here depends on that step.",
 	"The server is the CI runner VM itself, reached over ssh as a sudo user: the same bootstrap script and k3s as on a server, but not a fresh cloud image, and no VM creation time.",
 	"The certificate is signed by a test CA and set as Traefik's default; Let's Encrypt is blocked. ACME issuance is not proven.",
 	"DNS is /etc/hosts on the one machine; the domain is acceptance.test and `can up` runs with --domain-live.",

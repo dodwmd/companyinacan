@@ -1,6 +1,6 @@
 name: acceptance
 
-# specs/059-acceptance-journey: the whole journey of the product promise on one throwaway runner VM,
+# specs/063-acceptance-journey: the whole journey of the product promise on one throwaway runner VM,
 # which is both the operator's machine and, over the ssh provider, the server: init, make up, site,
 # contact form and its notification, admin TOTP, work and support, SSO launch, backup, destroy,
 # restore. k3d is not used: `can up` only drives a server over ssh.
