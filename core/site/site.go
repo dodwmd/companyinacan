@@ -98,10 +98,12 @@ type page struct {
 	CTA                   *config.SiteCTA
 	CTAAnchor             string
 	Contact               *contactSection
+	Support               *supportSection
 	Footer                config.SiteFooter
 }
 
 type contactSection struct{ Title, Text, Button, Href string }
+type supportSection struct{ Title, Text, Button, Address, Href string }
 
 type cssData struct{ Accent, AccentText, Accent2, Accent2Text, Link, LinkDark string }
 
@@ -244,6 +246,11 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 		}
 	}
 
+	supportAddress, supportWarning := config.SiteSupportAddress(c)
+	if supportWarning != "" {
+		warnings = append(warnings, supportWarning)
+	}
+
 	logoPath, logoData := "", []byte(nil)
 	if s.Brand.Logo != "" {
 		logoPath, logoData = loadLogo(v, s.Brand.Logo, opts.Assets)
@@ -318,6 +325,16 @@ func Render(c *config.Company, opts Options) (*Output, error) {
 	}
 	if s.CTA != nil || p.Contact != nil {
 		p.Nav = append(p.Nav, navItem{"Contact", "contact"})
+	}
+	if supportAddress != "" {
+		ss := s.Support
+		local, domain, _ := strings.Cut(supportAddress, "@")
+		p.Support = &supportSection{
+			Title: firstNonEmpty(ss.Title, "Support"), Text: ss.Text, Button: firstNonEmpty(ss.Button, "Email support"),
+			// The local part is escaped: it may hold characters ("?", "#") that would end the address.
+			Address: supportAddress, Href: "mailto:" + url.PathEscape(local) + "@" + domain,
+		}
+		p.Nav = append(p.Nav, navItem{"Support", "support"})
 	}
 
 	ld := orgLD{Context: "https://schema.org", Type: "Organization", Name: c.Name, URL: base + "/",

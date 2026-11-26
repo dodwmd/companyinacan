@@ -23,7 +23,12 @@ persistence:
   size: 2Gi
   storageClass: ""
   mountPath: /data         # attachments, uploaded modules, logs
-settings: {}               # module settings from company.yaml (admin_email)
+settings: {}               # module settings from company.yaml (modules/support/README.md)
+mail:                      # filled by can-core from the settings it could validate
+  address: ""
+  name: ""
+  imapWanted: false
+  invalid: ""              # why nothing is applied
 resources:
   requests: { memory: 176Mi, cpu: 50m }
   limits: { memory: 640Mi }
@@ -41,6 +46,7 @@ securityContext:
 secrets:
   database: can-db         # DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD
   smtp: can-smtp           # host port user password from encryption; empty without a relay
+  imap: can-imap           # host port user password encryption folder verify; empty without inbound mail
   module: can-module       # CAN_SUPPORT_ADMIN_PASSWORD (generated once by can-core)
 probes:
   # /healthcheck is answered by nginx alone; /login only once the first-boot migrations are done.
@@ -51,7 +57,7 @@ app:
   applicationName: Support
   phpMaxChildren: 6        # PHP-FPM workers (on demand)
 email:
-  injectRelay: true        # apply the company's SMTP relay to FreeScout's system mail settings
+  injectRelay: true        # give FreeScout the company's SMTP relay (system mail and the support mailbox)
 inbound:
   mode: imap               # imap | webhook (a setting of the module, docs/email-policy.md)
 adapter:

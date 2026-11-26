@@ -333,6 +333,16 @@
             "button": { "type": "string", "maxLength": 40, "description": "Default: Send us a message." }
           }
         },
+        "support": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Support section: a mailto link to modules.support.settings.support_address (modules/support/README.md). Left out when the support module is off or has no address.",
+          "properties": {
+            "title": { "type": "string", "maxLength": 80, "description": "Default: Support." },
+            "text": { "type": "string", "maxLength": 300 },
+            "button": { "type": "string", "maxLength": 40, "description": "Default: Email support." }
+          }
+        },
         "footer": {
           "type": "object",
           "additionalProperties": false,
