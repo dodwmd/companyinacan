@@ -205,7 +205,11 @@ func (s *Store) ImportStatement(ctx context.Context, a *Principal, accountID int
 	var replayed bool
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		out, replayed, err = idemRun(ctx, s, tx, a.Subject, idemKey, fmt.Sprintf("bank.import.%d", accountID), map[string]any{"format": format, "sha256": hash, "force": force}, func() (*StatementResult, error) {
+		req := map[string]any{"format": format, "sha256": hash, "force": force}
+		if format == "csv" { // the mapping decides what the file says, so another one is another request
+			req["mapping"] = readConfigHash(format, csvCfg)
+		}
+		out, replayed, err = idemRun(ctx, s, tx, a.Subject, idemKey, fmt.Sprintf("bank.import.%d", accountID), req, func() (*StatementResult, error) {
 			return s.importStatementTx(ctx, tx, a, accountID, format, data, hash, csvCfg, force)
 		})
 		return err
@@ -239,11 +243,6 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 		prev.AlreadyImported = true
 		return &prev, nil
 	}
-	// Forcing compares the file's rows with those the earlier import stored. Read with another mapping they are
-	// different rows, and every one of them would be added a second time.
-	if known && prevConfig != config {
-		return nil, fmt.Errorf("%w: this file was imported with a different format or column mapping; force it with the same settings", ErrConflict)
-	}
 	var ps *ParsedStatement
 	switch format {
 	case "csv":
@@ -261,6 +260,12 @@ func (s *Store) importStatementTx(ctx context.Context, tx dbq, a *Principal, acc
 			return nil, invalid("file", "%s", pe.msg)
 		}
 		return nil, err
+	}
+	// Forcing compares the file's rows with those the earlier import stored. Read with another mapping they are
+	// different rows, and every one of them would be added a second time. Checked after parsing: settings that
+	// cannot read the file are invalid, not in conflict with the earlier import.
+	if known && prevConfig != config {
+		return nil, fmt.Errorf("%w: this file was imported with a different format or column mapping; force it with the same settings", ErrConflict)
 	}
 	// A statement that names its account must name this one. The message says nothing about either number.
 	if ps.AccountID != "" {

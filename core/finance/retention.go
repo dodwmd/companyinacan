@@ -8,6 +8,13 @@ import (
 
 const idempotencyRetention = 7 * 24 * time.Hour
 
+// Named so that a test can check their query plans.
+const (
+	purgeUnbillTimeQuery      = `UPDATE time_entries SET invoice_id = NULL WHERE invoice_id IN (SELECT id FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?)`
+	purgeSettledInvoicesQuery = `DELETE FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?
+		AND NOT EXISTS (SELECT 1 FROM invoices c WHERE c.original_id = invoices.id)`
+)
+
 // PurgeReport counts what a purge removed.
 type PurgeReport struct {
 	Invoices       int64 `json:"invoices"`
@@ -83,7 +90,7 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			if err := exec(&rep.Invoices, `DELETE FROM invoices WHERE kind = 'credit_note' AND status <> 'draft' AND issue_date < ?`, cutoff); err != nil {
 				return err
 			}
-			if err := exec(&ignore, `UPDATE time_entries SET invoice_id = NULL WHERE invoice_id IN (SELECT id FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?)`, cutoff); err != nil {
+			if err := exec(&ignore, purgeUnbillTimeQuery, cutoff); err != nil {
 				return err
 			}
 			// A payment about to be deleted is first unlinked from the bank transaction that confirmed it. This runs
@@ -98,8 +105,7 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			if err := exec(&ignore, `DELETE FROM payments WHERE id IN (`+purgedPayments+`)`, cutoff); err != nil {
 				return err
 			}
-			if err := exec(&rep.Invoices, `DELETE FROM invoices WHERE kind = 'invoice' AND status IN ('paid', 'void') AND issue_date < ?
-				AND NOT EXISTS (SELECT 1 FROM invoices c WHERE c.original_id = invoices.id)`, cutoff); err != nil {
+			if err := exec(&rep.Invoices, purgeSettledInvoicesQuery, cutoff); err != nil {
 				return err
 			}
 			if err := exec(&ignore, `DELETE FROM contract_versions WHERE contract_id IN (SELECT id FROM contracts WHERE status IN ('expired', 'terminated') AND COALESCE(end_date, date(terminated_at, 'unixepoch'), date(updated_at, 'unixepoch')) < ?)`, cutoff); err != nil {
