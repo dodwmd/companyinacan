@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-// `can up` after a restore must not reset the admin password and TOTP seed the restore preserved.
+// `can up` after a restore must neither reset the preserved admin nor create another one (the
+// restored accounts may be named differently).
 func TestUpAfterARestoreKeepsTheAdmin(t *testing.T) {
 	k := &fakeKube{rules: []kubeRule{
 		{contains: "admin bootstrap", err: errors.New("admin user already exists")},
@@ -22,8 +23,8 @@ func TestUpAfterARestoreKeepsTheAdmin(t *testing.T) {
 		t.Fatalf("admin=%v note=%q", res.Admin, res.AdminNote)
 	}
 	for _, c := range k.calls {
-		if strings.Contains(strings.Join(c.Args, " "), "reset-password") {
-			t.Fatal("the restored admin was reset")
+		if a := strings.Join(c.Args, " "); strings.Contains(a, "reset-password") || strings.Contains(a, "admin bootstrap") {
+			t.Fatal("an account was created or reset on a restored server:", a)
 		}
 	}
 }

@@ -626,6 +626,8 @@ func (o *Ops) Complete(ctx context.Context) (backup.CompleteReport, error) {
 		{`UPDATE email_outbox SET status='dead', last_error='discarded by restore', finished_at=?, recipient='', reply_to='', subject='', body='' WHERE status='pending'`, []any{now}},
 		{`UPDATE notify_deliveries SET status='suppressed', detail='discarded by restore' WHERE status='queued'`, nil},
 		{`DELETE FROM sessions`, nil},
+		// A one-time set-up link in the snapshot may have been used or withdrawn since.
+		{`DELETE FROM user_invites`, nil},
 		{`DELETE FROM login_tickets`, nil},
 		{`DELETE FROM ui_launch_sessions`, nil},
 		{`UPDATE modules SET settings_hash='' WHERE state='enabled'`, nil},
