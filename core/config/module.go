@@ -33,6 +33,9 @@ type Module struct {
 		SiteRoute *SiteRoute `yaml:"site_route"`
 		// PublicLink publishes one path of signed links (specs/045-public-access).
 		PublicLink *PublicLink `yaml:"public_link"`
+		// PublicSign publishes one path of single-use signing pages (specs/049-contract-esign), with
+		// POST, only with `expose.signing: true`.
+		PublicSign *PublicLink `yaml:"public_sign"`
 		// PublicConfig is merged into the chart's `config:` block while the chart's public pages
 		// are routed.
 		PublicConfig map[string]any `yaml:"public_config"`

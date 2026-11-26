@@ -115,6 +115,9 @@ func (s *Store) Purge(ctx context.Context, retentionYears, auditDays int) (Purge
 			if err := exec(&rep.Invoices, purgeSettledInvoicesQuery, cutoff); err != nil {
 				return err
 			}
+			if err := purgeSigning(ctx, tx, `SELECT id FROM contracts WHERE status IN ('expired', 'terminated') AND COALESCE(end_date, date(terminated_at, 'unixepoch'), date(updated_at, 'unixepoch')) < ?`, cutoff); err != nil {
+				return err
+			}
 			if err := exec(&ignore, `DELETE FROM contract_versions WHERE contract_id IN (SELECT id FROM contracts WHERE status IN ('expired', 'terminated') AND COALESCE(end_date, date(terminated_at, 'unixepoch'), date(updated_at, 'unixepoch')) < ?)`, cutoff); err != nil {
 				return err
 			}

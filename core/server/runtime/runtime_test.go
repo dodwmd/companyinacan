@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -119,14 +121,23 @@ func TestRunFailsFastOnBadDatabasePath(t *testing.T) {
 	}
 }
 
-func freeAddr(t *testing.T) string {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().String()
+var metricsListening = regexp.MustCompile(`"msg":"metrics listening","addr":"([^"]+)"`)
+
+type lockedLog struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
 
 func body(t *testing.T, req *http.Request) (int, string) {
@@ -141,8 +152,10 @@ func body(t *testing.T, req *http.Request) (int, string) {
 }
 
 func TestRunObservability(t *testing.T) {
-	metrics := freeAddr(t)
-	env := map[string]string{"CAN_METRICS_ADDR": metrics, "CAN_METRICS_TOKEN": "tok-123", "CAN_RAM_DECLARED_MB": "48"}
+	// Port 0: the metrics listener says in the log which port it got, so no port is released and
+	// bound again.
+	logs := &lockedLog{}
+	env := map[string]string{"CAN_METRICS_ADDR": "127.0.0.1:0", "CAN_METRICS_TOKEN": "tok-123", "CAN_RAM_DECLARED_MB": "48"}
 	cfg := Config{
 		AdminAddr: "127.0.0.1:0", ModuleAddr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "state.db"),
 		TokenReview: "fake", PlatformURL: "http://can-core", ShutdownTimeout: 30 * time.Second, Version: "v9.9.9", Commit: "c0ffee",
@@ -152,7 +165,7 @@ func TestRunObservability(t *testing.T) {
 	cfg.OnListen = func(a, m net.Addr) { addrs <- [2]net.Addr{a, m} }
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Run(ctx, cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
+	go func() { done <- Run(ctx, cfg, slog.New(slog.NewJSONHandler(logs, nil))) }()
 	var a [2]net.Addr
 	select {
 	case a = <-addrs:
@@ -177,7 +190,11 @@ func TestRunObservability(t *testing.T) {
 			t.Fatalf("%s serves metrics", base)
 		}
 	}
-	req, _ := http.NewRequest("GET", "http://"+metrics+"/metrics", nil)
+	m := metricsListening.FindStringSubmatch(logs.String())
+	if m == nil {
+		t.Fatal("the metrics listener did not report its address")
+	}
+	req, _ := http.NewRequest("GET", "http://"+m[1]+"/metrics", nil)
 	if code, _ := body(t, req); code != 401 {
 		t.Fatalf("unauthenticated scrape: %d", code)
 	}

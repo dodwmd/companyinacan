@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "stakeholder_id": "stk_0123456789abcdef01234567",
+      "entity_id": "ent_0123456789abcdef01234567",
+      "kind": "founder",
+      "reason": "unattested_holder",
+      "open_grants": 0,
+      "ledger_entries": 2
+    }
+  ]
+}

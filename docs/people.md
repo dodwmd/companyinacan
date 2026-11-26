@@ -372,7 +372,10 @@ user's bearer token. Introspection answers are cached in a bounded LRU, refusals
 Authentication is an interface (`Authenticator`). Shipped: static bearer tokens (constant time) and an
 introspection client (`POST {"token"}` -> `{"active","subject","roles"}`, unknown roles dropped, positive
 answers cached 30 s, every error denies). A user's `subject` is linked to a person through
-`sso_subject`; a token whose subject has no person record gets no staff access.
+`sso_subject`; a token whose subject has no person record gets no staff access. Nobody sets, changes or clears
+the link of their own account, because equity relies on it to know who a caller is
+([equity.md](equity.md#holder-identity)); another administrator or the service token does. hr and admin may
+filter `GET /v1/people?sso_subject=`.
 
 ## Footprint
 

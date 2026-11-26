@@ -21,6 +21,15 @@ type Config struct {
 	Webhook     WebhookConfig     `yaml:"webhook"`
 	Introspect  IntrospectConfig  `yaml:"introspect"`
 	Retention   map[string]string `yaml:"retention"`
+	Directory   DirectoryConfig   `yaml:"directory"`
+}
+
+// DirectoryConfig points at the people module's directory API. Without a url the service runs in
+// the attestation mode (specs/051-holder-identity).
+type DirectoryConfig struct {
+	URL string `yaml:"url"`
+	// AllowInsecureHTTP permits a plain-http, non-loopback URL, as an in-cluster Service is.
+	AllowInsecureHTTP bool `yaml:"allow_insecure_http"`
 }
 
 // WebhookConfig is where outbox events are delivered (can-core's event endpoint).
@@ -43,17 +52,22 @@ type Secrets struct {
 	APIToken        string // service-account bearer with hr, finance and admin roles (never board), used by can-core (CAN_EQUITY_API_TOKEN)
 	WebhookSecret   string // HMAC secret for outbox deliveries (CAN_EQUITY_WEBHOOK_SECRET)
 	IntrospectToken string // credential for the introspection endpoint (CAN_EQUITY_INTROSPECT_TOKEN)
+	DirectoryToken  string // credential for the people directory (CAN_EQUITY_DIRECTORY_TOKEN)
 }
 
 // SecretsFromEnv loads and checks the secrets against cfg.
 func SecretsFromEnv(getenv func(string) string, cfg *Config) (Secrets, error) {
-	s := Secrets{APIToken: getenv("CAN_EQUITY_API_TOKEN"), WebhookSecret: getenv("CAN_EQUITY_WEBHOOK_SECRET"), IntrospectToken: getenv("CAN_EQUITY_INTROSPECT_TOKEN")}
+	s := Secrets{APIToken: getenv("CAN_EQUITY_API_TOKEN"), WebhookSecret: getenv("CAN_EQUITY_WEBHOOK_SECRET"), IntrospectToken: getenv("CAN_EQUITY_INTROSPECT_TOKEN"),
+		DirectoryToken: getenv("CAN_EQUITY_DIRECTORY_TOKEN")}
 	var errs []error
 	if len(s.APIToken) < 24 {
 		errs = append(errs, errors.New("CAN_EQUITY_API_TOKEN is required and must be at least 24 characters"))
 	}
 	if cfg.Webhook.URL != "" && len(s.WebhookSecret) < 16 {
 		errs = append(errs, errors.New("webhook.url is set but CAN_EQUITY_WEBHOOK_SECRET is missing or shorter than 16 characters"))
+	}
+	if cfg.Directory.URL != "" && len(s.DirectoryToken) < 24 {
+		errs = append(errs, errors.New("directory.url is set but CAN_EQUITY_DIRECTORY_TOKEN is missing or shorter than 24 characters"))
 	}
 	return s, errors.Join(errs...)
 }
@@ -89,7 +103,7 @@ func ParseConfig(data []byte) (*Config, error) {
 	if c.KeyringFile == "" {
 		errs = append(errs, errors.New("keyring_file is required: sensitive fields are always encrypted"))
 	}
-	for _, u := range []struct{ name, v string }{{"webhook.url", c.Webhook.URL}, {"introspect.url", c.Introspect.URL}} {
+	for _, u := range []struct{ name, v string }{{"webhook.url", c.Webhook.URL}, {"introspect.url", c.Introspect.URL}, {"directory.url", c.Directory.URL}} {
 		if u.v == "" {
 			continue
 		}
@@ -101,6 +115,11 @@ func ParseConfig(data []byte) (*Config, error) {
 	if u, err := url.Parse(c.Introspect.URL); c.Introspect.URL != "" && err == nil && u.Scheme == "http" && !c.Introspect.AllowInsecureHTTP {
 		if h := u.Hostname(); h != "localhost" && h != "127.0.0.1" && h != "::1" {
 			errs = append(errs, errors.New("introspect.url must be https (or loopback); set introspect.allow_insecure_http only for a protected in-cluster Service"))
+		}
+	}
+	if u, err := url.Parse(c.Directory.URL); c.Directory.URL != "" && err == nil && u.Scheme == "http" && !c.Directory.AllowInsecureHTTP {
+		if h := u.Hostname(); h != "localhost" && h != "127.0.0.1" && h != "::1" {
+			errs = append(errs, errors.New("directory.url must be https (or loopback); set directory.allow_insecure_http only for a protected in-cluster Service"))
 		}
 	}
 	known := map[string]bool{}

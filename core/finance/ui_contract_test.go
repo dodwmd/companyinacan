@@ -61,7 +61,7 @@ func TestUIRoutesMatchContract(t *testing.T) {
 
 func contractPath(pattern string) (method, path string) {
 	method, path, _ = strings.Cut(pattern, " ")
-	path = strings.NewReplacer("{id}", "1", "{n}", "1", "{file}", "x", "{$}", "").Replace(path)
+	path = strings.NewReplacer("{id}", "1", "{n}", "1", "{signer}", "1", "{file}", "x", "{$}", "").Replace(path)
 	if path == "" {
 		path = "/"
 	}

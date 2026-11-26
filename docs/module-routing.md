@@ -30,6 +30,7 @@ modules:
   finance:
     expose:
       public: true        # invoice links; OFF unless written
+      signing: true       # contract signing pages; OFF unless written
 ```
 
 Then `can apply`. The admin UI does not edit `expose`: putting something on the internet is a change
@@ -41,7 +42,7 @@ to the file.
 | files | `files.<domain>` | share-link downloads on `files.<domain>/s/` |
 | people | `people.<domain>` | - |
 | jobs | `jobs.<domain>` | careers pages and feeds on `careers.<domain>` |
-| finance | `finance.<domain>` | signed invoice links on `finance.<domain>/public/invoices/`, only with `public: true` |
+| finance | `finance.<domain>` | signed invoice links on `finance.<domain>/public/invoices/`, only with `public: true`; contract signing pages on `/public/sign/`, only with `signing: true` |
 | forms | none | `/_forms` on the site hosts |
 
 ## What you also need
@@ -93,6 +94,11 @@ and the module page are). A wildcard record of your own is shadowed by the speci
 * The invoice link route: `GET`/`HEAD` of `/public/invoices/` only, with `X-Robots-Tag: noindex,
   nofollow`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. can-finance's
   `public_base_url` is set to it, so links it issues are absolute.
+* The signing route (`expose.signing`, [spec](../specs/049-contract-esign/spec.md)): `GET`, `HEAD` and
+  `POST` of `/public/sign/` only, TLS only, the same headers as invoice links (the module adds
+  `Cache-Control: no-store` and a strict CSP), and the anonymous edge limit. can-finance's
+  `sign_base_url` is set to the host; without it finance neither sends nor serves links. The link is
+  in the path: do not switch on an access log that records paths.
 * The **module page** in the admin UI shows what is on, and the addresses (read-only).
 * The module runs with its UI enabled, Secure cookies, the client address from Traefik, and no
   paste-a-token form.
@@ -107,7 +113,7 @@ Per client address, on each of these routes separately; the answer is 429.
 | Routes | Rate | Burst | In flight |
 |---|---|---|---|
 | Sign-in: module `/login` (work `/ui/login`), admin `/login`, `/api/v1/login`, `/auth/`, `/set-password` | 1/s | 30 | 20 |
-| Anonymous: the site, `/_forms`, careers pages, invoice links | 20/s | 100 | 40 |
+| Anonymous: the site, `/_forms`, careers pages, invoice links, signing pages | 20/s | 100 | 40 |
 
 Signed-in pages and every API (`/v1`, the admin API, SCIM) are not limited here: the services limit
 those per credential. The address is the TCP source as Traefik sees it; `X-Forwarded-For` and other

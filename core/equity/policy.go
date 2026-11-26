@@ -60,6 +60,12 @@ type Actor struct {
 	Roles    []string
 	PersonID string
 	CanCore  bool // see Principal.CanCore
+	Service  bool // see Principal.Service
+	// NeedPerson is set when a directory is configured: the actions of needsIdentity are then
+	// refused to a caller the directory does not link to a person.
+	NeedPerson    bool
+	DirectoryDown bool // the directory could not say who the caller is
+	BreakGlass    bool // a service account inside the operator's break-glass window
 }
 
 // Principal is an authenticated caller as the Authenticator reports it.
@@ -70,6 +76,8 @@ type Principal struct {
 	// CanCore marks a can-core personal access token: a human caller about whom nothing says which
 	// directory person they are.
 	CanCore bool
+	// Service marks a machine credential (the service account): no person stands behind it.
+	Service bool
 }
 
 func (a Actor) has(role string) bool {
@@ -108,9 +116,22 @@ var needsPerson = map[Action]bool{
 	ActExerciseApprove: true, ActExercisePay: true, ActExerciseIssue: true,
 }
 
+// needsIdentity are the actions that, with a directory configured, need a caller linked to a
+// directory person: everything whose separation of duties compares people, and everything that
+// creates or confirms a holder's identity.
+var needsIdentity = map[Action]bool{
+	ActGrantDraft: true, ActGrantAdminister: true, ActGrantApprove: true,
+	ActExerciseRequest: true, ActExerciseApprove: true, ActExercisePay: true, ActExerciseIssue: true,
+	ActLedgerWrite: true, ActStakeholderEdit: true, ActErasure: true, ActLegalHold: true,
+}
+
+func (a Actor) unidentified(act Action) bool {
+	return a.NeedPerson && a.PersonID == "" && needsIdentity[act]
+}
+
 // Decide answers whether the actor may perform the action given the facts.
 func Decide(a Actor, act Action, f Fact) bool {
-	if !a.known() || (a.CanCore && a.PersonID == "" && needsPerson[act]) {
+	if !a.known() || (a.CanCore && a.PersonID == "" && needsPerson[act]) || a.unidentified(act) {
 		return false
 	}
 	switch act {

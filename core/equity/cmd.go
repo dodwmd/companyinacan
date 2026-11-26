@@ -43,9 +43,9 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	case "version":
 		fmt.Fprintf(stdout, "can-equity %s\n", Version)
 		return 0
-	case "serve", "check-config", "healthcheck", "rotate-keys", "purge", "retention", "verify-audit":
+	case "serve", "check-config", "healthcheck", "rotate-keys", "purge", "retention", "verify-audit", "identity-report":
 	default:
-		fmt.Fprintf(stderr, "unknown command %q (serve, check-config, healthcheck, rotate-keys, purge, retention, verify-audit, version)\n", cmd)
+		fmt.Fprintf(stderr, "unknown command %q (serve, check-config, healthcheck, rotate-keys, purge, retention, verify-audit, identity-report, version)\n", cmd)
 		return 2
 	}
 	if err := fs.Parse(args); err != nil {
@@ -84,15 +84,32 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "secrets: %v\n", err)
 		return 2
 	}
-	svc, err := Open(cfg.DBPath, Options{Keyring: kr, Retention: rules})
+	until, err := parseBreakGlass(getenv(breakGlassEnv), time.Now())
+	if err != nil {
+		fmt.Fprintf(stderr, "config: %v\n", err)
+		return 2
+	}
+	opt := Options{Keyring: kr, Retention: rules, BreakGlassUntil: until}
+	if cfg.Directory.URL != "" {
+		opt.Directory = &HTTPDirectory{BaseURL: cfg.Directory.URL, Token: sec.DirectoryToken}
+	}
+	svc, err := Open(cfg.DBPath, opt)
 	if err != nil {
 		fmt.Fprintf(stderr, "start: %v\n", err)
 		return 2
 	}
 	defer func() { _ = svc.Close() }()
+	if time.Now().Before(until) {
+		log.Warn("break-glass is open: the service account may act without a person", "until", until.UTC().Format(time.RFC3339))
+	}
+	if todo, err := svc.reviewItems(context.Background()); err != nil {
+		log.Error("identity review", "error", err)
+	} else if len(todo) > 0 {
+		log.Warn("holder records need review before their grants, exercises or ledger entries can proceed (GET /v1/identity/review, or can-equity identity-report)", "count", len(todo), "mode", svc.Mode())
+	}
 
 	st := &StaticTokens{}
-	st.Add(sec.APIToken, Principal{Subject: "svc-can-core", Roles: []string{RoleHR, RoleFinance, RoleAdmin}})
+	st.Add(sec.APIToken, Principal{Subject: "svc-can-core", Roles: []string{RoleHR, RoleFinance, RoleAdmin}, Service: true})
 	auth := MultiAuth{st}
 	if cfg.Introspect.URL != "" {
 		auth = append(auth, &IntrospectAuthenticator{URL: cfg.Introspect.URL, Token: sec.IntrospectToken})
@@ -148,6 +165,30 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	return 0
 }
 
+// breakGlassEnv holds a date (YYYY-MM-DD, inclusive, UTC) or an RFC 3339 time until which the
+// service account may act as it did before verified identities. It is an environment variable so
+// that only someone who controls the deployment can set it.
+const breakGlassEnv = "CAN_EQUITY_BREAK_GLASS_UNTIL"
+
+const maxBreakGlass = 7 * 24 * time.Hour
+
+func parseBreakGlass(v string, now time.Time) (time.Time, error) {
+	if v == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		if t, err = time.Parse(dateLayout, v); err != nil {
+			return time.Time{}, fmt.Errorf("%s must be YYYY-MM-DD or an RFC 3339 time", breakGlassEnv)
+		}
+		t = t.AddDate(0, 0, 1)
+	}
+	if t.After(now.Add(maxBreakGlass)) {
+		return time.Time{}, fmt.Errorf("%s must end within 7 days from now (a date counts to its end, so at most 6 days from today): break-glass is for one task, not a mode", breakGlassEnv)
+	}
+	return t, nil
+}
+
 // background expires lapsed grants, announces vesting and runs the retention sweep, and delivers events.
 func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logger) {
 	due := func() {
@@ -193,7 +234,11 @@ func background(ctx context.Context, svc *Service, d *Dispatcher, log *slog.Logg
 }
 
 func maintenance(cmd string, cfg *Config, kr *Keyring, rules map[string]RetentionRule, subject, class string, stdout, stderr io.Writer) int {
-	svc, err := Open(cfg.DBPath, Options{Keyring: kr, Retention: rules})
+	opt := Options{Keyring: kr, Retention: rules}
+	if cfg.Directory.URL != "" {
+		opt.Directory = &HTTPDirectory{BaseURL: cfg.Directory.URL} // for the mode only: no maintenance command calls it
+	}
+	svc, err := Open(cfg.DBPath, opt)
 	if err != nil {
 		fmt.Fprintf(stderr, "start: %v\n", err)
 		return 2
@@ -231,6 +276,13 @@ func maintenance(cmd string, cfg *Config, kr *Keyring, rules map[string]Retentio
 			return 1
 		}
 		_ = json.NewEncoder(stdout).Encode(rep)
+	case "identity-report": // read-only: which holder records still need a second actor
+		todo, err := svc.reviewItems(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "identity-report: %v\n", err)
+			return 1
+		}
+		_ = json.NewEncoder(stdout).Encode(map[string]any{"items": todo})
 	case "verify-audit":
 		if err := svc.VerifyAudit(ctx); err != nil {
 			fmt.Fprintf(stderr, "audit: %v\n", err)

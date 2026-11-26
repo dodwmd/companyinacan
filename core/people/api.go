@@ -485,7 +485,7 @@ func (a *API) Handler() http.Handler {
 func (a *API) listPeople(ctx context.Context, ac Actor, r *http.Request) (int, any, error) {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
-	items, next, err := a.Svc.ListPeople(ctx, ac, PersonFilter{Status: Status(q.Get("status")), DepartmentID: q.Get("department_id"), TeamID: q.Get("team_id"), ManagerID: q.Get("manager_id"), AfterSeq: qint(r, "cursor"), Limit: limit})
+	items, next, err := a.Svc.ListPeople(ctx, ac, PersonFilter{SSOSubject: q.Get("sso_subject"), Status: Status(q.Get("status")), DepartmentID: q.Get("department_id"), TeamID: q.Get("team_id"), ManagerID: q.Get("manager_id"), AfterSeq: qint(r, "cursor"), Limit: limit})
 	if items == nil {
 		items = []Person{}
 	}
