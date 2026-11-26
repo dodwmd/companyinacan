@@ -92,7 +92,7 @@ func TestDiagnoseBundleHasNoSeededSecrets(t *testing.T) {
 	if strings.Contains(files["metrics.txt"], "secret_internal") {
 		t.Error("only can_, go_ and process_ series belong in the metrics snapshot")
 	}
-	if !strings.Contains(files["config.yaml"], "name: Acme") || !strings.Contains(files["metrics.txt"], "can_up 1") {
+	if !strings.Contains(files["config.yaml"], "name: <company>") || !strings.Contains(files["metrics.txt"], "can_up 1") {
 		t.Errorf("useful content lost: %q / %q", files["config.yaml"], files["metrics.txt"])
 	}
 	st, err := os.Stat(out)
