@@ -55,7 +55,7 @@ image, which adds its own delay. Watch FreeScout's security releases yourself if
   relay password** at the provider: assume the application and its image have seen it.
 - Replies to customers and fetching mail are per mailbox: open the mailbox's connection settings and
   enter the SMTP and IMAP details. The relay is not copied there.
-- A new password in the relay Secret arrives at the next install or upgrade of the module.
+- A new or changed relay Secret upgrades (and restarts) the module once can-core sees it, a minute or two later.
 - Delivery through a real relay has not been tried.
 
 ## Open items
