@@ -97,7 +97,7 @@ CMD ["serve"]
 FROM base AS equity
 COPY --from=build /out/can-equity /can-equity
 COPY --from=build --chown=65532:65532 /rootfs/data /data
-COPY dev/compose/config/equity.yaml dev/compose/config/equity.e2e.yaml /etc/can-equity/
+COPY dev/compose/config/equity.yaml dev/compose/config/equity.e2e.yaml dev/compose/config/equity.core.yaml /etc/can-equity/
 EXPOSE 8081
 ENTRYPOINT ["/can-equity"]
 CMD ["serve", "-config", "/etc/can-equity/equity.yaml"]

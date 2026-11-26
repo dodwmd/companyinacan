@@ -1,0 +1,14 @@
+# E2E ONLY (dev/compose/e2e.yml, service equity-core): a second can-equity wired to can-core and the people
+# directory the way a `can` installation with settings.identity: directory is. No introspection endpoint and no
+# fake identities: callers are can-core personal access tokens and Apps sign-ins, so grant approval is checked
+# against can-core's real roles (specs/068-equity-board-role).
+listen: ":8081"
+db_path: /data/equity.db
+keyring_file: /secrets/equity-keyring
+directory:
+  url: http://people:8081
+  allow_insecure_http: true
+ui:
+  enabled: true
+  insecure_cookies: true
+  trust_proxy: true

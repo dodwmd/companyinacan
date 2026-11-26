@@ -11,13 +11,15 @@ import (
 
 var canSubjectRe = regexp.MustCompile(`^user:[A-Za-z0-9_.@-]{1,64}$`)
 
-// canRoles are the manifest roles (modules/equity/module.yaml) a personal access token can carry,
-// each with every permission it needs. A role is granted only when the token holds all of them, so a
-// token with a subset of somebody's permissions never gains a role.
+// canRoles are the manifest roles (modules/equity/module.yaml) a personal access token or a launch
+// ticket can carry, each with every permission it needs. A role is granted only when the credential
+// holds all of them, so a subset of somebody's permissions never gains a role.
 //
-// There is no board entry on purpose. The board's permissions are a subset of the admin role's, so an
-// administrator could leave equity.write out of a token and become the board, which approves grants.
-// A personal access token is therefore never the board.
+// The board, which approves grants, needs equity.board: a permission only the `board` role declares
+// and no other role implies, so an administrator cannot assemble the board out of their own
+// permissions. In can-core only the owner (who holds every permission) or somebody who already holds
+// equity:board can assign that role (specs/068-equity-board-role). A principal made from these is
+// CanCore, so without a directory person it may not approve at all (needsPerson).
 var canRoles = []struct {
 	role string
 	need []string
@@ -25,8 +27,12 @@ var canRoles = []struct {
 	{RoleEmployee, []string{"equity.self-read"}},
 	{RoleHR, []string{"equity.read", "equity.write", "equity.sensitive-read", "equity.self-read"}},
 	{RoleFinance, []string{"equity.read", "equity.write", "equity.approve", "equity.sensitive-read"}},
+	{RoleBoard, []string{permBoard, "equity.read", "equity.approve", "equity.sensitive-read", "equity.admin"}},
 	{RoleAdmin, []string{"equity.read", "equity.write", "equity.approve", "equity.sensitive-read", "equity.admin"}},
 }
+
+// permBoard is the permission that makes a can-core credential the board's.
+const permBoard = "equity.board"
 
 // rolesFromPermissions maps the permissions of a personal access token to this module's roles.
 func rolesFromPermissions(perms []string) []string {
@@ -72,7 +78,7 @@ func (a *CanAuth) authenticate(r *http.Request, lookup func(context.Context, str
 }
 
 // personalPrincipal maps what can-core says about a person (a personal access token or a launch
-// ticket session of the web UI) to a Principal. Such a principal is never the board (canRoles).
+// ticket session of the web UI) to a Principal. It is the board only with equity.board (canRoles).
 func personalPrincipal(subject string, perms []string) (*Principal, bool) {
 	roles := rolesFromPermissions(perms)
 	if len(roles) == 0 || !canSubjectRe.MatchString(subject) {

@@ -10,13 +10,15 @@ id: equity
 name: Equity and cap table
 description: Cap table and employee stock options. Entities, share classes, plans and pools, stakeholders, option grants with a vesting calculator, board approval with separation of duties, exercises, an append-only share ledger, cap-table views as of any date (basic and fully diluted), valuation records and illustrative round modelling. Per-field access, audited reads, sealed sensitive fields, retention, legal hold and erasure. Record-keeping and reporting only.
 category: finance
-# 0.2.0: the web UI (specs/066-equity-ui). The new version makes `apply` record the manifest again.
-version: 0.2.0
+# 0.3.0: the equity.board permission (specs/068-equity-board-role); the upgrade is held for the operator's
+# approval because the board role gains it. 0.2.0: the web UI (specs/066-equity-ui).
+version: 0.3.0
 # experimental: unit-, contract- and race-tested offline. The chart installs through can-core, which
 # generates the keyring and tokens (CI only waits for Ready on k3d). A server-rendered web UI (E17g,
 # specs/066-equity-ui) ships in the same binary, off by default (ui.enabled), routed only with expose.ui, checked
-# against the Compose stack and not on a cluster. Token introspection, the approval engine and events are not
-# wired: nothing can-core issues carries the board role. See modules/equity/README.md.
+# against the Compose stack and not on a cluster. can-core's tokens and Apps sign-ins carry the board role to holders
+# of equity:board (directory identity mode only). The approval engine and events are not wired. See
+# modules/equity/README.md.
 status: experimental
 provider:
   type: inhouse
@@ -57,13 +59,16 @@ publishes:
   - { event: equity.exercise.recorded.v1, schema: ./events/equity.exercise.recorded.v1.json }
 # Coarse permissions gate the capability verbs; the finer rules (own record only, managers never, board approval,
 # separation of duties, per field) are enforced inside the service by one policy layer (core/equity/policy.go).
-permissions: [equity.read, equity.write, equity.approve, equity.sensitive-read, equity.admin, equity.self-read]
+# equity.board is the board's own: only the board role holds it, so assigning equity:board is the one way to
+# let somebody approve grants. Because the grant approval names the board, only an owner (or a holder of
+# equity:board) can assign that role in can-core.
+permissions: [equity.read, equity.write, equity.approve, equity.sensitive-read, equity.admin, equity.self-read, equity.board]
 roles:
   employee: [equity.self-read]
   manager: [equity.self-read]   # a manager never sees the equity of their reports: same as employee
   hr: [equity.read, equity.write, equity.sensitive-read, equity.self-read]
   finance: [equity.read, equity.write, equity.approve, equity.sensitive-read]
-  board: [equity.read, equity.approve, equity.sensitive-read, equity.admin]
+  board: [equity.read, equity.approve, equity.sensitive-read, equity.admin, equity.board]
   admin: [equity.read, equity.write, equity.approve, equity.sensitive-read, equity.admin]
 approvals:
   - { type: grant, default_chain: [board] }

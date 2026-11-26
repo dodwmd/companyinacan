@@ -39,7 +39,7 @@ The route table is [`contracts/ui-routes.md`](contracts/ui-routes.md).
    without a cache); a launch-ticket session needs an admin sign-in at most 5 minutes old. Both tick a box.
 4. **Sign-in.** A launch ticket from Apps, or a personal access or introspected token. The service account is
    not a person and cannot sign in. Roles of a launch ticket come from permissions exactly as for a personal
-   access token (`canauth.go`).
+   access token (`canauth.go`; the board needs `equity.board`, `specs/068`).
 5. **Exact figures.** Quantities are the 1/10000 integers and money the minor units the Service holds,
    formatted and parsed textually. No floating point. Ownership is shown from parts per million.
 6. **CSRF** on every post, same-origin check, 64 KiB form bound. Exports are posts, so no link starts one.
@@ -52,11 +52,8 @@ The route table is [`contracts/ui-routes.md`](contracts/ui-routes.md).
 
 These follow from the policy and the wiring as they are. The UI does not loosen either.
 
-- **Nobody can approve a grant.** Approval needs the `board` role. A personal access token and a launch ticket
-  are never the board (`canRoles`), the service account never is, and neither token introspection nor can-core's
-  approval engine is wired to equity under can-core. The UI shows the approval status and offers approval only to
-  a session that does carry the role (an introspected token, as in the Compose end-to-end stack). Until this is
-  decided, no grant reaches `approved` on such an install, so employees have nothing to see.
+- **Grant approval** needs the `board` role. Since [`specs/068`](../068-equity-board-role/spec.md) an account
+  assigned `equity:board` carries it in its tokens and Apps sign-ins, in directory mode only.
 - **Identity mode.** In the default attestation mode a token or ticket names no person: no self-service, and
   drafting, activation and the exercise steps are refused. `modules.equity.settings.identity: directory` with the
   `people` module is needed. The pages say so.

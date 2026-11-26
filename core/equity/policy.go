@@ -110,9 +110,10 @@ func (a Actor) any() bool             { return a.has(RoleHR) || a.money() }
 
 // needsPerson are the actions whose separation of duties compares the actor's directory person with
 // the holder's. A can-core token carries none, so a person holding equity could act on their own grant
-// or exercise unnoticed: such a token may not perform them.
+// or exercise unnoticed: such a token may not perform them. Grant approval is one of them: without a
+// directory nothing could stop a board member approving their own grant.
 var needsPerson = map[Action]bool{
-	ActGrantDraft: true, ActGrantAdminister: true,
+	ActGrantDraft: true, ActGrantAdminister: true, ActGrantApprove: true,
 	ActExerciseApprove: true, ActExercisePay: true, ActExerciseIssue: true,
 }
 
