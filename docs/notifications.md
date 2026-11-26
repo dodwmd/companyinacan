@@ -39,8 +39,46 @@ Rules from manifests honour each recipient's in-app mute even when `urgent`, may
 their own `<module-id>.` namespace, and dedupe per module. A recipient receives at most 200 in-app
 notices per hour; the rest are dropped.
 
-Notifications created from events copy only `id` and `*_id` members of the event data, never names or
-emails.
+Notifications created from events copy only `id` and `*_id` members of the event data (and `count`, a
+number), never names or emails. When a rule names a role and no recipient of the rule is a person (nobody
+holds the role), the **owners** are told instead, so a new company is not silent.
+
+## Reminders
+
+What the shipped modules announce (spec: `specs/060-reminders/`). Roles are the module's own; grant them
+in the admin UI under access. Each type has its own preference per channel.
+
+| Notification type | Raised when | Told |
+|---|---|---|
+| `invoice.overdue` | an issued invoice with a balance passed its due date (finance, hourly) | `finance:finance` |
+| `contract.expiring` | a contract entered its renewal reminder window | `finance:finance` |
+| `contract.signed`, `contract.declined` | all signers signed, or one declined | `finance:finance` |
+| `expense.submitted`, `timesheet.submitted` | waiting for a decision in finance | `finance:approver` |
+| `expense.decided`, `timesheet.decided` | approved or sent back | whose it is |
+| `application.received` | a job application arrived | the job's hiring manager (if an account), `jobs:recruiter` |
+| `work.issue.p0` (urgent) | an unresolved issue became P0, or a P0 changed hands | the assignee, `work:manager` |
+| `timeoff.requested` | time off waiting for a decision | the manager (if the directory links an account), `people:hr` |
+| `timeoff.decided` | approved or refused | who submitted it |
+| `entity.filing.due` | a filing reached a reminder point | `entity:secretary` |
+| `lead.created` | a website form lead (forms) | `forms:sales` |
+
+"Told" needs an account: a person known only by a free-form id (`person_17`, a service token) cannot be
+notified. E-mail follows [email.md](email.md): to an address the person entered and is allowed to receive,
+counted against the module's quota, with a fixed wording unless `email.modules.<id>.notification_text` is on.
+
+**Once only, and no flood.** Each scheduled check records what it announced in the module's own database,
+in the transaction that queues the event, so a restart repeats nothing. A check that finds more than five
+at once (the first run after the upgrade, or after downtime) raises one summary with the number.
+Overdue invoices and filings are checked hourly; the invoice check can be run now with
+`POST /v1/invoices/overdue-sweep` (finance admin).
+
+**Upgrading.** The new module manifests publish new events and add notification rules. A can-core that
+holds upgrades which widen a module for approval will hold these until you approve them. Until then the
+module keeps running its old version and nothing is announced. Contracts whose renewal reminder was
+raised before the upgrade are not raised again.
+
+Not announced: purchase order drafts, review releases, equity grant approvals, board resolutions and
+minutes, and imported P0 issues.
 
 ## Dedupe
 

@@ -105,6 +105,10 @@ points are marked sent with it, so a sweep that was down over a due date announc
 second sweep announces nothing. can-core turns the event into a notification and de-duplicates by id. No names,
 amounts or document contents are in the event.
 
+Installed by can-core, `entity` publishes the event through the module API and the holders of the
+`secretary` role are notified ([notifications.md](notifications.md#reminders)). A sweep that finds more
+than five at once publishes one event with `count` only.
+
 ## Retention, legal hold and erasure
 
 Registers and filings are legal records. Erasure of a person (`POST /v1/people/{person}/erasure`, admin; see
