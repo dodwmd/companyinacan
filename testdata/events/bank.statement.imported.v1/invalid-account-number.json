@@ -1,0 +1,16 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "bank.statement.imported.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "finance",
+  "data": {
+    "statement_id": 3,
+    "bank_account_id": 1,
+    "format": "camt053",
+    "transaction_count": 120,
+    "new_count": 100,
+    "duplicate_count": 20,
+    "imported_at": "2026-11-25T10:00:00Z",
+    "account_number": "DE89370400440532013000"
+  }
+}

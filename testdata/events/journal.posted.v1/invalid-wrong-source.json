@@ -1,0 +1,15 @@
+{
+  "id": "evt_0123456789abcdef01234567",
+  "type": "journal.posted.v1",
+  "time": "2026-11-25T10:00:00Z",
+  "source": "work",
+  "data": {
+    "entry_id": 7,
+    "number": "JE-00007",
+    "source": "invoice",
+    "currency": "USD",
+    "total_minor": 16100,
+    "entry_date": "2026-06-01",
+    "posted_at": "2026-11-25T10:00:00Z"
+  }
+}

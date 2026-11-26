@@ -81,8 +81,9 @@ rebuilding a server on the same address.
 **Pod-to-node isolation.** `ufw` allows the pod and service CIDRs in, and Kubernetes NetworkPolicy does
 not cover pod-to-node traffic on k3s (issue #13), so the bootstrap adds its own nftables rules: module pods
 cannot reach the node or cloud metadata, system pods reach only the API server and DNS, and traffic from
-outside (your SSH) is never matched. Check with `can doctor --server`. A server bootstrapped before this
-existed needs a manual install. Details, the escape hatch and what is unverified:
+outside (your SSH, made directly) is never matched; SSH tunnelled through a pod, and ServiceLB in front of
+`hostNetwork` backends, are cut off. Check with `can doctor --server` (nothing checks on its own). A server
+bootstrapped before this existed needs a manual install; `can up` and `can status` warn about it. Details, the escape hatch and what is unverified:
 [node-isolation.md](node-isolation.md). `can down` removes these rules.
 
 **NodePort exposure.** The bootstrap runs `ufw default allow routed`, so forwarded traffic to pods

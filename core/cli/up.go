@@ -318,6 +318,13 @@ func (t *target) up(ctx context.Context, cmd *cobra.Command, g *globalOpts, plan
 		fmt.Fprintf(out, "  instant URL: %s (plain HTTP fallback, public site only)\n  reason:      %s\n  admin UI:    reachable only through the SSH tunnel until DNS/TLS is set\n", instant.URLs[0], instant.Reason)
 	}
 	fmt.Fprintln(out)
+	// An existing server is not bootstrapped again, so it may predate the node firewall.
+	if w := firewallWarning(ctx, runner(tgt)); w != "" {
+		fmt.Fprintf(out, "warning: %s\n\n", w)
+		if g.json() {
+			res.Warnings = append(res.Warnings, w)
+		}
+	}
 	if !sf.provisionOnly {
 		// DNS is applied inside finishStack, after the stack is up, so a Cloudflare record never
 		// points at a server that cannot answer yet.
@@ -475,6 +482,7 @@ type statusResult struct {
 	Phase    provider.Phase   `json:"phase"`
 	Address  string           `json:"address,omitempty"`
 	Checks   []provider.Check `json:"checks,omitempty"`
+	Warnings []string         `json:"warnings,omitempty"`
 }
 
 func newStatusCmd(g *globalOpts) *cobra.Command {
@@ -514,6 +522,17 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 			if a, err := t.prov.Address(t.store); err == nil {
 				res.Address = a
 			}
+			if st.Phase != provider.PhaseAbsent {
+				if tgt, terr := provider.TargetFor(t.spec, t.store, t.deps); terr == nil {
+					runner := t.deps.Runner
+					if runner == nil {
+						runner = func(tg provider.Target) provider.Runner { return provider.NewSSHRunner(tg) }
+					}
+					if w := firewallWarning(ctx, runner(tgt)); w != "" {
+						res.Warnings = append(res.Warnings, w)
+					}
+				}
+			}
 			if g.json() {
 				if err := t.emitJSON(cmd, res); err != nil {
 					return err
@@ -530,6 +549,9 @@ func newStatusCmd(g *globalOpts) *cobra.Command {
 						mark = "FAIL"
 					}
 					fmt.Fprintf(w, "  [%s] %s %s\n", mark, c.Name, c.Detail)
+				}
+				for _, m := range res.Warnings {
+					fmt.Fprintf(w, "warning: %s\n", m)
 				}
 				_ = w.(provider.Flusher).Flush()
 			}

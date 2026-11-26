@@ -48,6 +48,8 @@ var Catalogue = []string{
 	"provision.step.completed.v1", "provision.failed.v1",
 	// E11a: one terminal event per request (outcome approved, rejected, cancelled or expired).
 	"approval.decided.v1", "notification.sent.v1",
+	// E15c: accounting (ids, numbers, counts and minor-unit totals only).
+	"journal.posted.v1", "bank.statement.imported.v1",
 }
 
 var typeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+\.v[1-9][0-9]*$`)

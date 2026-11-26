@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -735,6 +736,16 @@ type ApprovalRequest struct {
 	// ("invoice:<id>"); empty for a decision that is not tied to a can-core request.
 	Ref     string
 	Version int64
+	// Perm is the permission the approver must hold; empty means finance.approve. Manual journals
+	// ask for finance.ledger.approve (E15c) and go through the same separation-of-duties rule.
+	Perm string
+}
+
+func (r ApprovalRequest) perm() string {
+	if r.Perm == "" {
+		return PermApprove
+	}
+	return r.Perm
 }
 
 // Approver decides whether a principal may approve a record. The default accepts anyone with
@@ -748,15 +759,18 @@ type Approver interface {
 type ScopeApprover struct{}
 
 // CanApprove implements Approver.
-func (ScopeApprover) CanApprove(_ context.Context, p *Principal, _ ApprovalRequest) (bool, error) {
-	return p.Can(PermApprove), nil
+func (ScopeApprover) CanApprove(_ context.Context, p *Principal, req ApprovalRequest) (bool, error) {
+	return p.Can(req.perm()), nil
 }
 
 // authorizeApproval is the one place approval rules live, so no path can skip them: the
 // caller must hold finance.approve, the Approver must agree, and the approver must not be
 // anyone who created, edited or owns the record (separation of duties).
 func (s *Store) authorizeApproval(ctx context.Context, a *Principal, req ApprovalRequest, involved ...string) error {
-	if !a.Can(PermApprove) {
+	if !a.Can(req.perm()) {
+		return ErrForbidden
+	}
+	if slices.Contains(ledgerPerms, req.perm()) && !allowedBy(a, req.perm(), false) {
 		return ErrForbidden
 	}
 	for _, who := range append(involved, req.Owner) {
@@ -835,6 +849,9 @@ func (s *Store) ApproveInvoice(ctx context.Context, a *Principal, id int64, ifMa
 			if err := s.applyCredit(ctx, tx, *v.OriginalID, t.total); err != nil {
 				return err
 			}
+		}
+		if err := s.postInvoiceTx(ctx, tx, v, text, lines, a.Subject); err != nil {
+			return err
 		}
 		return s.audit(ctx, tx, a.Subject, "invoice.approve", text, map[string]any{"id": v.ID, "total_minor": t.total, "currency": v.Currency})
 	})
@@ -928,6 +945,9 @@ func (s *Store) VoidInvoice(ctx context.Context, a *Principal, id int64, ifMatch
 			return err
 		}
 		if err := s.bump(ctx, tx, v, `status='void', voided_at=?, void_reason=?, updated_by=?`, ts(s.now()), reason, a.Subject); err != nil {
+			return err
+		}
+		if err := s.unpostInvoiceTx(ctx, tx, v, a.Subject); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, a.Subject, "invoice.void", deref(v.Number), map[string]any{"id": v.ID, "reason": reason})

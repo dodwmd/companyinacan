@@ -1,0 +1,29 @@
+{{define "content"}}
+<h1>{{t "ledger.trial"}}</h1>
+<p class="actions"><a href="/ledger/accounts">{{t "ledger.accounts"}}</a> <a href="/ledger/journals">{{t "ledger.journals"}}</a> <a href="/ledger/trial-balance">{{t "ledger.trial"}}</a></p>
+<form method="get" action="/ledger/trial-balance" class="inline filter">
+<label for="tb-as-of">{{t "ledger.as_of"}}</label>
+<input id="tb-as-of" name="as_of" type="date" value="{{.Data.AsOf}}">
+<button type="submit">{{t "common.filter"}}</button>
+</form>
+<p class="hint">{{t "ledger.trial_hint"}}</p>
+{{if .Data.TB.Truncated}}<p class="notice">{{t "ledger.truncated"}}</p>{{end}}
+{{range .Data.TB.Currencies}}
+<section aria-labelledby="tb-{{.Currency}}">
+<h2 id="tb-{{.Currency}}">{{.Currency}}</h2>
+{{$cur := .Currency}}
+<div class="scroll">
+<table>
+<caption>{{t "ledger.trial_cap" .Currency}}</caption>
+<thead><tr><th scope="col">{{t "ledger.account"}}</th><th scope="col">{{t "ledger.type"}}</th><th scope="col">{{t "ledger.debit"}}</th><th scope="col">{{t "ledger.credit"}}</th><th scope="col">{{t "ledger.balance"}}</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr><th scope="row">{{.Code}} {{.Name}}</th><td>{{st "account" .Type}}</td><td class="num">{{money .DebitMinor $cur}}</td><td class="num">{{money .CreditMinor $cur}}</td><td class="num">{{money .BalanceMinor $cur}}</td></tr>
+{{end}}
+</tbody>
+<tfoot><tr><th scope="row" colspan="2">{{t "ledger.totals"}}</th><td class="num">{{money .DebitMinor $cur}}</td><td class="num">{{money .CreditMinor $cur}}</td><td></td></tr></tfoot>
+</table>
+</div>
+<p class="{{if .Balanced}}hint{{else}}notice{{end}}">{{if .Balanced}}{{t "ledger.balanced"}}{{else}}{{t "ledger.unbalanced"}}{{end}}</p>
+</section>
+{{else}}<p class="muted">{{t "ledger.trial_none"}}</p>{{end}}
+{{end}}

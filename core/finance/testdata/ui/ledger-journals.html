@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>Journal - Company in a Can: Finance</title>
+<link rel="stylesheet" href="/static/finance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+<p class="brand">Company in a Can: Finance</p>
+
+<nav aria-label="Main">
+<ul>
+<li><a href="/">Home</a></li>
+<li><a href="/ledger/accounts" aria-current="page">Accounting</a></li>
+<li><a href="/bank/reconciliation">Bank</a></li>
+
+
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+<input type="hidden" name="csrf" value="CSRF">
+<button type="submit">Log out</button>
+</form>
+
+</header>
+<main id="main">
+
+
+<h1>Journal</h1>
+<p class="actions"><a href="/ledger/accounts">Chart of accounts</a> <a href="/ledger/journals">Journal</a> <a href="/ledger/trial-balance">Trial balance</a></p>
+<form method="get" action="/ledger/journals" class="inline filter">
+<label for="j-status">Status</label>
+<select id="j-status" name="status"><option value="">All statuses</option><option value="draft">Draft</option><option value="posted">Posted</option></select>
+<label for="j-source">Source</label>
+<input id="j-source" name="source" value="" maxlength="30">
+<button type="submit">Filter</button>
+</form>
+<p class="hint">Read-only. Entries from invoices, payments and expenses post automatically once every account mapping is set; manual journals need a second person to approve them.</p>
+
+<div class="scroll">
+<table>
+<caption>Journal entries</caption>
+<thead><tr><th scope="col">Number</th><th scope="col">Date</th><th scope="col">Source</th><th scope="col">Memo</th><th scope="col">Total</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="/ledger/journals/3">Draft #3</a></th><td>2026-06-16</td><td>Manual journal</td><td>adjust</td><td class="num">1.00 USD</td></tr>
+<tr><th scope="row"><a href="/ledger/journals/2">JE-00002</a></th><td>2026-06-15</td><td>Manual journal</td><td>adjust</td><td class="num">42.00 USD</td></tr>
+<tr><th scope="row"><a href="/ledger/journals/1">JE-00001</a></th><td>2026-06-01</td><td>Invoice</td><td>Invoice INV-00001</td><td class="num">150.00 USD</td></tr>
+
+</tbody>
+</table>
+</div>
+
+
+
+</main>
+<footer>
+<p>Company in a Can finance. Apache-2.0. A tool, not accounting, tax or legal advice.</p>
+</footer>
+</body>
+</html>

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"fmt"
 	"net/netip"
@@ -131,10 +132,19 @@ func Bootstrap(o BootstrapOptions) (string, error) {
 const MaxCloudInitBytes = 32 * 1024
 
 // CloudInit wraps the bootstrap script as #cloud-config user-data. The script
-// is base64-encoded so no quoting issue can reach YAML.
+// is gzipped (the size limit) and base64-encoded so no quoting issue can reach
+// YAML; cloud-init's write_files decodes "gz+b64" itself.
 func CloudInit(o BootstrapOptions) (string, error) {
 	script, err := Bootstrap(o)
 	if err != nil {
+		return "", err
+	}
+	var packed bytes.Buffer
+	zw := gzip.NewWriter(&packed)
+	if _, err := zw.Write([]byte(script)); err != nil {
+		return "", err
+	}
+	if err := zw.Close(); err != nil {
 		return "", err
 	}
 	ci := "#cloud-config\n" +
@@ -142,8 +152,8 @@ func CloudInit(o BootstrapOptions) (string, error) {
 		"  - path: /usr/local/sbin/can-bootstrap.sh\n" +
 		"    permissions: '0700'\n" +
 		"    owner: root:root\n" +
-		"    encoding: b64\n" +
-		"    content: " + base64.StdEncoding.EncodeToString([]byte(script)) + "\n" +
+		"    encoding: gz+b64\n" +
+		"    content: " + base64.StdEncoding.EncodeToString(packed.Bytes()) + "\n" +
 		"runcmd:\n" +
 		"  - [bash, -c, \"/usr/local/sbin/can-bootstrap.sh >>/var/log/can-bootstrap.log 2>&1\"]\n"
 	if len(ci) > MaxCloudInitBytes {

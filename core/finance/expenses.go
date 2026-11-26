@@ -329,6 +329,9 @@ func (s *Store) decideExpense(ctx context.Context, a *Principal, id int64, ifMat
 			return err
 		}
 		if approve {
+			if err := s.postExpenseTx(ctx, tx, e, a.Subject); err != nil {
+				return err
+			}
 			return s.emit(ctx, tx, EventExpenseApproved, expenseApprovedData{ExpenseID: id, Person: e.Owner, AmountMinor: e.AmountMinor, Currency: e.Currency, Category: e.Category, ApprovedAt: now.UTC()})
 		}
 		return nil
@@ -359,6 +362,9 @@ func (s *Store) ReimburseExpense(ctx context.Context, a *Principal, id int64, if
 			return fmt.Errorf("%w: the expense is %s, not approved", ErrConflict, e.Status)
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE expenses SET status='reimbursed', reimbursement_ref=?, version=version+1, updated_at=? WHERE id=?`, ref, ts(s.now()), id); err != nil {
+			return err
+		}
+		if err := s.postReimbursementTx(ctx, tx, e, a.Subject); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, a.Subject, "expense.reimburse", fmt.Sprint(id), map[string]any{"reference": ref})

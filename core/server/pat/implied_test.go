@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dodwmd/companyinacan/core/config"
+	"github.com/dodwmd/companyinacan/core/finance"
 	"github.com/dodwmd/companyinacan/core/server/store"
 )
 
@@ -34,5 +35,24 @@ func TestAdminImpliesTheModulePermissionsAtIssueAndIntrospect(t *testing.T) {
 	e.s.Holds = func(_ context.Context, _, p string) (bool, error) { return p == "people.write", nil }
 	if _, err := e.s.Issue(ctx, "user:alice", IssueRequest{Name: "x", Module: "people", Permissions: []string{"people.read"}, TTL: time.Hour}); err == nil {
 		t.Fatal("people.write was taken to imply people.read")
+	}
+}
+
+// The ledger permissions are implied exactly as the finance module itself implies them, so what can-core lets a
+// person grant a token agrees with what the module lets that person do.
+func TestLedgerPermissionsImpliedAsTheFinanceModuleDoes(t *testing.T) {
+	all := []string{"finance.read", "finance.write", "finance.approve", "finance.admin",
+		"finance.ledger.read", "finance.ledger.write", "finance.ledger.approve", "finance.ledger.admin"}
+	for _, held := range all {
+		module := &finance.Principal{Permissions: []string{held}}
+		for _, want := range all[4:] {
+			got, err := HeldBy(context.Background(), func(_ context.Context, _, p string) (bool, error) { return p == held, nil }, "user:a", "finance", want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != module.Can(want) {
+				t.Errorf("holding %s: can-core says %s=%v, the module says %v", held, want, got, module.Can(want))
+			}
+		}
 	}
 }

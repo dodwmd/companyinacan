@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1>{{t "ledger.accounts"}}</h1>
+<p class="actions"><a href="/ledger/accounts">{{t "ledger.accounts"}}</a> <a href="/ledger/journals">{{t "ledger.journals"}}</a> <a href="/ledger/trial-balance">{{t "ledger.trial"}}</a></p>
+<p class="hint">{{t "ledger.accounts_hint"}}</p>
+<p class="actions">{{if .Data.All}}<a href="/ledger/accounts">{{t "common.active"}}</a>{{else}}<a href="/ledger/accounts?all=1">{{t "ledger.show_inactive"}}</a>{{end}}</p>
+{{if .Data.Items}}
+<div class="scroll">
+<table>
+<caption>{{t "ledger.accounts_cap"}}</caption>
+<thead><tr><th scope="col">{{t "ledger.code"}}</th><th scope="col">{{t "ledger.name"}}</th><th scope="col">{{t "ledger.type"}}</th><th scope="col">{{t "ledger.tax_code"}}</th><th scope="col">{{t "ledger.used"}}</th><th scope="col">{{t "f.status"}}</th></tr></thead>
+<tbody>
+{{range .Data.Items}}<tr><th scope="row">{{.Code}}</th><td>{{.Name}}</td><td>{{st "account" .Type}}</td><td>{{.TaxCode}}</td><td>{{if .Used}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</td><td>{{if .Active}}{{t "common.active"}}{{else}}{{t "common.inactive"}}{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "ledger.accounts_none"}}</p>{{end}}
+{{end}}

@@ -403,6 +403,17 @@ func (s *Store) ErasePartyData(ctx context.Context, a *Principal, id int64, rete
 			rep.Retained = append(rep.Retained, Retained{Class: "finance-purchase-order", Count: cnt, Until: retainUntil(last.String, retentionYears),
 				Reason: "approved purchase orders are retained for the legal retention period"})
 		}
+		// Bank data (E15c): the rows matched to this party's invoices keep the payer name, reference and
+		// description the bank reported, as accounting evidence. Unmatched or ignored rows may also name the
+		// party, but nothing ties them to it, so they cannot be counted here; they are retained likewise.
+		cnt, last = 0, sql.NullString{}
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), MAX(b.booked_on) FROM bank_transactions b JOIN payments p ON p.id = b.matched_payment_id JOIN invoices i ON i.id = p.invoice_id WHERE i.party_id = ?`, id).Scan(&cnt, &last); err != nil {
+			return err
+		}
+		if cnt > 0 {
+			rep.Retained = append(rep.Retained, Retained{Class: "finance-bank", Count: cnt, Until: retainUntil(last.String, retentionYears),
+				Reason: "bank transactions matched to this party's invoices keep the counterparty, reference and description the bank reported, as accounting evidence; other bank rows naming the party cannot be attributed and are kept under the same rule"})
+		}
 		return s.audit(ctx, tx, a.Subject, "party.erase", strconv.FormatInt(id, 10), map[string]any{"deleted_drafts": rep.DeletedDrafts, "retained": rep.Retained})
 	})
 	if err != nil {

@@ -68,6 +68,11 @@ func writeStoreError(w http.ResponseWriter, log *slog.Logger, err error) {
 		writeError(w, http.StatusServiceUnavailable, "approvals_unavailable", "the approvals engine did not answer; try again shortly")
 	case errors.Is(err, ErrSeparation):
 		writeError(w, http.StatusForbidden, "separation_of_duties", "you cannot approve a record you created, edited or own")
+	case errors.Is(err, ErrNotConfigured):
+		w.Header().Set("Retry-After", "60")
+		writeError(w, http.StatusServiceUnavailable, "not_configured", err.Error())
+	case errors.Is(err, ErrNotImplemented):
+		writeError(w, http.StatusNotImplemented, "not_implemented", err.Error())
 	case errors.Is(err, ErrLocked):
 		writeError(w, http.StatusConflict, "period_locked", err.Error())
 	case errors.Is(err, ErrForbidden):

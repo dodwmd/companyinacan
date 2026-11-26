@@ -38,6 +38,9 @@ var financeEvents = map[string][]byte{
 	"contract.expiring.v1":  events.ContractExpiringV1,
 	"timesheet.approved.v1": events.TimesheetApprovedV1,
 	"expense.approved.v1":   events.ExpenseApprovedV1,
+
+	"journal.posted.v1":          events.JournalPostedV1,
+	"bank.statement.imported.v1": events.BankStatementImportedV1,
 }
 
 var financeCaps = map[string][]byte{"invoices.v1": capabilities.InvoicesV1, "contracts.v1": capabilities.ContractsV1, "timesheets.v1": capabilities.TimesheetsV1}
@@ -282,7 +285,7 @@ func TestFinanceLiveEventsMatchSchemas(t *testing.T) {
 		link   = "contract-link-secret-0123456789abcdefXYZ"
 		prov   = "contract-provider-secret-01234"
 	)
-	app, err := finance.NewApp(cfg, finance.Secrets{AdminToken: tok, LinkSecret: link, WebhookSecret: secret, ProviderSecret: prov}, finance.Options{Logger: slog.New(slog.DiscardHandler)})
+	app, err := finance.NewApp(cfg, finance.Secrets{AdminToken: tok, LinkSecret: link, WebhookSecret: secret, ProviderSecret: prov, SealKey: strings.Repeat("0123456789abcdef", 4)}, finance.Options{Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,12 +331,20 @@ func TestFinanceLiveEventsMatchSchemas(t *testing.T) {
 	}
 	maker, boss := mint("maker", []string{"finance.write"}, false), mint("boss", []string{"finance.approve"}, false)
 	alice := mint("person_17", []string{"finance.write"}, true)
+	do(tok, "POST", "/v1/ledger/accounts/template", map[string]any{"apply_mappings": true}) // E15c: every approval below posts a journal entry
 	party := int(do(maker, "POST", "/v1/parties", map[string]any{"name": "Acme Fake Ltd", "kind": "customer"})["id"].(float64))
 	inv := int(do(maker, "POST", "/v1/invoices", map[string]any{"party_id": party, "lines": []map[string]any{{"description": "x", "quantity_milli": 1000, "unit_price_minor": 5000}}})["id"].(float64))
 	n := "/v1/invoices/" + strconv.Itoa(inv)
 	do(boss, "POST", n+"/approve", nil)
 	do(maker, "POST", n+"/send", nil)
 	do(maker, "POST", n+"/payments", map[string]any{"amount_minor": 5000})
+	// E15c: a bank statement import (counts only in the event; the account number is sealed).
+	ba := int(do(tok, "POST", "/v1/bank/accounts", map[string]any{"name": "Main", "currency": "USD", "number": "DE89370400440532013000", "ledger_account_code": "1000"})["id"].(float64))
+	stmt, _ := http.NewRequest("POST", base+"/v1/bank/accounts/"+strconv.Itoa(ba)+"/statements?format=csv&delimiter=comma&date_col=1&amount_col=2&id_col=3", strings.NewReader("date,amount,id\n2026-01-05,50.00,T1\n"))
+	stmt.Header.Set("Authorization", "Bearer "+tok)
+	if resp, err := http.DefaultClient.Do(stmt); err != nil || resp.StatusCode != 201 {
+		t.Fatalf("statement import: %v %v", err, resp)
+	}
 
 	body := "Agreement for {{customer}}."
 	c := do(maker, "POST", "/v1/contracts", map[string]any{"party_id": party, "title": "T", "body": body, "variables": map[string]string{"customer": "Acme"}, "renewal_date": "2026-01-10", "reminder_days": 5})

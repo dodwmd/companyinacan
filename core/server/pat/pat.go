@@ -79,6 +79,13 @@ var impliedBy = map[string]map[string][]string{
 	"finance": {
 		"finance.read": {"finance.write", "finance.approve", "finance.admin"}, "finance.write": {"finance.admin"},
 		"finance.approve": {"finance.admin"},
+		// Accounting (finance E15c), the same rule as core/finance Principal.Can: any ledger permission carries
+		// ledger.read, ledger.admin carries ledger.write, finance.admin carries all of them, and nothing but
+		// finance.admin carries ledger.approve (the drafter of a journal is not its approver).
+		"finance.ledger.read":    {"finance.ledger.write", "finance.ledger.approve", "finance.ledger.admin", "finance.admin"},
+		"finance.ledger.write":   {"finance.ledger.admin", "finance.admin"},
+		"finance.ledger.approve": {"finance.admin"},
+		"finance.ledger.admin":   {"finance.admin"},
 	},
 	"work": {"work.read": {"work.write", "work.admin"}, "work.write": {"work.admin"}},
 }

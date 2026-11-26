@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>{{if .Data.Number}}{{deref .Data.Number}}{{else}}{{t "ledger.draft_n" .Data.ID}}{{end}}</h1>
+<p class="actions"><a href="/ledger/journals">{{t "ledger.back"}}</a></p>
+<dl>
+<dt>{{t "ledger.date"}}</dt><dd>{{.Data.EntryDate}}</dd>
+<dt>{{t "ledger.source"}}</dt><dd>{{st "jsource" .Data.Source}}</dd>
+<dt>{{t "ledger.memo"}}</dt><dd>{{.Data.Memo}}</dd>
+<dt>{{t "ledger.drafted_by"}}</dt><dd>{{.Data.CreatedBy}}</dd>
+{{if .Data.PostedBy}}<dt>{{t "ledger.posted_by"}}</dt><dd>{{deref .Data.PostedBy}}</dd>{{end}}
+{{if .Data.ReversalOf}}<dt>{{t "ledger.reversal_of"}}</dt><dd><a href="/ledger/journals/{{deref64 .Data.ReversalOf}}">{{deref64 .Data.ReversalOf}}</a></dd>{{end}}
+{{if .Data.ReversedBy}}<dt>{{t "ledger.reversed_by"}}</dt><dd><a href="/ledger/journals/{{deref64 .Data.ReversedBy}}">{{deref64 .Data.ReversedBy}}</a></dd>{{end}}
+</dl>
+{{$cur := .Data.Currency}}
+<div class="scroll">
+<table>
+<caption>{{t "ledger.lines_cap"}}</caption>
+<thead><tr><th scope="col">{{t "ledger.account"}}</th><th scope="col">{{t "ledger.memo"}}</th><th scope="col">{{t "ledger.debit"}}</th><th scope="col">{{t "ledger.credit"}}</th></tr></thead>
+<tbody>
+{{range .Data.Lines}}<tr><th scope="row">{{.AccountCode}} {{.AccountName}}</th><td>{{.Memo}}</td><td class="num">{{if .DebitMinor}}{{money .DebitMinor $cur}}{{end}}</td><td class="num">{{if .CreditMinor}}{{money .CreditMinor $cur}}{{end}}</td></tr>
+{{end}}
+</tbody>
+<tfoot><tr><th scope="row" colspan="2">{{t "ledger.totals"}} ({{$cur}})</th><td class="num">{{money .Data.TotalMinor $cur}}</td><td class="num">{{money .Data.TotalMinor $cur}}</td></tr></tfoot>
+</table>
+</div>
+<p class="hint">{{t "ledger.immutable"}}</p>
+{{end}}

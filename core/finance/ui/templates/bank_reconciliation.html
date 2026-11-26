@@ -1,0 +1,73 @@
+{{define "content"}}
+<h1>{{t "bank.title"}}</h1>
+{{if .Data.Accounts}}
+<nav aria-label="{{t "bank.accounts"}}">
+<ul>
+{{range .Data.Accounts}}<li><a href="/bank/reconciliation?account={{.ID}}"{{if eq .ID $.Data.Account.ID}} aria-current="page"{{end}}>{{t "bank.account_label" .Name .Currency .Masked}}</a></li>
+{{end}}
+</ul>
+</nav>
+{{with .Data.Account}}<p class="muted">{{t "bank.masked" .Masked}}</p>{{end}}
+<section aria-labelledby="h-periods">
+<h2 id="h-periods">{{t "bank.periods_cap"}}</h2>
+{{if .Data.Periods}}
+<div class="scroll">
+<table>
+<caption>{{t "bank.periods_cap"}}</caption>
+<thead><tr><th scope="col">{{t "bank.period"}}</th><th scope="col">{{t "bank.txns"}}</th><th scope="col">{{t "bank.matched"}}</th><th scope="col">{{t "bank.ignored"}}</th><th scope="col">{{t "bank.unmatched"}}</th><th scope="col">{{t "bank.status"}}</th></tr></thead>
+<tbody>
+{{range .Data.Periods}}<tr><th scope="row">{{.Period}}</th><td class="num">{{.Transactions}}</td><td class="num">{{.Matched}}</td><td class="num">{{.Ignored}}</td><td class="num">{{.Unmatched}}</td><td>{{st "bank.s" .Status}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "bank.queue_none"}}</p>{{end}}
+</section>
+<section aria-labelledby="h-queue">
+<h2 id="h-queue">{{t "bank.queue"}}</h2>
+<p class="hint">{{t "bank.queue_hint"}}</p>
+{{if .Data.Rows}}
+<div class="scroll">
+<table>
+<caption>{{t "bank.queue_cap"}}</caption>
+<thead><tr><th scope="col">{{t "bank.date"}}</th><th scope="col">{{t "bank.amount"}}</th><th scope="col">{{t "bank.reference"}}</th><th scope="col">{{t "bank.counterparty"}}</th><th scope="col">{{t "bank.suggestion"}}</th>{{if .Data.Write}}<th scope="col">{{t "common.actions"}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .Data.Rows}}{{$idem := .Idem}}<tr>
+<th scope="row">{{.Txn.BookedOn}}</th>
+<td class="num">{{amt .Txn.AmountMinor .Txn.Currency}}</td>
+<td>{{.Txn.Reference}}</td>
+<td>{{.Txn.Counterparty}}</td>
+<td>{{range .Suggestions}}<span>{{.Number}} ({{amt .BalanceMinor .Currency}}, {{if eq .Reason "amount_and_reference"}}{{t "bank.sg_both"}}{{else if eq .Reason "reference"}}{{t "bank.sg_reference"}}{{else}}{{t "bank.sg_amount"}}{{end}})</span> {{else}}{{t "bank.no_sugg"}}{{end}}</td>
+{{if $.Data.Write}}<td>
+{{if gt .Txn.AmountMinor 0}}
+<form method="post" action="/bank/transactions/{{.Txn.ID}}/confirm" class="inline">
+{{template "csrf" $}}
+<input type="hidden" name="idem" value="{{$idem}}">
+<input type="hidden" name="account" value="{{$.Data.Account.ID}}">
+<label for="inv-{{.Txn.ID}}">{{t "bank.invoice_id"}}</label>
+<input id="inv-{{.Txn.ID}}" name="invoice_id" inputmode="numeric" required maxlength="18"{{if .Suggestions}}{{with index .Suggestions 0}} value="{{.InvoiceID}}"{{end}}{{end}}>
+<label for="pay-{{.Txn.ID}}">{{t "bank.payment_id"}}</label>
+<input id="pay-{{.Txn.ID}}" name="payment_id" inputmode="numeric" maxlength="18">
+<label for="new-{{.Txn.ID}}">{{t "bank.record_new"}}</label>
+<input id="new-{{.Txn.ID}}" name="record_new" type="checkbox" value="1">
+<button type="submit">{{t "bank.confirm"}}</button>
+</form>
+{{else}}<p class="hint">{{t "bank.money_out"}}</p>{{end}}
+<form method="post" action="/bank/transactions/{{.Txn.ID}}/ignore" class="inline">
+{{template "csrf" $}}
+<input type="hidden" name="account" value="{{$.Data.Account.ID}}">
+<label for="ig-{{.Txn.ID}}">{{t "bank.reason"}}</label>
+<input id="ig-{{.Txn.ID}}" name="reason" required maxlength="200">
+<button type="submit">{{t "bank.ignore"}}</button>
+</form>
+</td>{{end}}
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{template "pager" .Data.Pager}}
+{{else}}<p class="muted">{{t "bank.queue_none"}}</p>{{end}}
+</section>
+{{else}}<p class="muted">{{t "bank.none"}}</p>{{end}}
+{{end}}
