@@ -1,0 +1,34 @@
+{{define "content"}}
+<h1>{{t "si.title"}}</h1>
+<p>{{t "si.help"}} <a href="/site/history">{{t "si.history"}}</a></p>
+<p class="alert {{.Data.LiveClass}}">{{.Data.Live}}</p>
+{{if .Data.Stale}}<div class="alert err" role="alert"><p>{{t "si.stale"}}</p><p><a href="/site">{{t "si.reload"}}</a></p></div>{{end}}
+{{if or .Data.Summary .Data.Other}}<div class="alert err" role="alert"><p><strong>{{t "si.errors"}}</strong></p><ul>
+{{range .Data.Summary}}<li><a href="#{{.Field}}">{{.Message}}</a></li>
+{{end}}{{range .Data.Other}}<li>{{if .Field}}<code>{{.Field}}</code>: {{end}}{{.Message}}</li>
+{{end}}</ul></div>{{end}}
+<nav aria-label="{{t "si.sections"}}"><ul class="actions pages">
+{{range .Data.Sections}}<li><a href="#h-{{.ID}}">{{.Title}}</a></li>
+{{end}}</ul></nav>
+<form method="post" action="/site" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="base" value="{{.Data.Base}}">
+{{range .Data.Sections}}<section aria-labelledby="h-{{.ID}}">
+<h2 id="h-{{.ID}}">{{.Title}}</h2>
+{{if .Help}}<p class="hint">{{.Help}}</p>{{end}}{{if .Error}}<p class="errtext">{{.Error}}</p>{{end}}
+{{range .Groups}}{{if .Legend}}<fieldset class="entry">
+<legend>{{.Legend}}</legend>
+{{template "sitefields" .Fields}}</fieldset>
+{{else}}{{template "sitefields" .Fields}}{{end}}{{end}}</section>
+{{end}}<p><button type="submit">{{t "si.preview"}}</button></p>
+</form>
+{{end}}
+
+{{define "sitefields"}}{{range .}}{{if eq .Kind "hidden"}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">
+{{else}}<p>
+{{if eq .Kind "check"}}<input type="checkbox" id="{{.ID}}" name="{{.Name}}" value="on"{{if .Checked}} checked{{end}}> <label class="check" for="{{.ID}}">{{.Label}}</label>
+{{else}}<label for="{{.ID}}">{{.Label}}</label>
+{{if eq .Kind "textarea"}}<textarea id="{{.ID}}" name="{{.Name}}" rows="{{.Rows}}" maxlength="{{.Max}}"{{if .Hint}} aria-describedby="{{.ID}}-h"{{end}}{{if .Error}} aria-invalid="true"{{end}}>
+{{.Value}}</textarea>{{else}}<input type="text" id="{{.ID}}" name="{{.Name}}" value="{{.Value}}" maxlength="{{.Max}}" autocomplete="off"{{if .Hint}} aria-describedby="{{.ID}}-h"{{end}}{{if .Error}} aria-invalid="true"{{end}}>{{end}}
+{{end}}{{if .Hint}}<span class="hint" id="{{.ID}}-h">{{.Hint}}</span>{{end}}{{if .Error}}<span class="errtext" role="alert">{{.Error}}</span>{{end}}</p>
+{{end}}{{end}}{{end}}

@@ -183,10 +183,11 @@ func init() {
 		"hs.no_disk":       "No volumes reported.",
 		"hs.unavailable":   "This information is not available in this installation, so its health is unknown.",
 
-		"cy.title":    "Stored company.yaml",
-		"cy.help":     "This is the document can-core applies. Changes made in the admin UI are written here.",
-		"cy.version":  "Version:",
-		"cy.cli_note": "If you also run can apply from a company repository, it overwrites this document. Copy this version into your repository first.",
+		"cy.title":     "Stored company.yaml",
+		"cy.help":      "This is the document can-core applies. Changes made in the admin UI are written here.",
+		"cy.edit_site": "Edit the website content",
+		"cy.version":   "Version:",
+		"cy.cli_note":  "The website can be edited here. Other parts are changed in the catalogue, the settings forms or, with the can command, in the company directory (can pull first, to keep changes made here).",
 
 		"pg.title":        "Destroy module data",
 		"pg.warning":      "This permanently destroys all data of the module %s. It cannot be undone.",

@@ -187,6 +187,7 @@ func journey(t *testing.T, vp viewport) {
 
 	t.Run("lead_form", func(t *testing.T) { leadForm(t, r) })
 	t.Run("overview_and_admin_pages", func(t *testing.T) { adminPages(t, r) })
+	t.Run("website_editor", func(t *testing.T) { websiteEditor(t, r) })
 	t.Run("launch_ticket_binding", func(t *testing.T) { launchBinding(t, r) })
 	t.Run("work", func(t *testing.T) { workFlow(t, r) })
 	t.Run("people", func(t *testing.T) { peopleFlow(t, r) })
@@ -238,7 +239,7 @@ func adminPages(t *testing.T, r *run) {
 	s := r.admin.in(t)
 	s.goTo(adminURL() + "/overview")
 	s.has("Business overview")
-	for _, p := range []string{"/dashboard", "/modules", "/catalogue", "/audit", "/events", "/leads", "/email", "/settings", "/tokens", "/approvals", "/notifications", "/users", "/apps"} {
+	for _, p := range []string{"/dashboard", "/modules", "/catalogue", "/audit", "/events", "/leads", "/email", "/settings", "/tokens", "/approvals", "/notifications", "/users", "/apps", "/site", "/site/history"} {
 		s.goTo(adminURL() + p)
 	}
 	// An API token: the permission checkboxes, the copy-once page.

@@ -17,6 +17,8 @@ type Site struct {
 	CTA         *SiteCTA      `yaml:"cta"`
 	Contact     *SiteContact  `yaml:"contact"`
 	Support     *SiteSupport  `yaml:"support"`
+	Careers     *SiteCareers  `yaml:"careers"`
+	Pages       []SitePage    `yaml:"pages"`
 	Footer      SiteFooter    `yaml:"footer"`
 }
 
@@ -101,6 +103,20 @@ type SiteSupport struct {
 	Title  string `yaml:"title"`
 	Text   string `yaml:"text"`
 	Button string `yaml:"button"`
+}
+
+// SiteCareers adds a link to the careers pages the jobs module serves. The label is optional.
+type SiteCareers struct {
+	Label string `yaml:"label"` // default "Careers"
+}
+
+// SitePage is an extra text page (privacy, terms, ...), served at /<slug> and linked in the footer.
+// The body is plain text: blank lines separate paragraphs, a line starting with "## " is a heading and
+// lines starting with "- " are a list. Nothing in it is read as HTML.
+type SitePage struct {
+	Slug  string `yaml:"slug"`
+	Title string `yaml:"title"`
+	Body  string `yaml:"body"`
 }
 
 // SiteFooter is the footer content.

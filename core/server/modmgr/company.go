@@ -125,6 +125,10 @@ type KubeStore struct {
 
 const companyKey = "company.yaml"
 
+// ServerEditAnnotation on ConfigMap can-system/company holds the SHA-256 (hex) of the document
+// can-core last wrote. While it matches the document, the latest change was made in the admin UI.
+const ServerEditAnnotation = "can.dev/server-edit-sha256"
+
 func (k *KubeStore) ref() (string, string) {
 	ns, name := k.Namespace, k.Name
 	if ns == "" {
@@ -173,10 +177,14 @@ func (k *KubeStore) Put(ctx context.Context, data []byte, expected string) (stri
 		return "", ErrConflict
 	}
 	ns, name := k.ref()
-	patch := kube.Object{"data": map[string]any{companyKey: string(data)}}
+	// The annotation says the document was written here, not by the CLI: `can apply` then refuses to
+	// overwrite it with a company.yaml that has not seen it.
+	sum := sha256.Sum256(data)
+	md := map[string]any{"annotations": map[string]any{ServerEditAnnotation: hex.EncodeToString(sum[:])}}
 	if rv, ok := strings.CutPrefix(expected, "rv:"); ok {
-		patch["metadata"] = map[string]any{"resourceVersion": rv}
+		md["resourceVersion"] = rv
 	}
+	patch := kube.Object{"data": map[string]any{companyKey: string(data)}, "metadata": md}
 	if err := k.API.MergePatch(ctx, "ConfigMap", ns, name, patch); err != nil {
 		if kube.IsConflict(err) {
 			return "", ErrConflict

@@ -134,7 +134,7 @@ my-company/
 | Databases | PVCs of the `can-data` StatefulSets |
 | can-core state (SQLite: event outbox, admin password hash + TOTP seed) | PVC in `can-system` |
 | Secrets | Kubernetes Secrets (encrypted at rest); the operator's local copy lives in `.can/` (git-ignored) |
-| Applied `company.yaml` | ConfigMap in `can-system`, pushed by the CLI on `apply`. Changes made in the admin UI (Phase 2) are written to this copy; `can pull` writes them back to the repo and `can apply` warns on drift. Included in backups, so restores don't depend on the operator's repo |
+| Applied `company.yaml` | ConfigMap in `can-system`, pushed by the CLI on `apply`. Changes made in the admin UI are written to this copy; `can pull` writes them back to the repo, and `can apply` and `can up` refuse to overwrite them. Included in backups, so restores don't depend on the operator's repo |
 | Rendered manifests | Never stored; rendered from `company.yaml` + charts on every `apply` |
 
 ### 3.4 The five-minute budget
@@ -514,6 +514,7 @@ make doctor      # check local prerequisites and provider credentials
 - Output is static HTML/CSS/JS; optional SPA island for interactive bits (pricing calculators, signup flow).
 - Built-in SEO basics: sitemap, OG tags, robots, structured data, fast by default.
 - Forms are plain `<form>` posts to the gateway (works without JS); enhanced progressively.
+- The admin UI edits the same content as a form with preview, publish and rollback, and adds text pages (privacy, terms, custom) ([docs/site-editor.md](docs/site-editor.md)).
 - Future: visual/AI-assisted editor ("describe your company → draft site").
 
 ### 6.3 Admin dashboard (`admin.<domain>`)
@@ -708,7 +709,7 @@ of the success criteria in §10 is met yet. Detail: [docs/status.md](docs/status
 | §3.7, §6.5 | Erasure ledger written by can-core | Built for people, equity, board, entity, files, finance, forms, jobs and work; not for provisioning or wrapped apps |
 | §5 | Work tracking (manager needs) | Built: projects in the UI, workload by person, P0/P1 ageing, stale work, saved filters, a priority-changed event. Not built: components, team views from reporting lines, logged time, source-control adapters, MCP server |
 | §5 | Catalogue | In `modules/`: forms, work, people, jobs, finance, files, equity, board, entity, provisioning, and wrapped analytics, newsletter, support, wiki, status, crm. Contracts, invoices, time and expenses live inside `finance`. Not built: booking, wrapped e-sign (`documents`), vendors module, assets, policies, simple tasks, password manager |
-| §6.1, §6.4 | `can module`, `can pull`, `can upgrade`, `can export`, `can email` | Not implemented. `can import` takes CSV for three record types, not a company export |
+| §6.1, §6.4 | `can module`, `can upgrade`, `can export`, `can email` | Not implemented. `can import` takes CSV for three record types, not a company export |
 | §6.3 | Dashboard with open tickets, expiring certificates and domains, a restore button | Not built. The overview and status pages show approvals, module totals and the last database dump |
 | §6.5 | Restore from the recovery kit | Built, verified on k3d with a local restic repository only; the new server is made first with `can up --provision-only` |
 | §6.5 | Updates with snapshot and rollback (`can upgrade`) | Not implemented; no release exists |
