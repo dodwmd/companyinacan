@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -50,7 +51,35 @@ func HashPassword(password string) (string, error) {
 		return "", err
 	}
 	key := argon2.IDKey([]byte(password), salt, p.Time, p.Memory, p.Threads, p.KeyLen)
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, p.Memory, p.Time, p.Threads, b64.EncodeToString(salt), b64.EncodeToString(key)), nil
+	return encode(p, salt, key), nil
+}
+
+func encode(p Params, salt, key []byte) string {
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, p.Memory, p.Time, p.Threads, b64.EncodeToString(salt), b64.EncodeToString(key))
+}
+
+// dummyHash is the hash an unknown user name is verified against, so that it costs the same as a
+// real one. Its salt and key are random bytes: verifying runs argon2 with the current parameters
+// and cannot match. Computing a real hash here would spend 19 MiB of heap at every start.
+func dummyHash() string {
+	p := currentParams
+	b := make([]byte, int(p.SaltLen)+int(p.KeyLen))
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand: " + err.Error())
+	}
+	return encode(p, b[:p.SaltLen], b[p.SaltLen:])
+}
+
+// releaseHashMemory returns argon2's working memory to the operating system; otherwise the 19 MiB
+// of one login stays resident in an idle process for a long time. It is a forced, blocking garbage
+// collection plus the return of the pages, and the next hash faults them in again: measured on a
+// development machine (amd64), a verification went from about 13 ms to 17-19 ms, 30 to 45% more,
+// with 8 to 40 MiB of live heap. It is bounded by the hash slot, hidden inside MinLoginTime for a
+// login, and paid only where a password is hashed.
+func releaseHashMemory() {
+	if currentParams.Memory >= 4*1024 { // pointless under TestingParams
+		debug.FreeOSMemory()
+	}
 }
 
 type parsed struct {

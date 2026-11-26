@@ -116,7 +116,9 @@ A token works for its own module only. `work` and `finance` check each permissio
 - `people`: `people.read` is an employee; add `people.write` for HR, `people.admin` for admin and
   `people.team.manage` for manager.
 - `equity`: `finance` needs `equity.read`, `write`, `approve` and `sensitive-read`; add `equity.admin` for
-  admin. A personal access token is never the equity **board** ([equity.md](equity.md)).
+  admin. A personal access token is never the equity **board**, and because it carries no `person_id` an equity
+  token **cannot** draft or administer grants, nor approve, pay or issue exercises, whatever permissions it has.
+  It **can** write share ledger entries, with no holder separation-of-duties check ([equity.md](equity.md)).
 
 **Apps (single sign-on into module web UIs).** Open the admin UI at **<http://localhost:8180>** (not
 `admin.localhost`), go to **Apps** and press **Open**. In plain HTTP the launch cookie belongs to one host
@@ -276,12 +278,13 @@ cluster installs or isolates the modules.
 
 ## Resources
 
-Measured with `docker stats --no-stream` on rootless podman after a full e2e run, with module management and the
-modules wired to can-core: about **150 MB** for the whole stack (core 65, edge 21, work 12, finance 12, people 12,
-jobs 11, files 5, equity 5, forms 5, site 3, introstub 3). The earlier figure of about 94 MB was for the stack
-without that wiring. Building needs more: allow
-2 GB of free RAM and about 5 GB of disk while images build (Go compiles eleven binaries). RAM of the images
-is far below the budgets in the module READMEs because `docker stats` reports cgroup memory, not RSS.
+Measured on rootless podman ([measurements/footprint.md](measurements/footprint.md) has the method and the
+per-service figures). The whole stack, Caddy and the two stubs included, uses 73 MiB of cgroup memory idle and
+about 120 MiB after an e2e run without its restart test (about 122 MB in `docker stats`; 166 MB before the
+2026-11 reductions, measured the same way). Those figures leave out most binary file pages, which the image
+build had already cached: the processes' resident sets add up to about 208 MiB idle and 242 MiB loaded. A 4-vCPU
+CI runner measured less (68 MiB idle, 92 loaded). `docker stats` reports cgroup memory, not RSS. Building needs
+more: allow 2 GB of free RAM and about 5 GB of disk while images build (Go compiles eleven binaries).
 
 ## Troubleshooting
 

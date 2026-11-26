@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -269,6 +270,10 @@ func TestModuleEgressDeniedToNodeAndAPI(t *testing.T) {
 			t.Fatalf("control failed: a system pod could not reach node %s", target)
 		}
 	} else if !pollReachPort(t, "probe-node-ctl", "node-ctl", ip, 6443) {
+		// Say what on the node could be in the way (a left-over DROP rule, for one).
+		node := "k3d-" + strings.TrimPrefix(kubeContext(), "k3d-") + "-server-0"
+		rules, err := exec.Command("docker", "exec", node, "iptables", "-w", "30", "-S", "INPUT").CombinedOutput() //nolint:gosec // test helper
+		t.Logf("node INPUT chain (%v):\n%s", err, rules)
 		t.Fatalf("control failed: an unpolicied pod could not reach node %s:6443", ip)
 	}
 	// Policy programming is asynchronous, so allow it time before calling a reach a finding.

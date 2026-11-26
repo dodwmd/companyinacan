@@ -989,7 +989,7 @@
     "post":
       "operationId": "erase_stakeholder"
       "summary": "admin"
-      "description": "admin. Pseudonymises the identity and clears free text; issued share records stay under legal retention. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
+      "description": "admin. Pseudonymises the identity and clears free text; issued share records stay under legal retention. Refused with 403 separation_of_duties when the caller's person_id is that of the stakeholder being erased; person_id is unverified, so this stops only the straightforward case. Refusals are audited. Requires permission equity.admin (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "stakeholders"
       "parameters":
@@ -2449,7 +2449,7 @@
     "post":
       "operationId": "issue_new_shares"
       "summary": "finance or admin"
-      "description": "finance or admin. Honours Idempotency-Key. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "description": "finance or admin. Honours Idempotency-Key. Refused with 403 separation_of_duties when the caller's person_id is that of the holder; person_id is unverified, so this stops only the straightforward case. Refusals are audited. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "ledger"
       "parameters":
@@ -2520,7 +2520,7 @@
     "post":
       "operationId": "transfer_shares"
       "summary": "finance or admin"
-      "description": "finance or admin. Needs to_stakeholder_id. Returns the outgoing leg. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "description": "finance or admin. Needs to_stakeholder_id. Returns the outgoing leg. Refused with 403 separation_of_duties when the caller's person_id is that of either holder; person_id is unverified, so this stops only the straightforward case. Refusals are audited. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "ledger"
       "parameters":
@@ -2591,7 +2591,7 @@
     "post":
       "operationId": "cancel_shares"
       "summary": "finance or admin"
-      "description": "finance or admin. Cancellation or repurchase. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
+      "description": "finance or admin. Cancellation or repurchase. Refused with 403 separation_of_duties when the caller's person_id is that of the holder; person_id is unverified, so this stops only the straightforward case. Refusals are audited. Requires permission equity.write (coarse); the policy layer decides per caller, record and field."
       "tags":
         - "ledger"
       "parameters":

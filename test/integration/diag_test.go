@@ -35,12 +35,23 @@ spec: {podSelector: {}, policyTypes: [Ingress, Egress]}
 
 	// Host firewall: drop pod-CIDR traffic to the node's API port in the node's INPUT chain.
 	nodeC := "k3d-" + strings.TrimPrefix(kubeContext(), "k3d-") + "-server-0"
-	add := []string{"exec", nodeC, "iptables", "-I", "INPUT", "1", "-s", "10.42.0.0/16", "-d", ip, "-p", "tcp", "--dport", "6443", "-j", "DROP"}
-	del := []string{"exec", nodeC, "iptables", "-D", "INPUT", "-s", "10.42.0.0/16", "-d", ip, "-p", "tcp", "--dport", "6443", "-j", "DROP"}
-	if out, err := exec.Command("docker", add...).CombinedOutput(); err != nil { //nolint:gosec // test helper
+	// -w: kube-router and flannel rewrite iptables all the time, and without it a command that finds
+	// the xtables lock taken just fails. A rule left behind would block every later positive
+	// control against the node ("an unpolicied pod could not reach node"), so removing it is
+	// checked, not assumed.
+	rule := []string{"-s", "10.42.0.0/16", "-d", ip, "-p", "tcp", "--dport", "6443", "-j", "DROP"}
+	iptables := func(op ...string) ([]byte, error) {
+		args := append(append([]string{"exec", nodeC, "iptables", "-w", "30"}, op...), rule...)
+		return exec.Command("docker", args...).CombinedOutput() //nolint:gosec // test helper
+	}
+	if out, err := iptables("-I", "INPUT"); err != nil {
 		t.Logf("DIAG could not add the host firewall rule: %v %s", err, out)
 		return
 	}
-	t.Cleanup(func() { _ = exec.Command("docker", del...).Run() }) //nolint:gosec // test helper
+	t.Cleanup(func() {
+		if out, err := iptables("-D", "INPUT"); err != nil {
+			t.Errorf("could not remove the temporary host firewall rule, later tests are not to be trusted: %v %s", err, out)
+		}
+	})
 	t.Logf("DIAG host iptables INPUT drop (pod CIDR -> node:6443): pod -> node reachable=%v", reachPort(t, "diag-deny", "dfw", ip, 6443))
 }
