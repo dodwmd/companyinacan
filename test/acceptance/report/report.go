@@ -1,6 +1,6 @@
 // Package report collects what the acceptance journey measured (step timings, `can up` phases,
 // node memory), compares it with the budgets and renders it for a person (Markdown) and a program
-// (JSON). specs/058-acceptance-journey.
+// (JSON). specs/059-acceptance-journey.
 package report
 
 import (

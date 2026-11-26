@@ -2,7 +2,7 @@
 
 package acceptance
 
-// The journey of specs/058-acceptance-journey, in order. Every step is timed; a step that fails ends
+// The journey of specs/059-acceptance-journey, in order. Every step is timed; a step that fails ends
 // the journey, a budget that is exceeded fails it at the end. The product is driven the way a person
 // drives it: the `can` binary, ssh to the server, the web pages. What stands in for the internet
 // (certificate, DNS, mail relay, bucket) is listed in standIns and in the report.

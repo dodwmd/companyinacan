@@ -1,4 +1,4 @@
-# Spec 058: one test of the whole journey (epic E00b)
+# Spec 059: one test of the whole journey (epic E00b)
 
 Status: built. Results: [docs/measurements/acceptance.md](../../docs/measurements/acceptance.md).
 
