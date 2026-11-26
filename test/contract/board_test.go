@@ -206,7 +206,7 @@ func TestBoardManifest(t *testing.T) {
 func TestEntityManifest(t *testing.T) {
 	m := boardManifest(t, "entity", board.EntityClasses,
 		[]string{"secretary", "admin", "officer", "audit-viewer", "director"},
-		map[string]string{"entity": "entity.v1"})
+		map[string]string{"entity": "entity.v1", "summary": "summary.v1"})
 	if containsAny(asList(asMap(m["roles"])["admin"]), "entity.sensitive-read") {
 		t.Error("admin must not read identifiers or register detail")
 	}

@@ -57,6 +57,7 @@ The Apps launcher needs a second set of addresses for the same services, on one 
 | <http://localhost:8182> | people web UI |
 | <http://localhost:8183> | recruiting web UI |
 | <http://localhost:8184> | finance web UI |
+| <http://localhost:8185> | files web UI ([files.md](files.md#web-ui)); also <http://files.localhost:8080> with a token |
 
 `*.localhost` resolves to loopback in browsers and in most `curl`/glibc setups. If yours does not (some
 resolvers, older macOS tooling), use `curl --resolve admin.localhost:8080:127.0.0.1 ...`, add the names to
@@ -89,7 +90,7 @@ generated on the first `up` into the `dev-secrets` volume and never leave it.
 
 ### Modules, access tokens and single sign-on
 
-can-core knows `work`, `people`, `jobs`, `finance` and `equity` as installed modules, so the catalogue,
+can-core knows `work`, `people`, `jobs`, `finance`, `equity` and `files` as installed modules, so the catalogue,
 personal access tokens, approvals, events and the Apps launcher work as they do on a cluster. Sign in to the
 admin UI first (above). The `admin` account is the owner and holds every permission.
 
@@ -239,7 +240,7 @@ metric catalogue, alerts and the support bundle (`can diagnose --compose-project
 - **can-core does not install modules.** It records them (`CAN_INSTALLER=none` with `CAN_DEV_STACK`); Compose
   starts the containers. So:
   - purge, Secret rotation and the wizard's email relay credentials are not available;
-  - `files`, `board` and `entity` are not wired to can-core; the admin UI's leads view says leads are
+  - `board` and `entity` are not wired to can-core; the admin UI's leads view says leads are
     not available (no `leads` provider is registered, no leads token file is configured);
   - forms sends its lead notification through can-core's `email.send` with a fixed development identity, to an SMTP
     sink that keeps the mail (http://mail.localhost:8080/messages, [email.md](email.md)); it is not otherwise wired
@@ -291,8 +292,8 @@ more: allow 2 GB of free RAM and about 5 GB of disk while images build (Go compi
 - **Only one stack at a time.** Containers have fixed `container_name: can-*` names, so a second compose project
   name (for example `companyinacan` and `can-e2e`) collides with a running one. Tear one down before starting the other.
 
-- **Port 8080 (or 8180 to 8184) already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
-  in `docker-compose.yml` (for 8180 to 8184 also `CAN_MODULE_UI_URLS`) (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
+- **Port 8080 (or 8180 to 8185) already in use.** Stop whatever uses it, or change the left-hand side of the `edge` port mapping
+  in `docker-compose.yml` (for 8180 to 8185 also `CAN_MODULE_UI_URLS`) (for example `127.0.0.1:8081:8080`); then also pass `EDGE_PORT=8081` to the smoke
   test and use that port in the URLs. The jobs and finance URLs configured in `dev/compose/config/*.yaml`
   (`http://jobs.localhost:8080`) assume 8080 and must be edited to match.
 - **Rootless podman and ports below 1024.** The stack deliberately uses 8080. If you move the edge to port 80

@@ -245,6 +245,10 @@ func (s *Service) createPerson(ctx context.Context, a Actor, in PersonInput, hir
 	if err := in.validate(); err != nil {
 		return nil, err
 	}
+	if selfLink(a, in.SSOSubject) {
+		s.auditDeny(ctx, a, "create", "person", []string{"sso_subject"})
+		return nil, errSelfLink
+	}
 	id := newID("pers")
 	err := s.tx(ctx, func(tx *sqlTx) error { return s.insertPerson(ctx, tx, a, id, in, hireRef, "", true) })
 	if err != nil {
@@ -301,6 +305,7 @@ func (p *Person) maskLeave(a Actor, f Fact) {
 
 // PersonFilter narrows ListPeople.
 type PersonFilter struct {
+	SSOSubject   string // exact match; hr and admin only
 	Status       Status
 	DepartmentID string
 	TeamID       string
@@ -319,6 +324,15 @@ func (s *Service) ListPeople(ctx context.Context, a Actor, flt PersonFilter) ([]
 	}
 	q := `SELECT ` + personCols + ` FROM people WHERE seq > ?`
 	args := []any{flt.AfterSeq}
+	if flt.SSOSubject != "" {
+		// Who an account belongs to is an hr and admin fact, like the field itself. Other modules
+		// use this to verify their callers (equity, specs/051-holder-identity).
+		if !a.hrAdmin() {
+			return nil, 0, ErrForbidden
+		}
+		q += " AND sso_subject = ?"
+		args = append(args, flt.SSOSubject)
+	}
 	// The status filter is applied after masking (below), never in SQL: filtering on "leave"
 	// would otherwise reveal who is on leave to people who may not know.
 	for col, v := range map[string]string{"department_id": flt.DepartmentID, "team_id": flt.TeamID, "manager_id": flt.ManagerID} {
@@ -380,6 +394,15 @@ func out2seq(out []Person, all []*Person) int64 {
 	return 0
 }
 
+// errSelfLink: sso_subject says which person an account is, and other modules' separation of
+// duties relies on it, so nobody changes it for their own account (specs/051-holder-identity).
+var errSelfLink = fmt.Errorf("%w: nobody links or unlinks their own account (sso_subject); another administrator must", ErrForbidden)
+
+// selfLink reports whether one of the subjects is the actor's own account.
+func selfLink(a Actor, subjects ...string) bool {
+	return slices.ContainsFunc(subjects, func(s string) bool { return s != "" && strings.EqualFold(s, a.Subject) })
+}
+
 // UpdatePerson changes basic fields. hr/admin may change any; a person may change only
 // preferred_name and work_phone on their own record.
 func (s *Service) UpdatePerson(ctx context.Context, a Actor, id string, patch PersonPatch) (*Person, error) {
@@ -434,6 +457,16 @@ func (s *Service) UpdatePerson(ctx context.Context, a Actor, id string, patch Pe
 	}
 	if patch.SSOSubject != nil && *patch.SSOSubject != "" && !subjectRe.MatchString(*patch.SSOSubject) {
 		return nil, invalid("sso_subject has an invalid format")
+	}
+	if patch.SSOSubject != nil {
+		var linked string
+		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(sso_subject,'') FROM people WHERE id = ?`, id).Scan(&linked); err != nil {
+			return nil, err
+		}
+		if *patch.SSOSubject != linked && selfLink(a, linked, *patch.SSOSubject) {
+			s.auditDeny(ctx, a, "write", "person:"+id, []string{"sso_subject"})
+			return nil, errSelfLink
+		}
 	}
 	err = s.tx(ctx, func(tx *sqlTx) error {
 		for table, ref := range map[string]*string{"departments": patch.DepartmentID, "teams": patch.TeamID, "positions": patch.PositionID} {

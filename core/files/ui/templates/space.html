@@ -1,0 +1,43 @@
+{{define "content"}}
+<h1>{{.Data.Space.Name}}</h1>
+<p class="actions">
+{{if .Data.Role.Change}}<a href="/spaces/{{.Data.Space.ID}}/upload{{with .Data.Folder}}?folder={{.ID}}{{end}}">{{t "space.upload"}}</a>
+{{end}}{{if .Data.Role.Manager}}<a href="/spaces/{{.Data.Space.ID}}/members">{{t "space.members"}}</a>
+{{end}}{{if .Data.Role.Editor}}<a href="/spaces/{{.Data.Space.ID}}/trash">{{t "space.trash"}}</a>
+{{end}}</p>
+{{if .Data.Folder}}<p>{{t "space.path"}} <a href="/spaces/{{.Data.Space.ID}}">{{t "space.top"}}</a>{{range .Data.Crumbs}} / <a href="/spaces/{{$.Data.Space.ID}}?folder={{.ID}}">{{.Name}}</a>{{end}}</p>
+{{end}}
+<h2>{{t "space.folders"}}</h2>
+{{if .Data.Children}}<ul class="list">
+{{range .Data.Children}}<li><a href="/spaces/{{$.Data.Space.ID}}?folder={{.ID}}">{{.Name}}</a></li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "space.no_folders"}}</p>
+{{end}}
+<h2>{{t "space.files"}}</h2>
+{{if .Data.Files}}<div class="scroll">
+<table>
+<caption>{{if .Data.Folder}}{{t "space.files_folder"}}{{else}}{{t "space.files_all"}}{{end}}</caption>
+<thead><tr><th scope="col">{{t "common.name"}}</th>{{if not .Data.Folder}}<th scope="col">{{t "space.folder"}}</th>{{end}}<th scope="col">{{t "common.size"}}</th><th scope="col">{{t "common.version"}}</th><th scope="col">{{t "common.updated"}}</th>{{if .Data.Role.Editor}}<th scope="col">{{t "space.scan"}}</th>{{end}}<th scope="col">{{t "common.actions"}}</th></tr></thead>
+<tbody>
+{{range .Data.Files}}<tr><th scope="row"><a href="/files/{{.ID}}">{{.Name}}</a></th>{{if not $.Data.Folder}}<td>{{.FolderPath}}</td>{{end}}<td>{{size .Size}}</td><td>{{.Version}}</td><td>{{when .UpdatedAt}}</td>{{if $.Data.Role.Editor}}<td>{{scan .Scan}}</td>{{end}}<td><a href="/files/{{.ID}}/content" aria-label="{{t "space.download_named" .Name}}">{{t "space.download"}}</a></td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="muted">{{t "space.no_files"}}</p>
+{{end}}{{template "pager" .Data.Next}}
+{{if .Data.Role.Change}}<h2>{{t "space.new_folder"}}</h2>
+<form method="post" action="/spaces/{{.Data.Space.ID}}/folders" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="parent" value="{{with .Data.Folder}}{{.ID}}{{end}}">
+<p><label for="folder-name">{{t "common.name"}}</label>
+<input id="folder-name" name="name" required maxlength="100"></p>
+<p><button type="submit">{{t "space.new_folder_do"}}</button></p>
+</form>
+{{if .Data.Folder}}<h2>{{t "space.delete_folder"}}</h2>
+<form method="post" action="/folders/{{.Data.Folder.ID}}/delete" class="card">
+{{template "csrf" .}}
+<input type="hidden" name="space" value="{{.Data.Space.ID}}">
+<p class="hint">{{t "space.delete_hint"}}</p>
+<p><button type="submit">{{t "space.delete_folder_n"}}</button></p>
+</form>
+{{end}}{{end}}{{end}}

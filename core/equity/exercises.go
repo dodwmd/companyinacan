@@ -83,6 +83,17 @@ func (s *Service) cancelPendingExercises(ctx context.Context, q querier, grantID
 	return err
 }
 
+// authorizeRequest is authorize for requesting or withdrawing an exercise: a caller who may not
+// gets not found, except staff refused only for want of a person, who are told so.
+func (s *Service) authorizeRequest(ctx context.Context, a Actor, f Fact, resource string) error {
+	err := s.authorize(ctx, a, ActExerciseRequest, f, resource)
+	switch {
+	case errors.Is(err, ErrForbidden), !a.any() && (errors.Is(err, ErrIdentityRequired) || errors.Is(err, ErrIdentityUnavailable)):
+		return ErrNotFound
+	}
+	return err
+}
+
 // RequestExercise asks to exercise quantity of a grant. The holder may request for themself;
 // hr and finance may request on behalf. The quantity must fit what has vested, is not yet
 // exercised or reserved by another request, within the exercise window. The amount due is
@@ -96,9 +107,12 @@ func (s *Service) RequestExercise(ctx context.Context, a Actor, grantID string, 
 	if err != nil {
 		return "", false, err
 	}
-	if !Decide(a, ActExerciseRequest, f) || (!a.any() && (g.Status == GrantDraft || g.Status == GrantPending)) {
+	if !a.any() && (g.Status == GrantDraft || g.Status == GrantPending) {
 		s.auditDeny(ctx, a, string(ActExerciseRequest), "grant:"+grantID, nil)
 		return "", false, ErrNotFound
+	}
+	if err := s.authorizeRequest(ctx, a, f, "grant:"+grantID); err != nil {
+		return "", false, err
 	}
 	return s.idempotent(ctx, a, "exercise.create:"+grantID, idemKey, body, func(ctx context.Context) (string, error) {
 		if qty <= 0 || qty > MaxQty {
@@ -285,6 +299,7 @@ func (s *Service) ApproveExercise(ctx context.Context, a Actor, id string) (*Exe
 			return conflict("only a requested exercise can be approved (status is %s)", e.Status)
 		}
 		approver := canonSubject(a.Subject)
+		decider := Actor{Subject: approver}
 		if s.approvals != nil {
 			st, err := s.approvals.Status(ctx, e.ApprovalRef)
 			if err != nil {
@@ -293,14 +308,20 @@ func (s *Service) ApproveExercise(ctx context.Context, a Actor, id string) (*Exe
 			if st.Outcome != "approved" {
 				return conflict("the approval engine has not approved this exercise (outcome %q)", st.Outcome)
 			}
-			approver = canonSubject(st.DecidedBy)
+			if decider, err = s.approver(ctx, st.DecidedBy); err != nil {
+				return err
+			}
+			approver = decider.Subject
 		}
 		var person string
 		if err := tx.QueryRowContext(ctx, `SELECT IFNULL(person_id, '') FROM stakeholders WHERE id = ?`, e.StakeholderID).Scan(&person); err != nil {
 			return err
 		}
-		if !sodOK(Actor{Subject: approver}, e.requestedBy, person) || !sodOK(a, e.requestedBy, person) {
+		if !sodOK(decider, e.requestedBy, person) || !sodOK(a, e.requestedBy, person) {
 			return ErrSeparation
+		}
+		if err := s.requireEstablished(ctx, tx, a, e.StakeholderID); err != nil {
+			return err
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE exercises SET status=?, approved_by=?, updated_at=? WHERE id=?`, ExApproved, approver, s.now().Unix(), id)
 		return err
@@ -336,9 +357,8 @@ func (s *Service) CancelExercise(ctx context.Context, a Actor, id string) (*Exer
 	if err != nil {
 		return nil, err
 	}
-	if !Decide(a, ActExerciseRequest, f) {
-		s.auditDeny(ctx, a, "exercise.cancel", "exercise:"+id, nil)
-		return nil, ErrNotFound
+	if err := s.authorizeRequest(ctx, a, f, "exercise:"+id); err != nil {
+		return nil, err
 	}
 	err = s.txAudit(ctx, a, "exercise.cancel", "exercise:"+id, nil, func(ctx context.Context, tx *sqlTx) error {
 		e, err := s.loadExercise(ctx, tx, id)
@@ -391,6 +411,9 @@ func (s *Service) RecordPayment(ctx context.Context, a Actor, id string, in Paym
 		if !sodOK(a, e.requestedBy, person) {
 			return ErrSeparation
 		}
+		if err := s.requireEstablished(ctx, tx, a, e.StakeholderID); err != nil {
+			return err
+		}
 		var ref any
 		if in.Reference != "" {
 			if ref, err = s.keys.Seal(in.Reference, id+":payment_ref"); err != nil {
@@ -422,6 +445,9 @@ func (s *Service) IssueShares(ctx context.Context, a Actor, id string) (*Exercis
 		}
 		if !sodOK(a, e.requestedBy, person, e.paymentBy) {
 			return ErrSeparation
+		}
+		if err := s.requireEstablished(ctx, tx, a, e.StakeholderID); err != nil {
+			return err
 		}
 		if g.Status != GrantActive {
 			return conflict("the grant is %s: it can no longer be exercised", g.Status)

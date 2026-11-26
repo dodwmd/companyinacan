@@ -47,6 +47,7 @@ resources:
 provides:
   - { capability: directory, schema: directory.v1, service: people-api, port: 8081 }
   - { capability: performance, schema: performance.v1, service: people-api, port: 8081 }
+  - { capability: summary, schema: summary.v1, service: people-api, port: 8081 }   # aggregates for the business overview
 publishes:
   - { event: person.created.v1, schema: ./events/person.created.v1.json }
   # leave is masked as active in this event (see the schema description)

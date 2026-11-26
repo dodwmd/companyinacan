@@ -1,0 +1,38 @@
+{{define "layout"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e79">
+<title>{{.Title}} - {{t "app.name"}}</title>
+<link rel="stylesheet" href="/static/files.css">
+<link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+<a class="skip" href="#main">{{t "a11y.skip"}}</a>
+<header class="top">
+<p class="brand">{{t "app.name"}}</p>
+{{if .Authed}}
+<nav aria-label="{{t "nav.label"}}">
+<ul>
+{{range .Nav}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a></li>
+{{end}}
+</ul>
+</nav>
+<form method="post" action="/logout" class="logout">
+{{template "csrf" .}}
+<button type="submit">{{t "nav.logout"}}</button>
+</form>
+{{end}}
+</header>
+<main id="main">
+{{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
+{{template "content" .}}
+</main>
+<footer>
+<p>{{t "app.footer"}}</p>
+</footer>
+</body>
+</html>
+{{end}}

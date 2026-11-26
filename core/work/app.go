@@ -117,7 +117,11 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		return nil, err
 	}
 	app.srv = a
-	app.handler = withMiddleware(log, a.handler())
+	h := a.handler()
+	if opt.Can != nil {
+		h = withSummary(h, opt.Can, store, log) // the business overview (specs/053-business-overview)
+	}
+	app.handler = withMiddleware(log, h)
 	return app, nil
 }
 

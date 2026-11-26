@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/dodwmd/companyinacan/core/files"
 	"github.com/dodwmd/companyinacan/core/finance"
 	"github.com/dodwmd/companyinacan/core/jobs"
 	"github.com/dodwmd/companyinacan/core/people"
@@ -31,6 +32,7 @@ func TestSSORoutesMatchTheContract(t *testing.T) {
 		wp = append(wp, r.Method+" "+r.Path)
 	}
 	fin, _ := finance.UIRoutes()
+	fil, _ := files.UIRoutes()
 	served := map[string][]string{
 		"adminui":   adminui.Routes(),
 		"adminapi":  adminapi.Routes(),
@@ -39,6 +41,7 @@ func TestSSORoutesMatchTheContract(t *testing.T) {
 		"people":    people.UIRoutes(),
 		"jobs":      jobs.UIRoutes(),
 		"finance":   fin,
+		"files":     fil,
 	}
 	want := map[string][]string{
 		"adminui":   {"GET /apps", "POST /apps/{id}/launch"},
@@ -48,6 +51,7 @@ func TestSSORoutesMatchTheContract(t *testing.T) {
 		"people":    {"GET /login/ticket", "POST /login/ticket"},
 		"jobs":      {"GET /login/ticket", "POST /login/ticket"},
 		"finance":   {"GET /login/ticket", "POST /login/ticket"},
+		"files":     {"GET /login/ticket", "POST /login/ticket"},
 	}
 	for pkg, routes := range want {
 		for _, r := range routes {

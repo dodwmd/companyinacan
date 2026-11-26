@@ -62,7 +62,7 @@ The session is re-checked with can-core on the same intervals as above. `ui.toke
 | Customers and vendors | List, search, create, edit; contact details are shown to `finance.read` (every list and page read is audited); **erase** for administrators | read / write / admin |
 | Invoices | Filtered list (50 per page); create a draft with a repeated lines editor; edit or delete a draft; approve; mark sent; record payments; void; credit notes; public link; printable view; CSV export | read / write / approve |
 | Recurring | Schedules that draft invoices; pause, resume, end | read / write |
-| Contracts | Create from a template with variables, versions (read-only), send for signature (manual or the configured provider), signature status and hashes, renewal dates and reminders, terminate | read / write |
+| Contracts | Create from a template with variables, versions (read-only), send for signature (by emailed link, manual or the configured provider), signers, resend, withdraw and completion certificate, signature status and hashes, renewal dates and reminders, terminate | read / write |
 | Timesheets | Open a week, weekly grid form, submit; approvers decide from the queue or the sheet | read+own / write+own / approve |
 | Expenses | Create with receipt **metadata** (name, type, size, SHA-256; no file upload), submit, approve or reject, reimburse | read+own / write / approve |
 | Purchase orders | Create, approve, receive, cancel | read / write / approve |

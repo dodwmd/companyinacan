@@ -1,0 +1,13 @@
+{{define "content"}}
+<h1>{{t "share.created_title"}}</h1>
+<p class="notice">{{t "share.shown_once"}}</p>
+<p>{{t "share.link"}}</p>
+<code class="link">{{.Data.URL}}</code>
+<dl class="facts">
+<dt>{{t "share.version"}}</dt><dd>{{.Data.Share.Version}}</dd>
+<dt>{{t "share.expires"}}</dt><dd>{{when .Data.Share.ExpiresAt}}</dd>
+{{if .Data.Share.OneTime}}<dt>{{t "share.uses"}}</dt><dd>{{t "share.once"}}</dd>
+{{end}}</dl>
+<p class="hint">{{t "share.public_note"}}</p>
+<p><a href="/files/{{.Data.FileID}}">{{t "share.back"}}</a></p>
+{{end}}

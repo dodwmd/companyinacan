@@ -88,7 +88,7 @@ from a made-up one. The module then maps the permissions to its own model:
 |---|---|
 | work, finance, forms | the module's own permissions, directly |
 | jobs | the strongest role the permissions fully cover: every jobs permission including `jobs.admin`: admin (`jobs.admin` alone is refused); `jobs.read`, `jobs.write`, `ats.read`, `ats.write`, `ats.hire` recruiter; `jobs.read`, `ats.read`, `ats.write`, `ats.interview` hiring manager; `ats.interview` interviewer. Otherwise refused. |
-| people | `people.read` employee; plus `people.team.manage` (only the manifest's manager role carries it) manager; `people.write` hr; `people.admin` admin. A person is linked to a token by setting their `sso_subject` to `user:<username>`. Roles follow only from permissions that are present, so a token with a subset of someone's permissions never gets a role they lack. |
+| people | `people.read` employee; plus `people.team.manage` (only the manifest's manager role carries it) manager; `people.write` hr; `people.admin` admin. A person is linked to a token by setting their `sso_subject` to `user:<username>`; someone else sets it (nobody changes their own link; the first one is made with the people service token). Roles follow only from permissions that are present, so a token with a subset of someone's permissions never gets a role they lack. |
 
 A token never outlives its issuer's rights: at every introspection can-core checks that the issuing
 administrator still exists and intersects the token's permissions with what that administrator holds
@@ -133,7 +133,7 @@ failures only).
 ## Signing in to a module's web page without a token (E11c)
 
 A module that serves a web UI for people can accept **launch tickets** instead of pasted tokens. It declares
-`runtime.web_login` in its manifest (work, people, jobs and finance do)
+`runtime.web_login` in its manifest (work, people, jobs, finance and files do)
 (`specs/036-module-ui-sso`, [`sso.md`](sso.md)). Module-API calls, all authenticated by the module's
 projected token:
 

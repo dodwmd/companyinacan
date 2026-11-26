@@ -13,6 +13,7 @@ modules:
   jobs: {}
   finance: {}
   equity: {}
+  files: {}
 email:
   # tls: none is accepted only because the compose stack sets CAN_SMTP_ALLOW_INSECURE=true.
   relay: { host: smtpsink, port: 1025, tls: none, from: no-reply@acme.example }

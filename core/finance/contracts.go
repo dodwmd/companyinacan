@@ -435,6 +435,10 @@ func (s *Store) NewVersion(ctx context.Context, a *Principal, id int64, ifMatch 
 		if err := s.insertVersion(ctx, tx, id, c.CurrentVersion+1, rendered, vars, a.Subject); err != nil {
 			return err
 		}
+		// Links to the old text die with it, in the same transaction.
+		if _, err := s.revokePending(ctx, tx, a.Subject, id, "new_version"); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE contracts SET current_version = current_version + 1, status = 'draft', esign_provider = '', esign_id = '', version = version + 1, updated_by = ?, updated_at = ? WHERE id = ?`, a.Subject, ts(s.now()), id); err != nil {
 			return err
 		}
@@ -552,6 +556,10 @@ func (s *Store) RecordSignature(ctx context.Context, a *Principal, id int64, ext
 		}
 		if c.Status != CtSent {
 			return fmt.Errorf("%w: only a sent contract can be signed (it is %s)", ErrConflict, c.Status)
+		}
+		if c.ESignProvider == SignProvider {
+			// Only the signers' own links complete such a request: nobody records it by hand.
+			return fmt.Errorf("%w: this contract is out for signature by link; revoke that request first", ErrConflict)
 		}
 		if externalID != "" && c.esignID != "" && c.esignID != externalID {
 			return fmt.Errorf("%w: the document id does not belong to this contract", ErrConflict)
@@ -682,12 +690,18 @@ type VerifyReport struct {
 func (s *Store) VerifyContract(ctx context.Context, a *Principal, id int64) (*VerifyReport, error) {
 	cancel, rctx := readCtx(ctx)
 	defer cancel()
-	c, err := s.loadContract(rctx, s.rdb, a, id)
+	// One read transaction: a signature committed while this runs must not look like tampering.
+	tx, err := s.rdb.BeginTx(rctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	c, err := s.loadContract(rctx, tx, a, id)
 	if err != nil {
 		return nil, err
 	}
 	rep := &VerifyReport{ContractID: id, OK: true, Problems: []string{}}
-	rows, err := s.rdb.QueryContext(rctx, `SELECT version, body, sha256 FROM contract_versions WHERE contract_id = ? ORDER BY version`, id)
+	rows, err := tx.QueryContext(rctx, `SELECT version, body, sha256 FROM contract_versions WHERE contract_id = ? ORDER BY version`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -703,6 +717,17 @@ func (s *Store) VerifyContract(ctx context.Context, a *Principal, id int64) (*Ve
 			rep.OK = false
 			rep.Problems = append(rep.Problems, fmt.Sprintf("version %d: stored text no longer matches its recorded hash", v))
 		}
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	signing, err := s.verifySigning(rctx, tx, c)
+	if err != nil {
+		return nil, err
+	}
+	if len(signing) > 0 {
+		rep.OK = false
+		rep.Problems = append(rep.Problems, signing...)
 	}
 	if c.SignedSHA256 != "" && c.SignedSHA256 != c.SHA256 {
 		rep.OK = false

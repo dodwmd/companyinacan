@@ -67,6 +67,8 @@ h3 { font-size: 1.05rem; }
 .done { text-decoration: line-through; }
 .prose { white-space: pre-wrap; }
 
+label.check { font-weight: 400; }
+label.check input:not([type="hidden"]) { width: auto; min-height: 0; margin-right: .5rem; }
 .card { background: var(--card); padding: 1rem; border-radius: .5rem; max-width: 40rem; }
 .private { border-left: 4px solid var(--line); padding-left: .75rem; }
 label { display: block; font-weight: 600; margin-bottom: .25rem; }

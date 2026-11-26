@@ -13,7 +13,7 @@
 schema: 1
 id: finance
 name: Finance
-description: Customers and vendors, chart of accounts, double-entry journal with period close, bank statement import and reconciliation, invoices and credit notes with gap-free numbering and immutability after approval, multi-currency with a stored FX rate per document, payments, receivables aging, recurring invoices, contracts with versions, hashes and e-signature, timesheets with approval and billing, expenses with receipt metadata and approval, and minimal purchase orders. Integer minor-unit money, tax as data, separation of duties, per-party and per-project scoping, audited exports, retention and erasure that respects legal retention.
+description: Customers and vendors, chart of accounts, double-entry journal with period close, bank statement import and reconciliation, invoices and credit notes with gap-free numbering and immutability after approval, multi-currency with a stored FX rate per document, payments, receivables aging, recurring invoices, contracts with versions, hashes, signature by emailed single-use link (simple electronic signature) and e-signature adapters, timesheets with approval and billing, expenses with receipt metadata and approval, and minimal purchase orders. Integer minor-unit money, tax as data, separation of duties, per-party and per-project scoping, audited exports, retention and erasure that respects legal retention.
 category: finance
 version: 0.1.0
 # experimental: the service and its tests are complete and measured locally, and the chart installs
@@ -52,9 +52,21 @@ runtime:
     config:
       trust_proxy: true # failed links count against the client, not against Traefik
     base_url_key: public_base_url
+  # Single-use contract signing pages on https://finance.<domain>/public/sign/ and nothing else, only
+  # when company.yaml says modules.finance.expose.signing: true (specs/049-contract-esign).
+  public_sign:
+    service: finance
+    port: 8080
+    prefix: /public/sign/
+    config:
+      trust_proxy: true # failed links and the recorded address are the client's, not Traefik's
+    base_url_key: sign_base_url
 requires:
   database: sqlite
   sso: none
+  # Signing invitations and completion notes (specs/049-contract-esign). Signers outside the company
+  # domain need company.yaml email.modules.finance.external_recipients: true (docs/email.md).
+  capabilities: [email.send]
 resources:
   # E15c re-measured (specs/035-accounting/research.md R9): 18.5 MB idle, 31.7 MiB (32460 kB) at the peak of a load that adds
   # 200 approved invoices with their journal entries, 800 ledger report reads, a 5000-row statement import, an export and
@@ -70,6 +82,7 @@ provides:
   - { capability: invoices, schema: invoices.v1, service: finance, port: 8080 }
   - { capability: contracts, schema: contracts.v1, service: finance, port: 8080 }
   - { capability: timesheets, schema: timesheets.v1, service: finance, port: 8080 }
+  - { capability: summary, schema: summary.v1, service: finance, port: 8080 }   # aggregates for the business overview
 publishes:
   - { event: invoice.sent.v1, schema: ./events/invoice.sent.v1.json }
   - { event: invoice.paid.v1, schema: ./events/invoice.paid.v1.json }
@@ -110,7 +123,9 @@ data_classes:
   # Issued invoices, credit notes, payments and their frozen buyer snapshot. Legal retention overrides
   # erasure: kept 7 years from the issue date (core/finance Config.RetentionYears), then deleted.
   - { class: finance-invoice, retention: 7y, sensitivity: standard }
-  # Contract text, versions, hashes and signature records; kept 7 years from the end date.
+  # Contract text, versions, hashes and signature records; kept 7 years from the end date. Signing by
+  # link adds each signer's name, address, typed name, time, shortened client address and any reason
+  # for declining: retained with a signed contract; erased with the party for requests not completed.
   - { class: finance-contract, retention: 7y, sensitivity: standard }
   # Timesheets and entries (person, project, minutes): personal data about work time.
   - { class: finance-timesheet, retention: 7y, sensitivity: standard }

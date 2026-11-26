@@ -85,6 +85,12 @@ paths:
       tags:
         - "directory"
       parameters:
+        - name: "sso_subject"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Exact match on the linked account; hr and admin only, 403 otherwise (equity uses it to verify callers)"
         - name: "status"
           in: "query"
           required: false

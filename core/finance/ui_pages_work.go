@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -214,6 +215,8 @@ type contractData struct {
 	CanDates bool
 	CanSign  bool // an e-signature provider is configured
 	Signed   bool
+	CanLink  bool      // signing by emailed link is switched on
+	Signing  *Envelope // the latest request for signature by link, if any
 }
 
 func (u *UI) contract(c *uiCtx) error {
@@ -240,6 +243,10 @@ func (u *UI) contract(c *uiCtx) error {
 	d.CanSend = d.Write && ct.Status == CtDraft
 	d.CanEnd = d.Write && (ct.Status == CtSigned || ct.Status == CtActive)
 	d.CanDates = d.Write && ct.Status != CtExpired && ct.Status != CtTerminated
+	d.CanLink = u.Store.SigningAvailable()
+	if d.Signing, err = u.Store.Signing(c.ctx(), c.p, id); err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
 	u.render(c.w, c.r, c, http.StatusOK, "contract.html", "contract.title", d)
 	return nil
 }

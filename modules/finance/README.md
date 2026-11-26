@@ -1,7 +1,8 @@
 # finance
 
 In-house finance module: parties, invoices and credit notes, payments, aging, recurring invoices,
-contracts with e-signature, timesheets, expenses and minimal purchase orders. Service
+contracts with signature by emailed link (a simple electronic signature, `specs/049-contract-esign/`) or an
+e-signature adapter, timesheets, expenses and minimal purchase orders. Service
 `cmd/can-finance`, library `core/finance`, SQLite. Capabilities `invoices`, `contracts`,
 `timesheets`. Status `experimental`: built and tested offline; the chart installs through can-core's
 installer in unit tests; not yet run on a cluster.

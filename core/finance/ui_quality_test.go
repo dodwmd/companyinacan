@@ -66,7 +66,9 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 		{"inv.", invoiceStatuses}, {"ts.", timesheetStatuses}, {"ex.", expenseStatuses}, {"ct.", contractStatuses}, {"po.", poStatuses},
 		{"rec.", []string{"active", "paused", "ended"}}, {"interval.", []string{"weekly", "monthly", "quarterly", "yearly"}},
 		{"kind.", []string{"customer", "vendor", "both", "invoice", "credit_note"}},
-		{"account.", accountTypes}, {"jsource.", journalSources}, {"bank.s.", []string{"open", "ready", "reconciled"}},
+		{"account.", accountTypes},
+		{"env.", []string{EnvPending, EnvCompleted, EnvDeclined, EnvRevoked}}, {"role.", []string{RoleCounterparty, RoleCompany}},
+		{"signer.", []string{SignerWaiting, SignerInvited, SignerSigned, SignerDeclined}}, {"mailst.", []string{MailPending, MailQueued, MailNotAllowed, MailFailed}}, {"jsource.", journalSources}, {"bank.s.", []string{"open", "ready", "reconciled"}},
 	} {
 		for _, v := range fam.vals {
 			if _, ok := uiMessagesEN[fam.prefix+v]; !ok {
@@ -75,7 +77,7 @@ func TestUIMessageCatalogueComplete(t *testing.T) {
 		}
 	}
 	// every catalogue entry is used somewhere (no dead text), except the dynamic families
-	dyn := regexp.MustCompile(`^(inv|ts|ex|ct|po|rec|interval|kind|account|jsource|bank\.s)\.`)
+	dyn := regexp.MustCompile(`^(inv|ts|ex|ct|po|rec|interval|kind|account|jsource|env|role|signer|mailst|bank\.s)\.`)
 	for k := range uiMessagesEN {
 		if _, ok := used[k]; !ok && !dyn.MatchString(k) && !strings.HasPrefix(k, "flash.") && !strings.HasPrefix(k, "err.") {
 			t.Errorf("catalogue entry %q is not used", k)

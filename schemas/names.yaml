@@ -32,6 +32,8 @@ capabilities:
   - { name: identity.provision }
   - { name: reports, aggregate: true }
   - { name: portal.view, aggregate: true }
+  # aggregate figures for the admin UI business overview (specs/053-business-overview)
+  - { name: summary, aggregate: true }
   # provided by can-core itself; modules consume them
   - { name: approvals, platform: true }
   - { name: notify, platform: true }

@@ -163,15 +163,16 @@ func (s *Service) ledgerWrite(ctx context.Context, a Actor, entityID, route, ide
 	})
 }
 
-// guardHolders refuses a manual ledger entry whose holder, on either side, is the caller: the same
-// sodOK rule as grants, against the stakeholder's directory person id. A caller without a person_id
-// (a service account, a can-core personal access token) cannot be compared and is not refused here.
-// The stakeholder's person_id is whatever was typed when the record was created: nothing verifies
-// it, so this stops only the straightforward case. A second record, or a made-up id, gets around it.
-func guardHolders(ctx context.Context, q querier, a Actor, stakeholderIDs ...string) error {
+// guardHolders is the holder check of a manual ledger entry, on either side of it: the caller is
+// not the holder (the same sodOK rule as grants, against the stakeholder's person id), and the
+// holder is established, so a second actor stands behind the record being written to. An erased
+// record can no longer be confirmed: its shares may be moved off it (appendLedger refuses adding
+// any) by a person other than whoever erased it, and each such write is audited.
+func (s *Service) guardHolders(ctx context.Context, q *sqlTx, a Actor, stakeholderIDs ...string) error {
 	for _, id := range stakeholderIDs {
-		var person string
-		err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, '') FROM stakeholders WHERE id = ?`, id).Scan(&person)
+		var person, erasedBy string
+		var erased bool
+		err := q.QueryRowContext(ctx, `SELECT IFNULL(person_id, ''), erased_at IS NOT NULL, IFNULL(erased_by, '') FROM stakeholders WHERE id = ?`, id).Scan(&person, &erased, &erasedBy)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue // appendLedger refuses an unknown holder
 		}
@@ -180,6 +181,21 @@ func guardHolders(ctx context.Context, q querier, a Actor, stakeholderIDs ...str
 		}
 		if !sodOK(a, person) {
 			return ErrSeparation
+		}
+		if erased {
+			if a.Service && !a.BreakGlass {
+				return ErrIdentityRequired
+			}
+			if !sodOK(a, erasedBy) {
+				return ErrSeparation
+			}
+			if err := s.auditIn(ctx, q, a, "ledger.erased_holder", "stakeholder:"+id, nil); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.requireEstablished(ctx, q, a, id); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -192,7 +208,7 @@ func (s *Service) IssueNewShares(ctx context.Context, a Actor, entityID string, 
 		if in.Quantity <= 0 || in.Quantity > MaxQty {
 			return "", invalid("quantity must be a positive quantity")
 		}
-		if err := guardHolders(ctx, tx, a, in.StakeholderID); err != nil {
+		if err := s.guardHolders(ctx, tx, a, in.StakeholderID); err != nil {
 			return "", err
 		}
 		return s.appendLedger(ctx, tx, ledgerRow{entityID: entityID, classID: in.ClassID, stakeholderID: in.StakeholderID, kind: "issuance", date: in.EffectiveDate,
@@ -209,7 +225,7 @@ func (s *Service) TransferShares(ctx context.Context, a Actor, entityID string, 
 		if in.StakeholderID == in.ToID {
 			return "", invalid("a transfer needs two different holders")
 		}
-		if err := guardHolders(ctx, tx, a, in.StakeholderID, in.ToID); err != nil {
+		if err := s.guardHolders(ctx, tx, a, in.StakeholderID, in.ToID); err != nil {
 			return "", err
 		}
 		group := newID("led")
@@ -239,7 +255,7 @@ func (s *Service) CancelShares(ctx context.Context, a Actor, entityID string, in
 		if kind != "cancellation" && kind != "repurchase" {
 			return "", invalid("kind must be cancellation or repurchase")
 		}
-		if err := guardHolders(ctx, tx, a, in.StakeholderID); err != nil {
+		if err := s.guardHolders(ctx, tx, a, in.StakeholderID); err != nil {
 			return "", err
 		}
 		return s.appendLedger(ctx, tx, ledgerRow{entityID: entityID, classID: in.ClassID, stakeholderID: in.StakeholderID, kind: kind, date: in.EffectiveDate,

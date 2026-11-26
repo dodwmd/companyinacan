@@ -28,6 +28,7 @@ import (
 const (
 	routeWeb        = "can-web"
 	routeLink       = "can-link"
+	routeSign       = "can-sign"
 	middlewareWeb   = "can-web-headers"
 	middlewareSite  = "can-site-headers"
 	policyTraefik   = "allow-ingress-from-traefik"
@@ -82,7 +83,7 @@ func (in *Installer) routingData(ctx context.Context) (data map[string]string, f
 // there is left alone (the upgrade then fails on it rather than taking it offline).
 func (in *Installer) withoutFacts(ctx context.Context, s reconcile.Spec, p routePlan) (routePlan, error) {
 	missing := fmt.Sprintf("ConfigMap %s/%s does not exist, so nothing can be routed: run `can up`", routing.Namespace, routing.ConfigMapName)
-	if s.Expose.UI || s.Expose.API || routing.LinkWanted(s.Manifest, s.Expose) {
+	if s.Expose.UI || s.Expose.API || routing.LinkWanted(s.Manifest, s.Expose) || routing.SignWanted(s.Manifest, s.Expose) {
 		return p, errors.New(missing)
 	}
 	in.cfg.Log.Warn("not routing: "+missing, "module", s.ID)
@@ -125,7 +126,8 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 		p.values = deepMerge(p.values, map[string]any{"config": m.Runtime.PublicConfig})
 	}
 	link := routing.LinkWanted(m, x)
-	if in.cfg.RequireAdmission && (ui || api || siteWanted || publicPages || link) {
+	sign := routing.SignWanted(m, x)
+	if in.cfg.RequireAdmission && (ui || api || siteWanted || publicPages || link || sign) {
 		_, found, err := in.routingData(ctx)
 		if err != nil {
 			return p, err
@@ -134,8 +136,8 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 			return in.withoutFacts(ctx, s, p)
 		}
 	}
-	if (!ui && !api && !siteWanted && !link) || domain == "" {
-		if (ui || api || link) && domain == "" {
+	if (!ui && !api && !siteWanted && !link && !sign) || domain == "" {
+		if (ui || api || link || sign) && domain == "" {
 			in.cfg.Log.Warn("not routing: no company domain", "module", s.ID)
 		}
 		return p, nil
@@ -155,6 +157,10 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 	if link && !cfg.TLS {
 		in.cfg.Log.Warn("not routing the signed links: the stack serves plain HTTP only (no domain yet)", "module", s.ID)
 		link = false
+	}
+	if sign && !cfg.TLS {
+		in.cfg.Log.Warn("not routing the signing pages: the stack serves plain HTTP only (no domain yet)", "module", s.ID)
+		sign = false
 	}
 	limit := x.EdgeLimitOn() && !cfg.NoEdgeLimit
 	if ui || api {
@@ -246,6 +252,11 @@ func (in *Installer) planRoutes(ctx context.Context, s reconcile.Spec) (routePla
 			return p, err
 		}
 	}
+	if sign {
+		if err := in.planSign(s, &p, domain, limit); err != nil {
+			return p, err
+		}
+	}
 	return p, nil
 }
 
@@ -285,9 +296,9 @@ func middleware(s reconcile.Spec, name string, spec map[string]any) kube.Object 
 // routingNames are every routing object can-core may own for a module.
 func routingNames(id string) []struct{ kind, name string } {
 	return []struct{ kind, name string }{
-		{"IngressRoute", routeWeb}, {"IngressRoute", siteRouteName(id)}, {"IngressRoute", routeLink},
+		{"IngressRoute", routeWeb}, {"IngressRoute", siteRouteName(id)}, {"IngressRoute", routeLink}, {"IngressRoute", routeSign},
 		{"Middleware", middlewareWeb}, {"Middleware", stripName(id)}, {"Middleware", middlewareSite},
-		{"Middleware", middlewareLink}, {"Middleware", middlewareChart},
+		{"Middleware", middlewareLink}, {"Middleware", middlewareSign}, {"Middleware", middlewareChart},
 		{"Middleware", limitName("login", "rate")}, {"Middleware", limitName("login", "inflight")},
 		{"Middleware", limitName("public", "rate")}, {"Middleware", limitName("public", "inflight")},
 	}
@@ -523,8 +534,9 @@ func (in *Installer) Routing(ctx context.Context, s reconcile.Spec) (reconcile.R
 		Link      *config.PublicLink
 		Config    map[string]any
 		Login     *config.WebLogin
+		Sign      *config.PublicLink `json:",omitempty"`
 	}{2, in.domain(s), found, data, s.Expose, s.Manifest.Runtime.PublicUI, s.Manifest.Runtime.SiteRoute, s.Manifest.Runtime.Subdomain,
-		s.Manifest.Runtime.PublicLink, s.Manifest.Runtime.PublicConfig, s.Manifest.Runtime.WebLogin})
+		s.Manifest.Runtime.PublicLink, s.Manifest.Runtime.PublicConfig, s.Manifest.Runtime.WebLogin, s.Manifest.Runtime.PublicSign})
 	if err != nil {
 		return reconcile.Routing{}, err
 	}

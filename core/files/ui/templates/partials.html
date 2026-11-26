@@ -1,0 +1,2 @@
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.CSRF}}">{{end}}
+{{define "pager"}}{{if .}}<p class="actions"><a href="{{.}}" rel="next">{{t "common.more"}}</a></p>{{end}}{{end}}

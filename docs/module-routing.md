@@ -30,6 +30,7 @@ modules:
   finance:
     expose:
       public: true        # invoice links; OFF unless written
+      signing: true       # contract signing pages; OFF unless written
 ```
 
 Then `can apply`. The admin UI does not edit `expose`: putting something on the internet is a change
@@ -38,9 +39,10 @@ to the file.
 | Module | `ui` host | Public by default |
 |---|---|---|
 | work | `work.<domain>` (`/ui`) | - |
+| files | `files.<domain>` | share-link downloads on `files.<domain>/s/` |
 | people | `people.<domain>` | - |
 | jobs | `jobs.<domain>` | careers pages and feeds on `careers.<domain>` |
-| finance | `finance.<domain>` | signed invoice links on `finance.<domain>/public/invoices/`, only with `public: true` |
+| finance | `finance.<domain>` | signed invoice links on `finance.<domain>/public/invoices/`, only with `public: true`; contract signing pages on `/public/sign/`, only with `signing: true` |
 | forms | none | `/_forms` on the site hosts |
 
 ## What you also need
@@ -51,6 +53,15 @@ to the file.
   use the instant sslip.io addresses, so they work only once your domain points at the server. On
   the plain-HTTP fallback nothing but `/_forms` and public pages is routed.
 * **Company domain on can-core** (`CAN_COMPANY_DOMAIN`, set by `can up`) for the Apps page.
+
+## Warning: `api: true` on files publishes destructive routes
+
+`modules.files.expose.api: true` puts **all of `/v1`** on `files.<domain>`. That includes **`POST /v1/purge`**,
+**erasure** (`POST /v1/subjects/{subject}/erasure`), **legal hold** (`PUT /v1/files/{id}/hold`), the
+**retention run** (`POST /v1/retention/run`) and the audit log. They still need a token with `files.admin`, and
+the service token `CAN_FILES_API_TOKEN` has it: whoever holds one can destroy files from the internet. The
+restore-only credential, which ignores legal holds, is refused through any proxy. The web UI (`ui: true`) does
+not need `api: true`: leave it off unless a program outside the cluster has to call the API.
 
 ## DNS records
 
@@ -83,6 +94,11 @@ and the module page are). A wildcard record of your own is shadowed by the speci
 * The invoice link route: `GET`/`HEAD` of `/public/invoices/` only, with `X-Robots-Tag: noindex,
   nofollow`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. can-finance's
   `public_base_url` is set to it, so links it issues are absolute.
+* The signing route (`expose.signing`, [spec](../specs/049-contract-esign/spec.md)): `GET`, `HEAD` and
+  `POST` of `/public/sign/` only, TLS only, the same headers as invoice links (the module adds
+  `Cache-Control: no-store` and a strict CSP), and the anonymous edge limit. can-finance's
+  `sign_base_url` is set to the host; without it finance neither sends nor serves links. The link is
+  in the path: do not switch on an access log that records paths.
 * The **module page** in the admin UI shows what is on, and the addresses (read-only).
 * The module runs with its UI enabled, Secure cookies, the client address from Traefik, and no
   paste-a-token form.
@@ -97,7 +113,7 @@ Per client address, on each of these routes separately; the answer is 429.
 | Routes | Rate | Burst | In flight |
 |---|---|---|---|
 | Sign-in: module `/login` (work `/ui/login`), admin `/login`, `/api/v1/login`, `/auth/`, `/set-password` | 1/s | 30 | 20 |
-| Anonymous: the site, `/_forms`, careers pages, invoice links | 20/s | 100 | 40 |
+| Anonymous: the site, `/_forms`, careers pages, invoice links, signing pages | 20/s | 100 | 40 |
 
 Signed-in pages and every API (`/v1`, the admin API, SCIM) are not limited here: the services limit
 those per credential. The address is the TCP source as Traefik sees it; `X-Forwarded-For` and other

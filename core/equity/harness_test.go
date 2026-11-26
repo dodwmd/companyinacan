@@ -89,6 +89,8 @@ func (e *env) base() *env {
 	e.plan = m(e.s.CreatePlan(e.ctx, e.board, e.ent.ID, PlanInput{Name: "2026 Plan", ClassID: e.class.ID, Authorised: q(1_000_000), AdoptedOn: "2026-01-01"}))
 	e.eveStk = m(e.s.CreateStakeholder(e.ctx, e.hr, e.ent.ID, StakeholderInput{Kind: "employee", PersonID: personEve, Identity: Identity{Name: "Eve Example", Email: "eve@example.test"}}))
 	e.founder = m(e.s.CreateStakeholder(e.ctx, e.fin, e.ent.ID, StakeholderInput{Kind: "founder", Identity: Identity{Name: "Fran Founder"}}))
+	e.link(e.eveStk.ID)
+	e.link(e.founder.ID)
 	return e
 }
 
@@ -165,11 +167,11 @@ func (f *fakeEngine) Status(context.Context, string) (ApprovalStatus, error) {
 	return ApprovalStatus{Outcome: f.outcome, DecidedBy: f.decider}, nil
 }
 
-// link attests a holder with no directory person as external, by a second person (admin).
+// link establishes a holder (there is no directory here) by a second actor's attestation (admin).
 func (e *env) link(stk string) {
 	e.t.Helper()
 	st := m(e.s.GetStakeholder(e.ctx, e.admin, stk))
-	if st.PersonID == "" && !st.ExternalAttested {
+	if !st.PersonVerified && !st.ExternalAttested {
 		m(e.s.AttestExternal(e.ctx, e.admin, stk))
 	}
 }

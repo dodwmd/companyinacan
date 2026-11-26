@@ -43,6 +43,8 @@ type Expose struct {
 	API bool `yaml:"api" json:"api,omitempty"`
 	// Public routes the module's anonymous surface: careers pages, /_forms (default on).
 	Public *bool `yaml:"public" json:"public,omitempty"`
+	// Signing routes the module's anonymous signing pages (runtime.public_sign; default off).
+	Signing bool `yaml:"signing" json:"signing,omitempty"`
 	// TokenLogin keeps the paste-a-token sign-in on a routed web UI (default off).
 	TokenLogin bool `yaml:"token_login" json:"token_login,omitempty"`
 	// EdgeLimit rate-limits sign-in and anonymous routes at the ingress (default on).

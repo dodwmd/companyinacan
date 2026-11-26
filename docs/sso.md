@@ -194,7 +194,7 @@ that module's session only.
 
 | Setting | Meaning |
 |---|---|
-| module manifest `runtime.web_login {base_path, via_subdomain}` | the module's UI accepts tickets. Declared by work, people, jobs and finance. An app without it (wiki, CRM, ...) is never offered. With `via_subdomain: true` the address is `https://<runtime.subdomain>.<company domain><base_path>` |
+| module manifest `runtime.web_login {base_path, via_subdomain}` | the module's UI accepts tickets. Declared by work, people, jobs, finance and files. An app without it (wiki, CRM, ...) is never offered. With `via_subdomain: true` the address is `https://<runtime.subdomain>.<company domain><base_path>` |
 | `modules.<id>.expose.ui` (company.yaml) | can-core routes the UI and derives its address ([`module-routing.md`](module-routing.md)) |
 | `CAN_MODULE_UI_URLS` (can-core env) | `work=https://work.acme.example/ui,people=https://people.acme.example`: the operator's address (https, on the company domain or below, not the admin host); wins over the manifest; a bare origin gets `base_path` appended |
 | `CAN_COMPANY_DOMAIN` | module UI hosts must be this domain or below; the admin host is refused; it is also the launch cookie's `Domain`. can-core warns at start-up when it is missing or a single label, and about unacceptable `CAN_MODULE_UI_URLS` entries and entries that name a module that is not installed |
@@ -205,7 +205,7 @@ that module's session only.
 ([`module-routing.md`](module-routing.md)): can-core routes the UI on `<id>.<domain>`, switches it on in
 the module, and offers it under **Apps** without `CAN_MODULE_UI_URLS`. Without that, and without an
 address of your own in `CAN_MODULE_UI_URLS`, a module does not appear. The compose stack offers work,
-people, jobs and finance in Apps when the admin UI is opened at `http://localhost:8180`
+people, jobs, finance and files in Apps when the admin UI is opened at `http://localhost:8180`
 ([local-compose.md](local-compose.md#modules-access-tokens-and-single-sign-on)).
 
 **Not verified:** no browser or cluster run. See `specs/036-module-ui-sso/tasks.md`.

@@ -203,7 +203,10 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func newID(prefix string) string { return prefix + "_" + randHex(12) }
+// idHex is the random part of a new id; the web UI's golden tests replace it so pages are stable.
+var idHex = func() string { return randHex(12) }
+
+func newID(prefix string) string { return prefix + "_" + idHex() }
 
 func ts(t time.Time) int64 { return t.Unix() }
 

@@ -1,0 +1,310 @@
+package files
+
+import (
+	"fmt"
+	"slices"
+)
+
+// uiMessagesEN is the message catalogue of the web UI: every user-visible string of the templates
+// lives here, addressed by a dotted key, so another language is one more map. (Error details written
+// by the Store, shown by the API too, are the exception.) A test checks that every key used exists
+// and that every entry is used.
+var uiMessagesEN = map[string]string{
+	"app.name":   "Company in a Can: Files",
+	"app.footer": "Company in a Can files. Apache-2.0. A tool, not legal advice: what must be kept or erased is the operator's responsibility.",
+	"a11y.skip":  "Skip to main content",
+
+	"nav.label":       "Main",
+	"nav.spaces":      "Spaces",
+	"nav.admin_files": "Holds and retention",
+	"nav.erasure":     "Erasure",
+	"nav.logout":      "Log out",
+
+	"common.name":    "Name",
+	"common.role":    "Your role",
+	"common.created": "Created",
+	"common.updated": "Updated",
+	"common.size":    "Size",
+	"common.type":    "Type",
+	"common.version": "Version",
+	"common.actions": "Actions",
+	"common.save":    "Save",
+	"common.remove":  "Remove",
+	"common.restore": "Restore",
+	"common.more":    "Next page",
+	"common.state":   "State",
+	"common.yes":     "Yes",
+	"common.no":      "No",
+
+	"role.viewer":  "Viewer",
+	"role.editor":  "Editor",
+	"role.manager": "Manager",
+	"scan.clean":   "Clean",
+	"scan.skipped": "Not scanned",
+	"state.active": "Active", "state.deleted": "In the trash", "state.purging": "Being purged", "state.purged": "Purged",
+	"state.live": "Live", "state.revoked": "Revoked", "state.expired": "Expired", "state.used": "Used",
+	"kind.user": "Person", "kind.group": "Group",
+
+	"login.title":           "Sign in",
+	"login.token":           "Personal access token",
+	"login.hint":            "Create a token for files in the admin UI. It is sent once, kept in memory only, and your session ends when it is revoked.",
+	"login.submit":          "Sign in",
+	"login.sso_only":        "Open files from the Apps page of the admin UI.",
+	"login.token_off":       "Signing in with a token is turned off. Open files from the Apps page of the admin UI.",
+	"login.csrf":            "The form expired. Try again.",
+	"login.invalid":         "That token is not accepted.",
+	"login.locked":          "Too many failed attempts. Wait a minute and try again.",
+	"login.unavailable":     "Sign-in cannot be checked right now. Try again shortly.",
+	"login.ticket_invalid":  "This sign-in link is not valid any more. Open files again from the Apps page of the admin UI.",
+	"login.sso_unavailable": "The admin service did not answer. Try again shortly.",
+
+	"ticket.title":   "Continue to files",
+	"ticket.intro":   "You are about to sign in to files from the admin UI.",
+	"ticket.account": "Account:",
+	"ticket.other":   "This browser is already signed in as",
+	"ticket.replace": "End that session and sign in with the account above",
+	"ticket.submit":  "Continue",
+
+	"home.title":      "Spaces",
+	"home.intro":      "A space holds files and has its own list of people who may see them.",
+	"home.caption":    "Spaces you can see",
+	"home.empty":      "You are not in any space yet.",
+	"home.new":        "New space",
+	"home.new_hint":   "You become its manager and decide who else may see it.",
+	"home.new_submit": "Create space",
+
+	"space.title":           "Space",
+	"space.top":             "All files",
+	"space.path":            "You are in",
+	"space.folders":         "Folders",
+	"space.no_folders":      "No folders here.",
+	"space.files":           "Files",
+	"space.files_all":       "Every file in this space",
+	"space.files_folder":    "Files in this folder",
+	"space.no_files":        "No files here.",
+	"space.folder":          "Folder",
+	"space.scan":            "Virus scan",
+	"space.upload":          "Upload a file",
+	"space.members":         "People and access",
+	"space.trash":           "Trash",
+	"space.new_folder":      "New folder",
+	"space.new_folder_do":   "Create folder",
+	"space.delete_folder":   "Delete this folder",
+	"space.delete_hint":     "Only an empty folder can be deleted. Files in the trash still count.",
+	"space.download":        "Download",
+	"space.download_named":  "Download %s",
+	"space.delete_folder_n": "Delete folder",
+
+	"upload.title":        "Upload a file",
+	"upload.file":         "File",
+	"upload.limits":       "At most %s. Allowed types: %s. The content must match the extension.",
+	"upload.scanned":      "Every upload is checked by the virus scanner before it is stored.",
+	"upload.not_scanned":  "Scanning is not required on this installation: a file may be stored without being scanned, and is then marked Not scanned.",
+	"upload.description":  "Description (optional)",
+	"upload.folder":       "Folder",
+	"upload.advanced":     "Links to other records (optional)",
+	"upload.subject":      "Data subject id",
+	"upload.subject_hint": "An opaque id such as cand_1234, never a name. Erasing that subject destroys this file.",
+	"upload.ref":          "Reference",
+	"upload.ref_hint":     "module:id, for example jobs:application-1234.",
+	"upload.submit":       "Upload",
+	"upload.wait":         "Stay on this page until it is done; there is no progress bar.",
+	"upload.no_file":      "Choose a file to upload.",
+
+	"trash.title":   "Trash",
+	"trash.caption": "Deleted files",
+	"trash.hint":    "A file is destroyed some days after it is deleted, unless a legal hold or a retention date keeps it. Restoring does not bring share links back.",
+	"trash.empty":   "The trash is empty.",
+	"trash.deleted": "Deleted",
+	"trash.restore": "Restore %s",
+
+	"members.title":       "People and access",
+	"members.caption":     "Who may use this space",
+	"members.who":         "Person or group",
+	"members.role":        "Role",
+	"members.add":         "Add or change access",
+	"members.kind":        "Kind",
+	"members.principal":   "User name or group id",
+	"members.hint":        "For a person, the user name (alice or user:alice). A group id comes from your directory.",
+	"members.group_note":  "Groups are stored, but this installation does not yet look up who is in them.",
+	"members.submit":      "Save access",
+	"members.remove":      "Remove %s",
+	"members.roles_help":  "Viewers read and download. Editors also add, change, delete and share. Managers also decide who has access. A space keeps at least one manager.",
+	"members.back":        "Back to the space",
+	"members.change_hint": "Lowering or removing access revokes the share links that relied on it.",
+
+	"file.title":          "File",
+	"file.description":    "Description",
+	"file.sha":            "SHA-256",
+	"file.scan":           "Virus scan",
+	"file.by":             "Uploaded by",
+	"file.subject":        "Data subject",
+	"file.ref":            "Reference",
+	"file.hold":           "Legal hold",
+	"file.retain":         "Keep until",
+	"file.download":       "Download",
+	"file.deleted_note":   "This file is in the trash. It cannot be downloaded or changed until it is restored.",
+	"file.held_note":      "A legal hold keeps this file: it cannot be deleted or erased.",
+	"file.retained_note":  "A retention date keeps this file: it cannot be deleted before then.",
+	"file.versions":       "Versions",
+	"file.versions_cap":   "Every version of this file",
+	"file.version_n":      "Version %d",
+	"file.dl_version":     "Download version %d",
+	"file.purged":         "Destroyed",
+	"file.new_version":    "Add a new version",
+	"file.new_version_do": "Upload new version",
+	"file.edit":           "Rename, describe or move",
+	"file.edit_hint":      "The extension cannot change.",
+	"file.top":            "No folder",
+	"file.delete":         "Delete",
+	"file.delete_hint":    "The file moves to the trash and its share links stop working for good.",
+	"file.delete_do":      "Move to the trash",
+	"file.admin_hold":     "Set legal hold or retention date",
+
+	"share.heading":       "Share links",
+	"share.caption":       "Links to this file",
+	"share.none":          "There are no share links.",
+	"share.label":         "Label",
+	"share.version":       "Version",
+	"share.expires":       "Expires",
+	"share.uses":          "Downloads",
+	"share.once":          "One download only",
+	"share.revoke":        "Revoke",
+	"share.revoke_named":  "Revoke link %s",
+	"share.new":           "Create a share link",
+	"share.new_hint":      "Anyone who has the link can download that version, without an account, until it expires or you revoke it.",
+	"share.label_field":   "Label (optional, only you see it)",
+	"share.hours":         "Valid for (hours)",
+	"share.hours_hint":    "1 to %d hours.",
+	"share.current":       "Current version",
+	"share.once_field":    "Stop working after one download",
+	"share.once_hint":     "A mail or chat preview can use up a one-time link before the recipient does.",
+	"share.submit":        "Create link",
+	"share.bad_hours":     "Give the lifetime as a whole number of hours.",
+	"share.unpublished":   "Share links are not published on this installation, so none can be made here.",
+	"share.created_title": "Share link created",
+	"share.shown_once":    "Copy it now. It is shown only this once and cannot be recovered.",
+	"share.link":          "Link",
+	"share.public_note":   "The link only works from outside if this installation publishes the files share address.",
+	"share.back":          "Back to the file",
+
+	"admin.title":        "Holds and retention",
+	"admin.intro":        "An administrator sees ids, states and sizes, never names or content, and cannot open a space they are not in.",
+	"admin.filter":       "Data subject id",
+	"admin.filter_do":    "Filter",
+	"admin.caption":      "Files by id",
+	"admin.file":         "File id",
+	"admin.space":        "Space id",
+	"admin.subject":      "Subject",
+	"admin.ref":          "Reference",
+	"admin.versions":     "Versions",
+	"admin.hold":         "Legal hold",
+	"admin.retain":       "Keep until",
+	"admin.change":       "Set hold",
+	"admin.change_named": "Set hold or retention for %s",
+	"admin.empty":        "No files match.",
+
+	"hold.title":          "Legal hold and retention",
+	"hold.for":            "File",
+	"hold.legend":         "Legal hold",
+	"hold.on":             "On: the file cannot be deleted, swept or erased",
+	"hold.off":            "Off",
+	"hold.date":           "Keep until (optional)",
+	"hold.date_hint":      "Leave empty to keep the current retention date.",
+	"hold.clear":          "Remove the retention date",
+	"hold.submit":         "Save",
+	"hold.choose":         "Choose whether the legal hold is on or off.",
+	"hold.date_and_clear": "Give a date or remove the date, not both.",
+	"hold.bad_date":       "That date is not valid.",
+
+	"erase.title":              "Erase a data subject",
+	"erase.intro":              "Erasure destroys every file recorded for a subject, with its names and versions. It cannot be undone. Backups made earlier keep the data until they expire.",
+	"erase.subject":            "Data subject id",
+	"erase.find":               "Show what would be destroyed",
+	"erase.found":              "Files that would be destroyed: %d.",
+	"erase.more":               "There are more files than are listed here: all of them would be destroyed.",
+	"erase.blocked":            "Under a legal hold or a retention date: %d. The erasure will be refused.",
+	"erase.is_file":            "This is a file id: that one file would be destroyed too.",
+	"erase.confirm":            "Type ERASE to confirm",
+	"erase.token":              "Your sign-in token again",
+	"erase.sso_note":           "You must have signed in to the admin UI in the last 5 minutes.",
+	"erase.submit":             "Erase for good",
+	"erase.type_erase":         "Type ERASE to confirm.",
+	"erase.reenter":            "Re-enter your sign-in token to confirm the erasure.",
+	"erase.stepup_unconfirmed": "The admin service did not confirm that you may erase. Open files again from the Apps page of the admin UI.",
+	"erase.stepup_stale":       "Your sign-in is not recent enough to erase: sign out of the admin UI, sign in again (password and code, or at your identity provider), open files from Apps and erase within 5 minutes.",
+	"erase.scrub_failed":       "The files are erased and recorded, but cleaning the database files failed. Submit the same erasure again: it is safe to repeat and retries the cleaning.",
+	"erase.done_title":         "Erasure done",
+	"erase.done":               "Subject %s. Files destroyed: %d. Date: %s.",
+	"erase.classes":            "Data classes recorded for the backup ledger:",
+
+	"flash.space_created":  "Space created.",
+	"flash.folder_created": "Folder created.",
+	"flash.folder_deleted": "Folder deleted.",
+	"flash.uploaded":       "File uploaded. The virus scan result is shown below.",
+	"flash.version_added":  "New version uploaded. The virus scan result is shown below.",
+	"flash.saved":          "Changes saved.",
+	"flash.deleted":        "File moved to the trash.",
+	"flash.restored":       "File restored.",
+	"flash.revoked":        "Share link revoked.",
+	"flash.member_saved":   "Access saved.",
+	"flash.hold_saved":     "Hold and retention saved.",
+
+	"err.not_found_title":   "Not found",
+	"err.not_found":         "There is nothing here, or you do not have access to it.",
+	"err.forbidden_title":   "Not allowed",
+	"err.forbidden":         "Your role or token does not allow this.",
+	"err.csrf_title":        "Form refused",
+	"err.csrf":              "The form could not be verified. Reload the page and try again.",
+	"err.invalid_title":     "Check what you entered",
+	"err.bad_form":          "The form was not complete.",
+	"err.conflict_title":    "Not possible now",
+	"err.type_title":        "File type not accepted",
+	"err.too_large_title":   "Too large",
+	"err.too_large":         "The upload is too large. The largest file accepted is",
+	"err.quota_title":       "Limit reached",
+	"err.head_too_large":    "The form sent too much besides the file.",
+	"err.infected_title":    "Refused by the virus scanner",
+	"err.infected":          "The virus scanner found something in the file. Nothing was stored.",
+	"err.unavailable_title": "Not available right now",
+	"err.unavailable":       "The service could not do this just now. Try again shortly.",
+	"err.busy_title":        "Too many requests",
+	"err.busy":              "Wait a minute and try again.",
+	"err.internal_title":    "Something went wrong",
+	"err.internal":          "The request could not be completed.",
+	"err.request_id":        "Request id:",
+	"err.home":              "Go to your spaces",
+	"err.login":             "Go to sign-in",
+}
+
+func (u *UI) msg(key string, args ...any) string {
+	s, ok := uiMessagesEN[key]
+	if !ok {
+		return key
+	}
+	if len(args) == 0 {
+		return s
+	}
+	return fmt.Sprintf(s, args...)
+}
+
+// msgOr returns the catalogue text of a dynamic key, or the fallback when there is none (an unknown
+// status coming from the data is shown as it is, escaped).
+func (u *UI) msgOr(key, fallback string) string {
+	if s, ok := uiMessagesEN[key]; ok {
+		return s
+	}
+	return fallback
+}
+
+// flashKeys are the only messages the "ok" query parameter can select, so a crafted link cannot put
+// text of its choosing on the page.
+var flashKeys = []string{"flash.space_created", "flash.folder_created", "flash.folder_deleted", "flash.uploaded", "flash.version_added",
+	"flash.saved", "flash.deleted", "flash.restored", "flash.revoked", "flash.member_saved", "flash.hold_saved"}
+
+func (u *UI) flash(key string) string {
+	if slices.Contains(flashKeys, key) {
+		return u.msg(key)
+	}
+	return ""
+}

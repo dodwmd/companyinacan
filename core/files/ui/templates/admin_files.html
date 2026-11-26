@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>{{t "admin.title"}}</h1>
+<p class="hint">{{t "admin.intro"}}</p>
+<form method="get" action="/admin/files" class="inline filter">
+<label for="subject">{{t "admin.filter"}}</label>
+<input id="subject" name="subject" value="{{.Data.Subject}}" maxlength="128">
+<button type="submit">{{t "admin.filter_do"}}</button>
+</form>
+{{if .Data.Files}}<div class="scroll">
+<table>
+<caption>{{t "admin.caption"}}</caption>
+<thead><tr><th scope="col">{{t "admin.file"}}</th><th scope="col">{{t "admin.space"}}</th><th scope="col">{{t "admin.subject"}}</th><th scope="col">{{t "admin.ref"}}</th><th scope="col">{{t "common.state"}}</th><th scope="col">{{t "admin.versions"}}</th><th scope="col">{{t "common.size"}}</th><th scope="col">{{t "admin.hold"}}</th><th scope="col">{{t "admin.retain"}}</th><th scope="col">{{t "common.actions"}}</th></tr></thead>
+<tbody>
+{{range .Data.Files}}<tr><th scope="row"><code>{{.ID}}</code></th><td><code>{{.SpaceID}}</code></td><td>{{.Subject}}</td><td>{{.Ref}}</td><td>{{state .Status}}</td><td>{{.Versions}}</td><td>{{size .Size}}</td><td>{{if .LegalHold}}{{t "common.yes"}}{{else}}{{t "common.no"}}{{end}}</td><td>{{with .RetainUntil}}{{day .}}{{end}}</td><td>{{if or (eq .Status "active") (eq .Status "deleted")}}<a href="/admin/files/{{.ID}}/hold" aria-label="{{t "admin.change_named" .ID}}">{{t "admin.change"}}</a>{{end}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p>{{t "admin.empty"}}</p>
+{{end}}{{template "pager" .Data.Next}}
+{{end}}

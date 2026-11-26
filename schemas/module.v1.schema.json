@@ -81,6 +81,18 @@
             "base_url_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,40}$" }
           }
         },
+        "public_sign": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["service", "port", "prefix"],
+          "properties": {
+            "service": { "$ref": "#/$defs/dnsLabel" },
+            "port": { "$ref": "#/$defs/port" },
+            "prefix": { "enum": ["/public/sign/"] },
+            "config": { "type": "object" },
+            "base_url_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,40}$" }
+          }
+        },
         "public_config": { "type": "object" },
         "web_login": {
           "type": "object",
