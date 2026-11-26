@@ -17,7 +17,7 @@
 <tbody>
 {{range .Data.Items}}<tr>
 <th scope="row"><a href="/leads/{{.ID}}"><time datetime="{{iso .CreatedAt}}">{{ts .CreatedAt}}</time></a></th>
-<td>{{.Name}}</td><td>{{.Email}}</td><td>{{.FormID}}</td><td><span class="badge neutral">{{.StatusLabel}}</span></td>
+<td>{{.Name}}</td><td>{{.Email}}</td><td>{{.FormID}}</td><td><span class="badge neutral">{{.StatusLabel}}</span>{{if eq .Notification "failed"}} <span class="badge err">{{t "lead.mail_failed"}}</span>{{else if eq .Notification "retrying"}} <span class="badge warn">{{t "lead.mail_retrying"}}</span>{{end}}</td>
 </tr>
 {{end}}</tbody>
 </table>

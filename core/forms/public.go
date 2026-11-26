@@ -227,6 +227,9 @@ func (g *publicHandler) submit(w http.ResponseWriter, r *http.Request, form *For
 			break
 		}
 	}
+	if g.notifier.mailer != nil && len(form.NotifyEmail) > 0 {
+		lead.emailDue = now.Add(firstAttemptGrace)
+	}
 	if err := g.store.Insert(r.Context(), lead); err != nil {
 		g.log.Error("store lead", "form", form.ID, "error", err)
 		g.fail(w, r, http.StatusInternalServerError, "internal", "Something went wrong. Please try again later.")

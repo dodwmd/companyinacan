@@ -37,6 +37,8 @@ type Lead struct {
 	Note      string         `json:"note"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
+	// Notification is "retrying" or "failed" when the lead's notification email has not got through.
+	Notification string `json:"notification_status"`
 }
 
 // LeadQuery selects a page of leads.

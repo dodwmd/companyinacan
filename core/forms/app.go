@@ -144,6 +144,7 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 	store.now = now
 
 	d := NewDispatcher(store, mailer, hook, log)
+	d.forms = cfg.Form
 	d.can = opt.Can
 	d.now = now
 	d.Start(2)
@@ -213,10 +214,16 @@ func (a *App) Serve(ctx context.Context, pub, api net.Listener) error {
 	}{{pubSrv, pub}, {apiSrv, api}} {
 		go func() { errc <- s.srv.Serve(s.ln) }()
 	}
-	purgeDone := make(chan struct{})
+	purgeDone, retryDone := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(purgeDone)
 		a.purgeLoop(ctx)
+	}()
+	retryCtx, stopRetry := context.WithCancel(ctx)
+	defer stopRetry()
+	go func() {
+		defer close(retryDone)
+		a.dispatcher.retryLoop(retryCtx)
 	}()
 	a.log.Info("can-forms listening", "public", pub.Addr().String(), "api", api.Addr().String(), "forms", len(a.cfg.Forms))
 
@@ -234,6 +241,8 @@ func (a *App) Serve(ctx context.Context, pub, api net.Listener) error {
 	a.log.Info("shutting down")
 	err := errors.Join(runErr, pubSrv.Shutdown(shutCtx), apiSrv.Shutdown(shutCtx))
 	<-purgeDone
+	stopRetry()
+	<-retryDone
 	// Notifications get their own deadline so slow HTTP shutdown cannot starve the drain.
 	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelDrain()

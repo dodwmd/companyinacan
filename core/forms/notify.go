@@ -70,13 +70,10 @@ func (m *HTTPMailer) Send(ctx context.Context, e Email) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode <= 299:
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		return nil
-	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
-		return fmt.Errorf("%w: email.send: status %d", modclient.ErrUnavailable, resp.StatusCode)
 	}
-	return fmt.Errorf("email.send: status %d", resp.StatusCode)
+	return fmt.Errorf("email.send: %w", modclient.NewStatusError(resp.StatusCode, resp.Header, ""))
 }
 
 // Limits of one email.send request (can-core refuses more).
@@ -287,6 +284,10 @@ type Dispatcher struct {
 	log   *slog.Logger
 	now   func() time.Time
 
+	// forms looks a form definition up for a retry; emailPausedUntil belongs to the retry loop.
+	forms            func(string) *Form
+	emailPausedUntil time.Time
+
 	queue   chan job
 	pending sync.WaitGroup
 	workers sync.WaitGroup
@@ -360,8 +361,7 @@ func (d *Dispatcher) run(j job) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if d.mailer != nil && len(j.form.NotifyEmail) > 0 {
-		n, err := d.sendEmail(ctx, BuildNotification(j.form, j.lead))
-		d.record(ctx, j.lead.ID, "email", n, err)
+		d.deliverEmail(ctx, j.lead, j.form)
 	}
 	if d.webhook != nil {
 		n, err := d.webhook.Send(ctx, NewLeadCreated(j.lead, d.now()))
@@ -378,9 +378,8 @@ func (d *Dispatcher) run(j job) {
 }
 
 // sendEmail hands the notification to email.send, in requests of at most maxEmailRecipients, and
-// retries briefly while it is unavailable; the source id makes a retry safe. can-core queues the
-// mail durably. If it stays unreachable the notification is recorded as failed (forms keeps no
-// outbox of its own); the lead is stored either way.
+// retries briefly while it is unavailable and did not say to wait; the source id makes a repeat safe.
+// Longer outages are the business of the retry loop (emailqueue.go).
 func (d *Dispatcher) sendEmail(ctx context.Context, e Email) (int, error) {
 	sleep := d.sleep
 	if sleep == nil {
@@ -400,7 +399,7 @@ func (d *Dispatcher) sendEmail(ctx context.Context, e Email) (int, error) {
 			if err == nil {
 				break
 			}
-			if !errors.Is(err, modclient.ErrUnavailable) || try == 3 {
+			if !errors.Is(err, modclient.ErrUnavailable) || modclient.RetryAfter(err) > 0 || try == 3 {
 				return attempts, err
 			}
 			if serr := sleep(ctx, backoff); serr != nil {

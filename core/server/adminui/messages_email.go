@@ -22,6 +22,9 @@ func init() {
 		"mail.st_sent":         "Sent",
 		"mail.st_dead":         "Failed",
 		"flash.email_requeued": "The message was queued again.",
+		"lead.mail":            "Notification email",
+		"lead.mail_failed":     "Email notification failed",
+		"lead.mail_retrying":   "Email notification retrying",
 	} {
 		messagesEN[k] = v
 	}
