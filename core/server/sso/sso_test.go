@@ -67,7 +67,7 @@ func newEnv(t *testing.T, mut func(*config.SSO)) *env {
 		mut(&e.cfg)
 	}
 	e.au = auth.NewService(db, e.al, auth.Options{Now: clock, MinLoginTime: time.Nanosecond, Sleep: func(context.Context, time.Duration) error { return nil },
-		Policy:      auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: 15 * time.Minute, LockFor: 15 * time.Minute},
+		Policy:      auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, Window: 15 * time.Minute, LockFor: 15 * time.Minute},
 		LocalPolicy: func(c context.Context, u store.AdminUser) bool { return e.svc.AllowLocalLogin(c, u) }})
 	e.svc = &Service{DB: db, Auth: e.au, RBAC: e.rb, Audit: e.al, Now: clock, Secure: true, HardLock: true,
 		Secrets: StaticSecrets{"acme-sso": e.idp.ClientSecret}, Log: slog.New(slog.NewJSONHandler(e.logs, nil)),

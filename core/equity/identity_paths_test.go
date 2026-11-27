@@ -245,7 +245,8 @@ func TestMigrationClearsOldAttestations(t *testing.T) {
 		`DROP TRIGGER stakeholders_verify_sod`,
 		`ALTER TABLE stakeholders DROP COLUMN person_linked_by`, `ALTER TABLE stakeholders DROP COLUMN person_verified_by`,
 		`ALTER TABLE stakeholders DROP COLUMN person_verified_on`, `ALTER TABLE stakeholders DROP COLUMN identity_by`,
-		`ALTER TABLE stakeholders DROP COLUMN erased_by`, `DELETE FROM schema_migrations WHERE version = 4`,
+		`ALTER TABLE stakeholders DROP COLUMN erased_by`, `DROP TRIGGER exercises_assign_seq`, `DROP INDEX exercises_seq`, `ALTER TABLE exercises DROP COLUMN seq`,
+		`DELETE FROM schema_migrations WHERE version >= 4`,
 		`INSERT INTO entities (id, name, currency, created_at) VALUES ('ent_1', 'E', 'USD', 1)`,
 		`INSERT INTO stakeholders (id, entity_id, kind, person_id, created_by, created_at, updated_at, external_attested_by, external_attested_on)
 			VALUES ('stk_1', 'ent_1', 'founder', NULL, 'svc-can-core', 1, 1, 'alice', '2026-01-01')`,

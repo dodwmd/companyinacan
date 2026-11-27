@@ -566,7 +566,7 @@ func (s *Server) previewData(pv *modmgr.Preview) changeData {
 		h := heldView{Module: a.Module, Reason: modmgr.Sanitise(a.Reason)}
 		if a.Held == reconcile.HeldApproval {
 			h.Ack = modmgr.UpgradeAck(a.Module, a.Approval)
-			h.Widens = modmgr.HeldLines(a.Widens, a.NotApplied)
+			h.Widens = modmgr.HeldLines(a.Widens, a.NotApplied, a.Notes...)
 		}
 		d.Held = append(d.Held, h)
 	}

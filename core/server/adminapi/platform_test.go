@@ -82,7 +82,7 @@ func newPHarness(t *testing.T) *pHarness {
 		return h.rb.Check(ctx, subject, perm, "")
 	}
 	s := &Server{
-		Auth: auth.NewService(db, al, auth.Options{Now: clock, MinLoginTime: time.Nanosecond, Sleep: func(context.Context, time.Duration) error { return nil }, Policy: auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
+		Auth: auth.NewService(db, al, auth.Options{Now: clock, MinLoginTime: time.Nanosecond, Sleep: func(context.Context, time.Duration) error { return nil }, Policy: auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
 		DB:   db, Audit: al, Registry: registry.New(db, "http://can-core"), Log: slog.New(slog.NewJSONHandler(io.Discard, nil)), Secure: true, Now: clock,
 		RBAC: h.rb, Approvals: h.eng, Notify: h.ntf, PATs: h.pats, Tickets: h.tickets,
 	}

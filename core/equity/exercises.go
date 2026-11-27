@@ -259,13 +259,14 @@ func (s *Service) exercisesOfGrant(ctx context.Context, a Actor, grantID string)
 func (s *Service) listExercises(ctx context.Context, a Actor, where string, args []any, f ExerciseFilter) (*ExercisePage, error) {
 	ctx, cancel := readCtx(ctx)
 	defer cancel()
-	q := `SELECT ` + exCols + `, rowid FROM exercises WHERE ` + where + ` AND rowid > ?`
+	// The cursor is the stored seq (migration 005), not the rowid, which VACUUM may renumber.
+	q := `SELECT ` + exCols + `, seq FROM exercises WHERE ` + where + ` AND seq > ?`
 	args = append(args, f.After)
 	if f.Status != "" {
 		q += ` AND status = ?`
 		args = append(args, f.Status)
 	}
-	rows, err := s.db.QueryContext(ctx, q+` ORDER BY rowid LIMIT ?`, append(args, exercisePageSize+1)...)
+	rows, err := s.db.QueryContext(ctx, q+` ORDER BY seq LIMIT ?`, append(args, exercisePageSize+1)...)
 	if err != nil {
 		return nil, err
 	}

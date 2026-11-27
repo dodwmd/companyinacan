@@ -158,7 +158,6 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	pol := DefaultPolicy
-	pol.AttemptsPerMin = 1000 // the per-minute limiter has its own test
 	pol.HardLock = true
 	e.svc = NewService(db, audit.New(db), Options{Now: func() time.Time { return now }, Policy: pol, MinLoginTime: time.Nanosecond, Sleep: noSleep})
 	return e

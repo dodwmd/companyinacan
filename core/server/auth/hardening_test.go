@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -28,30 +29,23 @@ func TestLockoutOfAttackerDoesNotLockRealAdmin(t *testing.T) {
 	}
 }
 
-func TestPerIPRateLimitAppliesBeforeAnyHashing(t *testing.T) {
-	e := newEnv(t)
+// Valid credentials are never throttled: many sign-ins from one address within one minute all
+// succeed behind the proxy (HardLock). A counter of all attempts used to refuse the eleventh.
+func TestValidSignInsAreNeverThrottled(t *testing.T) {
+	e := newEnv(t) // DefaultPolicy with HardLock; time stands still
 	ctx := context.Background()
-	pol := DefaultPolicy
-	pol.HardLock = true
-	e.svc = NewService(e.db, audit.New(e.db), Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, Policy: pol})
-	var locked bool
-	for i := 0; i < pol.AttemptsPerMin+5; i++ {
-		// valid credentials too: the limiter does not look at them
-		_, err := e.svc.Login(ctx, LoginRequest{Username: "u" + string(rune('a'+i)), Password: "whatever-long-pass", Code: "000000", IP: "5.5.5.5"})
-		var le *LockedError
-		if errors.As(err, &le) {
-			locked = true
-			if i < pol.AttemptsPerMin {
-				t.Fatalf("limited too early at attempt %d", i)
-			}
-		}
-	}
-	if !locked {
-		t.Fatal("no rate limit")
-	}
-	*e.now = e.now.Add(61 * time.Second)
-	if _, err := e.svc.Login(ctx, LoginRequest{Username: "root", Password: e.pw, Code: e.code(t), IP: "5.5.5.5"}); errors.As(err, new(*LockedError)) && !strings.Contains(err.Error(), "retry") {
+	hash, err := HashPassword(e.pw)
+	if err != nil {
 		t.Fatal(err)
+	}
+	for i := range 3 * DefaultPolicy.MaxIPFailures / 2 {
+		name := fmt.Sprintf("admin%d", i)
+		if _, err := e.db.CreateAdmin(ctx, name, hash, e.sec); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.svc.Login(ctx, LoginRequest{Username: name, Password: e.pw, Code: e.code(t), IP: "5.5.5.5"}); err != nil {
+			t.Fatalf("sign-in %d from one address: %v", i+1, err)
+		}
 	}
 }
 
@@ -59,7 +53,7 @@ func TestHashingConcurrencyIsCapped(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.svc = NewService(e.db, audit.New(e.db), Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, HashSlots: 1, HashWait: 20 * time.Millisecond,
-		Policy: Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 50, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
+		Policy: Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 50, Window: time.Minute, LockFor: time.Minute}})
 	release, err := e.svc.acquire(ctx) // occupy the only slot
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +72,7 @@ func TestParallelLoginsNeverExceedSlots(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.svc = NewService(e.db, audit.New(e.db), Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, HashSlots: 2, HashWait: 5 * time.Second,
-		Policy: Policy{HardLock: true, MaxUserFailures: 500, MaxIPFailures: 500, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
+		Policy: Policy{HardLock: true, MaxUserFailures: 500, MaxIPFailures: 500, Window: time.Minute, LockFor: time.Minute}})
 	var wg sync.WaitGroup
 	for i := 0; i < 12; i++ {
 		wg.Add(1)
@@ -144,7 +138,7 @@ func TestLoginFailsClosedWhenAuditCannotBeWritten(t *testing.T) {
 	ctx := context.Background()
 	var logs strings.Builder
 	svc := NewService(e.db, failingAudit{}, Options{MinLoginTime: time.Nanosecond, Sleep: noSleep, Now: func() time.Time { return *e.now }, Log: slog.New(slog.NewJSONHandler(&logs, nil)),
-		Policy: Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: time.Minute, LockFor: time.Minute}})
+		Policy: Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, Window: time.Minute, LockFor: time.Minute}})
 	_, err := svc.Login(ctx, LoginRequest{Username: "root", Password: e.pw, Code: e.code(t), IP: "1.1.1.1"})
 	if err == nil || errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("login succeeded or masked without an audit trail: %v", err)

@@ -131,8 +131,12 @@ func (s *Server) tokenIssue(w http.ResponseWriter, r *http.Request, sc *sessionC
 	module := r.PostFormValue("module")
 	iss, err := s.PATs.Issue(r.Context(), subjectOf(sc), pat.IssueRequest{
 		Name: r.PostFormValue("name"), Module: module, Permissions: r.PostForm["permissions"], TTL: time.Duration(hours) * time.Hour,
+		RecentAuth: s.users().Recent(actorOf(sc)),
 	})
 	switch {
+	case errors.Is(err, pat.ErrStepUp):
+		http.Redirect(w, r, "/reauth?next=/tokens", http.StatusSeeOther)
+		return
 	case errors.Is(err, pat.ErrForbidden):
 		s.fail(w, r, sc, http.StatusForbidden, "err.no_permission", "tk.cannot_grant")
 		return

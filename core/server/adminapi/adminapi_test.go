@@ -48,7 +48,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	al := audit.New(db)
 	s := &Server{
-		Auth: auth.NewService(db, al, auth.Options{Now: func() time.Time { return now }, MinLoginTime: time.Nanosecond, Sleep: func(context.Context, time.Duration) error { return nil }, Policy: auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
+		Auth: auth.NewService(db, al, auth.Options{Now: func() time.Time { return now }, MinLoginTime: time.Nanosecond, Sleep: func(context.Context, time.Duration) error { return nil }, Policy: auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
 		DB:   db, Audit: al, Registry: registry.New(db, "http://can-core"),
 		Log: slog.New(slog.NewJSONHandler(h.logs, nil)), Secure: true, Now: func() time.Time { return now },
 	}

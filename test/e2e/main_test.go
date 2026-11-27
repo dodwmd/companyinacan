@@ -75,6 +75,8 @@ func (q *quietT) Fatalf(string, ...any) {
 var (
 	adminOnce sync.Once
 	adminTOTP string
+	// adminStep is the TOTP time step of the last admin sign-in: its code is used up.
+	adminStep int64
 )
 
 // adminSecret rotates the admin TOTP secret once per test process (through `compose exec`, the same
@@ -94,8 +96,8 @@ func adminSecret(t *testing.T) string {
 }
 
 // adminLogin signs the session in as the admin with password and TOTP. A TOTP code can be used once
-// per 30 second step, so when an earlier login in the same step made the server refuse the code,
-// it waits for the next step and tries once more.
+// per 30 second step, and a used one is a failed sign-in that counts against the address, so after
+// an earlier sign-in in the same step it waits for the next code instead of trying the old one.
 func adminLogin(t *testing.T, s *harness.Client) *harness.Response {
 	t.Helper()
 	return adminLoginAt(t, s, "admin.localhost", env.Port)
@@ -107,21 +109,21 @@ func adminLoginAt(t *testing.T, s *harness.Client, host, port string) *harness.R
 	secret := adminSecret(t)
 	pw := env.Secret(t, "core", "CAN_ADMIN_PASSWORD")
 	hdr := map[string]string{"Origin": "http://" + host + ":" + port}
-	for attempt := 0; ; attempt++ {
-		page := s.Do(t, harness.Req{Host: host, Port: port, Path: "/login"}).Expect(t, "admin login page", 200)
-		code, err := harness.TOTP(secret, time.Now())
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-		r := s.Do(t, harness.Req{Method: "POST", Host: host, Port: port, Path: "/login", Headers: hdr,
-			Body: url.Values{"csrf": {harness.CSRF(page.String())}, "username": {"admin"}, "password": {pw}, "totp": {code}}})
-		if r.Status == 303 || attempt >= 1 {
-			return r.Expect(t, "admin login with password and TOTP", 303)
-		}
-		wait := time.Duration(31-time.Now().Unix()%30) * time.Second
-		t.Logf("login answered HTTP %d (a TOTP code is single use per step?); retrying in %s", r.Status, wait)
-		time.Sleep(wait)
+	page := s.Do(t, harness.Req{Host: host, Port: port, Path: "/login"}).Expect(t, "admin login page", 200)
+	if next := time.Unix((adminStep+1)*30, 0); time.Until(next) > 0 {
+		t.Logf("waiting %s for a new TOTP code", time.Until(next).Round(time.Second))
+		time.Sleep(time.Until(next))
 	}
+	now := time.Now()
+	code, err := harness.TOTP(secret, now)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	r := s.Do(t, harness.Req{Method: "POST", Host: host, Port: port, Path: "/login", Headers: hdr,
+		Body: url.Values{"csrf": {harness.CSRF(page.String())}, "username": {"admin"}, "password": {pw}, "totp": {code}}})
+	r.Expect(t, "admin login with password and TOTP", 303)
+	adminStep = now.Unix() / 30
+	return r
 }
 
 func mustInt(t *testing.T, s string) int64 {

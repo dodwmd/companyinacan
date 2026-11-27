@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -37,7 +36,7 @@ const (
 	MaxPasswordLen = 1024
 )
 
-// LockedError is returned while a user/address pair or a client address is locked out or rate limited.
+// LockedError is returned while a user/address pair or a client address is locked out.
 type LockedError struct{ RetryAfter time.Duration }
 
 func (e *LockedError) Error() string {
@@ -48,7 +47,6 @@ func (e *LockedError) Error() string {
 type Policy struct {
 	MaxUserFailures int           // failures per (username, client address) before lockout
 	MaxIPFailures   int           // failures per client address before lockout
-	AttemptsPerMin  int           // HardLock only: all login attempts per client address per minute
 	Window          time.Duration // failures older than this are forgotten
 	LockFor         time.Duration
 	// HardLock refuses attempts after repeated failures (use only when client addresses are real,
@@ -60,10 +58,11 @@ type Policy struct {
 }
 
 // DefaultPolicy: a (username, address) pair is locked for 15 minutes after 5 failures, an address
-// after 20, and an address may not make more than 10 attempts a minute. The username lock is keyed
+// after 20. Only failures count: valid credentials are never throttled, however often they are used
+// (a TOTP code works once, which is the only bound they need). The username lock is keyed
 // on the address as well so an anonymous attacker cannot lock the real admin out from elsewhere;
 // recovery for the remaining cases is `can-core admin unlock`.
-var DefaultPolicy = Policy{MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 10, Window: 15 * time.Minute, LockFor: 15 * time.Minute, BackoffBase: 250 * time.Millisecond, BackoffMax: 2 * time.Second}
+var DefaultPolicy = Policy{MaxUserFailures: 5, MaxIPFailures: 20, Window: 15 * time.Minute, LockFor: 15 * time.Minute, BackoffBase: 250 * time.Millisecond, BackoffMax: 2 * time.Second}
 
 // DefaultSessionTTL is the absolute lifetime of an admin session.
 const DefaultSessionTTL = 12 * time.Hour
@@ -104,15 +103,6 @@ type Service struct {
 	slots     chan struct{}
 	dummyTOTP string
 	sleepers  atomic.Int64
-
-	mu      sync.Mutex
-	rate    map[string]*window // per-address attempt counter
-	rateGen time.Time
-}
-
-type window struct {
-	start time.Time
-	n     int
 }
 
 // NewService returns an auth service.
@@ -141,7 +131,7 @@ func NewService(db *store.DB, a Appender, opt Options) *Service {
 	if opt.HashWait == 0 {
 		opt.HashWait = 3 * time.Second
 	}
-	return &Service{db: db, audit: a, opt: opt, dummy: dummyHash(), dummyTOTP: NewTOTPSecret(), slots: make(chan struct{}, opt.HashSlots), rate: map[string]*window{}}
+	return &Service{db: db, audit: a, opt: opt, dummy: dummyHash(), dummyTOTP: NewTOTPSecret(), slots: make(chan struct{}, opt.HashSlots)}
 }
 
 // LoginRequest is one login attempt.
@@ -178,30 +168,6 @@ func (s *Service) recordBestEffort(ctx context.Context, actor, action, ip string
 	if err := s.record(ctx, actor, action, ip); err != nil {
 		s.opt.Log.Error("audit append failed", "action", action, "error", err)
 	}
-}
-
-// admit counts every login attempt per client address, before any hashing happens.
-func (s *Service) admit(ip string, now time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.rate) > 4096 || now.Sub(s.rateGen) > time.Minute { // bound memory: drop expired windows
-		for k, w := range s.rate {
-			if now.Sub(w.start) >= time.Minute {
-				delete(s.rate, k)
-			}
-		}
-		s.rateGen = now
-	}
-	w := s.rate[ip]
-	if w == nil || now.Sub(w.start) >= time.Minute {
-		w = &window{start: now}
-		s.rate[ip] = w
-	}
-	w.n++
-	if w.n > s.opt.Policy.AttemptsPerMin {
-		return &LockedError{RetryAfter: time.Minute - now.Sub(w.start)}
-	}
-	return nil
 }
 
 // acquire takes a hashing slot, bounding concurrent 19 MiB argon2 evaluations.
@@ -291,11 +257,6 @@ func (s *Service) Login(ctx context.Context, r LoginRequest) (LoginResult, error
 	start := s.opt.Now()
 	now := start
 	pol := s.opt.Policy
-	if pol.HardLock {
-		if err := s.admit(r.IP, now); err != nil {
-			return LoginResult{}, err
-		}
-	}
 	userKey, ipKey := "user:"+strings.ToLower(r.Username)+"|"+r.IP, "ip:"+r.IP
 	finish := func(res LoginResult, err error) (LoginResult, error) {
 		if err != nil && !errors.Is(err, ErrInvalidCredentials) {

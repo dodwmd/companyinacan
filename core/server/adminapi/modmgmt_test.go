@@ -67,7 +67,7 @@ func TestCatalogueAndStatusEndpointsAreGatedAndReadOnly(t *testing.T) {
 	svc := &modmgr.Service{DB: db, Audit: al, ModulesDir: apiModules(t), Company: &modmgr.FileStore{Path: cfile}, Now: func() time.Time { return now }}
 	s := &Server{
 		Auth: auth.NewService(db, al, auth.Options{Now: func() time.Time { return now }, MinLoginTime: time.Nanosecond, Sleep: func(context.Context, time.Duration) error { return nil },
-			Policy: auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, AttemptsPerMin: 1000, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
+			Policy: auth.Policy{HardLock: true, MaxUserFailures: 5, MaxIPFailures: 20, Window: 15 * time.Minute, LockFor: 15 * time.Minute}}),
 		DB: db, Audit: al, Registry: registry.New(db, "http://can-core"), RBAC: rbac.New(db, al, rbac.Options{Now: func() time.Time { return now }}),
 		Mod: svc, Log: slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})), Secure: true, Now: func() time.Time { return now },
 	}

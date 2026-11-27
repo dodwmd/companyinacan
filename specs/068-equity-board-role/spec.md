@@ -38,13 +38,16 @@ smaller step: can-core's roles already say who the board is (the grant approval'
 - Unchanged: whoever created, edited or submitted a grant cannot approve it; the holder never can; nobody
   administers their own equity; the service account is never the board.
 - The web UI asks for a step-up (token again, or a recent admin sign-in) before approval, as before. A token
-  used on the API has no step-up, like every other API action; its issue needs an admin session.
+  used on the API has no step-up, like every other API action; so one carrying `equity.board` is only issued
+  by an admin session whose sign-in or confirmation is at most 10 minutes old (admin UI and API).
 
 ### Upgrade
 
 The manifest gains `equity.board` (module 0.3.0), so `can apply` and the admin UI **hold the upgrade for the
 operator's approval** (`new permission equity.board`, `role board gains equity.board`). Anybody already
-assigned `equity:board` becomes an equity board member when it is applied: check the assignments first.
+assigned `equity:board` becomes an equity board member when it is applied: check the assignments first. The
+held upgrade names who is assigned it. Until it is approved the running release stays, without the fix of
+problem 2.
 
 ### What to set up
 

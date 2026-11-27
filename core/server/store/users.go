@@ -325,3 +325,26 @@ func (db *DB) SetSessionReauth(ctx context.Context, idHash string, now time.Time
 	_, err := db.ExecContext(ctx, `UPDATE sessions SET reauth_at=? WHERE id_hash=?`, now.Unix(), idHash)
 	return err
 }
+
+// RoleHolders returns up to limit subjects assigned role in any scope, in subject order, and how
+// many there are in all.
+func (db *DB) RoleHolders(ctx context.Context, role string, limit int) ([]string, int, error) {
+	var total int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT subject) FROM rbac_assignments WHERE role=?`, role).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT subject FROM rbac_assignments WHERE role=? ORDER BY subject LIMIT ?`, role, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, s)
+	}
+	return out, total, rows.Err()
+}
