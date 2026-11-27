@@ -151,3 +151,27 @@ func (r *SSHRunner) CopyFrom(ctx context.Context, remotePath string, data io.Rea
 	_, err := r.exec(ctx, remote, data)
 	return err
 }
+
+// StreamRunner is implemented by runners that can stream a command's output without holding it
+// in memory (`can export`).
+type StreamRunner interface {
+	// Stream runs command, one command line of trusted words, as root.
+	Stream(ctx context.Context, command string, stdout, stderr io.Writer) error
+}
+
+// Stream implements StreamRunner.
+func (r *SSHRunner) Stream(ctx context.Context, command string, stdout, stderr io.Writer) error {
+	if r.T.user() != "root" {
+		command = "sudo -n " + command
+	}
+	args, err := SSHArgs(r.T, nil, command)
+	if err != nil {
+		return err
+	}
+	cmd := r.Command(ctx, "ssh", args...)
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ssh %s: %w", r.T.Host, err)
+	}
+	return nil
+}

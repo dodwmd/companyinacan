@@ -31,6 +31,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
+	"github.com/dodwmd/companyinacan/core/server/companyexport"
 	"github.com/dodwmd/companyinacan/core/server/dumps"
 	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/events"
@@ -388,6 +389,13 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		moduleSrv.Dumps = dumper
 		dumper.RestoreMode, moduleSrv.Restoring = restoring, restoring
 	}
+	var exporter *companyexport.Service
+	if !restoring {
+		if exporter, err = cfg.companyExport(db, al, dumper, log); err != nil {
+			return fmt.Errorf("company export: %w", err)
+		}
+		moduleSrv.Exports, uiSrv.Export = exporter, exporter
+	}
 
 	adminLn, err := net.Listen("tcp", cfg.AdminAddr)
 	if err != nil {
@@ -424,6 +432,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	go func() { defer wg.Done(); mail.Run(workCtx) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); housekeeping(workCtx, db, log) }()
+	serveExports(workCtx, &wg, exporter, cfg.DBPath, log)
 	wg.Add(1)
 	go func() { defer wg.Done(); pm.run(workCtx, db, al, log) }()
 	inst, err := cfg.newInstaller(log)

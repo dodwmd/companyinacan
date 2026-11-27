@@ -190,6 +190,63 @@ func TestWrappedModuleBackupOnK3d(t *testing.T) {
 			"mkdir -p "+dir+"/can-it && printf %s "+fileMarker+" > "+dir+"/"+markerPath)
 	}
 
+	// --- `can export`: the wrapped applications' own dumps, without their accounts -------------
+	// Only what was uploaded is exported: for support that is storage/app of its volume.
+	uploads := map[string]string{"support": "storage/app/", "newsletter": ""}
+	mustKubectl(t, "-n", "mod-support", "exec", "deploy/support", "-c", "app", "--", "sh", "-c",
+		"mkdir -p /data/storage/app/can-it && printf %s "+fileMarker+" > /data/storage/app/"+markerPath)
+	exported := companyExport(t)
+	holds(t, exported, "modules/analytics/schema.json", `"tables"`)
+	for id := range wrappedVolumes {
+		holds(t, exported, "modules/"+id+"/native/database.sql", "PostgreSQL database dump")
+		holds(t, exported, "modules/"+id+"/files/"+uploads[id]+markerPath, fileMarker)
+		if sql := exported["modules/"+id+"/native/database.sql"]; strings.Contains(sql, "COPY public.users ") {
+			t.Errorf("%s: the accounts are in the export", id)
+		}
+	}
+	holds(t, exported, "manifest.json", `"complete": true`)
+	// No file of an application's volume carries its key or a password out (FreeScout keeps both in
+	// a file called config on the volume).
+	if _, ok := exported["modules/support/files/config"]; ok {
+		t.Error("support: the application's configuration is in the export")
+	}
+	// No generated password or key of a module is anywhere in the export, dumps included.
+	for _, id := range []string{"analytics", "support", "newsletter"} {
+		for _, secret := range []string{"can-module", "can-db"} {
+			raw, err := kubectl("-n", "mod-"+id, "get", "secret", secret, "-o", "json")
+			if err != nil {
+				continue // analytics has no database Secret
+			}
+			var s struct {
+				Data map[string][]byte `json:"data"`
+			}
+			if err := json.Unmarshal([]byte(raw), &s); err != nil {
+				t.Fatal(err)
+			}
+			for key, v := range s.Data {
+				if !strings.Contains(key, "PASSWORD") && !strings.Contains(key, "KEY") && !strings.Contains(key, "TOKEN") && !strings.Contains(key, "SECRET") || len(v) < 16 {
+					continue
+				}
+				for name, body := range exported {
+					if strings.Contains(body, string(v)) {
+						t.Errorf("%s holds %s of mod-%s/%s", name, key, id, secret)
+					}
+				}
+			}
+		}
+	}
+	for name, body := range exported {
+		if !strings.Contains(name, "/files/") {
+			continue
+		}
+		t.Logf("exported file: %s (%d bytes)", name, len(body))
+		for _, bad := range []string{"APP_KEY", "DB_PASS", "DB_PASSWORD", "PRIVATE KEY"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s holds %s", name, bad)
+			}
+		}
+	}
+
 	// --- one dump run: every module's Job, within its namespace's quota and policies -----------
 	t.Logf("MEASURE dump run with analytics, support and newsletter: %s", requestDump(t).Round(100*time.Millisecond))
 	dumped := onNode(t, "cat "+dumpsOnNode+"/DUMPED")

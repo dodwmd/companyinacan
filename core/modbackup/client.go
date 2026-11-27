@@ -20,6 +20,8 @@ type client struct {
 	http                    *http.Client
 	// backoff is the wait before the first retry; it doubles each time.
 	backoff time.Duration
+	// export sends to PUT /v1/exports/{module} (`can export`) instead of the dumps.
+	export bool
 }
 
 func newClient(getenv func(string) string) *client {
@@ -50,6 +52,9 @@ func (c *client) do(ctx context.Context, name string, build func(url string) (*h
 		return nil, fmt.Errorf("read the token: %w", err)
 	}
 	target := c.base + "/v1/dumps/" + url.PathEscape(c.module) + "/" + url.PathEscape(name)
+	if c.export {
+		target = c.base + "/v1/exports/" + url.PathEscape(c.module)
+	}
 	wait := c.backoff
 	for try := 1; ; try++ {
 		req, err := build(target)

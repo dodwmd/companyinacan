@@ -26,6 +26,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/audit"
 	"github.com/dodwmd/companyinacan/core/server/auth"
+	"github.com/dodwmd/companyinacan/core/server/companyexport"
 	"github.com/dodwmd/companyinacan/core/server/email"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/modmgr"
@@ -70,6 +71,8 @@ type Server struct {
 	Mod *modmgr.Service
 	// Site is the website editor (site.go); nil answers 503 on its pages and shows no link to it.
 	Site *siteedit.Service
+	// Export is the company data export (export.go); nil answers 503 on its page and shows no link.
+	Export *companyexport.Service
 	// PATs issues personal access tokens for module APIs; the tokens page answers 503 without it.
 	PATs *pat.Service
 	// SSO is OpenID Connect sign-in (epic E11b); nil hides every trace of it.
@@ -107,7 +110,7 @@ type route struct {
 }
 
 func (s *Server) routes() []route {
-	return append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(append(s.appRoutes(), s.emailRoutes()...), append(s.userRoutes(), append(s.overviewRoutes(), s.siteRoutes()...)...)...)...)
+	return append(s.exportRoutes(), append(append(append(append(append(append(s.coreRoutes(), s.platformRoutes()...), s.modRoutes()...), s.wizardRoutes()...), s.tokenRoutes()...), s.ssoRoutes()...), append(append(s.appRoutes(), s.emailRoutes()...), append(s.userRoutes(), append(s.overviewRoutes(), s.siteRoutes()...)...)...)...)...)
 }
 
 func (s *Server) coreRoutes() []route {

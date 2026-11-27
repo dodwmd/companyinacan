@@ -709,7 +709,7 @@ of the success criteria in §10 is met yet. Detail: [docs/status.md](docs/status
 | §3.7, §6.5 | Erasure ledger written by can-core | Built for people, equity, board, entity, files, finance, forms, jobs and work; not for provisioning or wrapped apps |
 | §5 | Work tracking (manager needs) | Built: projects in the UI, workload by person, P0/P1 ageing, stale work, saved filters, a priority-changed event. Not built: components, team views from reporting lines, logged time, source-control adapters, MCP server |
 | §5 | Catalogue | In `modules/`: forms, work, people, jobs, finance, files, equity, board, entity, provisioning, and wrapped analytics, newsletter, support, wiki, status, crm. Contracts, invoices, time and expenses live inside `finance`. Not built: booking, wrapped e-sign (`documents`), vendors module, assets, policies, simple tasks, password manager |
-| §6.1, §6.4 | `can module`, `can upgrade`, `can export`, `can email` | Not implemented. `can import` takes CSV for three record types, not a company export |
+| §6.1, §6.4 | `can module`, `can upgrade`, `can email` | Not implemented. `can export` is built (docs/export.md; k3d only; wiki, status and crm are not covered). `can import` takes CSV for three record types, not a company export |
 | §6.3 | Dashboard with open tickets, expiring certificates and domains, a restore button | Not built. The overview and status pages show approvals, module totals and the last database dump |
 | §6.5 | Restore from the recovery kit | Built, verified on k3d with a local restic repository only; the new server is made first with `can up --provision-only` |
 | §6.5 | Updates with snapshot and rollback (`can upgrade`) | Not implemented; no release exists |

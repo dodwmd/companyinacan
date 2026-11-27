@@ -121,7 +121,7 @@ func (s *Server) platformNav(r *http.Request, sc *sessionCtx, active string) []n
 			out = append(out, navItem{Href: "/access", Label: s.msg("nav.access"), Current: active == "access"})
 		}
 	}
-	return out
+	return append(out, s.exportNav(r, sc, active)...)
 }
 
 // --- approvals --------------------------------------------------------------------------------

@@ -27,6 +27,8 @@ Unauthenticated requests to a session route get `303 /login`. Routes marked step
 | `GET /leads` | yes | Leads list. Query `status`, `cursor` |
 | `GET /leads/{id}` | yes | Lead detail with status form |
 | `POST /leads/{id}/status` | yes | Field `status` (`new`, `contacted`, `qualified`, `closed`, `spam`) |
+| `GET /export` | yes (`platform.export`) | Company data export (`specs/071-company-export/`) |
+| `POST /export` | yes (`platform.export`) | Step-up. Fields `passphrase`, `passphrase2`, `sealed`, `understood`; streams the archive as a download (audited). `sealed=yes` needs `understood=yes` and a passphrase |
 | `GET /lead-erasure` | yes | Erasure request: search form (`leads.erase`) |
 | `POST /lead-erasure` | yes | Field `email`; lists the leads that name it (ids only), audited without the address |
 | `GET /lead-erasure/{id}` | yes | After an erasure: says that can-core records it for restores |

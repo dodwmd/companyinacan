@@ -574,7 +574,7 @@ func (s *Service) Permissions(ctx context.Context, a Actor) ([]string, error) {
 	if err := s.manage(ctx, a); err != nil {
 		return nil, err
 	}
-	out := []string{rbac.PermView, rbac.PermAudit, rbac.PermManage, rbac.PermApprovalAdmin, rbac.PermNotifyAdmin, rbac.PermOperate, rbac.PermSetup, rbac.PermPurge}
+	out := []string{rbac.PermView, rbac.PermAudit, rbac.PermManage, rbac.PermApprovalAdmin, rbac.PermNotifyAdmin, rbac.PermOperate, rbac.PermSetup, rbac.PermPurge, rbac.PermExport}
 	mods, err := s.DB.ListModules(ctx)
 	if err != nil {
 		return nil, err

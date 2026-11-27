@@ -1,6 +1,6 @@
 name: module-backup
 
-# Epic E08d (specs/043-module-backup-hooks). Not a required check (not in branch protection), and a
+# Epic E08d (specs/043-module-backup-hooks) and `can export` (specs/071-company-export). Not a required check (not in branch protection), and a
 # failure fails the job. Two things:
 #  * hooks-image: deploy/hooks builds, has the tools the shell hooks call and parses every hook.
 #    Nothing is pushed.
@@ -12,6 +12,12 @@ on:
     paths:
       - "cmd/**"
       - "core/modbackup/**"
+      - "core/exportfmt/**"
+      - "core/exportcrypt/**"
+      - "core/server/companyexport/**"
+      - "core/server/moduleapi/**"
+      - "core/cli/export.go"
+      - "test/integration/export_k3d_helpers_test.go"
       - "core/server/dumps/**"
       - "core/server/installer/**"
       - "core/config/**"
@@ -98,7 +104,7 @@ jobs:
         run: |
           kubectl --context k3d-companyinacan-dev apply -k deploy/can-core
           kubectl --context k3d-companyinacan-dev -n can-system rollout status deploy/can-core --timeout=180s
-      - name: Dump, check and restore forms, work and files
+      - name: Dump, export, check and restore forms, work and files
         env:
           CAN_IT_MODULE_BACKUP: "1"
         run: go test -tags integration -count=1 -v -timeout 25m -run '^TestModuleBackupHooksOnK3d$' ./test/integration/

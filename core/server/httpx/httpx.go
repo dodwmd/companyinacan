@@ -140,6 +140,9 @@ func Middleware(log *slog.Logger, api string, h http.Handler) http.Handler {
 		r = r.WithContext(obslog.WithRequestID(r.Context(), id))
 		defer func() {
 			if p := recover(); p != nil {
+				if p == http.ErrAbortHandler { // a handler breaking off its own response
+					panic(p)
+				}
 				log.Error("panic in handler", "api", api, "request_id", id, "panic", p, "stack", string(bytes.TrimSpace(debug.Stack())))
 				if rec.status == 0 {
 					Problem(rec, http.StatusInternalServerError, "internal error")
