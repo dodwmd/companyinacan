@@ -1,6 +1,6 @@
 package adminui
 
-// Messages of the data export (specs/070-company-export). Merged into the catalogue at start-up.
+// Messages of the data export (specs/071-company-export). Merged into the catalogue at start-up.
 func init() {
 	for k, v := range map[string]string{
 		"nav.export": "Export",

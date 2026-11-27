@@ -10,7 +10,7 @@ func TestSummaryCountsOpenAndOverdueUrgentIssues(t *testing.T) {
 	for _, p := range []string{"WEB", "OPS"} {
 		h.mustDo(201, "POST", "/v1/projects", bootstrap, map[string]any{"key": p, "name": p})
 	}
-	yesterday := h.clk.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")
+	yesterday := h.clk.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02") // the service runs on the harness clock, not today
 	later := h.clk.Now().UTC().AddDate(0, 0, 30).Format("2006-01-02")
 	for _, i := range []struct{ project, priority, due string }{
 		{"WEB", "P0", yesterday}, {"WEB", "P1", later}, {"WEB", "P1", ""}, {"WEB", "P2", yesterday}, {"OPS", "P1", yesterday},

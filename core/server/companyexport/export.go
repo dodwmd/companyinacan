@@ -1,4 +1,4 @@
-// Package companyexport is can-core's side of `can export` (specs/070-company-export): one
+// Package companyexport is can-core's side of `can export` (specs/071-company-export): one
 // tar.gz of the company's data in open formats, written straight to whoever asked for it. can-core
 // writes its own part, then runs each module's export Job; the Job's upload (PUT /v1/exports) is
 // copied entry by entry into the archive as it arrives. Nothing of the export is stored on the

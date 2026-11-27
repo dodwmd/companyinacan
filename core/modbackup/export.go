@@ -1,6 +1,6 @@
 package modbackup
 
-// `<binary> export` (specs/070-company-export): the module's records as JSON Lines and CSV with
+// `<binary> export` (specs/071-company-export): the module's records as JSON Lines and CSV with
 // a schema, and the files they refer to, as one tar stream to can-core's PUT /v1/exports. It
 // follows the backup hook: a consistent copy of the database, a Job in the module's namespace,
 // bounded memory. Rows are read from the live data, so what was erased is not there.

@@ -1,6 +1,6 @@
 package cli
 
-// `can export` (specs/070-company-export): ask the running can-core for an export, over kubectl
+// `can export` (specs/071-company-export): ask the running can-core for an export, over kubectl
 // exec (ssh to the server, or --context), and write it to this machine. Nothing is stored on the
 // server. The stream is checked while it is written: only an archive that ends with a complete
 // manifest is kept.

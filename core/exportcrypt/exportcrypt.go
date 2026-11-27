@@ -1,4 +1,4 @@
-// Package exportcrypt encrypts an export with a passphrase (specs/070-company-export), as a
+// Package exportcrypt encrypts an export with a passphrase (specs/071-company-export), as a
 // stream: Argon2id for the key, then XChaCha20-Poly1305 over chunks, so that neither side holds
 // the archive in memory and a truncated, reordered or modified file does not decrypt.
 //

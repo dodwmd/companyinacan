@@ -1,6 +1,6 @@
 name: module-backup
 
-# Epic E08d (specs/043-module-backup-hooks) and `can export` (specs/070-company-export). Not a required check (not in branch protection), and a
+# Epic E08d (specs/043-module-backup-hooks) and `can export` (specs/071-company-export). Not a required check (not in branch protection), and a
 # failure fails the job. Two things:
 #  * hooks-image: deploy/hooks builds, has the tools the shell hooks call and parses every hook.
 #    Nothing is pushed.

@@ -1,6 +1,6 @@
 package dumps
 
-// The export Jobs of `can export` (specs/070-company-export): the backup Jobs with another
+// The export Jobs of `can export` (specs/071-company-export): the backup Jobs with another
 // subcommand, which send their stream to PUT /v1/exports instead of the dumps. A Job gets no
 // Secret, with one exception: when the operator asked for sealed fields, an in-house module's Job
 // mounts the same keyring (or finance's seal key) its service runs with.

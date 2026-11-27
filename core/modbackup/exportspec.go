@@ -2,7 +2,7 @@ package modbackup
 
 import "github.com/dodwmd/companyinacan/core/exportfmt"
 
-// What `<binary> export` writes, table by table (specs/070-company-export). Every column of every
+// What `<binary> export` writes, table by table (specs/071-company-export). Every column of every
 // table is named here: exported (Columns), encrypted at rest (Sealed) or never exported
 // (Omitted); a table is left out as a whole with Skip. TestExportClassifiesEveryColumn fails for
 // anything a migration adds and nobody classified.
@@ -116,7 +116,7 @@ var exportTables = map[string][]table{
 		table{Name: "leave_ledger", Description: "Leave balance ledger (half days)", Columns: "seq person_id type_id entry_date kind halves ref created_by created_at",
 			Sealed: sealed{"note_sealed": bound("t.ref", "leave_ledger:", ":note")}},
 		plain("audit_log", "Hash-chained audit log", "seq at actor action resource fields outcome prev hash"),
-		skip("ledger_guard", whyPlumbing), skip("outbox", whyPlumbing), skip("erasures", whyErasure),
+		skip("ledger_guard", whyPlumbing), skip("outbox", whyPlumbing), skip("erasures", whyErasure), skip("approval_queue", whyPlumbing),
 	),
 	"can-jobs": common(
 		plain("stages", "Pipeline stages", "key name kind position"),
@@ -187,7 +187,7 @@ var exportTables = map[string][]table{
 		plain("party_reminder_stops", "Customers with reminders stopped", "party_id set_by set_at"),
 		plain("overdue_notices", "Overdue notices already given", "invoice_id due_date notified_at"),
 		plain("audit_log", "Audit log", "id actor action target detail at"),
-		skip("api_tokens", whySecret), skip("idempotency", whyReplay), skip("outbox", whyPlumbing),
+		skip("api_tokens", whySecret), skip("idempotency", whyReplay), skip("outbox", whyPlumbing), skip("approval_queue", whyPlumbing),
 		skip("retention_gate", whyPlumbing), skip("erasures", whyErasure), skip("erased_external_ids", whyErasure),
 	),
 	"can-equity": common(

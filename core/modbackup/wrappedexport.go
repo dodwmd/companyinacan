@@ -1,6 +1,6 @@
 package modbackup
 
-// The export of a wrapped application (specs/070-company-export): the application's own data in
+// The export of a wrapped application (specs/071-company-export): the application's own data in
 // its own schema. A PostgreSQL application gives a plain SQL pg_dump (made by the Postgres image),
 // a SQLite one its tables as JSON Lines and CSV, and the files of its volume are copied. Unlike
 // the in-house services nobody here owns these schemas, so secrets are kept out by name: whole

@@ -310,7 +310,7 @@ paths:
   /v1/exports/{module}:
     put:
       operationId: putExport
-      summary: "The export stream of one module (specs/070-company-export)"
+      summary: "The export stream of one module (specs/071-company-export)"
       description: "Called by a module's export Job. `module` is the caller's own module id. Accepted only while `can export` is running this module's Job, once. The body is a tar stream copied into the export as it arrives; nothing is stored."
       parameters:
         - { name: module, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9-]{0,31}$" } }

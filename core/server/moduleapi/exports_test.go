@@ -1,6 +1,6 @@
 package moduleapi
 
-// `can export` end to end without a cluster (specs/070-company-export): can-core's export, the
+// `can export` end to end without a cluster (specs/071-company-export): can-core's export, the
 // module API, and the real `can-forms export` in place of its Job.
 
 import (

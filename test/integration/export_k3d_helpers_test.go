@@ -2,7 +2,7 @@
 
 package integration
 
-// `can export` against a running cluster (specs/070-company-export), used by the module backup
+// `can export` against a running cluster (specs/071-company-export), used by the module backup
 // and wrapped backup tests.
 
 import (

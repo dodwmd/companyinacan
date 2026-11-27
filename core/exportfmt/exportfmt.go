@@ -1,4 +1,4 @@
-// Package exportfmt writes the open formats of `can export` (specs/070-company-export): a tar
+// Package exportfmt writes the open formats of `can export` (specs/071-company-export): a tar
 // stream of JSON Lines and CSV tables with a machine-readable schema, written without holding a
 // table or a file in memory and without staging plaintext on disk.
 package exportfmt

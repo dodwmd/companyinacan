@@ -1,6 +1,6 @@
 package adminui
 
-// Export of the company's data from the admin UI (specs/070-company-export): the owner
+// Export of the company's data from the admin UI (specs/071-company-export): the owner
 // (platform.export), after a recent proof of identity, downloads the archive. It is streamed to
 // the browser; nothing is stored on the server.
 

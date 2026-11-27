@@ -18,7 +18,7 @@ import (
 // ExportSocket is the Unix socket `can-core export` talks to, next to the state database.
 func ExportSocket(dbPath string) string { return dirOf(dbPath) + "/export.sock" }
 
-// companyExport builds `can export` (specs/070-company-export). Module data needs export Jobs,
+// companyExport builds `can export` (specs/071-company-export). Module data needs export Jobs,
 // so it needs the Kubernetes installer.
 func (c Config) companyExport(db *store.DB, al *audit.Log, dumper *dumps.Dumper, log *slog.Logger) (*companyexport.Service, error) {
 	s := &companyexport.Service{DBPath: c.DBPath, CompanyFile: c.CompanyFile, Company: c.CompanyName, Version: c.Version,

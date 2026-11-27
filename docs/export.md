@@ -1,7 +1,7 @@
 # Exporting your data (`can export`)
 
 Everything the company holds, in open formats, in one file on your machine. Design and decisions:
-[specs/070-company-export](../specs/070-company-export/spec.md). An export is not a backup: nothing
+[specs/071-company-export](../specs/071-company-export/spec.md). An export is not a backup: nothing
 restores from it (for that, [backup-restore.md](backup-restore.md)), and there is no importer for it.
 
 > Verified by unit tests and on throw-away k3d clusters in CI. **Not run on a real server.**

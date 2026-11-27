@@ -13,7 +13,7 @@ import (
 	"github.com/dodwmd/companyinacan/core/modbackup"
 )
 
-// `can-finance export` (specs/070-company-export) opens the sealed bank account numbers only with
+// `can-finance export` (specs/071-company-export) opens the sealed bank account numbers only with
 // --include-sealed, with the binding the service seals them with.
 func TestCompanyExportOfBankNumbers(t *testing.T) {
 	e := sealedEnv(t)
