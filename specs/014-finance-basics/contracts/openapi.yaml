@@ -1905,9 +1905,33 @@ paths:
         "412": { description: "If-Match version is stale" }
         "422": { description: "Invalid fields" }
         "429": { description: "Rate limited" }
+  /v1/purchase-orders/{id}/request-approval:
+    post:
+      summary: "Ask can-core to approve a draft purchase order (idempotent per version)"
+      description: "Only on an installation with can-core. The decision arrives as approval.decided.v1 and, when approved, the order is approved and numbered. status is pending, or queued when this pass already sent as many requests as it may. 503: can-core did not answer; the request is queued and sent later, and nothing is approved."
+      operationId: POST_v1_purchase_orders_id_request-approval
+      x-scope: finance.write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { description: "Malformed JSON, unknown field, bad If-Match or cursor" }
+        "401": { description: "No valid credentials" }
+        "403": { description: "Missing scope, or separation of duties" }
+        "404": { description: "Not found, or outside the token's scope" }
+        "409": { description: "Not a draft, or can-core is not configured" }
+        "422": { description: "can-core refused the request (no approver or no policy)" }
+        "429": { description: "Rate limited" }
+        "503": { description: "can-core is unavailable" }
   /v1/purchase-orders/{id}/approve:
     post:
       summary: "Approve and number it (separation of duties)"
+      description: "With can-core, only for an order can-core approved and that could not be applied then; otherwise 409 (decide in the approvals inbox)."
       operationId: POST_v1_purchase_orders_id_approve
       x-scope: finance.approve
       parameters:

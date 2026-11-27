@@ -129,6 +129,10 @@ type CreateRequest struct {
 	IdempotencyKey string
 	// DefaultChain is the module manifest's default_chain, used when the company set no policy.
 	DefaultChain []string
+	// Manager, when set, is the requester's manager as the owner of the reporting lines knows it (only
+	// the `directory` provider may say so, see moduleapi): it stands for `manager_of_requester` in
+	// this request's copy of the policy.
+	Manager string
 }
 
 // Delegation lets Delegate act for Delegator during [From, To).

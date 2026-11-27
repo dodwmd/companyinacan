@@ -60,14 +60,17 @@ in the admin UI under access. Each type has its own preference per channel.
 | `invoice.overdue` | an issued invoice with a balance passed its due date (finance, hourly) | `finance:finance` |
 | `contract.expiring` | a contract entered its renewal reminder window | `finance:finance` |
 | `contract.signed`, `contract.declined` | all signers signed, or one declined | `finance:finance` |
-| `expense.submitted`, `timesheet.submitted` | waiting for a decision in finance | `finance:approver` |
-| `expense.decided`, `timesheet.decided` | approved or sent back | whose it is |
 | `application.received` | a job application arrived | the job's hiring manager (if an account), `jobs:recruiter` |
 | `work.issue.p0` (urgent) | an unresolved issue became P0, or a P0 changed hands | the assignee, `work:manager` |
-| `timeoff.requested` | time off waiting for a decision | the manager (if the directory links an account), `people:hr` |
-| `timeoff.decided` | approved or refused | who submitted it |
 | `entity.filing.due` | a filing reached a reminder point | `entity:secretary` |
 | `lead.created` | a website form lead (forms) | `forms:sales` |
+
+**Approvals.** Timesheets, expenses, purchase orders and time off have no reminder rules of their own:
+they are approval requests ([approvals.md](approvals.md)), so the approvers get `approval.requested`
+(and `approval.escalated`) and the person who submitted gets `approval.decided`. Their events are still
+published. Because the engine tells only the requester, someone who submitted a timesheet for another
+person hears the outcome, not that person; a record sent back in the module while it was not in the inbox
+(can-core unreachable or refusing) notifies nobody.
 
 "Told" needs an account: a person known only by a free-form id (`person_17`, a service token) cannot be
 notified. E-mail follows [email.md](email.md): to an address the person entered and is allowed to receive,
@@ -89,8 +92,8 @@ this release behaves like the upgrade.
 **For event consumers.** `contract.expiring.v1` and `entity.filing.due.v1` now have two forms (the
 schema is a `oneOf`): the per-record one as before, or `{"count": n}` for a backlog.
 
-Time off requests already pending when people is upgraded do not notify their requester of the decision:
-the account that submitted them was not recorded.
+Time off requests already pending when people is upgraded are queued for the approval engine; for those
+submitted before the account was recorded, the person's own account is named as the requester.
 
 **Upgrading.** The new manifests publish new events and add notification rules, which widens what the
 modules may do: the `finance`, `jobs`, `work`, `people` and `entity` upgrades **wait for your approval**

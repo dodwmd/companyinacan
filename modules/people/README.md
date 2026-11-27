@@ -22,7 +22,8 @@ adds a key and keeps the old ones; run `can-people rotate-keys` afterwards to re
 tokens are introspected through can-core and become roles from their permissions (`people.read` is
 employee, `people.team.manage` (held only by the manager role; **managers must reissue their personal access tokens with it**, see below) adds manager, `people.write` is hr,
 `people.admin` is admin); a token's subject is `user:<admin username>`, so a person is linked to it by
-setting their `sso_subject` to that value. Events go to can-core. **`candidate.hired.v1` from jobs
+setting their `sso_subject` to that value. Time off is decided in can-core's
+approvals inbox (`docs/people.md`). Events go to can-core. **`candidate.hired.v1` from jobs
 starts onboarding:** a person in status `onboarding` (named "New hire" and the candidate id; the hand-off
 carries no personal data, HR fills in the real details) and the onboarding checklist, once per
 candidate. If no template starts on entering onboarding, a default one is created.

@@ -230,3 +230,12 @@ func TestModuleNotifications(t *testing.T) {
 		t.Fatalf("absolute link: %d", resp.StatusCode)
 	}
 }
+
+// Only the provider of `directory` may name a requester's manager (specs/070-approvals-inbox).
+func TestOnlyTheDirectoryNamesAManager(t *testing.T) {
+	p := newPlatform(t, true)
+	body := map[string]any{"type": "expense", "requester": "user:emp", "manager": "user:fin"}
+	if resp, out := p.call("POST", "/v1/approvals", "tok-expenses", map[string]string{"Idempotency-Key": "m-1"}, body); resp.StatusCode != 403 {
+		t.Fatalf("a module that is not the directory named a manager: %d %s", resp.StatusCode, out)
+	}
+}

@@ -573,6 +573,7 @@ components:
         title: { type: string, maxLength: 300 }
         amount: { type: integer, minimum: 0, description: Minor units; compared with policy thresholds }
         payload: { type: object, description: At most 64 KiB; shown to approvers, never put in events }
+        manager: { type: string, description: "user:<name> of the requester's manager. 403 unless the module provides `directory`; it stands for `manager_of_requester` in this request." }
     ApprovalView:
       type: object
       required: [id, type, requester, status, created_at]

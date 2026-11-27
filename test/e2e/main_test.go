@@ -104,9 +104,17 @@ func adminLogin(t *testing.T, s *harness.Client) *harness.Response {
 // adminLoginAt is adminLogin at one of the admin UI's addresses.
 func adminLoginAt(t *testing.T, s *harness.Client, host, port string) *harness.Response {
 	t.Helper()
-	secret := adminSecret(t)
+	return loginAt(t, s, host, port, "admin", adminSecret(t))
+}
+
+// loginAt signs an administrator in with the password every dev account has and their TOTP secret.
+// It tries again at the next TOTP step, and once after a minute when can-core's per-address limit of
+// sign-in attempts (10 a minute) is used up by the scenarios before.
+func loginAt(t *testing.T, s *harness.Client, host, port, user, secret string) *harness.Response {
+	t.Helper()
 	pw := env.Secret(t, "core", "CAN_ADMIN_PASSWORD")
 	hdr := map[string]string{"Origin": "http://" + host + ":" + port}
+	limited := false
 	for attempt := 0; ; attempt++ {
 		page := s.Do(t, harness.Req{Host: host, Port: port, Path: "/login"}).Expect(t, "admin login page", 200)
 		code, err := harness.TOTP(secret, time.Now())
@@ -114,11 +122,14 @@ func adminLoginAt(t *testing.T, s *harness.Client, host, port string) *harness.R
 			t.Fatalf("%v", err)
 		}
 		r := s.Do(t, harness.Req{Method: "POST", Host: host, Port: port, Path: "/login", Headers: hdr,
-			Body: url.Values{"csrf": {harness.CSRF(page.String())}, "username": {"admin"}, "password": {pw}, "totp": {code}}})
-		if r.Status == 303 || attempt >= 1 {
-			return r.Expect(t, "admin login with password and TOTP", 303)
-		}
+			Body: url.Values{"csrf": {harness.CSRF(page.String())}, "username": {user}, "password": {pw}, "totp": {code}}})
 		wait := time.Duration(31-time.Now().Unix()%30) * time.Second
+		switch {
+		case r.Status == 429 && !limited:
+			limited, wait = true, 61*time.Second
+		case r.Status == 303 || attempt >= 1:
+			return r.Expect(t, user+" signs in with password and TOTP", 303)
+		}
 		t.Logf("login answered HTTP %d (a TOTP code is single use per step?); retrying in %s", r.Status, wait)
 		time.Sleep(wait)
 	}

@@ -23,6 +23,13 @@
 </tfoot>
 </table>
 </div>
+{{- if and .Data.Engine.On .Data.Engine.State}}
+<p class="notice" role="status">{{t (printf "engine.%s" .Data.Engine.State)}}{{if ne .Data.Engine.State "pending"}}{{with .Data.Engine.Note}} ({{.}}){{end}}{{end}}</p>{{end}}
+{{- if .Data.CanRequest}}
+<form method="post" action="/purchase-orders/{{.Data.O.ID}}/request-approval" class="inline">
+{{template "csrf" .}}
+<button type="submit">{{t "po.request"}}</button>
+</form>{{end}}
 {{if .Data.CanApprove}}
 {{if .Data.ApproveBlock}}
 <p><button type="button" disabled aria-describedby="sod">{{t "common.approve"}}</button></p>

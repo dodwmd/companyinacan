@@ -208,6 +208,9 @@ func (s *Store) UpdatePurchaseOrder(ctx context.Context, a *Principal, id int64,
 			return err
 		}
 		lj, _ := json.Marshal(lines)
+		if err := s.withdrawDecision(ctx, tx, apPurchaseOrder, id); err != nil { // asked about the old content
+			return err
+		}
 		_, err = tx.ExecContext(ctx, `UPDATE purchase_orders SET vendor_id=?, currency=?, project=?, lines=?, subtotal_minor=?, tax_minor=?, total_minor=?, notes=?, updated_by=?, version=version+1, updated_at=? WHERE id=?`,
 			in.VendorID, cur, in.Project, string(lj), t.subtotal-t.discount, t.tax, t.total, in.Notes, a.Subject, ts(s.now()), id)
 		return err
@@ -224,17 +227,28 @@ func (s *Store) ApprovePurchaseOrder(ctx context.Context, a *Principal, id int64
 		if po.Status != PoDraft {
 			return fmt.Errorf("%w: the purchase order is %s", ErrConflict, po.Status)
 		}
-		var n int64
-		if err := tx.QueryRowContext(ctx, `INSERT INTO series (code, next_number) VALUES ('PO', 2) ON CONFLICT (code) DO UPDATE SET next_number = next_number + 1 RETURNING next_number - 1`).Scan(&n); err != nil {
+		if err := s.engineAllows(ctx, tx, apPurchaseOrder, id, po.Version, a, true); err != nil {
 			return err
 		}
-		text := fmt.Sprintf("PO-%05d", n)
-		now := ts(s.now())
-		if _, err := tx.ExecContext(ctx, `UPDATE purchase_orders SET status='approved', number=?, number_text=?, approved_by=?, approved_at=?, version=version+1, updated_at=? WHERE id=?`, n, text, a.Subject, now, now, id); err != nil {
+		if err := s.applyPO(ctx, tx, po, a.Subject); err != nil {
 			return err
 		}
-		return s.audit(ctx, tx, a.Subject, "purchase_order.approve", text, map[string]any{"id": id, "total_minor": po.TotalMinor, "currency": po.Currency})
+		return s.withdrawDecision(ctx, tx, apPurchaseOrder, id)
 	})
+}
+
+// applyPO approves and numbers a draft. The caller has authorised it.
+func (s *Store) applyPO(ctx context.Context, tx *sql.Tx, po *PurchaseOrder, by string) error {
+	var n int64
+	if err := tx.QueryRowContext(ctx, `INSERT INTO series (code, next_number) VALUES ('PO', 2) ON CONFLICT (code) DO UPDATE SET next_number = next_number + 1 RETURNING next_number - 1`).Scan(&n); err != nil {
+		return err
+	}
+	text := fmt.Sprintf("PO-%05d", n)
+	now := ts(s.now())
+	if _, err := tx.ExecContext(ctx, `UPDATE purchase_orders SET status='approved', number=?, number_text=?, approved_by=?, approved_at=?, version=version+1, updated_at=? WHERE id=?`, n, text, by, now, now, po.ID); err != nil {
+		return err
+	}
+	return s.audit(ctx, tx, by, "purchase_order.approve", text, map[string]any{"id": po.ID, "total_minor": po.TotalMinor, "currency": po.Currency})
 }
 
 // SetPurchaseOrderStatus marks an approved PO received, or cancels a draft or approved one.
@@ -243,6 +257,9 @@ func (s *Store) SetPurchaseOrderStatus(ctx context.Context, a *Principal, id int
 		ok := (status == PoReceived && po.Status == PoApproved) || (status == PoCancelled && (po.Status == PoDraft || po.Status == PoApproved))
 		if !ok {
 			return fmt.Errorf("%w: cannot move a %s purchase order to %s", ErrConflict, po.Status, status)
+		}
+		if err := s.withdrawDecision(ctx, tx, apPurchaseOrder, id); err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE purchase_orders SET status=?, version=version+1, updated_at=? WHERE id=?`, status, ts(s.now()), id); err != nil {
 			return err

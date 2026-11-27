@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dodwmd/companyinacan/core/config"
 	"github.com/dodwmd/companyinacan/core/server/approvals"
 	"github.com/dodwmd/companyinacan/core/server/httpx"
 	"github.com/dodwmd/companyinacan/core/server/identity"
@@ -74,6 +75,9 @@ type createApprovalBody struct {
 	Title     string          `json:"title"`
 	Amount    int64           `json:"amount"`
 	Payload   json.RawMessage `json:"payload"`
+	// Manager is the requester's manager (user:<name>). Only the provider of `directory`, which owns
+	// the reporting lines, may say it.
+	Manager string `json:"manager,omitempty"`
 }
 
 type approvalView struct {
@@ -93,6 +97,15 @@ func viewOf(r approvals.Request) approvalView {
 
 // createApproval opens an approval request. Idempotency-Key is required; the same key and body
 // return the original request with 200.
+func providesDirectory(m store.Module) bool {
+	for _, p := range m.Manifest.Provides {
+		if p.Capability == "directory" && config.ProvidesServed(p.Status) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) createApproval(w http.ResponseWriter, r *http.Request, m store.Module) {
 	if s.Approvals == nil {
 		s.unavailable(w)
@@ -112,7 +125,12 @@ func (s *Server) createApproval(w http.ResponseWriter, r *http.Request, m store.
 		httpx.Problem(w, http.StatusForbidden, "module does not declare approval type "+b.Type+" in its manifest")
 		return
 	}
+	if b.Manager != "" && !providesDirectory(m) {
+		httpx.Problem(w, http.StatusForbidden, "only the module that provides `directory` may name a requester's manager")
+		return
+	}
 	req, created, err := s.Approvals.Create(r.Context(), approvals.CreateRequest{
+		Manager:  b.Manager,
 		ModuleID: m.ID, Type: b.Type, Requester: b.Requester, Ref: b.Ref, Title: b.Title, Amount: b.Amount, Payload: b.Payload,
 		IdempotencyKey: r.Header.Get("Idempotency-Key"), DefaultChain: decl.chain,
 	})

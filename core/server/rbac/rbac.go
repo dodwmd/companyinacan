@@ -695,9 +695,11 @@ func (s *Service) approvalRoles(ctx context.Context) (roleNames, error) {
 	}
 	for _, m := range mods {
 		for _, a := range m.Manifest.Approvals {
-			for _, c := range a.DefaultChain {
-				if c != "manager" {
-					n.full[QualifyRole(m.ID, c)] = true
+			for _, step := range a.DefaultChain {
+				for _, c := range strings.Split(step, "|") { // `a|b`: b is a's fallback
+					if c != "manager" && c != Owner { // owner is never assigned this way
+						n.full[QualifyRole(m.ID, c)] = true
+					}
 				}
 			}
 		}

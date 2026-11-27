@@ -108,6 +108,7 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	if can != nil {
 		auth = append(auth, &CanAuth{In: &modclient.Introspector{API: can}})
 		canEvents = &modclient.Receiver{Secret: sec.CanSecret, Handle: svc.CanEventHandler()}
+		svc.UseCore(can, log) // time off is decided by can-core's approval engine
 	}
 	var disp *Dispatcher
 	switch {
@@ -150,6 +151,10 @@ func Main(args []string, getenv func(string) string, stdout, stderr io.Writer) i
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { defer wg.Done(); background(ctx, svc, disp, log) }()
+	if p := svc.pump; p != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); p.Run(ctx, approvalEvery) }()
+	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	log.Info("can-people listening", "addr", ln.Addr().String(), "key_id", kr.ActiveID())

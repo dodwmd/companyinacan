@@ -10,9 +10,11 @@ id: people
 name: People and performance
 description: Directory (people records, org chart, employment status with effective dating, onboarding and offboarding checklists), performance (1:1s with shared and private notes, goals and key results, review cycles with self, manager and anonymous peer feedback, calibration and approved release) and time off (leave types and accruals as data, balances ledger, requests approved by the manager, holiday calendars, team calendar showing only out). Per-field access control by role, audited sensitive reads, encrypted sensitive fields, retention, legal hold and erasure tombstones. Not payroll, and not legal or HR advice.
 category: people
+# 0.5.0: time off is approved through can-core's approval engine (specs/070-approvals-inbox); the
+# upgrade waits for the operator's approval (docs/releasing.md).
 # 0.4.0: time off reminder events and notification rules (specs/060-reminders).
 # 0.3.0: the manager role gained people.team.manage. The new version makes `apply` record the manifest again.
-version: 0.4.0
+version: 0.5.0
 # experimental: unit-, contract- and race-tested, and the chart installs through can-core's installer
 # in unit tests (specs/016-module-wiring); not yet exercised on a cluster, no portal or admin UI.
 # can-core generates the API token and the keyring, introspects personal access tokens and delivers
@@ -66,12 +68,11 @@ publishes:
   - { event: timeoff.cancelled.v1, schema: ./events/timeoff.cancelled.v1.json }
   - { event: timeoff.requested.v1, schema: ./events/timeoff.requested.v1.json }
   - { event: timeoff.decided.v1, schema: ./events/timeoff.decided.v1.json }
-# The manager (when the directory links their account) and HR learn of a request; the requester of the decision.
-notifications:
-  - { event: timeoff.requested.v1, recipients: ["field:approver", "role:hr"] }
-  - { event: timeoff.decided.v1, recipients: ["field:requester"] }
-# The hire hand-off from jobs starts a person in onboarding (core/people/hire.go).
+# No notification rules for time off: can-core's approval engine tells the approver and the requester.
+# The hire hand-off from jobs starts a person in onboarding (core/people/hire.go); approval.decided.v1
+# brings back the engine's decision on a time off request.
 subscribes:
+  - { event: approval.decided.v1, service: people-api, port: 8081, webhook: /v1/can/events }
   - { event: candidate.hired.v1, service: people-api, port: 8081, webhook: /v1/can/events }
 # Coarse permissions gate the capability verbs; the finer rules (self, manager chain, HR, admin, per field)
 # are enforced inside the service by one policy layer (core/people/policy.go).
@@ -86,11 +87,13 @@ roles:
   manager: [people.read, performance.read, performance.write, people.reviews.read, people.reviews.write, people.timeoff.read, people.timeoff.approve, people.team.manage]
   hr: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin, people.reviews.read, people.reviews.admin, people.timeoff.read, people.timeoff.approve, people.timeoff.admin]
   admin: [people.read, people.write, people.sensitive-read, people.sensitive-write, people.admin, people.reviews.read, people.reviews.admin, people.timeoff.read, people.timeoff.approve, people.timeoff.admin]
-# Approval types this module registers with can-core's approval engine (E11a) when it is wired. `manager` resolves
-# the requester's manager through the reporting line this module provides; the service applies its own
-# separation-of-duties check on top of the engine's. Without the engine the service decides itself.
+# Approval types this module registers with can-core's approval engine (E11a). `timeoff` is decided there
+# when the service runs with can-core: by the requester's manager (this module names them), else by HR or
+# the owners. The service applies its own separation-of-duties check on top of the engine's.
+# `review-release` is declared but not wired: the service decides it itself. Without the engine the
+# service decides time off too.
 approvals:
-  - { type: timeoff, default_chain: [manager] }
+  - { type: timeoff, default_chain: ["manager|hr|owner"] }
   - { type: review-release, default_chain: [hr] }
 data_classes:
   # Basic directory fields: names, work email and phone, location, reporting line. Visible to colleagues

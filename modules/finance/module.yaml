@@ -15,16 +15,18 @@ id: finance
 name: Finance
 description: Customers and vendors, chart of accounts, double-entry journal with period close, bank statement import and reconciliation, invoices and credit notes with gap-free numbering and immutability after approval, multi-currency with a stored FX rate per document, payments, receivables aging, recurring invoices, contracts with versions, hashes, signature by emailed single-use link (simple electronic signature) and e-signature adapters, timesheets with approval and billing, expenses with receipt metadata and approval, and minimal purchase orders. Integer minor-unit money, tax as data, separation of duties, per-party and per-project scoping, audited exports, retention and erasure that respects legal retention.
 category: finance
+# 0.4.0: timesheets, expenses and purchase orders are approved through can-core's engine
+# (specs/070-approvals-inbox); the upgrade waits for the operator's approval (docs/releasing.md).
 # 0.3.0: reminder events and notification rules (specs/060-reminders). The new version makes `apply` record the manifest again.
 # 0.2.0: invoices, statements and payment reminders by email, PDF (specs/062-invoice-email). The new version makes `apply` record the manifest again.
-version: 0.3.0
+version: 0.4.0
 # experimental: the service and its tests are complete and measured locally, and the chart installs
 # through can-core's installer in unit tests (specs/016-module-wiring); the image has not been built
 # or run on a cluster, there is no real payment or e-signature adapter (fakes only). A server-rendered
 # web UI (E15b, specs/031-finance-ui) ships in the same binary, off by default (ui.enabled), built offline
 # and not browser- or cluster-verified; the web UI is routed only with expose.ui.
 # can-core generates the secrets, introspects personal access tokens, routes events and decides
-# invoice approvals (tested with fakes, not on a cluster). The public invoice link is routed
+# invoice, timesheet, expense and purchase order approvals (tested with fakes and the compose stack, not on a cluster). The public invoice link is routed
 # only with expose.public: true. See specs/014-finance-basics/tasks.md.
 status: experimental
 provider:
@@ -101,8 +103,8 @@ publishes:
   - { event: expense.decided.v1, schema: ./events/expense.decided.v1.json }
   - { event: timesheet.submitted.v1, schema: ./events/timesheet.submitted.v1.json }
   - { event: timesheet.decided.v1, schema: ./events/timesheet.decided.v1.json }
-# can-core's approvals engine decides invoices (approval.decided.v1 comes back signed); the other
-# approval types are declared for policy and notification but still use the finance.approve rule.
+# can-core's approvals engine decides invoices, timesheets, expenses and purchase orders
+# (approval.decided.v1 comes back signed). Without can-core the finance.approve rule decides.
 subscribes:
   - { event: approval.decided.v1, service: finance, port: 8080, webhook: /v1/can/events }
 # finance.ledger.* (E15c) guard the journal, the reports and the bank data. Only an unscoped token may use them: a
@@ -125,15 +127,15 @@ notifications:
   - { event: contract.expiring.v1, recipients: ["role:finance"] }
   - { event: contract.signed.v1, recipients: ["role:finance"] }
   - { event: contract.declined.v1, recipients: ["role:finance"] }
-  - { event: expense.submitted.v1, recipients: ["role:approver"] }
-  - { event: expense.decided.v1, recipients: ["field:owner"] }
-  - { event: timesheet.submitted.v1, recipients: ["role:approver"] }
-  - { event: timesheet.decided.v1, recipients: ["field:owner"] }
+  # No rules for the timesheet.* and expense.* events: the approval engine tells the approvers and the
+  # requester itself.
 approvals:
   - { type: invoice, default_chain: [finance] }
-  - { type: timesheet, default_chain: [manager] }
-  - { type: expense, default_chain: [manager, finance] }
-  - { type: purchase-order, default_chain: [finance] }
+  # `approver|owner`: the finance approver role, or the owners when nobody else holds it. company.yaml
+  # `approvals:` replaces these chains (amount thresholds, a second step).
+  - { type: timesheet, default_chain: ["approver|owner"] }
+  - { type: expense, default_chain: ["approver|owner"] }
+  - { type: purchase-order, default_chain: ["approver|owner"] }
 data_classes:
   # Name, address and tax id of a customer or vendor, contact person, email and phone. Personal data:
   # reads are audited and erasure pseudonymises the record. The name, address and tax id frozen onto an

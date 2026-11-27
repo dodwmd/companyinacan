@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/dodwmd/companyinacan/core/modapproval"
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
@@ -130,8 +131,9 @@ func (s *Store) RecordCoreDecision(ctx context.Context, approvalID, outcome stri
 }
 
 // CoreApprover is the Approver for invoices backed by can-core: an invoice may be approved only when
-// its current version has an approved can-core request, and never by whoever requested it. Kinds not
-// wired to can-core yet (expenses, timesheets, purchase orders, voiding) keep the permission rule.
+// its current version has an approved can-core request, and never by whoever requested it. Expenses,
+// timesheets and purchase orders are held to the engine by Store.engineAllows (queued.go); voiding
+// and journals keep the permission rule.
 type CoreApprover struct{ store *Store }
 
 // CanApprove implements Approver. It fails closed on any error.
@@ -154,6 +156,9 @@ func (s *Store) CanEventHandler() func(context.Context, modclient.Event) error {
 	return func(ctx context.Context, ev modclient.Event) error {
 		if ev.Type != "approval.decided.v1" || ev.Source != "can-core" {
 			return nil
+		}
+		if q, ok := modapproval.Decode(ev); ok && (q.Type == apTimesheet || q.Type == apExpense || q.Type == apPurchaseOrder) {
+			return s.applyDecision(ctx, q)
 		}
 		var d struct {
 			RequestID string   `json:"request_id"`

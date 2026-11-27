@@ -625,6 +625,20 @@ func (a *api) updatePO(w http.ResponseWriter, r *http.Request, p *Principal) {
 	a.respondPO(w, v, err)
 }
 
+// requestPOApproval asks can-core to approve a draft purchase order.
+func (a *api) requestPOApproval(w http.ResponseWriter, r *http.Request, p *Principal) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	ap, err := a.store.RequestPurchaseOrderApproval(r.Context(), p, id)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ap)
+}
+
 func (a *api) approvePO(w http.ResponseWriter, r *http.Request, p *Principal) {
 	id, ok := pathID(w, r, "id")
 	if !ok {

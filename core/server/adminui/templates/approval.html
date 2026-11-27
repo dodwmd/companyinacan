@@ -12,6 +12,8 @@
 {{if .Data.Req.ExpiresAt}}<dt>{{t "ap.expires"}}</dt><dd><time datetime="{{iso .Data.Req.ExpiresAt}}">{{ts .Data.Req.ExpiresAt}}</time></dd>
 {{end}}{{if .Data.Req.DecidedAt}}<dt>{{t "ap.decided_at"}}</dt><dd><time datetime="{{iso .Data.Req.DecidedAt}}">{{ts .Data.Req.DecidedAt}}</time></dd>
 {{end}}</dl>
+{{- with .Data.Open}}
+<form method="post" action="/apps/{{.App}}/launch"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="return" value="{{.Return}}"><button type="submit">{{t "ov.open_in" .Name}}</button></form>{{end}}
 {{if .Data.Details}}
 <section aria-labelledby="h-details">
 <h2 id="h-details">{{t "ap.details"}}</h2>

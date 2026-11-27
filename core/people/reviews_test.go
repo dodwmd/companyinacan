@@ -641,7 +641,7 @@ func TestMigrationOnExistingDatabase(t *testing.T) {
 		`DROP TRIGGER leave_ledger_no_delete`, `DROP TRIGGER leave_ledger_no_update`,
 		`DROP TABLE ledger_guard`, `DROP TABLE leave_ledger`, `DROP TABLE leave_requests`, `DROP TABLE blackouts`, `DROP TABLE holidays`,
 		`DROP TABLE holiday_calendars`, `DROP TABLE leave_types`, `DROP TABLE review_responses`, `DROP TABLE review_requests`,
-		`DROP TABLE review_participants`, `DROP TABLE review_cycles`, `DROP TABLE review_templates`, `DELETE FROM schema_migrations WHERE version >= 4`,
+		`DROP TABLE review_participants`, `DROP TABLE review_cycles`, `DROP TABLE review_templates`, `DROP TABLE approval_queue`, `DELETE FROM schema_migrations WHERE version >= 4`,
 	} {
 		if _, err := e.s.db.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)

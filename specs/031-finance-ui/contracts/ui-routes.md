@@ -108,6 +108,7 @@ scope, 403 missing scope or separation of duties, 409 conflict, locked period or
 | `GET /purchase-orders/new` | yes | write | `ListParties`, `ListTaxRates` | Create form |
 | `POST /purchase-orders` | yes | write | `CreatePurchaseOrder` | Create, idempotent on `idem` |
 | `GET /purchase-orders/{id}` | yes | read | `GetPurchaseOrder`, `PartyNames` | One order |
+| `POST /purchase-orders/{id}/request-approval` | yes | write | `RequestPurchaseOrderApproval` | Request approval (installed with can-core) |
 | `POST /purchase-orders/{id}/approve` | yes | approve | `ApprovePurchaseOrder` | Approve |
 | `POST /purchase-orders/{id}/status` | yes | write | `SetPurchaseOrderStatus` | Receive or cancel |
 | `GET /approvals` | yes | approve | `ListInvoices`, `ListTimesheets`, `ListExpenses`, `ListPurchaseOrders` | The approver queue: what the caller could decide (own work left out) |

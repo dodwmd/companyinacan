@@ -960,10 +960,11 @@ func (s *Service) checkBalance(ctx context.Context, q querier, t *LeaveType, per
 }
 
 // SubmitLeaveRequest moves a draft to pending: it computes the working days, refuses overlaps,
-// blackouts and an insufficient balance, and registers the request with the approval engine when
-// one is configured. Everything happens in one transaction, so concurrent submissions cannot
+// blackouts and an insufficient balance, and queues the request for the approval engine when the
+// service runs with can-core. Everything happens in one transaction, so concurrent submissions cannot
 // together exceed the balance.
 func (s *Service) SubmitLeaveRequest(ctx context.Context, a Actor, id string) (*LeaveRequest, error) {
+	defer s.pump.Kick() // send the approval request now rather than at the next pass
 	err := s.leaveMutate(ctx, a, "leave.submit", id, nil, func(ctx context.Context, tx *sqlTx) error {
 		r, f, err := s.leaveFact(ctx, tx, a, id)
 		if err != nil {
@@ -1015,14 +1016,13 @@ func (s *Service) SubmitLeaveRequest(ctx context.Context, a Actor, id string) (*
 		if err := s.checkBalance(ctx, tx, t, r.PersonID, id, halves, true); err != nil {
 			return err
 		}
-		ref := ""
-		if s.approvals != nil {
-			if ref, err = s.approvals.Request(ctx, ApprovalRequest{Type: "timeoff", Ref: id, Requester: canonSubject(a.Subject)}); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE leave_requests SET status='pending', halves=?, submitted_by=?, submitted_account=?, updated_at=? WHERE id=?`, halves, canonSubject(a.Subject), a.Subject, s.now().Unix(), id); err != nil {
+			return err
+		}
+		if s.pump != nil {
+			if err := s.queueLeave(ctx, tx, id, r.PersonID, a.Subject); err != nil {
 				return err
 			}
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE leave_requests SET status='pending', halves=?, approval_ref=?, submitted_by=?, submitted_account=?, updated_at=? WHERE id=?`, halves, ref, canonSubject(a.Subject), a.Subject, s.now().Unix(), id); err != nil {
-			return err
 		}
 		// The request id and, when the directory links one, the manager's account: no dates, type or person.
 		ev := map[string]any{"request_id": id}
@@ -1047,9 +1047,10 @@ func timeoffEvent(r *leaveRow, halves int) map[string]any {
 }
 
 // DecideLeaveRequest approves or rejects a pending request. The live direct manager decides (hr
-// when there is none), never the requester: separation of duties is one function (sodOK) applied
-// to the actor and, with an approval engine, to the engine's decider as well. A rejected request
-// is final; the person files a new one.
+// when there is none), never the requester: separation of duties is one function (sodOK). A rejected
+// request is final; the person files a new one. With can-core the decision is taken in its approvals
+// inbox (queued.go): this route approves only what the engine has approved and the module could not
+// apply, and rejects only while there is no open request in the inbox.
 func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, approve bool) (*LeaveRequest, error) {
 	var started bool
 	err := s.leaveMutate(ctx, a, "leave.decide", id, nil, func(ctx context.Context, tx *sqlTx) error {
@@ -1063,72 +1064,26 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 		if r.Status != "pending" {
 			return conflict("only a pending request can be decided (status is %s)", r.Status)
 		}
-		now := s.now().Unix()
-		decided := map[string]any{"request_id": id}
-		// submitted_by is folded for separation of duties; an account to notify is not.
-		var account string
-		if err := tx.QueryRowContext(ctx, `SELECT submitted_account FROM leave_requests WHERE id = ?`, id).Scan(&account); err != nil {
+		if err := s.engineAllows(ctx, tx, id, approve); err != nil {
 			return err
 		}
-		if account != "" {
-			decided["requester"] = account
+		decided, err := s.decidedEvent(ctx, tx, id)
+		if err != nil {
+			return err
 		}
 		if !approve {
-			if err := s.enqueue(ctx, tx, EventTimeOffDecided, decided); err != nil {
+			if err := s.rejectLeave(ctx, tx, id, a.auditID(), decided); err != nil {
 				return err
 			}
-			if s.approvals != nil && r.approvalRef != "" {
-				_ = s.approvals.Cancel(ctx, r.approvalRef)
-			}
-			_, err := tx.ExecContext(ctx, `UPDATE leave_requests SET status='rejected', decided_by=?, decided_at=?, updated_at=? WHERE id=?`, a.auditID(), now, now, id)
-			return err
+			return s.withdrawLeave(ctx, tx, id)
 		}
-		chain := append(s.idents(ctx, tx, r.PersonID), r.submittedBy)
-		approver := a
-		if s.approvals != nil {
-			st, err := s.approvals.Status(ctx, r.approvalRef)
-			if err != nil {
-				return err
-			}
-			if st.Outcome != "approved" {
-				return conflict("the approval engine has not approved this request (outcome %q)", st.Outcome)
-			}
-			approver = Actor{Subject: st.DecidedBy, PersonID: s.personIDForSubject(ctx, tx, st.DecidedBy)}
-		}
-		if !sodOK(a, chain...) || !sodOK(approver, chain...) {
+		if !sodOK(a, append(s.idents(ctx, tx, r.PersonID), r.submittedBy)...) {
 			return ErrSeparation
 		}
-		t, err := s.loadLeaveType(ctx, tx, r.TypeID)
-		if err != nil {
+		if started, err = s.approveLeave(ctx, tx, r, a, decided); err != nil {
 			return err
 		}
-		ww, err := s.workWeekFor(ctx, tx, r.PersonID)
-		if err != nil {
-			return err
-		}
-		slots := ww.slots(r.startSlot, r.endSlot)
-		halves := len(slots)
-		if halves == 0 {
-			return conflict("the request contains no working days any more")
-		}
-		slotsJSON, _ := json.Marshal(slots)
-		if err := s.checkBalance(ctx, tx, t, r.PersonID, id, halves, false); err != nil {
-			return err
-		}
-		if t.Tracked {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO leave_ledger (person_id, type_id, entry_date, kind, halves, ref, created_by, created_at) VALUES (?,?,?,?,?,?,?,?)`,
-				r.PersonID, r.TypeID, r.StartDate, "use", -halves, id, approver.auditIDOrSubject(), now); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE leave_requests SET status='approved', halves=?, use_slots=?, decided_by=?, decided_at=?, updated_at=? WHERE id=?`, halves, string(slotsJSON), approver.auditIDOrSubject(), now, now, id); err != nil {
-			return err
-		}
-		started = r.StartDate <= s.today()
-		if err := s.enqueue(ctx, tx, EventTimeOffDecided, decided); err != nil {
-			return err
-		}
-		return s.enqueue(ctx, tx, EventTimeOffApproved, timeoffEvent(r, halves))
+		return s.withdrawLeave(ctx, tx, id)
 	})
 	if err != nil {
 		return nil, err
@@ -1137,6 +1092,67 @@ func (s *Service) DecideLeaveRequest(ctx context.Context, a Actor, id string, ap
 		s.reconcileLogged(ctx)
 	}
 	return s.GetLeaveRequest(ctx, a, id)
+}
+
+// decidedEvent is the data of timeoff.decided: the request, and the account that submitted it.
+func (s *Service) decidedEvent(ctx context.Context, tx *sqlTx, id string) (map[string]any, error) {
+	decided := map[string]any{"request_id": id}
+	// submitted_by is folded for separation of duties; an account to notify is not.
+	var account string
+	if err := tx.QueryRowContext(ctx, `SELECT submitted_account FROM leave_requests WHERE id = ?`, id).Scan(&account); err != nil {
+		return nil, err
+	}
+	if account != "" {
+		decided["requester"] = account
+	}
+	return decided, nil
+}
+
+// rejectLeave records a rejection. The caller has authorised it.
+func (s *Service) rejectLeave(ctx context.Context, tx *sqlTx, id, by string, decided map[string]any) error {
+	now := s.now().Unix()
+	if err := s.enqueue(ctx, tx, EventTimeOffDecided, decided); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE leave_requests SET status='rejected', decided_by=?, decided_at=?, updated_at=? WHERE id=?`, by, now, now, id)
+	return err
+}
+
+// approveLeave records an approval: the working days as the calendar now has them, the balance and
+// the ledger. The one place for the module's route and the engine's decisions; the caller has
+// authorised it. started reports leave that has already begun.
+func (s *Service) approveLeave(ctx context.Context, tx *sqlTx, r *leaveRow, approver Actor, decided map[string]any) (started bool, err error) {
+	id, now := r.ID, s.now().Unix()
+	t, err := s.loadLeaveType(ctx, tx, r.TypeID)
+	if err != nil {
+		return false, err
+	}
+	ww, err := s.workWeekFor(ctx, tx, r.PersonID)
+	if err != nil {
+		return false, err
+	}
+	slots := ww.slots(r.startSlot, r.endSlot)
+	halves := len(slots)
+	if halves == 0 {
+		return false, conflict("the request contains no working days any more")
+	}
+	slotsJSON, _ := json.Marshal(slots)
+	if err := s.checkBalance(ctx, tx, t, r.PersonID, id, halves, false); err != nil {
+		return false, err
+	}
+	if t.Tracked {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO leave_ledger (person_id, type_id, entry_date, kind, halves, ref, created_by, created_at) VALUES (?,?,?,?,?,?,?,?)`,
+			r.PersonID, r.TypeID, r.StartDate, "use", -halves, id, approver.auditIDOrSubject(), now); err != nil {
+			return false, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE leave_requests SET status='approved', halves=?, use_slots=?, decided_by=?, decided_at=?, updated_at=? WHERE id=?`, halves, string(slotsJSON), approver.auditIDOrSubject(), now, now, id); err != nil {
+		return false, err
+	}
+	if err := s.enqueue(ctx, tx, EventTimeOffDecided, decided); err != nil {
+		return false, err
+	}
+	return r.StartDate <= s.today(), s.enqueue(ctx, tx, EventTimeOffApproved, timeoffEvent(r, halves))
 }
 
 // CancelLeaveRequest cancels a draft, pending or approved request. The requester may cancel
@@ -1155,8 +1171,8 @@ func (s *Service) CancelLeaveRequest(ctx context.Context, a Actor, id string) (*
 		today, _ := dayNum(s.today())
 		switch r.Status {
 		case "draft", "pending":
-			if s.approvals != nil && r.approvalRef != "" && r.Status == "pending" {
-				_ = s.approvals.Cancel(ctx, r.approvalRef)
+			if err := s.withdrawLeave(ctx, tx, id); err != nil {
+				return err
 			}
 		case "approved":
 			if f.Self && r.startSlot/2 <= today {

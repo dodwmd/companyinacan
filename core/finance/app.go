@@ -141,8 +141,9 @@ func NewApp(cfg *Config, sec Secrets, opt Options) (*App, error) {
 		store.sign.mailer = opt.Can
 	}
 	if opt.Can != nil {
-		store.core = opt.Can
+		store.useCore(opt.Can)
 		store.approver = &CoreApprover{store: store} // invoices are approved through can-core's engine
+		store.pump.Log = log
 	}
 	if opt.Approver != nil {
 		store.approver = opt.Approver
@@ -246,6 +247,10 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	go func() { defer wg.Done(); a.purgeLoop(bg) }()
 	wg.Add(1)
 	go func() { defer wg.Done(); a.mailLoop(bg) }()
+	if p := a.store.pump; p != nil { // approval requests to can-core (specs/070-approvals-inbox)
+		wg.Add(1)
+		go func() { defer wg.Done(); p.Run(bg, approvalEvery) }()
+	}
 	if a.dispatcher != nil {
 		wg.Add(1)
 		go func() { defer wg.Done(); a.dispatcher.Run(bg) }()

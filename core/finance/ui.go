@@ -154,6 +154,7 @@ func (u *UI) routes() []route {
 		{"GET /purchase-orders/new", w, false, u.poNew},
 		{"POST /purchase-orders", w, false, u.poCreate},
 		{"GET /purchase-orders/{id}", r, false, u.purchaseOrder},
+		{"POST /purchase-orders/{id}/request-approval", w, false, u.poRequestApproval},
 		{"POST /purchase-orders/{id}/approve", a, false, u.poApprove},
 		{"POST /purchase-orders/{id}/status", w, false, u.poStatus},
 

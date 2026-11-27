@@ -7,6 +7,7 @@ import (
 	"errors"
 	"regexp"
 
+	"github.com/dodwmd/companyinacan/core/modapproval"
 	"github.com/dodwmd/companyinacan/core/modclient"
 )
 
@@ -72,6 +73,12 @@ func (s *Service) StartOnboardingFromHire(ctx context.Context, hireRef, employme
 // Errors are returned only for failures worth retrying; a malformed event is dropped.
 func (s *Service) CanEventHandler() func(context.Context, modclient.Event) error {
 	return func(ctx context.Context, ev modclient.Event) error {
+		if d, ok := modapproval.Decode(ev); ok {
+			if d.Type != apTimeOff {
+				return nil
+			}
+			return s.applyDecision(ctx, d)
+		}
 		if ev.Type != "candidate.hired.v1" || ev.Source != "jobs" {
 			return nil // only the jobs module can hand off a hire
 		}

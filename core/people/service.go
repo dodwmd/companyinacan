@@ -31,6 +31,8 @@ import (
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no cgo)
 
 	"github.com/dodwmd/companyinacan/core/obs/obssql"
+
+	"github.com/dodwmd/companyinacan/core/modapproval"
 )
 
 //go:embed migrations/*.sql
@@ -79,8 +81,8 @@ type Options struct {
 	Auditor   Auditor
 	Retention map[string]RetentionRule
 	Now       func() time.Time
-	// Approvals is optional: when set, leave requests and review releases are also decided through
-	// can-core's approval engine (see ApprovalEngine). Without it the service decides itself.
+	// Approvals is optional: when set, review releases are also decided through can-core's approval
+	// engine (see ApprovalEngine). Time off is wired with UseCore.
 	Approvals ApprovalEngine
 	// MinResponses is the default anonymity threshold for new review cycles (at least 3).
 	MinResponses int
@@ -99,7 +101,9 @@ type Service struct {
 	retention     map[string]RetentionRule
 	now           func() time.Time
 
-	approvals    ApprovalEngine
+	approvals ApprovalEngine
+	// pump queues time off requests for can-core's approval engine (nil standalone).
+	pump         *modapproval.Pump
 	minResponses int
 }
 

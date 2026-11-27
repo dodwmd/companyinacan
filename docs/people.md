@@ -197,9 +197,14 @@ rule engine; this is not legal advice.** Units are half days (`halves`; 2 = one 
   holds one database connection, concurrent submissions and approvals serialise (tested with goroutines).
 - **Approval.** The live direct manager decides; HR/admin can decide **any** request (not only when there is no
   manager: it is the fallback and the escape hatch, and every decision is audited); nobody
-  decides their own request, with the same single separation function as reviews. With an approval engine
-  (type `timeoff`, default chain `manager`) the engine must have approved and its decider is held to the rule.
-  A rejected request is final. A manager's own request goes to their manager.
+  decides their own request, with the same single separation function as reviews. A rejected request is
+  final. A manager's own request goes to their manager. That describes the service on its own.
+- **Approval with can-core** (type `timeoff`, specs/070-approvals-inbox): submitting sends the request to the
+  approvals inbox of the admin UI, naming the manager's account; with no linked manager, `people:hr` or the
+  owners decide. The decision is applied here. `POST .../decision` answers 409 while the request is in the
+  inbox, and while can-core has not received it only a rejection works. can-core holds the request id, never
+  dates or type. If an approval cannot be applied (balance, calendar) the request stays pending and the
+  manager or HR approves it here.
 - **Cancellation.** The person until the leave starts, HR afterwards; an approved cancellation appends a
   `reversal` for the days not yet taken, taken from the half-day slots stored when the request was
   approved and capped at the `use` entry: a holiday added or removed since then neither mints nor loses
@@ -416,13 +421,12 @@ one-directional. Everything below is read from the code, not run on a cluster.
   seam" below: the directory side exists, the identity mapping and multi-level chains do not.
 - No UI, no portal, no `identity.provision` consumer, no `work` issue creation from action items (the link
   field exists).
-- Reviews and time off (E14b): the can-core approval client is not wired into `cmd/can-people` (the
-  `ApprovalEngine` seam and a fake exist, as for equity), so the service decides itself and the `timeoff` and
-  `review-release` approval types are declared but unused until then; accruals do not prorate (use
+- Reviews (E14b): the `review-release` approval type is declared but not wired to can-core (the
+  `ApprovalEngine` seam and a fake exist, as for equity), so the service decides it itself. Time off is wired
+  (above). Accruals do not prorate (use
   adjustments); `use` entries are dated at the request's start, not per day; an HR-scheduled status change on a
   person with approved long leave can be dropped as stale; leave-status changes depend on the hourly and
-  per-minute tick; calendars and holidays ship empty (the operator enters them); no notifications are sent
-  (the E11a engine can notify on the events); anonymity is not proof against someone with database access;
+  per-minute tick; calendars and holidays ship empty (the operator enters them); anonymity is not proof against someone with database access;
   the finance module does not consume `timeoff.*` yet; no cluster verification.
 - Write auditing is after the commit (see Audit); search indexing of sensitive classes is out by design.
 

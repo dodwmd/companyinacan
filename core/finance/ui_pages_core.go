@@ -90,6 +90,7 @@ type approvalQueue struct {
 	More        bool
 	Total       int
 	OwnerHidden bool
+	Engine      bool // timesheets, expenses and purchase orders are decided in can-core's inbox
 }
 
 // approvalQueue lists what waits for a decision and that the caller could decide: records the
@@ -97,7 +98,7 @@ type approvalQueue struct {
 // caller's actual work. Each list is bounded.
 func (c *uiCtx) approvalQueue() (*approvalQueue, error) {
 	st, ctx, p := c.u.Store, c.ctx(), c.p
-	q := &approvalQueue{}
+	q := &approvalQueue{Engine: st.pump != nil}
 	invs, next, err := st.ListInvoices(ctx, p, InvoiceFilter{Status: StDraft}, 0, uiPageSize)
 	if err != nil {
 		return nil, err

@@ -254,6 +254,22 @@ reimburses their own claim. A **purchase order** to a vendor is drafted, approve
 than its creator (which numbers it `PO-00001`), then marked received or cancelled. Bills,
 three-way matching and vendor portals are later work.
 
+## Approvals with can-core
+
+Installed with can-core, timesheets, expenses and purchase orders are decided in the approvals inbox of
+the admin UI, not by `finance.approve` here (specs/070-approvals-inbox; standalone nothing changes).
+
+* Submitting a timesheet or expense sends it; a draft purchase order needs **Request approval**
+  (`POST /v1/purchase-orders/{id}/request-approval`). The default approvers are `finance:approver`, else
+  the owners; `company.yaml` `approvals:` replaces that.
+* The decision is applied here: approved or sent back (a purchase order is approved and numbered).
+  Whoever created, edited, submitted or owns the record cannot be the approver.
+* `/approve` answers 409 until can-core has approved; `/reject` answers 409 while the record is in the inbox.
+* **can-core unreachable**: nothing is approved. Submissions are accepted and sent later; a purchase
+  order request answers 503 (and is queued).
+* An approval that cannot be applied (locked period, closed ledger) is kept: after fixing the cause,
+  approve here.
+
 ## Access
 
 Every request needs `Authorization: Bearer <token>`.

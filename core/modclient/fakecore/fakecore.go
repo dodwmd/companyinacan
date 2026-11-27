@@ -44,6 +44,8 @@ type Event struct {
 type Approval struct {
 	ID, Type, Requester, Ref, Title, Key, Status string
 	Amount                                       int64
+	Manager                                      string
+	Payload                                      json.RawMessage
 }
 
 // Core is the fake.
@@ -52,12 +54,13 @@ type Core struct {
 	ModuleTok string // the projected token modules authenticate with
 	ModuleID  string
 
-	mu          sync.Mutex
-	tokens      map[string]Token
-	Events      []Event
-	Approvals   []*Approval
-	Introspects int
-	Down        bool // answer 503 to everything
+	mu             sync.Mutex
+	tokens         map[string]Token
+	Events         []Event
+	Approvals      []*Approval
+	ApprovalStatus int // non-zero: new approval requests get this HTTP status
+	Introspects    int
+	Down           bool // answer 503 to everything
 
 	// Launch tickets (specs/036-module-ui-sso).
 	tickets     map[string]*Grant
@@ -131,6 +134,7 @@ func New(t *testing.T, moduleID string) *Core {
 	mux.HandleFunc("POST /v1/events", guard(c.publish))
 	mux.HandleFunc("POST /v1/approvals", guard(c.createApproval))
 	mux.HandleFunc("GET /v1/approvals/{id}", guard(c.getApproval))
+	mux.HandleFunc("POST /v1/approvals/{id}/cancel", guard(c.cancelApproval))
 	c.Srv = httptest.NewServer(mux)
 	t.Cleanup(c.Srv.Close)
 	return c
@@ -344,8 +348,9 @@ func (c *Core) Published() []Event {
 
 func (c *Core) createApproval(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Type, Requester, Ref, Title string
-		Amount                      int64
+		Type, Requester, Ref, Title, Manager string
+		Amount                               int64
+		Payload                              json.RawMessage
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
 	key := r.Header.Get("Idempotency-Key")
@@ -361,7 +366,11 @@ func (c *Core) createApproval(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a := &Approval{ID: "apr_" + strconv.Itoa(len(c.Approvals)+1), Type: in.Type, Requester: in.Requester, Ref: in.Ref, Title: in.Title, Amount: in.Amount, Key: key, Status: "pending"}
+	if c.ApprovalStatus != 0 {
+		http.Error(w, `{"detail":"refused by the test"}`, c.ApprovalStatus)
+		return
+	}
+	a := &Approval{Manager: in.Manager, Payload: in.Payload, ID: "apr_" + strconv.Itoa(len(c.Approvals)+1), Type: in.Type, Requester: in.Requester, Ref: in.Ref, Title: in.Title, Amount: in.Amount, Key: key, Status: "pending"}
 	c.Approvals = append(c.Approvals, a)
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]string{"id": a.ID, "status": a.Status})
@@ -377,6 +386,55 @@ func (c *Core) getApproval(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.Error(w, "no", http.StatusNotFound)
+}
+
+func (c *Core) cancelApproval(w http.ResponseWriter, r *http.Request) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, a := range c.Approvals {
+		if a.ID == r.PathValue("id") {
+			if a.Status != "pending" {
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+			a.Status = "cancelled"
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+	http.Error(w, "no", http.StatusNotFound)
+}
+
+// SetApprovalStatus makes new approval requests answer this HTTP status (422: no approver; 429: too
+// many; 0: accept again).
+func (c *Core) SetApprovalStatus(status int) {
+	c.mu.Lock()
+	c.ApprovalStatus = status
+	c.mu.Unlock()
+}
+
+// Requests returns a copy of the approval requests so far.
+func (c *Core) Requests() []Approval {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]Approval, 0, len(c.Approvals))
+	for _, a := range c.Approvals {
+		out = append(out, *a)
+	}
+	return out
+}
+
+// DecideBy is Decide with the people who approved, as the engine's event names them.
+func (c *Core) DecideBy(id, outcome string, approvers ...string) (modclient.Event, bool) {
+	ev, ok := c.Decide(id, outcome)
+	if !ok {
+		return ev, ok
+	}
+	var d map[string]any
+	_ = json.Unmarshal(ev.Data, &d)
+	d["approvers"] = approvers
+	ev.Data, _ = json.Marshal(d)
+	return ev, true
 }
 
 // Decide records an approval outcome (what the engine does when approvers decide) and returns the

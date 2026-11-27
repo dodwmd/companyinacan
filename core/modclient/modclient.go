@@ -293,6 +293,8 @@ type ApprovalInput struct {
 	Amount    int64
 	Payload   json.RawMessage
 	Key       string // Idempotency-Key: required, so a retry never opens a second request
+	// Manager names the requester's manager (user:<name>); only the `directory` provider may.
+	Manager string
 }
 
 // Approval is the module's view of a request.
@@ -320,6 +322,9 @@ func (c *Client) CreateApproval(ctx context.Context, in ApprovalInput) (Approval
 	body := map[string]any{"type": in.Type, "requester": in.Requester, "ref": in.Ref, "title": in.Title, "amount": in.Amount}
 	if len(in.Payload) > 0 {
 		body["payload"] = in.Payload
+	}
+	if in.Manager != "" {
+		body["manager"] = in.Manager
 	}
 	status, b, err := c.do(ctx, http.MethodPost, "/v1/approvals", body, map[string]string{"Idempotency-Key": in.Key})
 	if err != nil {
